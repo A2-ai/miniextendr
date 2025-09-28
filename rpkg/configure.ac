@@ -1,0 +1,5 @@
+AC_INIT()
+: ${R_HOME=`R RHOME`}
+
+AC_CONFIG_FILES([src/Makevars])
+AC_OUTPUT

@@ -1,0 +1,6 @@
+[package]
+name = "miniextendr-api"
+edition.workspace = true
+version.workspace = true
+
+[dependencies]
