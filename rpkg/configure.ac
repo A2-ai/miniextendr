@@ -18,14 +18,14 @@ AC_SUBST([RUST_TARGET_DIR], ["$cargo_target_dir"])
 AC_SUBST([ENV_RUSTFLAGS], ["$RUSTFLAGS"])
 
 # Collect Cargo-generated .d files so Makevars needn’t use wildcard
-dep_files=""
+cargo_dep_files=""
 if test -d "$cargo_target_dir/release"; then
   for f in "$cargo_target_dir"/release/*.d \
            "$cargo_target_dir"/release/deps/*.d; do
-    test -f "$f" && dep_files="$dep_files $f"
+    test -f "$f" && cargo_dep_files="$cargo_dep_files $f"
   done
 fi
-AC_SUBST([DEP_FILES], ["$dep_files"])
+AC_SUBST([CARGO_DEP_FILES], ["$cargo_dep_files"])
 
 AC_CONFIG_FILES([src/Makevars])
 AC_OUTPUT
