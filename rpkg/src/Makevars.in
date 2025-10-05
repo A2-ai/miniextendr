@@ -11,8 +11,8 @@ $(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
 	cargo generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml
 
 $(RUST_TARGET_DIR)/release/libjuice.a: $(ABS_SRCDIR)/rust/Cargo.lock
-	@RUSTFLAGS="$(ENV_RUSTFLAGS) --print=native-static-libs" \
-	cargo build --release --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(RUST_TARGET_DIR)
+	@RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
+	cargo +nightly build --release --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(RUST_TARGET_DIR)
 
 -include $(CARGO_DEP_FILES)
 -include $(RUST_TARGET_DIR)/release/libjuice.d
