@@ -1,5 +1,3 @@
-use miniextendr_api::miniextendr;
-
 #[non_exhaustive]
 #[repr(transparent)]
 #[derive(Debug)]
@@ -183,6 +181,12 @@ fn add(left: i32, right: i32) -> i32 {
 #[miniextendr_api::miniextendr]
 fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
     left + right
+}
+
+#[miniextendr_api::miniextendr]
+fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
+    // left + right
+    left.checked_add(right).ok_or_else(|| ())
 }
 
 #[unsafe(no_mangle)]
