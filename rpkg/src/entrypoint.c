@@ -9,7 +9,7 @@ SEXP C_unwind_add(SEXP _left, SEXP _right);
 static const R_CallMethodDef CallEntries[] = {
     /* {"C_fn", (DL_FUNC) &C_fn, 2}, */
     {"C_add", (DL_FUNC) &C_add, 2},
-    {"C_unwind_add", (DL_FUNC) &C_unwind_add, 2},
+    // {"C_unwind_add", (DL_FUNC) &C_unwind_add, 2},
     {NULL, NULL, 0}
 };
 
