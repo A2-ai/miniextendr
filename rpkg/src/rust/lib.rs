@@ -188,10 +188,25 @@ fn add_panic(left: i32, right: i32) -> i32 {
 
 #[miniextendr_api::miniextendr]
 fn add_r_error(_left: i32, _right: i32) -> i32 {
-    unsafe { Rf_error(c"r error in `add_r_error".as_ptr()) };
+    unsafe { Rf_error(c"r error in `add_r_error`".as_ptr()) };
     #[allow(unreachable_code)]
     {
         _left + _right
     }
 }
 
+#[miniextendr_api::miniextendr]
+fn add_left_mut(mut left: i32, right: i32) -> i32 {
+    let left = &mut left;
+    *left + right
+}
+
+#[miniextendr_api::miniextendr]
+fn add_right_mut(left: i32, mut right: i32) -> i32 {
+    left + *&mut right
+}
+
+#[miniextendr_api::miniextendr]
+fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
+    *&mut left + *&mut right
+}

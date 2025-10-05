@@ -74,6 +74,9 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
             let mut arg = pair.into_value();
             if let syn::FnArg::Typed(ref mut pt) = arg {
                 *pt.ty.as_mut() = syn::parse_quote!(SEXP);
+                if let syn::Pat::Ident(ident) = pt.pat.as_mut() {
+                    ident.mutability = None;
+                }
             }
             match punct {
                 Some(c) => syn::punctuated::Pair::Punctuated(arg, c),
