@@ -1,0 +1,7 @@
+#!/bin/sh
+# Variables that are present from R build process
+# Sys.setenv(R_PACKAGE_NAME = pkgname)
+# Sys.setenv(R_PACKAGE_DIR = pkgdir)
+# Sys.setenv(R_LIBRARY_DIR = dirname(pkgdir))
+rm -f src/Makevars
+rm -rf src/target
