@@ -1,6 +1,7 @@
 {
   "rust-analyzer.cargo.targetDir": "../target",
     "rust-analyzer.linkedProjects": [
-    "rpkg/src/rust/Cargo.toml"
-  ]
+      "rpkg/src/rust/Cargo.toml",
+      "Cargo.toml",
+    ]
 }
