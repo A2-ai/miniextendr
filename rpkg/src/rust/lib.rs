@@ -1,3 +1,5 @@
+use miniextendr_api::miniextendr;
+
 #[non_exhaustive]
 #[repr(transparent)]
 #[derive(Debug)]
@@ -106,7 +108,7 @@ fn r_error_from_panic(payload: Box<dyn std::any::Any + Send>) -> ! {
 
 // inner: catch Rust panics before they hit C; map to Rf_error (longjmp)
 #[inline]
-unsafe extern "C" fn tramp_mut<F>(p: *mut std::ffi::c_void) -> SEXP
+pub unsafe extern "C" fn tramp_mut<F>(p: *mut std::ffi::c_void) -> SEXP
 where
     F: FnMut() -> SEXP,
 {
@@ -118,7 +120,7 @@ where
 }
 
 // cleanfun: always drop boxed closure; clear token only on normal return
-unsafe extern "C" fn clean_drop_and_mark<F>(p: *mut std::ffi::c_void, jump: Rboolean)
+pub unsafe extern "C" fn clean_drop_and_mark<F>(p: *mut std::ffi::c_void, jump: Rboolean)
 where
     F: FnMut() -> SEXP,
 {
@@ -133,7 +135,7 @@ where
 }
 
 // outer: perform local Rust unwind if R longjmp happened, then resume R
-fn with_r_unwind<F>(f: F) -> SEXP
+pub fn with_r_unwind<F>(f: F) -> SEXP
 where
     F: FnMut() -> SEXP + 'static,
 {
@@ -178,6 +180,11 @@ fn add(left: i32, right: i32) -> i32 {
     left + right
 }
 
+#[miniextendr_api::miniextendr]
+fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
+    left + right
+}
+
 #[unsafe(no_mangle)]
 unsafe extern "C" fn C_add(left: SEXP, right: SEXP) -> SEXP {
     let a = A;
@@ -187,6 +194,7 @@ unsafe extern "C" fn C_add(left: SEXP, right: SEXP) -> SEXP {
 
         #[allow(unused_variables)]
         let a = a.borrow();
+        let left = *DATAPTR_RO(left).cast();
         let left = *DATAPTR_RO(left).cast();
         let right = *DATAPTR_RO(right).cast();
 

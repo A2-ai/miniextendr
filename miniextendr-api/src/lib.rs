@@ -1,1 +1,1 @@
-
+pub use miniextendr_macros::miniextendr;

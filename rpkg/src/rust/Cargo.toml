@@ -10,3 +10,4 @@ path = "lib.rs"
 crate-type = ["staticlib"]
 
 [dependencies]
+miniextendr-api = { path = "../../../miniextendr-api"}
