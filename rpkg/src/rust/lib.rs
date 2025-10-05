@@ -13,8 +13,10 @@ pub enum Rboolean {
 }
 
 unsafe extern "C" {
+    #[allow(dead_code)]
     static R_NilValue: SEXP;
 
+    // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
     pub fn Rprintf(arg1: *const ::std::os::raw::c_char, ...);
 
@@ -29,127 +31,140 @@ unsafe extern "C" {
         cleanfun_data: *mut ::std::os::raw::c_void,
         cont: SEXP,
     ) -> SEXP;
+
+    // Rinternals.h
+    // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
+    pub fn Rf_ScalarInteger(arg1: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarLogical(arg1: ::std::os::raw::c_int) -> SEXP;
+    // pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
+    pub fn Rf_ScalarReal(arg1: f64) -> SEXP;
+    pub fn Rf_ScalarString(arg1: SEXP) -> SEXP;
+
+    // Rinternals.h
+    pub fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
+    pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
+    pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
+    pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
+    pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
+    // pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
+    // pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
+    // pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    // pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    // pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    // pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
+    // pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    // pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    // pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    // pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    // pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
+    // pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
+    // pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+
+    pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
+    pub fn R_altrep_data1(x: SEXP) -> SEXP;
+    pub fn R_altrep_data2(x: SEXP) -> SEXP;
+    pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
+    pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
+    pub fn LOGICAL0(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn INTEGER0(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn REAL0(x: SEXP) -> *mut f64;
+    // pub fn COMPLEX0(x: SEXP) -> *mut Rcomplex;
+    // pub fn RAW0(x: SEXP) -> *mut Rbyte;
+    pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 }
 
 #[derive(Debug)]
 struct PanicRError;
+thread_local! { static CONT: std::cell::RefCell<SEXP> = std::cell::RefCell::new(std::ptr::null_mut()); }
 
-thread_local! {
-    static R_CONTINUATION_TOKEN: std::cell::RefCell<SEXP> =
-        std::cell::RefCell::new(std::ptr::null_mut());
+#[inline(always)]
+fn cont_set() {
+    CONT.with(|t| unsafe { t.replace(R_MakeUnwindCont()) });
+}
+#[inline(always)]
+fn cont_get() -> SEXP {
+    CONT.with(|t| *t.borrow())
+}
+#[inline(always)]
+fn cont_take() -> SEXP {
+    CONT.with(|t| t.replace(std::ptr::null_mut()))
 }
 
-/* -------- trampoline: catch Rust panic here and convert to Rf_error -------- */
+#[inline]
+fn r_error_from_panic(payload: Box<dyn std::any::Any + Send>) -> ! {
+    let panic_kind = if let Some(&panic_message) = payload.downcast_ref::<&'static str>() {
+        panic_message
+    } else if let Some(panic_message) = payload.downcast_ref::<String>() {
+        panic_message.as_str()
+    } else {
+        "rust panic"
+    };
+    let c = std::ffi::CString::new(panic_kind).unwrap();
+    unsafe { Rf_error(c.as_ptr()) }
+}
 
-unsafe extern "C" fn trampoline_mut<F>(p: *mut std::ffi::c_void) -> SEXP
+// inner: catch Rust panics before they hit C; map to Rf_error (longjmp)
+#[inline]
+unsafe extern "C" fn tramp_mut<F>(p: *mut std::ffi::c_void) -> SEXP
 where
     F: FnMut() -> SEXP,
 {
-    let f: &mut F = unsafe { p.cast::<F>().as_mut() }.unwrap();
-
-    let call_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f()));
-    match call_result {
+    let f: &mut F = unsafe { p.cast::<F>().as_mut().unwrap() };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f())) {
         Ok(v) => v,
-        Err(e) => {
-            // Map Rust panic -> R error. This longjmps; cleanfun will run.
-            if let Some(msg) = e.downcast_ref::<&'static str>() {
-                let c = std::ffi::CString::new(*msg).unwrap();
-                unsafe { Rf_error(c.as_ptr()) }
-            } else if let Some(msg) = e.downcast_ref::<String>() {
-                let c = std::ffi::CString::new(msg.clone()).unwrap();
-                unsafe { Rf_error(c.as_ptr()) }
-            } else {
-                let c = std::ffi::CString::new("rust panic").unwrap();
-                unsafe { Rf_error(c.as_ptr()) }
-            }
-        }
+        Err(e) => r_error_from_panic(e),
     }
 }
 
-/* ---------------- cleanfun: drop box; clear token on normal return ---------------- */
-
-unsafe extern "C" fn cleanfun_drop_box_and_mark<F>(p: *mut std::ffi::c_void, jump: Rboolean)
+// cleanfun: always drop boxed closure; clear token only on normal return
+unsafe extern "C" fn clean_drop_and_mark<F>(p: *mut std::ffi::c_void, jump: Rboolean)
 where
     F: FnMut() -> SEXP,
 {
     if !p.is_null() {
-        drop(unsafe { Box::<F>::from_raw(p.cast()) }); // drops all captures
+        drop(unsafe { Box::<F>::from_raw(p.cast()) });
     }
     if jump == Rboolean::FALSE {
-        R_CONTINUATION_TOKEN.with(|tok| {
-            tok.replace(std::ptr::null_mut());
+        CONT.with(|t| {
+            t.replace(std::ptr::null_mut());
         });
     }
 }
 
-fn into_c_callback_mut<F>(
-    f: F,
-) -> (
-    Option<unsafe extern "C" fn(*mut std::ffi::c_void) -> SEXP>,
-    *mut std::ffi::c_void,
-)
+// outer: perform local Rust unwind if R longjmp happened, then resume R
+fn with_r_unwind<F>(f: F) -> SEXP
 where
-    F: FnMut() -> SEXP,
+    F: FnMut() -> SEXP + 'static,
 {
-    (
-        Some(trampoline_mut::<F>),
-        Box::into_raw(Box::new(f)).cast()
-    )
-}
+    cont_set();
 
-/* -------- boundary: convert true R longjmp -> local Rust panic -> ContinueUnwind -------- */
-
-fn run_with_r_unwind_mut<F>(f: F) -> SEXP
-where
-    F: FnMut() -> SEXP,
-{
-    R_CONTINUATION_TOKEN.with(|cont| unsafe { cont.replace(R_MakeUnwindCont()) });
-
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let (fun, fun_data) = into_c_callback_mut::<F>(f); 
-        let cont = R_CONTINUATION_TOKEN.with(|x| *x.borrow());
-
-        let result = R_UnwindProtect(
-            fun,
-            fun_data,
-            Some(cleanfun_drop_box_and_mark::<F>),
-            fun_data,
-            cont,
+    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
+        let data = Box::into_raw(Box::new(f)) as *mut std::ffi::c_void;
+        let ret = R_UnwindProtect(
+            Some(tramp_mut::<F>),
+            data,
+            Some(clean_drop_and_mark::<F>),
+            data,
+            cont_get(),
         );
-
-        // Token still set => R longjmp occurred inside `fun`
-        if !R_CONTINUATION_TOKEN.with(|tok| *tok.borrow()).is_null() {
-            std::panic::panic_any(PanicRError);
+        if !cont_get().is_null() {
+            std::panic::panic_any(PanicRError); // local unwind for outer Rust frames
         }
-
-        result
+        ret
     }));
 
-    match result {
+    match res {
         Ok(v) => v,
         Err(p) => {
+            // don't need to downcast, as the panic doesn't hold useful information
             if p.is::<PanicRError>() {
-                let cont = R_CONTINUATION_TOKEN.with(|tok| tok.replace(std::ptr::null_mut()));
-                unsafe { R_ContinueUnwind(cont) }; // no return
+                unsafe { R_ContinueUnwind(cont_take()) }; // never returns
             }
-            // TODO: use a thread_local buffer for all these Rf_error calls!
-            
-            // Any other panic here is unexpected; map to R error to be safe.
-            if let Some(msg) = p.downcast_ref::<&'static str>() {
-                let c = std::ffi::CString::new(*msg).unwrap();
-                unsafe { Rf_error(c.as_ptr()) }
-            } else if let Some(msg) = p.downcast_ref::<String>() {
-                let c = std::ffi::CString::new(msg.clone()).unwrap();
-                unsafe { Rf_error(c.as_ptr()) }
-            } else {
-                let c = std::ffi::CString::new("rust panic outside fun").unwrap();
-                unsafe { Rf_error(c.as_ptr()) }
-            }
+            r_error_from_panic(p) // unexpected outer panic -> Rf_error
         }
     }
 }
-
-/* ---------------- example entry and callee ---------------- */
 
 #[derive(Debug)]
 struct A;
@@ -159,22 +174,74 @@ impl Drop for A {
     }
 }
 
+fn add(left: i32, right: i32) -> i32 {
+    left + right
+}
+
 #[unsafe(no_mangle)]
-pub extern "C" fn C_add(left: SEXP, right: SEXP) -> SEXP {
-    let a = A; // captured by move into the boxed closure
-    run_with_r_unwind_mut(move || {
-        let _keep = &a; // keep `a` in the env; do not move it
-        let _ = (left, right);
-        let _ = add(1, 1); // may panic or call Rf_error
-        unsafe { R_NilValue }
+unsafe extern "C" fn C_add(left: SEXP, right: SEXP) -> SEXP {
+    let a = A;
+    with_r_unwind(move || unsafe {
+        #[allow(unused_imports)]
+        use std::borrow::{Borrow, BorrowMut};
+
+        #[allow(unused_variables)]
+        let a = a.borrow();
+        let left = *DATAPTR_RO(left).cast();
+        let right = *DATAPTR_RO(right).cast();
+
+        let result = add(left, right);
+        Rf_ScalarInteger(result)
+        // unsafe { R_NilValue }
     })
 }
 
-#[allow(unreachable_code)]
-pub fn add(_left: u64, _right: u64) -> u64 {
-    // test Rust panic:
-    panic!("boom");
-    // test R error:
-    // unsafe { Rf_error(c"arg1".as_ptr()) };
-    0
+fn add_panic(left: i32, right: i32) -> i32 {
+    left + right
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn C_add_panic(left: SEXP, right: SEXP) -> SEXP {
+    let a = A;
+    with_r_unwind(move || unsafe {
+        #[allow(unused_imports)]
+        use std::borrow::{Borrow, BorrowMut};
+        #[allow(unused_variables)]
+        let a = a.borrow();
+        #[allow(unused_variables)]
+        let left = *DATAPTR_RO(left).cast();
+        #[allow(unused_variables)]
+        let right = *DATAPTR_RO(right).cast();
+
+        #[allow(unreachable_code, unused_variables)]
+        let result = add_panic(left, right);
+        Rf_ScalarInteger(result)
+        // unsafe { R_NilValue }
+    })
+}
+
+fn add_r_error(_left: i32, _right: i32) -> i32 {
+    unsafe { Rf_error(c"r error in `add_r_error".as_ptr()) };
+    #[allow(unreachable_code)]
+    {
+        _left + _right
+    }
+}
+
+#[unsafe(no_mangle)]
+unsafe extern "C" fn C_add_r_error(left: SEXP, right: SEXP) -> SEXP {
+    let a = A;
+    with_r_unwind(move || unsafe {
+        #[allow(unused_imports)]
+        use std::borrow::{Borrow, BorrowMut};
+
+        #[allow(unused_variables)]
+        let a = a.borrow();
+        let left = *DATAPTR_RO(left).cast();
+        let right = *DATAPTR_RO(right).cast();
+
+        let result = add_r_error(left, right);
+        Rf_ScalarInteger(result)
+        // unsafe { R_NilValue }
+    })
 }
