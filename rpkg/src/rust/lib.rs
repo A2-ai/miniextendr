@@ -47,8 +47,8 @@ where
 {
     let f: &mut F = unsafe { p.cast::<F>().as_mut() }.unwrap();
 
-    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f()));
-    match res {
+    let call_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f()));
+    match call_result {
         Ok(v) => v,
         Err(e) => {
             // Map Rust panic -> R error. This longjmps; cleanfun will run.
@@ -106,7 +106,7 @@ where
     R_CONTINUATION_TOKEN.with(|cont| unsafe { cont.replace(R_MakeUnwindCont()) });
 
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let (fun, fun_data) = into_c_callback_mut::<F>(f);
+        let (fun, fun_data) = into_c_callback_mut::<F>(f); 
         let cont = R_CONTINUATION_TOKEN.with(|x| *x.borrow());
 
         let result = R_UnwindProtect(
