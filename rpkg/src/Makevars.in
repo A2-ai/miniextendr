@@ -1,0 +1,18 @@
+RUST_TARGET_DIR=@RUST_TARGET_DIR@
+CARGO_DEP_FILES=@CARGO_DEP_FILES@
+ABS_SRCDIR=@ABS_SRCDIR@
+ENV_RUSTFLAGS=@ENV_RUSTFLAGS@
+
+PKG_LIBS=-L$(RUST_TARGET_DIR)/release -ljuice
+
+$(SHLIB): $(OBJECTS) $(RUST_TARGET_DIR)/release/libjuice.a $(CARGO_DEP_FILES)
+
+$(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
+	cargo generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml
+
+$(RUST_TARGET_DIR)/release/libjuice.a: $(ABS_SRCDIR)/rust/Cargo.lock
+	@RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
+	cargo +nightly build --release --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(RUST_TARGET_DIR)
+
+-include $(CARGO_DEP_FILES)
+-include $(RUST_TARGET_DIR)/release/libjuice.d
