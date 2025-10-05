@@ -5,3 +5,4 @@
 # Sys.setenv(R_LIBRARY_DIR = dirname(pkgdir))
 rm -f src/Makevars
 rm -rf src/target
+rm -rf src/rust/target
