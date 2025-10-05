@@ -1,0 +1,21 @@
+PKG_LIBS=-L$(CURDIR)/target/release -ljuice
+
+$(SHLIB): $(OBJECTS) \
+	$(CURDIR)/target/release/libjuice.a \
+	$(wildcard $(CURDIR)/target/release/*.d) \
+	$(wildcard $(CURDIR)/target/release/deps/*.d)
+
+$(CURDIR)/target/release/libjuice.a: $(CURDIR)/rust/Cargo.lock $(CURDIR)/rust/Cargo.toml 
+	@$(ECHO) $(R_PACKAGE_SOURCE)
+	@$(ECHO) $(R_PACKAGE_DIR)
+	@$(ECHO) $(R_LIBRARY_DIR)
+	@$(ECHO) $(CURDIR)
+	@$(ECHO) $(PWD)
+	@$(ECHO) $(wildcard $(CURDIR)/target/release/*.d)
+	@$(ECHO) $(wildcard $(CURDIR)/target/release/deps/*.d)
+	@RUSTFLAGS="--print=native-static-libs" \
+	cargo build --release --manifest-path $(CURDIR)/rust/Cargo.toml --target-dir $(CURDIR)/target
+
+-include $(wildcard $(CURDIR)/target/release/*.d)
+-include $(wildcard $(CURDIR)/target/release/deps/*.d)
+-include $(CURDIR)/target/release/libjuice.d
