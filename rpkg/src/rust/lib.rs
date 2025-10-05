@@ -166,14 +166,7 @@ where
     }
 }
 
-#[derive(Debug)]
-struct A;
-impl Drop for A {
-    fn drop(&mut self) {
-        unsafe { Rprintf(c"A was dropped\n".as_ptr()) };
-    }
-}
-
+#[miniextendr_api::miniextendr]
 fn add(left: i32, right: i32) -> i32 {
     left + right
 }
@@ -185,53 +178,15 @@ fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
 
 #[miniextendr_api::miniextendr]
 fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
-    // left + right
     left.checked_add(right).ok_or_else(|| ())
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn C_add(left: SEXP, right: SEXP) -> SEXP {
-    let a = A;
-    with_r_unwind(move || unsafe {
-        #[allow(unused_imports)]
-        use std::borrow::{Borrow, BorrowMut};
-
-        #[allow(unused_variables)]
-        let a = a.borrow();
-        let left = *DATAPTR_RO(left).cast();
-        let left = *DATAPTR_RO(left).cast();
-        let right = *DATAPTR_RO(right).cast();
-
-        let result = add(left, right);
-        Rf_ScalarInteger(result)
-        // unsafe { R_NilValue }
-    })
-}
-
+#[miniextendr_api::miniextendr]
 fn add_panic(left: i32, right: i32) -> i32 {
     left + right
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn C_add_panic(left: SEXP, right: SEXP) -> SEXP {
-    let a = A;
-    with_r_unwind(move || unsafe {
-        #[allow(unused_imports)]
-        use std::borrow::{Borrow, BorrowMut};
-        #[allow(unused_variables)]
-        let a = a.borrow();
-        #[allow(unused_variables)]
-        let left = *DATAPTR_RO(left).cast();
-        #[allow(unused_variables)]
-        let right = *DATAPTR_RO(right).cast();
-
-        #[allow(unreachable_code, unused_variables)]
-        let result = add_panic(left, right);
-        Rf_ScalarInteger(result)
-        // unsafe { R_NilValue }
-    })
-}
-
+#[miniextendr_api::miniextendr]
 fn add_r_error(_left: i32, _right: i32) -> i32 {
     unsafe { Rf_error(c"r error in `add_r_error".as_ptr()) };
     #[allow(unreachable_code)]
@@ -240,20 +195,3 @@ fn add_r_error(_left: i32, _right: i32) -> i32 {
     }
 }
 
-#[unsafe(no_mangle)]
-unsafe extern "C" fn C_add_r_error(left: SEXP, right: SEXP) -> SEXP {
-    let a = A;
-    with_r_unwind(move || unsafe {
-        #[allow(unused_imports)]
-        use std::borrow::{Borrow, BorrowMut};
-
-        #[allow(unused_variables)]
-        let a = a.borrow();
-        let left = *DATAPTR_RO(left).cast();
-        let right = *DATAPTR_RO(right).cast();
-
-        let result = add_r_error(left, right);
-        Rf_ScalarInteger(result)
-        // unsafe { R_NilValue }
-    })
-}
