@@ -1,21 +1,15 @@
-PKG_LIBS=-L$(CURDIR)/target/release -ljuice
+RUST_TARGET_DIR=@RUST_TARGET_DIR@
+DEP_FILES=@DEP_FILES@
+ABS_SRCDIR=@ABS_SRCDIR@
+ENV_RUSTFLAGS=@ENV_RUSTFLAGS@
 
-$(SHLIB): $(OBJECTS) \
-	$(CURDIR)/target/release/libjuice.a \
-	$(wildcard $(CURDIR)/target/release/*.d) \
-	$(wildcard $(CURDIR)/target/release/deps/*.d)
+PKG_LIBS=-L$(RUST_TARGET_DIR)/release -ljuice
 
-$(CURDIR)/target/release/libjuice.a: $(CURDIR)/rust/Cargo.lock $(CURDIR)/rust/Cargo.toml 
-	@$(ECHO) $(R_PACKAGE_SOURCE)
-	@$(ECHO) $(R_PACKAGE_DIR)
-	@$(ECHO) $(R_LIBRARY_DIR)
-	@$(ECHO) $(CURDIR)
-	@$(ECHO) $(PWD)
-	@$(ECHO) $(wildcard $(CURDIR)/target/release/*.d)
-	@$(ECHO) $(wildcard $(CURDIR)/target/release/deps/*.d)
-	@RUSTFLAGS="--print=native-static-libs" \
-	cargo build --release --manifest-path $(CURDIR)/rust/Cargo.toml --target-dir $(CURDIR)/target
+$(SHLIB): $(OBJECTS) $(RUST_TARGET_DIR)/release/libjuice.a $(DEP_FILES)
 
--include $(wildcard $(CURDIR)/target/release/*.d)
--include $(wildcard $(CURDIR)/target/release/deps/*.d)
--include $(CURDIR)/target/release/libjuice.d
+$(RUST_TARGET_DIR)/release/libjuice.a: $(ABS_SRCDIR)/rust/Cargo.lock $(ABS_SRCDIR)/rust/Cargo.toml
+	@RUSTFLAGS="$(ENV_RUSTFLAGS) --print=native-static-libs" \
+	cargo build --release --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(RUST_TARGET_DIR)
+
+-include $(DEP_FILES)
+-include $(RUST_TARGET_DIR)/release/libjuice.d
