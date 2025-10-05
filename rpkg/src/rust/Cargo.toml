@@ -1,0 +1,13 @@
+[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "juice"
+path = "lib.rs"
+crate-type = ["staticlib"]
+
+[dependencies]
+miniextendr-api = { path = "../../../miniextendr-api"}

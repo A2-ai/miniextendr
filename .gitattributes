@@ -1,0 +1,2 @@
+*.tar.xz !text !filter !merge !diff
+*.tar.gz !text !filter !merge !diff
