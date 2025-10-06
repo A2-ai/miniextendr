@@ -11,6 +11,8 @@ SEXP C_add_right_mut(SEXP left, SEXP right);
 SEXP C_add_left_right_mut(SEXP left, SEXP right);
 
 SEXP C_add4(SEXP left, SEXP right);
+SEXP C_just_panic(void);
+SEXP C_panic_and_catch(void);
 
 
 /* Register native routines (.Call shown; add others if needed) */
@@ -23,6 +25,8 @@ static const R_CallMethodDef CallEntries[] = {
     {"C_add_right_mut", (DL_FUNC) &C_add_panic, 2},
     {"C_add_left_right_mut", (DL_FUNC) &C_add_panic, 2},
     {"C_add4", (DL_FUNC) &C_add4, 2},
+    {"C_just_panic", (DL_FUNC) &C_just_panic, 0},
+    {"C_panic_and_catch", (DL_FUNC) &C_panic_and_catch, 0},
     // {"C_unwind_add", (DL_FUNC) &C_unwind_add, 2},
     {NULL, NULL, 0}
 };

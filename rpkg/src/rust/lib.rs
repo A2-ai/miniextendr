@@ -217,3 +217,17 @@ fn add_right_mut(left: i32, mut right: i32) -> i32 {
 fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
     *&mut left + *&mut right
 }
+
+#[unsafe(no_mangle)]
+extern "C" fn C_just_panic() -> SEXP {
+    panic!("just panic, no capture");
+}
+
+/// If you call a miniextendr function that panics, and then `C_panic_catch`,
+/// you'll see that the panic hook was not reset.
+#[unsafe(no_mangle)]
+extern "C" fn C_panic_and_catch() -> SEXP {
+    let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
+    let _ = dbg!(result);
+    unsafe { R_NilValue }
+}

@@ -151,6 +151,7 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let result = #rust_ident(#rust_inputs);
                 #return_statement
             });
+            // FIXME: in case of a panic, the panic hook is never reset.
             std::panic::set_hook(old);
             result
         }
