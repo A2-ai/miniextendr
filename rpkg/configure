@@ -1726,20 +1726,21 @@ if test -n "$CARGO_BUILD_TARGET_DIR"; then
 elif test -n "$CARGO_TARGET_DIR"; then
   cargo_target_dir="$CARGO_TARGET_DIR"
 else
-  cargo_target_dir="$abs_srcdir/target"
+  cargo_target_dir="$abs_srcdir/rust/target"
 fi
 RUST_TARGET_DIR="$cargo_target_dir"
 
 ENV_RUSTFLAGS="$RUSTFLAGS"
 
 
-# Collect Cargo-generated .d files so Makevars needn’t use wildcard
+# Collect Cargo-generated .d files so Makevars doesn't need to use wildcard
+# instead of _just_ looking at release-profile, look at all subfolders of target and their deps files.
 cargo_dep_files=""
-if test -d "$cargo_target_dir/release"; then
-  for f in "$cargo_target_dir"/release/*.d \
-           "$cargo_target_dir"/release/deps/*.d; do
-    test -f "$f" && cargo_dep_files="$cargo_dep_files $f"
-  done
+if test -d "$cargo_target_dir"; then
+  cargo_dep_files="$(
+    find "$cargo_target_dir" -type f -name '*.d' -print0 \
+      | xargs -0 printf ' %s'
+  )"
 fi
 CARGO_DEP_FILES="$cargo_dep_files"
 

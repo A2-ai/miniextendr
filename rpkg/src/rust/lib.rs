@@ -247,7 +247,7 @@ extern "C" fn C_panic_and_catch() -> SEXP {
 // region: dots
 
 #[miniextendr_api::miniextendr]
-fn greetings_with_dots(dots: ...) {}
+fn greetings_with_dots(_dots: ...) {}
 
 #[miniextendr_api::miniextendr]
 fn greetings_with_nameless_dots(...) {}
@@ -257,6 +257,6 @@ fn greetings_with_nameless_dots(...) {}
 // fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
 
 #[miniextendr_api::miniextendr]
-fn greetings_with_dots_then_arg(exclamations: i32, dots: ...) {}
+fn greetings_with_dots_then_arg(_exclamations: i32, _dots: ...) {}
 
 // endregion
