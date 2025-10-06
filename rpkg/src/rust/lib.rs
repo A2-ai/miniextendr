@@ -166,6 +166,8 @@ where
     }
 }
 
+// region: panics, (), and Result
+
 #[miniextendr_api::miniextendr]
 fn add(left: i32, right: i32) -> i32 {
     left + right
@@ -202,6 +204,10 @@ fn add_r_error(_left: i32, _right: i32) -> i32 {
     }
 }
 
+// endregion
+
+// region: `mut` checks
+
 #[miniextendr_api::miniextendr]
 fn add_left_mut(mut left: i32, right: i32) -> i32 {
     let left = &mut left;
@@ -218,6 +224,10 @@ fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
     *&mut left + *&mut right
 }
 
+// endregion
+
+// region: panic printing
+
 #[unsafe(no_mangle)]
 extern "C" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
@@ -231,3 +241,22 @@ extern "C" fn C_panic_and_catch() -> SEXP {
     let _ = dbg!(result);
     unsafe { R_NilValue }
 }
+
+// endregion
+
+// region: dots
+
+#[miniextendr_api::miniextendr]
+fn greetings_with_dots(dots: ...) {}
+
+#[miniextendr_api::miniextendr]
+fn greetings_with_nameless_dots(...) {}
+
+// LIMITATION: Good!
+// #[miniextendr_api::miniextendr]
+// fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
+
+#[miniextendr_api::miniextendr]
+fn greetings_with_dots_then_arg(exclamations: i32, dots: ...) {}
+
+// endregion

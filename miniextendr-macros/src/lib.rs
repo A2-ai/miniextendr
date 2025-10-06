@@ -29,9 +29,32 @@ impl syn::parse::Parse for ExtendrFunction {
 
 #[proc_macro_attribute]
 pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut item = syn::parse_macro_input!(item as syn::ItemFn);
+    // dbg!(&item);
+    // println!("{:#?}", item); // requires extra-traits
+    let dots = if let Some(variadic) = item.sig.variadic {
+        if let Some((pat, _)) = variadic.pat {
+            if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
+                Some(pat_ident.ident.clone())
+            } else {
+                None
+            }
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+    item.sig.variadic = None;
+    // FIXME: ... is being replaced by () which gets replaced by SEXP...
+    // do something else...
+    if let Some(ident_dots) = dots {
+        item.sig.inputs.push(syn::parse_quote!(#ident_dots: ()));
+    }
     let original_item = item.clone();
-    let original_item = syn::parse_macro_input!(original_item as syn::Item);
-    let extendr_function = syn::parse_macro_input!(item as ExtendrFunction);
+    use quote::ToTokens;
+    let item = item.into_token_stream();
+    let extendr_function = syn::parse2(item).unwrap();
     // TODO: implement pass-through of abi extern "C"
     let ExtendrFunction {
         vis,
