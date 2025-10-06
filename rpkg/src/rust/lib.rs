@@ -137,11 +137,11 @@ pub fn with_r_unwind<F>(f: F) -> SEXP
 where
     F: FnMut() -> SEXP + 'static,
 {
-    cont_set();
-
-    let res = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| unsafe {
-        let data = Box::into_raw(Box::new(f)) as *mut std::ffi::c_void;
-        let ret = R_UnwindProtect(
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || unsafe {
+        let f = f;
+        let data = Box::into_raw(Box::new(f)).cast();
+        cont_set();
+        let result = R_UnwindProtect(
             Some(tramp_mut::<F>),
             data,
             Some(clean_drop_and_mark::<F>),
@@ -151,10 +151,10 @@ where
         if !cont_get().is_null() {
             std::panic::panic_any(PanicRError); // local unwind for outer Rust frames
         }
-        ret
+        result
     }));
 
-    match res {
+    match result {
         Ok(v) => v,
         Err(p) => {
             // don't need to downcast, as the panic doesn't hold useful information
@@ -179,6 +179,13 @@ fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
 #[miniextendr_api::miniextendr]
 fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
     left.checked_add(right).ok_or_else(|| ())
+}
+
+#[miniextendr_api::miniextendr]
+fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
+    Ok(left
+        .checked_div(right)
+        .ok_or_else(|| "don't divide by zero dude")?)
 }
 
 #[miniextendr_api::miniextendr]

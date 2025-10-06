@@ -97,6 +97,7 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 match &*pat_type.pat {
                     syn::Pat::Ident(p) => {
                         let ident = p.ident.clone();
+                        //TODO / FIXME: implement mutability here!
                         if is_unit_type {
                             Some(quote::quote! {let #ident = (); })
                         } else {
@@ -118,11 +119,8 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let is_result = last_segment.ident == "Result";
                 if is_result {
                     quote::quote! {
-                        if result.is_err() {
-                            R_NilValue
-                        } else {
-                            Rf_ScalarInteger(result.unwrap())
-                        }
+                        let _ = dbg!(result);
+                        Rf_ScalarInteger(result.unwrap())
                     }
                 } else {
                     quote::quote! {
@@ -145,7 +143,8 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 // TODO: these borrows ought to be used based on the mutability requirements...
                 use std::borrow::{Borrow, BorrowMut};
                 #(#input_names)*
-
+                // FIXME: shouldn't this borrow?
+                dbg!(#rust_inputs);
                 let result = #rust_ident(#rust_inputs);
                 #return_statement
             })
