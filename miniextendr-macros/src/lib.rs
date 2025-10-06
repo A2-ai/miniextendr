@@ -119,7 +119,8 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let is_result = last_segment.ident == "Result";
                 if is_result {
                     quote::quote! {
-                        let _ = dbg!(result);
+                        // TODO: set debug flag?
+                        // let _ = dbg!(result);
                         Rf_ScalarInteger(result.unwrap())
                     }
                 } else {
@@ -138,16 +139,20 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[unsafe(no_mangle)]
         #vis unsafe extern "C" fn #ident #generics(#wrapper_inputs) -> SEXP {
-            with_r_unwind(move || unsafe {
+            let old = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let result = with_r_unwind(move || unsafe {
                 #[allow(unused_imports)]
                 // TODO: these borrows ought to be used based on the mutability requirements...
                 use std::borrow::{Borrow, BorrowMut};
                 #(#input_names)*
                 // FIXME: shouldn't this borrow?
-                dbg!(#rust_inputs);
+                // dbg!(#rust_inputs);
                 let result = #rust_ident(#rust_inputs);
                 #return_statement
-            })
+            });
+            std::panic::set_hook(old);
+            result
         }
     })
 }
