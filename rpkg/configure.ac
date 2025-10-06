@@ -27,6 +27,6 @@ if test -d "$cargo_target_dir"; then
   )"
 fi
 AC_SUBST([CARGO_DEP_FILES], ["$cargo_dep_files"])
-
-AC_CONFIG_FILES([src/Makevars])
+AC_SUBST([RPKG_RUST_TARGET_DIR], ["$cargo_target_dir"])
+AC_CONFIG_FILES([../.cargo/config.toml src/Makevars])
 AC_OUTPUT

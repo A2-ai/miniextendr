@@ -609,6 +609,7 @@ ac_unique_file="rpkg"
 ac_unique_file="src/entrypoint.c"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+RPKG_RUST_TARGET_DIR
 CARGO_DEP_FILES
 ENV_RUSTFLAGS
 RUST_TARGET_DIR
@@ -1744,8 +1745,9 @@ if test -d "$cargo_target_dir"; then
 fi
 CARGO_DEP_FILES="$cargo_dep_files"
 
+RPKG_RUST_TARGET_DIR="$cargo_target_dir"
 
-ac_config_files="$ac_config_files src/Makevars"
+ac_config_files="$ac_config_files ../.cargo/config.toml src/Makevars"
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -2448,6 +2450,7 @@ cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
 for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
+    "../.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES ../.cargo/config.toml" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;

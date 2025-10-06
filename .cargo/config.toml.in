@@ -1,0 +1,2 @@
+[build]
+target-dir = "@RPKG_RUST_TARGET_DIR@"
