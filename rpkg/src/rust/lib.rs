@@ -98,6 +98,8 @@ fn r_error_from_panic(payload: Box<dyn std::any::Any + Send>) -> ! {
     } else if let Some(panic_message) = payload.downcast_ref::<String>() {
         panic_message.as_str()
     } else {
+        // TODO: document that this is a totally unusual panic from rust
+        // as it is not in panic!("") or panic!("".to_string())
         "rust panic"
     };
     let c = std::ffi::CString::new(panic_kind).unwrap();
@@ -111,7 +113,7 @@ where
     F: FnMut() -> SEXP,
 {
     let f: &mut F = unsafe { p.cast::<F>().as_mut().unwrap() };
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| f())) {
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f())) {
         Ok(v) => v,
         Err(e) => r_error_from_panic(e),
     }
@@ -156,12 +158,12 @@ where
 
     match result {
         Ok(v) => v,
-        Err(p) => {
+        Err(payload) => {
             // don't need to downcast, as the panic doesn't hold useful information
-            if p.is::<PanicRError>() {
+            if payload.is::<PanicRError>() {
                 unsafe { R_ContinueUnwind(cont_take()) }; // never returns
             }
-            r_error_from_panic(p) // unexpected outer panic -> Rf_error
+            r_error_from_panic(payload) // unexpected outer panic -> Rf_error
         }
     }
 }
@@ -191,8 +193,12 @@ fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
 }
 
 #[miniextendr_api::miniextendr]
-fn add_panic(left: i32, right: i32) -> i32 {
-    left + right
+fn add_panic(_left: i32, _right: i32) -> i32 {
+    panic!("we cannot add right now! ");
+    #[allow(unreachable_code)]
+    {
+        _left + _right
+    }
 }
 
 #[miniextendr_api::miniextendr]
