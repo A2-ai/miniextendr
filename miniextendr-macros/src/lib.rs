@@ -142,9 +142,16 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let is_result = last_segment.ident == "Result";
                 if is_result {
                     quote::quote! {
-                        // TODO: set debug flag?
-                        // let _ = dbg!(result);
-                        Rf_ScalarInteger(result.unwrap())
+                        match result {
+                            Ok(val) => Rf_ScalarInteger(val),
+                            Err(e) => {
+                                let error_msg = format!("{:?}", e);
+                                let c_str = std::ffi::CString::new(error_msg).unwrap_or_else(|_| {
+                                    std::ffi::CString::new("Error message contained null byte").unwrap()
+                                });
+                                unsafe { Rf_error(c_str.as_ptr()) }
+                            }
+                        }
                     }
                 } else {
                     quote::quote! {
@@ -162,20 +169,33 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[unsafe(no_mangle)]
         #vis unsafe extern "C" fn #ident #generics(#wrapper_inputs) -> SEXP {
+            let _span = tracing::info_span!(stringify!(#ident)).entered();
+            tracing::trace!("entering C wrapper for {}", stringify!(#rust_ident));
+
             let old = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
+
             let result = with_r_unwind(move || unsafe {
+                let _inner_span = tracing::trace_span!("wrapper_closure").entered();
+                tracing::trace!("inside wrapper closure for {}", stringify!(#rust_ident));
+
                 #[allow(unused_imports)]
                 // TODO: these borrows ought to be used based on the mutability requirements...
                 use std::borrow::{Borrow, BorrowMut};
                 #(#input_names)*
                 // FIXME: shouldn't this borrow?
                 // dbg!(#rust_inputs);
+
+                tracing::trace!("calling Rust function {}", stringify!(#rust_ident));
                 let result = #rust_ident(#rust_inputs);
+                tracing::trace!("Rust function {} returned successfully", stringify!(#rust_ident));
+
                 #return_statement
             });
+
             // FIXME: in case of a panic, the panic hook is never reset.
             std::panic::set_hook(old);
+            tracing::trace!("C wrapper for {} returning", stringify!(#rust_ident));
             result
         }
     })

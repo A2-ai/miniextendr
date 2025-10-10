@@ -5,3 +5,4 @@ version.workspace = true
 
 [dependencies]
 miniextendr-macros = { path = "../miniextendr-macros" }
+tracing = "0.1.41"

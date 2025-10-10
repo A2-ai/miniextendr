@@ -11,3 +11,5 @@ crate-type = ["staticlib"]
 
 [dependencies]
 miniextendr-api = { path = "../../../miniextendr-api"}
+tracing = "0.1.41"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }

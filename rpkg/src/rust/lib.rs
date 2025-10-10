@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 #[non_exhaustive]
 #[repr(transparent)]
 #[derive(Debug)]
@@ -78,31 +80,71 @@ unsafe extern "C" {
 struct PanicRError;
 thread_local! { static CONT: std::cell::RefCell<SEXP> = std::cell::RefCell::new(std::ptr::null_mut()); }
 
+/// Initialize tracing subscriber based on EXTENDR_TRACE environment variable.
+/// Only initializes once, on first call.
+fn init_tracing() {
+    use std::sync::Once;
+    static INIT: Once = Once::new();
+
+    INIT.call_once(|| {
+        if let Ok(level) = std::env::var("EXTENDR_TRACE") {
+            use tracing_subscriber::{fmt, EnvFilter};
+
+            let filter = EnvFilter::try_new(&level)
+                .unwrap_or_else(|_| EnvFilter::new("trace"));
+
+            fmt()
+                .with_env_filter(filter)
+                .with_target(false)
+                .with_thread_ids(false)
+                .with_line_number(true)
+                .init();
+        }
+    });
+}
+
 #[inline(always)]
 fn cont_set() {
-    CONT.with(|t| unsafe { t.replace(R_MakeUnwindCont()) });
+    CONT.with(|t| unsafe {
+        let cont = R_MakeUnwindCont();
+        tracing::trace!("cont_set: created continuation token: {:p}", cont);
+        t.replace(cont)
+    });
 }
 #[inline(always)]
 fn cont_get() -> SEXP {
-    CONT.with(|t| *t.borrow())
+    CONT.with(|t| {
+        let cont = *t.borrow();
+        tracing::trace!("cont_get: returning continuation token: {:p}", cont);
+        cont
+    })
 }
 #[inline(always)]
 fn cont_take() -> SEXP {
-    CONT.with(|t| t.replace(std::ptr::null_mut()))
+    CONT.with(|t| {
+        let cont = t.replace(std::ptr::null_mut());
+        tracing::trace!("cont_take: took continuation token: {:p}, reset to null", cont);
+        cont
+    })
 }
 
 #[inline]
+#[tracing::instrument(name = "r_error_from_panic", skip_all)]
 fn r_error_from_panic(payload: Box<dyn std::any::Any + Send>) -> ! {
     let panic_kind = if let Some(&panic_message) = payload.downcast_ref::<&'static str>() {
+        tracing::error!("panic with &'static str: {}", panic_message);
         panic_message
     } else if let Some(panic_message) = payload.downcast_ref::<String>() {
+        tracing::error!("panic with String: {}", panic_message);
         panic_message.as_str()
     } else {
         // TODO: document that this is a totally unusual panic from rust
         // as it is not in panic!("") or panic!("".to_string())
+        tracing::error!("unusual rust panic (not &str or String)");
         "rust panic"
     };
     let c = std::ffi::CString::new(panic_kind).unwrap();
+    tracing::trace!("calling Rf_error with: {:?}", panic_kind);
     unsafe { Rf_error(c.as_ptr()) }
 }
 
@@ -112,10 +154,25 @@ pub unsafe extern "C" fn tramp_mut<F>(p: *mut std::ffi::c_void) -> SEXP
 where
     F: FnMut() -> SEXP,
 {
+    let _span = tracing::trace_span!("tramp_mut", ptr = ?p).entered();
+    tracing::trace!("entering tramp_mut, unwrapping closure from pointer: {:p}", p);
+
     let f: &mut F = unsafe { p.cast::<F>().as_mut().unwrap() };
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f())) {
-        Ok(v) => v,
-        Err(e) => r_error_from_panic(e),
+    tracing::trace!("closure unwrapped, executing with catch_unwind");
+
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _inner = tracing::trace_span!("user_closure_execution").entered();
+        tracing::trace!("executing user closure inside tramp_mut");
+        f()
+    })) {
+        Ok(v) => {
+            tracing::trace!("user closure succeeded, returning SEXP: {:p}", v);
+            v
+        },
+        Err(e) => {
+            tracing::warn!("caught panic from user closure, converting to R error");
+            r_error_from_panic(e)
+        },
     }
 }
 
@@ -124,45 +181,82 @@ pub unsafe extern "C" fn clean_drop_and_mark<F>(p: *mut std::ffi::c_void, jump: 
 where
     F: FnMut() -> SEXP,
 {
+    let _span = tracing::trace_span!("clean_drop_and_mark", ptr = ?p, ?jump).entered();
+    tracing::trace!("cleanup called with jump={:?}", jump);
+
     if !p.is_null() {
+        tracing::trace!("dropping boxed closure at {:p}", p);
         drop(unsafe { Box::<F>::from_raw(p.cast()) });
+    } else {
+        tracing::warn!("cleanup called with null pointer");
     }
+
     if jump == Rboolean::FALSE {
+        tracing::trace!("normal return (jump=FALSE), clearing continuation token");
         CONT.with(|t| {
-            t.replace(std::ptr::null_mut());
+            let old = t.replace(std::ptr::null_mut());
+            tracing::trace!("cleared continuation token, was: {:p}", old);
         });
+    } else {
+        tracing::warn!("longjmp detected (jump=TRUE), keeping continuation token for unwind");
     }
 }
 
 // outer: perform local Rust unwind if R longjmp happened, then resume R
+#[tracing::instrument(name = "with_r_unwind", skip_all)]
 pub fn with_r_unwind<F>(f: F) -> SEXP
 where
     F: FnMut() -> SEXP + 'static,
 {
-    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || unsafe {
-        let f = f;
-        let data = Box::into_raw(Box::new(f)).cast();
-        cont_set();
-        let result = R_UnwindProtect(
-            Some(tramp_mut::<F>),
-            data,
-            Some(clean_drop_and_mark::<F>),
-            data,
-            cont_get(),
-        );
-        if !cont_get().is_null() {
-            std::panic::panic_any(PanicRError); // local unwind for outer Rust frames
+    init_tracing();
+    tracing::trace!("entering with_r_unwind");
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+        let _span = tracing::trace_span!("inner_catch_unwind").entered();
+        tracing::trace!("inside inner catch_unwind closure");
+
+        unsafe {
+            let f = f;
+            let data = Box::into_raw(Box::new(f)).cast();
+            tracing::trace!("boxed closure, data pointer: {:p}", data);
+
+            cont_set();
+
+            let result = R_UnwindProtect(
+                Some(tramp_mut::<F>),
+                data,
+                Some(clean_drop_and_mark::<F>),
+                data,
+                cont_get(),
+            );
+            tracing::trace!("R_UnwindProtect returned, result: {:p}", result);
+
+            let cont_after = cont_get();
+            tracing::trace!("continuation token after R_UnwindProtect: {:p}", cont_after);
+
+            if !cont_after.is_null() {
+                tracing::warn!("R longjmp detected, triggering local Rust unwind with PanicRError");
+                std::panic::panic_any(PanicRError); // local unwind for outer Rust frames
+            }
+            tracing::trace!("normal return path from inner closure");
+            result
         }
-        result
     }));
 
     match result {
-        Ok(v) => v,
+        Ok(v) => {
+            tracing::trace!("outer catch_unwind succeeded, returning SEXP: {:p}", v);
+            v
+        },
         Err(payload) => {
+            let _span = tracing::error_span!("error_handling").entered();
             // don't need to downcast, as the panic doesn't hold useful information
             if payload.is::<PanicRError>() {
-                unsafe { R_ContinueUnwind(cont_take()) }; // never returns
+                tracing::warn!("caught PanicRError, continuing R unwind");
+                let cont = cont_take();
+                tracing::trace!("took continuation token: {:p}, calling R_ContinueUnwind", cont);
+                unsafe { R_ContinueUnwind(cont) }; // never returns
             }
+            tracing::error!("unexpected outer panic, converting to R error");
             r_error_from_panic(payload) // unexpected outer panic -> Rf_error
         }
     }
