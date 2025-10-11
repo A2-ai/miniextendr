@@ -435,7 +435,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     numArgs: 0,
                 }
             ];
-
+            
             #(#use_other_modules;)*
 
             unsafe {
@@ -446,7 +446,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     std::ptr::null(),
                     std::ptr::null(),
                 );
-                
+
                 // these are provided in entrypoint.c
                 // R_useDynamicSymbols(dll, Rboolean::FALSE);
                 // R_forceSymbols(dll, Rboolean::TRUE);

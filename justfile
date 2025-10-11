@@ -3,6 +3,6 @@
 default:
     echo 'Hello, world!'
 
-cargo fmt:
-    cargo fmt
-    cargo fmt --manifest-path rpkg/src/rust/Cargo.toml
+cargo *ARGS:
+    cargo {{ARGS}}
+    cargo {{ARGS}} --manifest-path rpkg/src/rust/Cargo.toml
