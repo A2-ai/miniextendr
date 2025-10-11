@@ -435,7 +435,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     numArgs: 0,
                 }
             ];
-            
+
             #(#use_other_modules;)*
 
             unsafe {
