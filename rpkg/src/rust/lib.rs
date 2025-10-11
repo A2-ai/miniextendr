@@ -236,7 +236,7 @@ fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
 
 // region: panic printing
 
-// #[miniextendr_api::miniextendr] // TODO
+#[miniextendr_api::miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
@@ -244,6 +244,7 @@ extern "C" fn C_just_panic() -> SEXP {
 
 /// If you call a miniextendr function that panics, and then `C_panic_catch`,
 /// you'll see that the panic hook was not reset.
+#[miniextendr_api::miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn C_panic_and_catch() -> SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
@@ -287,8 +288,8 @@ miniextendr_api::miniextendr_module! {
     fn add_left_right_mut;
 
     // TODO: make r wrapper, no C wrapper!
-    // extern "C" fn C_just_panic;
-    // extern "C" fn C_panic_and_catch;
+    extern "C" fn C_just_panic;
+    extern "C" fn C_panic_and_catch;
 
     // TODO: adjust the R wrapper to include list(...) in the arg that is ...
     fn greetings_with_dots;

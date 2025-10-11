@@ -376,23 +376,26 @@ impl syn::parse::Parse for ExtendrModule {
 
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let item = syn::parse_macro_input!(item as ExtendrModule);
-    // dbg!(&item);
+    let extendr_module = syn::parse_macro_input!(item as ExtendrModule);
 
     let module_entrypoint_ident =
-        quote::format_ident!("R_init_{module}", module = item.extendr_module.ident);
-    let call_entries: Vec<syn::Expr> = item
+        quote::format_ident!("R_init_{module}", module = extendr_module.extendr_module.ident);
+    let call_entries: Vec<syn::Expr> = extendr_module
         .extendr_fn
         .iter()
         .map(|x| {
-            //TODO: put that in ExtendrFunction
+            //TODO: put this in ExtendrFunction impl
             let ident = &x.ident;
             let call_method_def = quote::format_ident!("call_method_def_{ident}");
             syn::parse_quote!(#call_method_def())
         })
         .collect();
     let call_entries_len = call_entries.len();
-    // TODO
+    
+    // TODO: call the R_init from all the submodules (given by `use`)
+    
+    // TODO: only include R_useDynamicSymbols if there are no `use` statements
+
     quote::quote! {
         #[allow(non_snake_case)]
         extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
