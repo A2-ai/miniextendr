@@ -423,17 +423,6 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect::<Vec<syn::Expr>>();
 
-    // only include R_useDynamicSymbols if there are no `use` statements
-    // that's the root-module!
-    let use_symbols = if extendr_module.extendr_use.is_empty() {
-        quote::quote! {
-            R_useDynamicSymbols(dll, Rboolean::FALSE);
-            R_forceSymbols(dll, Rboolean::TRUE);
-        }
-    } else {
-        TokenStream::new()
-    };
-
     quote::quote! {
 
         #[doc(hidden)]
@@ -459,7 +448,9 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     std::ptr::null(),
                     std::ptr::null(),
                 );
-                #use_symbols
+                
+                R_useDynamicSymbols(dll, Rboolean::FALSE);
+                R_forceSymbols(dll, Rboolean::TRUE);
             }
         }
     }
