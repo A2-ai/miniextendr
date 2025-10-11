@@ -13,7 +13,7 @@ struct ExtendrFunction {
     pub abi: Option<syn::Abi>,
     pub ident: syn::Ident,
     pub generics: syn::Generics,
-    pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
     pub output: syn::ReturnType,
 }
 
@@ -89,7 +89,7 @@ pub fn miniextendr(
             .as_c_str(),
         ident.span(),
     );
-    let mut func_ptr_def: syn::punctuated::Punctuated<syn::Ident, syn::token::Comma> =
+    let mut func_ptr_def: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> =
         syn::punctuated::Punctuated::new();
     for _ in 0..inputs.len() {
         func_ptr_def.push(syn::parse_quote!(SEXP));
@@ -226,7 +226,7 @@ pub fn miniextendr(
 
         #[doc(hidden)]
         #[unsafe(no_mangle)]
-        pub(crate) const fn #call_method_def() -> R_CallMethodDef {
+        const fn #call_method_def() -> R_CallMethodDef {
             unsafe {
                 R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
@@ -294,14 +294,31 @@ impl syn::parse::Parse for ExtendrModuleName {
 #[derive(Debug)]
 struct ExtendrModuleUse {
     _use_token: syn::Token![use],
-    pub ident: syn::Ident,
+    pub use_name: syn::UseName,
 }
 
 impl syn::parse::Parse for ExtendrModuleUse {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::spanned::Spanned;
+        let _use_token = input.parse()?;
+        let use_name: syn::UseTree = input.parse()?;
+        // dbg!(&use_name);
+        let use_name = match use_name {
+            syn::UseTree::Name(use_name) => use_name,
+            // TODO: provide boilerplate error message here.
+            syn::UseTree::Path(use_path) => todo!(),
+            syn::UseTree::Rename(use_rename) => {
+                return Err(syn::Error::new(
+                    use_rename.span(),
+                    "it is not possible to rename wrappers in `miniextendr_module`",
+                ));
+            }
+            syn::UseTree::Glob(use_glob) => todo!(),
+            syn::UseTree::Group(use_group) => todo!(),
+        };
         Ok(Self {
-            _use_token: input.parse()?,
-            ident: input.parse()?,
+            _use_token,
+            use_name,
         })
     }
 }
@@ -321,6 +338,7 @@ enum ExtendrItem {
     Struct(ExtendrModuleStruct),
     Func(ExtendrModuleFunction),
 }
+
 impl syn::parse::Parse for ExtendrItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let look_ahead = input.lookahead1();
@@ -362,12 +380,8 @@ impl syn::parse::Parse for ExtendrModule {
             }
         }
 
-        let extendr_module = name.ok_or_else(|| {
-            syn::Error::new(
-                proc_macro2::Span::call_site().into(),
-                "missing `mod <name>`",
-            )
-        })?;
+        let extendr_module =
+            name.ok_or_else(|| syn::Error::new(input.span(), "missing `mod <name>`"))?;
 
         Ok(Self {
             extendr_module,
@@ -403,9 +417,9 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .extendr_use
         .iter()
         .map(|x| {
-            let use_module_ident = &x.ident;
-            let use_module_ident = quote::format_ident!("R_init_{use_module_ident}");
-            syn::parse_quote!(#use_module_ident(dll);)
+            let use_module_ident = &x.use_name.ident;
+            let use_module_init = quote::format_ident!("R_init_{use_module_ident}");
+            syn::parse_quote!(#use_module_ident::#use_module_init(dll))
         })
         .collect::<Vec<syn::Expr>>();
 
@@ -425,9 +439,9 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         #[doc(hidden)]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
-        extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
+        pub(crate) extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
             static CALL_ENTRIES: [R_CallMethodDef; {#call_entries_len + 1}] = [
-                #(#call_entries),*,
+                #(#call_entries,)*
                 R_CallMethodDef {
                     name: std::ptr::null(),
                     fun: None,
@@ -435,7 +449,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                 }
             ];
 
-            #(#use_other_modules)*
+            #(#use_other_modules;)*
 
             unsafe {
                 R_registerRoutines(

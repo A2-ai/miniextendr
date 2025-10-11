@@ -274,10 +274,39 @@ fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 
 // endregion
 
-// region: miniextendr_module!
+// region: miniextendr_module! tests
+
+miniextendr_api::miniextendr_module! {
+   mod rpkg1;
+}
+
+miniextendr_api::miniextendr_module! {
+   mod rpkg2;
+   fn add2;
+}
+
+miniextendr_api::miniextendr_module! {
+   mod rpkg3;
+   fn add2;
+   fn add3;
+}
+
+mod altrep {
+    use super::*;
+
+    miniextendr_api::miniextendr_module! {
+        mod altrep;
+    }
+}
+
+miniextendr_api::miniextendr_module! {
+   mod rpkg4;
+   use altrep;
+}
 
 miniextendr_api::miniextendr_module! {
     mod rpkg;
+    use altrep;
 
     fn add;
     fn add2;
