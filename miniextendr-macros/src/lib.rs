@@ -1,14 +1,19 @@
-use proc_macro::TokenStream;
+//!
+//!
+//!
+//!
+//!
 
+#[derive(Debug)]
 struct ExtendrFunction {
     // function_name: Ident
-    vis: syn::Visibility,
+    pub vis: syn::Visibility,
     // TODO: implement the extern "C" passthrough
-    abi: Option<syn::Abi>,
-    ident: syn::Ident,
-    generics: syn::Generics,
-    inputs: syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
-    output: syn::ReturnType,
+    pub abi: Option<syn::Abi>,
+    pub ident: syn::Ident,
+    pub generics: syn::Generics,
+    pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    pub output: syn::ReturnType,
 }
 
 impl syn::parse::Parse for ExtendrFunction {
@@ -28,7 +33,10 @@ impl syn::parse::Parse for ExtendrFunction {
 }
 
 #[proc_macro_attribute]
-pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
+pub fn miniextendr(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
     // dbg!(&item);
     // println!("{:#?}", item); // requires extra-traits
@@ -58,14 +66,34 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
     // TODO: implement pass-through of abi extern "C"
     let ExtendrFunction {
         vis,
-        abi: _,
+        abi,
         ident,
         generics,
         inputs,
         output,
     } = extendr_function;
-    let rust_ident = ident.clone();
-    let ident = quote::format_ident!("C_{ident}");
+    use syn::spanned::Spanned;
+    let num_args = syn::LitInt::new(&inputs.len().to_string(), inputs.span());
+
+    let rust_ident = &ident;
+    let call_method_def = quote::format_ident!("call_method_def_{rust_ident}");
+    let c_ident = if abi.is_none() {
+        &quote::format_ident!("C_{rust_ident}")
+    } else {
+        rust_ident
+    };
+
+    let c_ident_name = syn::LitCStr::new(
+        std::ffi::CString::new(c_ident.to_string())
+            .expect("couldn't crate a C-string for the C wrapper name")
+            .as_c_str(),
+        ident.span(),
+    );
+    let mut func_ptr_def: syn::punctuated::Punctuated<syn::Ident, syn::token::Comma> =
+        syn::punctuated::Punctuated::new();
+    for _ in 0..inputs.len() {
+        func_ptr_def.push(syn::parse_quote!(SEXP));
+    }
 
     let rust_inputs: syn::punctuated::Punctuated<syn::Ident, _> = inputs
         .clone()
@@ -88,6 +116,7 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
             })
         })
         .collect();
+    // dbg!(&rust_inputs);
 
     let wrapper_inputs: syn::punctuated::Punctuated<syn::FnArg, _> = inputs
         .clone()
@@ -107,6 +136,7 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
             }
         })
         .collect();
+    // dbg!(&wrapper_inputs);
 
     let input_names: Vec<_> = inputs
         .pairs()
@@ -141,42 +171,255 @@ pub fn miniextendr(_attr: TokenStream, item: TokenStream) -> TokenStream {
                 let last_segment = type_path.path.segments.last().unwrap();
                 let is_result = last_segment.ident == "Result";
                 if is_result {
+                    // TODO: implement other Result<> -> SEXP interpretations here``
                     quote::quote! {
                         // TODO: set debug flag?
                         // let _ = dbg!(result);
                         Rf_ScalarInteger(result.unwrap())
                     }
                 } else {
+                    // TODO: type conversion for non-Result returns
                     quote::quote! {
                         Rf_ScalarInteger(result)
                     }
                 }
             } else {
-                todo!()
+                // interpret () -> R_NilValue (R's NULL)
+                quote::quote! {
+                    R_NilValue
+                }
             }
         }
     };
 
-    TokenStream::from(quote::quote! {
+    let c_wrapper = if abi.is_some() {
+        proc_macro2::TokenStream::new()
+    } else {
+        quote::quote! {
+            #[unsafe(no_mangle)]
+            #vis unsafe extern "C" fn #c_ident #generics(#wrapper_inputs) -> SEXP {
+                let old = std::panic::take_hook();
+                std::panic::set_hook(Box::new(|_| {}));
+                let result = with_r_unwind(move || unsafe {
+                    #[allow(unused_imports)]
+                    // TODO: these borrows ought to be used based on the mutability requirements...
+                    use std::borrow::{Borrow, BorrowMut};
+                    #(#input_names)*
+                    // FIXME: shouldn't this borrow?
+                    // dbg!(#rust_inputs);
+                    let result = #rust_ident(#rust_inputs);
+                    #return_statement
+                });
+                // FIXME: in case of a panic, the panic hook is never reset.
+                std::panic::set_hook(old);
+                result
+            }
+        }
+    };
+
+    quote::quote! {
         #original_item
 
-        #[unsafe(no_mangle)]
-        #vis unsafe extern "C" fn #ident #generics(#wrapper_inputs) -> SEXP {
-            let old = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {}));
-            let result = with_r_unwind(move || unsafe {
-                #[allow(unused_imports)]
-                // TODO: these borrows ought to be used based on the mutability requirements...
-                use std::borrow::{Borrow, BorrowMut};
-                #(#input_names)*
-                // FIXME: shouldn't this borrow?
-                // dbg!(#rust_inputs);
-                let result = #rust_ident(#rust_inputs);
-                #return_statement
-            });
-            // FIXME: in case of a panic, the panic hook is never reset.
-            std::panic::set_hook(old);
-            result
+        #c_wrapper
+
+        pub(crate) const fn #call_method_def() -> R_CallMethodDef {
+            unsafe {
+                R_CallMethodDef {
+                    name: #c_ident_name.as_ptr(),
+                    fun: Some(std::mem::transmute::<unsafe extern "C" fn(#func_ptr_def) -> SEXP, unsafe extern "C" fn(...) -> SEXP>(#c_ident)),
+                    numArgs: #num_args,
+                }
+            }
         }
-    })
+    }
+    .into()
+}
+
+#[derive(Debug)]
+struct ExtendrModuleFunction {
+    pub abi: Option<syn::Abi>,
+    _fn_token: syn::Token![fn],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleFunction {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let abi = if input.peek(syn::Token![extern]) {
+            Some(input.parse()?)
+        } else {
+            None
+        };
+        Ok(Self {
+            abi,
+            _fn_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct ExtendrModuleStruct {
+    _struct_token: syn::Token![struct],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleStruct {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _struct_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct ExtendrModuleName {
+    _mod_token: syn::Token![mod],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleName {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _mod_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct ExtendrModuleUse {
+    _use_token: syn::Token![use],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleUse {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _use_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+#[derive(Debug)]
+struct ExtendrModule {
+    pub extendr_module: ExtendrModuleName,
+    pub extendr_use: Vec<ExtendrModuleUse>,
+    pub extendr_fn: Vec<ExtendrModuleFunction>,
+    pub extendr_struct: Vec<ExtendrModuleStruct>,
+}
+
+#[derive(Debug)]
+enum ExtendrItem {
+    Module(ExtendrModuleName),
+    Use(ExtendrModuleUse),
+    Struct(ExtendrModuleStruct),
+    Func(ExtendrModuleFunction),
+}
+impl syn::parse::Parse for ExtendrItem {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let look_ahead = input.lookahead1();
+        if look_ahead.peek(syn::Token![mod]) {
+            Ok(Self::Module(input.parse()?))
+        } else if look_ahead.peek(syn::Token![use]) {
+            Ok(Self::Use(input.parse()?))
+        } else if look_ahead.peek(syn::Token![struct]) {
+            Ok(Self::Struct(input.parse()?))
+        } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
+            Ok(Self::Func(input.parse()?))
+        } else {
+            Err(look_ahead.error())
+        }
+    }
+}
+
+impl syn::parse::Parse for ExtendrModule {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let items: syn::punctuated::Punctuated<ExtendrItem, syn::Token![;]> =
+            syn::punctuated::Punctuated::parse_terminated_with(&input, ExtendrItem::parse)?;
+
+        let mut name = None;
+        let mut uses = Vec::new();
+        let mut funs = Vec::new();
+        let mut structs = Vec::new();
+
+        for it in items {
+            match it {
+                ExtendrItem::Module(m) => {
+                    if name.is_some() {
+                        return Err(syn::Error::new(m._mod_token.span, "duplicate `mod <name>`"));
+                    }
+                    name = Some(m);
+                }
+                ExtendrItem::Use(u) => uses.push(u),
+                ExtendrItem::Struct(s) => structs.push(s),
+                ExtendrItem::Func(f) => funs.push(f),
+            }
+        }
+
+        let extendr_module = name.ok_or_else(|| {
+            syn::Error::new(
+                proc_macro2::Span::call_site().into(),
+                "missing `mod <name>`",
+            )
+        })?;
+
+        Ok(Self {
+            extendr_module,
+            extendr_use: uses,
+            extendr_fn: funs,
+            extendr_struct: structs,
+        })
+    }
+}
+
+#[proc_macro]
+pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let item = syn::parse_macro_input!(item as ExtendrModule);
+    // dbg!(&item);
+
+    let module_entrypoint_ident =
+        quote::format_ident!("R_init_{module}", module = item.extendr_module.ident);
+    let call_entries: Vec<syn::Expr> = item
+        .extendr_fn
+        .iter()
+        .map(|x| {
+            //TODO: put that in ExtendrFunction
+            let ident = &x.ident;
+            let call_method_def = quote::format_ident!("call_method_def_{ident}");
+            syn::parse_quote!(#call_method_def())
+        })
+        .collect();
+    let call_entries_len = call_entries.len();
+    // TODO
+    quote::quote! {
+        #[allow(non_snake_case)]
+        extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
+            static CALL_ENTRIES: [R_CallMethodDef; {#call_entries_len + 1}] = [
+                #(#call_entries),*,
+                R_CallMethodDef {
+                    name: std::ptr::null(),
+                    fun: None,
+                    numArgs: 0,
+                }
+            ];
+
+            unsafe {
+                R_registerRoutines(
+                    dll,
+                    std::ptr::null(),
+                    CALL_ENTRIES.as_ptr(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                );
+
+                // TODO: only include these if the module has no `use`-statements!
+                // that's the root-module!
+                R_useDynamicSymbols(dll, Rboolean::FALSE);
+                R_forceSymbols(dll, Rboolean::TRUE);
+            }
+        }
+    }
+    .into()
 }

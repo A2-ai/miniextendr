@@ -11,3 +11,4 @@ crate-type = ["staticlib"]
 
 [dependencies]
 miniextendr-api = { path = "../../../miniextendr-api"}
+proc-macro2 = "1.0"

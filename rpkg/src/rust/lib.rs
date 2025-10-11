@@ -169,6 +169,8 @@ where
 }
 
 // region: panics, (), and Result
+#[miniextendr_api::miniextendr]
+fn take_and_return_nothing() -> () {}
 
 #[miniextendr_api::miniextendr]
 fn add(left: i32, right: i32) -> i32 {
@@ -234,6 +236,7 @@ fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
 
 // region: panic printing
 
+// #[miniextendr_api::miniextendr] // TODO
 #[unsafe(no_mangle)]
 extern "C" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
@@ -264,5 +267,70 @@ fn greetings_with_nameless_dots(...) {}
 
 #[miniextendr_api::miniextendr]
 fn greetings_with_dots_then_arg(_exclamations: i32, _dots: ...) {}
+
+// endregion
+
+// region: miniextendr_module!
+
+miniextendr_api::miniextendr_module! {
+    mod rpkg;
+
+    fn add;
+    fn add2;
+    fn add3;
+    fn add4;
+    fn add_panic;
+    fn add_r_error;
+
+    fn add_left_mut;
+    fn add_right_mut;
+    fn add_left_right_mut;
+
+    // TODO: make r wrapper, no C wrapper!
+    // extern "C" fn C_just_panic;
+    // extern "C" fn C_panic_and_catch;
+
+    // TODO: adjust the R wrapper to include list(...) in the arg that is ...
+    fn greetings_with_dots;
+    fn greetings_with_nameless_dots;
+    fn greetings_with_dots_then_arg;
+}
+
+#[repr(C)]
+#[derive(Debug)]
+pub struct DllInfo(std::ffi::c_void);
+
+#[allow(non_camel_case_types)]
+pub type DL_FUNC = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+#[allow(non_camel_case_types)]
+#[allow(non_snake_case)]
+pub struct R_CallMethodDef {
+    pub name: *const ::std::os::raw::c_char,
+    pub fun: DL_FUNC,
+    pub numArgs: ::std::os::raw::c_int,
+}
+
+// necessary for calling R_init_<module name>
+unsafe impl Sync for R_CallMethodDef {}
+
+// FIXME: move to an ffi crate or similar..
+unsafe extern "C" {
+    pub fn R_registerRoutines(
+        info: *mut DllInfo,
+        // croutines: *const R_CMethodDef,
+        croutines: *const std::ffi::c_void,
+        callRoutines: *const R_CallMethodDef,
+        // fortranRoutines: *const R_FortranMethodDef,
+        fortranRoutines: *const std::ffi::c_void,
+        // externalRoutines: *const R_ExternalMethodDef,
+        externalRoutines: *const std::ffi::c_void,
+    ) -> ::std::os::raw::c_int;
+
+    pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
+    pub fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
+}
 
 // endregion
