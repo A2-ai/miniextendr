@@ -257,7 +257,7 @@ extern "C" fn C_panic_and_catch() -> SEXP {
 // region: dots
 
 #[miniextendr_api::miniextendr]
-fn greetings_with_dots(_dots: ...) {}
+fn greetings_with_named_dots(_dots: ...) {}
 
 #[miniextendr_api::miniextendr]
 fn greetings_with_nameless_dots(...) {}
@@ -267,7 +267,10 @@ fn greetings_with_nameless_dots(...) {}
 // fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
 
 #[miniextendr_api::miniextendr]
-fn greetings_with_dots_then_arg(_exclamations: i32, _dots: ...) {}
+fn greetings_last_as_named_dots(_exclamations: i32, _dots: ...) {}
+
+#[miniextendr_api::miniextendr]
+fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 
 // endregion
 
@@ -292,9 +295,10 @@ miniextendr_api::miniextendr_module! {
     extern "C" fn C_panic_and_catch;
 
     // TODO: adjust the R wrapper to include list(...) in the arg that is ...
-    fn greetings_with_dots;
+    fn greetings_with_named_dots;
     fn greetings_with_nameless_dots;
-    fn greetings_with_dots_then_arg;
+    fn greetings_last_as_named_dots;
+    fn greetings_last_as_nameless_dots;
 }
 
 #[repr(C)]

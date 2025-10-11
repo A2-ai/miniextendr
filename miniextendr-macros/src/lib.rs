@@ -3,6 +3,7 @@
 //!
 //!
 //!
+use proc_macro2::TokenStream;
 
 #[derive(Debug)]
 struct ExtendrFunction {
@@ -38,8 +39,7 @@ pub fn miniextendr(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
-    // dbg!(&item);
-    // println!("{:#?}", item); // requires extra-traits
+
     let dots = if let Some(variadic) = item.sig.variadic {
         if let Some((pat, _)) = variadic.pat {
             if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
@@ -196,6 +196,8 @@ pub fn miniextendr(
         proc_macro2::TokenStream::new()
     } else {
         quote::quote! {
+            // TODO: add the method it is wrapping as doc comment
+            #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#wrapper_inputs) -> SEXP {
                 let old = std::panic::take_hook();
@@ -222,6 +224,8 @@ pub fn miniextendr(
 
         #c_wrapper
 
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
         pub(crate) const fn #call_method_def() -> R_CallMethodDef {
             unsafe {
                 R_CallMethodDef {
@@ -378,8 +382,10 @@ impl syn::parse::Parse for ExtendrModule {
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let extendr_module = syn::parse_macro_input!(item as ExtendrModule);
 
-    let module_entrypoint_ident =
-        quote::format_ident!("R_init_{module}", module = extendr_module.extendr_module.ident);
+    let module_entrypoint_ident = quote::format_ident!(
+        "R_init_{module}",
+        module = extendr_module.extendr_module.ident
+    );
     let call_entries: Vec<syn::Expr> = extendr_module
         .extendr_fn
         .iter()
@@ -391,12 +397,33 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
     let call_entries_len = call_entries.len();
-    
-    // TODO: call the R_init from all the submodules (given by `use`)
-    
-    // TODO: only include R_useDynamicSymbols if there are no `use` statements
+
+    // call the R_init from all the submodules (given by `use`)
+    let use_other_modules = extendr_module
+        .extendr_use
+        .iter()
+        .map(|x| {
+            let use_module_ident = &x.ident;
+            let use_module_ident = quote::format_ident!("R_init_{use_module_ident}");
+            syn::parse_quote!(#use_module_ident(dll);)
+        })
+        .collect::<Vec<syn::Expr>>();
+
+    // only include R_useDynamicSymbols if there are no `use` statements
+    // that's the root-module!
+    let use_symbols = if extendr_module.extendr_use.is_empty() {
+        quote::quote! {
+            R_useDynamicSymbols(dll, Rboolean::FALSE);
+            R_forceSymbols(dll, Rboolean::TRUE);
+        }
+    } else {
+        TokenStream::new()
+    };
 
     quote::quote! {
+
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
         extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
             static CALL_ENTRIES: [R_CallMethodDef; {#call_entries_len + 1}] = [
@@ -408,6 +435,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                 }
             ];
 
+            #(#use_other_modules)*
+
             unsafe {
                 R_registerRoutines(
                     dll,
@@ -416,11 +445,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     std::ptr::null(),
                     std::ptr::null(),
                 );
-
-                // TODO: only include these if the module has no `use`-statements!
-                // that's the root-module!
-                R_useDynamicSymbols(dll, Rboolean::FALSE);
-                R_forceSymbols(dll, Rboolean::TRUE);
+                #use_symbols
             }
         }
     }
