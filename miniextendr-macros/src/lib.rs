@@ -3,8 +3,6 @@
 //!
 //!
 //!
-use proc_macro2::TokenStream;
-
 #[derive(Debug)]
 struct ExtendrFunction {
     // function_name: Ident
@@ -397,7 +395,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let extendr_module = syn::parse_macro_input!(item as ExtendrModule);
 
     let module_entrypoint_ident = quote::format_ident!(
-        "R_init_{module}",
+        "R_init_{module}_miniextendr",
         module = extendr_module.extendr_module.ident
     );
     let call_entries: Vec<syn::Expr> = extendr_module
@@ -418,7 +416,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
-            let use_module_init = quote::format_ident!("R_init_{use_module_ident}");
+            let use_module_init = quote::format_ident!("R_init_{use_module_ident}_miniextendr");
             syn::parse_quote!(#use_module_ident::#use_module_init(dll))
         })
         .collect::<Vec<syn::Expr>>();
@@ -449,8 +447,9 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     std::ptr::null(),
                 );
                 
-                R_useDynamicSymbols(dll, Rboolean::FALSE);
-                R_forceSymbols(dll, Rboolean::TRUE);
+                // these are provided in entrypoint.c
+                // R_useDynamicSymbols(dll, Rboolean::FALSE);
+                // R_forceSymbols(dll, Rboolean::TRUE);
             }
         }
     }
