@@ -18,6 +18,13 @@ $(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock
 	RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
 	cargo +nightly build --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
 
+$(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.toml
+$(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock
+$(CARGO_AR): $(ABS_SRCDIR)/rust/build.rs
+$(CARGO_AR): $(ABS_SRCDIR)/rust/.cargo/config.toml
+$(CARGO_AR): $(ABS_SRCDIR)/rust/rust-toolchain.toml
+$(CARGO_AR): $(ABS_SRCDIR)/rust/rust-toolchain
+
 -include $(CARGO_LIBDIR)/lib$(STATICLIB_NAME).d
 -include $(CARGO_TARGET_DIR)/*/*.d
 -include $(CARGO_TARGET_DIR)/*/deps/*.d
