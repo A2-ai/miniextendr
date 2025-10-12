@@ -4,9 +4,7 @@
 //!
 
 struct ExtendrFunction {
-    // function_name: Ident
     pub vis: syn::Visibility,
-    // TODO: implement the extern "C" passthrough
     pub abi: Option<syn::Abi>,
     pub ident: syn::Ident,
     pub generics: syn::Generics,
@@ -327,20 +325,20 @@ pub fn r_tokens(
 }
 
 struct ExtendrModuleFunction {
-    pub abi: Option<syn::Abi>,
+    pub _abi: Option<syn::Abi>,
     _fn_token: syn::Token![fn],
     pub ident: syn::Ident,
 }
 
 impl syn::parse::Parse for ExtendrModuleFunction {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let abi = if input.peek(syn::Token![extern]) {
+        let _abi = if input.peek(syn::Token![extern]) {
             Some(input.parse()?)
         } else {
             None
         };
         Ok(Self {
-            abi,
+            _abi,
             _fn_token: input.parse()?,
             ident: input.parse()?,
         })
@@ -389,15 +387,15 @@ impl syn::parse::Parse for ExtendrModuleUse {
         let use_name = match use_name {
             syn::UseTree::Name(use_name) => use_name,
             // TODO: provide boilerplate error message here.
-            syn::UseTree::Path(use_path) => todo!(),
             syn::UseTree::Rename(use_rename) => {
                 return Err(syn::Error::new(
                     use_rename.span(),
                     "it is not possible to rename wrappers in `miniextendr_module`",
                 ));
             }
-            syn::UseTree::Glob(use_glob) => todo!(),
-            syn::UseTree::Group(use_group) => todo!(),
+            syn::UseTree::Path(_) |
+            syn::UseTree::Glob(_) | 
+            syn::UseTree::Group(_) => return Err(syn::Error::new(use_name.span(), "syntax not supported"))
         };
         Ok(Self {
             _use_token,
@@ -547,15 +545,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(#use_other_modules;)*
 
             unsafe {
-                R_registerRoutines(
-                    dll,
-                    std::ptr::null(),
-                    CALL_ENTRIES.as_ptr(),
-                    std::ptr::null(),
-                    std::ptr::null(),
-                );
-
-                // these are provided in entrypoint.c
+                R_registerRoutines(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
+                // these are already present in entrypoint.c!
                 // R_useDynamicSymbols(dll, Rboolean::FALSE);
                 // R_forceSymbols(dll, Rboolean::TRUE);
             }
