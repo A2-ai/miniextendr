@@ -164,8 +164,8 @@ fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
 
 // region: panic printing
 
-#[miniextendr]
 #[unsafe(no_mangle)]
+#[miniextendr]
 extern "C" fn C_just_panic() -> ::miniextendr_api::ffi::SEXP {
     panic!("just panic, no capture");
 }
@@ -173,6 +173,7 @@ extern "C" fn C_just_panic() -> ::miniextendr_api::ffi::SEXP {
 /// If you call a miniextendr function that panics, and then `C_panic_catch`,
 /// you'll see that the panic hook was not reset.
 #[miniextendr]
+#[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 extern "C" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));

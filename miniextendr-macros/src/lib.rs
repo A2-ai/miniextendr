@@ -4,6 +4,7 @@
 //!
 
 struct ExtendrFunction {
+    pub attrs: Vec<syn::Attribute>,
     pub vis: syn::Visibility,
     pub abi: Option<syn::Abi>,
     pub ident: syn::Ident,
@@ -18,6 +19,7 @@ impl syn::parse::Parse for ExtendrFunction {
         let signature: syn::Signature = itemfn.sig;
 
         Ok(Self {
+            attrs: itemfn.attrs,
             vis: itemfn.vis,
             abi: signature.abi,
             ident: signature.ident,
@@ -35,6 +37,7 @@ pub fn miniextendr(
 ) -> proc_macro::TokenStream {
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
+    // dots support here
     let dots = if let Some(variadic) = item.sig.variadic {
         if let Some((pat, _)) = variadic.pat {
             if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
@@ -59,6 +62,7 @@ pub fn miniextendr(
     let item = item.into_token_stream();
     let extendr_function = syn::parse2(item).unwrap();
     let ExtendrFunction {
+        attrs,
         vis,
         abi,
         ident,
@@ -83,29 +87,22 @@ pub fn miniextendr(
             .as_c_str(),
         ident.span(),
     );
+    // these are needed to transmute fn-item to fn-pointer correctly.
     let func_ptr_def: Vec<syn::Pat> = (0..inputs.len())
         .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
         .collect();
 
-    let rust_inputs: syn::punctuated::Punctuated<syn::Ident, _> = inputs
-        .clone()
-        .into_pairs()
-        .flat_map(|pair| {
-            let punct = pair.punct().cloned();
-            let mut arg = pair.into_value();
-            let arg = if let syn::FnArg::Typed(ref mut pat_type) = arg {
-                if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_mut() {
-                    pat_ident.ident.clone()
-                } else {
-                    return None;
+    // calling the rust function with
+
+    let rust_inputs: Vec<syn::Ident> = inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pt) = arg {
+                if let syn::Pat::Ident(p) = pt.pat.as_ref() {
+                    return Some(p.ident.clone());
                 }
-            } else {
-                return None;
-            };
-            Some(match punct {
-                Some(c) => syn::punctuated::Pair::Punctuated(arg, c),
-                None => syn::punctuated::Pair::End(arg),
-            })
+            }
+            None
         })
         .collect();
     // dbg!(&rust_inputs);
@@ -129,32 +126,42 @@ pub fn miniextendr(
         })
         .collect();
     // dbg!(&wrapper_inputs);
-
     let input_names: Vec<_> = inputs
         .pairs()
         .filter_map(|pair| match pair.value() {
-            syn::FnArg::Typed(pat_type) => {
-                let is_unit_type = if let syn::Type::Tuple(type_tuple) = &*pat_type.ty {
-                    type_tuple.elems.is_empty()
-                } else {
-                    false
-                };
-                match &*pat_type.pat {
-                    syn::Pat::Ident(p) => {
-                        let ident = p.ident.clone();
-                        //TODO / FIXME: implement mutability here!
-                        if is_unit_type {
-                            Some(quote::quote! {let #ident = (); })
-                        } else {
-                            Some(quote::quote! {let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast(); })
-                        }
+            syn::FnArg::Typed(pat_type) => match (pat_type.pat.as_ref(), pat_type.ty.as_ref()) {
+                // () param
+                (syn::Pat::Ident(p), syn::Type::Tuple(t)) if t.elems.is_empty() => {
+                    let ident = p.ident.clone();
+                    if p.mutability.is_some() {
+                        Some(quote::quote! { let mut #ident = (); })
+                    } else {
+                        Some(quote::quote! { let #ident = (); })
                     }
-                    _ => None,
                 }
-            }
+
+                // non-() return
+                (syn::Pat::Ident(p), _) => {
+                    let ident = p.ident.clone();
+                    if p.mutability.is_some() {
+                        Some(quote::quote! {
+                            let mut #ident = *::miniextendr_api::ffi::DATAPTR(#ident).cast();
+                        })
+                    } else {
+                        Some(quote::quote! {
+                            let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast();
+                        })
+                    }
+                }
+                _ => None,
+            },
+            // TODO: no support for self!
             syn::FnArg::Receiver(_) => todo!(),
         })
         .collect();
+
+    //TODO: add an invisibility attribute to miniextendr(invisible)
+    // after this block, otherwise it will be overwritten.
     let is_invisible_return_type: bool;
     let return_statement = match &output {
         // no arrow
@@ -231,6 +238,8 @@ pub fn miniextendr(
             }
         },
     };
+    //TODO: add an invisibility attribute to miniextendr(invisible)
+    let is_invisible_return_type = is_invisible_return_type;
 
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
@@ -249,15 +258,40 @@ pub fn miniextendr(
                     #(#input_names)*
                     // FIXME: shouldn't this borrow?
                     // dbg!(#rust_inputs);
-                    let result = #rust_ident(#rust_inputs);
+                    let result = #rust_ident(#(#rust_inputs),*);
                     #return_statement
                 });
                 // FIXME: in case of a panic, the panic hook is never reset.
+                // move this to the clean-up trampoline.
                 std::panic::set_hook(old);
                 result
             }
         }
     };
+    // check that #[no_mangle] or #[unsafe(no_mangle)] is present!
+    if abi.is_some() {
+        let has_no_mangle = attrs.iter().any(|attr| {
+            attr.path().is_ident("no_mangle")
+                || attr
+                    .parse_nested_meta(|meta| {
+                        if meta.path.is_ident("no_mangle") {
+                            Err(meta.error("found #[no_mangle]"))
+                        } else {
+                            Ok(())
+                        }
+                    })
+                    .is_err()
+        });
+
+        if !has_no_mangle {
+            return syn::Error::new(
+                attrs.first().map(|attr| attr.span()).unwrap_or_else(||abi.span()),
+                "missing #[no_mangle] (edition 2021) or #[unsafe(no_mangle)] (edition 2024).",
+            )
+            .into_compile_error()
+            .into();
+        }
+    }
 
     let r_wrapper_args: Vec<_> = inputs
         .into_iter()
@@ -266,6 +300,7 @@ pub fn miniextendr(
                 unreachable!()
             };
             let syn::PatType {
+                // TODO: use `attrs` to add Default value!
                 attrs: _,
                 pat,
                 colon_token: _,
@@ -277,6 +312,7 @@ pub fn miniextendr(
             pat_ident.ident.clone()
         })
         .collect();
+    // TODO: replace the last one with list(...) if dots is available.
 
     // region: R wrappers
 
