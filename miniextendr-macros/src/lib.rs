@@ -58,7 +58,6 @@ pub fn miniextendr(
     use quote::ToTokens;
     let item = item.into_token_stream();
     let extendr_function = syn::parse2(item).unwrap();
-    // TODO: implement pass-through of abi extern "C"
     let ExtendrFunction {
         vis,
         abi,
@@ -156,33 +155,81 @@ pub fn miniextendr(
             syn::FnArg::Receiver(_) => todo!(),
         })
         .collect();
-
+    let is_invisible_return_type: bool;
     let return_statement = match &output {
-        syn::ReturnType::Default => quote::quote! {unsafe { ::miniextendr_api::ffi::R_NilValue }},
-        syn::ReturnType::Type(_rarrow, box_type) => {
-            if let syn::Type::Path(type_path) = box_type.as_ref() {
-                let last_segment = type_path.path.segments.last().unwrap();
-                let is_result = last_segment.ident == "Result";
-                if is_result {
-                    // TODO: implement other Result<> -> SEXP interpretations here``
+        // no arrow
+        syn::ReturnType::Default => {
+            is_invisible_return_type = true;
+            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+        }
+
+        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+            // -> ()
+            syn::Type::Tuple(t) if t.elems.is_empty() => {
+                is_invisible_return_type = true;
+                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+            }
+
+            // -> Option<...> cases
+            syn::Type::Path(p)
+                if p.path.segments.last().map(|s| &s.ident)
+                    == Some(&syn::Ident::new("Option", p.path.span())) =>
+            {
+                let seg = p.path.segments.last().unwrap();
+                let is_unit_inner = match &seg.arguments {
+                syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(|ga| {
+                    matches!(ga, syn::GenericArgument::Type(syn::Type::Tuple(t)) if t.elems.is_empty())
+                }),
+                _ => false,
+            };
+
+                if is_unit_inner {
+                    // -> Option<()>
+                    is_invisible_return_type = true;
                     quote::quote! {
-                        // TODO: set debug flag?
-                        // let _ = dbg!(result);
-                        ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap())
+                        let _ = result.unwrap();
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
                     }
                 } else {
-                    // TODO: type conversion for non-Result returns
-                    quote::quote! {
-                        ::miniextendr_api::ffi::Rf_ScalarInteger(result)
-                    }
-                }
-            } else {
-                // interpret () -> R_NilValue (R's NULL)
-                quote::quote! {
-                    ::miniextendr_api::ffi::R_NilValue
+                    is_invisible_return_type = false;
+                    // -> Option<T>
+                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap()) }
                 }
             }
-        }
+
+            // -> Result<...> cases
+            syn::Type::Path(p)
+                if p.path.segments.last().map(|s| &s.ident)
+                    == Some(&syn::Ident::new("Result", p.path.span())) =>
+            {
+                let seg = p.path.segments.last().unwrap();
+                let is_unit_inner = match &seg.arguments {
+                syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(|ga| {
+                    matches!(ga, syn::GenericArgument::Type(syn::Type::Tuple(t)) if t.elems.is_empty())
+                }),
+                _ => false,
+            };
+
+                if is_unit_inner {
+                    // -> Result<(), _>
+                    is_invisible_return_type = true;
+                    quote::quote! {
+                        let _ = result.unwrap();
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    }
+                } else {
+                    is_invisible_return_type = false;
+                    // -> Result<T, _>
+                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap()) }
+                }
+            }
+
+            // all other T
+            _ => {
+                is_invisible_return_type = false;
+                quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result) }
+            }
+        },
     };
 
     let c_wrapper = if abi.is_some() {
@@ -196,8 +243,8 @@ pub fn miniextendr(
                 let old = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
                 let result = with_r_unwind(move || unsafe {
-                    #[allow(unused_imports)]
                     // TODO: these borrows ought to be used based on the mutability requirements...
+                    #[allow(unused_imports)]
                     use std::borrow::{Borrow, BorrowMut};
                     #(#input_names)*
                     // FIXME: shouldn't this borrow?
@@ -232,46 +279,6 @@ pub fn miniextendr(
         .collect();
 
     // region: R wrappers
-
-    // mark return type invisible if (), Option<()> or Result<()>, or Result<(), _>
-    let is_invisible_return_type = match &output {
-        syn::ReturnType::Default => true,
-        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-            syn::Type::Tuple(t) if t.elems.is_empty() => true, // ()
-            syn::Type::Path(p) => {
-                let seg = &p.path.segments.last().unwrap().ident.to_string();
-                match seg.as_str() {
-                    "Result" | "Option" => {
-                        if let syn::PathArguments::AngleBracketed(args) =
-                            &p.path.segments.last().unwrap().arguments
-                        {
-                            let mut inner = args.args.iter();
-                            match inner.next() {
-                                Some(syn::GenericArgument::Type(syn::Type::Tuple(t)))
-                                    if t.elems.is_empty() =>
-                                {
-                                    true
-                                }
-                                Some(syn::GenericArgument::Type(syn::Type::Array(a))) => {
-                                    matches!(a.len, syn::Expr::Lit(ref l)
-                                        if matches!(&l.lit, syn::Lit::Int(i) if i.base10_parse::<usize>().ok() == Some(0)))
-                                }
-                                _ => false,
-                            }
-                        } else {
-                            true // Result<()> without explicit args
-                        }
-                    }
-                    _ => false,
-                }
-            }
-            syn::Type::Array(a) => {
-                matches!(a.len, syn::Expr::Lit(ref l)
-                    if matches!(&l.lit, syn::Lit::Int(i) if i.base10_parse::<usize>().ok() == Some(0)))
-            }
-            _ => false,
-        },
-    };
 
     let r_wrapper_return = if !is_invisible_return_type {
         quote::quote! {.Call(#c_ident #(,#r_wrapper_args)*)}

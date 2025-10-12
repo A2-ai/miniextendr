@@ -267,19 +267,19 @@ fn invisibly_return_no_arrow() {}
 fn invisibly_return_arrow() -> () {}
 
 // TODO:
-// #[miniextendr]
-// fn invisibly_option_return_none() -> Option<()> {
-//     None
-// }
+#[miniextendr]
+fn invisibly_option_return_none() -> Option<()> {
+    None
+}
 
-// #[miniextendr]
-// fn invisibly_option_return_some() -> Option<()> {
-//     Some(())
-// }
+#[miniextendr]
+fn invisibly_option_return_some() -> Option<()> {
+    Some(())
+}
 
-// #[miniextendr]
-// fn invisibly_result_return_ok() -> Result<(), ()> {
-//     Ok(())
-// }
+#[miniextendr]
+fn invisibly_result_return_ok() -> Result<(), ()> {
+    Ok(())
+}
 
 // endregion
