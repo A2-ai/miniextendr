@@ -1,3 +1,5 @@
+use miniextendr_api::{miniextendr, miniextendr_module};
+
 #[non_exhaustive]
 #[repr(transparent)]
 #[derive(Debug)]
@@ -169,32 +171,32 @@ where
 }
 
 // region: panics, (), and Result
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn take_and_return_nothing() -> () {}
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add(left: i32, right: i32) -> i32 {
     left + right
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
     left + right
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
     left.checked_add(right).ok_or_else(|| ())
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
     Ok(left
         .checked_div(right)
         .ok_or_else(|| "don't divide by zero dude")?)
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add_panic(_left: i32, _right: i32) -> i32 {
     panic!("we cannot add right now! ");
     #[allow(unreachable_code)]
@@ -203,7 +205,7 @@ fn add_panic(_left: i32, _right: i32) -> i32 {
     }
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add_r_error(_left: i32, _right: i32) -> i32 {
     unsafe { Rf_error(c"r error in `add_r_error`".as_ptr()) };
     #[allow(unreachable_code)]
@@ -216,18 +218,18 @@ fn add_r_error(_left: i32, _right: i32) -> i32 {
 
 // region: `mut` checks
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add_left_mut(mut left: i32, right: i32) -> i32 {
     let left = &mut left;
     *left + right
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add_right_mut(left: i32, mut right: i32) -> i32 {
     left + *&mut right
 }
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
     *&mut left + *&mut right
 }
@@ -236,7 +238,7 @@ fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
 
 // region: panic printing
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
@@ -244,7 +246,7 @@ extern "C" fn C_just_panic() -> SEXP {
 
 /// If you call a miniextendr function that panics, and then `C_panic_catch`,
 /// you'll see that the panic hook was not reset.
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn C_panic_and_catch() -> SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
@@ -256,36 +258,36 @@ extern "C" fn C_panic_and_catch() -> SEXP {
 
 // region: dots
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn greetings_with_named_dots(_dots: ...) {}
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn greetings_with_nameless_dots(...) {}
 
 // LIMITATION: Good!
-// #[miniextendr_api::miniextendr]
+// #[miniextendr]
 // fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn greetings_last_as_named_dots(_exclamations: i32, _dots: ...) {}
 
-#[miniextendr_api::miniextendr]
+#[miniextendr]
 fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 
 // endregion
 
 // region: miniextendr_module! tests
 
-miniextendr_api::miniextendr_module! {
+miniextendr_module! {
    mod rpkg1;
 }
 
-miniextendr_api::miniextendr_module! {
+miniextendr_module! {
    mod rpkg2;
    fn add2;
 }
 
-miniextendr_api::miniextendr_module! {
+miniextendr_module! {
    mod rpkg3;
    fn add2;
    fn add3;
@@ -299,12 +301,12 @@ mod altrep {
     }
 }
 
-miniextendr_api::miniextendr_module! {
+miniextendr_module! {
    mod rpkg4;
    use altrep;
 }
 
-miniextendr_api::miniextendr_module! {
+miniextendr_module! {
     mod rpkg;
     use altrep;
 
@@ -366,5 +368,31 @@ unsafe extern "C" {
     pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
     pub fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
 }
+
+// endregion
+
+// region: r-wrappers return invisibly
+
+#[miniextendr]
+fn invisibly_return_no_arrow() {}
+
+#[miniextendr]
+fn invisibly_return_arrow() -> () {}
+
+// TODO:
+// #[miniextendr]
+// fn invisibly_option_return_none() -> Option<()> {
+//     None
+// }
+
+// #[miniextendr]
+// fn invisibly_option_return_some() -> Option<()> {
+//     Some(())
+// }
+
+// #[miniextendr]
+// fn invisibly_result_return_ok() -> Result<(), ()> {
+//     Ok(())
+// }
 
 // endregion

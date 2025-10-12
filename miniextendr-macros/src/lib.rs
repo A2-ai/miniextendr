@@ -393,9 +393,9 @@ impl syn::parse::Parse for ExtendrModuleUse {
                     "it is not possible to rename wrappers in `miniextendr_module`",
                 ));
             }
-            syn::UseTree::Path(_) |
-            syn::UseTree::Glob(_) | 
-            syn::UseTree::Group(_) => return Err(syn::Error::new(use_name.span(), "syntax not supported"))
+            syn::UseTree::Path(_) | syn::UseTree::Glob(_) | syn::UseTree::Group(_) => {
+                return Err(syn::Error::new(use_name.span(), "syntax not supported"));
+            }
         };
         Ok(Self {
             _use_token,
@@ -473,16 +473,16 @@ impl syn::parse::Parse for ExtendrModule {
 
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let extendr_module = syn::parse_macro_input!(item as ExtendrModule);
+    let miniextendr_module = syn::parse_macro_input!(item as ExtendrModule);
 
-    let module = extendr_module.extendr_module.ident;
+    let module = miniextendr_module.extendr_module.ident;
     let module_entrypoint_ident = quote::format_ident!("R_init_{module}_miniextendr");
-    let call_entries: Vec<syn::Expr> = extendr_module
+    let call_entries: Vec<syn::Expr> = miniextendr_module
         .extendr_fn
         .iter()
-        .map(|x| {
+        .map(|miniextendr_fn| {
             //TODO: put this in ExtendrFunction impl
-            let rust_ident = &x.ident;
+            let rust_ident = &miniextendr_fn.ident;
             let call_method_def = quote::format_ident!("call_method_def_{rust_ident}");
             syn::parse_quote!(#call_method_def())
         })
@@ -490,7 +490,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let call_entries_len = call_entries.len();
 
     // call the R_init from all the submodules (given by `use`)
-    let use_other_modules = extendr_module
+    let use_other_modules = miniextendr_module
         .extendr_use
         .iter()
         .map(|x| {
@@ -501,7 +501,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect::<Vec<syn::Expr>>();
 
     let module_r_wrappers = quote::format_ident!("module_r_wrappers_{module}");
-    let r_wrapper_generators: Vec<syn::Expr> = extendr_module
+    let r_wrapper_generators: Vec<syn::Expr> = miniextendr_module
         .extendr_fn
         .iter()
         .map(|x| {
@@ -514,11 +514,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     quote::quote! {
 
-
         //TODO: still need to deal with modules and their respective wrappers..
         // what to do here?
-         
-
 
         #[doc(hidden)]
         #[unsafe(no_mangle)]
@@ -532,6 +529,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         #[doc(hidden)]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
+        /// Internal function that is used by R to register the exported
+        /// miniextendr items.
         pub(crate) extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
             static CALL_ENTRIES: [R_CallMethodDef; {#call_entries_len + 1}] = [
                 #(#call_entries,)*
