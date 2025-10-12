@@ -285,7 +285,10 @@ pub fn miniextendr(
 
         if !has_no_mangle {
             return syn::Error::new(
-                attrs.first().map(|attr| attr.span()).unwrap_or_else(||abi.span()),
+                attrs
+                    .first()
+                    .map(|attr| attr.span())
+                    .unwrap_or_else(|| abi.span()),
                 "missing #[no_mangle] (edition 2021) or #[unsafe(no_mangle)] (edition 2024).",
             )
             .into_compile_error()
@@ -314,7 +317,7 @@ pub fn miniextendr(
         .collect();
     // TODO: replace the last one with list(...) if dots is available.
 
-    // region: R wrappers
+    // region: R wrappers generation in `fn`
 
     let r_wrapper_return = if !is_invisible_return_type {
         quote::quote! {.Call(#c_ident #(,#r_wrapper_args)*)}
@@ -328,11 +331,10 @@ pub fn miniextendr(
         }
     };
     let r_wrapper_string = r_wrapper.to_string();
-    let r_wrapper_cstring = std::ffi::CString::new(r_wrapper_string).unwrap();
-    let r_wrapper_cstr = r_wrapper_cstring.as_c_str();
-    let r_wrapper_cstr = syn::LitCStr::new(r_wrapper_cstr, r_wrapper.span());
+    let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper.span());
 
     let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
+
     // endregion
 
     quote::quote! {
@@ -340,7 +342,7 @@ pub fn miniextendr(
 
         #c_wrapper
 
-        const #r_wrapper_generator: &'static std::ffi::CStr = #r_wrapper_cstr;
+        const #r_wrapper_generator: &'static str = #r_wrapper_str;
 
         #[doc(hidden)]
         #[inline(always)]
@@ -541,7 +543,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect::<Vec<syn::Expr>>();
 
-    let module_r_wrappers = quote::format_ident!("module_r_wrappers_{module}");
+    // region: r wrapper generation in `mod`
+
     let r_wrapper_generators: Vec<syn::Expr> = miniextendr_module
         .extendr_fn
         .iter()
@@ -552,20 +555,26 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             syn::parse_quote!(#r_wrapper_generator)
         })
         .collect();
+    let r_wrappers_use_other_modules = miniextendr_module
+        .extendr_use
+        .iter()
+        .map(|x| {
+            let use_module_ident = &x.use_name.ident;
+            let r_wrappers_use_module = quote::format_ident!("R_WRAPPERS_PARTS_{use_module_ident}");
+            syn::parse_quote!(#use_module_ident::#r_wrappers_use_module)
+        })
+        .collect::<Vec<syn::Expr>>();
+    let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module}");
+    let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module}");
 
+    // endregion
     quote::quote! {
 
         //TODO: still need to deal with modules and their respective wrappers..
         // what to do here?
 
-        #[doc(hidden)]
-        #[unsafe(no_mangle)]
-        #[inline(always)]
-        pub(crate) const extern "C" fn #module_r_wrappers() -> [&'static std::ffi::CStr; #call_entries_len] {
-            [
-                #(#r_wrapper_generators),*
-            ]
-        }
+        pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
+        pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
 
         #[doc(hidden)]
         #[unsafe(no_mangle)]

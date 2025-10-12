@@ -5,11 +5,15 @@ edition = "2024"
 # edition = "2021" # testing 2021 compatibility!
 publish = false
 
+[[bin]]
+name = "document"
+path = "document.rs"
+bench = false
+
 [lib]
 name = "juice"
 path = "lib.rs"
-crate-type = ["staticlib"]
+crate-type = ["rlib", "staticlib"]
 
 [dependencies]
 miniextendr-api = { path = "../../../miniextendr-api"}
-proc-macro2 = "1.0"
