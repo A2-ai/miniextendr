@@ -3,33 +3,6 @@
 //!
 //!
 
-#[ctor::ctor]
-static R_WRAPPERS: std::sync::Mutex<std::fs::File> = unsafe {
-    use std::str::FromStr;
-    let r_wrappers = std::env!("CARGO_MANIFEST_DIR");
-    let r_wrappers = std::path::PathBuf::from_str(&r_wrappers)
-        .unwrap()
-        .join("miniextendr_wrappers.R");
-    // dbg!(&r_wrappers);
-    let f = std::fs::OpenOptions::new()
-        .create(true)
-        .read(false)
-        .write(true)
-        .append(false)
-        .truncate(true)
-        .open(r_wrappers)
-        .unwrap();
-    std::sync::Mutex::new(f)
-};
-
-// call this inside your proc-macro expansion path
-fn write_wrapper_line(s: &str) {
-    use std::io::Write;
-    let mut f = R_WRAPPERS.lock().unwrap();
-    writeln!(&mut *f, "{s}").ok();
-    f.flush().unwrap();
-}
-
 struct ExtendrFunction {
     // function_name: Ident
     pub vis: syn::Visibility,
@@ -316,8 +289,11 @@ pub fn miniextendr(
         }
     };
     let r_wrapper_string = r_wrapper.to_string();
-    write_wrapper_line(&r_wrapper_string);
-    write_wrapper_line("");
+    let r_wrapper_cstring = std::ffi::CString::new(r_wrapper_string).unwrap();
+    let r_wrapper_cstr = r_wrapper_cstring.as_c_str();
+    let r_wrapper_cstr = syn::LitCStr::new(r_wrapper_cstr, r_wrapper.span());
+
+    let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
     // endregion
 
     quote::quote! {
@@ -325,10 +301,10 @@ pub fn miniextendr(
 
         #c_wrapper
 
-        const _: &str = stringify!(#r_wrapper);
+        const #r_wrapper_generator: &'static std::ffi::CStr = #r_wrapper_cstr;
 
         #[doc(hidden)]
-        #[unsafe(no_mangle)]
+        #[inline(always)]
         const fn #call_method_def() -> R_CallMethodDef {
             unsafe {
                 R_CallMethodDef {
@@ -501,17 +477,15 @@ impl syn::parse::Parse for ExtendrModule {
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let extendr_module = syn::parse_macro_input!(item as ExtendrModule);
 
-    let module_entrypoint_ident = quote::format_ident!(
-        "R_init_{module}_miniextendr",
-        module = extendr_module.extendr_module.ident
-    );
+    let module = extendr_module.extendr_module.ident;
+    let module_entrypoint_ident = quote::format_ident!("R_init_{module}_miniextendr");
     let call_entries: Vec<syn::Expr> = extendr_module
         .extendr_fn
         .iter()
         .map(|x| {
             //TODO: put this in ExtendrFunction impl
-            let ident = &x.ident;
-            let call_method_def = quote::format_ident!("call_method_def_{ident}");
+            let rust_ident = &x.ident;
+            let call_method_def = quote::format_ident!("call_method_def_{rust_ident}");
             syn::parse_quote!(#call_method_def())
         })
         .collect();
@@ -528,7 +502,28 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect::<Vec<syn::Expr>>();
 
+    let module_r_wrappers = quote::format_ident!("module_r_wrappers_{module}");
+    let r_wrapper_generators: Vec<syn::Expr> = extendr_module
+        .extendr_fn
+        .iter()
+        .map(|x| {
+            //TODO: put this in ExtendrFunction impl
+            let rust_ident = &x.ident;
+            let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
+            syn::parse_quote!(#r_wrapper_generator)
+        })
+        .collect();
+
     quote::quote! {
+
+        #[doc(hidden)]
+        #[unsafe(no_mangle)]
+        #[inline(always)]
+        pub(crate) const extern "C" fn #module_r_wrappers() -> [&'static std::ffi::CStr; #call_entries_len] {
+            [
+                #(#r_wrapper_generators),*
+            ]
+        }
 
         #[doc(hidden)]
         #[unsafe(no_mangle)]
