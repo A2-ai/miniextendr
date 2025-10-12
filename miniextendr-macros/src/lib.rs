@@ -277,10 +277,10 @@ pub fn miniextendr(
         },
     };
 
-    let r_wrapper_return = if is_invisible_return_type {
-        quote::quote! {.Call(#c_ident #(, #r_wrapper_args)*)}
+    let r_wrapper_return = if !is_invisible_return_type {
+        quote::quote! {.Call(#c_ident #(,#r_wrapper_args)*)}
     } else {
-        quote::quote! {invisible(.Call(#c_ident #(, #r_wrapper_args)*))}
+        quote::quote! {invisible(.Call(#c_ident #(,#r_wrapper_args)*))}
     };
     let r_wrapper = quote::quote! {
         #rust_ident <- function(#(#r_wrapper_args),*) {
@@ -515,6 +515,12 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect();
 
     quote::quote! {
+
+
+        //TODO: still need to deal with modules and their respective wrappers..
+        // what to do here?
+         
+
 
         #[doc(hidden)]
         #[unsafe(no_mangle)]
