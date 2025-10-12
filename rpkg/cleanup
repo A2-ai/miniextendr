@@ -6,3 +6,4 @@
 rm -f src/Makevars
 # rm -rf src/target
 rm -rf src/rust/target
+rm -rf src/miniextendr_wrappers.R
