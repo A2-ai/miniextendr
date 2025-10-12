@@ -2,8 +2,34 @@
 //!
 //!
 //!
-//!
-#[derive(Debug)]
+
+#[ctor::ctor]
+static R_WRAPPERS: std::sync::Mutex<std::fs::File> = unsafe {
+    use std::str::FromStr;
+    let r_wrappers = std::env!("CARGO_MANIFEST_DIR");
+    let r_wrappers = std::path::PathBuf::from_str(&r_wrappers)
+        .unwrap()
+        .join("miniextendr_wrappers.R");
+    // dbg!(&r_wrappers);
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .read(false)
+        .write(true)
+        .append(false)
+        .truncate(true)
+        .open(r_wrappers)
+        .unwrap();
+    std::sync::Mutex::new(f)
+};
+
+// call this inside your proc-macro expansion path
+fn write_wrapper_line(s: &str) {
+    use std::io::Write;
+    let mut f = R_WRAPPERS.lock().unwrap();
+    writeln!(&mut *f, "{s}").ok();
+    f.flush().unwrap();
+}
+
 struct ExtendrFunction {
     // function_name: Ident
     pub vis: syn::Visibility,
@@ -162,10 +188,10 @@ pub fn miniextendr(
         })
         .collect();
 
-    let return_statement = match output {
+    let return_statement = match &output {
         syn::ReturnType::Default => quote::quote! {unsafe { R_NilValue }},
         syn::ReturnType::Type(_rarrow, box_type) => {
-            if let syn::Type::Path(type_path) = &*box_type {
+            if let syn::Type::Path(type_path) = box_type.as_ref() {
                 let last_segment = type_path.path.segments.last().unwrap();
                 let is_result = last_segment.ident == "Result";
                 if is_result {
@@ -217,10 +243,89 @@ pub fn miniextendr(
         }
     };
 
+    let r_wrapper_args: Vec<_> = inputs
+        .into_iter()
+        .map(|x| {
+            let syn::FnArg::Typed(pat_type) = &x else {
+                unreachable!()
+            };
+            let syn::PatType {
+                attrs: _,
+                pat,
+                colon_token: _,
+                ty: _,
+            } = &pat_type;
+            let syn::Pat::Ident(pat_ident) = pat.as_ref() else {
+                unreachable!()
+            };
+            pat_ident.ident.clone()
+        })
+        .collect();
+
+    // region: R wrappers
+
+    // mark return type invisible if (), Option<()> or Result<()>, or Result<(), _>
+    let is_invisible_return_type = match &output {
+        syn::ReturnType::Default => true,
+        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
+            syn::Type::Tuple(t) if t.elems.is_empty() => true, // ()
+            syn::Type::Path(p) => {
+                let seg = &p.path.segments.last().unwrap().ident.to_string();
+                match seg.as_str() {
+                    "Result" | "Option" => {
+                        if let syn::PathArguments::AngleBracketed(args) =
+                            &p.path.segments.last().unwrap().arguments
+                        {
+                            let mut inner = args.args.iter();
+                            match inner.next() {
+                                Some(syn::GenericArgument::Type(syn::Type::Tuple(t)))
+                                    if t.elems.is_empty() =>
+                                {
+                                    true
+                                }
+                                Some(syn::GenericArgument::Type(syn::Type::Array(a))) => {
+                                    matches!(a.len, syn::Expr::Lit(ref l)
+                                        if matches!(&l.lit, syn::Lit::Int(i) if i.base10_parse::<usize>().ok() == Some(0)))
+                                }
+                                _ => false,
+                            }
+                        } else {
+                            true // Result<()> without explicit args
+                        }
+                    }
+                    _ => false,
+                }
+            }
+            syn::Type::Array(a) => {
+                matches!(a.len, syn::Expr::Lit(ref l)
+                    if matches!(&l.lit, syn::Lit::Int(i) if i.base10_parse::<usize>().ok() == Some(0)))
+            }
+            _ => false,
+        },
+    };
+
+    let r_wrapper_return = if is_invisible_return_type {
+        quote::quote! {.Call(#c_ident #(, #r_wrapper_args)*)}
+    } else {
+        quote::quote! {invisible(.Call(#c_ident #(, #r_wrapper_args)*))}
+    };
+    let r_wrapper = quote::quote! {
+        #rust_ident <- function(#(#r_wrapper_args),*) {
+
+            #r_wrapper_return
+        }
+    };
+    let r_wrapper_string = r_wrapper.to_string();
+    write_wrapper_line(&r_wrapper_string);
+    write_wrapper_line("");
+    // endregion
+
     quote::quote! {
         #original_item
 
         #c_wrapper
+
+        const _: &str = stringify!(#r_wrapper);
 
         #[doc(hidden)]
         #[unsafe(no_mangle)]
@@ -237,7 +342,14 @@ pub fn miniextendr(
     .into()
 }
 
-#[derive(Debug)]
+#[proc_macro_attribute]
+pub fn r_tokens(
+    _attr: proc_macro::TokenStream,
+    _item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    proc_macro::TokenStream::new()
+}
+
 struct ExtendrModuleFunction {
     pub abi: Option<syn::Abi>,
     _fn_token: syn::Token![fn],
@@ -259,7 +371,6 @@ impl syn::parse::Parse for ExtendrModuleFunction {
     }
 }
 
-#[derive(Debug)]
 struct ExtendrModuleStruct {
     _struct_token: syn::Token![struct],
     pub ident: syn::Ident,
@@ -274,7 +385,6 @@ impl syn::parse::Parse for ExtendrModuleStruct {
     }
 }
 
-#[derive(Debug)]
 struct ExtendrModuleName {
     _mod_token: syn::Token![mod],
     pub ident: syn::Ident,
@@ -289,7 +399,6 @@ impl syn::parse::Parse for ExtendrModuleName {
     }
 }
 
-#[derive(Debug)]
 struct ExtendrModuleUse {
     _use_token: syn::Token![use],
     pub use_name: syn::UseName,
@@ -321,7 +430,6 @@ impl syn::parse::Parse for ExtendrModuleUse {
     }
 }
 
-#[derive(Debug)]
 struct ExtendrModule {
     pub extendr_module: ExtendrModuleName,
     pub extendr_use: Vec<ExtendrModuleUse>,
@@ -329,7 +437,6 @@ struct ExtendrModule {
     pub extendr_struct: Vec<ExtendrModuleStruct>,
 }
 
-#[derive(Debug)]
 enum ExtendrItem {
     Module(ExtendrModuleName),
     Use(ExtendrModuleUse),
