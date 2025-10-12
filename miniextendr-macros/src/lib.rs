@@ -107,7 +107,7 @@ pub fn miniextendr(
         .collect();
     // dbg!(&rust_inputs);
 
-    let wrapper_inputs: syn::punctuated::Punctuated<syn::FnArg, _> = inputs
+    let c_wrapper_inputs: syn::punctuated::Punctuated<syn::FnArg, _> = inputs
         .clone()
         .into_pairs()
         .map(|pair| {
@@ -248,7 +248,7 @@ pub fn miniextendr(
             // TODO: add the method it is wrapping as doc comment
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
-            #vis unsafe extern "C" fn #c_ident #generics(#wrapper_inputs) -> ::miniextendr_api::ffi::SEXP {
+            #vis unsafe extern "C" fn #c_ident #generics(#c_wrapper_inputs) -> ::miniextendr_api::ffi::SEXP {
                 let old = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
                 let result = with_r_unwind(move || unsafe {
@@ -310,9 +310,16 @@ pub fn miniextendr(
                 ty: _,
             } = &pat_type;
             let syn::Pat::Ident(pat_ident) = pat.as_ref() else {
+                // TODO: replace with an error
                 unreachable!()
             };
-            pat_ident.ident.clone()
+            let mut arg_name = pat_ident.ident.to_string();
+            if arg_name.starts_with('_') {
+                arg_name.insert_str(0, "unused");
+            }
+            let arg_name = syn::Ident::new(&arg_name, pat_ident.ident.span());
+
+            arg_name
         })
         .collect();
     // TODO: replace the last one with list(...) if dots is available.
@@ -320,9 +327,9 @@ pub fn miniextendr(
     // region: R wrappers generation in `fn`
 
     let r_wrapper_return = if !is_invisible_return_type {
-        quote::quote! {.Call(#c_ident #(,#r_wrapper_args)*)}
+        quote::quote! {.Call(#c_ident #(, #r_wrapper_args)*)}
     } else {
-        quote::quote! {invisible(.Call(#c_ident #(,#r_wrapper_args)*))}
+        quote::quote! {invisible(.Call(#c_ident #(, #r_wrapper_args)*))}
     };
     let r_wrapper = quote::quote! {
         #rust_ident <- function(#(#r_wrapper_args),*) {

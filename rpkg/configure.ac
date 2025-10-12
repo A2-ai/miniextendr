@@ -33,6 +33,16 @@ AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
 
+# TODO
+dnl Create a document.rs.in file and replace certain places with the crate name.
+
+# TODO
+dnl Create the src/entrypoint.c file. It is very barebone and just need to
+dnl adjust to changing package name.
+
+# TODO
+dnl Create a `justfile.in` that replaces hardcoded rpkg.
+
 dnl ---- output files ----
 AC_CONFIG_FILES([
   src/Makevars
