@@ -9,3 +9,4 @@ rpkg/src/rust/target
 .cargo/config.toml
 rpkg/src/Makevars
 rpkg/src/Makevars.win
+rpkg/src/miniextendr_wrappers.R
