@@ -84,11 +84,9 @@ pub fn miniextendr(
             .as_c_str(),
         ident.span(),
     );
-    let mut func_ptr_def: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> =
-        syn::punctuated::Punctuated::new();
-    for _ in 0..inputs.len() {
-        func_ptr_def.push(syn::parse_quote!(SEXP));
-    }
+    let func_ptr_def: Vec<syn::Pat> = (0..inputs.len())
+        .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
+        .collect();
 
     let rust_inputs: syn::punctuated::Punctuated<syn::Ident, _> = inputs
         .clone()
@@ -120,7 +118,7 @@ pub fn miniextendr(
             let punct = pair.punct().cloned();
             let mut arg = pair.into_value();
             if let syn::FnArg::Typed(ref mut pt) = arg {
-                *pt.ty.as_mut() = syn::parse_quote!(SEXP);
+                *pt.ty.as_mut() = syn::parse_quote!(::miniextendr_api::ffi::SEXP);
                 if let syn::Pat::Ident(ident) = pt.pat.as_mut() {
                     ident.mutability = None;
                 }
@@ -149,7 +147,7 @@ pub fn miniextendr(
                         if is_unit_type {
                             Some(quote::quote! {let #ident = (); })
                         } else {
-                            Some(quote::quote! {let #ident = *DATAPTR_RO(#ident).cast(); })
+                            Some(quote::quote! {let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast(); })
                         }
                     }
                     _ => None,
@@ -160,7 +158,7 @@ pub fn miniextendr(
         .collect();
 
     let return_statement = match &output {
-        syn::ReturnType::Default => quote::quote! {unsafe { R_NilValue }},
+        syn::ReturnType::Default => quote::quote! {unsafe { ::miniextendr_api::ffi::R_NilValue }},
         syn::ReturnType::Type(_rarrow, box_type) => {
             if let syn::Type::Path(type_path) = box_type.as_ref() {
                 let last_segment = type_path.path.segments.last().unwrap();
@@ -170,18 +168,18 @@ pub fn miniextendr(
                     quote::quote! {
                         // TODO: set debug flag?
                         // let _ = dbg!(result);
-                        Rf_ScalarInteger(result.unwrap())
+                        ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap())
                     }
                 } else {
                     // TODO: type conversion for non-Result returns
                     quote::quote! {
-                        Rf_ScalarInteger(result)
+                        ::miniextendr_api::ffi::Rf_ScalarInteger(result)
                     }
                 }
             } else {
                 // interpret () -> R_NilValue (R's NULL)
                 quote::quote! {
-                    R_NilValue
+                    ::miniextendr_api::ffi::R_NilValue
                 }
             }
         }
@@ -194,7 +192,7 @@ pub fn miniextendr(
             // TODO: add the method it is wrapping as doc comment
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
-            #vis unsafe extern "C" fn #c_ident #generics(#wrapper_inputs) -> SEXP {
+            #vis unsafe extern "C" fn #c_ident #generics(#wrapper_inputs) -> ::miniextendr_api::ffi::SEXP {
                 let old = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
                 let result = with_r_unwind(move || unsafe {
@@ -303,11 +301,11 @@ pub fn miniextendr(
 
         #[doc(hidden)]
         #[inline(always)]
-        const fn #call_method_def() -> R_CallMethodDef {
+        const fn #call_method_def() -> ::miniextendr_api::ffi::R_CallMethodDef {
             unsafe {
-                R_CallMethodDef {
+                ::miniextendr_api::ffi::R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
-                    fun: Some(std::mem::transmute::<unsafe extern "C" fn(#func_ptr_def) -> SEXP, unsafe extern "C" fn(...) -> SEXP>(#c_ident)),
+                    fun: Some(std::mem::transmute::<unsafe extern "C" fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP, unsafe extern "C" fn(...) -> ::miniextendr_api::ffi::SEXP>(#c_ident)),
                     numArgs: #num_args,
                 }
             }
@@ -531,10 +529,10 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         #[allow(non_snake_case)]
         /// Internal function that is used by R to register the exported
         /// miniextendr items.
-        pub(crate) extern "C" fn #module_entrypoint_ident(dll: *mut DllInfo) {
-            static CALL_ENTRIES: [R_CallMethodDef; {#call_entries_len + 1}] = [
+        pub(crate) extern "C" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
+            static CALL_ENTRIES: [::miniextendr_api::ffi::R_CallMethodDef; {#call_entries_len + 1}] = [
                 #(#call_entries,)*
-                R_CallMethodDef {
+                ::miniextendr_api::ffi::R_CallMethodDef {
                     name: std::ptr::null(),
                     fun: None,
                     numArgs: 0,
@@ -544,7 +542,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(#use_other_modules;)*
 
             unsafe {
-                R_registerRoutines(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
+                ::miniextendr_api::ffi::R_registerRoutines(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
                 // these are already present in entrypoint.c!
                 // R_useDynamicSymbols(dll, Rboolean::FALSE);
                 // R_forceSymbols(dll, Rboolean::TRUE);
