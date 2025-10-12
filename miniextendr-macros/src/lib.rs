@@ -331,8 +331,13 @@ pub fn miniextendr(
     } else {
         quote::quote! {invisible(.Call(#c_ident #(, #r_wrapper_args)*))}
     };
+    let r_wrapper_ident = if abi.is_some() {
+        &quote::format_ident!("unsafe_{rust_ident}")
+    } else {
+        rust_ident
+    };
     let r_wrapper = quote::quote! {
-        #rust_ident <- function(#(#r_wrapper_args),*) {
+        #r_wrapper_ident <- function(#(#r_wrapper_args),*) {
 
             #r_wrapper_return
         }

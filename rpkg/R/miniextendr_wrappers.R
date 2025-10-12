@@ -21,9 +21,9 @@ add_right_mut <- function(left, right) { .Call(C_add_right_mut, left, right) }
 add_left_right_mut <- function(left, right)
 { .Call(C_add_left_right_mut, left, right) }
 
-C_just_panic <- function() { .Call(C_just_panic) }
+unsafe_C_just_panic <- function() { .Call(C_just_panic) }
 
-C_panic_and_catch <- function() { .Call(C_panic_and_catch) }
+unsafe_C_panic_and_catch <- function() { .Call(C_panic_and_catch) }
 
 greetings_with_named_dots <- function(unused_dots)
 { invisible(.Call(C_greetings_with_named_dots, unused_dots)) }
