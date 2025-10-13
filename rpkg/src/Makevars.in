@@ -1,18 +1,43 @@
-RUST_TARGET_DIR=@RUST_TARGET_DIR@
-CARGO_DEP_FILES=@CARGO_DEP_FILES@
 ABS_SRCDIR=@ABS_SRCDIR@
+PROFILE=@CARGO_PROFILE@
+STATICLIB_NAME=@CARGO_STATICLIB_NAME@
+CARGO_TARGET_DIR=@CARGO_TARGET_DIR@
 ENV_RUSTFLAGS=@ENV_RUSTFLAGS@
 
-PKG_LIBS=-L$(RUST_TARGET_DIR)/release -ljuice
+CARGO_LIBDIR=$(CARGO_TARGET_DIR)/$(PROFILE)
+CARGO_AR=$(CARGO_LIBDIR)/lib$(STATICLIB_NAME).a
 
-$(SHLIB): $(OBJECTS) $(RUST_TARGET_DIR)/release/libjuice.a $(CARGO_DEP_FILES)
+R_WRAPPERS_GENERATED=$(ABS_SRCDIR)/miniextendr_wrappers.R
+R_WRAPPERS_CURRENT=$(ABS_SRCDIR)/../R/miniextendr_wrappers.R
+
+PKG_LIBS=-L$(CARGO_LIBDIR) -l$(STATICLIB_NAME)
+
+$(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 $(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
 	cargo generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml
 
-$(RUST_TARGET_DIR)/release/libjuice.a: $(ABS_SRCDIR)/rust/Cargo.lock
-	@RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
-	cargo +nightly build --release --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(RUST_TARGET_DIR)
+$(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock $(ABS_SRCDIR)/rust/document.rs
+	RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
+	cargo +nightly build --lib --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
 
--include $(CARGO_DEP_FILES)
--include $(RUST_TARGET_DIR)/release/libjuice.d
+$(R_WRAPPERS_GENERATED): $(CARGO_AR)
+	cargo +nightly run --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
+
+$(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED) 
+	cp miniextendr_wrappers.R $@
+
+# TODO: these must be included if they are present
+# $(CARGO_AR): $(ABS_SRCDIR)/rust/build.rs
+# $(CARGO_AR): $(ABS_SRCDIR)/rust/.cargo/config.toml
+# $(CARGO_AR): $(ABS_SRCDIR)/rust/rust-toolchain.toml
+# $(CARGO_AR): $(ABS_SRCDIR)/rust/rust-toolchain
+
+-include $(CARGO_LIBDIR)/lib$(STATICLIB_NAME).d
+-include $(CARGO_TARGET_DIR)/*/*.d
+-include $(CARGO_TARGET_DIR)/*/deps/*.d
+-include $(CARGO_TARGET_DIR)/*/build/*/*.d
+
+-include $(CARGO_TARGET_DIR)/*/*/*.d
+-include $(CARGO_TARGET_DIR)/*/*/deps/*.d
+-include $(CARGO_TARGET_DIR)/*/*/build/*/*.d
