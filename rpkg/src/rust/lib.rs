@@ -1,4 +1,7 @@
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::{
+    ffi::{R_NilValue, Rprintf, SEXP},
+    miniextendr, miniextendr_module,
+};
 
 #[derive(Debug)]
 struct PanicRError;
@@ -95,6 +98,36 @@ where
         }
     }
 }
+
+// region
+
+#[derive(Debug)]
+struct MsgOnDrop;
+
+impl Drop for MsgOnDrop {
+    fn drop(&mut self) {
+        unsafe { Rprintf(c"Dropped `MsgOnDrop`!\n\n".as_ptr()) };
+    }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+extern "C" fn drop_on_panic() -> SEXP {
+    let _a = MsgOnDrop;
+    with_r_unwind(|| panic!())
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+extern "C" fn drop_on_panic_with_move() -> SEXP {
+    let a = MsgOnDrop;
+    with_r_unwind(move || {
+        let _a = &a;
+        panic!();
+    })
+}
+
+// endregion
 
 // region: panics, (), and Result
 #[miniextendr]
@@ -249,6 +282,9 @@ miniextendr_module! {
     // TODO: make r wrapper, no C wrapper!
     extern "C" fn C_just_panic;
     extern "C" fn C_panic_and_catch;
+
+    fn drop_on_panic;
+    fn drop_on_panic_with_move;
 
     // TODO: adjust the R wrapper to include list(...) in the arg that is ...
     fn greetings_with_named_dots;

@@ -575,6 +575,9 @@ impl syn::parse::Parse for ExtendrModule {
     }
 }
 
+
+// TODO: Currently, miniextendr_module does not distinguish between
+// `extern "C" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let miniextendr_module = syn::parse_macro_input!(item as ExtendrModule);

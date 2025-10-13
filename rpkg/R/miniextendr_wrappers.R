@@ -25,6 +25,11 @@ unsafe_C_just_panic <- function() { .Call(C_just_panic) }
 
 unsafe_C_panic_and_catch <- function() { .Call(C_panic_and_catch) }
 
+unsafe_drop_on_panic <- function() { .Call(drop_on_panic) }
+
+unsafe_drop_on_panic_with_move <- function()
+{ .Call(drop_on_panic_with_move) }
+
 greetings_with_named_dots <- function(unused_dots = ...)
 { invisible(.Call(C_greetings_with_named_dots, list(unused_dots))) }
 
