@@ -1,4 +1,4 @@
-AC_INIT([rpkg])
+AC_INIT([rpkg], [1.0])
 : ${R_HOME=`R RHOME`}                 dnl ensure R_HOME is set
 AC_CONFIG_SRCDIR([src/entrypoint.c])  dnl safety check
 
@@ -40,6 +40,26 @@ dnl Create a document.rs.in file and replace certain places with the crate name.
 dnl Create the src/entrypoint.c file. It is very barebone and just need to
 dnl adjust to changing package name.
 
+# Ensure entrypoint.c.in exists
+AS_IF([test ! -f "$abs_srcdir/entrypoint.c.in"], [
+  mkdir -p "$abs_srcdir"
+  cat >"$abs_srcdir/entrypoint.c.in" <<'EOF'
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
+
+extern void R_init_@PACKAGE_TARNAME@_miniextendr(DllInfo * dll);
+
+void R_init_@PACKAGE_TARNAME@(DllInfo *dll) {
+    R_init_@PACKAGE_TARNAME@_miniextendr(dll);
+
+    R_useDynamicSymbols(dll, FALSE);
+    R_forceSymbols(dll, TRUE);
+}
+EOF
+])
+
+
 # TODO
 dnl Create a `justfile.in` that replaces hardcoded rpkg.
 
@@ -47,6 +67,7 @@ dnl ---- output files ----
 AC_CONFIG_FILES([
   src/Makevars
   .cargo/config.toml
+  src/entrypoint.c
 ])
 
 AC_CONFIG_COMMANDS([postcopy], [
