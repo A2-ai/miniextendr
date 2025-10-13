@@ -19,7 +19,7 @@ $(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
 
 $(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock $(ABS_SRCDIR)/rust/document.rs
 	RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
-	cargo +nightly build --lib --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
+	cargo +nightly build --lib --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
 	cargo +nightly run --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)

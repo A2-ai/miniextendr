@@ -575,7 +575,6 @@ impl syn::parse::Parse for ExtendrModule {
     }
 }
 
-
 // TODO: Currently, miniextendr_module does not distinguish between
 // `extern "C" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
