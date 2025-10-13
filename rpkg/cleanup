@@ -6,4 +6,6 @@
 rm -f src/Makevars
 # rm -rf src/target
 rm -rf src/rust/target
+rm -rf src/rust/document.rs # we now produce this in configure.ac
+# rm -rf src/entrypoint.c # we now produce this in configure.ac
 rm -rf src/miniextendr_wrappers.R

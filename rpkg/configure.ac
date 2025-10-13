@@ -35,8 +35,46 @@ AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
 
 # TODO
 dnl Create a document.rs.in file and replace certain places with the crate name.
+# Rust-safe tarname (hyphens → underscores)
+pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
+AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 
-# TODO
+# Ensure template exists
+AS_IF([test ! -f "$srcdir/src/rust/document.rs.in"], [
+  mkdir -p "$srcdir/src/rust"
+  cat >"$srcdir/src/rust/document.rs.in" <<'EOF'
+use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS@ as DEPS;
+use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS@ as PARTS;
+
+fn main() {
+    let dep_flat: Vec<&'static str> = DEPS.concat();
+    let roots: @<:@&@<:@&'static str@:>@; 2@:>@ = @<:@PARTS, &dep_flat@:>@;
+
+    let mut f = std::fs::OpenOptions::new()
+        .write(true)
+        .truncate(true)
+        .create(true)
+        .open("miniextendr_wrappers.R")
+        .unwrap();
+
+    let mut seen = std::collections::HashSet::new();
+    for group in roots {
+        for &s in group {
+            if seen.insert(s) {
+                use std::io::Write;
+                f.write_all(s.as_bytes()).unwrap();
+                f.write_all(b"\n\n").unwrap();
+            }
+        }
+    }
+}
+EOF
+])
+
+# Generate the concrete file with substitutions
+AC_CONFIG_FILES([src/rust/document.rs])
+
+
 dnl Create the src/entrypoint.c file. It is very barebone and just need to
 dnl adjust to changing package name.
 
@@ -48,10 +86,10 @@ AS_IF([test ! -f "$abs_srcdir/entrypoint.c.in"], [
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
-extern void R_init_@PACKAGE_TARNAME@_miniextendr(DllInfo * dll);
+extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
 
-void R_init_@PACKAGE_TARNAME@(DllInfo *dll) {
-    R_init_@PACKAGE_TARNAME@_miniextendr(dll);
+void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
     R_forceSymbols(dll, TRUE);

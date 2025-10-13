@@ -2,10 +2,10 @@
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
-extern void R_init_@PACKAGE_TARNAME@_miniextendr(DllInfo * dll);
+extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
 
-void R_init_@PACKAGE_TARNAME@(DllInfo *dll) {
-    R_init_@PACKAGE_TARNAME@_miniextendr(dll);
+void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
     R_forceSymbols(dll, TRUE);
