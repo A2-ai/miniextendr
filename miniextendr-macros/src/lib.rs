@@ -272,10 +272,11 @@ pub fn miniextendr(
                     // dbg!(#rust_inputs);
                     let result = #rust_ident(#(#rust_inputs),*);
                     #return_statement
+                }, move || {
+                    // TODO: reset things
+                }, move || {
+                    std::panic::set_hook(old);
                 });
-                // FIXME: in case of a panic, the panic hook is never reset.
-                // move this to the clean-up trampoline.
-                std::panic::set_hook(old);
                 result
             }
         }
@@ -397,7 +398,7 @@ pub fn miniextendr(
     let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
 
     // endregion
-
+    let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
     quote::quote! {
         #original_item
 
@@ -411,7 +412,7 @@ pub fn miniextendr(
             unsafe {
                 ::miniextendr_api::ffi::R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
-                    fun: Some(std::mem::transmute::<unsafe extern "C" fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP, unsafe extern "C" fn(...) -> ::miniextendr_api::ffi::SEXP>(#c_ident)),
+                    fun: Some(std::mem::transmute::<unsafe #abi fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP, unsafe #abi fn(...) -> ::miniextendr_api::ffi::SEXP>(#c_ident)),
                     numArgs: #num_args,
                 }
             }
