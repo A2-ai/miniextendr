@@ -30,9 +30,9 @@ To ensure that both the `miniextendr-*` crates are updated together with the
 accompanying R-package `rpkg` and its embedded Rust crate `rpkg` we have a `justfile` runner, with a few noteworthy commands:
 
 ```shell
-just cargo fmt
-just cargo check
-just cargo build
-just cargo-expand
-just cargo-doc
+just cargo-all fmt
+just cargo-all check
+just cargo-all build
+just cargo expand
+just cargo doc
 ```

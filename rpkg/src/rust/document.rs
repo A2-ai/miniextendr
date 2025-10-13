@@ -1,3 +1,4 @@
+// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 use juice::R_WRAPPERS_DEPS_rpkg as DEPS;
 use juice::R_WRAPPERS_PARTS_rpkg as PARTS;
 

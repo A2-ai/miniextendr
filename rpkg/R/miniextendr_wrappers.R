@@ -30,17 +30,29 @@ unsafe_drop_on_panic <- function() { .Call(drop_on_panic) }
 unsafe_drop_on_panic_with_move <- function()
 { .Call(drop_on_panic_with_move) }
 
-greetings_with_named_dots <- function(unused_dots = ...)
-{ invisible(.Call(C_greetings_with_named_dots, list(unused_dots))) }
+greetings_with_named_dots <- function(dots = ...)
+{ invisible(.Call(C_greetings_with_named_dots, list(dots))) }
+
+greetings_with_named_and_unused_dots <- function(unused_dots = ...)
+{
+    invisible(.Call(C_greetings_with_named_and_unused_dots,
+    list(unused_dots)))
+}
 
 greetings_with_nameless_dots <- function(...)
 { invisible(.Call(C_greetings_with_nameless_dots, list(...))) }
 
-greetings_last_as_named_dots <-
-function(unused_exclamations, unused_dots = ...)
+greetings_last_as_named_dots <- function(unused_exclamations, dots = ...)
 {
     invisible(.Call(C_greetings_last_as_named_dots, unused_exclamations,
-    list(unused_dots)))
+    list(dots)))
+}
+
+greetings_last_as_named_and_unused_dots <-
+function(unused_exclamations, unused_dots = ...)
+{
+    invisible(.Call(C_greetings_last_as_named_and_unused_dots,
+    unused_exclamations, list(unused_dots)))
 }
 
 greetings_last_as_nameless_dots <- function(unused_exclamations, ...)

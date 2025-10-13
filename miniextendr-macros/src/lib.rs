@@ -281,8 +281,10 @@ pub fn miniextendr(
             }
         }
     };
-    // check that #[no_mangle] or #[unsafe(no_mangle)] is present!
+
+    // check the validity of the provided C-function!
     if abi.is_some() {
+        // check that #[no_mangle] or #[unsafe(no_mangle)] is present!
         let has_no_mangle = attrs.iter().any(|attr| {
             attr.path().is_ident("no_mangle")
                 || attr
@@ -306,6 +308,31 @@ pub fn miniextendr(
             )
             .into_compile_error()
             .into();
+        }
+
+        // TODO: check that the return type is SEXP;
+        match output {
+            non_return_type @ syn::ReturnType::Default => {
+                return syn::Error::new(non_return_type.span(), "output must be SEXP")
+                    .into_compile_error()
+                    .into();
+            }
+            syn::ReturnType::Type(_rarrow, output_type) => match output_type.as_ref() {
+                syn::Type::Path(type_path) => {
+                    if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident) {
+                        if path_to_sexp != "SEXP" {
+                            return syn::Error::new(path_to_sexp.span(), "output must be SEXP")
+                                .into_compile_error()
+                                .into();
+                        }
+                    }
+                }
+                _ => {
+                    return syn::Error::new(output_type.span(), "output must be SEXP")
+                        .into_compile_error()
+                        .into();
+                }
+            },
         }
     }
 
@@ -353,7 +380,6 @@ pub fn miniextendr(
         }
     }
     let named_dots = named_dots;
-    // TODO: replace the last one with list(...) if dots is available.
 
     // region: R wrappers generation in `fn`
     let mut r_wrapper_args: Vec<_> = r_wrapper_args
@@ -398,6 +424,7 @@ pub fn miniextendr(
     let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
 
     // endregion
+
     let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
     quote::quote! {
         #original_item
