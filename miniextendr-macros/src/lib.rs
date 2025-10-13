@@ -406,6 +406,8 @@ pub fn miniextendr(
 
         const #r_wrapper_generator: &'static str = #r_wrapper_str;
 
+        // TODO: unhide docs if you add the num_args and the rust-name, then the C wrapper name!
+        // also handle the case where there is no rust-name because it is an `unsafe extern "C"` being exported!
         #[doc(hidden)]
         #[inline(always)]
         const fn #call_method_def() -> ::miniextendr_api::ffi::R_CallMethodDef {
@@ -419,14 +421,6 @@ pub fn miniextendr(
         }
     }
     .into()
-}
-
-#[proc_macro_attribute]
-pub fn r_tokens(
-    _attr: proc_macro::TokenStream,
-    _item: proc_macro::TokenStream,
-) -> proc_macro::TokenStream {
-    proc_macro::TokenStream::new()
 }
 
 struct ExtendrModuleFunction {
@@ -637,10 +631,14 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         //TODO: still need to deal with modules and their respective wrappers..
         // what to do here?
 
+        #[doc(hidden)]
         pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
+        #[doc(hidden)]
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
 
-        #[doc(hidden)]
+        //TODO: add the use-modules and their entry point docs to the doc!
+
+        // #[doc(hidden)]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
         /// Internal function that is used by R to register the exported

@@ -18,6 +18,7 @@ AC_SUBST([CARGO_PROFILE])
 
 # TODO: read this from Cargo.toml manually.. or somewhere else
 AC_ARG_VAR([CARGO_STATICLIB_NAME], [Name of Rust static library])
+# TODO: use cargo metadata to figure out what the library or libraries ought to be named!
 : ${CARGO_STATICLIB_NAME="juice"}
 AC_SUBST([CARGO_STATICLIB_NAME])
 

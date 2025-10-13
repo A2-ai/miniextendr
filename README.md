@@ -23,3 +23,16 @@ autoreconf -vif
 
 The `/configure`-script is supposed to be built during developer-time, and thus
 users are not expected to run `autoconf`/`autoreconf`.
+
+### `justfile`
+
+To ensure that both the `miniextendr-*` crates are updated together with the
+accompanying R-package `rpkg` and its embedded Rust crate `rpkg` we have a `justfile` runner, with a few noteworthy commands:
+
+```shell
+just cargo fmt
+just cargo check
+just cargo build
+just cargo-expand
+just cargo-doc
+```
