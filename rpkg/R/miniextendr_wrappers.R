@@ -25,18 +25,22 @@ unsafe_C_just_panic <- function() { .Call(C_just_panic) }
 
 unsafe_C_panic_and_catch <- function() { .Call(C_panic_and_catch) }
 
-greetings_with_named_dots <- function(unused_dots)
-{ invisible(.Call(C_greetings_with_named_dots, unused_dots)) }
+greetings_with_named_dots <- function(unused_dots = ...)
+{ invisible(.Call(C_greetings_with_named_dots, list(unused_dots))) }
 
-greetings_with_nameless_dots <- function()
-{ invisible(.Call(C_greetings_with_nameless_dots)) }
+greetings_with_nameless_dots <- function(...)
+{ invisible(.Call(C_greetings_with_nameless_dots, list(...))) }
 
-greetings_last_as_named_dots <- function(unused_exclamations, unused_dots)
+greetings_last_as_named_dots <-
+function(unused_exclamations, unused_dots = ...)
 {
     invisible(.Call(C_greetings_last_as_named_dots, unused_exclamations,
-    unused_dots))
+    list(unused_dots)))
 }
 
-greetings_last_as_nameless_dots <- function(unused_exclamations)
-{ invisible(.Call(C_greetings_last_as_nameless_dots, unused_exclamations)) }
+greetings_last_as_nameless_dots <- function(unused_exclamations, ...)
+{
+    invisible(.Call(C_greetings_last_as_nameless_dots, unused_exclamations,
+    list(...)))
+}
 

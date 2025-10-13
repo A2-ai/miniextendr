@@ -38,24 +38,36 @@ pub fn miniextendr(
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
     // dots support here
-    let dots = if let Some(variadic) = item.sig.variadic {
-        if let Some((pat, _)) = variadic.pat {
-            if let syn::Pat::Ident(pat_ident) = pat.as_ref() {
-                Some(pat_ident.ident.clone())
+    let has_dots = item.sig.variadic.is_some();
+    let mut named_dots: Option<syn::Ident> = if has_dots {
+        let dots = item.sig.variadic.as_ref().unwrap();
+        if let Some(named_dots) = dots.pat.as_ref() {
+            if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
+                Some(named_dots_ident.ident.clone())
             } else {
+                // FIXME: maybe an error? what could lead to here?
                 None
             }
         } else {
+            // unnamed dots
             None
         }
     } else {
         None
     };
     item.sig.variadic = None;
-    // FIXME: ... is being replaced by () which gets replaced by SEXP...
-    // do something else...
-    if let Some(ident_dots) = dots {
-        item.sig.inputs.push(syn::parse_quote!(#ident_dots: ()));
+    // instead of ... replace with Dots type!
+    //TODO: investigate why this needs to be &Dots.
+    if has_dots {
+        item.sig
+            .inputs
+            .push(if let Some(named_dots) = named_dots.as_ref() {
+                syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
+            } else {
+                // cannot use `_` as variable name, thus cannot use it as a placeholder for `...``
+                // FIXME: check that no other parameter is called `_dots`!
+                syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
+            });
     }
     let original_item = item.clone();
     use quote::ToTokens;
@@ -300,6 +312,7 @@ pub fn miniextendr(
         .into_iter()
         .map(|x| {
             let syn::FnArg::Typed(pat_type) = &x else {
+                // FIXME: convert this to an error
                 unreachable!()
             };
             let syn::PatType {
@@ -309,23 +322,51 @@ pub fn miniextendr(
                 colon_token: _,
                 ty: _,
             } = &pat_type;
-            let syn::Pat::Ident(pat_ident) = pat.as_ref() else {
-                // TODO: replace with an error
-                unreachable!()
-            };
-            let mut arg_name = pat_ident.ident.to_string();
+            // dbg!(&pat);
+            match pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => {
+                    let mut arg_name = pat_ident.ident.to_string();
+                    if arg_name.starts_with('_') {
+                        arg_name.insert_str(0, "unused");
+                    }
+                    let arg_name = syn::Ident::new(&arg_name, pat_ident.ident.span());
+
+                    arg_name
+                }
+                _ => todo!(),
+            }
+        })
+        .collect();
+
+    // need to change the leading underscore of a dots variable to match
+    // r's requirement of non _ as leading character in alias/variable names.
+    if has_dots {
+        if let Some(named_dots) = &mut named_dots {
+            // TODO: promote to a helper method, see `r_wrapper_args` processing
+            let mut arg_name = named_dots.to_string();
             if arg_name.starts_with('_') {
                 arg_name.insert_str(0, "unused");
             }
-            let arg_name = syn::Ident::new(&arg_name, pat_ident.ident.span());
-
-            arg_name
-        })
-        .collect();
+            let arg_name = syn::Ident::new(&arg_name, named_dots.span());
+            *named_dots = arg_name;
+        }
+    }
+    let named_dots = named_dots;
     // TODO: replace the last one with list(...) if dots is available.
 
     // region: R wrappers generation in `fn`
-
+    let mut r_wrapper_args: Vec<_> = r_wrapper_args
+        .into_iter()
+        .map(|x| x.into_token_stream())
+        .collect();
+    if has_dots {
+        r_wrapper_args.pop();
+        if let Some(named_dots) = &named_dots {
+            r_wrapper_args.push(syn::parse_quote!(list(#named_dots)));
+        } else {
+            r_wrapper_args.push(syn::parse_quote!(list(...)));
+        }
+    }
     let r_wrapper_return = if !is_invisible_return_type {
         quote::quote! {.Call(#c_ident #(, #r_wrapper_args)*)}
     } else {
@@ -336,6 +377,14 @@ pub fn miniextendr(
     } else {
         rust_ident
     };
+    if has_dots {
+        r_wrapper_args.pop();
+        if let Some(named_dots) = named_dots {
+            r_wrapper_args.push(syn::parse_quote!(#named_dots = ...));
+        } else {
+            r_wrapper_args.push(syn::parse_quote!(...));
+        }
+    }
     let r_wrapper = quote::quote! {
         #r_wrapper_ident <- function(#(#r_wrapper_args),*) {
 

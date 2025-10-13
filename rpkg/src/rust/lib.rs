@@ -284,3 +284,11 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 }
 
 // endregion
+
+// region: weird
+
+// FIXME: should compile...
+// #[miniextendr]
+// fn underscore_it_all(_: i32, _: f64) {}
+
+// endregion
