@@ -12,6 +12,10 @@ pub enum Rboolean {
     TRUE = 1,
 }
 
+// TODO: I don't think `R_CFinalizer_t` can be None, so maybe it ought to be NonNull
+#[allow(non_camel_case_types)]
+pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
+
 unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
@@ -31,6 +35,29 @@ unsafe extern "C" {
         cleanfun_data: *mut ::std::os::raw::c_void,
         cont: SEXP,
     ) -> SEXP;
+
+    // Rinternals.h
+
+    #[doc = " External pointer interface"]
+    pub fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
+    pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
+    pub fn R_ExternalPtrTag(s: SEXP) -> SEXP;
+    pub fn R_ExternalPtrProtected(s: SEXP) -> SEXP;
+    pub fn R_ClearExternalPtr(s: SEXP);
+    pub fn R_SetExternalPtrAddr(s: SEXP, p: *mut ::std::os::raw::c_void);
+    pub fn R_SetExternalPtrTag(s: SEXP, tag: SEXP);
+    pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
+    #[doc = " Added in R 3.4.0"]
+    pub fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
+    pub fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
+    pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
+    pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
+    pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
+    pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
+
+    // Rinternals.h
+    pub fn Rf_protect(arg1: SEXP) -> SEXP;
+    pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
 
     // Rinternals.h
     // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
