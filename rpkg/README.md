@@ -11,3 +11,7 @@ autoreconf
 
 Users need not run this.
 
+## TODO
+
+- [ ] Update `.Rbuildignore` in `rpkg`.
+- [ ] Rename the embedded library to something else other than `juice`.
