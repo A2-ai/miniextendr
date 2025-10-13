@@ -29,7 +29,7 @@
 /// the R wrapper is named `unsafe_*` together with the provided name.
 ///
 ///
-/// ## Variadic support: `[Dots]` / DotDotDot / `...`
+/// ## Variadic support: [`Dots`] / DotDotDot / `...`
 ///
 /// It is possible to provide `...` as the last argument in an `miniextendr`-`fn`.
 /// The corresponding R wrapper will then provide this argument as an evaluated arguments `list(...)`.
@@ -47,11 +47,54 @@
 // TODO
 ///
 /// [`&Dots`]: dots::Dots
+/// [`Dots`]: dots::Dots
 pub use miniextendr_macros::miniextendr;
 pub use miniextendr_macros::miniextendr_module;
 
 pub mod ffi;
 
+pub mod unwind {
+    use crate::ffi::{R_MakeUnwindCont, R_UnwindProtect, Rboolean, SEXP};
+    use std::ffi::c_void;
+
+    unsafe extern "C" fn fun_trampoline<O>(p: *mut c_void) -> SEXP
+    where
+        O: FnOnce() -> SEXP,
+    {
+        let slot = unsafe { p.cast::<Option<O>>().as_mut().unwrap() };
+        slot.take().unwrap()()
+    }
+
+    unsafe extern "C" fn clean_trampoline<F>(p: *mut c_void, jump: Rboolean)
+    where
+        F: FnOnce(),
+    {
+        if let Some(fin) = unsafe { p.cast::<Option<F>>().as_mut().unwrap().take() } {
+            fin();
+        }
+    }
+
+    pub fn with_r_unwind_protect<O, F>(op: O, fin: F) -> SEXP
+    where
+        O: FnOnce() -> SEXP,
+        F: FnOnce(),
+    {
+        let mut op_slot: Option<O> = Some(op);
+        let mut fin_slot: Option<F> = Some(fin);
+        // TODO: save this in a thread_local!
+        let continuation = unsafe { R_MakeUnwindCont() };
+
+        unsafe {
+            R_UnwindProtect(
+                Some(fun_trampoline::<O>),
+                (&mut op_slot as *mut Option<O>).cast(),
+                Some(clean_trampoline::<F>),
+                (&mut fin_slot as *mut Option<F>).cast(),
+                continuation,
+            )
+        }
+    }
+}
 pub mod dots {
     use crate::ffi::SEXP;
 

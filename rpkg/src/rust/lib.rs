@@ -1,94 +1,9 @@
 use miniextendr_api::{
-    ffi::{R_NilValue, Rprintf, SEXP},
+    ffi::{Rprintf, SEXP},
     miniextendr, miniextendr_module,
+    unwind::with_r_unwind_protect,
 };
 
-struct Payload<F, C, D> {
-    op: Option<F>,
-    on_jump: Option<C>,
-    finally: Option<D>,
-}
-#[inline]
-unsafe extern "C" fn tramp_once<F, C, D>(p: *mut std::ffi::c_void) -> SEXP
-where
-    F: FnOnce() -> SEXP + std::panic::UnwindSafe,
-    C: FnOnce(),
-    D: FnOnce(),
-{
-    let pl = unsafe { p.cast::<Payload<F, C, D>>().as_mut().unwrap() };
-    let op = pl.op.take().expect("op already taken");
-
-    match std::panic::catch_unwind(op) {
-        Ok(val) => val,
-        Err(payload) => {
-            // Extract message safely
-            let msg = if let Some(&s) = payload.downcast_ref::<&'static str>() {
-                s
-            } else if let Some(s) = payload.downcast_ref::<String>() {
-                s.as_str()
-            } else {
-                "unusual rust panic occurred; please report this"
-            };
-            let cmsg = std::ffi::CString::new(msg)
-                .expect("the panic message wrapping failed; this is very problematic");
-            drop(payload);
-            // Never returns; triggers R's longjmp, then cleanfn runs.
-            unsafe { ::miniextendr_api::ffi::Rf_error(cmsg.as_ptr()) }
-        }
-    }
-}
-
-unsafe extern "C" fn clean<F, C, D>(
-    p: *mut std::ffi::c_void,
-    jump: ::miniextendr_api::ffi::Rboolean,
-) where
-    F: FnOnce() -> SEXP + std::panic::UnwindSafe,
-    C: FnOnce(),
-    D: FnOnce(),
-{
-    dbg!("just tell me");
-    if p.is_null() {
-        return;
-    }
-    let mut boxed: Box<Payload<F, C, D>> = unsafe { Box::from_raw(p.cast()) };
-
-    if jump != ::miniextendr_api::ffi::Rboolean::FALSE {
-        if let Some(on_jump) = boxed.on_jump.take() {
-            on_jump(); // do not call R APIs that may longjmp here
-        }
-    }
-
-    if let Some(finally) = boxed.finally.take() {
-        finally(); // always runs
-    }
-    // Box drops here in both paths, releasing any captured inputs.
-}
-
-/// Run `op` under R_UnwindProtect. If a Rust panic or R error occurs,
-/// the on-jump hook runs in the cleanup path.
-pub fn with_r_unwind<F, C, D>(op: F, on_jump: C, finally: D) -> SEXP
-where
-    F: FnOnce() -> SEXP + std::panic::UnwindSafe,
-    C: FnOnce(),
-    D: FnOnce(),
-{
-    let payload: *mut std::ffi::c_void = Box::into_raw(Box::new(Payload {
-        op: Some(op),
-        on_jump: Some(on_jump),
-        finally: Some(finally),
-    }))
-    .cast();
-
-    unsafe {
-        ::miniextendr_api::ffi::R_UnwindProtect(
-            Some(tramp_once::<F, C, D>),
-            payload,
-            Some(clean::<F, C, D>),
-            payload,
-            core::ptr::null_mut(), // no continuation token
-        )
-    }
-}
 // region
 
 #[derive(Debug)]
@@ -105,20 +20,19 @@ impl Drop for MsgOnDrop {
 extern "C" fn drop_on_panic() -> SEXP {
     let a = MsgOnDrop;
     // fail
-    with_r_unwind(|| panic!(), || {}, || {})
+    with_r_unwind_protect(|| panic!(), || {})
 }
 
 #[miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn drop_on_panic_with_move() -> SEXP {
     let a = MsgOnDrop;
-    with_r_unwind(
+    with_r_unwind_protect(
         move || {
             let _a = &a;
             // works!
             panic!();
         },
-        || {},
         || {},
     )
 }

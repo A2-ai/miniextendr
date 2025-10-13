@@ -263,7 +263,7 @@ pub fn miniextendr(
             #vis unsafe extern "C" fn #c_ident #generics(#c_wrapper_inputs) -> ::miniextendr_api::ffi::SEXP {
                 let old = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
-                let result = with_r_unwind(move || unsafe {
+                let result = ::miniextendr_api::unwind::with_r_unwind_protect(move || unsafe {
                     // TODO: these borrows ought to be used based on the mutability requirements...
                     #[allow(unused_imports)]
                     use std::borrow::{Borrow, BorrowMut};
@@ -272,8 +272,6 @@ pub fn miniextendr(
                     // dbg!(#rust_inputs);
                     let result = #rust_ident(#(#rust_inputs),*);
                     #return_statement
-                }, move || {
-                    // TODO: reset things
                 }, move || {
                     std::panic::set_hook(old);
                 });
