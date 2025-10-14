@@ -202,14 +202,12 @@ miniextendr_module! {
     fn add_right_mut;
     fn add_left_right_mut;
 
-    // TODO: make r wrapper, no C wrapper!
     extern "C" fn C_just_panic;
     extern "C" fn C_panic_and_catch;
 
     fn drop_on_panic;
     fn drop_on_panic_with_move;
 
-    // TODO: adjust the R wrapper to include list(...) in the arg that is ...
     fn greetings_with_named_dots;
     fn greetings_with_named_and_unused_dots;
     fn greetings_with_nameless_dots;
@@ -228,7 +226,6 @@ fn invisibly_return_no_arrow() {}
 #[miniextendr]
 fn invisibly_return_arrow() -> () {}
 
-// TODO:
 #[miniextendr]
 fn invisibly_option_return_none() -> Option<()> {
     None
