@@ -2,12 +2,19 @@ AC_INIT([rpkg], [1.0])
 : ${R_HOME=`R RHOME`}                 dnl ensure R_HOME is set
 AC_CONFIG_SRCDIR([src/entrypoint.c])  dnl safety check
 
+# TODO: write a rust analyzer friendly command.
+# see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
+
+
+
 dnl ---- canonical paths ----
 abs_top_srcdir=`(cd "$srcdir" && pwd)`
 abs_srcdir="$abs_top_srcdir/src"
 AC_SUBST([ABS_SRCDIR], ["$abs_srcdir"])
 
 dnl ---- Cargo configuration ----
+# TODO: Add all these to the R build process
+# https://doc.rust-lang.org/cargo/reference/environment-variables.html
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: src/rust/target)])
 : ${CARGO_TARGET_DIR="$abs_srcdir/rust/target"}
 AC_SUBST([CARGO_TARGET_DIR])
