@@ -471,6 +471,7 @@ impl syn::parse::Parse for ExtendrModuleFunction {
 
 struct ExtendrModuleStruct {
     _struct_token: syn::Token![struct],
+    #[allow(dead_code)]
     pub ident: syn::Ident,
 }
 
@@ -533,6 +534,7 @@ struct ExtendrModule {
     pub extendr_use: Vec<ExtendrModuleUse>,
     pub extendr_fn: Vec<ExtendrModuleFunction>,
     pub extendr_struct: Vec<ExtendrModuleStruct>,
+    // TODO: add extendr_impl: Vec<ExtendrImpl> 
 }
 
 enum ExtendrItem {

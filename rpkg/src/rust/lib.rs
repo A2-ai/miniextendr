@@ -11,6 +11,9 @@ struct MsgOnDrop;
 
 impl Drop for MsgOnDrop {
     fn drop(&mut self) {
+        // FiXME: use thread-local for Rprintf, and make Rprintf private!
+        // put an alias on the macro that uses the thread-local buffer to Rprintf!
+        
         unsafe { Rprintf(c"Dropped `MsgOnDrop`!\n\n".as_ptr()) };
     }
 }
