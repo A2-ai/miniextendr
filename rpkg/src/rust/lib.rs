@@ -18,7 +18,7 @@ impl Drop for MsgOnDrop {
 #[miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn drop_on_panic() -> SEXP {
-    let a = MsgOnDrop;
+    let _a = MsgOnDrop;
     // fail
     with_r_unwind_protect(|| panic!(), || {})
 }
@@ -67,7 +67,7 @@ fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
 
 #[miniextendr]
 fn add_panic(_left: i32, _right: i32) -> i32 {
-    let a = MsgOnDrop;
+    let _a = MsgOnDrop;
     panic!("we cannot add right now! ");
     #[allow(unreachable_code)]
     {
@@ -77,7 +77,7 @@ fn add_panic(_left: i32, _right: i32) -> i32 {
 
 #[miniextendr]
 fn add_r_error(_left: i32, _right: i32) -> i32 {
-    let a = MsgOnDrop;
+    let _a = MsgOnDrop;
     // WARNING: doesn't drop
     unsafe { ::miniextendr_api::ffi::Rf_error(c"r error in `add_r_error`".as_ptr()) };
     #[allow(unreachable_code)]
