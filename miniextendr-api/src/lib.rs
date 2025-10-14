@@ -1,4 +1,9 @@
-/// Export a rust function to R
+//!
+//! 
+//! 
+//! 
+
+// Export a rust function to R
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -113,7 +118,6 @@ pub mod unwind {
     // region: passing the payload!
 
     type Payload = Box<dyn std::any::Any + Send + 'static>;
-
     pub unsafe fn payload_to_sexp(payload: Payload) -> SEXP {
         // box-in-a-box to make a thin pointer
         let outer: Box<Payload> = Box::new(payload);
@@ -124,7 +128,6 @@ pub mod unwind {
         unsafe { Rf_unprotect(1) };
         ext
     }
-
     pub unsafe fn sexp_to_payload(s: SEXP) -> Result<Payload, ()> {
         // no type checking...
         // if R_ExternalPtrTag(s) != payload_tag() {

@@ -93,19 +93,20 @@ pub fn miniextendr(
         rust_ident
     };
 
+    // name of the C-wrapper
     let c_ident_name = syn::LitCStr::new(
         std::ffi::CString::new(c_ident.to_string())
             .expect("couldn't crate a C-string for the C wrapper name")
             .as_c_str(),
         ident.span(),
     );
+    // registration of the C-wrapper
     // these are needed to transmute fn-item to fn-pointer correctly.
     let func_ptr_def: Vec<syn::Pat> = (0..inputs.len())
         .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
         .collect();
 
     // calling the rust function with
-
     let rust_inputs: Vec<syn::Ident> = inputs
         .iter()
         .filter_map(|arg| {
@@ -119,21 +120,36 @@ pub fn miniextendr(
         .collect();
     // dbg!(&rust_inputs);
 
-    let c_wrapper_inputs: syn::punctuated::Punctuated<syn::FnArg, _> = inputs
+    // calling the C-wrapper with
+    let c_wrapper_inputs: Vec<_> = inputs
         .clone()
         .into_pairs()
         .map(|pair| {
-            let punct = pair.punct().cloned();
-            let mut arg = pair.into_value();
-            if let syn::FnArg::Typed(ref mut pt) = arg {
-                *pt.ty.as_mut() = syn::parse_quote!(::miniextendr_api::ffi::SEXP);
-                if let syn::Pat::Ident(ident) = pt.pat.as_mut() {
-                    ident.mutability = None;
+            let arg = pair.value();
+            match arg {
+                syn::FnArg::Receiver(receiver) => {
+                    syn::Error::new(receiver.span(), "impl-blocks not supported yet")
+                        .to_compile_error()
+                    // todo!()
                 }
-            }
-            match punct {
-                Some(c) => syn::punctuated::Pair::Punctuated(arg, c),
-                None => syn::punctuated::Pair::End(arg),
+                syn::FnArg::Typed(pt) => {
+                    let syn::PatType {
+                        attrs: _,
+                        pat,
+                        colon_token: _,
+                        ty: _,
+                    } = pt;
+                    match pat.as_ref() {
+                        syn::Pat::Ident(pat_ident) => {
+                            let mut pat_ident = pat_ident.clone();
+                            pat_ident.mutability = None;
+                            pat_ident.by_ref = None;
+                            let ident = pat_ident;
+                            syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
+                        }
+                        _ => todo!(),
+                    }
+                }
             }
         })
         .collect();
@@ -260,7 +276,7 @@ pub fn miniextendr(
             // TODO: add the method it is wrapping as doc comment
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
-            #vis unsafe extern "C" fn #c_ident #generics(#c_wrapper_inputs) -> ::miniextendr_api::ffi::SEXP {
+            #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 let old = std::panic::take_hook();
                 std::panic::set_hook(Box::new(|_| {}));
                 let result = ::miniextendr_api::unwind::with_r_unwind_protect(move || unsafe {
