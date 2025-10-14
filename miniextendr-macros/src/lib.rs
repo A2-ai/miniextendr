@@ -534,7 +534,7 @@ struct ExtendrModule {
     pub extendr_use: Vec<ExtendrModuleUse>,
     pub extendr_fn: Vec<ExtendrModuleFunction>,
     pub extendr_struct: Vec<ExtendrModuleStruct>,
-    // TODO: add extendr_impl: Vec<ExtendrImpl> 
+    // TODO: add extendr_impl: Vec<ExtendrImpl>
 }
 
 enum ExtendrItem {
