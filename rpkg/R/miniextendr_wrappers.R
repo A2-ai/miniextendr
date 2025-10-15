@@ -61,3 +61,18 @@ greetings_last_as_nameless_dots <- function(unused_exclamations, ...)
     list(...)))
 }
 
+invisibly_return_no_arrow <- function()
+{ invisible(.Call(C_invisibly_return_no_arrow)) }
+
+invisibly_return_arrow <- function()
+{ invisible(.Call(C_invisibly_return_arrow)) }
+
+invisibly_option_return_none <- function()
+{ invisible(.Call(C_invisibly_option_return_none)) }
+
+invisibly_option_return_some <- function()
+{ invisible(.Call(C_invisibly_option_return_some)) }
+
+invisibly_result_return_ok <- function()
+{ invisible(.Call(C_invisibly_result_return_ok)) }
+

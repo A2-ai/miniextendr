@@ -217,6 +217,13 @@ miniextendr_module! {
     fn greetings_last_as_named_dots;
     fn greetings_last_as_named_and_unused_dots;
     fn greetings_last_as_nameless_dots;
+
+    fn invisibly_return_no_arrow;
+    fn invisibly_return_arrow;
+    fn invisibly_option_return_none;
+    fn invisibly_option_return_some;
+    fn invisibly_result_return_ok;
+
 }
 
 // endregion
@@ -231,7 +238,7 @@ fn invisibly_return_arrow() -> () {}
 
 #[miniextendr]
 fn invisibly_option_return_none() -> Option<()> {
-    None
+    None // expectation: error!
 }
 
 #[miniextendr]
