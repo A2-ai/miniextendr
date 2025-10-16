@@ -16,3 +16,7 @@ cargo-expand:
 cargo *ARGS:
     cargo {{ARGS}}
     cargo {{ARGS}} --manifest-path rpkg/src/rust/Cargo.toml
+
+test-r-build:
+    R CMD build --compression=none rpkg
+    tar -xvzf rpkg_0.0.0.9000.tar -C "$(mkdir -p rpkg_build && echo rpkg_build)"

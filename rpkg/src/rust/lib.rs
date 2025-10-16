@@ -1,7 +1,6 @@
 use miniextendr_api::{
     ffi::{Rprintf, SEXP},
     miniextendr, miniextendr_module,
-    unwind::with_r_unwind_protect,
 };
 
 // region
@@ -23,21 +22,14 @@ impl Drop for MsgOnDrop {
 extern "C" fn drop_on_panic() -> SEXP {
     let _a = MsgOnDrop;
     // fail
-    with_r_unwind_protect(|| panic!(), || {})
+    panic!()
 }
 
 #[miniextendr]
 #[unsafe(no_mangle)]
 extern "C" fn drop_on_panic_with_move() -> SEXP {
     let a = MsgOnDrop;
-    with_r_unwind_protect(
-        move || {
-            let _a = &a;
-            // works!
-            panic!();
-        },
-        || {},
-    )
+    panic!();
 }
 
 // endregion

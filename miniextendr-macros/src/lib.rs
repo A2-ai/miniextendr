@@ -38,7 +38,7 @@ pub fn miniextendr(
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
     // dots support here
-//TODO: move to ExtendrFunction?
+    //TODO: move to ExtendrFunction?
     let has_dots = item.sig.variadic.is_some();
     let mut named_dots: Option<syn::Ident> = if has_dots {
         let dots = item.sig.variadic.as_ref().unwrap();
@@ -278,21 +278,7 @@ pub fn miniextendr(
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                let old = std::panic::take_hook();
-                std::panic::set_hook(Box::new(|_| {}));
-                let result = ::miniextendr_api::unwind::with_r_unwind_protect(move || unsafe {
-                    // TODO: these borrows ought to be used based on the mutability requirements...
-                    #[allow(unused_imports)]
-                    use std::borrow::{Borrow, BorrowMut};
-                    #(#input_names)*
-                    // FIXME: shouldn't this borrow?
-                    // dbg!(#rust_inputs);
-                    let result = #rust_ident(#(#rust_inputs),*);
-                    #return_statement
-                }, move || {
-                    std::panic::set_hook(old);
-                });
-                result
+                ::miniextendr_api::ffi::R_NilValue
             }
         }
     };
@@ -351,7 +337,7 @@ pub fn miniextendr(
         }
     }
 
-// region: R wrappers generation in `fn`
+    // region: R wrappers generation in `fn`
     let r_wrapper_args: Vec<_> = inputs
         .into_iter()
         .map(|x| {

@@ -1,3 +1,4 @@
+.DS_Store
 rpkg/configure~
 # autoreconf -vif
 rpkg/autom4te.cache
@@ -10,3 +11,4 @@ rpkg/src/rust/target
 rpkg/src/Makevars
 rpkg/src/Makevars.win
 rpkg/src/miniextendr_wrappers.R
+rpkg_build
