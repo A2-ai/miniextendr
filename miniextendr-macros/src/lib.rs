@@ -38,6 +38,7 @@ pub fn miniextendr(
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
     // dots support here
+//TODO: move to ExtendrFunction?
     let has_dots = item.sig.variadic.is_some();
     let mut named_dots: Option<syn::Ident> = if has_dots {
         let dots = item.sig.variadic.as_ref().unwrap();
@@ -350,6 +351,7 @@ pub fn miniextendr(
         }
     }
 
+// region: R wrappers generation in `fn`
     let r_wrapper_args: Vec<_> = inputs
         .into_iter()
         .map(|x| {
@@ -429,6 +431,10 @@ pub fn miniextendr(
     let r_wrapper = quote::quote! {
         #r_wrapper_ident <- function(#(#r_wrapper_args),*) {
 
+            // TODO: add attribute `r_body_code` to add R code between function call
+            // and return statement!
+            // FIXME: ensure that list(...) is defined _before_ the attribute r_body_code.
+
             #r_wrapper_return
         }
     };
@@ -441,11 +447,17 @@ pub fn miniextendr(
 
     let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
     quote::quote! {
+// rust function!
         #original_item
 
+// C wrapper
         #c_wrapper
 
+// R wrapper
         const #r_wrapper_generator: &'static str = #r_wrapper_str;
+
+
+        // registration of C wrapper in R
 
         // TODO: unhide docs if you add the num_args and the rust-name, then the C wrapper name!
         // also handle the case where there is no rust-name because it is an `unsafe extern "C"` being exported!
