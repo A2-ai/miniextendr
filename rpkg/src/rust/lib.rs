@@ -412,7 +412,7 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
                 .map(|x| x.as_ptr())
                 .unwrap_or_else(|_| c"unexplained rust panic".as_ptr());
             // TODO: use common buffer here..
-            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg)
+            ::miniextendr_api::ffi::Rf_error(cmsg)
         },
     }
 }
