@@ -131,7 +131,6 @@ pub fn miniextendr(
                 syn::FnArg::Receiver(receiver) => {
                     syn::Error::new(receiver.span(), "impl-blocks not supported yet")
                         .to_compile_error()
-                    // todo!()
                 }
                 syn::FnArg::Typed(pt) => {
                     let syn::PatType {
@@ -147,6 +146,9 @@ pub fn miniextendr(
                             pat_ident.by_ref = None;
                             let ident = pat_ident;
                             syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
+                        }
+                        syn::Pat::Wild(_pat_wild) => {
+                            todo!("what should c wrapper do with _ args?")
                         }
                         _ => todo!(),
                     }
