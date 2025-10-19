@@ -16,4 +16,4 @@ path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-miniextendr-api = { path = "/Users/elea/Documents/GitHub/miniextendr/rpkg/src/../../miniextendr-api"}
+miniextendr-api = { path = "@ROOT_MINIEXTENDR_REPO@/miniextendr-api"}

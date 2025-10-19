@@ -76,3 +76,5 @@ invisibly_option_return_some <- function()
 invisibly_result_return_ok <- function()
 { invisible(.Call(C_invisibly_result_return_ok)) }
 
+unsafe_C_rust_worker1 <- function() { .Call(C_rust_worker1) }
+

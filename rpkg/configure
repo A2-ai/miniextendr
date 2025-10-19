@@ -613,6 +613,7 @@ ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
 CARGO_PROFILE
 CARGO_TARGET_DIR
+ROOT_MINIEXTENDR_REPO
 ABS_SRCDIR
 target_alias
 host_alias
@@ -1743,6 +1744,9 @@ abs_srcdir="$abs_top_srcdir/src"
 ABS_SRCDIR="$abs_srcdir"
 
 
+ROOT_MINIEXTENDR_REPO="$abs_srcdir/../.."
+
+
 # TODO: Add all these to the R build process
 # https://doc.rust-lang.org/cargo/reference/environment-variables.html
 
@@ -1846,7 +1850,7 @@ fi
 
 # TODO
 
-ac_config_files="$ac_config_files src/Makevars .cargo/config.toml src/entrypoint.c"
+ac_config_files="$ac_config_files src/rust/Cargo.toml src/Makevars .cargo/config.toml src/entrypoint.c"
 
 
 ac_config_commands="$ac_config_commands postcopy"
@@ -2558,6 +2562,7 @@ for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
+    "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
     ".cargo/config.toml") CONFIG_FILES="$CONFIG_FILES .cargo/config.toml" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;

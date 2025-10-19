@@ -11,6 +11,8 @@ abs_top_srcdir=`(cd "$srcdir" && pwd)`
 abs_srcdir="$abs_top_srcdir/src"
 AC_SUBST([ABS_SRCDIR], ["$abs_srcdir"])
 
+AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$abs_srcdir/../.."])
+
 dnl ---- Cargo configuration ----
 # TODO: Add all these to the R build process
 # https://doc.rust-lang.org/cargo/reference/environment-variables.html
@@ -110,6 +112,7 @@ dnl Create a `justfile.in` that replaces hardcoded rpkg.
 
 dnl ---- output files ----
 AC_CONFIG_FILES([
+  src/rust/Cargo.toml
   src/Makevars
   .cargo/config.toml
   src/entrypoint.c

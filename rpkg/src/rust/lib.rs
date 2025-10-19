@@ -215,6 +215,9 @@ miniextendr_module! {
     fn invisibly_option_return_some;
     fn invisibly_result_return_ok;
 
+    // experimental unwinding support
+    extern fn C_rust_worker1;
+
 }
 
 // endregion
@@ -355,7 +358,7 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
     // TODO: make `bound` configurable
     let bound = 1;
     let (tx, rx) = mpsc::sync_channel::<MainReq>(bound);
-    let main_tx = MainSender(tx.clone());
+    let main_tx = MainSender(tx);
 
     // spawn worker
     let handle = std::thread::spawn(move || -> Result<::miniextendr_api::ffi::SendSEXP, ()> {
