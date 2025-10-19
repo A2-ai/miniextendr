@@ -1,6 +1,5 @@
 AC_INIT([rpkg], [1.0])
 : ${R_HOME=`R RHOME`}                 dnl ensure R_HOME is set
-AC_CONFIG_SRCDIR([src/entrypoint.c])  dnl safety check
 
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
@@ -83,13 +82,13 @@ EOF
 AC_CONFIG_FILES([src/rust/document.rs])
 
 
-dnl Create the src/entrypoint.c file. It is very barebone and just need to
+dnl Create the src/entrypoint.c.in file. It is very barebone and just need to
 dnl adjust to changing package name.
 
 # Ensure entrypoint.c.in exists
 AS_IF([test ! -f "$abs_srcdir/entrypoint.c.in"], [
   mkdir -p "$abs_srcdir"
-  cat >"$abs_srcdir/entrypoint.c.in" <<'EOF'
+  cat >"$abs_srcdir/entrypoint.c.in" <<EOF
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
@@ -104,7 +103,7 @@ void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
 }
 EOF
 ])
-
+AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
 
 # TODO
 dnl Create a `justfile.in` that replaces hardcoded rpkg.

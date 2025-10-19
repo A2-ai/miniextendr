@@ -605,7 +605,7 @@ PACKAGE_STRING='rpkg 1.0'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL=''
 
-ac_unique_file="src/entrypoint.c"
+ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 PACKAGE_TARNAME_RS
@@ -1733,11 +1733,18 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 : ${R_HOME=`R RHOME`}
+# TODO: write a rust analyzer friendly command.
+# see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
+
+
+
 abs_top_srcdir=`(cd "$srcdir" && pwd)`
 abs_srcdir="$abs_top_srcdir/src"
 ABS_SRCDIR="$abs_srcdir"
 
 
+# TODO: Add all these to the R build process
+# https://doc.rust-lang.org/cargo/reference/environment-variables.html
 
 : ${CARGO_TARGET_DIR="$abs_srcdir/rust/target"}
 
@@ -1748,6 +1755,7 @@ ABS_SRCDIR="$abs_srcdir"
 
 # TODO: read this from Cargo.toml manually.. or somewhere else
 
+# TODO: use cargo metadata to figure out what the library or libraries ought to be named!
 : ${CARGO_STATICLIB_NAME="juice"}
 
 
@@ -1819,7 +1827,7 @@ if test ! -f "$abs_srcdir/entrypoint.c.in"
 then :
 
   mkdir -p "$abs_srcdir"
-  cat >"$abs_srcdir/entrypoint.c.in" <<'EOF'
+  cat >"$abs_srcdir/entrypoint.c.in" <<EOF
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
@@ -1835,7 +1843,6 @@ void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
 EOF
 
 fi
-
 
 # TODO
 
