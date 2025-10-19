@@ -283,10 +283,10 @@ struct TaskCtx {
 }
 
 pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> ! {
-    let msg: String = if let Some(s) = payload.downcast_ref::<&str>() {
-        s.to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
+    let msg: String = if let Some(panic_str) = payload.downcast_ref::<&str>() {
+        panic_str.to_string()
+    } else if let Some(panic_string) = payload.downcast_ref::<String>() {
+        panic_string.clone()
     } else {
         "rust panic".to_string()
     };
@@ -298,7 +298,8 @@ pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> !
         .map(|x| x.as_ptr())
         .unwrap_or_else(|_| c"unexplained rust panic".as_ptr());
     // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
-    unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
+    // unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
+    unsafe { ::miniextendr_api::ffi::Rf_error(cmsg) };
 }
 
 unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
@@ -309,14 +310,22 @@ unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api:
     };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f())) {
         Ok(ans) => {
-            let _ = ctx.reply.take().and_then(|tx| {
-                tx.send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }))
-                    .ok()
-            });
+            let _ = ctx
+                .reply
+                .take()
+                .and_then(|tx| {
+                    tx.send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }))
+                        .ok()
+                })
+                .unwrap();
             ans
         }
         Err(payload) => {
-            let _ = ctx.reply.take().and_then(|tx| tx.send(Err(())).ok());
+            let _ = ctx
+                .reply
+                .take()
+                .and_then(|tx| tx.send(Err(())).ok())
+                .unwrap();
             payload_to_r_error(payload)
         }
     }
@@ -326,13 +335,11 @@ unsafe extern "C" fn r_clean_tramp(
     p: *mut std::ffi::c_void,
     _jumping: ::miniextendr_api::ffi::Rboolean,
 ) {
-    // longjmp path: signal Err to unblock worker and drop the task
     let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
     if let Some(tx) = ctx.reply.take() {
-        let _ = tx.send(Err(()));
+        let _ = tx.try_send(Err(()));
     }
-    // release the task runner captures
-    drop(ctx.task.take());
+    let _ = ctx.task.take();
 }
 
 // Run one task on main under R_UnwindProtect.
@@ -374,7 +381,11 @@ impl MainSender {
             f()
         });
         let (tx, rx) = mpsc::sync_channel(1);
-        self.0.send(MainReq::RGuard { task, reply: tx }).ok();
+        let _ = self
+            .0
+            .send(MainReq::RGuard { task, reply: tx })
+            .ok()
+            .unwrap();
         rx.recv().unwrap_or(Err(()))
     }
 }
@@ -405,7 +416,7 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
             // let a = MsgOnDrop;
 
             // #1
-            // panic!("rust panic while running r task");
+            panic!("rust panic while running r task");
 
             // #2
             // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
