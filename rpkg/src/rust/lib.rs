@@ -298,7 +298,7 @@ pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> !
         .map(|x| x.as_ptr())
         .unwrap_or_else(|_| c"unexplained rust panic".as_ptr());
     // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
-    unsafe { ::miniextendr_api::ffi::Rf_error(cmsg) };
+    unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
 }
 
 unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
@@ -309,14 +309,16 @@ unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api:
     };
     match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f())) {
         Ok(ans) => {
-            let _ = ctx
-                .reply
-                .take()
-                .unwrap()
-                .send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }));
+            let _ = ctx.reply.take().and_then(|tx| {
+                tx.send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }))
+                    .ok()
+            });
             ans
         }
-        Err(payload) => payload_to_r_error(payload),
+        Err(payload) => {
+            let _ = ctx.reply.take().and_then(|tx| tx.send(Err(())).ok());
+            payload_to_r_error(payload)
+        }
     }
 }
 
