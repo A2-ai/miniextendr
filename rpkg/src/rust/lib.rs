@@ -1,4 +1,4 @@
-use std::sync::mpsc;
+use std::{panic::catch_unwind, sync::mpsc};
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -285,12 +285,30 @@ struct TaskCtx {
 unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
     // normal path: run task, send Ok, return SEXP
     let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
-    let mut f = ctx.task.take().expect("task missing");
-    let ans = f();
-    if let Some(tx) = ctx.reply.take() {
-        let _ = tx.send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }));
+    let Some(f) = ctx.task.as_mut() else {
+        unreachable!()
+    };
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f())) {
+        Ok(ans) => {
+            let _ = ctx
+                .reply
+                .take()
+                .unwrap()
+                .send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }));
+            ans
+        }
+        Err(payload) => {
+            let msg = payload
+                .downcast_ref::<&str>()
+                .copied()
+                .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
+                .unwrap_or("rust panic");
+            let c = std::ffi::CString::new(msg)
+                .unwrap_or_else(|_| std::ffi::CString::new("rust panic").unwrap());
+            // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
+            unsafe { ::miniextendr_api::ffi::Rf_error(c.as_ptr()) };
+        }
     }
-    ans
 }
 
 unsafe extern "C" fn r_clean_tramp(
@@ -360,18 +378,27 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
     let main_tx = MainSender(tx);
 
     // note: everything outside of the thread will not drop in case of an R error.
+    // note: a rust panic here is not good.
 
     // spawn worker
     let handle = std::thread::spawn(move || -> Result<::miniextendr_api::ffi::SendSEXP, ()> {
-        // let a = MsgOnDrop; // works, even with an R error
-        // Rust work...
-        // Call a batch of R API on main:
-        let sexp: ::miniextendr_api::ffi::SendSEXP = main_tx.with_r_guard(move || unsafe {
-            let a = MsgOnDrop;
-            // FIXME: here `a` is not dropped due to Rf_error.
-            ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+        // note: allocations here will deallocate in case of a panic
 
-            #[allow(unreachable_code)]
+        // #<number>: cases to consider
+
+        // #3
+        // let a = MsgOnDrop;
+        #[allow(unreachable_code)] // tests!
+        let sexp: ::miniextendr_api::ffi::SendSEXP = main_tx.with_r_guard(move || unsafe {
+            // limitation: dropped on a panic, not on an Rf_error!
+            // let a = MsgOnDrop;
+
+            // #1
+            // panic!("rust panic while running r task");
+
+            // #2
+            // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+
             ::miniextendr_api::ffi::R_NilValue
         })?;
         // more Rust work...
