@@ -265,14 +265,13 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 // TODO: Wrap all R api code that `Rf_error/error`s with this mechanism,
 // but also **don't** wrap R api code that do no `Rf_error/error`s in the mechanism.
 
-type RTask = Box<dyn FnMut() -> ::miniextendr_api::ffi::SEXP + Send + 'static>;
+type RTask = Box<dyn FnMut() -> ::miniextendr_api::ffi::SEXP + Send>;
 
 enum MainReq {
     /// Run a batch of R API calls on main under one guard.
     RGuard {
         task: RTask,
-        // reply: mpsc::Sender<Result<::miniextendr_api::ffi::SendSEXP, ()>>, // Err => R longjmp
-        reply: mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>, // Err => R longjmp
+        reply: mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>,
     },
 }
 
@@ -303,7 +302,8 @@ unsafe extern "C" fn r_clean_tramp(
     if let Some(tx) = ctx.reply.take() {
         let _ = tx.send(Err(()));
     }
-    drop(ctx.task.take()); // drop closure to release captures
+    // release the task runner captures
+    drop(ctx.task.take());
 }
 
 // Run one task on main under R_UnwindProtect.
