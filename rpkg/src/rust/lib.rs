@@ -73,7 +73,9 @@ fn add_panic(_left: i32, _right: i32) -> i32 {
 fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     // WARNING: doesn't drop
-    unsafe { ::miniextendr_api::ffi::Rf_error(c"r error in `add_r_error`".as_ptr()) };
+    unsafe {
+        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+    };
     #[allow(unreachable_code)]
     {
         _left + _right
@@ -265,7 +267,7 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 // TODO: Wrap all R api code that `Rf_error/error`s with this mechanism,
 // but also **don't** wrap R api code that do no `Rf_error/error`s in the mechanism.
 
-type RTask = Box<dyn FnMut() -> ::miniextendr_api::ffi::SEXP + Send>;
+type RTask = Box<dyn FnOnce() -> ::miniextendr_api::ffi::SEXP + Send>;
 
 enum MainReq {
     /// Run a batch of R API calls on main under one guard.
@@ -294,21 +296,16 @@ pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> !
     // TODO: add panic_any here, so that packages can hook in their own handling of
     // error messages
 
-    let cmsg = std::ffi::CString::new(msg)
-        .map(|x| x.as_ptr())
-        .unwrap_or_else(|_| c"unexplained rust panic".as_ptr());
+    let cmsg = std::ffi::CString::new(msg).unwrap();
     // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
-    // unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
-    unsafe { ::miniextendr_api::ffi::Rf_error(cmsg) };
+    unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
 }
 
 unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
     // normal path: run task, send Ok, return SEXP
     let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
-    let Some(f) = ctx.task.as_mut() else {
-        unreachable!()
-    };
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f())) {
+    let f = ctx.task.take().unwrap();
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || (f)())) {
         Ok(ans) => {
             let _ = ctx
                 .reply
@@ -374,12 +371,7 @@ impl MainSender {
     where
         F: FnOnce() -> ::miniextendr_api::ffi::SEXP + Send + 'static,
     {
-        // box as FnMut once
-        let mut opt = Some(f);
-        let task: RTask = Box::new(move || {
-            let f = opt.take().unwrap();
-            f()
-        });
+        let task: RTask = Box::new(f);
         let (tx, rx) = mpsc::sync_channel(1);
         let _ = self
             .0
@@ -452,7 +444,10 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
         handle @ Ok(Err(())) => unsafe {
             drop(handle);
             drop(rx);
-            ::miniextendr_api::ffi::Rf_error(c"R error during guarded call".as_ptr())
+            ::miniextendr_api::ffi::Rf_error(
+                c"%s".as_ptr(),
+                c"R error during guarded call".as_ptr(),
+            )
         },
         Err(payload) => payload_to_r_error(payload),
     }
