@@ -1,8 +1,31 @@
-#[non_exhaustive]
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SEXPREC(std::ffi::c_void);
 pub type SEXP = *mut SEXPREC;
+
+/// Send-only handle to a SEXP pointer.
+#[repr(transparent)]
+pub struct SendSEXP {
+    pub inner: SEXP,
+    /// PhantomData<Cell<()>> forces !Sync.
+    pub _not_sync: std::marker::PhantomData<std::cell::Cell<()>>,
+}
+
+impl SendSEXP {
+    #[inline(always)]
+    pub unsafe fn new(inner: SEXP) -> Self {
+        Self {
+            inner,
+            _not_sync: std::marker::PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    pub fn get(self) -> SEXP {
+        self.inner
+    }
+}
+unsafe impl Send for SendSEXP {}
 
 #[repr(i32)]
 #[non_exhaustive]
