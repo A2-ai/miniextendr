@@ -356,20 +356,23 @@ impl MainSender {
 pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
     // channel main<->worker
     // TODO: make `bound` configurable
-    let bound = 1;
-    let (tx, rx) = mpsc::sync_channel::<MainReq>(bound);
+    let (tx, rx) = mpsc::sync_channel::<MainReq>(1);
     let main_tx = MainSender(tx);
+
+    // note: everything outside of the thread will not drop in case of an R error.
 
     // spawn worker
     let handle = std::thread::spawn(move || -> Result<::miniextendr_api::ffi::SendSEXP, ()> {
+        // let a = MsgOnDrop; // works, even with an R error
         // Rust work...
         // Call a batch of R API on main:
         let sexp: ::miniextendr_api::ffi::SendSEXP = main_tx.with_r_guard(move || unsafe {
-            // Put multiple R API calls here. Example pseudo-API:
-            // let x = Rf_allocVector(INTSXP, 1);
-            // INTEGER(x)[0] = 42;
+            let a = MsgOnDrop;
+            // FIXME: here `a` is not dropped due to Rf_error.
+            ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+
+            #[allow(unreachable_code)]
             ::miniextendr_api::ffi::R_NilValue
-            // ::miniextendr_api::ffi::SendSEXP::new(core::ptr::null_mut()) // replace with real SEXP
         })?;
         // more Rust work...
         // Finish: send final SEXP (could be `s` or another)
