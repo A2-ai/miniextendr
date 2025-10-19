@@ -386,8 +386,6 @@ impl MainSender {
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
-    // channel main<->worker
-    // TODO: make `bound` configurable
     let (tx, rx) = mpsc::sync_channel::<MainReq>(1);
     let main_tx = MainSender(tx);
 
@@ -408,10 +406,10 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
             // let a = MsgOnDrop;
 
             // #1
-            panic!("rust panic while running r task");
+            // panic!("rust panic while running r task");
 
             // #2
-            // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+            ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
 
             ::miniextendr_api::ffi::R_NilValue
         })?;
