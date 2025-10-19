@@ -284,6 +284,7 @@ struct TaskCtx {
     reply: Option<mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>>,
 }
 
+#[inline(always)]
 pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> ! {
     let msg: String = if let Some(panic_str) = payload.downcast_ref::<&str>() {
         panic_str.to_string()
@@ -301,6 +302,7 @@ pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> !
     unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
 }
 
+#[inline(always)]
 unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
     // normal path: run task, send Ok, return SEXP
     let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
@@ -328,6 +330,7 @@ unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api:
     }
 }
 
+#[inline(always)]
 unsafe extern "C" fn r_clean_tramp(
     p: *mut std::ffi::c_void,
     _jumping: ::miniextendr_api::ffi::Rboolean,
@@ -340,6 +343,7 @@ unsafe extern "C" fn r_clean_tramp(
 }
 
 // Run one task on main under R_UnwindProtect.
+#[inline(always)]
 fn run_on_main(task: RTask, reply: mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>) {
     let mut ctx = TaskCtx {
         task: Some(task),
@@ -367,6 +371,7 @@ fn run_on_main(task: RTask, reply: mpsc::SyncSender<Result<::miniextendr_api::ff
 struct MainSender(mpsc::SyncSender<MainReq>);
 
 impl MainSender {
+    #[inline(always)]
     fn with_r_guard<F>(&self, f: F) -> Result<::miniextendr_api::ffi::SendSEXP, ()>
     where
         F: FnOnce() -> ::miniextendr_api::ffi::SEXP + Send + 'static,
