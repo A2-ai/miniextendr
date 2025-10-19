@@ -282,6 +282,25 @@ struct TaskCtx {
     reply: Option<mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>>,
 }
 
+pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> ! {
+    let msg: String = if let Some(s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "rust panic".to_string()
+    };
+
+    // TODO: add panic_any here, so that packages can hook in their own handling of
+    // error messages
+
+    let cmsg = std::ffi::CString::new(msg)
+        .map(|x| x.as_ptr())
+        .unwrap_or_else(|_| c"unexplained rust panic".as_ptr());
+    // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
+    unsafe { ::miniextendr_api::ffi::Rf_error(cmsg) };
+}
+
 unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
     // normal path: run task, send Ok, return SEXP
     let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
@@ -297,17 +316,7 @@ unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api:
                 .send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }));
             ans
         }
-        Err(payload) => {
-            let msg = payload
-                .downcast_ref::<&str>()
-                .copied()
-                .or_else(|| payload.downcast_ref::<String>().map(|s| s.as_str()))
-                .unwrap_or("rust panic");
-            let c = std::ffi::CString::new(msg)
-                .unwrap_or_else(|_| std::ffi::CString::new("rust panic").unwrap());
-            // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
-            unsafe { ::miniextendr_api::ffi::Rf_error(c.as_ptr()) };
-        }
+        Err(payload) => payload_to_r_error(payload),
     }
 }
 
@@ -427,23 +436,12 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
             let ans: ::miniextendr_api::ffi::SEXP = ans.inner;
             ans
         }
-        Ok(Err(())) => unsafe {
+        handle @ Ok(Err(())) => unsafe {
+            drop(handle);
+            drop(rx);
             ::miniextendr_api::ffi::Rf_error(c"R error during guarded call".as_ptr())
         },
-        Err(p) => unsafe {
-            let msg: String = if let Some(s) = p.downcast_ref::<&str>() {
-                s.to_string()
-            } else if let Some(s) = p.downcast_ref::<String>() {
-                s.clone()
-            } else {
-                "rust panic".to_string()
-            };
-            let cmsg = std::ffi::CString::new(msg)
-                .map(|x| x.as_ptr())
-                .unwrap_or_else(|_| c"unexplained rust panic".as_ptr());
-            // TODO: use common buffer here..
-            ::miniextendr_api::ffi::Rf_error(cmsg)
-        },
+        Err(payload) => payload_to_r_error(payload),
     }
 }
 
