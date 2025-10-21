@@ -146,6 +146,11 @@ pub unsafe extern "C" fn r_clean_tramp(p: *mut std::ffi::c_void, _jumping: crate
     let _ = ctx.task.take();
 }
 
+thread_local! {
+    static R_CONTINUATION_TOKEN: LazyCell<crate::ffi::SEXP> = LazyCell::new(|| unsafe {
+        crate::ffi::R_MakeUnwindCont()
+    });
+}
 // Run one task on main under R_UnwindProtect.
 #[inline(always)]
 pub fn run_on_main(task: RTask, reply: mpsc::SyncSender<Result<crate::ffi::SendSEXP, ()>>) {
@@ -155,11 +160,13 @@ pub fn run_on_main(task: RTask, reply: mpsc::SyncSender<Result<crate::ffi::SendS
     };
     let p = std::ptr::from_mut(&mut ctx).cast();
     unsafe {
-        // TODO: put this in a thread-local and retrieve it/reset it.
-        // is resetting necessary? I don't think so.
-        let cont = crate::ffi::R_MakeUnwindCont();
-        // If R longjmps, this never returns to Rust; clean_tramp runs.
-        let _ = crate::ffi::R_UnwindProtect(Some(r_fun_tramp), p, Some(r_clean_tramp), p, cont);
+                let _ = crate::ffi::R_UnwindProtect(
+Some(r_fun_tramp),
+            p,
+            Some(r_clean_tramp),
+            p,
+            R_CONTINUATION_TOKEN.with(|x| **x),
+);
     }
     // normal return just falls through
 }
