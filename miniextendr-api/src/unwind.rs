@@ -1,10 +1,7 @@
 //!
 //!
 //!
-use std::{
-    cell::{LazyCell, OnceCell},
-    sync::mpsc,
-};
+use std::{cell::LazyCell, sync::mpsc};
 
 pub type RTask = Box<dyn FnOnce() -> crate::ffi::SEXP + Send>;
 
