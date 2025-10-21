@@ -141,6 +141,29 @@ extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
     }
 }
 
+/// This crashes immediately. R is simply not present on the spawned thread, hence the present segfault.
+///
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
+    let _ = std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) })
+        .join()
+        .unwrap();
+    unsafe { miniextendr_api::ffi::R_NilValue }
+}
+
+/// This will segfault, as R is not present on the spawned thread.
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C" fn C_r_print_in_thread() -> ::miniextendr_api::ffi::SEXP {
+    let _ = std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"arg1".as_ptr()) })
+        .join()
+        .unwrap();
+    unsafe { miniextendr_api::ffi::R_NilValue }
+}
+
 // endregion
 
 // region: dots
@@ -241,6 +264,8 @@ miniextendr_module! {
 
     extern fn C_r_error;
     extern fn C_r_error_in_catch;
+    extern fn C_r_error_in_thread;
+    extern fn C_r_print_in_thread;
 
 }
 
@@ -360,6 +385,8 @@ pub extern "C" fn C_rust_worker2() -> miniextendr_api::ffi::SEXP {
 
         // panic!("nothing happened");
         // Rf_error(std::ptr::null());
+
+        // note: this will not work, because R is not present on the new thread.
         miniextendr_api::ffi::Rf_error(c"asd".as_ptr());
 
         Ok(SendSEXP::new(R_NilValue))

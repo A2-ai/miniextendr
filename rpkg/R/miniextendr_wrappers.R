@@ -84,3 +84,7 @@ unsafe_C_r_error <- function() { .Call(C_r_error) }
 
 unsafe_C_r_error_in_catch <- function() { .Call(C_r_error_in_catch) }
 
+unsafe_C_r_error_in_thread <- function() { .Call(C_r_error_in_thread) }
+
+unsafe_C_r_print_in_thread <- function() { .Call(C_r_print_in_thread) }
+
