@@ -59,11 +59,11 @@ pub use miniextendr_macros::miniextendr_module;
 pub mod ffi;
 pub mod unwind;
 pub mod error {
-    use crate::ffi::Rprintf;
-    use std::{
-        cell::RefCell,
-        ffi::{CStr, CString},
-    };
+    // use crate::ffi::Rprintf;
+    // use std::{
+    //     cell::RefCell,
+    //     ffi::{CStr, CString},
+    // };
 
     // work-in-progress: Use common buffer for the *const char APIs..
     // thread_local! {
