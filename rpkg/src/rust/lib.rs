@@ -121,6 +121,26 @@ extern "C" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
     unsafe { ::miniextendr_api::ffi::R_NilValue }
 }
 
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
+    unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) }
+}
+
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
+    unsafe {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            miniextendr_api::ffi::Rf_error(c"arg1".as_ptr())
+        }))
+        .unwrap();
+        miniextendr_api::ffi::R_NilValue
+    }
+}
+
 // endregion
 
 // region: dots
@@ -217,7 +237,10 @@ miniextendr_module! {
 
     // experimental unwinding support
     extern fn C_rust_worker1;
-    // extern fn C_rust_worker2;
+    extern fn C_rust_worker2;
+
+    extern fn C_r_error;
+    extern fn C_r_error_in_catch;
 
 }
 
@@ -265,6 +288,83 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 
 // TODO: Wrap all R api code that `Rf_error/error`s with this mechanism,
 // but also **don't** wrap R api code that do no `Rf_error/error`s in the mechanism.
+
+pub fn with_rust_worker<F>(f: F) -> miniextendr_api::ffi::SEXP
+where
+    F: FnOnce() -> Result<miniextendr_api::ffi::SendSEXP, ()> + Send + 'static,
+{
+    use std::thread::Builder;
+    let handle = Builder::new().name(format!("rust worker")).spawn(move || {
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || f()));
+        let _ = miniextendr_api::unwind::MAIN_TX
+            .get()
+            .unwrap()
+            .0
+            .send(miniextendr_api::unwind::MainRequest::Done);
+        result
+    });
+
+    // main thread loop: service requests until Done or worker panic/exit
+    loop {
+        let lock = miniextendr_api::unwind::MAIN_RX.get().unwrap().lock();
+        let lock = lock.unwrap();
+        match lock.recv() {
+            Ok(::miniextendr_api::unwind::MainRequest::RGuard { task, reply }) => {
+                ::miniextendr_api::unwind::run_on_main(task, reply);
+            }
+            Ok(::miniextendr_api::unwind::MainRequest::Done) => {
+                break;
+            }
+            Err(error) => {
+                dbg!(error);
+                break;
+            }
+        }
+    }
+
+    // TODO: flatten this...
+    match handle {
+        Ok(handle) => match handle.join() {
+            Ok(answer) => match answer {
+                Ok(answer) => match answer {
+                    Ok(answer) => {
+                        let result: ::miniextendr_api::ffi::SEXP = answer.inner;
+                        result
+                    }
+                    Err(()) => unsafe {
+                        ::miniextendr_api::ffi::Rf_error(
+                            c"%s".as_ptr(),
+                            c"R error during guarded call".as_ptr(),
+                        )
+                    },
+                },
+                Err(payload) => ::miniextendr_api::unwind::payload_to_r_error(payload),
+            },
+            Err(payload) => ::miniextendr_api::unwind::payload_to_r_error(payload),
+        },
+        Err(spawn_error) => unsafe {
+            let spawn_error_msg = spawn_error.to_string();
+            let spawn_error_cmsg = std::ffi::CString::new(spawn_error_msg).unwrap();
+            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), spawn_error_cmsg.as_ptr())
+        },
+    }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+pub extern "C" fn C_rust_worker2() -> miniextendr_api::ffi::SEXP {
+    use miniextendr_api::ffi::SendSEXP;
+
+    with_rust_worker(|| unsafe {
+        use miniextendr_api::ffi::R_NilValue;
+
+        // panic!("nothing happened");
+        // Rf_error(std::ptr::null());
+        miniextendr_api::ffi::Rf_error(c"asd".as_ptr());
+
+        Ok(SendSEXP::new(R_NilValue))
+    })
+}
 
 #[miniextendr]
 #[unsafe(no_mangle)]
@@ -338,13 +438,10 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
         let lock = miniextendr_api::unwind::MAIN_RX.get().unwrap().lock();
         match lock.unwrap().recv() {
             Ok(::miniextendr_api::unwind::MainRequest::RGuard { task, reply }) => {
-                // Each batch is guarded; R error longjmps, clean_tramp signals Err to worker.
                 ::miniextendr_api::unwind::run_on_main(task, reply);
-                // If R longjmps, this frame is unwound by R. Worker is already unblocked.
             }
             Ok(::miniextendr_api::unwind::MainRequest::Done) => break,
             Err(_) => {
-                // sender closed: worker ended or panicked
                 break;
             }
         }
