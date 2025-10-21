@@ -1,7 +1,11 @@
 //!
 //!
 //!
-use std::sync::mpsc;
+use std::{
+    cell::{LazyCell, OnceCell},
+    sync::mpsc,
+};
+
 pub type RTask = Box<dyn FnOnce() -> crate::ffi::SEXP + Send>;
 
 pub static MAIN_TX: std::sync::OnceLock<crate::unwind::MainSender> = std::sync::OnceLock::new();
@@ -161,6 +165,7 @@ pub unsafe extern "C" fn r_clean_tramp(p: *mut std::ffi::c_void, _jumping: crate
 
 thread_local! {
     static R_CONTINUATION_TOKEN: LazyCell<crate::ffi::SEXP> = LazyCell::new(|| unsafe {
+        // FIXME: protect this token forever using R_PreserveObject
         crate::ffi::R_MakeUnwindCont()
     });
 }
@@ -173,13 +178,13 @@ pub fn run_on_main(task: RTask, reply: mpsc::SyncSender<Result<crate::ffi::SendS
     };
     let p = std::ptr::from_mut(&mut ctx).cast();
     unsafe {
-                let _ = crate::ffi::R_UnwindProtect(
-Some(r_fun_tramp),
+        let _ = crate::ffi::R_UnwindProtect(
+            Some(r_fun_tramp),
             p,
             Some(r_clean_tramp),
             p,
             R_CONTINUATION_TOKEN.with(|x| **x),
-);
+        );
     }
     // normal return just falls through
 }
