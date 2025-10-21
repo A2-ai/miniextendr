@@ -88,6 +88,19 @@ pub enum MainRequest {
     Done,
 }
 
+impl std::fmt::Debug for MainRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RGuard { task: _, reply } => f
+                .debug_struct("RGuard")
+                .field("task", &())
+                .field("reply", reply)
+                .finish(),
+            Self::Done => write!(f, "Done"),
+        }
+    }
+}
+
 #[repr(C)]
 pub struct TaskCtx {
     task: Option<RTask>,
