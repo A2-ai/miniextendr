@@ -78,3 +78,5 @@ invisibly_result_return_ok <- function()
 
 unsafe_C_rust_worker1 <- function() { .Call(C_rust_worker1) }
 
+unsafe_C_rust_worker2 <- function() { .Call(C_rust_worker2) }
+

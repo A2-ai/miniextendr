@@ -1,4 +1,4 @@
-use std::{panic::catch_unwind, sync::mpsc};
+use std::sync::mpsc;
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -219,6 +219,7 @@ miniextendr_module! {
 
     // experimental unwinding support
     extern fn C_rust_worker1;
+    extern fn C_rust_worker2;
 
 }
 
@@ -267,132 +268,11 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 // TODO: Wrap all R api code that `Rf_error/error`s with this mechanism,
 // but also **don't** wrap R api code that do no `Rf_error/error`s in the mechanism.
 
-type RTask = Box<dyn FnOnce() -> ::miniextendr_api::ffi::SEXP + Send>;
-
-enum MainReq {
-    /// Run a batch of R API calls on main under one guard.
-    RGuard {
-        task: RTask,
-        reply: mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>,
-    },
-}
-
-// ---------- R guard trampolines ----------
-#[repr(C)]
-struct TaskCtx {
-    task: Option<RTask>,
-    reply: Option<mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>>,
-}
-
-#[inline(always)]
-pub fn payload_to_r_error(payload: Box<dyn std::any::Any + Send + 'static>) -> ! {
-    let msg: String = if let Some(panic_str) = payload.downcast_ref::<&str>() {
-        panic_str.to_string()
-    } else if let Some(panic_string) = payload.downcast_ref::<String>() {
-        panic_string.clone()
-    } else {
-        "rust panic".to_string()
-    };
-
-    // TODO: add panic_any here, so that packages can hook in their own handling of
-    // error messages
-
-    let cmsg = std::ffi::CString::new(msg).unwrap();
-    // Triggers R’s nonlocal exit; clean_tramp will run and signal Err(()):
-    unsafe { ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), cmsg) };
-}
-
-#[inline(always)]
-unsafe extern "C" fn r_fun_tramp(p: *mut std::ffi::c_void) -> ::miniextendr_api::ffi::SEXP {
-    // normal path: run task, send Ok, return SEXP
-    let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
-    let f = ctx.task.take().unwrap();
-    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || (f)())) {
-        Ok(ans) => {
-            let _ = ctx
-                .reply
-                .take()
-                .and_then(|tx| {
-                    tx.send(Ok(unsafe { ::miniextendr_api::ffi::SendSEXP::new(ans) }))
-                        .ok()
-                })
-                .unwrap();
-            ans
-        }
-        Err(payload) => {
-            let _ = ctx
-                .reply
-                .take()
-                .and_then(|tx| tx.send(Err(())).ok())
-                .unwrap();
-            payload_to_r_error(payload)
-        }
-    }
-}
-
-#[inline(always)]
-unsafe extern "C" fn r_clean_tramp(
-    p: *mut std::ffi::c_void,
-    _jumping: ::miniextendr_api::ffi::Rboolean,
-) {
-    let ctx = unsafe { p.cast::<TaskCtx>().as_mut().unwrap() };
-    if let Some(tx) = ctx.reply.take() {
-        let _ = tx.try_send(Err(()));
-    }
-    let _ = ctx.task.take();
-}
-
-// Run one task on main under R_UnwindProtect.
-#[inline(always)]
-fn run_on_main(task: RTask, reply: mpsc::SyncSender<Result<::miniextendr_api::ffi::SendSEXP, ()>>) {
-    let mut ctx = TaskCtx {
-        task: Some(task),
-        reply: Some(reply),
-    };
-    let p = std::ptr::from_mut(&mut ctx).cast();
-    unsafe {
-        // TODO: put this in a thread-local and retrieve it/reset it.
-        // is resetting necessary? I don't think so.
-        let cont = ::miniextendr_api::ffi::R_MakeUnwindCont();
-        // If R longjmps, this never returns to Rust; clean_tramp runs.
-        let _ = ::miniextendr_api::ffi::R_UnwindProtect(
-            Some(r_fun_tramp),
-            p,
-            Some(r_clean_tramp),
-            p,
-            cont,
-        );
-    }
-    // normal return just falls through
-}
-
-// ---------- worker helpers ----------
-#[derive(Clone)]
-struct MainSender(mpsc::SyncSender<MainReq>);
-
-impl MainSender {
-    #[inline(always)]
-    fn with_r_guard<F>(&self, f: F) -> Result<::miniextendr_api::ffi::SendSEXP, ()>
-    where
-        F: FnOnce() -> ::miniextendr_api::ffi::SEXP + Send + 'static,
-    {
-        let task: RTask = Box::new(f);
-        let (tx, rx) = mpsc::sync_channel(1);
-        let _ = self
-            .0
-            .send(MainReq::RGuard { task, reply: tx })
-            .ok()
-            .unwrap();
-        rx.recv().unwrap_or(Err(()))
-    }
-}
-
-// ---------- example exported entry ----------
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
-    let (tx, rx) = mpsc::sync_channel::<MainReq>(1);
-    let main_tx = MainSender(tx);
+    let (tx, rx) = mpsc::sync_channel::<::miniextendr_api::unwind::MainRequest>(1);
+    let main_tx = ::miniextendr_api::unwind::MainSender(tx);
 
     // note: everything outside of the thread will not drop in case of an R error.
     // note: a rust panic here is not good.
@@ -414,7 +294,7 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
             // panic!("rust panic while running r task");
 
             // #2
-            ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+            // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
 
             ::miniextendr_api::ffi::R_NilValue
         })?;
@@ -426,11 +306,12 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
     // main thread loop: service requests until Done or worker panic/exit
     loop {
         match rx.recv() {
-            Ok(MainReq::RGuard { task, reply }) => {
+            Ok(::miniextendr_api::unwind::MainRequest::RGuard { task, reply }) => {
                 // Each batch is guarded; R error longjmps, clean_tramp signals Err to worker.
-                run_on_main(task, reply);
+                ::miniextendr_api::unwind::run_on_main(task, reply);
                 // If R longjmps, this frame is unwound by R. Worker is already unblocked.
             }
+            Ok(::miniextendr_api::unwind::MainRequest::Done) => break,
             Err(_) => {
                 // sender closed: worker ended or panicked
                 break;
@@ -452,7 +333,81 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
                 c"R error during guarded call".as_ptr(),
             )
         },
-        Err(payload) => payload_to_r_error(payload),
+        Err(payload) => ::miniextendr_api::unwind::payload_to_r_error(payload),
+    }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+pub extern "C" fn C_rust_worker2() -> miniextendr_api::ffi::SEXP {
+    // note: everything outside of the thread will not drop in case of an R error.
+    // note: a rust panic here is not good.
+
+    // spawn worker
+    let handle = std::thread::spawn(move || -> Result<::miniextendr_api::ffi::SendSEXP, ()> {
+        // note: allocations here will deallocate in case of a panic
+
+        // #<number>: cases to consider
+
+        // #3
+        // let a = MsgOnDrop;
+        #[allow(unreachable_code)] // tests!
+        let sexp: ::miniextendr_api::ffi::SendSEXP = ::miniextendr_api::unwind::MAIN_TX
+            .get()
+            .unwrap()
+            .with_r_guard(move || unsafe {
+                // limitation: dropped on a panic, not on an Rf_error!
+                // let a = MsgOnDrop;
+
+                // #1
+                // panic!("rust panic while running r task");
+
+                // #2
+                // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+
+                ::miniextendr_api::ffi::R_NilValue
+            })?;
+        // more Rust work...
+
+        let _ = miniextendr_api::unwind::MAIN_TX
+            .get()
+            .unwrap()
+            .0
+            .send(::miniextendr_api::unwind::MainRequest::Done);
+        Ok(sexp)
+    });
+
+    // main thread loop: service requests until Done or worker panic/exit
+    loop {
+        let lock = miniextendr_api::unwind::MAIN_RX.get().unwrap().lock();
+        match lock.unwrap().recv() {
+            Ok(::miniextendr_api::unwind::MainRequest::RGuard { task, reply }) => {
+                // Each batch is guarded; R error longjmps, clean_tramp signals Err to worker.
+                ::miniextendr_api::unwind::run_on_main(task, reply);
+                // If R longjmps, this frame is unwound by R. Worker is already unblocked.
+            }
+            Ok(::miniextendr_api::unwind::MainRequest::Done) => break,
+            Err(_) => {
+                // sender closed: worker ended or panicked
+                break;
+            }
+        }
+    }
+
+    // join worker; on panic report via Rf_error
+    match handle.join() {
+        Ok(Ok(ans)) => {
+            let ans: ::miniextendr_api::ffi::SEXP = ans.inner;
+            ans
+        }
+        handle @ Ok(Err(())) => unsafe {
+            drop(handle);
+            ::miniextendr_api::ffi::Rf_error(
+                c"%s".as_ptr(),
+                c"R error during guarded call".as_ptr(),
+            )
+        },
+        Err(payload) => ::miniextendr_api::unwind::payload_to_r_error(payload),
     }
 }
 

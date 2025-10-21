@@ -15,5 +15,12 @@ name = "juice"
 path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
+[profile.release]
+debug = 1
+panic = "unwind"
+
+[profile.dev]
+panic = "unwind"
+
 [dependencies]
 miniextendr-api = { path = "@ROOT_MINIEXTENDR_REPO@/miniextendr-api"}
