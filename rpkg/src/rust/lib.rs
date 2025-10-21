@@ -1,5 +1,3 @@
-use std::sync::mpsc;
-
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // region
@@ -219,7 +217,7 @@ miniextendr_module! {
 
     // experimental unwinding support
     extern fn C_rust_worker1;
-    extern fn C_rust_worker2;
+    // extern fn C_rust_worker2;
 
 }
 
@@ -271,9 +269,6 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
-    let (tx, rx) = mpsc::sync_channel::<::miniextendr_api::unwind::MainRequest>(1);
-    let main_tx = ::miniextendr_api::unwind::MainSender(tx);
-
     // note: everything outside of the thread will not drop in case of an R error.
     // note: a rust panic here is not good.
 
@@ -286,76 +281,37 @@ pub extern "C" fn C_rust_worker1() -> miniextendr_api::ffi::SEXP {
         // #3
         // let a = MsgOnDrop;
         #[allow(unreachable_code)] // tests!
-        let sexp: ::miniextendr_api::ffi::SendSEXP = main_tx.with_r_guard(move || unsafe {
-            // limitation: dropped on a panic, not on an Rf_error!
-            // let a = MsgOnDrop;
+        let sexp: ::miniextendr_api::ffi::SendSEXP =
+            ::miniextendr_api::unwind::with_r_guard(move || unsafe {
+                // limitation: dropped on a panic, not on an Rf_error!
+                // let a = MsgOnDrop;
 
-            // #1
-            // panic!("rust panic while running r task");
+                // #1
+                // panic!("rust panic while running r task");
 
-            // #2
-            // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
+                // #2
+                // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
 
-            ::miniextendr_api::ffi::R_NilValue
-        })?;
+                ::miniextendr_api::ffi::R_NilValue
+            })?;
         // more Rust work...
-        // Finish: send final SEXP (could be `s` or another)
-        Ok(sexp)
-    });
 
-    // main thread loop: service requests until Done or worker panic/exit
-    loop {
-        match rx.recv() {
-            Ok(::miniextendr_api::unwind::MainRequest::RGuard { task, reply }) => {
-                // Each batch is guarded; R error longjmps, clean_tramp signals Err to worker.
-                ::miniextendr_api::unwind::run_on_main(task, reply);
-                // If R longjmps, this frame is unwound by R. Worker is already unblocked.
-            }
-            Ok(::miniextendr_api::unwind::MainRequest::Done) => break,
-            Err(_) => {
-                // sender closed: worker ended or panicked
-                break;
-            }
-        }
-    }
+        let sexp: ::miniextendr_api::ffi::SendSEXP =
+            ::miniextendr_api::unwind::with_r_guard_ref(move || unsafe {
+                // limitation: dropped on a panic, not on an Rf_error!
+                // let a = MsgOnDrop;
 
-    // join worker; on panic report via Rf_error
-    match handle.join() {
-        Ok(Ok(ans)) => {
-            let ans: ::miniextendr_api::ffi::SEXP = ans.inner;
-            ans
-        }
-        handle @ Ok(Err(())) => unsafe {
-            drop(handle);
-            drop(rx);
-            ::miniextendr_api::ffi::Rf_error(
-                c"%s".as_ptr(),
-                c"R error during guarded call".as_ptr(),
-            )
-        },
-        Err(payload) => ::miniextendr_api::unwind::payload_to_r_error(payload),
-    }
-}
+                // #1
+                // panic!("rust panic while running r task");
 
-#[miniextendr]
-#[unsafe(no_mangle)]
-pub extern "C" fn C_rust_worker2() -> miniextendr_api::ffi::SEXP {
-    // note: everything outside of the thread will not drop in case of an R error.
-    // note: a rust panic here is not good.
+                // #2
+                // ::miniextendr_api::ffi::Rf_error(c"an r error occurred".as_ptr());
 
-    // spawn worker
-    let handle = std::thread::spawn(move || -> Result<::miniextendr_api::ffi::SendSEXP, ()> {
-        // note: allocations here will deallocate in case of a panic
-
-        // #<number>: cases to consider
-
-        // #3
-        // let a = MsgOnDrop;
-        #[allow(unreachable_code)] // tests!
-        let sexp: ::miniextendr_api::ffi::SendSEXP = ::miniextendr_api::unwind::MAIN_TX
-            .get()
-            .unwrap()
-            .with_r_guard(move || unsafe {
+                ::miniextendr_api::ffi::R_NilValue
+            })?;
+        // more Rust work...
+        let sexp: ::miniextendr_api::ffi::SendSEXP =
+            ::miniextendr_api::unwind::with_r_guard_mut(move || unsafe {
                 // limitation: dropped on a panic, not on an Rf_error!
                 // let a = MsgOnDrop;
 

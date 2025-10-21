@@ -24,21 +24,59 @@ pub extern "C" fn rpkg_main_queue_init() {
 #[derive(Clone)]
 pub struct MainSender(pub mpsc::SyncSender<MainRequest>);
 
-impl MainSender {
-    #[inline(always)]
-    pub fn with_r_guard<F>(&self, f: F) -> Result<crate::ffi::SendSEXP, ()>
-    where
-        F: FnOnce() -> crate::ffi::SEXP + Send + 'static,
-    {
-        let task: RTask = Box::new(f);
-        let (tx, rx) = mpsc::sync_channel(1);
-        let _ = self
-            .0
-            .send(MainRequest::RGuard { task, reply: tx })
-            .ok()
-            .unwrap();
-        rx.recv().unwrap_or(Err(()))
-    }
+#[inline]
+pub fn with_r_guard<F>(f: F) -> Result<crate::ffi::SendSEXP, ()>
+where
+    F: FnOnce() -> crate::ffi::SEXP + Send + 'static,
+{
+    let task: RTask = Box::new(f);
+    let (tx, rx) = mpsc::sync_channel(1);
+    let _ = MAIN_TX
+        .get()
+        .unwrap()
+        .0
+        .send(MainRequest::RGuard { task, reply: tx })
+        .ok()
+        .unwrap();
+    rx.recv().unwrap_or(Err(()))
+}
+
+// TODO: make sure that there is a reason to use with_r_guard_ref / with_r_guard_mut...
+// obviously those would be better because an Rf_error will result in them deallocating things properly.
+// TODO: test if with_r_guard_ref/with_r_guard_mut work with the current setup...
+
+#[inline]
+pub fn with_r_guard_ref<F>(f: F) -> Result<crate::ffi::SendSEXP, ()>
+where
+    F: Fn() -> crate::ffi::SEXP + Send + 'static,
+{
+    let task: RTask = Box::new(f);
+    let (tx, rx) = mpsc::sync_channel(1);
+    let _ = MAIN_TX
+        .get()
+        .unwrap()
+        .0
+        .send(MainRequest::RGuard { task, reply: tx })
+        .ok()
+        .unwrap();
+    rx.recv().unwrap_or(Err(()))
+}
+
+#[inline]
+pub fn with_r_guard_mut<F>(f: F) -> Result<crate::ffi::SendSEXP, ()>
+where
+    F: FnMut() -> crate::ffi::SEXP + Send + 'static,
+{
+    let task: RTask = Box::new(f);
+    let (tx, rx) = mpsc::sync_channel(1);
+    let _ = MAIN_TX
+        .get()
+        .unwrap()
+        .0
+        .send(MainRequest::RGuard { task, reply: tx })
+        .ok()
+        .unwrap();
+    rx.recv().unwrap_or(Err(()))
 }
 
 pub enum MainRequest {
