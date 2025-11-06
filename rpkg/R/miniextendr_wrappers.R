@@ -88,3 +88,8 @@ unsafe_C_r_error_in_thread <- function() { .Call(C_r_error_in_thread) }
 
 unsafe_C_r_print_in_thread <- function() { .Call(C_r_print_in_thread) }
 
+unsafe_C_check_interupt_after <- function() { .Call(C_check_interupt_after) }
+
+unsafe_C_check_interupt_unwind <- function()
+{ .Call(C_check_interupt_unwind) }
+

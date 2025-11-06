@@ -129,6 +129,9 @@ unsafe extern "C" {
     // pub fn COMPLEX0(x: SEXP) -> *mut Rcomplex;
     // pub fn RAW0(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
+
+    // utils.h
+    pub fn R_CheckUserInterrupt();
 }
 
 // region: registration!

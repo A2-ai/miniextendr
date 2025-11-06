@@ -1,4 +1,63 @@
-use miniextendr_api::{miniextendr, miniextendr_module};
+use miniextendr_api::{
+    ffi::{R_NilValue, SEXP},
+    miniextendr, miniextendr_module,
+};
+
+use crate::unwind_protect::with_unwind_protect;
+
+mod unwind_protect {
+
+    struct Ctx<F, C> {
+        fun: Option<F>,
+        clean: Option<C>,
+    }
+
+    unsafe extern "C" fn fun_tramp<F, C>(data: *mut std::ffi::c_void) -> miniextendr_api::ffi::SEXP
+    where
+        F: FnOnce() -> miniextendr_api::ffi::SEXP,
+    {
+        let ctx = unsafe { data.cast::<Ctx<F, C>>().as_mut().unwrap() };
+        let f = ctx.fun.take().unwrap();
+        f()
+    }
+
+    unsafe extern "C" fn clean_tramp<F, C>(
+        data: *mut std::ffi::c_void,
+        jump: miniextendr_api::ffi::Rboolean,
+    ) where
+        C: FnOnce(bool),
+    {
+        // let ctx = unsafe { data.cast::<Ctx<F, C>>().as_mut().unwrap() };
+        let mut ctx = unsafe { Box::from_raw(data.cast::<Ctx<F, C>>()) };
+        if let Some(c) = ctx.as_mut().clean.take() {
+            c(jump != miniextendr_api::ffi::Rboolean::FALSE);
+        }
+        drop(ctx);
+    }
+
+    /// Wrap a Rust closure with R_UnwindProtect.
+    /// `clean` sees `true` if a non-local jump happened, `false` on normal return.
+    pub unsafe fn with_unwind_protect<F, C>(fun: F, clean: C) -> miniextendr_api::ffi::SEXP
+    where
+        F: FnOnce() -> miniextendr_api::ffi::SEXP,
+        C: FnOnce(bool),
+    {
+        let data = Box::into_raw(Box::new(Ctx {
+            fun: Some(fun),
+            clean: Some(clean),
+        }));
+
+        unsafe {
+            miniextendr_api::ffi::R_UnwindProtect(
+                Some(fun_tramp::<F, C>),
+                data.cast(),
+                Some(clean_tramp::<F, C>),
+                data.cast(),
+                std::ptr::null_mut(),
+            )
+        }
+    }
+}
 
 // region
 
@@ -196,6 +255,45 @@ fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 
 // endregion
 
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C" fn C_check_interupt_after() -> SEXP {
+    use miniextendr_api::ffi::R_CheckUserInterrupt;
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    unsafe {
+        R_CheckUserInterrupt();
+        R_NilValue
+    }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C" fn C_check_interupt_unwind() -> SEXP {
+    use miniextendr_api::ffi::R_CheckUserInterrupt;
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    unsafe {
+        // todo!();
+        with_unwind_protect(
+            || {
+                R_CheckUserInterrupt();
+                R_NilValue
+            },
+            |jump| {
+                if jump {
+                    println!("jump occurred, i.e. an interupt!")
+                }
+            },
+        );
+        R_NilValue
+    }
+}
+
 // region: miniextendr_module! tests
 
 miniextendr_module! {
@@ -266,6 +364,9 @@ miniextendr_module! {
     extern fn C_r_error_in_catch;
     extern fn C_r_error_in_thread;
     extern fn C_r_print_in_thread;
+
+    extern fn C_check_interupt_after;
+    extern fn C_check_interupt_unwind;
 
 }
 
