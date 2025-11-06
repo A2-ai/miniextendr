@@ -12,3 +12,5 @@ rpkg/src/Makevars
 rpkg/src/Makevars.win
 rpkg/src/miniextendr_wrappers.R
 rpkg_build
+ra_target
+.Rproj.*

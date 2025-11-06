@@ -5,14 +5,19 @@ pub type SEXP = *mut SEXPREC;
 
 /// Send-only handle to a SEXP pointer.
 #[repr(transparent)]
+#[derive(Debug)]
 pub struct SendSEXP {
     pub inner: SEXP,
     /// PhantomData<Cell<()>> forces !Sync.
     pub _not_sync: std::marker::PhantomData<std::cell::Cell<()>>,
 }
+unsafe impl Send for SendSEXP {}
 
 impl SendSEXP {
     #[inline(always)]
+    /// # Safety
+    /// Caller must supply a valid SEXP pointer whose ownership can be
+    /// transferred to this sendable wrapper.
     pub unsafe fn new(inner: SEXP) -> Self {
         Self {
             inner,
@@ -25,7 +30,6 @@ impl SendSEXP {
         self.inner
     }
 }
-unsafe impl Send for SendSEXP {}
 
 #[repr(i32)]
 #[non_exhaustive]
@@ -79,6 +83,9 @@ unsafe extern "C" {
     pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
     // Rinternals.h
+    pub fn R_PreserveObject(arg1: SEXP);
+    pub fn R_ReleaseObject(arg1: SEXP);
+
     pub fn Rf_protect(arg1: SEXP) -> SEXP;
     pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
 
@@ -142,8 +149,7 @@ pub struct R_CallMethodDef {
     pub fun: DL_FUNC,
     pub numArgs: ::std::os::raw::c_int,
 }
-
-// necessary for calling R_init_<module name>
+// TODO: investigate why Sync is necessary...
 unsafe impl Sync for R_CallMethodDef {}
 
 // FIXME: move to an ffi crate or similar..
