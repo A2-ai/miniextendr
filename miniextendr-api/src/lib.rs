@@ -58,6 +58,8 @@ pub use miniextendr_macros::miniextendr_module;
 
 pub mod ffi;
 pub mod unwind;
+pub mod unwind_protect;
+
 pub mod error {
     // use crate::ffi::Rprintf;
     // use std::{
