@@ -84,11 +84,18 @@ pub fn miniextendr(
         output,
     } = extendr_function;
     use syn::spanned::Spanned;
-    let num_args = syn::LitInt::new(&inputs.len().to_string(), inputs.span());
+    let uses_internal_c_wrapper = abi.is_none();
+    let rust_arg_count = inputs.len();
+    let registered_arg_count = if uses_internal_c_wrapper {
+        rust_arg_count + 1
+    } else {
+        rust_arg_count
+    };
+    let num_args = syn::LitInt::new(&registered_arg_count.to_string(), inputs.span());
 
     let rust_ident = &ident;
     let call_method_def = quote::format_ident!("call_method_def_{rust_ident}");
-    let c_ident = if abi.is_none() {
+    let c_ident = if uses_internal_c_wrapper {
         &quote::format_ident!("C_{rust_ident}")
     } else {
         rust_ident
@@ -103,9 +110,15 @@ pub fn miniextendr(
     );
     // registration of the C-wrapper
     // these are needed to transmute fn-item to fn-pointer correctly.
-    let func_ptr_def: Vec<syn::Pat> = (0..inputs.len())
-        .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
-        .collect();
+    let mut func_ptr_def: Vec<syn::Pat> = Vec::new();
+    if uses_internal_c_wrapper {
+        func_ptr_def.push(syn::parse_quote!(::miniextendr_api::ffi::SEXP));
+    }
+    func_ptr_def.extend(
+        (0..inputs.len())
+            .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
+            .collect::<Vec<_>>(),
+    );
 
     // calling the rust function with
     let rust_inputs: Vec<syn::Ident> = inputs
@@ -122,40 +135,40 @@ pub fn miniextendr(
     // dbg!(&rust_inputs);
 
     // calling the C-wrapper with
-    let c_wrapper_inputs: Vec<_> = inputs
-        .clone()
-        .into_pairs()
-        .map(|pair| {
-            let arg = pair.value();
-            match arg {
-                syn::FnArg::Receiver(receiver) => {
-                    syn::Error::new(receiver.span(), "impl-blocks not supported yet")
-                        .to_compile_error()
-                }
-                syn::FnArg::Typed(pt) => {
-                    let syn::PatType {
-                        attrs: _,
-                        pat,
-                        colon_token: _,
-                        ty: _,
-                    } = pt;
-                    match pat.as_ref() {
-                        syn::Pat::Ident(pat_ident) => {
-                            let mut pat_ident = pat_ident.clone();
-                            pat_ident.mutability = None;
-                            pat_ident.by_ref = None;
-                            let ident = pat_ident;
-                            syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
-                        }
-                        syn::Pat::Wild(_pat_wild) => {
-                            todo!("what should c wrapper do with _ args?")
-                        }
-                        _ => todo!(),
+    let call_param_ident = syn::Ident::new("__miniextendr_call", proc_macro2::Span::call_site());
+    let mut c_wrapper_inputs: Vec<_> = Vec::new();
+    if uses_internal_c_wrapper {
+        c_wrapper_inputs.push(syn::parse_quote!(#call_param_ident: ::miniextendr_api::ffi::SEXP));
+    }
+    c_wrapper_inputs.extend(inputs.clone().into_pairs().map(|pair| {
+        let arg = pair.value();
+        match arg {
+            syn::FnArg::Receiver(receiver) => {
+                syn::Error::new(receiver.span(), "impl-blocks not supported yet").to_compile_error()
+            }
+            syn::FnArg::Typed(pt) => {
+                let syn::PatType {
+                    attrs: _,
+                    pat,
+                    colon_token: _,
+                    ty: _,
+                } = pt;
+                match pat.as_ref() {
+                    syn::Pat::Ident(pat_ident) => {
+                        let mut pat_ident = pat_ident.clone();
+                        pat_ident.mutability = None;
+                        pat_ident.by_ref = None;
+                        let ident = pat_ident;
+                        syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
                     }
+                    syn::Pat::Wild(_pat_wild) => {
+                        todo!("what should c wrapper do with _ args?")
+                    }
+                    _ => todo!(),
                 }
             }
-        })
-        .collect();
+        }
+    }));
     // dbg!(&wrapper_inputs);
     let input_names: Vec<_> = inputs
         .pairs()
@@ -367,7 +380,7 @@ pub fn miniextendr(
                                 std::ffi::CString::new(error_message).unwrap_or_else(|_| {
                                     std::ffi::CString::new("<invalid panic message>").unwrap()
                                 });
-                                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_error_message.as_ptr());
+                                ::miniextendr_api::ffi::Rf_errorcall(#call_param_ident, c"%s".as_ptr(), c_error_message.as_ptr());
                             }
                         }
                     }, move |_jump| {
@@ -448,6 +461,9 @@ pub fn miniextendr(
     // Build both the .Call argument list and the formal parameter list in one pass
     let last_idx = inputs.len().saturating_sub(1);
     let mut r_call_args_strs: Vec<String> = Vec::new();
+    if uses_internal_c_wrapper {
+        r_call_args_strs.push(".call = match.call()".to_string());
+    }
     let mut r_formals: Vec<proc_macro2::TokenStream> = Vec::new();
     for (idx, x) in inputs.iter().enumerate() {
         let syn::FnArg::Typed(pat_type) = x else {
