@@ -280,7 +280,26 @@ pub fn miniextendr(
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::ffi::R_NilValue
+                ::miniextendr_api::unwind_protect::with_unwind_protect(||{
+
+                    // #rust_inputss
+                    // #input_names
+                    // #return_statement
+                    // let old = std::panic::take_hook();
+                    // std::panic::set_hook(Box::new(|_| {}));
+                    // TODO: these borrows ought to be used based on the mutability requirements...
+                    #[allow(unused_imports)]
+                    use std::borrow::{Borrow, BorrowMut};
+                    #(#input_names)*
+                    // FIXME: shouldn't this borrow?
+                    // dbg!(#rust_inputs);
+                    let result = #rust_ident(#(#rust_inputs),*);
+
+                    #return_statement
+
+                }, |jump| {
+
+                })
             }
         }
     };
@@ -435,13 +454,13 @@ pub fn miniextendr(
 
     let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
     quote::quote! {
-// rust function!
+        // rust function!
         #original_item
 
-// C wrapper
+        // C wrapper
         #c_wrapper
 
-// R wrapper
+        // R wrapper
         const #r_wrapper_generator: &'static str = #r_wrapper_str;
 
 
