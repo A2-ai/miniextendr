@@ -44,7 +44,7 @@ where
 /// `clean` sees `true` if a non-local jump happened, `false` on normal return.
 ///
 ///
-pub unsafe fn with_unwind_protect<FunClosure, CleanClosure>(
+unsafe fn with_unwind_protect<FunClosure, CleanClosure>(
     fun: FunClosure,
     clean: CleanClosure,
 ) -> ffi::SEXP
