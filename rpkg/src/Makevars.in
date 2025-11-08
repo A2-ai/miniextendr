@@ -15,14 +15,14 @@ PKG_LIBS=-L$(CARGO_LIBDIR) -l$(STATICLIB_NAME)
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 $(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
-	cargo generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml
+	cargo generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --color=always
 
 $(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock $(ABS_SRCDIR)/rust/document.rs
 	RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
-	cargo +nightly build --lib --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
+	cargo +nightly build --lib --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR) --color=always
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
-	cargo +nightly run --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR)
+	cargo +nightly run --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR) --color=always
 
 $(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED) 
 	cp miniextendr_wrappers.R $@

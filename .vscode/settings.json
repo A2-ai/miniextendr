@@ -5,4 +5,8 @@
     "miniextendr-api/Cargo.toml",
     "miniextendr-macros/Cargo.toml"
   ],
+  "rust-analyzer.cargo.extraArgs": [
+    "--release"
+  ],
+  "rust-analyzer.cargo.targetDir": "ra_target",
 }

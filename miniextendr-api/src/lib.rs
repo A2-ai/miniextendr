@@ -88,3 +88,11 @@ pub mod dots {
         pub inner: SEXP,
     }
 }
+
+/// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
+/// atleast in the `macro_coverage`
+#[doc(hidden)]
+extern crate self as miniextendr_api;
+
+#[doc(hidden)]
+pub mod macro_coverage;
