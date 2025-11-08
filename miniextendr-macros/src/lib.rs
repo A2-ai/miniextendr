@@ -395,7 +395,9 @@ pub fn miniextendr(
     if has_dots {
         if let Some(named) = &mut named_dots {
             let mut arg_name = named.to_string();
-            if arg_name.starts_with('_') { arg_name.insert_str(0, "unused"); }
+            if arg_name.starts_with('_') {
+                arg_name.insert_str(0, "unused");
+            }
             let arg_ident = syn::Ident::new(&arg_name, named.span());
             *named = arg_ident;
         }
@@ -406,14 +408,23 @@ pub fn miniextendr(
     let mut r_call_args_strs: Vec<String> = Vec::new();
     let mut r_formals: Vec<proc_macro2::TokenStream> = Vec::new();
     for (idx, x) in inputs.iter().enumerate() {
-        let syn::FnArg::Typed(pat_type) = x else { unreachable!() };
-        let syn::PatType { attrs: _, pat, colon_token: _, ty } = pat_type;
+        let syn::FnArg::Typed(pat_type) = x else {
+            unreachable!()
+        };
+        let syn::PatType {
+            attrs: _,
+            pat,
+            colon_token: _,
+            ty,
+        } = pat_type;
 
         // derive R argument name, applying leading-underscore rename
         let arg_ident = match pat.as_ref() {
             syn::Pat::Ident(pat_ident) => {
                 let mut arg_name = pat_ident.ident.to_string();
-                if arg_name.starts_with('_') { arg_name.insert_str(0, "unused"); }
+                if arg_name.starts_with('_') {
+                    arg_name.insert_str(0, "unused");
+                }
                 syn::Ident::new(&arg_name, pat_ident.ident.span())
             }
             _ => unreachable!(),
@@ -450,7 +461,6 @@ pub fn miniextendr(
         }
     }
 
-
     // region: R wrappers generation in `fn`
     // Build the R body string consistently
     let c_ident_str = c_ident.to_string();
@@ -478,9 +488,7 @@ pub fn miniextendr(
         .join(", ");
     let r_wrapper_string = format!(
         "{} <- function({}) {{\n    {}\n}}",
-        r_wrapper_ident,
-        formals_joined,
-        r_wrapper_return_str
+        r_wrapper_ident, formals_joined, r_wrapper_return_str
     );
     let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper_ident.span());
 
