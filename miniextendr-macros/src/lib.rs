@@ -391,9 +391,19 @@ pub fn miniextendr(
     }
 
     // region: R wrappers generation in `fn`
+    // normalize `named_dots` for R (no leading underscore)
+    if has_dots {
+        if let Some(named) = &mut named_dots {
+            let mut arg_name = named.to_string();
+            if arg_name.starts_with('_') { arg_name.insert_str(0, "unused"); }
+            let arg_ident = syn::Ident::new(&arg_name, named.span());
+            *named = arg_ident;
+        }
+    }
+
     // Build both the .Call argument list and the formal parameter list in one pass
     let last_idx = inputs.len().saturating_sub(1);
-    let mut r_call_args: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut r_call_args_strs: Vec<String> = Vec::new();
     let mut r_formals: Vec<proc_macro2::TokenStream> = Vec::new();
     for (idx, x) in inputs.iter().enumerate() {
         let syn::FnArg::Typed(pat_type) = x else { unreachable!() };
@@ -412,13 +422,12 @@ pub fn miniextendr(
         // call-site argument
         if has_dots && idx == last_idx {
             if let Some(named_dots) = &named_dots {
-                let named = syn::Ident::new(&named_dots.to_string(), named_dots.span());
-                r_call_args.push(syn::parse_quote!(list(#named)));
+                r_call_args_strs.push(format!("list({})", named_dots));
             } else {
-                r_call_args.push(syn::parse_quote!(list(...)));
+                r_call_args_strs.push("list(...)".to_string());
             }
         } else {
-            r_call_args.push(arg_ident.clone().into_token_stream());
+            r_call_args_strs.push(arg_ident.to_string());
         }
 
         // formal parameter (with defaults for unit types)
@@ -441,43 +450,39 @@ pub fn miniextendr(
         }
     }
 
-    // need to change the leading underscore of a dots variable to match
-    // r's requirement of non _ as leading character in alias/variable names.
-    if has_dots {
-        if let Some(named_dots) = &mut named_dots {
-            // TODO: promote to a helper method, see `r_wrapper_args` processing
-            let mut arg_name = named_dots.to_string();
-            if arg_name.starts_with('_') {
-                arg_name.insert_str(0, "unused");
-            }
-            let arg_name = syn::Ident::new(&arg_name, named_dots.span());
-            *named_dots = arg_name;
-        }
-    }
 
     // region: R wrappers generation in `fn`
-    let r_wrapper_return = if !is_invisible_return_type {
-        quote::quote! {.Call(#c_ident #(, #r_call_args)*)}
+    // Build the R body string consistently
+    let c_ident_str = c_ident.to_string();
+    let call_args_joined = r_call_args_strs.join(", ");
+    let call_expr = if r_call_args_strs.is_empty() {
+        format!(".Call({})", c_ident_str)
     } else {
-        quote::quote! {invisible(.Call(#c_ident #(, #r_call_args)*))}
+        format!(".Call({}, {})", c_ident_str, call_args_joined)
+    };
+    let r_wrapper_return_str = if !is_invisible_return_type {
+        call_expr
+    } else {
+        format!("invisible({})", call_expr)
     };
     let r_wrapper_ident = if abi.is_some() {
         &quote::format_ident!("unsafe_{rust_ident}")
     } else {
         rust_ident
     };
-    let r_wrapper = quote::quote! {
-        #r_wrapper_ident <- function(#(#r_formals),*) {
-
-            // TODO: add attribute `r_body_code` to add R code between function call
-            // and return statement!
-            // FIXME: ensure that list(...) is defined _before_ the attribute r_body_code.
-
-            #r_wrapper_return
-        }
-    };
-    let r_wrapper_string = r_wrapper.to_string();
-    let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper.span());
+    // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
+    let formals_joined = r_formals
+        .iter()
+        .map(|t| t.to_string())
+        .collect::<Vec<_>>()
+        .join(", ");
+    let r_wrapper_string = format!(
+        "{} <- function({}) {{\n    {}\n}}",
+        r_wrapper_ident,
+        formals_joined,
+        r_wrapper_return_str
+    );
+    let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper_ident.span());
 
     let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
 
