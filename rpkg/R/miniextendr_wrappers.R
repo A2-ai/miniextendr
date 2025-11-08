@@ -7,7 +7,7 @@ add2 <- function(left, right, unused_dummy = NULL) {
 }
 
 add3 <- function(left, right, unused_dummy = NULL) {
-    invisible(.Call(C_add3, left, right, unused_dummy))
+    .Call(C_add3, left, right, unused_dummy)
 }
 
 add4 <- function(left, right) {

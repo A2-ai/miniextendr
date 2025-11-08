@@ -248,12 +248,20 @@ pub fn miniextendr(
                     == Some(&syn::Ident::new("Option", p.path.span())) =>
             {
                 let seg = p.path.segments.last().unwrap();
+                // check ONLY the first type argument of Option<T>
                 let is_unit_inner = match &seg.arguments {
-                syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(|ga| {
-                    matches!(ga, syn::GenericArgument::Type(syn::Type::Tuple(t)) if t.elems.is_empty())
-                }),
-                _ => false,
-            };
+                    syn::PathArguments::AngleBracketed(ab) => {
+                        let mut type_args = ab.args.iter().filter_map(|ga| match ga {
+                            syn::GenericArgument::Type(ty) => Some(ty),
+                            _ => None,
+                        });
+                        match type_args.next() {
+                            Some(syn::Type::Tuple(t)) if t.elems.is_empty() => true,
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                };
 
                 if is_unit_inner {
                     // -> Option<()>
@@ -275,15 +283,23 @@ pub fn miniextendr(
                     == Some(&syn::Ident::new("Result", p.path.span())) =>
             {
                 let seg = p.path.segments.last().unwrap();
-                let is_unit_inner = match &seg.arguments {
-                syn::PathArguments::AngleBracketed(ab) => ab.args.iter().any(|ga| {
-                    matches!(ga, syn::GenericArgument::Type(syn::Type::Tuple(t)) if t.elems.is_empty())
-                }),
-                _ => false,
-            };
+                // check ONLY the first type argument (Ok type) of Result<Ok, Err>
+                let ok_is_unit = match &seg.arguments {
+                    syn::PathArguments::AngleBracketed(ab) => {
+                        let mut type_args = ab.args.iter().filter_map(|ga| match ga {
+                            syn::GenericArgument::Type(ty) => Some(ty),
+                            _ => None,
+                        });
+                        match type_args.next() {
+                            Some(syn::Type::Tuple(t)) if t.elems.is_empty() => true,
+                            _ => false,
+                        }
+                    }
+                    _ => false,
+                };
 
-                if is_unit_inner {
-                    // -> Result<(), _>
+                if ok_is_unit {
+                    // -> Result<(), E>
                     is_invisible_return_type = true;
                     quote::quote! {
                         let _ = result.unwrap();
@@ -291,7 +307,7 @@ pub fn miniextendr(
                     }
                 } else {
                     is_invisible_return_type = false;
-                    // -> Result<T, _>
+                    // -> Result<T, E>
                     quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap()) }
                 }
             }
