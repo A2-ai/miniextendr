@@ -170,8 +170,42 @@ pub fn miniextendr(
                         Some(quote::quote! { let #ident = (); })
                     }
                 }
+// &::miniextendr_api::dots::Dots param (for ...)
+                (syn::Pat::Ident(p), syn::Type::Reference(r)) => {
+                    let ident = p.ident.clone();
+                    match r.elem.as_ref() {
+                        syn::Type::Path(tp)
+                            if tp
+                                .path
+                                .segments
+                                .last()
+                                .map(|s| s.ident == "Dots")
+                                .unwrap_or(false) =>
+                        {
+                            // Construct a local Dots storage from the incoming SEXP,
+                            // then bind the parameter name to a reference to it.
+                            let storage_ident = quote::format_ident!("{}_storage", ident);
+                            Some(quote::quote! {
+                                let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
+                                let #ident = &#storage_ident;
+                            })
+                        }
+                        _ => {
+                            // Fallback to normal pointer-based extraction for other &T
+                            if p.mutability.is_some() {
+                                Some(quote::quote! {
+                                    let mut #ident = *::miniextendr_api::ffi::DATAPTR(#ident).cast();
+                                })
+                            } else {
+                                Some(quote::quote! {
+                                    let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast();
+                                })
+                            }
+                        }
+                    }
+                }
 
-                // non-() return
+                // all other non-() params
                 (syn::Pat::Ident(p), _) => {
                     let ident = p.ident.clone();
                     if p.mutability.is_some() {
