@@ -232,14 +232,14 @@ pub fn miniextendr(
         // no arrow
         syn::ReturnType::Default => {
             is_invisible_return_type = true;
-            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+            quote::quote! { ::miniextendr_api::ffi::R_NilValue }
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+                quote::quote! { ::miniextendr_api::ffi::R_NilValue }
             }
 
             // -> Option<...> cases
@@ -268,7 +268,7 @@ pub fn miniextendr(
                     is_invisible_return_type = true;
                     quote::quote! {
                         let _ = result.unwrap();
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::R_NilValue
                     }
                 } else {
                     is_invisible_return_type = false;
@@ -303,7 +303,7 @@ pub fn miniextendr(
                     is_invisible_return_type = true;
                     quote::quote! {
                         let _ = result.unwrap();
-                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        ::miniextendr_api::ffi::R_NilValue
                     }
                 } else {
                     is_invisible_return_type = false;
@@ -331,18 +331,28 @@ pub fn miniextendr(
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 let old = std::panic::take_hook();
-                std::panic::set_hook(Box::new(move |_| {}));
-                ::miniextendr_api::unwind_protect::with_unwind_protect(move || {
-                    let result = std::panic::catch_unwind(move || {
-                        #(#input_names)*
-                        let result = #rust_ident(#(#rust_inputs),*);
+                // FIRST OPTION: show nothing!
+                // std::panic::set_hook(Box::new(move |_| {}));
+                // SECOND OPTION:
+                std::panic::set_hook(Box::new(|panic_info| {
+                    if let Some(location) = panic_info.location() {
+                        println!("Rust error occurred in file 'src/rust/{}' at line {}", location.file(), location.line());
+                    } else {
+                        println!("Rust error occurred but can't get location information...");
+                    }
+                }));
+                unsafe {
+                    ::miniextendr_api::unwind_protect::with_unwind_protect(move || {
+                        let result = std::panic::catch_unwind(move || {
+                            #(#input_names)*
+                            let result = #rust_ident(#(#rust_inputs),*);
 
-                        #return_statement
-                    });
-                    match result {
-                        Ok(result) => result,
-                        Err(ref payload) => {
-                            let error_message: &str =
+                            #return_statement
+                        });
+                        match result {
+                            Ok(result) => result,
+                            Err(ref payload) => {
+                                let error_message: &str =
                                 if let Some(&message) = payload.downcast_ref::<&str>() {
                                     message
                                 } else if let Some(message) = payload.downcast_ref::<String>() {
@@ -353,16 +363,17 @@ pub fn miniextendr(
                                     "panic payload could not be unpacked"
                                 };
 
-                            let c_error_message =
+                                let c_error_message =
                                 std::ffi::CString::new(error_message).unwrap_or_else(|_| {
                                     std::ffi::CString::new("<invalid panic message>").unwrap()
                                 });
-                            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_error_message.as_ptr());
+                                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_error_message.as_ptr());
+                            }
                         }
-                    }
-                }, move |jump| {
-                    std::panic::set_hook(old);
-                })
+                    }, move |_jump| {
+                        std::panic::set_hook(old);
+                    })
+                }
             }
         }
     };
@@ -523,7 +534,8 @@ pub fn miniextendr(
     );
     let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper_ident.span());
 
-    let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
+    let rust_ident_upper = rust_ident.to_string().to_uppercase();
+    let r_wrapper_generator = quote::format_ident!("R_WRAPPER_{rust_ident_upper}");
 
     // endregion
 
@@ -545,11 +557,15 @@ pub fn miniextendr(
         // also handle the case where there is no rust-name because it is an `unsafe extern "C"` being exported!
         #[doc(hidden)]
         #[inline(always)]
+        #[allow(non_snake_case)]
         const fn #call_method_def() -> ::miniextendr_api::ffi::R_CallMethodDef {
             unsafe {
                 ::miniextendr_api::ffi::R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
-                    fun: Some(std::mem::transmute::<unsafe #abi fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP, unsafe #abi fn(...) -> ::miniextendr_api::ffi::SEXP>(#c_ident)),
+                    fun: Some(std::mem::transmute::<
+                        unsafe #abi fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
+                        unsafe #abi fn(...) -> ::miniextendr_api::ffi::SEXP
+                    >(#c_ident)),
                     numArgs: #num_args,
                 }
             }
@@ -746,7 +762,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|x| {
             //TODO: put this in ExtendrFunction impl
             let rust_ident = &x.ident;
-            let r_wrapper_generator = quote::format_ident!("r_wrapper_{rust_ident}");
+            let rust_ident_upper = rust_ident.to_string().to_uppercase();
+            let r_wrapper_generator = quote::format_ident!("R_WRAPPER_{rust_ident_upper}");
             syn::parse_quote!(#r_wrapper_generator)
         })
         .collect();
