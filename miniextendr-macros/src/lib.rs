@@ -330,8 +330,10 @@ pub fn miniextendr(
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::unwind_protect::with_unwind_protect(||{
-                    let result = std::panic::catch_unwind(||{
+                let old = std::panic::take_hook();
+                std::panic::set_hook(Box::new(move |_| {}));
+                ::miniextendr_api::unwind_protect::with_unwind_protect(move || {
+                    let result = std::panic::catch_unwind(move || {
                         #(#input_names)*
                         let result = #rust_ident(#(#rust_inputs),*);
 
@@ -339,14 +341,27 @@ pub fn miniextendr(
                     });
                     match result {
                         Ok(result) => result,
-                        Err(result) => {
-                            dbg!(result);
-                            R_NilValue
+                        Err(ref payload) => {
+                            let error_message: &str =
+                                if let Some(&message) = payload.downcast_ref::<&str>() {
+                                    message
+                                } else if let Some(message) = payload.downcast_ref::<String>() {
+                                    message.as_str()
+                                } else if let Some(message) = payload.downcast_ref::<&String>() {
+                                    message.as_str()
+                                } else {
+                                    "panic payload could not be unpacked"
+                                };
+
+                            let c_error_message =
+                                std::ffi::CString::new(error_message).unwrap_or_else(|_| {
+                                    std::ffi::CString::new("<invalid panic message>").unwrap()
+                                });
+                            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_error_message.as_ptr());
                         }
                     }
-
-                }, |jump| {
-
+                }, move |jump| {
+                    std::panic::set_hook(old);
                 })
             }
         }

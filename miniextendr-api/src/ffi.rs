@@ -47,6 +47,9 @@ unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
+    // Rinternals.h
+    pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...);
+
     // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
     pub fn Rprintf(arg1: *const ::std::os::raw::c_char, ...);
