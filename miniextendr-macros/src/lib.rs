@@ -170,7 +170,7 @@ pub fn miniextendr(
                         Some(quote::quote! { let #ident = (); })
                     }
                 }
-// &::miniextendr_api::dots::Dots param (for ...)
+                // &::miniextendr_api::dots::Dots param (for ...)
                 (syn::Pat::Ident(p), syn::Type::Reference(r)) => {
                     let ident = p.ident.clone();
                     match r.elem.as_ref() {
@@ -315,21 +315,19 @@ pub fn miniextendr(
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::unwind_protect::with_unwind_protect(||{
+                    let result = std::panic::catch_unwind(||{
+                        #(#input_names)*
+                        let result = #rust_ident(#(#rust_inputs),*);
 
-                    // #rust_inputss
-                    // #input_names
-                    // #return_statement
-                    // let old = std::panic::take_hook();
-                    // std::panic::set_hook(Box::new(|_| {}));
-                    // TODO: these borrows ought to be used based on the mutability requirements...
-                    #[allow(unused_imports)]
-                    use std::borrow::{Borrow, BorrowMut};
-                    #(#input_names)*
-                    // FIXME: shouldn't this borrow?
-                    // dbg!(#rust_inputs);
-                    let result = #rust_ident(#(#rust_inputs),*);
-
-                    #return_statement
+                        #return_statement
+                    });
+                    match result {
+                        Ok(result) => result,
+                        Err(result) => {
+                            dbg!(result);
+                            R_NilValue
+                        }
+                    }
 
                 }, |jump| {
 
@@ -393,35 +391,55 @@ pub fn miniextendr(
     }
 
     // region: R wrappers generation in `fn`
-    let r_wrapper_args: Vec<_> = inputs
-        .into_iter()
-        .map(|x| {
-            let syn::FnArg::Typed(pat_type) = &x else {
-                // FIXME: convert this to an error
-                unreachable!()
-            };
-            let syn::PatType {
-                // TODO: use `attrs` to add Default value!
-                attrs: _,
-                pat,
-                colon_token: _,
-                ty: _,
-            } = &pat_type;
-            // dbg!(&pat);
-            match pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => {
-                    let mut arg_name = pat_ident.ident.to_string();
-                    if arg_name.starts_with('_') {
-                        arg_name.insert_str(0, "unused");
-                    }
-                    let arg_name = syn::Ident::new(&arg_name, pat_ident.ident.span());
+    // Build both the .Call argument list and the formal parameter list in one pass
+    let last_idx = inputs.len().saturating_sub(1);
+    let mut r_call_args: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut r_formals: Vec<proc_macro2::TokenStream> = Vec::new();
+    for (idx, x) in inputs.iter().enumerate() {
+        let syn::FnArg::Typed(pat_type) = x else { unreachable!() };
+        let syn::PatType { attrs: _, pat, colon_token: _, ty } = pat_type;
 
-                    arg_name
-                }
-                _ => todo!(),
+        // derive R argument name, applying leading-underscore rename
+        let arg_ident = match pat.as_ref() {
+            syn::Pat::Ident(pat_ident) => {
+                let mut arg_name = pat_ident.ident.to_string();
+                if arg_name.starts_with('_') { arg_name.insert_str(0, "unused"); }
+                syn::Ident::new(&arg_name, pat_ident.ident.span())
             }
-        })
-        .collect();
+            _ => unreachable!(),
+        };
+
+        // call-site argument
+        if has_dots && idx == last_idx {
+            if let Some(named_dots) = &named_dots {
+                let named = syn::Ident::new(&named_dots.to_string(), named_dots.span());
+                r_call_args.push(syn::parse_quote!(list(#named)));
+            } else {
+                r_call_args.push(syn::parse_quote!(list(...)));
+            }
+        } else {
+            r_call_args.push(arg_ident.clone().into_token_stream());
+        }
+
+        // formal parameter (with defaults for unit types)
+        if has_dots && idx == last_idx {
+            if let Some(named_dots) = &named_dots {
+                let named = syn::Ident::new(&named_dots.to_string(), named_dots.span());
+                r_formals.push(syn::parse_quote!(#named = ...));
+            } else {
+                r_formals.push(syn::parse_quote!(...));
+            }
+        } else {
+            match ty.as_ref() {
+                syn::Type::Tuple(t) if t.elems.is_empty() => {
+                    r_formals.push(syn::parse_quote!(#arg_ident = NULL));
+                }
+                _ => {
+                    r_formals.push(arg_ident.into_token_stream());
+                }
+            }
+        }
+    }
 
     // need to change the leading underscore of a dots variable to match
     // r's requirement of non _ as leading character in alias/variable names.
@@ -436,41 +454,20 @@ pub fn miniextendr(
             *named_dots = arg_name;
         }
     }
-    let named_dots = named_dots;
 
     // region: R wrappers generation in `fn`
-    let mut r_wrapper_args: Vec<_> = r_wrapper_args
-        .into_iter()
-        .map(|x| x.into_token_stream())
-        .collect();
-    if has_dots {
-        r_wrapper_args.pop();
-        if let Some(named_dots) = &named_dots {
-            r_wrapper_args.push(syn::parse_quote!(list(#named_dots)));
-        } else {
-            r_wrapper_args.push(syn::parse_quote!(list(...)));
-        }
-    }
     let r_wrapper_return = if !is_invisible_return_type {
-        quote::quote! {.Call(#c_ident #(, #r_wrapper_args)*)}
+        quote::quote! {.Call(#c_ident #(, #r_call_args)*)}
     } else {
-        quote::quote! {invisible(.Call(#c_ident #(, #r_wrapper_args)*))}
+        quote::quote! {invisible(.Call(#c_ident #(, #r_call_args)*))}
     };
     let r_wrapper_ident = if abi.is_some() {
         &quote::format_ident!("unsafe_{rust_ident}")
     } else {
         rust_ident
     };
-    if has_dots {
-        r_wrapper_args.pop();
-        if let Some(named_dots) = named_dots {
-            r_wrapper_args.push(syn::parse_quote!(#named_dots = ...));
-        } else {
-            r_wrapper_args.push(syn::parse_quote!(...));
-        }
-    }
     let r_wrapper = quote::quote! {
-        #r_wrapper_ident <- function(#(#r_wrapper_args),*) {
+        #r_wrapper_ident <- function(#(#r_formals),*) {
 
             // TODO: add attribute `r_body_code` to add R code between function call
             // and return statement!
