@@ -85,6 +85,21 @@ fn add_r_error(_left: i32, _right: i32) -> i32 {
     }
 }
 
+#[miniextendr]
+fn add_panic_heap(_left: i32, _right: i32) -> i32 {
+    let _a = Box::new(MsgOnDrop);
+    panic!("we cannot add right now! ")
+}
+
+#[miniextendr]
+fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
+    let _a = Box::new(MsgOnDrop);
+    // WARNING: doesn't drop
+    unsafe {
+        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+    }
+}
+
 // endregion
 
 // region: `mut` checks
@@ -252,6 +267,9 @@ miniextendr_module! {
     fn add4;
     fn add_panic;
     fn add_r_error;
+
+    fn add_panic_heap;
+    fn add_r_error_heap;
 
     fn add_left_mut;
     fn add_right_mut;

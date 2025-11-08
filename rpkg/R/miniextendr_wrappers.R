@@ -22,6 +22,14 @@ add_r_error <- function(unused_left, unused_right) {
     .Call(C_add_r_error, .call = match.call(), unused_left, unused_right)
 }
 
+add_panic_heap <- function(unused_left, unused_right) {
+    .Call(C_add_panic_heap, .call = match.call(), unused_left, unused_right)
+}
+
+add_r_error_heap <- function(unused_left, unused_right) {
+    .Call(C_add_r_error_heap, .call = match.call(), unused_left, unused_right)
+}
+
 add_left_mut <- function(left, right) {
     .Call(C_add_left_mut, .call = match.call(), left, right)
 }
