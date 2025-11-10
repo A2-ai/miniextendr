@@ -13,3 +13,9 @@ impl IntoR for () {
         unsafe { crate::ffi::R_NilValue }
     }
 }
+
+impl IntoR for std::convert::Infallible {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::R_NilValue }
+    }
+}

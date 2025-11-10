@@ -54,16 +54,16 @@ unsafe_C_panic_and_catch <- function() {
     .Call(C_panic_and_catch)
 }
 
-just <- function() {
-    .Call(C_just, .call = match.call())
+drop_message_on_success <- function() {
+    .Call(C_drop_message_on_success, .call = match.call())
 }
 
-unsafe_drop_on_panic <- function() {
-    .Call(drop_on_panic)
+drop_on_panic <- function() {
+    invisible(.Call(C_drop_on_panic, .call = match.call()))
 }
 
-unsafe_drop_on_panic_with_move <- function() {
-    .Call(drop_on_panic_with_move)
+drop_on_panic_with_move <- function() {
+    invisible(.Call(C_drop_on_panic_with_move, .call = match.call()))
 }
 
 greetings_with_named_dots <- function(dots = ...) {

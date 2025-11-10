@@ -245,6 +245,14 @@ pub fn miniextendr(
     let is_invisible_return_type: bool;
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
+    let option_none_error = quote::quote! {
+        || ::std::borrow::Cow::Borrowed(concat!(
+            "miniextendr function `",
+            stringify!(#rust_ident),
+            "` returned None"
+        ))
+    };
+    let result_err_mapper = quote::quote!(|err| ::std::borrow::Cow::Owned(format!("{err:?}")));
     let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
@@ -281,13 +289,17 @@ pub fn miniextendr(
                     // -> Option<()>
                     is_invisible_return_type = true;
                     post_call_statements.push(quote::quote! {
-                        let _ = #rust_result_ident.unwrap();
+                        #rust_result_ident.ok_or_else(#option_none_error.clone())?;
                     });
                     quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
                     // -> Option<T>
-                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }
+                    post_call_statements.push(quote::quote! {
+                        let #rust_result_ident =
+                            #rust_result_ident.ok_or_else(#option_none_error.clone())?;
+                    });
+                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
                 }
             }
 
@@ -313,13 +325,16 @@ pub fn miniextendr(
                     // -> Result<(), E>
                     is_invisible_return_type = true;
                     post_call_statements.push(quote::quote! {
-                        let _ = #rust_result_ident.unwrap();
+                        #rust_result_ident.map_err(#result_err_mapper)?;
                     });
                     quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
                     // -> Result<T, E>
-                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }
+                    post_call_statements.push(quote::quote! {
+                        let #rust_result_ident = #rust_result_ident.map_err(#result_err_mapper)?;
+                    });
+                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
                 }
             }
 

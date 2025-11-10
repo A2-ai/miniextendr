@@ -2,7 +2,8 @@ use std::borrow::Cow;
 use std::cell::RefCell;
 use std::panic::AssertUnwindSafe;
 
-use miniextendr_api::ffi::{R_NilValue, SEXP, SendSEXP};
+use miniextendr_api::ffi::{R_NilValue, Rf_error, SEXP, SendSEXP};
+use miniextendr_api::unwind::with_r;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 use miniextendr_api::unwind_protect::with_unwind_protect;
@@ -16,30 +17,30 @@ impl Drop for MsgOnDrop {
     fn drop(&mut self) {
         let _ = miniextendr_api::unwind::with_r(|| unsafe {
             miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Dropped `MsgOnDrop`!\n".as_ptr());
-            miniextendr_api::ffi::R_NilValue
         });
     }
 }
 
 #[miniextendr]
-fn just() -> i32 {
+fn drop_message_on_success() -> i32 {
     let _a = MsgOnDrop;
     42
 }
 
 #[miniextendr]
-#[unsafe(no_mangle)]
-extern "C" fn drop_on_panic() -> miniextendr_api::ffi::SEXP {
+fn drop_on_panic() {
     let _a = MsgOnDrop;
-    // fail
     panic!()
 }
 
 #[miniextendr]
-#[unsafe(no_mangle)]
-extern "C" fn drop_on_panic_with_move() -> miniextendr_api::ffi::SEXP {
+fn drop_on_panic_with_move() -> Result<(), Cow<'static, str>> {
     let _a = MsgOnDrop;
-    panic!();
+    with_r(|| unsafe {
+        Rf_error(c"an r error occurred".as_ptr());
+        R_NilValue
+    })?;
+    Ok(())
 }
 
 // endregion
@@ -288,7 +289,7 @@ miniextendr_module! {
     extern "C" fn C_just_panic;
     extern "C" fn C_panic_and_catch;
 
-    fn just;
+    fn drop_message_on_success;
     fn drop_on_panic;
     fn drop_on_panic_with_move;
 
@@ -383,6 +384,8 @@ unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
         // miniextendr_api::unwind::PanicHookGuard::print_nothing(),
     ));
 
+    let (worker_reply_tx, worker_reply_rx) = std::sync::mpsc::sync_channel(1);
+
     miniextendr_api::unwind::WORKER_TX
         .get()
         .expect("worker runtime not initialised")
@@ -391,19 +394,28 @@ unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
                 let rust_result = do_nothing();
                 rust_result.map(|sexp| unsafe { SendSEXP::new(sexp) })
             }),
+            reply: worker_reply_tx,
         })
         .expect("worker thread exited unexpectedly");
 
     let worker_result = miniextendr_api::unwind::R_TASK_RX_SLOT.with(|slot| {
-        loop {
+        'dispatch: loop {
+            if let Ok(done) = worker_reply_rx.try_recv() {
+                break done;
+            }
+
             let message = {
                 let mut slot_borrow = slot.borrow_mut();
                 let receiver = slot_borrow
                     .as_mut()
                     .expect("runtime not initialised (R task receiver)");
-                receiver
-                    .recv()
-                    .expect("R dispatcher channel closed unexpectedly")
+                match receiver.recv_timeout(std::time::Duration::from_millis(10)) {
+                    Ok(msg) => msg,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue 'dispatch,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        panic!("R dispatcher channel closed unexpectedly")
+                    }
+                }
             };
 
             match message {
@@ -449,34 +461,16 @@ unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
                                         )))
                                         .unwrap();
                                 }
-
-                                let mut slot = slot.borrow_mut();
-                                let receiver = slot
-                                    .as_mut()
-                                    .expect("runtime not initialised (R task receiver)");
-
-                                // ensuring that the r task receiver is not waiting after an error
-                                match receiver.recv() {
-                                    Ok(miniextendr_api::unwind::RTask::Result(_)) => {}
-                                    Ok(_) => {}
-                                    Err(_) => {}
-                                }
-                                // Example:
-                                // [lib.rs:575:42] a = Ok(
-                                //     Result(
-                                //         Err(
-                                //             "non-local jump while executing R task",
-                                //         ),
-                                //     ),
-                                // )
                             },
                         );
                     };
                 }
-                miniextendr_api::unwind::RTask::Result(result) => break result,
+                miniextendr_api::unwind::RTask::Result(_result) => continue,
             }
         }
     });
+
+    hook_guard.borrow_mut().take();
 
     match worker_result {
         Ok(result) => result.get(),

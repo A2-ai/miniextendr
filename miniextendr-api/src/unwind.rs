@@ -33,12 +33,13 @@ type ReplySender = std::sync::mpsc::SyncSender<WorkerReply>;
 pub enum WorkerCommand {
     Run {
         job: Box<dyn FnOnce() -> WorkerReply + Send>,
+        reply: ReplySender,
     },
 }
 impl std::fmt::Debug for WorkerCommand {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Run { job: _ } => f
+            Self::Run { job: _, .. } => f
                 .debug_struct("Run")
                 .field("job", &"Box<dyn FnOnce() -> WorkerReply + Send>")
                 .finish(),
@@ -80,7 +81,10 @@ extern "C" fn miniextendr_runtime_init() {
             *slot.borrow_mut() = Some(r_task_rx);
         });
 
-        let (worker_tx, worker_rx) = std::sync::mpsc::sync_channel(0);
+        // Use a small buffer to avoid circular deadlocks when the worker is
+        // blocked sending a result back to the dispatcher while the dispatcher
+        // is attempting to enqueue the next job.
+        let (worker_tx, worker_rx) = std::sync::mpsc::sync_channel(1);
         WORKER_TX
             .set(worker_tx)
             .expect("worker runtime already initialised");
@@ -90,7 +94,7 @@ extern "C" fn miniextendr_runtime_init() {
             .spawn(move || {
                 while let Ok(cmd) = worker_rx.recv() {
                     match cmd {
-                        WorkerCommand::Run { job } => {
+                        WorkerCommand::Run { job, reply } => {
                             let result =
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)) {
                                     Ok(job_result) => job_result,
@@ -98,11 +102,7 @@ extern "C" fn miniextendr_runtime_init() {
                                         Err(miniextendr_api::unwind::panic_payload_to_string(panic))
                                     }
                                 };
-                            R_TASK_TX
-                                .get()
-                                .unwrap()
-                                .send(RTask::Result(result))
-                                .unwrap();
+                            reply.send(result).unwrap();
                         }
                     }
                 }
@@ -132,29 +132,42 @@ where
         .map(|value| value.get())
 }
 
-#[doc(hidden)]
 pub unsafe fn call_worker<F>(call: SEXP, job: F) -> SEXP
 where
     F: FnOnce() -> WorkerReply + Send + 'static,
 {
     let hook_guard = std::cell::RefCell::new(Some(PanicHookGuard::print_error_location()));
 
+    let (worker_reply_tx, worker_reply_rx) = std::sync::mpsc::sync_channel(1);
+
     WORKER_TX
         .get()
         .expect("worker runtime not initialised")
-        .send(WorkerCommand::Run { job: Box::new(job) })
+        .send(WorkerCommand::Run {
+            job: Box::new(job),
+            reply: worker_reply_tx,
+        })
         .expect("worker thread exited unexpectedly");
 
     let worker_result = R_TASK_RX_SLOT.with(|slot| {
         loop {
+            // If the worker has finished, stop dispatching R tasks and return.
+            if let Ok(done) = worker_reply_rx.try_recv() {
+                break done;
+            }
+
             let message = {
                 let mut slot_borrow = slot.borrow_mut();
                 let receiver = slot_borrow
                     .as_mut()
                     .expect("runtime not initialised (R task receiver)");
-                receiver
-                    .recv()
-                    .expect("R dispatcher channel closed unexpectedly")
+                match receiver.recv_timeout(std::time::Duration::from_millis(10)) {
+                    Ok(msg) => msg,
+                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
+                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
+                        panic!("R dispatcher channel closed unexpectedly")
+                    }
+                }
             };
 
             match message {
@@ -199,29 +212,30 @@ where
                                         )))
                                         .unwrap();
                                 }
-
-                                let mut slot = slot.borrow_mut();
-                                let receiver = slot
-                                    .as_mut()
-                                    .expect("runtime not initialised (R task receiver)");
-
-                                match receiver.recv() {
-                                    Ok(RTask::Result(_)) => {}
-                                    Ok(_) => {}
-                                    Err(_) => {}
-                                }
+                                // Do not touch the R task receiver here.
+                                // Let the outer loop receive the next message (likely the worker result).
                             },
                         );
                     };
                 }
-                RTask::Result(result) => break result,
+                // Prior versions sent worker results over this channel.
+                // If encountered, ignore and continue; the real result is read
+                // from `worker_reply_rx` above which is correctly associated to
+                // this call.
+                RTask::Result(_result) => continue,
             }
         }
     });
 
     match worker_result {
-        Ok(result) => result.get(),
-        Err(message) => unsafe { raise_r_error_call(call, &message) },
+        Ok(result) => {
+            hook_guard.borrow_mut().take();
+            result.get()
+        }
+        Err(message) => {
+            hook_guard.borrow_mut().take();
+            unsafe { raise_r_error_call(call, &message) }
+        }
     }
 }
 
