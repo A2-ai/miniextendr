@@ -383,9 +383,9 @@ pub fn miniextendr(
                                 ::miniextendr_api::ffi::Rf_errorcall(#call_param_ident, c"%s".as_ptr(), c_error_message.as_ptr());
                             }
                         }
-                    }, move |_jump| {
+                    }, move |jump| {
                         std::panic::set_hook(old);
-                    })
+                    }, ::miniextendr_api::unwind_protect::continue_unwind)
                 }
             }
         }
@@ -710,7 +710,7 @@ impl syn::parse::Parse for ExtendrItem {
 impl syn::parse::Parse for ExtendrModule {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let items: syn::punctuated::Punctuated<ExtendrItem, syn::Token![;]> =
-            syn::punctuated::Punctuated::parse_terminated_with(&input, ExtendrItem::parse)?;
+            syn::punctuated::Punctuated::parse_terminated_with(input, ExtendrItem::parse)?;
 
         let mut name = None;
         let mut uses = Vec::new();

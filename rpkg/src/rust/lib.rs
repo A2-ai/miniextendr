@@ -1,6 +1,19 @@
+use std::{
+    any::Any,
+    borrow::Cow,
+    cell::RefCell,
+    ffi::CString,
+    panic::AssertUnwindSafe,
+    sync::{
+        Once, OnceLock,
+        mpsc::{Receiver, SyncSender},
+    },
+};
+
+use miniextendr_api::ffi::{R_NilValue, SEXP, SendSEXP};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-use miniextendr_api::unwind_protect::with_unwind_protect;
+use miniextendr_api::unwind_protect::{continue_unwind, with_unwind_protect};
 
 // region
 
@@ -13,7 +26,7 @@ impl Drop for MsgOnDrop {
         // put an alias on the macro that uses the thread-local buffer to Rprintf!
 
         unsafe {
-            miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Dropped `MsgOnDrop`!\n\n".as_ptr())
+            miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Dropped `MsgOnDrop`!\n".as_ptr())
         };
     }
 }
@@ -37,6 +50,7 @@ extern "C" fn drop_on_panic_with_move() -> miniextendr_api::ffi::SEXP {
 
 // region: panics, (), and Result
 #[miniextendr]
+#[allow(clippy::unused_unit)]
 fn take_and_return_nothing() -> () {}
 
 #[miniextendr]
@@ -51,14 +65,12 @@ fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
 
 #[miniextendr]
 fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
-    left.checked_add(right).ok_or_else(|| ())
+    left.checked_add(right).ok_or(())
 }
 
 #[miniextendr]
 fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
-    Ok(left
-        .checked_div(right)
-        .ok_or_else(|| "don't divide by zero dude")?)
+    left.checked_div(right).ok_or("don't divide by zero dude")
 }
 
 #[miniextendr]
@@ -149,6 +161,7 @@ extern "C" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
 
 #[miniextendr]
 #[allow(non_snake_case)]
+#[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
 extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
     unsafe {
@@ -164,9 +177,10 @@ extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
 ///
 #[miniextendr]
 #[allow(non_snake_case)]
+#[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
 extern "C" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
-    let _ = std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) })
+    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) })
         .join()
         .unwrap();
     unsafe { miniextendr_api::ffi::R_NilValue }
@@ -177,7 +191,7 @@ extern "C" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 extern "C" fn C_r_print_in_thread() -> ::miniextendr_api::ffi::SEXP {
-    let _ = std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"arg1".as_ptr()) })
+    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"arg1".as_ptr()) })
         .join()
         .unwrap();
     unsafe { miniextendr_api::ffi::R_NilValue }
@@ -238,7 +252,6 @@ extern "C" fn C_check_interupt_unwind() -> SEXP {
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     unsafe {
-        // todo!();
         with_unwind_protect(
             || {
                 R_CheckUserInterrupt();
@@ -246,9 +259,10 @@ extern "C" fn C_check_interupt_unwind() -> SEXP {
             },
             |jump| {
                 if jump {
-                    println!("jump occurred, i.e. an interupt!")
+                    println!("jump occurred, i.e. an interupt!");
                 }
             },
+            continue_unwind,
         );
         R_NilValue
     }
@@ -323,6 +337,7 @@ mod altrep {
 fn invisibly_return_no_arrow() {}
 
 #[miniextendr]
+#[allow(clippy::unused_unit)]
 fn invisibly_return_arrow() -> () {}
 
 #[miniextendr]
@@ -352,243 +367,244 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 
 // region: rust worker thread
 
-type WorkerReply = Result<SendSEXP, String>;
+type WorkerReply = Result<SendSEXP, Cow<'static, str>>;
+type ReplySender = SyncSender<WorkerReply>;
 
-enum RuntimeMessage {
-    Task {
-        job: Box<dyn FnOnce() -> SendSEXP + Send>,
-        reply: std::sync::mpsc::SyncSender<WorkerReply>,
+enum WorkerCommand {
+    Run {
+        job: Box<dyn FnOnce() -> WorkerReply + Send>,
     },
-    Flush,
 }
 
-static DISPATCHER_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<RuntimeMessage>> =
-    std::sync::OnceLock::new();
-static RUNTIME_ONCE: std::sync::Once = std::sync::Once::new();
+enum RTask {
+    Call {
+        job: Box<dyn FnOnce() -> SendSEXP + Send>,
+        reply: ReplySender,
+    },
+    Result(WorkerReply),
+}
+
+static WORKER_TX: OnceLock<SyncSender<WorkerCommand>> = OnceLock::new();
+static R_TASK_TX: OnceLock<SyncSender<RTask>> = OnceLock::new();
+static RUNTIME_ONCE: Once = Once::new();
 
 thread_local! {
-    static DISPATCHER_RX: std::cell::RefCell<Option<std::sync::mpsc::Receiver<RuntimeMessage>>> = std::cell::RefCell::new(None);
-    static WORKER_MAILBOX: std::cell::RefCell<Option<(std::sync::mpsc::SyncSender<RuntimeMessage>, std::sync::mpsc::SyncSender<WorkerReply>, std::sync::mpsc::Receiver<WorkerReply>)>> = std::cell::RefCell::new(None);
-}
-
-fn with_r<R>(r: R) -> SEXP
-where
-    R: FnOnce() -> SEXP + Send + 'static,
-{
-    WORKER_MAILBOX.with(|cell| {
-        let slot = cell.borrow();
-        let (dispatcher, reply_tx, reply_rx) = slot
-            .as_ref()
-            .expect("with_r called outside a registered worker thread");
-
-        dispatcher
-            .send(RuntimeMessage::Task {
-                job: Box::new(|| unsafe { SendSEXP::new(r()) }),
-                reply: reply_tx.clone(),
-            })
-            .expect("dispatcher channel closed unexpectedly");
-
-        match reply_rx
-            .recv()
-            .expect("dispatcher dropped worker reply channel")
-        {
-            Ok(value) => value.get(),
-            Err(message) => panic!("{message}"),
-        }
-    })
-}
-
-fn do_nothing() -> SEXP {
-    let allocated_r_scalar = with_r(|| {
-        use miniextendr_api::ffi;
-
-        unsafe { ffi::Rf_ScalarInteger(42) }
-    });
-    allocated_r_scalar
+    static R_TASK_RX_SLOT: RefCell<Option<Receiver<RTask>>> = const { RefCell::new(None) };
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn miniextendr_runtime_init() {
+extern "C" fn miniextendr_runtime_init() {
     RUNTIME_ONCE.call_once_force(|_once_state| {
-        // TODO: use `_once_state` to inform about issues.. this will
-        // be relevant when the rust-runtime is converted to a runtime amongst
-        // all rust-based r-packages
-        let (dispatcher_tx, dispatcher_rx) = std::sync::mpsc::sync_channel(0);
-        DISPATCHER_TX
-            .set(dispatcher_tx)
-            .expect("dispatcher already initialised");
-        DISPATCHER_RX.with(|cell| {
-            let mut slot = cell.borrow_mut();
-            if slot.is_some() {
-                panic!("dispatcher receiver already initialised on this thread");
-            }
-            *slot = Some(dispatcher_rx);
+        // TODO: use _once_state for tracing messages
+        let (r_task_tx, r_task_rx) = std::sync::mpsc::sync_channel(0);
+        R_TASK_TX
+            .set(r_task_tx)
+            .expect("R task sender already initialised");
+        R_TASK_RX_SLOT.with(|slot| {
+            *slot.borrow_mut() = Some(r_task_rx);
         });
+
+        let (worker_tx, worker_rx) = std::sync::mpsc::sync_channel(0);
+        WORKER_TX
+            .set(worker_tx)
+            .expect("worker runtime already initialised");
+
+        std::thread::Builder::new()
+            .name("miniextendr worker".to_string())
+            .spawn(move || {
+                while let Ok(cmd) = worker_rx.recv() {
+                    match cmd {
+                        WorkerCommand::Run { job } => {
+                            let result = match std::panic::catch_unwind(AssertUnwindSafe(job)) {
+                                Ok(job_result) => job_result,
+                                Err(panic) => Err(panic_payload_to_string(panic)),
+                            };
+                            R_TASK_TX
+                                .get()
+                                .unwrap()
+                                .send(RTask::Result(result))
+                                .unwrap();
+                        }
+                    }
+                }
+            })
+            .expect("failed to spawn miniextendr worker thread");
     });
+}
+
+fn with_r<R>(r: R) -> Result<SEXP, Cow<'static, str>>
+where
+    R: FnOnce() -> SEXP + Send + 'static,
+{
+    let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(0);
+    R_TASK_TX
+        .get()
+        .expect("runtime not initialised (R task sender)")
+        .send(RTask::Call {
+            job: Box::new(|| unsafe { SendSEXP::new(r()) }),
+            reply: reply_tx,
+        })
+        .expect("failed to send R task");
+
+    reply_rx
+        .recv()
+        .expect("R dispatcher dropped reply channel")
+        .map(|value| value.get())
+}
+
+fn do_nothing() -> Result<SEXP, Cow<'static, str>> {
+    with_r(|| {
+        use miniextendr_api::ffi;
+
+        // unsafe { Rf_error(c"intentional r error inside with_r".as_ptr()) };
+        // panic!("intentional panic inside with_r");
+
+        unsafe { ffi::Rf_ScalarInteger(42) }
+    })
 }
 
 #[miniextendr]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
-    let mut hook_slot = Some(std::panic::take_hook());
-    std::panic::set_hook(Box::new(|panic_info| {
-        if let Some(location) = panic_info.location() {
-            println!(
-                "Rust error occurred in file 'src/rust/{}' at line {}",
-                location.file(),
-                location.line()
-            )
-        };
-    }));
+    let hook_guard = RefCell::new(Some(PanicHookGuard::new()));
 
-    let dispatcher = DISPATCHER_TX
+    WORKER_TX
         .get()
-        .expect("dispatcher not initialised")
-        .clone();
-
-    let rust_worker_thread = std::thread::Builder::new()
-        .name("rust worker thread".to_string())
-        .spawn({
-            let dispatcher_for_worker = dispatcher.clone();
-            move || {
-                WORKER_MAILBOX.with(|cell| {
-                    let mut slot = cell.borrow_mut();
-                    if slot.is_some() {
-                        panic!("worker mailbox already registered on this thread");
-                    }
-                    let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(0);
-                    *slot = Some((dispatcher_for_worker.clone(), reply_tx, reply_rx));
-                });
-
-                let rust_result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let rust_result = do_nothing();
-                    // TODO: insert rust_result -> r conversion!
-                    unsafe { miniextendr_api::ffi::SendSEXP::new(rust_result) }
-                }))
-                .map_err(|panic| match panic.downcast::<String>() {
-                    Ok(message) => *message,
-                    Err(panic) => match panic.downcast::<&'static str>() {
-                        Ok(message) => (*message).to_string(),
-                        Err(_) => "panic payload could not be unpacked".to_string(),
-                    },
-                });
-
-                WORKER_MAILBOX.with(|cell| {
-                    cell.borrow_mut().take();
-                });
-                let _ = dispatcher.send(RuntimeMessage::Flush);
-                rust_result
-            }
+        .expect("worker runtime not initialised")
+        .send(WorkerCommand::Run {
+            job: Box::new(|| {
+                let rust_result = do_nothing();
+                rust_result.map(|sexp| unsafe { SendSEXP::new(sexp) })
+            }),
         })
-        .expect("failed to spawn rust worker thread");
+        .expect("worker thread exited unexpectedly");
 
-    let mut dispatcher_error: Option<String> = None;
-
-    DISPATCHER_RX.with(|cell| {
-        let receiver_slot = cell.borrow();
-        let receiver = receiver_slot
-            .as_ref()
-            .expect("dispatcher receiver not initialised on this thread");
-
-        unsafe {
-            ::miniextendr_api::unwind_protect::with_unwind_protect(
-                || {
-                    let pending_error = &mut dispatcher_error;
-
-                    loop {
-                        let message = match receiver.recv() {
-                            Ok(msg) => msg,
-                            Err(_) => {
-                                *pending_error =
-                                    Some("dispatcher channel closed unexpectedly".to_string());
-                                break miniextendr_api::ffi::R_NilValue;
-                            }
-                        };
-
-                        match message {
-                            RuntimeMessage::Task { job, reply } => {
-                                let result =
-                                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(job));
-                                match result {
-                                    Ok(value) => {
-                                        if reply.send(Ok(value)).is_err() && pending_error.is_none()
-                                        {
-                                            *pending_error = Some(
-                                                "worker dropped reply channel unexpectedly"
-                                                    .to_string(),
-                                            );
-                                        }
-                                    }
-                                    Err(panic) => {
-                                        let message = match panic.downcast::<String>() {
-                                            Ok(message) => *message,
-                                            Err(panic) => match panic.downcast::<&'static str>() {
-                                                Ok(message) => (*message).to_string(),
-                                                Err(_) => "panic payload could not be unpacked"
-                                                    .to_string(),
-                                            },
-                                        };
-                                        reply.send(Err(message.clone())).unwrap();
-                                        *pending_error = Some(message);
-                                        break miniextendr_api::ffi::R_NilValue;
-                                    }
-                                }
-                            }
-                            RuntimeMessage::Flush => break miniextendr_api::ffi::R_NilValue,
-                        }
-                    }
-                },
-                {
-                    let hook_ptr: *mut Option<
-                        Box<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync + 'static>,
-                    > = &mut hook_slot;
-                    move |_jump| {
-                        let hook = (*hook_ptr).take();
-                        if let Some(hook) = hook {
-                            std::panic::set_hook(hook);
-                        }
-                    }
-                },
-            )
-        };
-    });
-
-    if let Some(hook) = hook_slot.take() {
-        std::panic::set_hook(hook);
-    }
-
-    let worker_result: Result<SendSEXP, String> = match rust_worker_thread.join() {
-        Ok(Ok(value)) => Ok(value),
-        Ok(Err(message)) => Err(message),
-        Err(panic) => Err(match panic.downcast::<String>() {
-            Ok(message) => *message,
-            Err(panic) => match panic.downcast::<&'static str>() {
-                Ok(message) => (*message).to_string(),
-                Err(_) => "panic payload could not be unpacked".to_string(),
-            },
-        }),
-    };
-
-    if let Some(message) = dispatcher_error {
-        let c_message = std::ffi::CString::new(message)
-            .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
+    let worker_result = R_TASK_RX_SLOT.with(|slot| {
         loop {
-            unsafe {
-                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_message.as_ptr());
+            let message = {
+                let mut slot_borrow = slot.borrow_mut();
+                let receiver = slot_borrow
+                    .as_mut()
+                    .expect("runtime not initialised (R task receiver)");
+                receiver
+                    .recv()
+                    .expect("R dispatcher channel closed unexpectedly")
+            };
+
+            match message {
+                RTask::Call { job, reply } => {
+                    let hook_guard = &hook_guard;
+                    let mut job = Some(job);
+                    let reply_slot = RefCell::new(Some(reply));
+                    let reply_slot = &reply_slot;
+
+                    unsafe {
+                        with_unwind_protect(
+                            move || {
+                                let result =
+                                    match std::panic::catch_unwind(AssertUnwindSafe(|| {
+                                        job.take().expect("R task already consumed by dispatcher")()
+                                    })) {
+                                        Ok(value) => Ok(value),
+                                        Err(panic) => Err(panic_payload_to_string(panic)),
+                                    };
+
+                                reply_slot
+                                    .borrow_mut()
+                                    .take()
+                                    .expect("R task reply already sent")
+                                    .send(result)
+                                    .unwrap();
+
+                                R_NilValue
+                            },
+                            move |jump| {
+                                hook_guard.borrow_mut().take();
+
+                                if !jump {
+                                    return;
+                                }
+
+                                if let Some(reply) = reply_slot.borrow_mut().take() {
+                                    reply
+                                        .send(Err(Cow::Borrowed(
+                                            "non-local jump while executing R task",
+                                        )))
+                                        .unwrap();
+                                }
+
+                                let mut slot = slot.borrow_mut();
+                                let receiver = slot
+                                    .as_mut()
+                                    .expect("runtime not initialised (R task receiver)");
+
+                                // ensuring that the r task receiver is not waiting after an error
+                                match receiver.recv() {
+                                    Ok(RTask::Result(_)) => {}
+                                    Ok(_) => {}
+                                    Err(_) => {}
+                                };
+                            },
+                            continue_unwind,
+                        );
+                    };
+                }
+                RTask::Result(result) => break result,
             }
         }
-    }
+    });
 
     match worker_result {
         Ok(result) => result.get(),
-        Err(message) => {
-            let c_message = std::ffi::CString::new(message)
-                .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
-            loop {
-                unsafe {
-                    ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_message.as_ptr());
-                }
-            }
+        Err(message) => raise_r_error(&message),
+    }
+}
+
+fn panic_payload_to_string(panic: Box<dyn Any + Send>) -> Cow<'static, str> {
+    match panic.downcast::<String>() {
+        Ok(message) => Cow::Owned(*message),
+        Err(panic) => match panic.downcast::<&'static str>() {
+            Ok(ref message) => Cow::Borrowed(message),
+            Err(_) => Cow::Borrowed("panic payload could not be unpacked"),
+        },
+    }
+}
+
+fn raise_r_error(message: &str) -> ! {
+    let c_message =
+        CString::new(message).unwrap_or_else(|_| CString::new("<invalid panic message>").unwrap());
+    unsafe {
+        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_message.as_ptr());
+    }
+}
+
+type PanicHook = Box<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync + 'static>;
+struct PanicHookGuard(Option<PanicHook>);
+
+impl PanicHookGuard {
+    fn new() -> Self {
+        let old = std::panic::take_hook();
+        std::panic::set_hook(Box::new(|panic_info| {
+            if let Some(location) = panic_info.location() {
+                println!(
+                    "Rust error occurred in file 'src/rust/{}' at line {}",
+                    location.file(),
+                    location.line()
+                )
+            };
+        }));
+        Self(Some(old))
+    }
+}
+
+impl Drop for PanicHookGuard {
+    fn drop(&mut self) {
+        if let Some(old) = self.0.take() {
+            unsafe {
+                miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Reset panic hook!\n".as_ptr())
+            };
+
+            std::panic::set_hook(old);
         }
     }
 }

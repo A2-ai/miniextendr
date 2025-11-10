@@ -22,6 +22,7 @@ pub(crate) fn coverage_no_return() {
 }
 
 #[miniextendr]
+#[allow(clippy::unused_unit)]
 pub(crate) fn coverage_unit_return() -> () {}
 
 #[miniextendr]
