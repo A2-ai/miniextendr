@@ -1,3 +1,67 @@
+#[allow(non_camel_case_types)]
+pub type R_xlen_t = isize;
+pub type Rbyte = ::std::os::raw::c_uchar;
+
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum SEXPTYPE {
+    #[doc = " nil = NULL"]
+    NILSXP = 0,
+    #[doc = " symbols"]
+    SYMSXP = 1,
+    #[doc = " lists of dotted pairs"]
+    LISTSXP = 2,
+    #[doc = " closures"]
+    CLOSXP = 3,
+    #[doc = " environments"]
+    ENVSXP = 4,
+    #[doc = " promises: [un]evaluated closure arguments"]
+    PROMSXP = 5,
+    #[doc = " language constructs (special lists)"]
+    LANGSXP = 6,
+    #[doc = " special forms"]
+    SPECIALSXP = 7,
+    #[doc = " builtin non-special forms"]
+    BUILTINSXP = 8,
+    #[doc = " \"scalar\" string type (internal only)"]
+    CHARSXP = 9,
+    #[doc = " logical vectors"]
+    LGLSXP = 10,
+    #[doc = " integer vectors"]
+    INTSXP = 13,
+    #[doc = " real variables"]
+    REALSXP = 14,
+    #[doc = " complex variables"]
+    CPLXSXP = 15,
+    #[doc = " string vectors"]
+    STRSXP = 16,
+    #[doc = " dot-dot-dot object"]
+    DOTSXP = 17,
+    #[doc = " make \"any\" args work"]
+    ANYSXP = 18,
+    #[doc = " generic vectors"]
+    VECSXP = 19,
+    #[doc = " expressions vectors"]
+    EXPRSXP = 20,
+    #[doc = " byte code"]
+    BCODESXP = 21,
+    #[doc = " external pointer"]
+    EXTPTRSXP = 22,
+    #[doc = " weak reference"]
+    WEAKREFSXP = 23,
+    #[doc = " raw bytes"]
+    RAWSXP = 24,
+    #[doc = " S4 non-vector"]
+    S4SXP = 25,
+    #[doc = " fresh node created in new page"]
+    NEWSXP = 30,
+    #[doc = " node released by GC"]
+    FREESXP = 31,
+    #[doc = " Closure or Builtin"]
+    FUNSXP = 99,
+}
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SEXPREC(std::ffi::c_void);
