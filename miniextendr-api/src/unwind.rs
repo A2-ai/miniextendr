@@ -54,6 +54,7 @@ pub enum RTask {
         reply: ReplySender,
     },
     Result(WorkerReply),
+    Wake,
 }
 
 impl std::fmt::Debug for RTask {
@@ -65,6 +66,7 @@ impl std::fmt::Debug for RTask {
                 .field("reply", reply)
                 .finish(),
             Self::Result(arg0) => f.debug_tuple("Result").field(arg0).finish(),
+            Self::Wake => f.debug_struct("Wake").finish(),
         }
     }
 }
@@ -103,6 +105,10 @@ extern "C" fn miniextendr_runtime_init() {
                                     }
                                 };
                             reply.send(result).unwrap();
+                            if let Some(tx) = R_TASK_TX.get() {
+                                // Wake the dispatcher in case it's blocked waiting for work.
+                                let _ = tx.send(RTask::Wake);
+                            }
                         }
                     }
                 }
@@ -161,13 +167,9 @@ where
                 let receiver = slot_borrow
                     .as_mut()
                     .expect("runtime not initialised (R task receiver)");
-                match receiver.recv_timeout(std::time::Duration::from_millis(10)) {
-                    Ok(msg) => msg,
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        panic!("R dispatcher channel closed unexpectedly")
-                    }
-                }
+                receiver
+                    .recv()
+                    .expect("R dispatcher channel closed unexpectedly")
             };
 
             match message {
@@ -223,6 +225,7 @@ where
                 // from `worker_reply_rx` above which is correctly associated to
                 // this call.
                 RTask::Result(_result) => continue,
+                RTask::Wake => continue,
             }
         }
     });

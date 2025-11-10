@@ -30,6 +30,30 @@ impl syn::parse::Parse for ExtendrFunction {
     }
 }
 
+fn first_type_argument<'a>(seg: &'a syn::PathSegment) -> Option<&'a syn::Type> {
+    if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
+        for arg in ab.args.iter() {
+            if let syn::GenericArgument::Type(ty) = arg {
+                return Some(ty);
+            }
+        }
+    }
+    None
+}
+
+fn is_unit_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty())
+}
+
+fn is_sexp_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(p) if p
+        .path
+        .segments
+        .last()
+        .map(|s| s.ident == "SEXP")
+        .unwrap_or(false))
+}
+
 #[proc_macro_attribute]
 pub fn miniextendr(
     _attr: proc_macro::TokenStream,
@@ -266,6 +290,10 @@ pub fn miniextendr(
                 is_invisible_return_type = true;
                 quote::quote! { ::miniextendr_api::ffi::R_NilValue }
             }
+            syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
+                is_invisible_return_type = false;
+                quote::quote! { #rust_result_ident }
+            }
 
             // -> Option<...> cases
             syn::Type::Path(p)
@@ -274,16 +302,9 @@ pub fn miniextendr(
             {
                 let seg = p.path.segments.last().unwrap();
                 // check ONLY the first type argument of Option<T>
-                let is_unit_inner = match &seg.arguments {
-                    syn::PathArguments::AngleBracketed(ab) => {
-                        let mut type_args = ab.args.iter().filter_map(|ga| match ga {
-                            syn::GenericArgument::Type(ty) => Some(ty),
-                            _ => None,
-                        });
-                        matches!(type_args.next(), Some(syn::Type::Tuple(t)) if t.elems.is_empty())
-                    }
-                    _ => false,
-                };
+                let inner_ty = first_type_argument(seg);
+                let is_unit_inner = inner_ty.map_or(false, |inner| is_unit_type(inner));
+                let is_sexp_inner = inner_ty.map_or(false, |inner| is_sexp_type(inner));
 
                 if is_unit_inner {
                     // -> Option<()>
@@ -299,7 +320,11 @@ pub fn miniextendr(
                         let #rust_result_ident =
                             #rust_result_ident.ok_or_else(#option_none_error.clone())?;
                     });
-                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                    if is_sexp_inner {
+                        quote::quote! { #rust_result_ident }
+                    } else {
+                        quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                    }
                 }
             }
 
@@ -310,16 +335,9 @@ pub fn miniextendr(
             {
                 let seg = p.path.segments.last().unwrap();
                 // check ONLY the first type argument (Ok type) of Result<Ok, Err>
-                let ok_is_unit = match &seg.arguments {
-                    syn::PathArguments::AngleBracketed(ab) => {
-                        let mut type_args = ab.args.iter().filter_map(|ga| match ga {
-                            syn::GenericArgument::Type(ty) => Some(ty),
-                            _ => None,
-                        });
-                        matches!(type_args.next(), Some(syn::Type::Tuple(t)) if t.elems.is_empty())
-                    }
-                    _ => false,
-                };
+                let ok_ty = first_type_argument(seg);
+                let ok_is_unit = ok_ty.map_or(false, |inner| is_unit_type(inner));
+                let ok_is_sexp = ok_ty.map_or(false, |inner| is_sexp_type(inner));
 
                 if ok_is_unit {
                     // -> Result<(), E>
@@ -334,7 +352,11 @@ pub fn miniextendr(
                     post_call_statements.push(quote::quote! {
                         let #rust_result_ident = #rust_result_ident.map_err(#result_err_mapper)?;
                     });
-                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                    if ok_is_sexp {
+                        quote::quote! { #rust_result_ident }
+                    } else {
+                        quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                    }
                 }
             }
 

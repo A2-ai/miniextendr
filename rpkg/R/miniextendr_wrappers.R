@@ -134,7 +134,3 @@ unsafe_C_check_interupt_unwind <- function() {
     .Call(C_check_interupt_unwind)
 }
 
-unsafe_C_do_nothing <- function() {
-    .Call(C_do_nothing)
-}
-

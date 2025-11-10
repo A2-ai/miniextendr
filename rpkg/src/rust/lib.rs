@@ -314,8 +314,6 @@ miniextendr_module! {
     extern fn C_check_interupt_after;
     extern fn C_check_interupt_unwind;
 
-    extern "C" fn C_do_nothing;
-
 }
 
 mod altrep {
@@ -364,6 +362,7 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 
 // region: rust worker thread
 
+#[miniextendr]
 fn do_nothing() -> Result<SEXP, Cow<'static, str>> {
     miniextendr_api::unwind::with_r(|| {
         use miniextendr_api::ffi;
@@ -373,109 +372,6 @@ fn do_nothing() -> Result<SEXP, Cow<'static, str>> {
 
         unsafe { ffi::Rf_ScalarInteger(42) }
     })
-}
-
-#[miniextendr]
-#[unsafe(no_mangle)]
-unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
-    // TODO: give this an attribute
-    let hook_guard = RefCell::new(Some(
-        miniextendr_api::unwind::PanicHookGuard::print_error_location(),
-        // miniextendr_api::unwind::PanicHookGuard::print_nothing(),
-    ));
-
-    let (worker_reply_tx, worker_reply_rx) = std::sync::mpsc::sync_channel(1);
-
-    miniextendr_api::unwind::WORKER_TX
-        .get()
-        .expect("worker runtime not initialised")
-        .send(miniextendr_api::unwind::WorkerCommand::Run {
-            job: Box::new(|| {
-                let rust_result = do_nothing();
-                rust_result.map(|sexp| unsafe { SendSEXP::new(sexp) })
-            }),
-            reply: worker_reply_tx,
-        })
-        .expect("worker thread exited unexpectedly");
-
-    let worker_result = miniextendr_api::unwind::R_TASK_RX_SLOT.with(|slot| {
-        'dispatch: loop {
-            if let Ok(done) = worker_reply_rx.try_recv() {
-                break done;
-            }
-
-            let message = {
-                let mut slot_borrow = slot.borrow_mut();
-                let receiver = slot_borrow
-                    .as_mut()
-                    .expect("runtime not initialised (R task receiver)");
-                match receiver.recv_timeout(std::time::Duration::from_millis(10)) {
-                    Ok(msg) => msg,
-                    Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue 'dispatch,
-                    Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => {
-                        panic!("R dispatcher channel closed unexpectedly")
-                    }
-                }
-            };
-
-            match message {
-                miniextendr_api::unwind::RTask::Call { job, reply } => {
-                    let hook_guard = &hook_guard;
-                    let mut job = Some(job);
-                    let reply_slot = RefCell::new(Some(reply));
-                    let reply_slot = &reply_slot;
-
-                    unsafe {
-                        with_unwind_protect(
-                            move || {
-                                let result =
-                                    match std::panic::catch_unwind(AssertUnwindSafe(|| {
-                                        job.take().expect("R task already consumed by dispatcher")()
-                                    })) {
-                                        Ok(value) => Ok(value),
-                                        Err(panic) => Err(
-                                            miniextendr_api::unwind::panic_payload_to_string(panic),
-                                        ),
-                                    };
-
-                                reply_slot
-                                    .borrow_mut()
-                                    .take()
-                                    .expect("R task reply already sent")
-                                    .send(result)
-                                    .unwrap();
-
-                                R_NilValue
-                            },
-                            move |jump| {
-                                hook_guard.borrow_mut().take();
-
-                                if !jump {
-                                    return;
-                                }
-
-                                if let Some(reply) = reply_slot.borrow_mut().take() {
-                                    reply
-                                        .send(Err(Cow::Borrowed(
-                                            "non-local jump while executing R task",
-                                        )))
-                                        .unwrap();
-                                }
-                            },
-                        );
-                    };
-                }
-                miniextendr_api::unwind::RTask::Result(_result) => continue,
-            }
-        }
-    });
-
-    hook_guard.borrow_mut().take();
-
-    match worker_result {
-        Ok(result) => result.get(),
-        Err(message) => miniextendr_api::unwind::raise_r_error(&message),
-    }
 }
 
 // endregion
