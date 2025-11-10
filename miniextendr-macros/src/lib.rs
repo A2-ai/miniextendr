@@ -170,89 +170,92 @@ pub fn miniextendr(
         }
     }));
     // dbg!(&wrapper_inputs);
-    let input_names: Vec<_> = inputs
-        .pairs()
-        .filter_map(|pair| match pair.value() {
-            syn::FnArg::Typed(pat_type) => match (pat_type.pat.as_ref(), pat_type.ty.as_ref()) {
-                // () param
-                (syn::Pat::Ident(p), syn::Type::Tuple(t)) if t.elems.is_empty() => {
-                    let ident = p.ident.clone();
-                    if p.mutability.is_some() {
-                        Some(quote::quote! { let mut #ident = (); })
-                    } else {
-                        Some(quote::quote! { let #ident = (); })
-                    }
-                }
-                // &::miniextendr_api::dots::Dots param (for ...)
-                (syn::Pat::Ident(p), syn::Type::Reference(r)) => {
-                    let ident = p.ident.clone();
-                    match r.elem.as_ref() {
-                        syn::Type::Path(tp)
-                            if tp
-                                .path
-                                .segments
-                                .last()
-                                .map(|s| s.ident == "Dots")
-                                .unwrap_or(false) =>
-                        {
-                            // Construct a local Dots storage from the incoming SEXP,
-                            // then bind the parameter name to a reference to it.
-                            let storage_ident = quote::format_ident!("{}_storage", ident);
-                            Some(quote::quote! {
-                                let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
-                                let #ident = &#storage_ident;
-                            })
-                        }
-                        _ => {
-                            // Fallback to normal pointer-based extraction for other &T
-                            if p.mutability.is_some() {
-                                Some(quote::quote! {
-                                    let mut #ident = *::miniextendr_api::ffi::DATAPTR(#ident).cast();
-                                })
-                            } else {
-                                Some(quote::quote! {
-                                    let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast();
-                                })
-                            }
-                        }
-                    }
-                }
-
-                // all other non-() params
-                (syn::Pat::Ident(p), _) => {
-                    let ident = p.ident.clone();
-                    if p.mutability.is_some() {
-                        Some(quote::quote! {
-                            let mut #ident = *::miniextendr_api::ffi::DATAPTR(#ident).cast();
-                        })
-                    } else {
-                        Some(quote::quote! {
-                            let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast();
-                        })
-                    }
-                }
-                _ => None,
-            },
+    let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    for arg in inputs.iter() {
+        let syn::FnArg::Typed(pat_type) = arg else {
             // TODO: no support for self!
-            syn::FnArg::Receiver(_) => todo!(),
-        })
-        .collect();
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            continue;
+        };
+        let ident = pat_ident.ident.clone();
+
+        match pat_type.ty.as_ref() {
+            syn::Type::Tuple(t) if t.elems.is_empty() => {
+                if pat_ident.mutability.is_some() {
+                    closure_statements.push(quote::quote! { let mut #ident = (); });
+                } else {
+                    closure_statements.push(quote::quote! { let #ident = (); });
+                }
+            }
+            syn::Type::Reference(r) => {
+                let send_ident = quote::format_ident!("__miniextendr_arg_{ident}");
+                pre_call_statements.push(quote::quote! {
+                    let #send_ident = unsafe { ::miniextendr_api::ffi::SendSEXP::new(#ident) };
+                });
+                let is_dots = matches!(
+                    r.elem.as_ref(),
+                    syn::Type::Path(tp)
+                        if tp
+                            .path
+                            .segments
+                            .last()
+                            .map(|s| s.ident == "Dots")
+                            .unwrap_or(false)
+                );
+                if is_dots {
+                    let storage_ident = quote::format_ident!("{}_storage", ident);
+                    closure_statements.push(quote::quote! {
+                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #send_ident.get() };
+                        let #ident = &#storage_ident;
+                    });
+                } else if pat_ident.mutability.is_some() {
+                    closure_statements.push(quote::quote! {
+                        let mut #ident = *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast();
+                    });
+                } else {
+                    closure_statements.push(quote::quote! {
+                        let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast();
+                    });
+                }
+            }
+            _ => {
+                let send_ident = quote::format_ident!("__miniextendr_arg_{ident}");
+                pre_call_statements.push(quote::quote! {
+                    let #send_ident = unsafe { ::miniextendr_api::ffi::SendSEXP::new(#ident) };
+                });
+                if pat_ident.mutability.is_some() {
+                    closure_statements.push(quote::quote! {
+                        let mut #ident = *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast();
+                    });
+                } else {
+                    closure_statements.push(quote::quote! {
+                        let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast();
+                    });
+                }
+            }
+        }
+    }
 
     //TODO: add an invisibility attribute to miniextendr(invisible)
     // after this block, otherwise it will be overwritten.
     let is_invisible_return_type: bool;
+    let rust_result_ident =
+        syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
     let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
             is_invisible_return_type = true;
-            quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+            quote::quote! {{ ::miniextendr_api::ffi::R_NilValue }}
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                quote::quote! {{ ::miniextendr_api::ffi::R_NilValue }}
             }
 
             // -> Option<...> cases
@@ -276,14 +279,14 @@ pub fn miniextendr(
                 if is_unit_inner {
                     // -> Option<()>
                     is_invisible_return_type = true;
-                    quote::quote! {
-                        let _ = result.unwrap();
+                    quote::quote! {{
+                        let _ = #rust_result_ident.unwrap();
                         ::miniextendr_api::ffi::R_NilValue
-                    }
+                    }}
                 } else {
                     is_invisible_return_type = false;
                     // -> Option<T>
-                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap()) }
+                    quote::quote! {{ ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }}
                 }
             }
 
@@ -308,82 +311,47 @@ pub fn miniextendr(
                 if ok_is_unit {
                     // -> Result<(), E>
                     is_invisible_return_type = true;
-                    quote::quote! {
-                        let _ = result.unwrap();
+                    quote::quote! {{
+                        let _ = #rust_result_ident.unwrap();
                         ::miniextendr_api::ffi::R_NilValue
-                    }
+                    }}
                 } else {
                     is_invisible_return_type = false;
                     // -> Result<T, E>
-                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result.unwrap()) }
+                    quote::quote! {{ ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }}
                 }
             }
 
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(result) }
+                quote::quote! {{ ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }}
             }
         },
     };
     //TODO: add an invisibility attribute to miniextendr(invisible)
-    let is_invisible_return_type = is_invisible_return_type;
 
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else {
         quote::quote! {
-            // TODO: add the method it is wrapping as doc comment
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                let old = std::panic::take_hook();
-                // FIRST OPTION: show nothing!
-                // std::panic::set_hook(Box::new(move |_| {}));
-                // SECOND OPTION:
-                std::panic::set_hook(Box::new(|panic_info| {
-                    if let Some(location) = panic_info.location() {
-                        println!("Rust error occurred in file 'src/rust/{}' at line {}", location.file(), location.line());
-                    } else {
-                        println!("Rust error occurred but can't get location information...");
-                    }
-                }));
-                unsafe {
-                    ::miniextendr_api::unwind_protect::with_unwind_protect(move || {
-                        let catch_result = std::panic::catch_unwind(move || {
-                            #(#input_names)*
-                            let result = #rust_ident(#(#rust_inputs),*);
+                #(#pre_call_statements)* 
 
-                            #return_statement
-                        });
-                        match catch_result {
-                            Ok(result) => result,
-                            Err(ref payload) => {
-                                let error_message: &str =
-                                if let Some(&message) = payload.downcast_ref::<&str>() {
-                                    message
-                                } else if let Some(message) = payload.downcast_ref::<String>() {
-                                    message.as_str()
-                                } else if let Some(message) = payload.downcast_ref::<&String>() {
-                                    message.as_str()
-                                } else {
-                                    "panic payload could not be unpacked"
-                                };
-
-                                let c_error_message =
-                                std::ffi::CString::new(error_message).unwrap_or_else(|_| {
-                                    std::ffi::CString::new("<invalid panic message>").unwrap()
-                                });
-                                ::miniextendr_api::ffi::Rf_errorcall(#call_param_ident, c"%s".as_ptr(), c_error_message.as_ptr());
-                            }
-                        }
-                    }, move |jump| {
-                        std::panic::set_hook(old);
-                    })
-                }
-            }
-        }
-    };
+                unsafe { 
+                    ::miniextendr_api::unwind::call_worker(#call_param_ident, move || { 
+                        #(#closure_statements)* 
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*); 
+                        let __miniextendr_sexp_result = #return_expression; 
+                        let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result); 
+                        Ok(__miniextendr_sexp_result)
+                    }) 
+                } 
+            } 
+        } 
+    }; 
 
     // check the validity of the provided C-function!
     if abi.is_some() {
@@ -554,7 +522,7 @@ pub fn miniextendr(
     // endregion
 
     let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
-    quote::quote! {
+    let expanded: proc_macro::TokenStream = quote::quote! {
         // rust function!
         #original_item
 
@@ -562,7 +530,7 @@ pub fn miniextendr(
         #c_wrapper
 
         // R wrapper
-        const #r_wrapper_generator: &'static str = #r_wrapper_str;
+        const #r_wrapper_generator: &str = #r_wrapper_str;
 
 
         // registration of C wrapper in R
@@ -585,7 +553,9 @@ pub fn miniextendr(
             }
         }
     }
-    .into()
+    .into();
+
+    expanded
 }
 
 struct ExtendrModuleFunction {

@@ -125,6 +125,7 @@ where
         .map(|value| value.get())
 }
 
+#[doc(hidden)]
 pub unsafe fn call_worker<F>(call: crate::ffi::SEXP, job: F) -> crate::ffi::SEXP
 where
     F: FnOnce() -> WorkerReply + Send + 'static,
@@ -157,7 +158,7 @@ where
                     let reply_slot = &reply_slot;
 
                     unsafe {
-                        miniextendr_api::unwind_protect::with_unwind_protect(
+                        crate::unwind_protect::with_unwind_protect(
                             move || {
                                 let result = match std::panic::catch_unwind(
                                     std::panic::AssertUnwindSafe(|| {
