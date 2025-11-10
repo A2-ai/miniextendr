@@ -97,13 +97,15 @@ extern "C" fn miniextendr_runtime_init() {
                 while let Ok(cmd) = worker_rx.recv() {
                     match cmd {
                         WorkerCommand::Run { job, reply } => {
-                            let result =
+                            let result = {
+                                let _hook_guard = PanicHookGuard::print_error_location();
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)) {
                                     Ok(job_result) => job_result,
-                                    Err(panic) => {
-                                        Err(miniextendr_api::unwind::panic_payload_to_string(panic))
-                                    }
-                                };
+                                    Err(panic) => Err(
+                                        miniextendr_api::unwind::panic_payload_to_string(panic),
+                                    ),
+                                }
+                            };
                             reply.send(result).unwrap();
                             if let Some(tx) = R_TASK_TX.get() {
                                 // Wake the dispatcher in case it's blocked waiting for work.
@@ -142,8 +144,6 @@ pub unsafe fn call_worker<F>(call: SEXP, job: F) -> SEXP
 where
     F: FnOnce() -> WorkerReply + Send + 'static,
 {
-    let hook_guard = std::cell::RefCell::new(Some(PanicHookGuard::print_error_location()));
-
     let (worker_reply_tx, worker_reply_rx) = std::sync::mpsc::sync_channel(1);
 
     WORKER_TX
@@ -174,7 +174,6 @@ where
 
             match message {
                 RTask::Call { job, reply } => {
-                    let hook_guard = &hook_guard;
                     let mut job = Some(job);
                     let reply_slot = std::cell::RefCell::new(Some(reply));
                     let reply_slot = &reply_slot;
@@ -182,14 +181,16 @@ where
                     unsafe {
                         with_unwind_protect(
                             move || {
-                                let result = match std::panic::catch_unwind(
-                                    std::panic::AssertUnwindSafe(|| {
-                                        job.take().expect("R task already consumed by dispatcher")()
-                                    }),
-                                ) {
-                                    Ok(value) => Ok(value),
-                                    Err(panic) => Err(panic_payload_to_string(panic)),
-                                };
+                                let result =
+                                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
+                                        || {
+                                            job.take()
+                                                .expect("R task already consumed by dispatcher")()
+                                        },
+                                    )) {
+                                        Ok(value) => Ok(value),
+                                        Err(panic) => Err(panic_payload_to_string(panic)),
+                                    };
 
                                 reply_slot
                                     .borrow_mut()
@@ -201,8 +202,6 @@ where
                                 R_NilValue
                             },
                             move |jump| {
-                                hook_guard.borrow_mut().take();
-
                                 if !jump {
                                     return;
                                 }
@@ -231,14 +230,8 @@ where
     });
 
     match worker_result {
-        Ok(result) => {
-            hook_guard.borrow_mut().take();
-            result.get()
-        }
-        Err(message) => {
-            hook_guard.borrow_mut().take();
-            unsafe { raise_r_error_call(call, &message) }
-        }
+        Ok(result) => result.get(),
+        Err(message) => unsafe { raise_r_error_call(call, &message) },
     }
 }
 
@@ -302,10 +295,7 @@ impl PanicHookGuard {
 impl Drop for PanicHookGuard {
     fn drop(&mut self) {
         if let Some(old) = self.0.take() {
-            unsafe {
-                miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Reset panic hook!\n".as_ptr())
-            };
-
+            println!("Reset panic hook!");
             std::panic::set_hook(old);
         }
     }

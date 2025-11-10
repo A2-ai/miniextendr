@@ -1,8 +1,6 @@
 use std::borrow::Cow;
-use std::cell::RefCell;
-use std::panic::AssertUnwindSafe;
 
-use miniextendr_api::ffi::{R_NilValue, Rf_error, SEXP, SendSEXP};
+use miniextendr_api::ffi::{R_NilValue, Rf_error, SEXP};
 use miniextendr_api::unwind::with_r;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -15,9 +13,14 @@ struct MsgOnDrop;
 
 impl Drop for MsgOnDrop {
     fn drop(&mut self) {
-        let _ = miniextendr_api::unwind::with_r(|| unsafe {
-            miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Dropped `MsgOnDrop`!\n".as_ptr());
+        let _ = with_r(|| unsafe {
+            miniextendr_api::ffi::Rprintf(
+                c"%s".as_ptr(),
+                c"R printing: Dropped `MsgOnDrop`!\n".as_ptr(),
+            );
+            R_NilValue
         });
+        println!("Rust printing: Dropped on `MsgOnDrop`!");
     }
 }
 

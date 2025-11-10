@@ -30,7 +30,7 @@ impl syn::parse::Parse for ExtendrFunction {
     }
 }
 
-fn first_type_argument<'a>(seg: &'a syn::PathSegment) -> Option<&'a syn::Type> {
+fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
         for arg in ab.args.iter() {
             if let syn::GenericArgument::Type(ty) = arg {
@@ -303,8 +303,8 @@ pub fn miniextendr(
                 let seg = p.path.segments.last().unwrap();
                 // check ONLY the first type argument of Option<T>
                 let inner_ty = first_type_argument(seg);
-                let is_unit_inner = inner_ty.map_or(false, |inner| is_unit_type(inner));
-                let is_sexp_inner = inner_ty.map_or(false, |inner| is_sexp_type(inner));
+                let is_unit_inner = inner_ty.is_some_and(is_unit_type);
+                let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
                 if is_unit_inner {
                     // -> Option<()>
@@ -336,8 +336,8 @@ pub fn miniextendr(
                 let seg = p.path.segments.last().unwrap();
                 // check ONLY the first type argument (Ok type) of Result<Ok, Err>
                 let ok_ty = first_type_argument(seg);
-                let ok_is_unit = ok_ty.map_or(false, |inner| is_unit_type(inner));
-                let ok_is_sexp = ok_ty.map_or(false, |inner| is_sexp_type(inner));
+                let ok_is_unit = ok_ty.is_some_and(is_unit_type);
+                let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
 
                 if ok_is_unit {
                     // -> Result<(), E>
