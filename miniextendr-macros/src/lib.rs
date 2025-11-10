@@ -248,14 +248,14 @@ pub fn miniextendr(
         // no arrow
         syn::ReturnType::Default => {
             is_invisible_return_type = true;
-            quote::quote! {{ ::miniextendr_api::ffi::R_NilValue }}
+            quote::quote! { ::miniextendr_api::ffi::R_NilValue }
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                quote::quote! {{ ::miniextendr_api::ffi::R_NilValue }}
+                quote::quote! { ::miniextendr_api::ffi::R_NilValue }
             }
 
             // -> Option<...> cases
@@ -286,7 +286,7 @@ pub fn miniextendr(
                 } else {
                     is_invisible_return_type = false;
                     // -> Option<T>
-                    quote::quote! {{ ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }}
+                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }
                 }
             }
 
@@ -318,14 +318,14 @@ pub fn miniextendr(
                 } else {
                     is_invisible_return_type = false;
                     // -> Result<T, E>
-                    quote::quote! {{ ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }}
+                    quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident.unwrap()) }
                 }
             }
 
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! {{ ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }}
+                quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
             }
         },
     };
@@ -338,20 +338,20 @@ pub fn miniextendr(
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                #(#pre_call_statements)* 
+                #(#pre_call_statements)*
 
-                unsafe { 
-                    ::miniextendr_api::unwind::call_worker(#call_param_ident, move || { 
-                        #(#closure_statements)* 
-                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*); 
-                        let __miniextendr_sexp_result = #return_expression; 
-                        let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result); 
+                unsafe {
+                    ::miniextendr_api::unwind::call_worker(#call_param_ident, move || {
+                        #(#closure_statements)*
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        let __miniextendr_sexp_result = #return_expression;
+                        let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result);
                         Ok(__miniextendr_sexp_result)
-                    }) 
-                } 
-            } 
-        } 
-    }; 
+                    })
+                }
+            }
+        }
+    };
 
     // check the validity of the provided C-function!
     if abi.is_some() {
