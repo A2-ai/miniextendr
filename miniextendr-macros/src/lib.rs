@@ -172,6 +172,7 @@ pub fn miniextendr(
     // dbg!(&wrapper_inputs);
     let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     for arg in inputs.iter() {
         let syn::FnArg::Typed(pat_type) = arg else {
             // TODO: no support for self!
@@ -242,7 +243,6 @@ pub fn miniextendr(
     //TODO: add an invisibility attribute to miniextendr(invisible)
     // after this block, otherwise it will be overwritten.
     let is_invisible_return_type: bool;
-    let mut force_invisible_return_unwrap = false;
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
     let return_expression = match &output {
@@ -280,7 +280,9 @@ pub fn miniextendr(
                 if is_unit_inner {
                     // -> Option<()>
                     is_invisible_return_type = true;
-                    force_invisible_return_unwrap = true;
+                    post_call_statements.push(quote::quote! {
+                        let _ = #rust_result_ident.unwrap();
+                    });
                     quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
@@ -310,7 +312,9 @@ pub fn miniextendr(
                 if ok_is_unit {
                     // -> Result<(), E>
                     is_invisible_return_type = true;
-                    force_invisible_return_unwrap = true;
+                    post_call_statements.push(quote::quote! {
+                        let _ = #rust_result_ident.unwrap();
+                    });
                     quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
@@ -328,11 +332,6 @@ pub fn miniextendr(
     };
     //TODO: add an invisibility attribute to miniextendr(invisible)
 
-    let rust_call_expr = if force_invisible_return_unwrap {
-        quote::quote! { #rust_ident(#(#rust_inputs),*).unwrap() }
-    } else {
-        quote::quote! { #rust_ident(#(#rust_inputs),*) }
-    };
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else {
@@ -345,7 +344,8 @@ pub fn miniextendr(
                 unsafe {
                         ::miniextendr_api::unwind::call_worker(#call_param_ident, move || {
                             #(#closure_statements)*
-                            let #rust_result_ident = #rust_call_expr;
+                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                            #(#post_call_statements)*
                             let __miniextendr_sexp_result = #return_expression;
                             let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result);
                             Ok(__miniextendr_sexp_result)

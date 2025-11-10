@@ -54,6 +54,10 @@ unsafe_C_panic_and_catch <- function() {
     .Call(C_panic_and_catch)
 }
 
+just <- function() {
+    .Call(C_just, .call = match.call())
+}
+
 unsafe_drop_on_panic <- function() {
     .Call(drop_on_panic)
 }

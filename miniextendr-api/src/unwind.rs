@@ -1,3 +1,9 @@
+use crate::{
+    ffi::{R_NilValue, SEXP, SendSEXP},
+    into_r::IntoR,
+    unwind_protect::with_unwind_protect,
+};
+
 ///
 ///
 /// See [`miniextendr_runtime_init`]
@@ -20,7 +26,7 @@ thread_local! {
 pub static WORKER_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<WorkerCommand>> =
     std::sync::OnceLock::new();
 
-type WorkerReply = Result<crate::ffi::SendSEXP, std::borrow::Cow<'static, str>>;
+type WorkerReply = Result<SendSEXP, std::borrow::Cow<'static, str>>;
 type ReplySender = std::sync::mpsc::SyncSender<WorkerReply>;
 
 #[doc(hidden)]
@@ -43,7 +49,7 @@ impl std::fmt::Debug for WorkerCommand {
 #[doc(hidden)]
 pub enum RTask {
     Call {
-        job: Box<dyn FnOnce() -> crate::ffi::SendSEXP + Send>,
+        job: Box<dyn FnOnce() -> SendSEXP + Send>,
         reply: ReplySender,
     },
     Result(WorkerReply),
@@ -105,16 +111,17 @@ extern "C" fn miniextendr_runtime_init() {
     });
 }
 
-pub fn with_r<R>(r: R) -> Result<crate::ffi::SEXP, std::borrow::Cow<'static, str>>
+pub fn with_r<R, T>(r: R) -> Result<SEXP, std::borrow::Cow<'static, str>>
 where
-    R: FnOnce() -> crate::ffi::SEXP + Send + 'static,
+    R: FnOnce() -> T + Send + 'static,
+    T: IntoR + 'static,
 {
     let (reply_tx, reply_rx) = std::sync::mpsc::sync_channel(0);
     R_TASK_TX
         .get()
         .expect("runtime not initialised (R task sender)")
         .send(RTask::Call {
-            job: Box::new(|| unsafe { crate::ffi::SendSEXP::new(r()) }),
+            job: Box::new(|| unsafe { SendSEXP::new(r().into_sexp()) }),
             reply: reply_tx,
         })
         .expect("failed to send R task");
@@ -126,7 +133,7 @@ where
 }
 
 #[doc(hidden)]
-pub unsafe fn call_worker<F>(call: crate::ffi::SEXP, job: F) -> crate::ffi::SEXP
+pub unsafe fn call_worker<F>(call: SEXP, job: F) -> SEXP
 where
     F: FnOnce() -> WorkerReply + Send + 'static,
 {
@@ -158,7 +165,7 @@ where
                     let reply_slot = &reply_slot;
 
                     unsafe {
-                        crate::unwind_protect::with_unwind_protect(
+                        with_unwind_protect(
                             move || {
                                 let result = match std::panic::catch_unwind(
                                     std::panic::AssertUnwindSafe(|| {
@@ -176,7 +183,7 @@ where
                                     .send(result)
                                     .unwrap();
 
-                                crate::ffi::R_NilValue
+                                R_NilValue
                             },
                             move |jump| {
                                 hook_guard.borrow_mut().take();
@@ -232,7 +239,7 @@ pub fn panic_payload_to_string(
 }
 
 #[doc(hidden)]
-pub unsafe fn raise_r_error_call(call: crate::ffi::SEXP, message: &str) -> ! {
+pub unsafe fn raise_r_error_call(call: SEXP, message: &str) -> ! {
     let c_message = std::ffi::CString::new(message)
         .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
     unsafe {

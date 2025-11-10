@@ -14,13 +14,17 @@ struct MsgOnDrop;
 
 impl Drop for MsgOnDrop {
     fn drop(&mut self) {
-        // FiXME: use thread-local for Rprintf, and make Rprintf private!
-        // put an alias on the macro that uses the thread-local buffer to Rprintf!
-
-        unsafe {
-            miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Dropped `MsgOnDrop`!\n".as_ptr())
-        };
+        let _ = miniextendr_api::unwind::with_r(|| unsafe {
+            miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"Dropped `MsgOnDrop`!\n".as_ptr());
+            miniextendr_api::ffi::R_NilValue
+        });
     }
+}
+
+#[miniextendr]
+fn just() -> i32 {
+    let _a = MsgOnDrop;
+    42
 }
 
 #[miniextendr]
@@ -284,6 +288,7 @@ miniextendr_module! {
     extern "C" fn C_just_panic;
     extern "C" fn C_panic_and_catch;
 
+    fn just;
     fn drop_on_panic;
     fn drop_on_panic_with_move;
 
