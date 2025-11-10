@@ -4,9 +4,10 @@
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
+extern void miniextendr_runtime_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-
+    miniextendr_runtime_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
