@@ -15,7 +15,7 @@ PKG_LIBS=-L$(CARGO_LIBDIR) -l$(STATICLIB_NAME)
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 $(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
-	cargo generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --color=always
+	cargo +nightly generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --color=always
 
 $(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock $(ABS_SRCDIR)/rust/document.rs
 	RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \

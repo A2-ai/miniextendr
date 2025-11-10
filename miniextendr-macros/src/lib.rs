@@ -241,7 +241,7 @@ pub fn miniextendr(
     //TODO: add an invisibility attribute to miniextendr(invisible)
     // after this block, otherwise it will be overwritten.
     let is_invisible_return_type: bool;
-    let return_statement = match &output {
+    let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
             is_invisible_return_type = true;
@@ -268,10 +268,7 @@ pub fn miniextendr(
                             syn::GenericArgument::Type(ty) => Some(ty),
                             _ => None,
                         });
-                        match type_args.next() {
-                            Some(syn::Type::Tuple(t)) if t.elems.is_empty() => true,
-                            _ => false,
-                        }
+                        matches!(type_args.next(), Some(syn::Type::Tuple(t)) if t.elems.is_empty())
                     }
                     _ => false,
                 };
@@ -303,10 +300,7 @@ pub fn miniextendr(
                             syn::GenericArgument::Type(ty) => Some(ty),
                             _ => None,
                         });
-                        match type_args.next() {
-                            Some(syn::Type::Tuple(t)) if t.elems.is_empty() => true,
-                            _ => false,
-                        }
+                        matches!(type_args.next(), Some(syn::Type::Tuple(t)) if t.elems.is_empty())
                     }
                     _ => false,
                 };

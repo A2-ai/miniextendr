@@ -125,6 +125,98 @@ where
         .map(|value| value.get())
 }
 
+pub unsafe fn call_worker<F>(call: crate::ffi::SEXP, job: F) -> crate::ffi::SEXP
+where
+    F: FnOnce() -> WorkerReply + Send + 'static,
+{
+    let hook_guard = std::cell::RefCell::new(Some(PanicHookGuard::print_error_location()));
+
+    WORKER_TX
+        .get()
+        .expect("worker runtime not initialised")
+        .send(WorkerCommand::Run { job: Box::new(job) })
+        .expect("worker thread exited unexpectedly");
+
+    let worker_result = R_TASK_RX_SLOT.with(|slot| {
+        loop {
+            let message = {
+                let mut slot_borrow = slot.borrow_mut();
+                let receiver = slot_borrow
+                    .as_mut()
+                    .expect("runtime not initialised (R task receiver)");
+                receiver
+                    .recv()
+                    .expect("R dispatcher channel closed unexpectedly")
+            };
+
+            match message {
+                RTask::Call { job, reply } => {
+                    let hook_guard = &hook_guard;
+                    let mut job = Some(job);
+                    let reply_slot = std::cell::RefCell::new(Some(reply));
+                    let reply_slot = &reply_slot;
+
+                    unsafe {
+                        miniextendr_api::unwind_protect::with_unwind_protect(
+                            move || {
+                                let result = match std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(|| {
+                                        job.take().expect("R task already consumed by dispatcher")()
+                                    }),
+                                ) {
+                                    Ok(value) => Ok(value),
+                                    Err(panic) => Err(panic_payload_to_string(panic)),
+                                };
+
+                                reply_slot
+                                    .borrow_mut()
+                                    .take()
+                                    .expect("R task reply already sent")
+                                    .send(result)
+                                    .unwrap();
+
+                                crate::ffi::R_NilValue
+                            },
+                            move |jump| {
+                                hook_guard.borrow_mut().take();
+
+                                if !jump {
+                                    return;
+                                }
+
+                                if let Some(reply) = reply_slot.borrow_mut().take() {
+                                    reply
+                                        .send(Err(std::borrow::Cow::Borrowed(
+                                            "non-local jump while executing R task",
+                                        )))
+                                        .unwrap();
+                                }
+
+                                let mut slot = slot.borrow_mut();
+                                let receiver = slot
+                                    .as_mut()
+                                    .expect("runtime not initialised (R task receiver)");
+
+                                match receiver.recv() {
+                                    Ok(RTask::Result(_)) => {}
+                                    Ok(_) => {}
+                                    Err(_) => {}
+                                }
+                            },
+                        );
+                    };
+                }
+                RTask::Result(result) => break result,
+            }
+        }
+    });
+
+    match worker_result {
+        Ok(result) => result.get(),
+        Err(message) => unsafe { raise_r_error_call(call, &message) },
+    }
+}
+
 #[doc(hidden)]
 pub fn panic_payload_to_string(
     panic: Box<dyn std::any::Any + Send>,
@@ -135,6 +227,15 @@ pub fn panic_payload_to_string(
             Ok(ref message) => std::borrow::Cow::Borrowed(message),
             Err(_) => std::borrow::Cow::Borrowed("panic payload could not be unpacked"),
         },
+    }
+}
+
+#[doc(hidden)]
+pub unsafe fn raise_r_error_call(call: crate::ffi::SEXP, message: &str) -> ! {
+    let c_message = std::ffi::CString::new(message)
+        .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
+    unsafe {
+        ::miniextendr_api::ffi::Rf_errorcall(call, c"%s".as_ptr(), c_message.as_ptr());
     }
 }
 

@@ -372,8 +372,10 @@ fn do_nothing() -> Result<SEXP, Cow<'static, str>> {
 #[miniextendr]
 #[unsafe(no_mangle)]
 unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
+    // TODO: give this an attribute
     let hook_guard = RefCell::new(Some(
         miniextendr_api::unwind::PanicHookGuard::print_error_location(),
+        // miniextendr_api::unwind::PanicHookGuard::print_nothing(),
     ));
 
     miniextendr_api::unwind::WORKER_TX
