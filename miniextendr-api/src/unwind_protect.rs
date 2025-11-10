@@ -15,11 +15,6 @@ thread_local! {
     });
 }
 
-#[inline(never)]
-pub fn continue_unwind() -> std::convert::Infallible {
-    unsafe { ffi::R_ContinueUnwind(R_CONTINUATION_TOKEN.with(|x| **x)) }
-}
-
 struct ClosureContext<FunClosure, CleanClosure> {
     fun: Option<FunClosure>,
     clean: Option<CleanClosure>,
