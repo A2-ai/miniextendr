@@ -4,11 +4,9 @@
 #include <R_ext/Rdynload.h>
 
 extern void R_init_rpkg_miniextendr(DllInfo * dll);
-extern void rpkg_main_queue_init(void);
 
 void R_init_rpkg(DllInfo *dll) {
 
-    rpkg_main_queue_init();
     R_init_rpkg_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);

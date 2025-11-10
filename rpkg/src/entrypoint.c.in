@@ -4,11 +4,9 @@
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
-extern void rpkg_main_queue_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
 
-    rpkg_main_queue_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
