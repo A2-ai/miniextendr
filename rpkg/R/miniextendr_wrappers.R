@@ -130,3 +130,6 @@ unsafe_C_check_interupt_unwind <- function() {
     .Call(C_check_interupt_unwind)
 }
 
+unsafe_C_do_nothing <- function(private__miniextendr_call) {
+    .Call(C_do_nothing, private__miniextendr_call)
+}

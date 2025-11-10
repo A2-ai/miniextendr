@@ -356,13 +356,13 @@ pub fn miniextendr(
                 }));
                 unsafe {
                     ::miniextendr_api::unwind_protect::with_unwind_protect(move || {
-                        let result = std::panic::catch_unwind(move || {
+                        let catch_result = std::panic::catch_unwind(move || {
                             #(#input_names)*
                             let result = #rust_ident(#(#rust_inputs),*);
 
                             #return_statement
                         });
-                        match result {
+                        match catch_result {
                             Ok(result) => result,
                             Err(ref payload) => {
                                 let error_message: &str =
@@ -450,7 +450,9 @@ pub fn miniextendr(
     if has_dots {
         if let Some(named) = &mut named_dots {
             let mut arg_name = named.to_string();
-            if arg_name.starts_with('_') {
+            if arg_name.starts_with("__") {
+                arg_name.insert_str(0, "private");
+            } else if arg_name.starts_with('_') {
                 arg_name.insert_str(0, "unused");
             }
             let arg_ident = syn::Ident::new(&arg_name, named.span());
@@ -480,7 +482,9 @@ pub fn miniextendr(
         let arg_ident = match pat.as_ref() {
             syn::Pat::Ident(pat_ident) => {
                 let mut arg_name = pat_ident.ident.to_string();
-                if arg_name.starts_with('_') {
+                if arg_name.starts_with("__") {
+                    arg_name.insert_str(0, "private");
+                } else if arg_name.starts_with('_') {
                     arg_name.insert_str(0, "unused");
                 }
                 syn::Ident::new(&arg_name, pat_ident.ident.span())
