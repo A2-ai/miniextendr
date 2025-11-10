@@ -13,7 +13,7 @@ use std::{
 use miniextendr_api::ffi::{R_NilValue, SEXP, SendSEXP};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-use miniextendr_api::unwind_protect::{continue_unwind, with_unwind_protect};
+use miniextendr_api::unwind_protect::with_unwind_protect;
 
 // region
 
@@ -262,7 +262,6 @@ extern "C" fn C_check_interupt_unwind() -> SEXP {
                     println!("jump occurred, i.e. an interupt!");
                 }
             },
-            continue_unwind,
         );
         R_NilValue
     }
@@ -375,6 +374,16 @@ enum WorkerCommand {
         job: Box<dyn FnOnce() -> WorkerReply + Send>,
     },
 }
+impl std::fmt::Debug for WorkerCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Run { job: _ } => f
+                .debug_struct("Run")
+                .field("job", &"Box<dyn FnOnce() -> WorkerReply + Send>")
+                .finish(),
+        }
+    }
+}
 
 enum RTask {
     Call {
@@ -384,11 +393,34 @@ enum RTask {
     Result(WorkerReply),
 }
 
-static WORKER_TX: OnceLock<SyncSender<WorkerCommand>> = OnceLock::new();
-static R_TASK_TX: OnceLock<SyncSender<RTask>> = OnceLock::new();
+impl std::fmt::Debug for RTask {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Call { job: _, reply } => f
+                .debug_struct("Call")
+                .field("job", &"Box<dyn FnOnce() -> SendSEXP + Send>")
+                .field("reply", reply)
+                .finish(),
+            Self::Result(arg0) => f.debug_tuple("Result").field(arg0).finish(),
+        }
+    }
+}
+
+///
+///
+/// See [`miniextendr_runtime_init`]
 static RUNTIME_ONCE: Once = Once::new();
+static WORKER_TX: OnceLock<SyncSender<WorkerCommand>> = OnceLock::new();
+///
+///
+/// See [`R_TASK_RX_SLOT`]
+static R_TASK_TX: OnceLock<SyncSender<RTask>> = OnceLock::new();
 
 thread_local! {
+    ///
+    ///
+    ///
+    /// See [`R_TASK_TX`]
     static R_TASK_RX_SLOT: RefCell<Option<Receiver<RTask>>> = const { RefCell::new(None) };
 }
 
@@ -432,7 +464,7 @@ extern "C" fn miniextendr_runtime_init() {
     });
 }
 
-fn with_r<R>(r: R) -> Result<SEXP, Cow<'static, str>>
+pub fn with_r<R>(r: R) -> Result<SEXP, Cow<'static, str>>
 where
     R: FnOnce() -> SEXP + Send + 'static,
 {
@@ -456,8 +488,8 @@ fn do_nothing() -> Result<SEXP, Cow<'static, str>> {
     with_r(|| {
         use miniextendr_api::ffi;
 
-        // unsafe { Rf_error(c"intentional r error inside with_r".as_ptr()) };
-        // panic!("intentional panic inside with_r");
+        // panic!("intentional panic inside with_r"); // #2: test
+        unsafe { miniextendr_api::ffi::Rf_error(c"intentional r error inside with_r".as_ptr()) }; // #1: test!
 
         unsafe { ffi::Rf_ScalarInteger(42) }
     })
@@ -543,9 +575,16 @@ unsafe extern "C" fn C_do_nothing() -> ::miniextendr_api::ffi::SEXP {
                                     Ok(RTask::Result(_)) => {}
                                     Ok(_) => {}
                                     Err(_) => {}
-                                };
+                                }
+                                // Example:
+                                // [lib.rs:575:42] a = Ok(
+                                //     Result(
+                                //         Err(
+                                //             "non-local jump while executing R task",
+                                //         ),
+                                //     ),
+                                // )
                             },
-                            continue_unwind,
                         );
                     };
                 }

@@ -385,7 +385,7 @@ pub fn miniextendr(
                         }
                     }, move |jump| {
                         std::panic::set_hook(old);
-                    }, ::miniextendr_api::unwind_protect::continue_unwind)
+                    })
                 }
             }
         }
