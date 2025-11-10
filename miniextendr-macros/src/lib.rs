@@ -242,6 +242,7 @@ pub fn miniextendr(
     //TODO: add an invisibility attribute to miniextendr(invisible)
     // after this block, otherwise it will be overwritten.
     let is_invisible_return_type: bool;
+    let mut force_invisible_return_unwrap = false;
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
     let return_expression = match &output {
@@ -279,10 +280,8 @@ pub fn miniextendr(
                 if is_unit_inner {
                     // -> Option<()>
                     is_invisible_return_type = true;
-                    quote::quote! {{
-                        let _ = #rust_result_ident.unwrap();
-                        ::miniextendr_api::ffi::R_NilValue
-                    }}
+                    force_invisible_return_unwrap = true;
+                    quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
                     // -> Option<T>
@@ -311,10 +310,8 @@ pub fn miniextendr(
                 if ok_is_unit {
                     // -> Result<(), E>
                     is_invisible_return_type = true;
-                    quote::quote! {{
-                        let _ = #rust_result_ident.unwrap();
-                        ::miniextendr_api::ffi::R_NilValue
-                    }}
+                    force_invisible_return_unwrap = true;
+                    quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
                     // -> Result<T, E>
@@ -331,6 +328,11 @@ pub fn miniextendr(
     };
     //TODO: add an invisibility attribute to miniextendr(invisible)
 
+    let rust_call_expr = if force_invisible_return_unwrap {
+        quote::quote! { #rust_ident(#(#rust_inputs),*).unwrap() }
+    } else {
+        quote::quote! { #rust_ident(#(#rust_inputs),*) }
+    };
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else {
@@ -341,13 +343,13 @@ pub fn miniextendr(
                 #(#pre_call_statements)*
 
                 unsafe {
-                    ::miniextendr_api::unwind::call_worker(#call_param_ident, move || {
-                        #(#closure_statements)*
-                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                        let __miniextendr_sexp_result = #return_expression;
-                        let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result);
-                        Ok(__miniextendr_sexp_result)
-                    })
+                        ::miniextendr_api::unwind::call_worker(#call_param_ident, move || {
+                            #(#closure_statements)*
+                            let #rust_result_ident = #rust_call_expr;
+                            let __miniextendr_sexp_result = #return_expression;
+                            let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result);
+                            Ok(__miniextendr_sexp_result)
+                        })
                 }
             }
         }
@@ -756,12 +758,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
-            let r_wrappers_use_module = quote::format_ident!("R_WRAPPERS_PARTS_{use_module_ident}");
+            let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
+            let r_wrappers_use_module =
+                quote::format_ident!("R_WRAPPERS_PARTS_{use_module_ident_upper}");
             syn::parse_quote!(#use_module_ident::#r_wrappers_use_module)
         })
         .collect::<Vec<syn::Expr>>();
-    let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module}");
-    let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module}");
+
+    let module_upper = module.to_string().to_uppercase();
+    let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module_upper}");
+    let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module_upper}");
 
     // endregion
     quote::quote! {

@@ -47,13 +47,15 @@ dnl Create a document.rs.in file and replace certain places with the crate name.
 # Rust-safe tarname (hyphens → underscores)
 pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
+pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
+AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
 
 # Ensure template exists
 AS_IF([test ! -f "$srcdir/src/rust/document.rs.in"], [
   mkdir -p "$srcdir/src/rust"
   cat >"$srcdir/src/rust/document.rs.in" <<'EOF'
-use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS@ as DEPS;
-use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS@ as PARTS;
+use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
+use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();
