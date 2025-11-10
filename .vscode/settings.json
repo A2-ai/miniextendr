@@ -1,6 +1,12 @@
 {
-    "rust-analyzer.linkedProjects": [
-      "rpkg/src/rust/Cargo.toml",
-      "Cargo.toml",
-    ]
+  "rust-analyzer.linkedProjects": [
+    "rpkg/src/rust/Cargo.toml",
+    "Cargo.toml",
+    "miniextendr-api/Cargo.toml",
+    "miniextendr-macros/Cargo.toml"
+  ],
+  "rust-analyzer.cargo.extraArgs": [
+    "--release"
+  ],
+  "rust-analyzer.cargo.targetDir": "ra_target",
 }

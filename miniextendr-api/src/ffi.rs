@@ -1,8 +1,35 @@
-#[non_exhaustive]
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SEXPREC(std::ffi::c_void);
 pub type SEXP = *mut SEXPREC;
+
+/// Send-only handle to a SEXP pointer.
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct SendSEXP {
+    pub inner: SEXP,
+    /// PhantomData<Cell<()>> forces !Sync.
+    pub _not_sync: std::marker::PhantomData<std::cell::Cell<()>>,
+}
+unsafe impl Send for SendSEXP {}
+
+impl SendSEXP {
+    #[inline(always)]
+    /// # Safety
+    /// Caller must supply a valid SEXP pointer whose ownership can be
+    /// transferred to this sendable wrapper.
+    pub unsafe fn new(inner: SEXP) -> Self {
+        Self {
+            inner,
+            _not_sync: std::marker::PhantomData,
+        }
+    }
+
+    #[inline(always)]
+    pub fn get(self) -> SEXP {
+        self.inner
+    }
+}
 
 #[repr(i32)]
 #[non_exhaustive]
@@ -12,9 +39,16 @@ pub enum Rboolean {
     TRUE = 1,
 }
 
+// TODO: I don't think `R_CFinalizer_t` can be None, so maybe it ought to be NonNull
+#[allow(non_camel_case_types)]
+pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
+
 unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
+
+    // Rinternals.h
+    pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
 
     // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
@@ -31,6 +65,32 @@ unsafe extern "C" {
         cleanfun_data: *mut ::std::os::raw::c_void,
         cont: SEXP,
     ) -> SEXP;
+
+    // Rinternals.h
+
+    #[doc = " External pointer interface"]
+    pub fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
+    pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
+    pub fn R_ExternalPtrTag(s: SEXP) -> SEXP;
+    pub fn R_ExternalPtrProtected(s: SEXP) -> SEXP;
+    pub fn R_ClearExternalPtr(s: SEXP);
+    pub fn R_SetExternalPtrAddr(s: SEXP, p: *mut ::std::os::raw::c_void);
+    pub fn R_SetExternalPtrTag(s: SEXP, tag: SEXP);
+    pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
+    #[doc = " Added in R 3.4.0"]
+    pub fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
+    pub fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
+    pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
+    pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
+    pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
+    pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
+
+    // Rinternals.h
+    pub fn R_PreserveObject(arg1: SEXP);
+    pub fn R_ReleaseObject(arg1: SEXP);
+
+    pub fn Rf_protect(arg1: SEXP) -> SEXP;
+    pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
 
     // Rinternals.h
     // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
@@ -72,6 +132,9 @@ unsafe extern "C" {
     // pub fn COMPLEX0(x: SEXP) -> *mut Rcomplex;
     // pub fn RAW0(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
+
+    // utils.h
+    pub fn R_CheckUserInterrupt();
 }
 
 // region: registration!
@@ -92,8 +155,7 @@ pub struct R_CallMethodDef {
     pub fun: DL_FUNC,
     pub numArgs: ::std::os::raw::c_int,
 }
-
-// necessary for calling R_init_<module name>
+// TODO: investigate why Sync is necessary...
 unsafe impl Sync for R_CallMethodDef {}
 
 // FIXME: move to an ffi crate or similar..
