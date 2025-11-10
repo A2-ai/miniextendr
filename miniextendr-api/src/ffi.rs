@@ -1,3 +1,5 @@
+pub mod altrep;
+
 #[allow(non_camel_case_types)]
 pub type R_xlen_t = isize;
 pub type Rbyte = ::std::os::raw::c_uchar;
