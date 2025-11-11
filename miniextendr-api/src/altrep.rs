@@ -2,7 +2,6 @@
 //! (INT, REAL, STRING). No libR-sys/extendr dependencies; only raw FFI.
 
 use core::ffi::{c_char, c_void};
-use core::ptr;
 use core::slice;
 use std::sync::OnceLock;
 
@@ -183,33 +182,6 @@ unsafe fn int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
     unsafe { ep_as::<Box<dyn IntBackend>>(ep).as_ref() }
 }
 
-unsafe extern "C" fn int_len(x: SEXP) -> R_xlen_t {
-    unsafe { int_backend(x).len() }
-}
-unsafe extern "C" fn int_elt(x: SEXP, i: R_xlen_t) -> i32 {
-    unsafe { int_backend(x).elt(i) }
-}
-unsafe extern "C" fn int_get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32) -> R_xlen_t {
-    let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
-    unsafe { int_backend(x).get_region(i, n, out) }
-}
-unsafe extern "C" fn int_is_sorted(x: SEXP) -> i32 {
-    unsafe { int_backend(x).is_sorted() }
-}
-unsafe extern "C" fn int_no_na(x: SEXP) -> i32 {
-    unsafe { int_backend(x).no_na() }
-}
-unsafe extern "C" fn int_dataptr_or_null(x: SEXP) -> *const c_void {
-    unsafe {
-        int_backend(x)
-            .dataptr()
-            .map(|s| s.as_ptr() as *const c_void)
-            .unwrap_or(ptr::null())
-    }
-}
-unsafe extern "C" fn int_dataptr(x: SEXP, _w: Rboolean) -> *mut c_void {
-    unsafe { int_dataptr_or_null(x) }.cast_mut()
-}
 unsafe extern "C" fn int_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
@@ -222,33 +194,6 @@ unsafe fn real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn RealBackend>>(ep).as_ref() }
 }
-unsafe extern "C" fn real_len(x: SEXP) -> R_xlen_t {
-    unsafe { real_backend(x).len() }
-}
-unsafe extern "C" fn real_elt(x: SEXP, i: R_xlen_t) -> f64 {
-    unsafe { real_backend(x).elt(i) }
-}
-unsafe extern "C" fn real_get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut f64) -> R_xlen_t {
-    let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
-    unsafe { real_backend(x).get_region(i, n, out) }
-}
-unsafe extern "C" fn real_is_sorted(x: SEXP) -> i32 {
-    unsafe { real_backend(x).is_sorted() }
-}
-unsafe extern "C" fn real_no_na(x: SEXP) -> i32 {
-    unsafe { real_backend(x).no_na() }
-}
-unsafe extern "C" fn real_dataptr_or_null(x: SEXP) -> *const c_void {
-    unsafe {
-        real_backend(x)
-            .dataptr()
-            .map(|s| s.as_ptr() as *const c_void)
-            .unwrap_or(ptr::null())
-    }
-}
-unsafe extern "C" fn real_dataptr(x: SEXP, _w: Rboolean) -> *mut c_void {
-    unsafe { real_dataptr_or_null(x).cast_mut() }
-}
 unsafe extern "C" fn real_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
@@ -260,19 +205,6 @@ unsafe extern "C" fn real_finalizer(ep: SEXP) {
 unsafe fn str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn StringBackend>>(ep).as_ref() }
-}
-unsafe extern "C" fn str_len(x: SEXP) -> R_xlen_t {
-    unsafe { str_backend(x).len() }
-}
-unsafe extern "C" fn str_elt(x: SEXP, i: R_xlen_t) -> SEXP {
-    match unsafe { str_backend(x).utf8_at(i) } {
-        None => unsafe { NA_STRING },
-        Some(s) => {
-            // NB: mkCharLen uses native encoding; swap to mkCharLenCE with CE_UTF8 if needed.
-            let cs = std::ffi::CString::new(s).unwrap();
-            unsafe { Rf_mkCharLen(cs.as_ptr(), s.len() as i32) }
-        }
-    }
 }
 unsafe extern "C" fn str_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
