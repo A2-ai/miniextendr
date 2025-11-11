@@ -426,6 +426,8 @@ pub struct OwnedList {
 impl OwnedList {
     pub fn from_sexps(v: Vec<SEXP>) -> Self { Self { data: v } }
 }
+unsafe impl Send for OwnedList {}
+unsafe impl Sync for OwnedList {}
 impl ListBackend for OwnedList {
     fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
     fn elt(&self, i: R_xlen_t) -> SEXP { self.data[i as usize] }
@@ -1061,4 +1063,84 @@ impl AltString for AltStrClass {
             }
         }
     }
+}
+
+struct AltLogicalClass;
+impl AltrepClass for AltLogicalClass {
+    const CLASS_NAME: &'static str = "rust_altlgl";
+    const PKG_NAME: &'static str = "miniextendr";
+    const BASE: RBase = RBase::Logical;
+    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { lgl_backend(x).len() } }
+}
+impl AltVec for AltLogicalClass {
+    unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        unsafe {
+            lgl_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *mut c_void)
+                .unwrap_or(core::ptr::null_mut())
+        }
+    }
+    unsafe fn dataptr_or_null(x: SEXP) -> *const c_void {
+        unsafe {
+            lgl_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *const c_void)
+                .unwrap_or(core::ptr::null())
+        }
+    }
+}
+impl AltLogical for AltLogicalClass {
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> i32 { unsafe { lgl_backend(x).elt(i) } }
+    unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32) -> R_xlen_t {
+        let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
+        unsafe { lgl_backend(x).get_region(i, n, out) }
+    }
+    unsafe fn is_sorted(x: SEXP) -> i32 { unsafe { lgl_backend(x).is_sorted() } }
+    unsafe fn no_na(x: SEXP) -> i32 { unsafe { lgl_backend(x).no_na() } }
+}
+
+struct AltRawClass;
+impl AltrepClass for AltRawClass {
+    const CLASS_NAME: &'static str = "rust_altraw";
+    const PKG_NAME: &'static str = "miniextendr";
+    const BASE: RBase = RBase::Raw;
+    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { raw_backend(x).len() } }
+}
+impl AltVec for AltRawClass {
+    unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        unsafe {
+            raw_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *mut c_void)
+                .unwrap_or(core::ptr::null_mut())
+        }
+    }
+    unsafe fn dataptr_or_null(x: SEXP) -> *const c_void {
+        unsafe {
+            raw_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *const c_void)
+                .unwrap_or(core::ptr::null())
+        }
+    }
+}
+impl AltRaw for AltRawClass {
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> Rbyte { unsafe { raw_backend(x).elt(i) } }
+    unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Rbyte) -> R_xlen_t {
+        let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
+        unsafe { raw_backend(x).get_region(i, n, out) }
+    }
+}
+
+struct AltListClass;
+impl AltrepClass for AltListClass {
+    const CLASS_NAME: &'static str = "rust_altlist";
+    const PKG_NAME: &'static str = "miniextendr";
+    const BASE: RBase = RBase::List;
+    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { list_backend(x).len() } }
+}
+impl AltVec for AltListClass {}
+impl AltList for AltListClass {
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> SEXP { unsafe { list_backend(x).elt(i) } }
 }
