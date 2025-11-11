@@ -376,21 +376,31 @@ impl OwnedLogical {
             } else {
                 core::slice::from_raw_parts(ptr, n)
             };
-            Self { data: slice.to_vec().into_boxed_slice() }
+            Self {
+                data: slice.to_vec().into_boxed_slice(),
+            }
         }
     }
 }
 impl LogicalBackend for OwnedLogical {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
-    fn no_na(&self) -> i32 { 0 }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
+    fn no_na(&self) -> i32 {
+        0
+    }
 }
 
 /// Owned contiguous raw buffer for RAWSXP.
@@ -403,20 +413,28 @@ impl OwnedRaw {
             let n = Rf_xlength(x) as usize;
             let ptr = DATAPTR_RO(x) as *const Rbyte;
             let slice = core::slice::from_raw_parts(ptr, n);
-            Self { data: slice.to_vec().into_boxed_slice() }
+            Self {
+                data: slice.to_vec().into_boxed_slice(),
+            }
         }
     }
 }
 impl RawBackend for OwnedRaw {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> Rbyte { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> Rbyte {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[Rbyte]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[Rbyte]> {
+        Some(&self.data)
+    }
 }
 
 /// Owned list of SEXP values for VECSXP.
@@ -424,13 +442,19 @@ pub struct OwnedList {
     data: Vec<SEXP>,
 }
 impl OwnedList {
-    pub fn from_sexps(v: Vec<SEXP>) -> Self { Self { data: v } }
+    pub fn from_sexps(v: Vec<SEXP>) -> Self {
+        Self { data: v }
+    }
 }
 unsafe impl Send for OwnedList {}
 unsafe impl Sync for OwnedList {}
 impl ListBackend for OwnedList {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> SEXP { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> SEXP {
+        self.data[i as usize]
+    }
 }
 
 // ========= R-callable C wrappers (no macros, pure .Call) =========
@@ -1070,7 +1094,9 @@ impl AltrepClass for AltLogicalClass {
     const CLASS_NAME: &'static str = "rust_altlgl";
     const PKG_NAME: &'static str = "miniextendr";
     const BASE: RBase = RBase::Logical;
-    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { lgl_backend(x).len() } }
+    unsafe fn length(x: SEXP) -> R_xlen_t {
+        unsafe { lgl_backend(x).len() }
+    }
 }
 impl AltVec for AltLogicalClass {
     unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
@@ -1091,13 +1117,19 @@ impl AltVec for AltLogicalClass {
     }
 }
 impl AltLogical for AltLogicalClass {
-    unsafe fn elt(x: SEXP, i: R_xlen_t) -> i32 { unsafe { lgl_backend(x).elt(i) } }
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        unsafe { lgl_backend(x).elt(i) }
+    }
     unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32) -> R_xlen_t {
         let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
         unsafe { lgl_backend(x).get_region(i, n, out) }
     }
-    unsafe fn is_sorted(x: SEXP) -> i32 { unsafe { lgl_backend(x).is_sorted() } }
-    unsafe fn no_na(x: SEXP) -> i32 { unsafe { lgl_backend(x).no_na() } }
+    unsafe fn is_sorted(x: SEXP) -> i32 {
+        unsafe { lgl_backend(x).is_sorted() }
+    }
+    unsafe fn no_na(x: SEXP) -> i32 {
+        unsafe { lgl_backend(x).no_na() }
+    }
 }
 
 struct AltRawClass;
@@ -1105,7 +1137,9 @@ impl AltrepClass for AltRawClass {
     const CLASS_NAME: &'static str = "rust_altraw";
     const PKG_NAME: &'static str = "miniextendr";
     const BASE: RBase = RBase::Raw;
-    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { raw_backend(x).len() } }
+    unsafe fn length(x: SEXP) -> R_xlen_t {
+        unsafe { raw_backend(x).len() }
+    }
 }
 impl AltVec for AltRawClass {
     unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
@@ -1126,7 +1160,9 @@ impl AltVec for AltRawClass {
     }
 }
 impl AltRaw for AltRawClass {
-    unsafe fn elt(x: SEXP, i: R_xlen_t) -> Rbyte { unsafe { raw_backend(x).elt(i) } }
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> Rbyte {
+        unsafe { raw_backend(x).elt(i) }
+    }
     unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Rbyte) -> R_xlen_t {
         let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
         unsafe { raw_backend(x).get_region(i, n, out) }
@@ -1138,9 +1174,13 @@ impl AltrepClass for AltListClass {
     const CLASS_NAME: &'static str = "rust_altlist";
     const PKG_NAME: &'static str = "miniextendr";
     const BASE: RBase = RBase::List;
-    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { list_backend(x).len() } }
+    unsafe fn length(x: SEXP) -> R_xlen_t {
+        unsafe { list_backend(x).len() }
+    }
 }
 impl AltVec for AltListClass {}
 impl AltList for AltListClass {
-    unsafe fn elt(x: SEXP, i: R_xlen_t) -> SEXP { unsafe { list_backend(x).elt(i) } }
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
+        unsafe { list_backend(x).elt(i) }
+    }
 }
