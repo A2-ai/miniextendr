@@ -24,97 +24,9 @@ impl Clone for R_altrep_class_t {
 static ALTINT: OnceLock<R_altrep_class_t> = OnceLock::new();
 static ALTREAL: OnceLock<R_altrep_class_t> = OnceLock::new();
 static ALTSTR: OnceLock<R_altrep_class_t> = OnceLock::new();
-
-// // Minimal FFI we need that isn't in crate::ffi yet.
-// // All of these symbols are provided by libR.dylib / libR.so.
-// extern "C" {
-//     // ALTREP class constructors (R_ext/Altrep.h)
-//     fn R_make_altinteger_class(
-//         cname: *const c_char,
-//         pname: *const c_char,
-//         dll: *mut c_void,
-//     ) -> R_altrep_class_t;
-//     fn R_make_altreal_class(
-//         cname: *const c_char,
-//         pname: *const c_char,
-//         dll: *mut c_void,
-//     ) -> R_altrep_class_t;
-//     fn R_make_altstring_class(
-//         cname: *const c_char,
-//         pname: *const c_char,
-//         dll: *mut c_void,
-//     ) -> R_altrep_class_t;
-
-//     // ALTREP object constructor
-//     fn R_new_altrep(cls: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
-
-//     // ALTREP method setters (subset)
-//     fn R_set_altrep_Length_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP) -> R_xlen_t>,
-//     );
-//     fn R_set_altvec_Dataptr_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP, i32) -> *mut c_void>,
-//     );
-//     fn R_set_altvec_Dataptr_or_null_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP) -> *const c_void>,
-//     );
-
-//     fn R_set_altinteger_Elt_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP, R_xlen_t) -> i32>,
-//     );
-//     fn R_set_altinteger_Get_region_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP, R_xlen_t, R_xlen_t, *mut i32) -> R_xlen_t>,
-//     );
-//     fn R_set_altinteger_Is_sorted_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP) -> i32>,
-//     );
-//     fn R_set_altinteger_No_NA_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP) -> i32>,
-//     );
-
-//     fn R_set_altreal_Elt_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP, R_xlen_t) -> f64>,
-//     );
-//     fn R_set_altreal_Get_region_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP, R_xlen_t, R_xlen_t, *mut f64) -> R_xlen_t>,
-//     );
-//     fn R_set_altreal_Is_sorted_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP) -> i32>,
-//     );
-//     fn R_set_altreal_No_NA_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP) -> i32>,
-//     );
-
-//     fn R_set_altstring_Elt_method(
-//         cls: R_altrep_class_t,
-//         f: Option<unsafe extern "C" fn(SEXP, R_xlen_t) -> SEXP>,
-//     );
-
-//     // External pointers
-//     fn R_MakeExternalPtr(p: *mut c_void, tag: SEXP, prot: SEXP) -> SEXP;
-//     fn R_ExternalPtrAddr(p: SEXP) -> *mut c_void;
-//     fn R_RegisterCFinalizerEx(p: SEXP, f: Option<unsafe extern "C" fn(SEXP)>, onexit: i32);
-
-//     // R internals we need
-//     static R_NilValue: SEXP;
-
-//     // Handy memory accessors already declared in crate::ffi, but duplicate here for isolation.
-//     fn DATAPTR(x: SEXP) -> *mut c_void;
-//     fn DATAPTR_RO(x: SEXP) -> *const c_void;
-//     fn DATAPTR_OR_NULL(x: SEXP) -> *const c_void;
-//     fn R_altrep_data1(x: SEXP) -> SEXP;
-// }
+static ALTLOG: OnceLock<R_altrep_class_t> = OnceLock::new();
+static ALTRAW: OnceLock<R_altrep_class_t> = OnceLock::new();
+static ALTLIST: OnceLock<R_altrep_class_t> = OnceLock::new();
 
 /// Integer backend trait — implement this for any Rust struct to back an INTSXP ALTREP.
 pub trait IntBackend: Send + Sync + 'static {
@@ -166,6 +78,50 @@ pub trait StringBackend: Send + Sync + 'static {
     fn utf8_at(&self, i: R_xlen_t) -> Option<&str>;
 }
 
+/// Logical backend — values are R logical ints (0/1/NA_LOGICAL).
+pub trait LogicalBackend: Send + Sync + 'static {
+    fn len(&self) -> R_xlen_t;
+    fn elt(&self, i: R_xlen_t) -> i32;
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let ncopy = n.min(self.len().saturating_sub(i)).max(0);
+        for k in 0..ncopy {
+            out[k as usize] = self.elt(i + k);
+        }
+        ncopy
+    }
+    fn dataptr(&self) -> Option<&[i32]> {
+        None
+    }
+    fn is_sorted(&self) -> i32 {
+        0
+    }
+    fn no_na(&self) -> i32 {
+        0
+    }
+}
+
+/// Raw backend — bytes.
+pub trait RawBackend: Send + Sync + 'static {
+    fn len(&self) -> R_xlen_t;
+    fn elt(&self, i: R_xlen_t) -> Rbyte;
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let ncopy = n.min(self.len().saturating_sub(i)).max(0);
+        for k in 0..ncopy {
+            out[k as usize] = self.elt(i + k);
+        }
+        ncopy
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> {
+        None
+    }
+}
+
+/// List backend — general VECSXP; returns owned SEXP references.
+pub trait ListBackend: Send + Sync + 'static {
+    fn len(&self) -> R_xlen_t;
+    fn elt(&self, i: R_xlen_t) -> SEXP;
+}
+
 // -- helpers to store/retrieve Box<dyn Backend> behind an external ptr --
 unsafe fn make_eptr<T: ?Sized>(b: Box<T>, fin: unsafe extern "C" fn(SEXP)) -> SEXP {
     let ep = unsafe { R_MakeExternalPtr(Box::into_raw(b).cast(), R_NilValue, R_NilValue) };
@@ -213,6 +169,42 @@ unsafe extern "C" fn str_finalizer(ep: SEXP) {
     }
 }
 
+// ========= LOGICAL class + trampolines =========
+unsafe fn lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
+    let ep = unsafe { R_altrep_data1(x) };
+    unsafe { ep_as::<Box<dyn LogicalBackend>>(ep).as_ref() }
+}
+unsafe extern "C" fn lgl_finalizer(ep: SEXP) {
+    let raw = unsafe { R_ExternalPtrAddr(ep) };
+    if !raw.is_null() {
+        drop(unsafe { Box::<Box<dyn LogicalBackend>>::from_raw(raw.cast()) });
+    }
+}
+
+// ========= RAW class + trampolines =========
+unsafe fn raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
+    let ep = unsafe { R_altrep_data1(x) };
+    unsafe { ep_as::<Box<dyn RawBackend>>(ep).as_ref() }
+}
+unsafe extern "C" fn raw_finalizer(ep: SEXP) {
+    let raw = unsafe { R_ExternalPtrAddr(ep) };
+    if !raw.is_null() {
+        drop(unsafe { Box::<Box<dyn RawBackend>>::from_raw(raw.cast()) });
+    }
+}
+
+// ========= LIST class + trampolines =========
+unsafe fn list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
+    let ep = unsafe { R_altrep_data1(x) };
+    unsafe { ep_as::<Box<dyn ListBackend>>(ep).as_ref() }
+}
+unsafe extern "C" fn list_finalizer(ep: SEXP) {
+    let raw = unsafe { R_ExternalPtrAddr(ep) };
+    if !raw.is_null() {
+        drop(unsafe { Box::<Box<dyn ListBackend>>::from_raw(raw.cast()) });
+    }
+}
+
 // ========= Class registration =========
 fn cstr(s: &str) -> *const c_char {
     std::ffi::CString::new(s).unwrap().into_raw()
@@ -223,6 +215,9 @@ unsafe fn ensure_classes() {
     ALTINT.get_or_init(|| unsafe { register_altinteger_class::<AltIntClass>() });
     ALTREAL.get_or_init(|| unsafe { register_altreal_class::<AltRealClass>() });
     ALTSTR.get_or_init(|| unsafe { register_altstring_class::<AltStrClass>() });
+    ALTLOG.get_or_init(|| unsafe { register_altlogical_class::<AltLogicalClass>() });
+    ALTRAW.get_or_init(|| unsafe { register_altraw_class::<AltRawClass>() });
+    ALTLIST.get_or_init(|| unsafe { register_altlist_class::<AltListClass>() });
 }
 
 // ========= Public constructors =========
@@ -244,6 +239,25 @@ pub unsafe fn new_altrep_str(b: Box<dyn StringBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), str_finalizer) };
     unsafe { R_new_altrep(*ALTSTR.get().unwrap(), ep, R_NilValue) }
+}
+
+/// Create a LOGICAL ALTREP from a trait object.
+pub unsafe fn new_altrep_lgl(b: Box<dyn LogicalBackend>) -> SEXP {
+    unsafe { ensure_classes() };
+    let ep = unsafe { make_eptr(Box::new(b), lgl_finalizer) };
+    unsafe { R_new_altrep(*ALTLOG.get().unwrap(), ep, R_NilValue) }
+}
+/// Create a RAW ALTREP from a trait object.
+pub unsafe fn new_altrep_raw(b: Box<dyn RawBackend>) -> SEXP {
+    unsafe { ensure_classes() };
+    let ep = unsafe { make_eptr(Box::new(b), raw_finalizer) };
+    unsafe { R_new_altrep(*ALTRAW.get().unwrap(), ep, R_NilValue) }
+}
+/// Create a LIST ALTREP from a trait object.
+pub unsafe fn new_altrep_list(b: Box<dyn ListBackend>) -> SEXP {
+    unsafe { ensure_classes() };
+    let ep = unsafe { make_eptr(Box::new(b), list_finalizer) };
+    unsafe { R_new_altrep(*ALTLIST.get().unwrap(), ep, R_NilValue) }
 }
 
 // ========= Example backends =========
@@ -348,6 +362,75 @@ impl StringBackend for Utf8Vec {
     }
 }
 
+/// Owned contiguous i32 buffer for LOGICALSXP.
+pub struct OwnedLogical {
+    data: Box<[i32]>,
+}
+impl OwnedLogical {
+    pub fn from_lgls_sexp(x: SEXP) -> Self {
+        unsafe {
+            let n = Rf_xlength(x) as usize;
+            let ptr = LOGICAL_OR_NULL(x);
+            let slice = if ptr.is_null() {
+                &[]
+            } else {
+                core::slice::from_raw_parts(ptr, n)
+            };
+            Self { data: slice.to_vec().into_boxed_slice() }
+        }
+    }
+}
+impl LogicalBackend for OwnedLogical {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.data[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+    fn no_na(&self) -> i32 { 0 }
+}
+
+/// Owned contiguous raw buffer for RAWSXP.
+pub struct OwnedRaw {
+    data: Box<[Rbyte]>,
+}
+impl OwnedRaw {
+    pub fn from_raw_sexp(x: SEXP) -> Self {
+        unsafe {
+            let n = Rf_xlength(x) as usize;
+            let ptr = DATAPTR_RO(x) as *const Rbyte;
+            let slice = core::slice::from_raw_parts(ptr, n);
+            Self { data: slice.to_vec().into_boxed_slice() }
+        }
+    }
+}
+impl RawBackend for OwnedRaw {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> Rbyte { self.data[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.data[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> { Some(&self.data) }
+}
+
+/// Owned list of SEXP values for VECSXP.
+pub struct OwnedList {
+    data: Vec<SEXP>,
+}
+impl OwnedList {
+    pub fn from_sexps(v: Vec<SEXP>) -> Self { Self { data: v } }
+}
+impl ListBackend for OwnedList {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> SEXP { self.data[i as usize] }
+}
+
 // ========= R-callable C wrappers (no macros, pure .Call) =========
 
 #[unsafe(no_mangle)]
@@ -377,6 +460,18 @@ pub unsafe extern "C" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> SEXP {
 pub unsafe extern "C" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> SEXP {
     let b = Utf8Vec::from_strs_sexp(x);
     unsafe { new_altrep_str(Box::new(b)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
+    let b = OwnedLogical::from_lgls_sexp(x);
+    unsafe { new_altrep_lgl(Box::new(b)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
+    let b = OwnedRaw::from_raw_sexp(x);
+    unsafe { new_altrep_raw(Box::new(b)) }
 }
 
 #[repr(C)]
@@ -888,13 +983,19 @@ impl AltVec for AltIntClass {
     }
 }
 impl AltInteger for AltIntClass {
-    unsafe fn elt(x: SEXP, i: R_xlen_t) -> i32 { unsafe { int_backend(x).elt(i) } }
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        unsafe { int_backend(x).elt(i) }
+    }
     unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32) -> R_xlen_t {
         let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
         unsafe { int_backend(x).get_region(i, n, out) }
     }
-    unsafe fn is_sorted(x: SEXP) -> i32 { unsafe { int_backend(x).is_sorted() } }
-    unsafe fn no_na(x: SEXP) -> i32 { unsafe { int_backend(x).no_na() } }
+    unsafe fn is_sorted(x: SEXP) -> i32 {
+        unsafe { int_backend(x).is_sorted() }
+    }
+    unsafe fn no_na(x: SEXP) -> i32 {
+        unsafe { int_backend(x).no_na() }
+    }
 }
 
 struct AltRealClass;
@@ -902,7 +1003,9 @@ impl AltrepClass for AltRealClass {
     const CLASS_NAME: &'static str = "rust_altreal";
     const PKG_NAME: &'static str = "miniextendr";
     const BASE: RBase = RBase::Real;
-    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { real_backend(x).len() } }
+    unsafe fn length(x: SEXP) -> R_xlen_t {
+        unsafe { real_backend(x).len() }
+    }
 }
 impl AltVec for AltRealClass {
     unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
@@ -923,13 +1026,19 @@ impl AltVec for AltRealClass {
     }
 }
 impl AltReal for AltRealClass {
-    unsafe fn elt(x: SEXP, i: R_xlen_t) -> f64 { unsafe { real_backend(x).elt(i) } }
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> f64 {
+        unsafe { real_backend(x).elt(i) }
+    }
     unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut f64) -> R_xlen_t {
         let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
         unsafe { real_backend(x).get_region(i, n, out) }
     }
-    unsafe fn is_sorted(x: SEXP) -> i32 { unsafe { real_backend(x).is_sorted() } }
-    unsafe fn no_na(x: SEXP) -> i32 { unsafe { real_backend(x).no_na() } }
+    unsafe fn is_sorted(x: SEXP) -> i32 {
+        unsafe { real_backend(x).is_sorted() }
+    }
+    unsafe fn no_na(x: SEXP) -> i32 {
+        unsafe { real_backend(x).no_na() }
+    }
 }
 
 struct AltStrClass;
@@ -937,7 +1046,9 @@ impl AltrepClass for AltStrClass {
     const CLASS_NAME: &'static str = "rust_altstr";
     const PKG_NAME: &'static str = "miniextendr";
     const BASE: RBase = RBase::String;
-    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { str_backend(x).len() } }
+    unsafe fn length(x: SEXP) -> R_xlen_t {
+        unsafe { str_backend(x).len() }
+    }
 }
 impl AltVec for AltStrClass {}
 impl AltString for AltStrClass {
