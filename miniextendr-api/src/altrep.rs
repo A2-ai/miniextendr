@@ -7,20 +7,24 @@ use core::slice;
 use std::sync::OnceLock;
 
 // Use the project's FFI definitions and types.
-use crate::ffi::*;
 use crate::ffi::altrep::*;
+use crate::ffi::*;
 
 // ALTREP class handles are global opaque pointers provided by R
 // and can be safely shared across threads in this context.
 unsafe impl Send for R_altrep_class_t {}
 unsafe impl Sync for R_altrep_class_t {}
 impl Copy for R_altrep_class_t {}
-impl Clone for R_altrep_class_t { fn clone(&self) -> Self { *self } }
+impl Clone for R_altrep_class_t {
+    fn clone(&self) -> Self {
+        *self
+    }
+}
 
 // Global class handles
-static ALTINT: OnceLock<R_altrep_class_t>  = OnceLock::new();
+static ALTINT: OnceLock<R_altrep_class_t> = OnceLock::new();
 static ALTREAL: OnceLock<R_altrep_class_t> = OnceLock::new();
-static ALTSTR: OnceLock<R_altrep_class_t>  = OnceLock::new();
+static ALTSTR: OnceLock<R_altrep_class_t> = OnceLock::new();
 
 // // Minimal FFI we need that isn't in crate::ffi yet.
 // // All of these symbols are provided by libR.dylib / libR.so.
@@ -285,31 +289,69 @@ fn cstr(s: &str) -> *const c_char {
 /// Must be called once (lazy-initialized on first constructor use).
 unsafe fn ensure_classes() {
     ALTINT.get_or_init(|| {
-        let cls = unsafe { R_make_altinteger_class(cstr("rust_altint"), cstr("miniextendr"), ptr::null_mut()) };
-        unsafe { R_set_altrep_Length_method(cls, Some(int_len)); }
-        unsafe { R_set_altvec_Dataptr_method(cls, Some(int_dataptr)); }
-        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(int_dataptr_or_null)); }
-        unsafe { R_set_altinteger_Elt_method(cls, Some(int_elt)); }
-        unsafe { R_set_altinteger_Get_region_method(cls, Some(int_get_region)); }
-        unsafe { R_set_altinteger_Is_sorted_method(cls, Some(int_is_sorted)); }
-        unsafe { R_set_altinteger_No_NA_method(cls, Some(int_no_na)); }
+        let cls = unsafe {
+            R_make_altinteger_class(cstr("rust_altint"), cstr("miniextendr"), ptr::null_mut())
+        };
+        unsafe {
+            R_set_altrep_Length_method(cls, Some(int_len));
+        }
+        unsafe {
+            R_set_altvec_Dataptr_method(cls, Some(int_dataptr));
+        }
+        unsafe {
+            R_set_altvec_Dataptr_or_null_method(cls, Some(int_dataptr_or_null));
+        }
+        unsafe {
+            R_set_altinteger_Elt_method(cls, Some(int_elt));
+        }
+        unsafe {
+            R_set_altinteger_Get_region_method(cls, Some(int_get_region));
+        }
+        unsafe {
+            R_set_altinteger_Is_sorted_method(cls, Some(int_is_sorted));
+        }
+        unsafe {
+            R_set_altinteger_No_NA_method(cls, Some(int_no_na));
+        }
         cls
     });
     ALTREAL.get_or_init(|| {
-        let cls = unsafe { R_make_altreal_class(cstr("rust_altreal"), cstr("miniextendr"), ptr::null_mut()) };
-        unsafe { R_set_altrep_Length_method(cls, Some(real_len)); }
-        unsafe { R_set_altvec_Dataptr_method(cls, Some(real_dataptr)); }
-        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(real_dataptr_or_null)); }
-        unsafe { R_set_altreal_Elt_method(cls, Some(real_elt)); }
-        unsafe { R_set_altreal_Get_region_method(cls, Some(real_get_region)); }
-        unsafe { R_set_altreal_Is_sorted_method(cls, Some(real_is_sorted)); }
-        unsafe { R_set_altreal_No_NA_method(cls, Some(real_no_na)); }
+        let cls = unsafe {
+            R_make_altreal_class(cstr("rust_altreal"), cstr("miniextendr"), ptr::null_mut())
+        };
+        unsafe {
+            R_set_altrep_Length_method(cls, Some(real_len));
+        }
+        unsafe {
+            R_set_altvec_Dataptr_method(cls, Some(real_dataptr));
+        }
+        unsafe {
+            R_set_altvec_Dataptr_or_null_method(cls, Some(real_dataptr_or_null));
+        }
+        unsafe {
+            R_set_altreal_Elt_method(cls, Some(real_elt));
+        }
+        unsafe {
+            R_set_altreal_Get_region_method(cls, Some(real_get_region));
+        }
+        unsafe {
+            R_set_altreal_Is_sorted_method(cls, Some(real_is_sorted));
+        }
+        unsafe {
+            R_set_altreal_No_NA_method(cls, Some(real_no_na));
+        }
         cls
     });
     ALTSTR.get_or_init(|| {
-        let cls = unsafe { R_make_altstring_class(cstr("rust_altstr"), cstr("miniextendr"), ptr::null_mut()) };
-        unsafe { R_set_altrep_Length_method(cls, Some(str_len)); }
-        unsafe { R_set_altstring_Elt_method(cls, Some(str_elt)); }
+        let cls = unsafe {
+            R_make_altstring_class(cstr("rust_altstr"), cstr("miniextendr"), ptr::null_mut())
+        };
+        unsafe {
+            R_set_altrep_Length_method(cls, Some(str_len));
+        }
+        unsafe {
+            R_set_altstring_Elt_method(cls, Some(str_elt));
+        }
         cls
     });
 }
@@ -590,4 +632,359 @@ pub trait AltReal: AltVec {
         None
     }
 }
-// TODO: ... similarly AltLogical, AltRaw, AltComplex, AltString, AltList
+
+/// LOGICAL methods.
+pub trait AltLogical: AltVec {
+    unsafe fn elt(_x: SEXP, _i: R_xlen_t) -> i32 {
+        unreachable!()
+    }
+    unsafe fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut i32) -> R_xlen_t {
+        0
+    }
+    unsafe fn is_sorted(_x: SEXP) -> i32 {
+        0
+    }
+    unsafe fn no_na(_x: SEXP) -> i32 {
+        0
+    }
+    unsafe fn sum(_x: SEXP, _narm: bool) -> Option<SEXP> {
+        None
+    }
+}
+
+/// RAW methods.
+pub trait AltRaw: AltVec {
+    unsafe fn elt(_x: SEXP, _i: R_xlen_t) -> Rbyte {
+        unreachable!()
+    }
+    unsafe fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut Rbyte) -> R_xlen_t {
+        0
+    }
+}
+
+/// STRING methods.
+pub trait AltString: AltVec {
+    const HAS_SET_ELT: bool = false;
+    unsafe fn elt(_x: SEXP, _i: R_xlen_t) -> SEXP {
+        unreachable!()
+    }
+    unsafe fn set_elt(_x: SEXP, _i: R_xlen_t, _v: SEXP) {
+        // default: unsupported
+    }
+    unsafe fn is_sorted(_x: SEXP) -> i32 {
+        0
+    }
+    unsafe fn no_na(_x: SEXP) -> i32 {
+        0
+    }
+}
+
+/// LIST (VECSXP) methods.
+pub trait AltList: AltVec {
+    const HAS_SET_ELT: bool = false;
+    unsafe fn elt(_x: SEXP, _i: R_xlen_t) -> SEXP {
+        unreachable!()
+    }
+    unsafe fn set_elt(_x: SEXP, _i: R_xlen_t, _v: SEXP) {
+        // default: unsupported
+    }
+}
+
+// AltComplex intentionally omitted for now: FFI method types are not exposed.
+
+// ========= Generic registration helpers =========
+
+// Generic trampolines for AltrepClass and AltVec
+unsafe extern "C" fn g_length<T: AltrepClass>(x: SEXP) -> R_xlen_t {
+    unsafe { T::length(x) }
+}
+unsafe extern "C" fn g_dataptr<T: AltVec>(x: SEXP, w: Rboolean) -> *mut c_void {
+    unsafe { T::dataptr(x, matches!(w, Rboolean::TRUE)) }
+}
+unsafe extern "C" fn g_dataptr_or_null<T: AltVec>(x: SEXP) -> *const c_void {
+    unsafe { T::dataptr_or_null(x) }
+}
+
+// Integer family trampolines
+unsafe extern "C" fn g_int_elt<T: AltInteger>(x: SEXP, i: R_xlen_t) -> i32 {
+    unsafe { T::elt(x, i) }
+}
+unsafe extern "C" fn g_int_get_region<T: AltInteger>(
+    x: SEXP,
+    i: R_xlen_t,
+    n: R_xlen_t,
+    buf: *mut i32,
+) -> R_xlen_t {
+    unsafe { T::get_region(x, i, n, buf) }
+}
+unsafe extern "C" fn g_int_is_sorted<T: AltInteger>(x: SEXP) -> i32 {
+    unsafe { T::is_sorted(x) }
+}
+unsafe extern "C" fn g_int_no_na<T: AltInteger>(x: SEXP) -> i32 {
+    unsafe { T::no_na(x) }
+}
+
+// Real family trampolines
+unsafe extern "C" fn g_real_elt<T: AltReal>(x: SEXP, i: R_xlen_t) -> f64 {
+    unsafe { T::elt(x, i) }
+}
+unsafe extern "C" fn g_real_get_region<T: AltReal>(
+    x: SEXP,
+    i: R_xlen_t,
+    n: R_xlen_t,
+    buf: *mut f64,
+) -> R_xlen_t {
+    unsafe { T::get_region(x, i, n, buf) }
+}
+unsafe extern "C" fn g_real_is_sorted<T: AltReal>(x: SEXP) -> i32 {
+    unsafe { T::is_sorted(x) }
+}
+unsafe extern "C" fn g_real_no_na<T: AltReal>(x: SEXP) -> i32 {
+    unsafe { T::no_na(x) }
+}
+
+// Logical family trampolines
+unsafe extern "C" fn g_lgl_elt<T: AltLogical>(x: SEXP, i: R_xlen_t) -> i32 {
+    unsafe { T::elt(x, i) }
+}
+unsafe extern "C" fn g_lgl_get_region<T: AltLogical>(
+    x: SEXP,
+    i: R_xlen_t,
+    n: R_xlen_t,
+    buf: *mut i32,
+) -> R_xlen_t {
+    unsafe { T::get_region(x, i, n, buf) }
+}
+unsafe extern "C" fn g_lgl_is_sorted<T: AltLogical>(x: SEXP) -> i32 {
+    unsafe { T::is_sorted(x) }
+}
+unsafe extern "C" fn g_lgl_no_na<T: AltLogical>(x: SEXP) -> i32 {
+    unsafe { T::no_na(x) }
+}
+
+// Raw family trampolines
+unsafe extern "C" fn g_raw_elt<T: AltRaw>(x: SEXP, i: R_xlen_t) -> Rbyte {
+    unsafe { T::elt(x, i) }
+}
+unsafe extern "C" fn g_raw_get_region<T: AltRaw>(
+    x: SEXP,
+    i: R_xlen_t,
+    n: R_xlen_t,
+    buf: *mut Rbyte,
+) -> R_xlen_t {
+    unsafe { T::get_region(x, i, n, buf) }
+}
+
+// String family trampolines
+unsafe extern "C" fn g_str_elt<T: AltString>(x: SEXP, i: R_xlen_t) -> SEXP {
+    unsafe { T::elt(x, i) }
+}
+unsafe extern "C" fn g_str_is_sorted<T: AltString>(x: SEXP) -> i32 {
+    unsafe { T::is_sorted(x) }
+}
+unsafe extern "C" fn g_str_no_na<T: AltString>(x: SEXP) -> i32 {
+    unsafe { T::no_na(x) }
+}
+unsafe extern "C" fn g_str_set_elt<T: AltString>(x: SEXP, i: R_xlen_t, v: SEXP) {
+    unsafe { T::set_elt(x, i, v) }
+}
+
+// List family trampolines
+unsafe extern "C" fn g_list_elt<T: AltList>(x: SEXP, i: R_xlen_t) -> SEXP {
+    unsafe { T::elt(x, i) }
+}
+unsafe extern "C" fn g_list_set_elt<T: AltList>(x: SEXP, i: R_xlen_t, v: SEXP) {
+    unsafe { T::set_elt(x, i, v) }
+}
+
+/// Register an ALTREP class for integer vectors backed by `T`.
+pub unsafe fn register_altinteger_class<T: AltrepClass + AltVec + AltInteger>() -> R_altrep_class_t
+{
+    let cls = unsafe {
+        R_make_altinteger_class(
+            cstr(T::CLASS_NAME),
+            cstr(T::PKG_NAME),
+            core::ptr::null_mut(),
+        )
+    };
+    unsafe {
+        R_set_altrep_Length_method(cls, Some(g_length::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_method(cls, Some(g_dataptr::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
+    }
+    unsafe {
+        R_set_altinteger_Elt_method(cls, Some(g_int_elt::<T>));
+    }
+    unsafe {
+        R_set_altinteger_Get_region_method(cls, Some(g_int_get_region::<T>));
+    }
+    unsafe {
+        R_set_altinteger_Is_sorted_method(cls, Some(g_int_is_sorted::<T>));
+    }
+    unsafe {
+        R_set_altinteger_No_NA_method(cls, Some(g_int_no_na::<T>));
+    }
+    cls
+}
+
+/// Register an ALTREP class for real vectors backed by `T`.
+pub unsafe fn register_altreal_class<T: AltrepClass + AltVec + AltReal>() -> R_altrep_class_t {
+    let cls = unsafe {
+        R_make_altreal_class(
+            cstr(T::CLASS_NAME),
+            cstr(T::PKG_NAME),
+            core::ptr::null_mut(),
+        )
+    };
+    unsafe {
+        R_set_altrep_Length_method(cls, Some(g_length::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_method(cls, Some(g_dataptr::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
+    }
+    unsafe {
+        R_set_altreal_Elt_method(cls, Some(g_real_elt::<T>));
+    }
+    unsafe {
+        R_set_altreal_Get_region_method(cls, Some(g_real_get_region::<T>));
+    }
+    unsafe {
+        R_set_altreal_Is_sorted_method(cls, Some(g_real_is_sorted::<T>));
+    }
+    unsafe {
+        R_set_altreal_No_NA_method(cls, Some(g_real_no_na::<T>));
+    }
+    cls
+}
+
+/// Register an ALTREP class for logical vectors backed by `T`.
+pub unsafe fn register_altlogical_class<T: AltrepClass + AltVec + AltLogical>() -> R_altrep_class_t
+{
+    let cls = unsafe {
+        R_make_altlogical_class(
+            cstr(T::CLASS_NAME),
+            cstr(T::PKG_NAME),
+            core::ptr::null_mut(),
+        )
+    };
+    unsafe {
+        R_set_altrep_Length_method(cls, Some(g_length::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_method(cls, Some(g_dataptr::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
+    }
+    unsafe {
+        R_set_altlogical_Elt_method(cls, Some(g_lgl_elt::<T>));
+    }
+    unsafe {
+        R_set_altlogical_Get_region_method(cls, Some(g_lgl_get_region::<T>));
+    }
+    unsafe {
+        R_set_altlogical_Is_sorted_method(cls, Some(g_lgl_is_sorted::<T>));
+    }
+    unsafe {
+        R_set_altlogical_No_NA_method(cls, Some(g_lgl_no_na::<T>));
+    }
+    cls
+}
+
+/// Register an ALTREP class for raw vectors backed by `T`.
+pub unsafe fn register_altraw_class<T: AltrepClass + AltVec + AltRaw>() -> R_altrep_class_t {
+    let cls = unsafe {
+        R_make_altraw_class(
+            cstr(T::CLASS_NAME),
+            cstr(T::PKG_NAME),
+            core::ptr::null_mut(),
+        )
+    };
+    unsafe {
+        R_set_altrep_Length_method(cls, Some(g_length::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_method(cls, Some(g_dataptr::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
+    }
+    unsafe {
+        R_set_altraw_Elt_method(cls, Some(g_raw_elt::<T>));
+    }
+    unsafe {
+        R_set_altraw_Get_region_method(cls, Some(g_raw_get_region::<T>));
+    }
+    cls
+}
+
+/// Register an ALTREP class for string vectors backed by `T`.
+pub unsafe fn register_altstring_class<T: AltrepClass + AltVec + AltString>() -> R_altrep_class_t {
+    let cls = unsafe {
+        R_make_altstring_class(
+            cstr(T::CLASS_NAME),
+            cstr(T::PKG_NAME),
+            core::ptr::null_mut(),
+        )
+    };
+    unsafe {
+        R_set_altrep_Length_method(cls, Some(g_length::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_method(cls, Some(g_dataptr::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
+    }
+    unsafe {
+        R_set_altstring_Elt_method(cls, Some(g_str_elt::<T>));
+    }
+    unsafe {
+        R_set_altstring_Is_sorted_method(cls, Some(g_str_is_sorted::<T>));
+    }
+    unsafe {
+        R_set_altstring_No_NA_method(cls, Some(g_str_no_na::<T>));
+    }
+    if T::HAS_SET_ELT {
+        unsafe {
+            R_set_altstring_Set_elt_method(cls, Some(g_str_set_elt::<T>));
+        }
+    }
+    cls
+}
+
+/// Register an ALTREP class for generic lists (VECSXP) backed by `T`.
+pub unsafe fn register_altlist_class<T: AltrepClass + AltVec + AltList>() -> R_altrep_class_t {
+    let cls = unsafe {
+        R_make_altlist_class(
+            cstr(T::CLASS_NAME),
+            cstr(T::PKG_NAME),
+            core::ptr::null_mut(),
+        )
+    };
+    unsafe {
+        R_set_altrep_Length_method(cls, Some(g_length::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_method(cls, Some(g_dataptr::<T>));
+    }
+    unsafe {
+        R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
+    }
+    unsafe {
+        R_set_altlist_Elt_method(cls, Some(g_list_elt::<T>));
+    }
+    if T::HAS_SET_ELT {
+        unsafe {
+            R_set_altlist_Set_elt_method(cls, Some(g_list_set_elt::<T>));
+        }
+    }
+    cls
+}
