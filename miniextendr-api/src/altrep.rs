@@ -261,35 +261,81 @@ pub unsafe fn new_altrep_list(b: Box<dyn ListBackend>) -> SEXP {
 }
 
 // Convenience constructors for stock backends
-pub unsafe fn new_altrep_int_from_vec(v: Vec<i32>) -> SEXP { new_altrep_int(Box::new(IntVec::from(v))) }
-pub unsafe fn new_altrep_int_from_arc(a: Arc<[i32]>) -> SEXP { new_altrep_int(Box::new(IntArc::from(a))) }
-pub unsafe fn new_altrep_int_from_slice_static(s: &'static [i32]) -> SEXP { new_altrep_int(Box::new(IntSliceMat::new(s))) }
-pub unsafe fn new_altrep_int_from_mmap(ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)>) -> SEXP {
+pub unsafe fn new_altrep_int_from_vec(v: Vec<i32>) -> SEXP {
+    new_altrep_int(Box::new(IntVec::from(v)))
+}
+pub unsafe fn new_altrep_int_from_arc(a: Arc<[i32]>) -> SEXP {
+    new_altrep_int(Box::new(IntArc::from(a)))
+}
+pub unsafe fn new_altrep_int_from_slice_static(s: &'static [i32]) -> SEXP {
+    new_altrep_int(Box::new(IntSliceMat::new(s)))
+}
+pub unsafe fn new_altrep_int_from_mmap(
+    ptr: *const i32,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+) -> SEXP {
     new_altrep_int(Box::new(IntMmap::new(ptr, len, cleanup)))
 }
 
-pub unsafe fn new_altrep_real_from_vec(v: Vec<f64>) -> SEXP { new_altrep_real(Box::new(RealVec::from(v))) }
-pub unsafe fn new_altrep_real_from_arc(a: Arc<[f64]>) -> SEXP { new_altrep_real(Box::new(RealArc::from(a))) }
-pub unsafe fn new_altrep_real_from_slice_static(s: &'static [f64]) -> SEXP { new_altrep_real(Box::new(RealSliceMat::new(s))) }
-pub unsafe fn new_altrep_real_from_mmap(ptr: *const f64, len: usize, cleanup: Option<unsafe extern "C" fn(*const f64, usize)>) -> SEXP {
+pub unsafe fn new_altrep_real_from_vec(v: Vec<f64>) -> SEXP {
+    new_altrep_real(Box::new(RealVec::from(v)))
+}
+pub unsafe fn new_altrep_real_from_arc(a: Arc<[f64]>) -> SEXP {
+    new_altrep_real(Box::new(RealArc::from(a)))
+}
+pub unsafe fn new_altrep_real_from_slice_static(s: &'static [f64]) -> SEXP {
+    new_altrep_real(Box::new(RealSliceMat::new(s)))
+}
+pub unsafe fn new_altrep_real_from_mmap(
+    ptr: *const f64,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+) -> SEXP {
     new_altrep_real(Box::new(RealMmap::new(ptr, len, cleanup)))
 }
 
-pub unsafe fn new_altrep_str_from_vec(v: Vec<String>) -> SEXP { new_altrep_str(Box::new(Utf8Vec { data: v })) }
-pub unsafe fn new_altrep_str_from_arc(a: Arc<[String]>) -> SEXP { new_altrep_str(Box::new(Utf8Arc::from(a))) }
-pub unsafe fn new_altrep_str_from_slice_static(s: &'static [&'static str]) -> SEXP { new_altrep_str(Box::new(Utf8Slice::new(s))) }
+pub unsafe fn new_altrep_str_from_vec(v: Vec<String>) -> SEXP {
+    new_altrep_str(Box::new(Utf8Vec { data: v }))
+}
+pub unsafe fn new_altrep_str_from_arc(a: Arc<[String]>) -> SEXP {
+    new_altrep_str(Box::new(Utf8Arc::from(a)))
+}
+pub unsafe fn new_altrep_str_from_slice_static(s: &'static [&'static str]) -> SEXP {
+    new_altrep_str(Box::new(Utf8Slice::new(s)))
+}
 
-pub unsafe fn new_altrep_lgl_from_vec(v: Vec<i32>) -> SEXP { new_altrep_lgl(Box::new(LogicalVec::from(v))) }
-pub unsafe fn new_altrep_lgl_from_arc(a: Arc<[i32]>) -> SEXP { new_altrep_lgl(Box::new(LogicalArc::from(a))) }
-pub unsafe fn new_altrep_lgl_from_slice_static(s: &'static [i32]) -> SEXP { new_altrep_lgl(Box::new(LogicalSliceMat::new(s))) }
-pub unsafe fn new_altrep_lgl_from_mmap(ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)>) -> SEXP {
+pub unsafe fn new_altrep_lgl_from_vec(v: Vec<i32>) -> SEXP {
+    new_altrep_lgl(Box::new(LogicalVec::from(v)))
+}
+pub unsafe fn new_altrep_lgl_from_arc(a: Arc<[i32]>) -> SEXP {
+    new_altrep_lgl(Box::new(LogicalArc::from(a)))
+}
+pub unsafe fn new_altrep_lgl_from_slice_static(s: &'static [i32]) -> SEXP {
+    new_altrep_lgl(Box::new(LogicalSliceMat::new(s)))
+}
+pub unsafe fn new_altrep_lgl_from_mmap(
+    ptr: *const i32,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+) -> SEXP {
     new_altrep_lgl(Box::new(LogicalMmap::new(ptr, len, cleanup)))
 }
 
-pub unsafe fn new_altrep_raw_from_vec(v: Vec<Rbyte>) -> SEXP { new_altrep_raw(Box::new(RawVec::from(v))) }
-pub unsafe fn new_altrep_raw_from_arc(a: Arc<[Rbyte]>) -> SEXP { new_altrep_raw(Box::new(RawArc::from(a))) }
-pub unsafe fn new_altrep_raw_from_slice_static(s: &'static [Rbyte]) -> SEXP { new_altrep_raw(Box::new(RawSliceMat::new(s))) }
-pub unsafe fn new_altrep_raw_from_mmap(ptr: *const Rbyte, len: usize, cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>) -> SEXP {
+pub unsafe fn new_altrep_raw_from_vec(v: Vec<Rbyte>) -> SEXP {
+    new_altrep_raw(Box::new(RawVec::from(v)))
+}
+pub unsafe fn new_altrep_raw_from_arc(a: Arc<[Rbyte]>) -> SEXP {
+    new_altrep_raw(Box::new(RawArc::from(a)))
+}
+pub unsafe fn new_altrep_raw_from_slice_static(s: &'static [Rbyte]) -> SEXP {
+    new_altrep_raw(Box::new(RawSliceMat::new(s)))
+}
+pub unsafe fn new_altrep_raw_from_mmap(
+    ptr: *const Rbyte,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+) -> SEXP {
     new_altrep_raw(Box::new(RawMmap::new(ptr, len, cleanup)))
 }
 
@@ -398,254 +444,558 @@ impl StringBackend for Utf8Vec {
 // ========= Stock numeric/string backends =========
 
 // INT backends
-pub struct IntVec { data: Box<[i32]> }
-impl From<Vec<i32>> for IntVec { fn from(v: Vec<i32>) -> Self { Self { data: v.into_boxed_slice() } } }
+pub struct IntVec {
+    data: Box<[i32]>,
+}
+impl From<Vec<i32>> for IntVec {
+    fn from(v: Vec<i32>) -> Self {
+        Self {
+            data: v.into_boxed_slice(),
+        }
+    }
+}
 impl IntBackend for IntVec {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
 }
 
-pub struct IntArc { data: Arc<[i32]> }
-impl From<Arc<[i32]>> for IntArc { fn from(data: Arc<[i32]>) -> Self { Self { data } } }
+pub struct IntArc {
+    data: Arc<[i32]>,
+}
+impl From<Arc<[i32]>> for IntArc {
+    fn from(data: Arc<[i32]>) -> Self {
+        Self { data }
+    }
+}
 impl IntBackend for IntArc {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
 }
 
-pub struct IntSliceMat { src: &'static [i32], materialized: OnceLock<Box<[i32]>> }
-impl IntSliceMat { pub fn new(src: &'static [i32]) -> Self { Self { src, materialized: OnceLock::new() } } }
+pub struct IntSliceMat {
+    src: &'static [i32],
+    materialized: OnceLock<Box<[i32]>>,
+}
+impl IntSliceMat {
+    pub fn new(src: &'static [i32]) -> Self {
+        Self {
+            src,
+            materialized: OnceLock::new(),
+        }
+    }
+}
 impl IntBackend for IntSliceMat {
-    fn len(&self) -> R_xlen_t { self.src.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.src[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.src.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.src[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.src[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { let bx = self.materialized.get_or_init(|| self.src.to_vec().into_boxed_slice()); Some(&**bx) }
+    fn dataptr(&self) -> Option<&[i32]> {
+        let bx = self
+            .materialized
+            .get_or_init(|| self.src.to_vec().into_boxed_slice());
+        Some(&**bx)
+    }
 }
 
-pub struct IntMmap { ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)> }
+pub struct IntMmap {
+    ptr: *const i32,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+}
 unsafe impl Send for IntMmap {}
 unsafe impl Sync for IntMmap {}
-impl IntMmap { pub unsafe fn new(ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)>) -> Self { Self { ptr, len, cleanup } } }
-impl Drop for IntMmap { fn drop(&mut self) { if let Some(f) = self.cleanup { unsafe { f(self.ptr, self.len) } } } }
-impl IntBackend for IntMmap {
-    fn len(&self) -> R_xlen_t { self.len as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { unsafe { *self.ptr.add(i as usize) } }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let start = i as usize; let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src); src.len() as R_xlen_t
+impl IntMmap {
+    pub unsafe fn new(
+        ptr: *const i32,
+        len: usize,
+        cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    ) -> Self {
+        Self { ptr, len, cleanup }
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
+}
+impl Drop for IntMmap {
+    fn drop(&mut self) {
+        if let Some(f) = self.cleanup {
+            unsafe { f(self.ptr, self.len) }
+        }
+    }
+}
+impl IntBackend for IntMmap {
+    fn len(&self) -> R_xlen_t {
+        self.len as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        unsafe { *self.ptr.add(i as usize) }
+    }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let start = i as usize;
+        let end = ((i + n).min(self.len())) as usize;
+        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
+    }
 }
 
 // REAL backends
-pub struct RealVec { data: Box<[f64]> }
-impl From<Vec<f64>> for RealVec { fn from(v: Vec<f64>) -> Self { Self { data: v.into_boxed_slice() } } }
+pub struct RealVec {
+    data: Box<[f64]>,
+}
+impl From<Vec<f64>> for RealVec {
+    fn from(v: Vec<f64>) -> Self {
+        Self {
+            data: v.into_boxed_slice(),
+        }
+    }
+}
 impl RealBackend for RealVec {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> f64 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> f64 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[f64]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[f64]> {
+        Some(&self.data)
+    }
 }
 
-pub struct RealArc { data: Arc<[f64]> }
-impl From<Arc<[f64]>> for RealArc { fn from(data: Arc<[f64]>) -> Self { Self { data } } }
+pub struct RealArc {
+    data: Arc<[f64]>,
+}
+impl From<Arc<[f64]>> for RealArc {
+    fn from(data: Arc<[f64]>) -> Self {
+        Self { data }
+    }
+}
 impl RealBackend for RealArc {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> f64 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> f64 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[f64]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[f64]> {
+        Some(&self.data)
+    }
 }
 
-pub struct RealSliceMat { src: &'static [f64], materialized: OnceLock<Box<[f64]>> }
-impl RealSliceMat { pub fn new(src: &'static [f64]) -> Self { Self { src, materialized: OnceLock::new() } } }
+pub struct RealSliceMat {
+    src: &'static [f64],
+    materialized: OnceLock<Box<[f64]>>,
+}
+impl RealSliceMat {
+    pub fn new(src: &'static [f64]) -> Self {
+        Self {
+            src,
+            materialized: OnceLock::new(),
+        }
+    }
+}
 impl RealBackend for RealSliceMat {
-    fn len(&self) -> R_xlen_t { self.src.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> f64 { self.src[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.src.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> f64 {
+        self.src[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.src[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[f64]> { let bx = self.materialized.get_or_init(|| self.src.to_vec().into_boxed_slice()); Some(&**bx) }
+    fn dataptr(&self) -> Option<&[f64]> {
+        let bx = self
+            .materialized
+            .get_or_init(|| self.src.to_vec().into_boxed_slice());
+        Some(&**bx)
+    }
 }
 
-pub struct RealMmap { ptr: *const f64, len: usize, cleanup: Option<unsafe extern "C" fn(*const f64, usize)> }
+pub struct RealMmap {
+    ptr: *const f64,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+}
 unsafe impl Send for RealMmap {}
 unsafe impl Sync for RealMmap {}
-impl RealMmap { pub unsafe fn new(ptr: *const f64, len: usize, cleanup: Option<unsafe extern "C" fn(*const f64, usize)>) -> Self { Self { ptr, len, cleanup } } }
-impl Drop for RealMmap { fn drop(&mut self) { if let Some(f) = self.cleanup { unsafe { f(self.ptr, self.len) } } } }
-impl RealBackend for RealMmap {
-    fn len(&self) -> R_xlen_t { self.len as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> f64 { unsafe { *self.ptr.add(i as usize) } }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
-        let start = i as usize; let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src); src.len() as R_xlen_t
+impl RealMmap {
+    pub unsafe fn new(
+        ptr: *const f64,
+        len: usize,
+        cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+    ) -> Self {
+        Self { ptr, len, cleanup }
     }
-    fn dataptr(&self) -> Option<&[f64]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
+}
+impl Drop for RealMmap {
+    fn drop(&mut self) {
+        if let Some(f) = self.cleanup {
+            unsafe { f(self.ptr, self.len) }
+        }
+    }
+}
+impl RealBackend for RealMmap {
+    fn len(&self) -> R_xlen_t {
+        self.len as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> f64 {
+        unsafe { *self.ptr.add(i as usize) }
+    }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
+        let start = i as usize;
+        let end = ((i + n).min(self.len())) as usize;
+        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[f64]> {
+        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
+    }
 }
 
 // LOGICAL backends (i32 with NA support)
-pub struct LogicalVec { data: Box<[i32]> }
-impl From<Vec<i32>> for LogicalVec { fn from(v: Vec<i32>) -> Self { Self { data: v.into_boxed_slice() } } }
+pub struct LogicalVec {
+    data: Box<[i32]>,
+}
+impl From<Vec<i32>> for LogicalVec {
+    fn from(v: Vec<i32>) -> Self {
+        Self {
+            data: v.into_boxed_slice(),
+        }
+    }
+}
 impl LogicalBackend for LogicalVec {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
 }
 
-pub struct LogicalArc { data: Arc<[i32]> }
-impl From<Arc<[i32]>> for LogicalArc { fn from(data: Arc<[i32]>) -> Self { Self { data } } }
+pub struct LogicalArc {
+    data: Arc<[i32]>,
+}
+impl From<Arc<[i32]>> for LogicalArc {
+    fn from(data: Arc<[i32]>) -> Self {
+        Self { data }
+    }
+}
 impl LogicalBackend for LogicalArc {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(&self.data)
+    }
 }
 
-pub struct LogicalSliceMat { src: &'static [i32], materialized: OnceLock<Box<[i32]>> }
-impl LogicalSliceMat { pub fn new(src: &'static [i32]) -> Self { Self { src, materialized: OnceLock::new() } } }
+pub struct LogicalSliceMat {
+    src: &'static [i32],
+    materialized: OnceLock<Box<[i32]>>,
+}
+impl LogicalSliceMat {
+    pub fn new(src: &'static [i32]) -> Self {
+        Self {
+            src,
+            materialized: OnceLock::new(),
+        }
+    }
+}
 impl LogicalBackend for LogicalSliceMat {
-    fn len(&self) -> R_xlen_t { self.src.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { self.src[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.src.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        self.src[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.src[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[i32]> { let bx = self.materialized.get_or_init(|| self.src.to_vec().into_boxed_slice()); Some(&**bx) }
+    fn dataptr(&self) -> Option<&[i32]> {
+        let bx = self
+            .materialized
+            .get_or_init(|| self.src.to_vec().into_boxed_slice());
+        Some(&**bx)
+    }
 }
 
-pub struct LogicalMmap { ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)> }
+pub struct LogicalMmap {
+    ptr: *const i32,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+}
 unsafe impl Send for LogicalMmap {}
 unsafe impl Sync for LogicalMmap {}
-impl LogicalMmap { pub unsafe fn new(ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)>) -> Self { Self { ptr, len, cleanup } } }
-impl Drop for LogicalMmap { fn drop(&mut self) { if let Some(f) = self.cleanup { unsafe { f(self.ptr, self.len) } } } }
-impl LogicalBackend for LogicalMmap {
-    fn len(&self) -> R_xlen_t { self.len as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> i32 { unsafe { *self.ptr.add(i as usize) } }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let start = i as usize; let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src); src.len() as R_xlen_t
+impl LogicalMmap {
+    pub unsafe fn new(
+        ptr: *const i32,
+        len: usize,
+        cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    ) -> Self {
+        Self { ptr, len, cleanup }
     }
-    fn dataptr(&self) -> Option<&[i32]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
+}
+impl Drop for LogicalMmap {
+    fn drop(&mut self) {
+        if let Some(f) = self.cleanup {
+            unsafe { f(self.ptr, self.len) }
+        }
+    }
+}
+impl LogicalBackend for LogicalMmap {
+    fn len(&self) -> R_xlen_t {
+        self.len as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> i32 {
+        unsafe { *self.ptr.add(i as usize) }
+    }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let start = i as usize;
+        let end = ((i + n).min(self.len())) as usize;
+        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> {
+        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
+    }
 }
 
 // RAW backends (Rbyte)
-pub struct RawVec { data: Box<[Rbyte]> }
-impl From<Vec<Rbyte>> for RawVec { fn from(v: Vec<Rbyte>) -> Self { Self { data: v.into_boxed_slice() } } }
+pub struct RawVec {
+    data: Box<[Rbyte]>,
+}
+impl From<Vec<Rbyte>> for RawVec {
+    fn from(v: Vec<Rbyte>) -> Self {
+        Self {
+            data: v.into_boxed_slice(),
+        }
+    }
+}
 impl RawBackend for RawVec {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> Rbyte { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> Rbyte {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[Rbyte]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[Rbyte]> {
+        Some(&self.data)
+    }
 }
 
-pub struct RawArc { data: Arc<[Rbyte]> }
-impl From<Arc<[Rbyte]>> for RawArc { fn from(data: Arc<[Rbyte]>) -> Self { Self { data } } }
+pub struct RawArc {
+    data: Arc<[Rbyte]>,
+}
+impl From<Arc<[Rbyte]>> for RawArc {
+    fn from(data: Arc<[Rbyte]>) -> Self {
+        Self { data }
+    }
+}
 impl RawBackend for RawArc {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> Rbyte { self.data[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> Rbyte {
+        self.data[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.data[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[Rbyte]> { Some(&self.data) }
+    fn dataptr(&self) -> Option<&[Rbyte]> {
+        Some(&self.data)
+    }
 }
 
-pub struct RawSliceMat { src: &'static [Rbyte], materialized: OnceLock<Box<[Rbyte]>> }
-impl RawSliceMat { pub fn new(src: &'static [Rbyte]) -> Self { Self { src, materialized: OnceLock::new() } } }
+pub struct RawSliceMat {
+    src: &'static [Rbyte],
+    materialized: OnceLock<Box<[Rbyte]>>,
+}
+impl RawSliceMat {
+    pub fn new(src: &'static [Rbyte]) -> Self {
+        Self {
+            src,
+            materialized: OnceLock::new(),
+        }
+    }
+}
 impl RawBackend for RawSliceMat {
-    fn len(&self) -> R_xlen_t { self.src.len() as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> Rbyte { self.src[i as usize] }
+    fn len(&self) -> R_xlen_t {
+        self.src.len() as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> Rbyte {
+        self.src[i as usize]
+    }
     fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
         let end = (i + n).min(self.len()) as usize;
         let src = &self.src[i as usize..end];
         out[..src.len()].copy_from_slice(src);
         src.len() as R_xlen_t
     }
-    fn dataptr(&self) -> Option<&[Rbyte]> { let bx = self.materialized.get_or_init(|| self.src.to_vec().into_boxed_slice()); Some(&**bx) }
+    fn dataptr(&self) -> Option<&[Rbyte]> {
+        let bx = self
+            .materialized
+            .get_or_init(|| self.src.to_vec().into_boxed_slice());
+        Some(&**bx)
+    }
 }
 
-pub struct RawMmap { ptr: *const Rbyte, len: usize, cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)> }
+pub struct RawMmap {
+    ptr: *const Rbyte,
+    len: usize,
+    cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+}
 unsafe impl Send for RawMmap {}
 unsafe impl Sync for RawMmap {}
-impl RawMmap { pub unsafe fn new(ptr: *const Rbyte, len: usize, cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>) -> Self { Self { ptr, len, cleanup } } }
-impl Drop for RawMmap { fn drop(&mut self) { if let Some(f) = self.cleanup { unsafe { f(self.ptr, self.len) } } } }
-impl RawBackend for RawMmap {
-    fn len(&self) -> R_xlen_t { self.len as R_xlen_t }
-    fn elt(&self, i: R_xlen_t) -> Rbyte { unsafe { *self.ptr.add(i as usize) } }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
-        let start = i as usize; let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src); src.len() as R_xlen_t
+impl RawMmap {
+    pub unsafe fn new(
+        ptr: *const Rbyte,
+        len: usize,
+        cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+    ) -> Self {
+        Self { ptr, len, cleanup }
     }
-    fn dataptr(&self) -> Option<&[Rbyte]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
+}
+impl Drop for RawMmap {
+    fn drop(&mut self) {
+        if let Some(f) = self.cleanup {
+            unsafe { f(self.ptr, self.len) }
+        }
+    }
+}
+impl RawBackend for RawMmap {
+    fn len(&self) -> R_xlen_t {
+        self.len as R_xlen_t
+    }
+    fn elt(&self, i: R_xlen_t) -> Rbyte {
+        unsafe { *self.ptr.add(i as usize) }
+    }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let start = i as usize;
+        let end = ((i + n).min(self.len())) as usize;
+        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> {
+        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
+    }
 }
 
 // STRING backends
-pub struct Utf8Arc { data: Arc<[String]> }
-impl From<Arc<[String]>> for Utf8Arc { fn from(data: Arc<[String]>) -> Self { Self { data } } }
+pub struct Utf8Arc {
+    data: Arc<[String]>,
+}
+impl From<Arc<[String]>> for Utf8Arc {
+    fn from(data: Arc<[String]>) -> Self {
+        Self { data }
+    }
+}
 impl StringBackend for Utf8Arc {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn utf8_at(&self, i: R_xlen_t) -> Option<&str> { Some(self.data[i as usize].as_str()) }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn utf8_at(&self, i: R_xlen_t) -> Option<&str> {
+        Some(self.data[i as usize].as_str())
+    }
 }
 
-pub struct Utf8Slice { data: &'static [&'static str] }
-impl Utf8Slice { pub fn new(data: &'static [&'static str]) -> Self { Self { data } } }
+pub struct Utf8Slice {
+    data: &'static [&'static str],
+}
+impl Utf8Slice {
+    pub fn new(data: &'static [&'static str]) -> Self {
+        Self { data }
+    }
+}
 impl StringBackend for Utf8Slice {
-    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
-    fn utf8_at(&self, i: R_xlen_t) -> Option<&str> { Some(self.data[i as usize]) }
+    fn len(&self) -> R_xlen_t {
+        self.data.len() as R_xlen_t
+    }
+    fn utf8_at(&self, i: R_xlen_t) -> Option<&str> {
+        Some(self.data[i as usize])
+    }
 }
 
 /// Owned contiguous i32 buffer for LOGICALSXP.
@@ -728,7 +1078,9 @@ pub struct OwnedList {
     data: Vec<SEXP>,
 }
 impl OwnedList {
-    pub fn from_sexps(v: Vec<SEXP>) -> Self { Self { data: v } }
+    pub fn from_sexps(v: Vec<SEXP>) -> Self {
+        Self { data: v }
+    }
     pub fn from_list_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x);
@@ -1146,9 +1498,15 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + AltVec + AltInteger>() 
     unsafe {
         R_set_altinteger_No_NA_method(cls, Some(g_int_no_na::<T>));
     }
-    unsafe { R_set_altinteger_Sum_method(cls, Some(g_int_sum::<T>)); }
-    unsafe { R_set_altinteger_Min_method(cls, Some(g_int_min::<T>)); }
-    unsafe { R_set_altinteger_Max_method(cls, Some(g_int_max::<T>)); }
+    unsafe {
+        R_set_altinteger_Sum_method(cls, Some(g_int_sum::<T>));
+    }
+    unsafe {
+        R_set_altinteger_Min_method(cls, Some(g_int_min::<T>));
+    }
+    unsafe {
+        R_set_altinteger_Max_method(cls, Some(g_int_max::<T>));
+    }
     cls
 }
 
@@ -1185,9 +1543,15 @@ pub unsafe fn register_altreal_class<T: AltrepClass + AltVec + AltReal>() -> R_a
     unsafe {
         R_set_altreal_No_NA_method(cls, Some(g_real_no_na::<T>));
     }
-    unsafe { R_set_altreal_Sum_method(cls, Some(g_real_sum::<T>)); }
-    unsafe { R_set_altreal_Min_method(cls, Some(g_real_min::<T>)); }
-    unsafe { R_set_altreal_Max_method(cls, Some(g_real_max::<T>)); }
+    unsafe {
+        R_set_altreal_Sum_method(cls, Some(g_real_sum::<T>));
+    }
+    unsafe {
+        R_set_altreal_Min_method(cls, Some(g_real_min::<T>));
+    }
+    unsafe {
+        R_set_altreal_Max_method(cls, Some(g_real_max::<T>));
+    }
     cls
 }
 
@@ -1363,23 +1727,39 @@ impl AltInteger for AltIntClass {
         let b = unsafe { int_backend(x) };
         let mut acc: i64 = 0;
         let n = b.len();
-        for i in 0..n { acc = acc.wrapping_add(b.elt(i) as i64); }
+        for i in 0..n {
+            acc = acc.wrapping_add(b.elt(i) as i64);
+        }
         Some(unsafe { Rf_ScalarReal(acc as f64) })
     }
     unsafe fn min(x: SEXP, _narm: bool) -> Option<SEXP> {
         let b = unsafe { int_backend(x) };
         let n = b.len();
-        if n <= 0 { return None; }
+        if n <= 0 {
+            return None;
+        }
         let mut m = b.elt(0);
-        for i in 1..n { let v = b.elt(i); if v < m { m = v; } }
+        for i in 1..n {
+            let v = b.elt(i);
+            if v < m {
+                m = v;
+            }
+        }
         Some(unsafe { Rf_ScalarInteger(m) })
     }
     unsafe fn max(x: SEXP, _narm: bool) -> Option<SEXP> {
         let b = unsafe { int_backend(x) };
         let n = b.len();
-        if n <= 0 { return None; }
+        if n <= 0 {
+            return None;
+        }
         let mut m = b.elt(0);
-        for i in 1..n { let v = b.elt(i); if v > m { m = v; } }
+        for i in 1..n {
+            let v = b.elt(i);
+            if v > m {
+                m = v;
+            }
+        }
         Some(unsafe { Rf_ScalarInteger(m) })
     }
 }
@@ -1429,23 +1809,39 @@ impl AltReal for AltRealClass {
         let b = unsafe { real_backend(x) };
         let mut acc: f64 = 0.0;
         let n = b.len();
-        for i in 0..n { acc += b.elt(i); }
+        for i in 0..n {
+            acc += b.elt(i);
+        }
         Some(unsafe { Rf_ScalarReal(acc) })
     }
     unsafe fn min(x: SEXP, _narm: bool) -> Option<SEXP> {
         let b = unsafe { real_backend(x) };
         let n = b.len();
-        if n <= 0 { return None; }
+        if n <= 0 {
+            return None;
+        }
         let mut m = b.elt(0);
-        for i in 1..n { let v = b.elt(i); if v < m { m = v; } }
+        for i in 1..n {
+            let v = b.elt(i);
+            if v < m {
+                m = v;
+            }
+        }
         Some(unsafe { Rf_ScalarReal(m) })
     }
     unsafe fn max(x: SEXP, _narm: bool) -> Option<SEXP> {
         let b = unsafe { real_backend(x) };
         let n = b.len();
-        if n <= 0 { return None; }
+        if n <= 0 {
+            return None;
+        }
         let mut m = b.elt(0);
-        for i in 1..n { let v = b.elt(i); if v > m { m = v; } }
+        for i in 1..n {
+            let v = b.elt(i);
+            if v > m {
+                m = v;
+            }
+        }
         Some(unsafe { Rf_ScalarReal(m) })
     }
 }
