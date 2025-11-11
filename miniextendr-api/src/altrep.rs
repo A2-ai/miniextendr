@@ -225,9 +225,6 @@ unsafe extern "C" fn list_finalizer(ep: SEXP) {
 }
 
 // ========= Class registration =========
-fn cstr(s: &str) -> *const c_char {
-    std::ffi::CString::new(s).unwrap().into_raw()
-}
 
 /// Must be called once (lazy-initialized on first constructor use).
 unsafe fn ensure_classes() {
@@ -315,7 +312,8 @@ pub unsafe fn new_altrep_real_from_mmap(
 }
 
 pub unsafe fn new_altrep_str_from_vec(v: Vec<String>) -> SEXP {
-    new_altrep_str(Box::new(Utf8Vec { data: v }))
+    let na = vec![false; (&v).len()];
+    unsafe { new_altrep_str(Box::new(Utf8Vec { data: v, na })) }
 }
 pub unsafe fn new_altrep_str_from_arc(a: Arc<[String]>) -> SEXP {
     new_altrep_str(Box::new(Utf8Arc::from(a)))
@@ -426,37 +424,44 @@ impl RealBackend for OwnedReal {
 /// Owns the UTF-8 strings
 pub struct Utf8Vec {
     data: Vec<String>,
+    na: Vec<bool>,
 }
+
 impl Utf8Vec {
     pub fn from_strs_sexp(x: SEXP) -> Self {
         unsafe {
-            unsafe extern "C" {
-                fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-                fn Rf_translateCharUTF8(x: SEXP) -> *const c_char;
-            }
             let n = Rf_xlength(x);
-            let mut v = Vec::with_capacity(n as usize);
+            let mut data = Vec::with_capacity(n as usize);
+            let mut na = Vec::with_capacity(n as usize);
+
             for i in 0..n {
                 let ch = STRING_ELT(x, i);
-                if ch.is_null() {
-                    v.push(String::new());
+                if ch == R_NaString {
+                    data.push(String::new()); // placeholder
+                    na.push(true);
                 } else {
                     let c = Rf_translateCharUTF8(ch);
-                    // Safety: R returns NUL-terminated UTF-8
                     let s = std::ffi::CStr::from_ptr(c).to_string_lossy().into_owned();
-                    v.push(s);
+                    data.push(s);
+                    na.push(false);
                 }
             }
-            Self { data: v }
+            Self { data, na }
         }
     }
 }
+
 impl StringBackend for Utf8Vec {
     fn len(&self) -> R_xlen_t {
         self.data.len() as R_xlen_t
     }
     fn utf8_at(&self, i: R_xlen_t) -> Option<&str> {
-        Some(self.data[i as usize].as_str())
+        let i = i as usize;
+        if self.na[i] {
+            None
+        } else {
+            Some(self.data[i].as_str())
+        }
     }
 }
 
@@ -1191,8 +1196,8 @@ pub enum RBase {
 
 /// Base spec every ALTREP class must provide.
 pub trait AltrepClass {
-    const CLASS_NAME: &'static str;
-    const PKG_NAME: &'static str;
+    const CLASS_NAME: &'static std::ffi::CStr;
+    const PKG_NAME: &'static std::ffi::CStr;
     const BASE: RBase;
 
     /// Called to compute Length(x).
@@ -1406,8 +1411,8 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + traits::AltVec + traits
 -> R_altrep_class_t {
     let cls = unsafe {
         R_make_altinteger_class(
-            cstr(T::CLASS_NAME),
-            cstr(T::PKG_NAME),
+            T::CLASS_NAME.as_ptr(),
+            T::PKG_NAME.as_ptr(),
             core::ptr::null_mut(),
         )
     };
@@ -1474,8 +1479,8 @@ pub unsafe fn register_altreal_class<T: AltrepClass + traits::AltVec + traits::A
 -> R_altrep_class_t {
     let cls = unsafe {
         R_make_altreal_class(
-            cstr(T::CLASS_NAME),
-            cstr(T::PKG_NAME),
+            T::CLASS_NAME.as_ptr(),
+            T::PKG_NAME.as_ptr(),
             core::ptr::null_mut(),
         )
     };
@@ -1541,8 +1546,8 @@ pub unsafe fn register_altlogical_class<T: AltrepClass + traits::AltVec + traits
 -> R_altrep_class_t {
     let cls = unsafe {
         R_make_altlogical_class(
-            cstr(T::CLASS_NAME),
-            cstr(T::PKG_NAME),
+            T::CLASS_NAME.as_ptr(),
+            T::PKG_NAME.as_ptr(),
             core::ptr::null_mut(),
         )
     };
@@ -1599,8 +1604,8 @@ pub unsafe fn register_altraw_class<T: AltrepClass + traits::AltVec + traits::Al
 -> R_altrep_class_t {
     let cls = unsafe {
         R_make_altraw_class(
-            cstr(T::CLASS_NAME),
-            cstr(T::PKG_NAME),
+            T::CLASS_NAME.as_ptr(),
+            T::PKG_NAME.as_ptr(),
             core::ptr::null_mut(),
         )
     };
@@ -1651,8 +1656,8 @@ pub unsafe fn register_altstring_class<T: AltrepClass + traits::AltVec + traits:
 -> R_altrep_class_t {
     let cls = unsafe {
         R_make_altstring_class(
-            cstr(T::CLASS_NAME),
-            cstr(T::PKG_NAME),
+            T::CLASS_NAME.as_ptr(),
+            T::PKG_NAME.as_ptr(),
             core::ptr::null_mut(),
         )
     };
@@ -1709,8 +1714,8 @@ pub unsafe fn register_altlist_class<T: AltrepClass + traits::AltVec + traits::A
 -> R_altrep_class_t {
     let cls = unsafe {
         R_make_altlist_class(
-            cstr(T::CLASS_NAME),
-            cstr(T::PKG_NAME),
+            T::CLASS_NAME.as_ptr(),
+            T::PKG_NAME.as_ptr(),
             core::ptr::null_mut(),
         )
     };
@@ -1760,8 +1765,8 @@ pub unsafe fn register_altlist_class<T: AltrepClass + traits::AltVec + traits::A
 
 struct AltIntClass;
 impl AltrepClass for AltIntClass {
-    const CLASS_NAME: &'static str = "rust_altint";
-    const PKG_NAME: &'static str = "miniextendr";
+    const CLASS_NAME: &'static std::ffi::CStr = c"rust_altint";
+    const PKG_NAME: &'static std::ffi::CStr = c"miniextendr";
     const BASE: RBase = RBase::Int;
     unsafe fn length(x: SEXP) -> R_xlen_t {
         unsafe { int_backend(x).len() }
@@ -1851,8 +1856,8 @@ impl traits::AltInteger for AltIntClass {
 
 struct AltRealClass;
 impl AltrepClass for AltRealClass {
-    const CLASS_NAME: &'static str = "rust_altreal";
-    const PKG_NAME: &'static str = "miniextendr";
+    const CLASS_NAME: &'static std::ffi::CStr = c"rust_altreal";
+    const PKG_NAME: &'static std::ffi::CStr = c"miniextendr";
     const BASE: RBase = RBase::Real;
     unsafe fn length(x: SEXP) -> R_xlen_t {
         unsafe { real_backend(x).len() }
@@ -1942,8 +1947,8 @@ impl traits::AltReal for AltRealClass {
 
 struct AltStrClass;
 impl AltrepClass for AltStrClass {
-    const CLASS_NAME: &'static str = "rust_altstr";
-    const PKG_NAME: &'static str = "miniextendr";
+    const CLASS_NAME: &'static std::ffi::CStr = c"rust_altstr";
+    const PKG_NAME: &'static std::ffi::CStr = c"miniextendr";
     const BASE: RBase = RBase::String;
     unsafe fn length(x: SEXP) -> R_xlen_t {
         unsafe { str_backend(x).len() }
@@ -1956,6 +1961,7 @@ impl traits::Altrep for AltStrClass {
     }
 }
 impl traits::AltVec for AltStrClass {}
+
 impl traits::AltString for AltStrClass {
     const HAS_ELT: bool = true;
     fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
@@ -1963,7 +1969,7 @@ impl traits::AltString for AltStrClass {
             None => unsafe { R_NaString },
             Some(s) => {
                 let cs = std::ffi::CString::new(s).unwrap();
-                unsafe { Rf_mkCharLen(cs.as_ptr(), s.len() as i32) }
+                unsafe { Rf_mkCharLenCE(cs.as_ptr(), s.len() as i32, CE_UTF8) }
             }
         }
     }
@@ -1971,8 +1977,8 @@ impl traits::AltString for AltStrClass {
 
 struct AltLogicalClass;
 impl AltrepClass for AltLogicalClass {
-    const CLASS_NAME: &'static str = "rust_altlgl";
-    const PKG_NAME: &'static str = "miniextendr";
+    const CLASS_NAME: &'static std::ffi::CStr = c"rust_altlgl";
+    const PKG_NAME: &'static std::ffi::CStr = c"miniextendr";
     const BASE: RBase = RBase::Logical;
     unsafe fn length(x: SEXP) -> R_xlen_t {
         unsafe { lgl_backend(x).len() }
@@ -2026,8 +2032,8 @@ impl traits::AltLogical for AltLogicalClass {
 
 struct AltRawClass;
 impl AltrepClass for AltRawClass {
-    const CLASS_NAME: &'static str = "rust_altraw";
-    const PKG_NAME: &'static str = "miniextendr";
+    const CLASS_NAME: &'static std::ffi::CStr = c"rust_altraw";
+    const PKG_NAME: &'static std::ffi::CStr = c"miniextendr";
     const BASE: RBase = RBase::Raw;
     unsafe fn length(x: SEXP) -> R_xlen_t {
         unsafe { raw_backend(x).len() }
@@ -2073,8 +2079,8 @@ impl traits::AltRaw for AltRawClass {
 
 struct AltListClass;
 impl AltrepClass for AltListClass {
-    const CLASS_NAME: &'static str = "rust_altlist";
-    const PKG_NAME: &'static str = "miniextendr";
+    const CLASS_NAME: &'static std::ffi::CStr = c"rust_altlist";
+    const PKG_NAME: &'static std::ffi::CStr = c"miniextendr";
     const BASE: RBase = RBase::List;
     unsafe fn length(x: SEXP) -> R_xlen_t {
         unsafe { list_backend(x).len() }

@@ -109,6 +109,15 @@ pub enum Rboolean {
 #[allow(non_camel_case_types)]
 pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(non_camel_case_types)]
+pub enum cetype_t {
+    CE_NATIVE = 0,
+    CE_UTF8 = 1, /* ... */
+}
+pub use cetype_t::CE_UTF8;
+
 unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
@@ -118,7 +127,14 @@ unsafe extern "C" {
     // Rinternals.h
     pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
     pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
+    pub fn Rf_mkCharLenCE(
+        x: *const ::std::os::raw::c_char,
+        len: ::std::os::raw::c_int,
+        ce: cetype_t,
+    ) -> SEXP;
     pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
+    pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
