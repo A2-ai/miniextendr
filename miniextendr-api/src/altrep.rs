@@ -515,6 +515,124 @@ impl RealBackend for RealMmap {
     fn dataptr(&self) -> Option<&[f64]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
 }
 
+// LOGICAL backends (i32 with NA support)
+pub struct LogicalVec { data: Box<[i32]> }
+impl From<Vec<i32>> for LogicalVec { fn from(v: Vec<i32>) -> Self { Self { data: v.into_boxed_slice() } } }
+impl LogicalBackend for LogicalVec {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.data[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+}
+
+pub struct LogicalArc { data: Arc<[i32]> }
+impl From<Arc<[i32]>> for LogicalArc { fn from(data: Arc<[i32]>) -> Self { Self { data } } }
+impl LogicalBackend for LogicalArc {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> i32 { self.data[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.data[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> { Some(&self.data) }
+}
+
+pub struct LogicalSliceMat { src: &'static [i32], materialized: OnceLock<Box<[i32]>> }
+impl LogicalSliceMat { pub fn new(src: &'static [i32]) -> Self { Self { src, materialized: OnceLock::new() } } }
+impl LogicalBackend for LogicalSliceMat {
+    fn len(&self) -> R_xlen_t { self.src.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> i32 { self.src[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.src[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> { let bx = self.materialized.get_or_init(|| self.src.to_vec().into_boxed_slice()); Some(&**bx) }
+}
+
+pub struct LogicalMmap { ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)> }
+unsafe impl Send for LogicalMmap {}
+unsafe impl Sync for LogicalMmap {}
+impl LogicalMmap { pub unsafe fn new(ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)>) -> Self { Self { ptr, len, cleanup } } }
+impl Drop for LogicalMmap { fn drop(&mut self) { if let Some(f) = self.cleanup { unsafe { f(self.ptr, self.len) } } } }
+impl LogicalBackend for LogicalMmap {
+    fn len(&self) -> R_xlen_t { self.len as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> i32 { unsafe { *self.ptr.add(i as usize) } }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
+        let start = i as usize; let end = ((i + n).min(self.len())) as usize;
+        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
+        out[..src.len()].copy_from_slice(src); src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[i32]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
+}
+
+// RAW backends (Rbyte)
+pub struct RawVec { data: Box<[Rbyte]> }
+impl From<Vec<Rbyte>> for RawVec { fn from(v: Vec<Rbyte>) -> Self { Self { data: v.into_boxed_slice() } } }
+impl RawBackend for RawVec {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> Rbyte { self.data[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.data[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> { Some(&self.data) }
+}
+
+pub struct RawArc { data: Arc<[Rbyte]> }
+impl From<Arc<[Rbyte]>> for RawArc { fn from(data: Arc<[Rbyte]>) -> Self { Self { data } } }
+impl RawBackend for RawArc {
+    fn len(&self) -> R_xlen_t { self.data.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> Rbyte { self.data[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.data[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> { Some(&self.data) }
+}
+
+pub struct RawSliceMat { src: &'static [Rbyte], materialized: OnceLock<Box<[Rbyte]>> }
+impl RawSliceMat { pub fn new(src: &'static [Rbyte]) -> Self { Self { src, materialized: OnceLock::new() } } }
+impl RawBackend for RawSliceMat {
+    fn len(&self) -> R_xlen_t { self.src.len() as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> Rbyte { self.src[i as usize] }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let end = (i + n).min(self.len()) as usize;
+        let src = &self.src[i as usize..end];
+        out[..src.len()].copy_from_slice(src);
+        src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> { let bx = self.materialized.get_or_init(|| self.src.to_vec().into_boxed_slice()); Some(&**bx) }
+}
+
+pub struct RawMmap { ptr: *const Rbyte, len: usize, cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)> }
+unsafe impl Send for RawMmap {}
+unsafe impl Sync for RawMmap {}
+impl RawMmap { pub unsafe fn new(ptr: *const Rbyte, len: usize, cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>) -> Self { Self { ptr, len, cleanup } } }
+impl Drop for RawMmap { fn drop(&mut self) { if let Some(f) = self.cleanup { unsafe { f(self.ptr, self.len) } } } }
+impl RawBackend for RawMmap {
+    fn len(&self) -> R_xlen_t { self.len as R_xlen_t }
+    fn elt(&self, i: R_xlen_t) -> Rbyte { unsafe { *self.ptr.add(i as usize) } }
+    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
+        let start = i as usize; let end = ((i + n).min(self.len())) as usize;
+        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
+        out[..src.len()].copy_from_slice(src); src.len() as R_xlen_t
+    }
+    fn dataptr(&self) -> Option<&[Rbyte]> { Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) }) }
+}
+
 // STRING backends
 pub struct Utf8Arc { data: Arc<[String]> }
 impl From<Arc<[String]>> for Utf8Arc { fn from(data: Arc<[String]>) -> Self { Self { data } } }
