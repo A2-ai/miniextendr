@@ -75,7 +75,7 @@ impl std::fmt::Debug for RTask {
 extern "C" fn miniextendr_runtime_init() {
     RUNTIME_ONCE.call_once_force(|_once_state| {
         // TODO: use _once_state for tracing messages
-        let (r_task_tx, r_task_rx) = std::sync::mpsc::sync_channel(0);
+        let (r_task_tx, r_task_rx) = std::sync::mpsc::sync_channel(1);
         R_TASK_TX
             .set(r_task_tx)
             .expect("R task sender already initialised");
@@ -109,7 +109,7 @@ extern "C" fn miniextendr_runtime_init() {
                             reply.send(result).unwrap();
                             if let Some(tx) = R_TASK_TX.get() {
                                 // Wake the dispatcher in case it's blocked waiting for work.
-                                let _ = tx.send(RTask::Wake);
+                                let _ = tx.try_send(RTask::Wake);
                             }
                         }
                     }
