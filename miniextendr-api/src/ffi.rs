@@ -184,12 +184,14 @@ unsafe extern "C" {
     // pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     // pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
     // pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     // pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     // pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     // pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     // pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
     // pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
     // pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
 
     pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
     pub fn R_altrep_data1(x: SEXP) -> SEXP;

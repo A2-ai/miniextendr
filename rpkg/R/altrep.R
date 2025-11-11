@@ -13,3 +13,15 @@ altrep_from_doubles <- function(x) {
 altrep_from_strings <- function(x) {
   .Call(C_altrep_from_strings, .call = match.call(), as.character(x))
 }
+
+altrep_from_logicals <- function(x) {
+  .Call(C_altrep_from_logicals, .call = match.call(), as.logical(x))
+}
+
+altrep_from_raw <- function(x) {
+  .Call(C_altrep_from_raw, .call = match.call(), as.raw(x))
+}
+
+altrep_from_list <- function(x) {
+  .Call(C_altrep_from_list, .call = match.call(), x)
+}

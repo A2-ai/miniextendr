@@ -269,6 +269,8 @@ extern "C" fn C_check_interupt_unwind() -> SEXP {
 
 // region: miniextendr_module! tests
 
+mod altrep;
+
 miniextendr_module! {
     mod rpkg;
     use altrep;
@@ -316,15 +318,6 @@ miniextendr_module! {
 
     extern fn C_check_interupt_after;
     extern fn C_check_interupt_unwind;
-
-}
-
-mod altrep {
-    use miniextendr_api::miniextendr_module;
-
-    miniextendr_module! {
-        mod altrep;
-    }
 }
 
 // endregion

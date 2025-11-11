@@ -442,8 +442,17 @@ pub struct OwnedList {
     data: Vec<SEXP>,
 }
 impl OwnedList {
-    pub fn from_sexps(v: Vec<SEXP>) -> Self {
-        Self { data: v }
+    pub fn from_sexps(v: Vec<SEXP>) -> Self { Self { data: v } }
+    pub fn from_list_sexp(x: SEXP) -> Self {
+        unsafe {
+            let n = Rf_xlength(x);
+            let mut v = Vec::with_capacity(n as usize);
+            for i in 0..n {
+                let elt = VECTOR_ELT(x, i);
+                v.push(elt);
+            }
+            Self { data: v }
+        }
     }
 }
 unsafe impl Send for OwnedList {}
@@ -498,6 +507,12 @@ pub unsafe extern "C" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
 pub unsafe extern "C" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
     let b = OwnedRaw::from_raw_sexp(x);
     unsafe { new_altrep_raw(Box::new(b)) }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn C_altrep_from_list(_call: SEXP, x: SEXP) -> SEXP {
+    let b = OwnedList::from_list_sexp(x);
+    unsafe { new_altrep_list(Box::new(b)) }
 }
 
 #[repr(C)]
