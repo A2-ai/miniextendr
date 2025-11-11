@@ -113,7 +113,7 @@ unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
-    pub static NA_STRING: SEXP;
+    pub static R_NaString: SEXP;
 
     // Rinternals.h
     pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
