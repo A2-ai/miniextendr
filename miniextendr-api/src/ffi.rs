@@ -66,7 +66,7 @@ pub enum SEXPTYPE {
 
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SEXPREC(std::ffi::c_void);
+pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
 /// Send-only handle to a SEXP pointer.
@@ -113,8 +113,12 @@ unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
+    pub static NA_STRING: SEXP;
+
     // Rinternals.h
     pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
+    pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
+    pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
 
     // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
@@ -207,7 +211,7 @@ unsafe extern "C" {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct DllInfo(std::ffi::c_void);
+pub struct DllInfo(::std::os::raw::c_void);
 
 #[allow(non_camel_case_types)]
 pub type DL_FUNC = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
@@ -229,12 +233,12 @@ unsafe extern "C" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
         // croutines: *const R_CMethodDef,
-        croutines: *const std::ffi::c_void,
+        croutines: *const ::std::os::raw::c_void,
         callRoutines: *const R_CallMethodDef,
         // fortranRoutines: *const R_FortranMethodDef,
-        fortranRoutines: *const std::ffi::c_void,
+        fortranRoutines: *const ::std::os::raw::c_void,
         // externalRoutines: *const R_ExternalMethodDef,
-        externalRoutines: *const std::ffi::c_void,
+        externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
     pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
