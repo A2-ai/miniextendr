@@ -288,72 +288,9 @@ fn cstr(s: &str) -> *const c_char {
 
 /// Must be called once (lazy-initialized on first constructor use).
 unsafe fn ensure_classes() {
-    ALTINT.get_or_init(|| {
-        let cls = unsafe {
-            R_make_altinteger_class(cstr("rust_altint"), cstr("miniextendr"), ptr::null_mut())
-        };
-        unsafe {
-            R_set_altrep_Length_method(cls, Some(int_len));
-        }
-        unsafe {
-            R_set_altvec_Dataptr_method(cls, Some(int_dataptr));
-        }
-        unsafe {
-            R_set_altvec_Dataptr_or_null_method(cls, Some(int_dataptr_or_null));
-        }
-        unsafe {
-            R_set_altinteger_Elt_method(cls, Some(int_elt));
-        }
-        unsafe {
-            R_set_altinteger_Get_region_method(cls, Some(int_get_region));
-        }
-        unsafe {
-            R_set_altinteger_Is_sorted_method(cls, Some(int_is_sorted));
-        }
-        unsafe {
-            R_set_altinteger_No_NA_method(cls, Some(int_no_na));
-        }
-        cls
-    });
-    ALTREAL.get_or_init(|| {
-        let cls = unsafe {
-            R_make_altreal_class(cstr("rust_altreal"), cstr("miniextendr"), ptr::null_mut())
-        };
-        unsafe {
-            R_set_altrep_Length_method(cls, Some(real_len));
-        }
-        unsafe {
-            R_set_altvec_Dataptr_method(cls, Some(real_dataptr));
-        }
-        unsafe {
-            R_set_altvec_Dataptr_or_null_method(cls, Some(real_dataptr_or_null));
-        }
-        unsafe {
-            R_set_altreal_Elt_method(cls, Some(real_elt));
-        }
-        unsafe {
-            R_set_altreal_Get_region_method(cls, Some(real_get_region));
-        }
-        unsafe {
-            R_set_altreal_Is_sorted_method(cls, Some(real_is_sorted));
-        }
-        unsafe {
-            R_set_altreal_No_NA_method(cls, Some(real_no_na));
-        }
-        cls
-    });
-    ALTSTR.get_or_init(|| {
-        let cls = unsafe {
-            R_make_altstring_class(cstr("rust_altstr"), cstr("miniextendr"), ptr::null_mut())
-        };
-        unsafe {
-            R_set_altrep_Length_method(cls, Some(str_len));
-        }
-        unsafe {
-            R_set_altstring_Elt_method(cls, Some(str_elt));
-        }
-        cls
-    });
+    ALTINT.get_or_init(|| unsafe { register_altinteger_class::<AltIntClass>() });
+    ALTREAL.get_or_init(|| unsafe { register_altreal_class::<AltRealClass>() });
+    ALTSTR.get_or_init(|| unsafe { register_altstring_class::<AltStrClass>() });
 }
 
 // ========= Public constructors =========
@@ -987,4 +924,98 @@ pub unsafe fn register_altlist_class<T: AltrepClass + AltVec + AltList>() -> R_a
         }
     }
     cls
+}
+
+// ========= Built-in class adapters using dynamic Backends =========
+
+struct AltIntClass;
+impl AltrepClass for AltIntClass {
+    const CLASS_NAME: &'static str = "rust_altint";
+    const PKG_NAME: &'static str = "miniextendr";
+    const BASE: RBase = RBase::Int;
+    unsafe fn length(x: SEXP) -> R_xlen_t {
+        unsafe { int_backend(x).len() }
+    }
+}
+impl AltVec for AltIntClass {
+    unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        unsafe {
+            int_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *mut c_void)
+                .unwrap_or(core::ptr::null_mut())
+        }
+    }
+    unsafe fn dataptr_or_null(x: SEXP) -> *const c_void {
+        unsafe {
+            int_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *const c_void)
+                .unwrap_or(core::ptr::null())
+        }
+    }
+}
+impl AltInteger for AltIntClass {
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> i32 { unsafe { int_backend(x).elt(i) } }
+    unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32) -> R_xlen_t {
+        let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
+        unsafe { int_backend(x).get_region(i, n, out) }
+    }
+    unsafe fn is_sorted(x: SEXP) -> i32 { unsafe { int_backend(x).is_sorted() } }
+    unsafe fn no_na(x: SEXP) -> i32 { unsafe { int_backend(x).no_na() } }
+}
+
+struct AltRealClass;
+impl AltrepClass for AltRealClass {
+    const CLASS_NAME: &'static str = "rust_altreal";
+    const PKG_NAME: &'static str = "miniextendr";
+    const BASE: RBase = RBase::Real;
+    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { real_backend(x).len() } }
+}
+impl AltVec for AltRealClass {
+    unsafe fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        unsafe {
+            real_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *mut c_void)
+                .unwrap_or(core::ptr::null_mut())
+        }
+    }
+    unsafe fn dataptr_or_null(x: SEXP) -> *const c_void {
+        unsafe {
+            real_backend(x)
+                .dataptr()
+                .map(|s| s.as_ptr() as *const c_void)
+                .unwrap_or(core::ptr::null())
+        }
+    }
+}
+impl AltReal for AltRealClass {
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> f64 { unsafe { real_backend(x).elt(i) } }
+    unsafe fn get_region(x: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut f64) -> R_xlen_t {
+        let out = unsafe { slice::from_raw_parts_mut(buf, n as usize) };
+        unsafe { real_backend(x).get_region(i, n, out) }
+    }
+    unsafe fn is_sorted(x: SEXP) -> i32 { unsafe { real_backend(x).is_sorted() } }
+    unsafe fn no_na(x: SEXP) -> i32 { unsafe { real_backend(x).no_na() } }
+}
+
+struct AltStrClass;
+impl AltrepClass for AltStrClass {
+    const CLASS_NAME: &'static str = "rust_altstr";
+    const PKG_NAME: &'static str = "miniextendr";
+    const BASE: RBase = RBase::String;
+    unsafe fn length(x: SEXP) -> R_xlen_t { unsafe { str_backend(x).len() } }
+}
+impl AltVec for AltStrClass {}
+impl AltString for AltStrClass {
+    unsafe fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
+        match unsafe { str_backend(x).utf8_at(i) } {
+            None => unsafe { NA_STRING },
+            Some(s) => {
+                let cs = std::ffi::CString::new(s).unwrap();
+                unsafe { Rf_mkCharLen(cs.as_ptr(), s.len() as i32) }
+            }
+        }
+    }
 }
