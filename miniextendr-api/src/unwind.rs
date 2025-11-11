@@ -101,9 +101,9 @@ extern "C" fn miniextendr_runtime_init() {
                                 let _hook_guard = PanicHookGuard::print_error_location();
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)) {
                                     Ok(job_result) => job_result,
-                                    Err(panic) => Err(
-                                        miniextendr_api::unwind::panic_payload_to_string(panic),
-                                    ),
+                                    Err(panic) => {
+                                        Err(miniextendr_api::unwind::panic_payload_to_string(panic))
+                                    }
                                 }
                             };
                             reply.send(result).unwrap();
@@ -181,16 +181,14 @@ where
                     unsafe {
                         with_unwind_protect(
                             move || {
-                                let result =
-                                    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(
-                                        || {
-                                            job.take()
-                                                .expect("R task already consumed by dispatcher")()
-                                        },
-                                    )) {
-                                        Ok(value) => Ok(value),
-                                        Err(panic) => Err(panic_payload_to_string(panic)),
-                                    };
+                                let result = match std::panic::catch_unwind(
+                                    std::panic::AssertUnwindSafe(|| {
+                                        job.take().expect("R task already consumed by dispatcher")()
+                                    }),
+                                ) {
+                                    Ok(value) => Ok(value),
+                                    Err(panic) => Err(panic_payload_to_string(panic)),
+                                };
 
                                 reply_slot
                                     .borrow_mut()
