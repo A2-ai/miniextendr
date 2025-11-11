@@ -273,7 +273,7 @@ mod altrep;
 
 miniextendr_module! {
     mod rpkg;
-    use altrep;
+    // ALTREP entrypoints are called directly from R via R/altrep.R
 
     fn add;
     fn add2;
@@ -318,6 +318,8 @@ miniextendr_module! {
 
     extern fn C_check_interupt_after;
     extern fn C_check_interupt_unwind;
+
+    // ALTREP .Call entrypoints are used directly from R in R/altrep.R
 }
 
 // endregion
