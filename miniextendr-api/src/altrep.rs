@@ -279,6 +279,20 @@ pub unsafe fn new_altrep_str_from_vec(v: Vec<String>) -> SEXP { new_altrep_str(B
 pub unsafe fn new_altrep_str_from_arc(a: Arc<[String]>) -> SEXP { new_altrep_str(Box::new(Utf8Arc::from(a))) }
 pub unsafe fn new_altrep_str_from_slice_static(s: &'static [&'static str]) -> SEXP { new_altrep_str(Box::new(Utf8Slice::new(s))) }
 
+pub unsafe fn new_altrep_lgl_from_vec(v: Vec<i32>) -> SEXP { new_altrep_lgl(Box::new(LogicalVec::from(v))) }
+pub unsafe fn new_altrep_lgl_from_arc(a: Arc<[i32]>) -> SEXP { new_altrep_lgl(Box::new(LogicalArc::from(a))) }
+pub unsafe fn new_altrep_lgl_from_slice_static(s: &'static [i32]) -> SEXP { new_altrep_lgl(Box::new(LogicalSliceMat::new(s))) }
+pub unsafe fn new_altrep_lgl_from_mmap(ptr: *const i32, len: usize, cleanup: Option<unsafe extern "C" fn(*const i32, usize)>) -> SEXP {
+    new_altrep_lgl(Box::new(LogicalMmap::new(ptr, len, cleanup)))
+}
+
+pub unsafe fn new_altrep_raw_from_vec(v: Vec<Rbyte>) -> SEXP { new_altrep_raw(Box::new(RawVec::from(v))) }
+pub unsafe fn new_altrep_raw_from_arc(a: Arc<[Rbyte]>) -> SEXP { new_altrep_raw(Box::new(RawArc::from(a))) }
+pub unsafe fn new_altrep_raw_from_slice_static(s: &'static [Rbyte]) -> SEXP { new_altrep_raw(Box::new(RawSliceMat::new(s))) }
+pub unsafe fn new_altrep_raw_from_mmap(ptr: *const Rbyte, len: usize, cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>) -> SEXP {
+    new_altrep_raw(Box::new(RawMmap::new(ptr, len, cleanup)))
+}
+
 // ========= Example backends =========
 
 /// start + i * step sequence
@@ -863,6 +877,12 @@ unsafe extern "C" fn g_dataptr<T: AltVec>(x: SEXP, w: Rboolean) -> *mut c_void {
 unsafe extern "C" fn g_dataptr_or_null<T: AltVec>(x: SEXP) -> *const c_void {
     unsafe { T::dataptr_or_null(x) }
 }
+unsafe extern "C" fn g_extract_subset<T: AltVec>(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
+    match unsafe { T::extract_subset(x, indx, call) } {
+        Some(s) => s,
+        None => unsafe { R_NilValue },
+    }
+}
 
 // Integer family trampolines
 unsafe extern "C" fn g_int_elt<T: AltInteger>(x: SEXP, i: R_xlen_t) -> i32 {
@@ -882,6 +902,15 @@ unsafe extern "C" fn g_int_is_sorted<T: AltInteger>(x: SEXP) -> i32 {
 unsafe extern "C" fn g_int_no_na<T: AltInteger>(x: SEXP) -> i32 {
     unsafe { T::no_na(x) }
 }
+unsafe extern "C" fn g_int_sum<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
+    unsafe { T::sum(x, matches!(narm, Rboolean::TRUE)).unwrap_or(R_NilValue) }
+}
+unsafe extern "C" fn g_int_min<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
+    unsafe { T::min(x, matches!(narm, Rboolean::TRUE)).unwrap_or(R_NilValue) }
+}
+unsafe extern "C" fn g_int_max<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
+    unsafe { T::max(x, matches!(narm, Rboolean::TRUE)).unwrap_or(R_NilValue) }
+}
 
 // Real family trampolines
 unsafe extern "C" fn g_real_elt<T: AltReal>(x: SEXP, i: R_xlen_t) -> f64 {
@@ -900,6 +929,15 @@ unsafe extern "C" fn g_real_is_sorted<T: AltReal>(x: SEXP) -> i32 {
 }
 unsafe extern "C" fn g_real_no_na<T: AltReal>(x: SEXP) -> i32 {
     unsafe { T::no_na(x) }
+}
+unsafe extern "C" fn g_real_sum<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
+    unsafe { T::sum(x, matches!(narm, Rboolean::TRUE)).unwrap_or(R_NilValue) }
+}
+unsafe extern "C" fn g_real_min<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
+    unsafe { T::min(x, matches!(narm, Rboolean::TRUE)).unwrap_or(R_NilValue) }
+}
+unsafe extern "C" fn g_real_max<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
+    unsafe { T::max(x, matches!(narm, Rboolean::TRUE)).unwrap_or(R_NilValue) }
 }
 
 // Logical family trampolines
@@ -976,6 +1014,9 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + AltVec + AltInteger>() 
         R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
     }
     unsafe {
+        R_set_altvec_Extract_subset_method(cls, Some(g_extract_subset::<T>));
+    }
+    unsafe {
         R_set_altinteger_Elt_method(cls, Some(g_int_elt::<T>));
     }
     unsafe {
@@ -987,6 +1028,9 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + AltVec + AltInteger>() 
     unsafe {
         R_set_altinteger_No_NA_method(cls, Some(g_int_no_na::<T>));
     }
+    unsafe { R_set_altinteger_Sum_method(cls, Some(g_int_sum::<T>)); }
+    unsafe { R_set_altinteger_Min_method(cls, Some(g_int_min::<T>)); }
+    unsafe { R_set_altinteger_Max_method(cls, Some(g_int_max::<T>)); }
     cls
 }
 
@@ -1009,6 +1053,9 @@ pub unsafe fn register_altreal_class<T: AltrepClass + AltVec + AltReal>() -> R_a
         R_set_altvec_Dataptr_or_null_method(cls, Some(g_dataptr_or_null::<T>));
     }
     unsafe {
+        R_set_altvec_Extract_subset_method(cls, Some(g_extract_subset::<T>));
+    }
+    unsafe {
         R_set_altreal_Elt_method(cls, Some(g_real_elt::<T>));
     }
     unsafe {
@@ -1020,6 +1067,9 @@ pub unsafe fn register_altreal_class<T: AltrepClass + AltVec + AltReal>() -> R_a
     unsafe {
         R_set_altreal_No_NA_method(cls, Some(g_real_no_na::<T>));
     }
+    unsafe { R_set_altreal_Sum_method(cls, Some(g_real_sum::<T>)); }
+    unsafe { R_set_altreal_Min_method(cls, Some(g_real_min::<T>)); }
+    unsafe { R_set_altreal_Max_method(cls, Some(g_real_max::<T>)); }
     cls
 }
 
@@ -1191,6 +1241,29 @@ impl AltInteger for AltIntClass {
     unsafe fn no_na(x: SEXP) -> i32 {
         unsafe { int_backend(x).no_na() }
     }
+    unsafe fn sum(x: SEXP, _narm: bool) -> Option<SEXP> {
+        let b = unsafe { int_backend(x) };
+        let mut acc: i64 = 0;
+        let n = b.len();
+        for i in 0..n { acc = acc.wrapping_add(b.elt(i) as i64); }
+        Some(unsafe { Rf_ScalarReal(acc as f64) })
+    }
+    unsafe fn min(x: SEXP, _narm: bool) -> Option<SEXP> {
+        let b = unsafe { int_backend(x) };
+        let n = b.len();
+        if n <= 0 { return None; }
+        let mut m = b.elt(0);
+        for i in 1..n { let v = b.elt(i); if v < m { m = v; } }
+        Some(unsafe { Rf_ScalarInteger(m) })
+    }
+    unsafe fn max(x: SEXP, _narm: bool) -> Option<SEXP> {
+        let b = unsafe { int_backend(x) };
+        let n = b.len();
+        if n <= 0 { return None; }
+        let mut m = b.elt(0);
+        for i in 1..n { let v = b.elt(i); if v > m { m = v; } }
+        Some(unsafe { Rf_ScalarInteger(m) })
+    }
 }
 
 struct AltRealClass;
@@ -1233,6 +1306,29 @@ impl AltReal for AltRealClass {
     }
     unsafe fn no_na(x: SEXP) -> i32 {
         unsafe { real_backend(x).no_na() }
+    }
+    unsafe fn sum(x: SEXP, _narm: bool) -> Option<SEXP> {
+        let b = unsafe { real_backend(x) };
+        let mut acc: f64 = 0.0;
+        let n = b.len();
+        for i in 0..n { acc += b.elt(i); }
+        Some(unsafe { Rf_ScalarReal(acc) })
+    }
+    unsafe fn min(x: SEXP, _narm: bool) -> Option<SEXP> {
+        let b = unsafe { real_backend(x) };
+        let n = b.len();
+        if n <= 0 { return None; }
+        let mut m = b.elt(0);
+        for i in 1..n { let v = b.elt(i); if v < m { m = v; } }
+        Some(unsafe { Rf_ScalarReal(m) })
+    }
+    unsafe fn max(x: SEXP, _narm: bool) -> Option<SEXP> {
+        let b = unsafe { real_backend(x) };
+        let n = b.len();
+        if n <= 0 { return None; }
+        let mut m = b.elt(0);
+        for i in 1..n { let v = b.elt(i); if v > m { m = v; } }
+        Some(unsafe { Rf_ScalarReal(m) })
     }
 }
 
