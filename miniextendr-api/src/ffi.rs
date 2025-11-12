@@ -1,6 +1,72 @@
+pub mod altrep;
+
+#[allow(non_camel_case_types)]
+pub type R_xlen_t = isize;
+pub type Rbyte = ::std::os::raw::c_uchar;
+
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub enum SEXPTYPE {
+    #[doc = " nil = NULL"]
+    NILSXP = 0,
+    #[doc = " symbols"]
+    SYMSXP = 1,
+    #[doc = " lists of dotted pairs"]
+    LISTSXP = 2,
+    #[doc = " closures"]
+    CLOSXP = 3,
+    #[doc = " environments"]
+    ENVSXP = 4,
+    #[doc = r" promises: \[un\]evaluated closure arguments"]
+    PROMSXP = 5,
+    #[doc = " language constructs (special lists)"]
+    LANGSXP = 6,
+    #[doc = " special forms"]
+    SPECIALSXP = 7,
+    #[doc = " builtin non-special forms"]
+    BUILTINSXP = 8,
+    #[doc = " \"scalar\" string type (internal only)"]
+    CHARSXP = 9,
+    #[doc = " logical vectors"]
+    LGLSXP = 10,
+    #[doc = " integer vectors"]
+    INTSXP = 13,
+    #[doc = " real variables"]
+    REALSXP = 14,
+    #[doc = " complex variables"]
+    CPLXSXP = 15,
+    #[doc = " string vectors"]
+    STRSXP = 16,
+    #[doc = " dot-dot-dot object"]
+    DOTSXP = 17,
+    #[doc = " make \"any\" args work"]
+    ANYSXP = 18,
+    #[doc = " generic vectors"]
+    VECSXP = 19,
+    #[doc = " expressions vectors"]
+    EXPRSXP = 20,
+    #[doc = " byte code"]
+    BCODESXP = 21,
+    #[doc = " external pointer"]
+    EXTPTRSXP = 22,
+    #[doc = " weak reference"]
+    WEAKREFSXP = 23,
+    #[doc = " raw bytes"]
+    RAWSXP = 24,
+    #[doc = " S4 non-vector"]
+    S4SXP = 25,
+    #[doc = " fresh node created in new page"]
+    NEWSXP = 30,
+    #[doc = " node released by GC"]
+    FREESXP = 31,
+    #[doc = " Closure or Builtin"]
+    FUNSXP = 99,
+}
+
 #[repr(transparent)]
 #[derive(Debug)]
-pub struct SEXPREC(std::ffi::c_void);
+pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
 /// Send-only handle to a SEXP pointer.
@@ -43,12 +109,32 @@ pub enum Rboolean {
 #[allow(non_camel_case_types)]
 pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
 
+#[repr(C)]
+#[derive(Copy, Clone)]
+#[allow(non_camel_case_types)]
+pub enum cetype_t {
+    CE_NATIVE = 0,
+    CE_UTF8 = 1, /* ... */
+}
+pub use cetype_t::CE_UTF8;
+
 unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
+    pub static R_NaString: SEXP;
+
     // Rinternals.h
     pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
+    pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
+    pub fn Rf_mkCharLenCE(
+        x: *const ::std::os::raw::c_char,
+        len: ::std::os::raw::c_int,
+        ce: cetype_t,
+    ) -> SEXP;
+    pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
+    pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
@@ -114,12 +200,14 @@ unsafe extern "C" {
     // pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     // pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
     // pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     // pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     // pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     // pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     // pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
     // pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
     // pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
 
     pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
     pub fn R_altrep_data1(x: SEXP) -> SEXP;
@@ -141,7 +229,7 @@ unsafe extern "C" {
 
 #[repr(C)]
 #[derive(Debug)]
-pub struct DllInfo(std::ffi::c_void);
+pub struct DllInfo(::std::os::raw::c_void);
 
 #[allow(non_camel_case_types)]
 pub type DL_FUNC = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
@@ -163,12 +251,12 @@ unsafe extern "C" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
         // croutines: *const R_CMethodDef,
-        croutines: *const std::ffi::c_void,
+        croutines: *const ::std::os::raw::c_void,
         callRoutines: *const R_CallMethodDef,
         // fortranRoutines: *const R_FortranMethodDef,
-        fortranRoutines: *const std::ffi::c_void,
+        fortranRoutines: *const ::std::os::raw::c_void,
         // externalRoutines: *const R_ExternalMethodDef,
-        externalRoutines: *const std::ffi::c_void,
+        externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
     pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;

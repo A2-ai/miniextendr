@@ -8,5 +8,6 @@
   "rust-analyzer.cargo.extraArgs": [
     "--release"
   ],
+  "rust-analyzer.check.command": "clippy",
   "rust-analyzer.cargo.targetDir": "ra_target",
 }

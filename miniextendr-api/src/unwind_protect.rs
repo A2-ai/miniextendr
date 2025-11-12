@@ -15,44 +15,31 @@ thread_local! {
     });
 }
 
-#[inline(never)]
-pub fn continue_unwind() -> std::convert::Infallible {
-    unsafe { ffi::R_ContinueUnwind(R_CONTINUATION_TOKEN.with(|x| **x)) }
-}
-
-struct ClosureContext<FunClosure, CleanClosure, LastClosure> {
+struct ClosureContext<FunClosure, CleanClosure> {
     fun: Option<FunClosure>,
     clean: Option<CleanClosure>,
-    last: Option<LastClosure>,
 }
 
-unsafe extern "C" fn fun_tramp<F, C, L>(data: *mut std::ffi::c_void) -> ffi::SEXP
+unsafe extern "C" fn fun_tramp<F, C>(data: *mut std::ffi::c_void) -> ffi::SEXP
 where
     F: FnOnce() -> ffi::SEXP,
 {
-    let ctx = unsafe { data.cast::<ClosureContext<F, C, L>>().as_mut().unwrap() };
+    let ctx = unsafe { data.cast::<ClosureContext<F, C>>().as_mut().unwrap() };
     let f = ctx.fun.take().unwrap();
     f()
 }
 
-unsafe extern "C" fn clean_tramp<F, C, L>(data: *mut std::ffi::c_void, jump: ffi::Rboolean)
+unsafe extern "C" fn clean_tramp<F, C>(data: *mut std::ffi::c_void, jump: ffi::Rboolean)
 where
     C: FnOnce(bool),
-    L: FnOnce() -> std::convert::Infallible,
 {
-    let closure_ctx = unsafe { Box::from_raw(data.cast::<ClosureContext<F, C, L>>()) };
-    let ClosureContext { fun, clean, last } = *closure_ctx;
+    let closure_ctx = unsafe { Box::from_raw(data.cast::<ClosureContext<F, C>>()) };
+    let ClosureContext { fun, clean } = *closure_ctx;
     if let Some(fun) = fun {
         drop(fun)
     }
     if let Some(clean) = clean {
         clean(jump != ffi::Rboolean::FALSE)
-    }
-    if jump != ffi::Rboolean::FALSE {
-        match last {
-            Some(last) => last(),
-            None => continue_unwind(),
-        };
     }
 }
 
@@ -60,27 +47,26 @@ where
 /// `clean` sees `true` if a non-local jump happened, `false` on normal return.
 ///
 ///
-pub unsafe fn with_unwind_protect<FunClosure, CleanClosure, LastClosure>(
+/// # Safety
+/// Must be called from the R dispatcher thread. Closures must not unwind across FFI.
+pub unsafe fn with_unwind_protect<FunClosure, CleanClosure>(
     fun: FunClosure,
     clean: CleanClosure,
-    last: LastClosure,
 ) -> ffi::SEXP
 where
     FunClosure: FnOnce() -> ffi::SEXP,
     CleanClosure: FnOnce(bool),
-    LastClosure: FnOnce() -> std::convert::Infallible,
 {
     let data = Box::into_raw(Box::new(ClosureContext {
         fun: Some(fun),
         clean: Some(clean),
-        last: Some(last),
     }));
 
     unsafe {
         ffi::R_UnwindProtect(
-            Some(fun_tramp::<FunClosure, CleanClosure, LastClosure>),
+            Some(fun_tramp::<FunClosure, CleanClosure>),
             data.cast(),
-            Some(clean_tramp::<FunClosure, CleanClosure, LastClosure>),
+            Some(clean_tramp::<FunClosure, CleanClosure>),
             data.cast(),
             R_CONTINUATION_TOKEN.with(|x| **x),
         )

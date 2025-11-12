@@ -1,6 +1,6 @@
 // NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-use juice::R_WRAPPERS_DEPS_rpkg as DEPS;
-use juice::R_WRAPPERS_PARTS_rpkg as PARTS;
+use juice::R_WRAPPERS_DEPS_RPKG as DEPS;
+use juice::R_WRAPPERS_PARTS_RPKG as PARTS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();

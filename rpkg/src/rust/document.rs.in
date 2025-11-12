@@ -1,6 +1,6 @@
 // NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS@ as DEPS;
-use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS@ as PARTS;
+use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
+use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();
