@@ -1,7 +1,4 @@
-//!
-//!
-//!
-//!
+//! miniextendr-api: core runtime, FFI, ALTREP, and macros
 
 // Export a rust function to R
 ///

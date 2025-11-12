@@ -47,6 +47,8 @@ where
 /// `clean` sees `true` if a non-local jump happened, `false` on normal return.
 ///
 ///
+/// # Safety
+/// Must be called from the R dispatcher thread. Closures must not unwind across FFI.
 pub unsafe fn with_unwind_protect<FunClosure, CleanClosure>(
     fun: FunClosure,
     clean: CleanClosure,

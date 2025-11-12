@@ -178,6 +178,9 @@ where
 
 /// Convenience for exported FFI wrappers: run `r` on the R dispatcher and
 /// throw via `Rf_errorcall` on failure so that errors surface as R conditions.
+/// # Safety
+/// Must be called with a valid R call object `call` and from a thread where
+/// the R runtime is initialized.
 pub unsafe fn with_r_throw<R, T>(call: SEXP, r: R) -> SEXP
 where
     R: FnOnce() -> T + Send + 'static,
@@ -189,6 +192,8 @@ where
     }
 }
 
+/// # Safety
+/// Must be called from the R dispatcher thread with a valid call object.
 pub unsafe fn call_worker<F>(call: SEXP, job: F) -> SEXP
 where
     F: FnOnce() -> WorkerReply + Send + 'static,

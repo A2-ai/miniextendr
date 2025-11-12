@@ -1,7 +1,4 @@
-//!
-//!
-//!
-//!
+// miniextendr-macros procedural macros
 
 struct ExtendrFunction {
     pub attrs: Vec<syn::Attribute>,
@@ -148,10 +145,10 @@ pub fn miniextendr(
     let rust_inputs: Vec<syn::Ident> = inputs
         .iter()
         .filter_map(|arg| {
-            if let syn::FnArg::Typed(pt) = arg {
-                if let syn::Pat::Ident(p) = pt.pat.as_ref() {
-                    return Some(p.ident.clone());
-                }
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(p) = pt.pat.as_ref()
+            {
+                return Some(p.ident.clone());
             }
             None
         })
@@ -429,12 +426,12 @@ pub fn miniextendr(
             }
             syn::ReturnType::Type(_rarrow, output_type) => match output_type.as_ref() {
                 syn::Type::Path(type_path) => {
-                    if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident) {
-                        if path_to_sexp != "SEXP" {
-                            return syn::Error::new(path_to_sexp.span(), "output must be SEXP")
-                                .into_compile_error()
-                                .into();
-                        }
+                    if let Some(path_to_sexp) = type_path.path.segments.last().map(|x| &x.ident)
+                        && path_to_sexp != "SEXP"
+                    {
+                        return syn::Error::new(path_to_sexp.span(), "output must be SEXP")
+                            .into_compile_error()
+                            .into();
                     }
                 }
                 _ => {
@@ -448,8 +445,7 @@ pub fn miniextendr(
 
     // region: R wrappers generation in `fn`
     // normalize `named_dots` for R (no leading underscore)
-    if has_dots {
-        if let Some(named) = &mut named_dots {
+    if has_dots && let Some(named) = &mut named_dots {
             let mut arg_name = named.to_string();
             if arg_name.starts_with("__") {
                 arg_name.insert_str(0, "private");
@@ -458,7 +454,6 @@ pub fn miniextendr(
             }
             let arg_ident = syn::Ident::new(&arg_name, named.span());
             *named = arg_ident;
-        }
     }
 
     // Build both the .Call argument list and the formal parameter list in one pass
@@ -682,7 +677,8 @@ struct ExtendrModule {
     pub extendr_module: ExtendrModuleName,
     pub extendr_use: Vec<ExtendrModuleUse>,
     pub extendr_fn: Vec<ExtendrModuleFunction>,
-    pub extendr_struct: Vec<ExtendrModuleStruct>,
+    #[allow(dead_code)]
+    pub _extendr_struct: Vec<ExtendrModuleStruct>,
     // TODO: add extendr_impl: Vec<ExtendrImpl>
 }
 
@@ -741,7 +737,7 @@ impl syn::parse::Parse for ExtendrModule {
             extendr_module,
             extendr_use: uses,
             extendr_fn: funs,
-            extendr_struct: structs,
+            _extendr_struct: structs,
         })
     }
 }

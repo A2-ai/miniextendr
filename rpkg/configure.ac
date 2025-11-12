@@ -93,13 +93,18 @@ dnl adjust to changing package name.
 AS_IF([test ! -f "$abs_srcdir/entrypoint.c.in"], [
   mkdir -p "$abs_srcdir"
   cat >"$abs_srcdir/entrypoint.c.in" <<EOF
+// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
+extern void miniextendr_runtime_init(void);
+extern void miniextendr_altrep_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    miniextendr_runtime_init();
+    miniextendr_altrep_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);

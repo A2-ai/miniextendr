@@ -1,7 +1,7 @@
 //! ALTREP "from scratch" core for miniextendr-api: one class per base kind
 //! (INT, REAL, STRING). No libR-sys/extendr dependencies; only raw FFI.
 
-use core::ffi::{c_char, c_void};
+use core::ffi::c_void;
 use core::slice;
 use std::sync::{Arc, OnceLock};
 
@@ -49,6 +49,9 @@ pub trait IntBackend: Send + Sync + 'static {
     fn no_na(&self) -> i32 {
         0
     }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Real backend
@@ -71,12 +74,18 @@ pub trait RealBackend: Send + Sync + 'static {
     fn no_na(&self) -> i32 {
         0
     }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// String backend — provides UTF-8. Return None for NA.
 pub trait StringBackend: Send + Sync + 'static {
     fn len(&self) -> R_xlen_t;
     fn utf8_at(&self, i: R_xlen_t) -> Option<&str>;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Logical backend — values are R logical ints (0/1/NA_LOGICAL).
@@ -99,6 +108,9 @@ pub trait LogicalBackend: Send + Sync + 'static {
     fn no_na(&self) -> i32 {
         0
     }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// Raw backend — bytes.
@@ -115,12 +127,18 @@ pub trait RawBackend: Send + Sync + 'static {
     fn dataptr(&self) -> Option<&[Rbyte]> {
         None
     }
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 /// List backend — general VECSXP; returns owned SEXP references.
 pub trait ListBackend: Send + Sync + 'static {
     fn len(&self) -> R_xlen_t;
     fn elt(&self, i: R_xlen_t) -> SEXP;
+    fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
 }
 
 // -- helpers to store/retrieve Box<dyn Backend> behind an external ptr --
@@ -138,8 +156,11 @@ unsafe fn int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn IntBackend>>(ep).as_ref() }
 }
+/// # Safety
+/// `x` must be an ALTREP INTSXP created by this crate, with data1
+/// holding a valid Box<dyn IntBackend> pointer.
 pub unsafe fn altrep_int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
-    int_backend(x)
+    unsafe { int_backend(x) }
 }
 
 unsafe extern "C" fn int_finalizer(ep: SEXP) {
@@ -154,8 +175,11 @@ unsafe fn real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn RealBackend>>(ep).as_ref() }
 }
+/// # Safety
+/// `x` must be an ALTREP REALSXP created by this crate, with data1
+/// holding a valid Box<dyn RealBackend> pointer.
 pub unsafe fn altrep_real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
-    real_backend(x)
+    unsafe { real_backend(x) }
 }
 unsafe extern "C" fn real_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
@@ -169,8 +193,11 @@ unsafe fn str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn StringBackend>>(ep).as_ref() }
 }
+/// # Safety
+/// `x` must be an ALTREP STRSXP created by this crate, with data1
+/// holding a valid Box<dyn StringBackend> pointer.
 pub unsafe fn altrep_str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
-    str_backend(x)
+    unsafe { str_backend(x) }
 }
 unsafe extern "C" fn str_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
@@ -184,8 +211,11 @@ unsafe fn lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn LogicalBackend>>(ep).as_ref() }
 }
+/// # Safety
+/// `x` must be an ALTREP LGLSXP created by this crate, with data1
+/// holding a valid Box<dyn LogicalBackend> pointer.
 pub unsafe fn altrep_lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
-    lgl_backend(x)
+    unsafe { lgl_backend(x) }
 }
 unsafe extern "C" fn lgl_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
@@ -199,8 +229,11 @@ unsafe fn raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn RawBackend>>(ep).as_ref() }
 }
+/// # Safety
+/// `x` must be an ALTREP RAWSXP created by this crate, with data1
+/// holding a valid Box<dyn RawBackend> pointer.
 pub unsafe fn altrep_raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
-    raw_backend(x)
+    unsafe { raw_backend(x) }
 }
 unsafe extern "C" fn raw_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
@@ -214,8 +247,11 @@ unsafe fn list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
     let ep = unsafe { R_altrep_data1(x) };
     unsafe { ep_as::<Box<dyn ListBackend>>(ep).as_ref() }
 }
+/// # Safety
+/// `x` must be an ALTREP VECSXP created by this crate, with data1
+/// holding a valid Box<dyn ListBackend> pointer.
 pub unsafe fn altrep_list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
-    list_backend(x)
+    unsafe { list_backend(x) }
 }
 unsafe extern "C" fn list_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
@@ -236,21 +272,36 @@ unsafe fn ensure_classes() {
     ALTLIST.get_or_init(|| unsafe { register_altlist_class::<AltListClass>() });
 }
 
+/// Initialize and register all built-in ALTREP classes.
+#[unsafe(no_mangle)]
+pub extern "C" fn miniextendr_altrep_init() {
+    unsafe { ensure_classes() };
+}
+
 // ========= Public constructors =========
 
 /// Create an INT ALTREP from a trait object.
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
+/// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_int(b: Box<dyn IntBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), int_finalizer) };
     unsafe { R_new_altrep(*ALTINT.get().unwrap(), ep, R_NilValue) }
 }
 /// Create a REAL ALTREP from a trait object.
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
+/// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_real(b: Box<dyn RealBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), real_finalizer) };
     unsafe { R_new_altrep(*ALTREAL.get().unwrap(), ep, R_NilValue) }
 }
 /// Create a STRING ALTREP from a trait object.
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
+/// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_str(b: Box<dyn StringBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), str_finalizer) };
@@ -258,18 +309,27 @@ pub unsafe fn new_altrep_str(b: Box<dyn StringBackend>) -> SEXP {
 }
 
 /// Create a LOGICAL ALTREP from a trait object.
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
+/// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_lgl(b: Box<dyn LogicalBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), lgl_finalizer) };
     unsafe { R_new_altrep(*ALTLOG.get().unwrap(), ep, R_NilValue) }
 }
 /// Create a RAW ALTREP from a trait object.
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
+/// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_raw(b: Box<dyn RawBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), raw_finalizer) };
     unsafe { R_new_altrep(*ALTRAW.get().unwrap(), ep, R_NilValue) }
 }
 /// Create a LIST ALTREP from a trait object.
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
+/// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_list(b: Box<dyn ListBackend>) -> SEXP {
     unsafe { ensure_classes() };
     let ep = unsafe { make_eptr(Box::new(b), list_finalizer) };
@@ -277,83 +337,121 @@ pub unsafe fn new_altrep_list(b: Box<dyn ListBackend>) -> SEXP {
 }
 
 // Convenience constructors for stock backends
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_int_from_vec(v: Vec<i32>) -> SEXP {
-    new_altrep_int(Box::new(IntVec::from(v)))
+    unsafe { new_altrep_int(Box::new(IntVec::from(v))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_int_from_arc(a: Arc<[i32]>) -> SEXP {
-    new_altrep_int(Box::new(IntArc::from(a)))
+    unsafe { new_altrep_int(Box::new(IntArc::from(a))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_int_from_slice_static(s: &'static [i32]) -> SEXP {
-    new_altrep_int(Box::new(IntSliceMat::new(s)))
+    unsafe { new_altrep_int(Box::new(IntSliceMat::new(s))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_int_from_mmap(
     ptr: *const i32,
     len: usize,
     cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
 ) -> SEXP {
-    new_altrep_int(Box::new(IntMmap::new(ptr, len, cleanup)))
+    unsafe { new_altrep_int(Box::new(IntMmap::new(ptr, len, cleanup))) }
 }
 
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_real_from_vec(v: Vec<f64>) -> SEXP {
-    new_altrep_real(Box::new(RealVec::from(v)))
+    unsafe { new_altrep_real(Box::new(RealVec::from(v))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_real_from_arc(a: Arc<[f64]>) -> SEXP {
-    new_altrep_real(Box::new(RealArc::from(a)))
+    unsafe { new_altrep_real(Box::new(RealArc::from(a))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_real_from_slice_static(s: &'static [f64]) -> SEXP {
-    new_altrep_real(Box::new(RealSliceMat::new(s)))
+    unsafe { new_altrep_real(Box::new(RealSliceMat::new(s))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_real_from_mmap(
     ptr: *const f64,
     len: usize,
     cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
 ) -> SEXP {
-    new_altrep_real(Box::new(RealMmap::new(ptr, len, cleanup)))
+    unsafe { new_altrep_real(Box::new(RealMmap::new(ptr, len, cleanup))) }
 }
 
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_str_from_vec(v: Vec<String>) -> SEXP {
-    let na = vec![false; (&v).len()];
+    let na = vec![false; v.len()];
     unsafe { new_altrep_str(Box::new(Utf8Vec { data: v, na })) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_str_from_arc(a: Arc<[String]>) -> SEXP {
-    new_altrep_str(Box::new(Utf8Arc::from(a)))
+    unsafe { new_altrep_str(Box::new(Utf8Arc::from(a))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_str_from_slice_static(s: &'static [&'static str]) -> SEXP {
-    new_altrep_str(Box::new(Utf8Slice::new(s)))
+    unsafe { new_altrep_str(Box::new(Utf8Slice::new(s))) }
 }
 
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_lgl_from_vec(v: Vec<i32>) -> SEXP {
-    new_altrep_lgl(Box::new(LogicalVec::from(v)))
+    unsafe { new_altrep_lgl(Box::new(LogicalVec::from(v))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_lgl_from_arc(a: Arc<[i32]>) -> SEXP {
-    new_altrep_lgl(Box::new(LogicalArc::from(a)))
+    unsafe { new_altrep_lgl(Box::new(LogicalArc::from(a))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_lgl_from_slice_static(s: &'static [i32]) -> SEXP {
-    new_altrep_lgl(Box::new(LogicalSliceMat::new(s)))
+    unsafe { new_altrep_lgl(Box::new(LogicalSliceMat::new(s))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_lgl_from_mmap(
     ptr: *const i32,
     len: usize,
     cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
 ) -> SEXP {
-    new_altrep_lgl(Box::new(LogicalMmap::new(ptr, len, cleanup)))
+    unsafe { new_altrep_lgl(Box::new(LogicalMmap::new(ptr, len, cleanup))) }
 }
 
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_raw_from_vec(v: Vec<Rbyte>) -> SEXP {
-    new_altrep_raw(Box::new(RawVec::from(v)))
+    unsafe { new_altrep_raw(Box::new(RawVec::from(v))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_raw_from_arc(a: Arc<[Rbyte]>) -> SEXP {
-    new_altrep_raw(Box::new(RawArc::from(a)))
+    unsafe { new_altrep_raw(Box::new(RawArc::from(a))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_raw_from_slice_static(s: &'static [Rbyte]) -> SEXP {
-    new_altrep_raw(Box::new(RawSliceMat::new(s)))
+    unsafe { new_altrep_raw(Box::new(RawSliceMat::new(s))) }
 }
+/// # Safety
+/// Call only when R is initialized and from the R main thread.
 pub unsafe fn new_altrep_raw_from_mmap(
     ptr: *const Rbyte,
     len: usize,
     cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
 ) -> SEXP {
-    new_altrep_raw(Box::new(RawMmap::new(ptr, len, cleanup)))
+    unsafe { new_altrep_raw(Box::new(RawMmap::new(ptr, len, cleanup))) }
 }
 
 // ========= Example backends =========
@@ -389,7 +487,9 @@ pub struct OwnedReal {
     data: Box<[f64]>,
 }
 impl OwnedReal {
-    pub fn from_reals_sexp(x: SEXP) -> Self {
+    /// # Safety
+    /// `x` must be a REALSXP; caller guarantees it is valid and points to readable memory.
+    pub unsafe fn from_reals_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x);
             let ptr = DATAPTR_RO(x) as *const f64;
@@ -428,7 +528,9 @@ pub struct Utf8Vec {
 }
 
 impl Utf8Vec {
-    pub fn from_strs_sexp(x: SEXP) -> Self {
+    /// # Safety
+    /// `x` must be a STRSXP; caller guarantees elements are valid and readable.
+    pub unsafe fn from_strs_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x);
             let mut data = Vec::with_capacity(n as usize);
@@ -563,6 +665,9 @@ pub struct IntMmap {
 unsafe impl Send for IntMmap {}
 unsafe impl Sync for IntMmap {}
 impl IntMmap {
+    /// # Safety
+    /// Caller guarantees the pointer and length designate a valid, readable buffer
+    /// for the lifetime of the ALTREP object or until `cleanup` is called.
     pub unsafe fn new(
         ptr: *const i32,
         len: usize,
@@ -693,6 +798,9 @@ pub struct RealMmap {
 unsafe impl Send for RealMmap {}
 unsafe impl Sync for RealMmap {}
 impl RealMmap {
+    /// # Safety
+    /// Caller guarantees the pointer and length designate a valid, readable buffer
+    /// for the lifetime of the ALTREP object or until `cleanup` is called.
     pub unsafe fn new(
         ptr: *const f64,
         len: usize,
@@ -823,6 +931,9 @@ pub struct LogicalMmap {
 unsafe impl Send for LogicalMmap {}
 unsafe impl Sync for LogicalMmap {}
 impl LogicalMmap {
+    /// # Safety
+    /// Caller guarantees the pointer and length designate a valid, readable buffer
+    /// for the lifetime of the ALTREP object or until `cleanup` is called.
     pub unsafe fn new(
         ptr: *const i32,
         len: usize,
@@ -953,6 +1064,9 @@ pub struct RawMmap {
 unsafe impl Send for RawMmap {}
 unsafe impl Sync for RawMmap {}
 impl RawMmap {
+    /// # Safety
+    /// Caller guarantees the pointer and length designate a valid, readable buffer
+    /// for the lifetime of the ALTREP object or until `cleanup` is called.
     pub unsafe fn new(
         ptr: *const Rbyte,
         len: usize,
@@ -1027,7 +1141,9 @@ pub struct OwnedLogical {
     data: Box<[i32]>,
 }
 impl OwnedLogical {
-    pub fn from_lgls_sexp(x: SEXP) -> Self {
+    /// # Safety
+    /// `x` must be a LGLSXP; caller guarantees it is valid and points to readable memory.
+    pub unsafe fn from_lgls_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x) as usize;
             let ptr = LOGICAL_OR_NULL(x);
@@ -1068,7 +1184,9 @@ pub struct OwnedRaw {
     data: Box<[Rbyte]>,
 }
 impl OwnedRaw {
-    pub fn from_raw_sexp(x: SEXP) -> Self {
+    /// # Safety
+    /// `x` must be a RAWSXP; caller guarantees it is valid and points to readable memory.
+    pub unsafe fn from_raw_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x) as usize;
             let ptr = DATAPTR_RO(x) as *const Rbyte;
@@ -1105,7 +1223,9 @@ impl OwnedList {
     pub fn from_sexps(v: Vec<SEXP>) -> Self {
         Self { data: v }
     }
-    pub fn from_list_sexp(x: SEXP) -> Self {
+    /// # Safety
+    /// `x` must be a VECSXP; caller guarantees its contents are readable.
+    pub unsafe fn from_list_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x);
             let mut v = Vec::with_capacity(n as usize);
@@ -1131,6 +1251,9 @@ impl ListBackend for OwnedList {
 // ========= R-callable C wrappers (no macros, pure .Call) =========
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// Must be called by R with valid SEXP arguments. Panics or errors
+/// in this function must not unwind across the FFI boundary.
 pub unsafe extern "C" fn C_altrep_compact_int(
     _call: SEXP,
     n_: SEXP,
@@ -1148,32 +1271,42 @@ pub unsafe extern "C" fn C_altrep_compact_int(
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// Must be called by R with a REALSXP `x` value; must not unwind across FFI.
 pub unsafe extern "C" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> SEXP {
-    let b = OwnedReal::from_reals_sexp(x);
+    let b = unsafe { OwnedReal::from_reals_sexp(x) };
     unsafe { new_altrep_real(Box::new(b)) }
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// Must be called by R with a STRSXP `x` value; must not unwind across FFI.
 pub unsafe extern "C" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> SEXP {
-    let b = Utf8Vec::from_strs_sexp(x);
+    let b = unsafe { Utf8Vec::from_strs_sexp(x) };
     unsafe { new_altrep_str(Box::new(b)) }
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// Must be called by R with a LGLSXP `x` value; must not unwind across FFI.
 pub unsafe extern "C" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
-    let b = OwnedLogical::from_lgls_sexp(x);
+    let b = unsafe { OwnedLogical::from_lgls_sexp(x) };
     unsafe { new_altrep_lgl(Box::new(b)) }
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// Must be called by R with a RAWSXP `x` value; must not unwind across FFI.
 pub unsafe extern "C" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
-    let b = OwnedRaw::from_raw_sexp(x);
+    let b = unsafe { OwnedRaw::from_raw_sexp(x) };
     unsafe { new_altrep_raw(Box::new(b)) }
 }
 
 #[unsafe(no_mangle)]
+/// # Safety
+/// Must be called by R with a VECSXP `x` value; must not unwind across FFI.
 pub unsafe extern "C" fn C_altrep_from_list(_call: SEXP, x: SEXP) -> SEXP {
-    let b = OwnedList::from_list_sexp(x);
+    let b = unsafe { OwnedList::from_list_sexp(x) };
     unsafe { new_altrep_list(Box::new(b)) }
 }
 
@@ -1195,6 +1328,7 @@ pub enum RBase {
 }
 
 /// Base spec every ALTREP class must provide.
+#[allow(clippy::missing_safety_doc)]
 pub trait AltrepClass {
     const CLASS_NAME: &'static std::ffi::CStr;
     const PKG_NAME: &'static std::ffi::CStr;
@@ -1236,7 +1370,7 @@ pub trait AltrepClass {
     }
 }
 
-/// Vector-level hooks.
+// Vector-level hooks.
 // Old Alt* trait scaffolding has been replaced by safe traits in `altrep_traits`.
 
 // AltComplex intentionally omitted for now: FFI method types are not exposed.
@@ -1407,6 +1541,8 @@ unsafe extern "C" fn t_list_set_elt<T: traits::AltList>(x: SEXP, i: R_xlen_t, v:
 }
 
 /// Register an ALTREP class for integer vectors backed by `T`.
+/// # Safety
+/// Registers callbacks with the R ALTREP system; must be called with R initialized.
 pub unsafe fn register_altinteger_class<T: AltrepClass + traits::AltVec + traits::AltInteger>()
 -> R_altrep_class_t {
     let cls = unsafe {
@@ -1418,63 +1554,65 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + traits::AltVec + traits
     };
     // Base Altrep (optional)
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>));
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
-        R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>));
+        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>));
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
-        R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>));
+        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>));
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
-        R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>));
+        unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>));
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
     if <T as traits::Altrep>::HAS_LENGTH {
-        R_set_altrep_Length_method(cls, Some(t_length::<T>));
+        unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR {
-        R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>));
+        unsafe { R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL {
-        R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>));
+        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>)) };
     }
     if <T as traits::AltVec>::HAS_EXTRACT_SUBSET {
-        R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>));
+        unsafe { R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_ELT {
-        R_set_altinteger_Elt_method(cls, Some(t_int_elt::<T>));
+        unsafe { R_set_altinteger_Elt_method(cls, Some(t_int_elt::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_GET_REGION {
-        R_set_altinteger_Get_region_method(cls, Some(t_int_get_region::<T>));
+        unsafe { R_set_altinteger_Get_region_method(cls, Some(t_int_get_region::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_IS_SORTED {
-        R_set_altinteger_Is_sorted_method(cls, Some(t_int_is_sorted::<T>));
+        unsafe { R_set_altinteger_Is_sorted_method(cls, Some(t_int_is_sorted::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_NO_NA {
-        R_set_altinteger_No_NA_method(cls, Some(t_int_no_na::<T>));
+        unsafe { R_set_altinteger_No_NA_method(cls, Some(t_int_no_na::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_SUM {
-        R_set_altinteger_Sum_method(cls, Some(t_int_sum::<T>));
+        unsafe { R_set_altinteger_Sum_method(cls, Some(t_int_sum::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_MIN {
-        R_set_altinteger_Min_method(cls, Some(t_int_min::<T>));
+        unsafe { R_set_altinteger_Min_method(cls, Some(t_int_min::<T>)) };
     }
     if <T as traits::AltInteger>::HAS_MAX {
-        R_set_altinteger_Max_method(cls, Some(t_int_max::<T>));
+        unsafe { R_set_altinteger_Max_method(cls, Some(t_int_max::<T>)) };
     }
     cls
 }
 
 /// Register an ALTREP class for real vectors backed by `T`.
+/// # Safety
+/// Registers callbacks with the R ALTREP system; must be called with R initialized.
 pub unsafe fn register_altreal_class<T: AltrepClass + traits::AltVec + traits::AltReal>()
 -> R_altrep_class_t {
     let cls = unsafe {
@@ -1485,63 +1623,65 @@ pub unsafe fn register_altreal_class<T: AltrepClass + traits::AltVec + traits::A
         )
     };
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>));
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
-        R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>));
+        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>));
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
-        R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>));
+        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>));
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
-        R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>));
+        unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>));
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
     if <T as traits::Altrep>::HAS_LENGTH {
-        R_set_altrep_Length_method(cls, Some(t_length::<T>));
+        unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR {
-        R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>));
+        unsafe { R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL {
-        R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>));
+        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>)) };
     }
     if <T as traits::AltVec>::HAS_EXTRACT_SUBSET {
-        R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>));
+        unsafe { R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>)) };
     }
     if <T as traits::AltReal>::HAS_ELT {
-        R_set_altreal_Elt_method(cls, Some(t_real_elt::<T>));
+        unsafe { R_set_altreal_Elt_method(cls, Some(t_real_elt::<T>)) };
     }
     if <T as traits::AltReal>::HAS_GET_REGION {
-        R_set_altreal_Get_region_method(cls, Some(t_real_get_region::<T>));
+        unsafe { R_set_altreal_Get_region_method(cls, Some(t_real_get_region::<T>)) };
     }
     if <T as traits::AltReal>::HAS_IS_SORTED {
-        R_set_altreal_Is_sorted_method(cls, Some(t_real_is_sorted::<T>));
+        unsafe { R_set_altreal_Is_sorted_method(cls, Some(t_real_is_sorted::<T>)) };
     }
     if <T as traits::AltReal>::HAS_NO_NA {
-        R_set_altreal_No_NA_method(cls, Some(t_real_no_na::<T>));
+        unsafe { R_set_altreal_No_NA_method(cls, Some(t_real_no_na::<T>)) };
     }
     if <T as traits::AltReal>::HAS_SUM {
-        R_set_altreal_Sum_method(cls, Some(t_real_sum::<T>));
+        unsafe { R_set_altreal_Sum_method(cls, Some(t_real_sum::<T>)) };
     }
     if <T as traits::AltReal>::HAS_MIN {
-        R_set_altreal_Min_method(cls, Some(t_real_min::<T>));
+        unsafe { R_set_altreal_Min_method(cls, Some(t_real_min::<T>)) };
     }
     if <T as traits::AltReal>::HAS_MAX {
-        R_set_altreal_Max_method(cls, Some(t_real_max::<T>));
+        unsafe { R_set_altreal_Max_method(cls, Some(t_real_max::<T>)) };
     }
     cls
 }
 
 /// Register an ALTREP class for logical vectors backed by `T`.
+/// # Safety
+/// Registers callbacks with the R ALTREP system; must be called with R initialized.
 pub unsafe fn register_altlogical_class<T: AltrepClass + traits::AltVec + traits::AltLogical>()
 -> R_altrep_class_t {
     let cls = unsafe {
@@ -1552,54 +1692,56 @@ pub unsafe fn register_altlogical_class<T: AltrepClass + traits::AltVec + traits
         )
     };
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>));
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
-        R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>));
+        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>));
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
-        R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>));
+        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>));
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
-        R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>));
+        unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>));
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
     if <T as traits::Altrep>::HAS_LENGTH {
-        R_set_altrep_Length_method(cls, Some(t_length::<T>));
+        unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR {
-        R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>));
+        unsafe { R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL {
-        R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>));
+        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>)) };
     }
     if <T as traits::AltVec>::HAS_EXTRACT_SUBSET {
-        R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>));
+        unsafe { R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>)) };
     }
     if <T as traits::AltLogical>::HAS_ELT {
-        R_set_altlogical_Elt_method(cls, Some(t_lgl_elt::<T>));
+        unsafe { R_set_altlogical_Elt_method(cls, Some(t_lgl_elt::<T>)) };
     }
     if <T as traits::AltLogical>::HAS_GET_REGION {
-        R_set_altlogical_Get_region_method(cls, Some(t_lgl_get_region::<T>));
+        unsafe { R_set_altlogical_Get_region_method(cls, Some(t_lgl_get_region::<T>)) };
     }
     if <T as traits::AltLogical>::HAS_IS_SORTED {
-        R_set_altlogical_Is_sorted_method(cls, Some(t_lgl_is_sorted::<T>));
+        unsafe { R_set_altlogical_Is_sorted_method(cls, Some(t_lgl_is_sorted::<T>)) };
     }
     if <T as traits::AltLogical>::HAS_NO_NA {
-        R_set_altlogical_No_NA_method(cls, Some(t_lgl_no_na::<T>));
+        unsafe { R_set_altlogical_No_NA_method(cls, Some(t_lgl_no_na::<T>)) };
     }
     cls
 }
 
 /// Register an ALTREP class for raw vectors backed by `T`.
+/// # Safety
+/// Registers callbacks with the R ALTREP system; must be called with R initialized.
 pub unsafe fn register_altraw_class<T: AltrepClass + traits::AltVec + traits::AltRaw>()
 -> R_altrep_class_t {
     let cls = unsafe {
@@ -1610,48 +1752,50 @@ pub unsafe fn register_altraw_class<T: AltrepClass + traits::AltVec + traits::Al
         )
     };
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>));
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
-        R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>));
+        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>));
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
-        R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>));
+        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>));
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
-        R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>));
+        unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>));
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
     if <T as traits::Altrep>::HAS_LENGTH {
-        R_set_altrep_Length_method(cls, Some(t_length::<T>));
+        unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR {
-        R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>));
+        unsafe { R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL {
-        R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>));
+        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>)) };
     }
     if <T as traits::AltVec>::HAS_EXTRACT_SUBSET {
-        R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>));
+        unsafe { R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>)) };
     }
     if <T as traits::AltRaw>::HAS_ELT {
-        R_set_altraw_Elt_method(cls, Some(t_raw_elt::<T>));
+        unsafe { R_set_altraw_Elt_method(cls, Some(t_raw_elt::<T>)) };
     }
     if <T as traits::AltRaw>::HAS_GET_REGION {
-        R_set_altraw_Get_region_method(cls, Some(t_raw_get_region::<T>));
+        unsafe { R_set_altraw_Get_region_method(cls, Some(t_raw_get_region::<T>)) };
     }
     cls
 }
 
 /// Register an ALTREP class for string vectors backed by `T`.
+/// # Safety
+/// Registers callbacks with the R ALTREP system; must be called with R initialized.
 pub unsafe fn register_altstring_class<T: AltrepClass + traits::AltVec + traits::AltString>()
 -> R_altrep_class_t {
     let cls = unsafe {
@@ -1662,54 +1806,56 @@ pub unsafe fn register_altstring_class<T: AltrepClass + traits::AltVec + traits:
         )
     };
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>));
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
-        R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>));
+        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>));
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
-        R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>));
+        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>));
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
-        R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>));
+        unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>));
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
     if <T as traits::Altrep>::HAS_LENGTH {
-        R_set_altrep_Length_method(cls, Some(t_length::<T>));
+        unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR {
-        R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>));
+        unsafe { R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL {
-        R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>));
+        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>)) };
     }
     if <T as traits::AltVec>::HAS_EXTRACT_SUBSET {
-        R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>));
+        unsafe { R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>)) };
     }
     if <T as traits::AltString>::HAS_ELT {
-        R_set_altstring_Elt_method(cls, Some(t_str_elt::<T>));
+        unsafe { R_set_altstring_Elt_method(cls, Some(t_str_elt::<T>)) };
     }
     if <T as traits::AltString>::HAS_IS_SORTED {
-        R_set_altstring_Is_sorted_method(cls, Some(t_str_is_sorted::<T>));
+        unsafe { R_set_altstring_Is_sorted_method(cls, Some(t_str_is_sorted::<T>)) };
     }
     if <T as traits::AltString>::HAS_NO_NA {
-        R_set_altstring_No_NA_method(cls, Some(t_str_no_na::<T>));
+        unsafe { R_set_altstring_No_NA_method(cls, Some(t_str_no_na::<T>)) };
     }
     if <T as traits::AltString>::HAS_SET_ELT {
-        R_set_altstring_Set_elt_method(cls, Some(t_str_set_elt::<T>));
+        unsafe { R_set_altstring_Set_elt_method(cls, Some(t_str_set_elt::<T>)) };
     }
     cls
 }
 
 /// Register an ALTREP class for generic lists (VECSXP) backed by `T`.
+/// # Safety
+/// Registers callbacks with the R ALTREP system; must be called with R initialized.
 pub unsafe fn register_altlist_class<T: AltrepClass + traits::AltVec + traits::AltList>()
 -> R_altrep_class_t {
     let cls = unsafe {
@@ -1720,43 +1866,43 @@ pub unsafe fn register_altlist_class<T: AltrepClass + traits::AltVec + traits::A
         )
     };
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>));
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
-        R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>));
+        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>));
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
-        R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>));
+        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>));
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
-        R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>));
+        unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>));
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
     if <T as traits::Altrep>::HAS_LENGTH {
-        R_set_altrep_Length_method(cls, Some(t_length::<T>));
+        unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR {
-        R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>));
+        unsafe { R_set_altvec_Dataptr_method(cls, Some(t_dataptr::<T>)) };
     }
     if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL {
-        R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>));
+        unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(t_dataptr_or_null::<T>)) };
     }
     if <T as traits::AltVec>::HAS_EXTRACT_SUBSET {
-        R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>));
+        unsafe { R_set_altvec_Extract_subset_method(cls, Some(t_extract_subset::<T>)) };
     }
     if <T as traits::AltList>::HAS_ELT {
-        R_set_altlist_Elt_method(cls, Some(t_list_elt::<T>));
+        unsafe { R_set_altlist_Elt_method(cls, Some(t_list_elt::<T>)) };
     }
     if <T as traits::AltList>::HAS_SET_ELT {
-        R_set_altlist_Set_elt_method(cls, Some(t_list_set_elt::<T>));
+        unsafe { R_set_altlist_Set_elt_method(cls, Some(t_list_set_elt::<T>)) };
     }
     cls
 }
