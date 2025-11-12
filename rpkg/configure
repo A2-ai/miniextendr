@@ -608,6 +608,7 @@ PACKAGE_URL=''
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
 ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
@@ -1784,6 +1785,9 @@ printf "%s\n" "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
 pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
 PACKAGE_TARNAME_RS=$pkg_rs
 
+pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
+PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
+
 
 # Ensure template exists
 if test ! -f "$srcdir/src/rust/document.rs.in"
@@ -1791,8 +1795,8 @@ then :
 
   mkdir -p "$srcdir/src/rust"
   cat >"$srcdir/src/rust/document.rs.in" <<'EOF'
-use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS@ as DEPS;
-use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS@ as PARTS;
+use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
+use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();
@@ -3026,4 +3030,5 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: unrecognized options: $ac_unrecognized_opts" >&5
 printf "%s\n" "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
+
 
