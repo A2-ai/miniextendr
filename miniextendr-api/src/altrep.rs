@@ -158,7 +158,7 @@ unsafe fn int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP INTSXP created by this crate, with data1
-/// holding a valid Box<dyn IntBackend> pointer.
+/// holding a valid `Box<dyn IntBackend>` pointer.
 pub unsafe fn altrep_int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
     unsafe { int_backend(x) }
 }
@@ -177,7 +177,7 @@ unsafe fn real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP REALSXP created by this crate, with data1
-/// holding a valid Box<dyn RealBackend> pointer.
+/// holding a valid `Box<dyn RealBackend>` pointer.
 pub unsafe fn altrep_real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
     unsafe { real_backend(x) }
 }
@@ -195,7 +195,7 @@ unsafe fn str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP STRSXP created by this crate, with data1
-/// holding a valid Box<dyn StringBackend> pointer.
+/// holding a valid `Box<dyn StringBackend>` pointer.
 pub unsafe fn altrep_str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
     unsafe { str_backend(x) }
 }
@@ -213,7 +213,7 @@ unsafe fn lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP LGLSXP created by this crate, with data1
-/// holding a valid Box<dyn LogicalBackend> pointer.
+/// holding a valid `Box<dyn LogicalBackend>` pointer.
 pub unsafe fn altrep_lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
     unsafe { lgl_backend(x) }
 }
@@ -230,8 +230,8 @@ unsafe fn raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
     unsafe { ep_as::<Box<dyn RawBackend>>(ep).as_ref() }
 }
 /// # Safety
-/// `x` must be an ALTREP RAWSXP created by this crate, with data1
-/// holding a valid Box<dyn RawBackend> pointer.
+/// `x` must be an ALTREP `RAWSXP` created by this crate, with data1
+/// holding a valid `Box<dyn RawBackend>` pointer.
 pub unsafe fn altrep_raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
     unsafe { raw_backend(x) }
 }
@@ -249,7 +249,7 @@ unsafe fn list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP VECSXP created by this crate, with data1
-/// holding a valid Box<dyn ListBackend> pointer.
+/// holding a valid `Box<dyn ListBackend>` pointer.
 pub unsafe fn altrep_list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
     unsafe { list_backend(x) }
 }
@@ -513,7 +513,6 @@ impl IntBackend for IntArc {
         Some(&self.data)
     }
 }
-
 
 pub struct IntMmap {
     ptr: *const i32,
@@ -1233,6 +1232,14 @@ pub trait AltrepClass {
 
 // AltComplex intentionally omitted for now: FFI method types are not exposed.
 
+// Local helper macro to set a method only if a feature flag is true.
+macro_rules! set_if {
+    ($cond:expr, $setter:path, $tramp:expr, $cls:expr) => {
+        if $cond {
+            unsafe { $setter($cls, Some($tramp)) };
+        }
+    };
+}
 
 /// Register an ALTREP class for integer vectors backed by `T`.
 /// # Safety
@@ -1246,29 +1253,23 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + traits::AltVec + traits
             core::ptr::null_mut(),
         )
     };
-    unsafe {
+    {
         use crate::altrep_bridge as bridge;
-        // Base
-        if <T as traits::Altrep>::HAS_LENGTH { R_set_altrep_Length_method(cls, Some(bridge::t_length::<T>)); }
-        if <T as traits::Altrep>::HAS_SERIALIZED_STATE { R_set_altrep_Serialized_state_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE_EX { R_set_altrep_UnserializeEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE { R_set_altrep_Unserialize_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE_EX { R_set_altrep_DuplicateEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE { R_set_altrep_Duplicate_method(cls, None); }
-        if <T as traits::Altrep>::HAS_COERCE { R_set_altrep_Coerce_method(cls, None); }
-        if <T as traits::Altrep>::HAS_INSPECT { R_set_altrep_Inspect_method(cls, None); }
+        use crate::ffi::altrep::*;
+        // Base (only Length)
+        set_if!(<T as traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<T>, cls);
         // Vec
-        if <T as traits::AltVec>::HAS_DATAPTR { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<T>)); }
-        if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<T>)); }
-        if <T as traits::AltVec>::HAS_EXTRACT_SUBSET { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<T>)); }
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<T>, cls);
         // Int family
-        if <T as traits::AltInteger>::HAS_ELT { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<T>)); }
-        if <T as traits::AltInteger>::HAS_GET_REGION { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<T>)); }
-        if <T as traits::AltInteger>::HAS_IS_SORTED { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<T>)); }
-        if <T as traits::AltInteger>::HAS_NO_NA { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<T>)); }
-        if <T as traits::AltInteger>::HAS_SUM { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<T>)); }
-        if <T as traits::AltInteger>::HAS_MIN { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<T>)); }
-        if <T as traits::AltInteger>::HAS_MAX { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<T>)); }
+        set_if!(<T as traits::AltInteger>::HAS_ELT, R_set_altinteger_Elt_method, bridge::t_int_elt::<T>, cls);
+        set_if!(<T as traits::AltInteger>::HAS_GET_REGION, R_set_altinteger_Get_region_method, bridge::t_int_get_region::<T>, cls);
+        set_if!(<T as traits::AltInteger>::HAS_IS_SORTED, R_set_altinteger_Is_sorted_method, bridge::t_int_is_sorted::<T>, cls);
+        set_if!(<T as traits::AltInteger>::HAS_NO_NA, R_set_altinteger_No_NA_method, bridge::t_int_no_na::<T>, cls);
+        set_if!(<T as traits::AltInteger>::HAS_SUM, R_set_altinteger_Sum_method, bridge::t_int_sum::<T>, cls);
+        set_if!(<T as traits::AltInteger>::HAS_MIN, R_set_altinteger_Min_method, bridge::t_int_min::<T>, cls);
+        set_if!(<T as traits::AltInteger>::HAS_MAX, R_set_altinteger_Max_method, bridge::t_int_max::<T>, cls);
     }
     cls
 }
@@ -1285,29 +1286,23 @@ pub unsafe fn register_altreal_class<T: AltrepClass + traits::AltVec + traits::A
             core::ptr::null_mut(),
         )
     };
-    unsafe {
+    {
         use crate::altrep_bridge as bridge;
+        use crate::ffi::altrep::*;
         // Base
-        if <T as traits::Altrep>::HAS_LENGTH { R_set_altrep_Length_method(cls, Some(bridge::t_length::<T>)); }
-        if <T as traits::Altrep>::HAS_SERIALIZED_STATE { R_set_altrep_Serialized_state_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE_EX { R_set_altrep_UnserializeEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE { R_set_altrep_Unserialize_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE_EX { R_set_altrep_DuplicateEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE { R_set_altrep_Duplicate_method(cls, None); }
-        if <T as traits::Altrep>::HAS_COERCE { R_set_altrep_Coerce_method(cls, None); }
-        if <T as traits::Altrep>::HAS_INSPECT { R_set_altrep_Inspect_method(cls, None); }
+        set_if!(<T as traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<T>, cls);
         // Vec
-        if <T as traits::AltVec>::HAS_DATAPTR { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<T>)); }
-        if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<T>)); }
-        if <T as traits::AltVec>::HAS_EXTRACT_SUBSET { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<T>)); }
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<T>, cls);
         // Real family
-        if <T as traits::AltReal>::HAS_ELT { R_set_altreal_Elt_method(cls, Some(bridge::t_real_elt::<T>)); }
-        if <T as traits::AltReal>::HAS_GET_REGION { R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<T>)); }
-        if <T as traits::AltReal>::HAS_IS_SORTED { R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<T>)); }
-        if <T as traits::AltReal>::HAS_NO_NA { R_set_altreal_No_NA_method(cls, Some(bridge::t_real_no_na::<T>)); }
-        if <T as traits::AltReal>::HAS_SUM { R_set_altreal_Sum_method(cls, Some(bridge::t_real_sum::<T>)); }
-        if <T as traits::AltReal>::HAS_MIN { R_set_altreal_Min_method(cls, Some(bridge::t_real_min::<T>)); }
-        if <T as traits::AltReal>::HAS_MAX { R_set_altreal_Max_method(cls, Some(bridge::t_real_max::<T>)); }
+        set_if!(<T as traits::AltReal>::HAS_ELT, R_set_altreal_Elt_method, bridge::t_real_elt::<T>, cls);
+        set_if!(<T as traits::AltReal>::HAS_GET_REGION, R_set_altreal_Get_region_method, bridge::t_real_get_region::<T>, cls);
+        set_if!(<T as traits::AltReal>::HAS_IS_SORTED, R_set_altreal_Is_sorted_method, bridge::t_real_is_sorted::<T>, cls);
+        set_if!(<T as traits::AltReal>::HAS_NO_NA, R_set_altreal_No_NA_method, bridge::t_real_no_na::<T>, cls);
+        set_if!(<T as traits::AltReal>::HAS_SUM, R_set_altreal_Sum_method, bridge::t_real_sum::<T>, cls);
+        set_if!(<T as traits::AltReal>::HAS_MIN, R_set_altreal_Min_method, bridge::t_real_min::<T>, cls);
+        set_if!(<T as traits::AltReal>::HAS_MAX, R_set_altreal_Max_method, bridge::t_real_max::<T>, cls);
     }
     cls
 }
@@ -1324,26 +1319,20 @@ pub unsafe fn register_altlogical_class<T: AltrepClass + traits::AltVec + traits
             core::ptr::null_mut(),
         )
     };
-    unsafe {
+    {
         use crate::altrep_bridge as bridge;
+        use crate::ffi::altrep::*;
         // Base
-        if <T as traits::Altrep>::HAS_LENGTH { R_set_altrep_Length_method(cls, Some(bridge::t_length::<T>)); }
-        if <T as traits::Altrep>::HAS_SERIALIZED_STATE { R_set_altrep_Serialized_state_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE_EX { R_set_altrep_UnserializeEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE { R_set_altrep_Unserialize_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE_EX { R_set_altrep_DuplicateEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE { R_set_altrep_Duplicate_method(cls, None); }
-        if <T as traits::Altrep>::HAS_COERCE { R_set_altrep_Coerce_method(cls, None); }
-        if <T as traits::Altrep>::HAS_INSPECT { R_set_altrep_Inspect_method(cls, None); }
+        set_if!(<T as traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<T>, cls);
         // Vec
-        if <T as traits::AltVec>::HAS_DATAPTR { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<T>)); }
-        if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<T>)); }
-        if <T as traits::AltVec>::HAS_EXTRACT_SUBSET { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<T>)); }
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<T>, cls);
         // Logical family
-        if <T as traits::AltLogical>::HAS_ELT { R_set_altlogical_Elt_method(cls, Some(bridge::t_lgl_elt::<T>)); }
-        if <T as traits::AltLogical>::HAS_GET_REGION { R_set_altlogical_Get_region_method(cls, Some(bridge::t_lgl_get_region::<T>)); }
-        if <T as traits::AltLogical>::HAS_IS_SORTED { R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<T>)); }
-        if <T as traits::AltLogical>::HAS_NO_NA { R_set_altlogical_No_NA_method(cls, Some(bridge::t_lgl_no_na::<T>)); }
+        set_if!(<T as traits::AltLogical>::HAS_ELT, R_set_altlogical_Elt_method, bridge::t_lgl_elt::<T>, cls);
+        set_if!(<T as traits::AltLogical>::HAS_GET_REGION, R_set_altlogical_Get_region_method, bridge::t_lgl_get_region::<T>, cls);
+        set_if!(<T as traits::AltLogical>::HAS_IS_SORTED, R_set_altlogical_Is_sorted_method, bridge::t_lgl_is_sorted::<T>, cls);
+        set_if!(<T as traits::AltLogical>::HAS_NO_NA, R_set_altlogical_No_NA_method, bridge::t_lgl_no_na::<T>, cls);
     }
     cls
 }
@@ -1360,24 +1349,18 @@ pub unsafe fn register_altraw_class<T: AltrepClass + traits::AltVec + traits::Al
             core::ptr::null_mut(),
         )
     };
-    unsafe {
+    {
         use crate::altrep_bridge as bridge;
+        use crate::ffi::altrep::*;
         // Base
-        if <T as traits::Altrep>::HAS_LENGTH { R_set_altrep_Length_method(cls, Some(bridge::t_length::<T>)); }
-        if <T as traits::Altrep>::HAS_SERIALIZED_STATE { R_set_altrep_Serialized_state_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE_EX { R_set_altrep_UnserializeEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE { R_set_altrep_Unserialize_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE_EX { R_set_altrep_DuplicateEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE { R_set_altrep_Duplicate_method(cls, None); }
-        if <T as traits::Altrep>::HAS_COERCE { R_set_altrep_Coerce_method(cls, None); }
-        if <T as traits::Altrep>::HAS_INSPECT { R_set_altrep_Inspect_method(cls, None); }
+        set_if!(<T as traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<T>, cls);
         // Vec
-        if <T as traits::AltVec>::HAS_DATAPTR { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<T>)); }
-        if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<T>)); }
-        if <T as traits::AltVec>::HAS_EXTRACT_SUBSET { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<T>)); }
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<T>, cls);
         // Raw family
-        if <T as traits::AltRaw>::HAS_ELT { R_set_altraw_Elt_method(cls, Some(bridge::t_raw_elt::<T>)); }
-        if <T as traits::AltRaw>::HAS_GET_REGION { R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<T>)); }
+        set_if!(<T as traits::AltRaw>::HAS_ELT, R_set_altraw_Elt_method, bridge::t_raw_elt::<T>, cls);
+        set_if!(<T as traits::AltRaw>::HAS_GET_REGION, R_set_altraw_Get_region_method, bridge::t_raw_get_region::<T>, cls);
     }
     cls
 }
@@ -1394,26 +1377,20 @@ pub unsafe fn register_altstring_class<T: AltrepClass + traits::AltVec + traits:
             core::ptr::null_mut(),
         )
     };
-    unsafe {
+    {
         use crate::altrep_bridge as bridge;
+        use crate::ffi::altrep::*;
         // Base
-        if <T as traits::Altrep>::HAS_LENGTH { R_set_altrep_Length_method(cls, Some(bridge::t_length::<T>)); }
-        if <T as traits::Altrep>::HAS_SERIALIZED_STATE { R_set_altrep_Serialized_state_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE_EX { R_set_altrep_UnserializeEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE { R_set_altrep_Unserialize_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE_EX { R_set_altrep_DuplicateEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE { R_set_altrep_Duplicate_method(cls, None); }
-        if <T as traits::Altrep>::HAS_COERCE { R_set_altrep_Coerce_method(cls, None); }
-        if <T as traits::Altrep>::HAS_INSPECT { R_set_altrep_Inspect_method(cls, None); }
+        set_if!(<T as traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<T>, cls);
         // Vec
-        if <T as traits::AltVec>::HAS_DATAPTR { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<T>)); }
-        if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<T>)); }
-        if <T as traits::AltVec>::HAS_EXTRACT_SUBSET { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<T>)); }
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<T>, cls);
         // String family
-        if <T as traits::AltString>::HAS_ELT { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<T>)); }
-        if <T as traits::AltString>::HAS_IS_SORTED { R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<T>)); }
-        if <T as traits::AltString>::HAS_NO_NA { R_set_altstring_No_NA_method(cls, Some(bridge::t_str_no_na::<T>)); }
-        if <T as traits::AltString>::HAS_SET_ELT { R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<T>)); }
+        set_if!(<T as traits::AltString>::HAS_ELT, R_set_altstring_Elt_method, bridge::t_str_elt::<T>, cls);
+        set_if!(<T as traits::AltString>::HAS_IS_SORTED, R_set_altstring_Is_sorted_method, bridge::t_str_is_sorted::<T>, cls);
+        set_if!(<T as traits::AltString>::HAS_NO_NA, R_set_altstring_No_NA_method, bridge::t_str_no_na::<T>, cls);
+        set_if!(<T as traits::AltString>::HAS_SET_ELT, R_set_altstring_Set_elt_method, bridge::t_str_set_elt::<T>, cls);
     }
     cls
 }
@@ -1430,24 +1407,18 @@ pub unsafe fn register_altlist_class<T: AltrepClass + traits::AltVec + traits::A
             core::ptr::null_mut(),
         )
     };
-    unsafe {
+    {
         use crate::altrep_bridge as bridge;
+        use crate::ffi::altrep::*;
         // Base
-        if <T as traits::Altrep>::HAS_LENGTH { R_set_altrep_Length_method(cls, Some(bridge::t_length::<T>)); }
-        if <T as traits::Altrep>::HAS_SERIALIZED_STATE { R_set_altrep_Serialized_state_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE_EX { R_set_altrep_UnserializeEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_UNSERIALIZE { R_set_altrep_Unserialize_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE_EX { R_set_altrep_DuplicateEX_method(cls, None); }
-        if <T as traits::Altrep>::HAS_DUPLICATE { R_set_altrep_Duplicate_method(cls, None); }
-        if <T as traits::Altrep>::HAS_COERCE { R_set_altrep_Coerce_method(cls, None); }
-        if <T as traits::Altrep>::HAS_INSPECT { R_set_altrep_Inspect_method(cls, None); }
+        set_if!(<T as traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<T>, cls);
         // Vec
-        if <T as traits::AltVec>::HAS_DATAPTR { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<T>)); }
-        if <T as traits::AltVec>::HAS_DATAPTR_OR_NULL { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<T>)); }
-        if <T as traits::AltVec>::HAS_EXTRACT_SUBSET { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<T>)); }
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<T>, cls);
+        set_if!(<T as traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<T>, cls);
         // List family
-        if <T as traits::AltList>::HAS_ELT { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<T>)); }
-        if <T as traits::AltList>::HAS_SET_ELT { R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<T>)); }
+        set_if!(<T as traits::AltList>::HAS_ELT, R_set_altlist_Elt_method, bridge::t_list_elt::<T>, cls);
+        set_if!(<T as traits::AltList>::HAS_SET_ELT, R_set_altlist_Set_elt_method, bridge::t_list_set_elt::<T>, cls);
     }
     cls
 }

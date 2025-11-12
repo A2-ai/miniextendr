@@ -18,7 +18,7 @@ pub enum SEXPTYPE {
     CLOSXP = 3,
     #[doc = " environments"]
     ENVSXP = 4,
-    #[doc = " promises: [un]evaluated closure arguments"]
+    #[doc = r" promises: \[un\]evaluated closure arguments"]
     PROMSXP = 5,
     #[doc = " language constructs (special lists)"]
     LANGSXP = 6,

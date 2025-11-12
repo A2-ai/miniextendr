@@ -950,42 +950,42 @@ fn expand_altrep_struct(
     // Generate per-family setter calls gated by the trampoline type's trait flags
     let family_setters: proc_macro2::TokenStream = match base_name.as_str() {
         "Int" => quote::quote! {
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_ELT { unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_GET_REGION { unsafe { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_IS_SORTED { unsafe { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_NO_NA { unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_SUM { unsafe { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MIN { unsafe { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MAX { unsafe { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<#tramp_ty>)) }; }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_ELT, R_set_altinteger_Elt_method, bridge::t_int_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_GET_REGION, R_set_altinteger_Get_region_method, bridge::t_int_get_region::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_IS_SORTED, R_set_altinteger_Is_sorted_method, bridge::t_int_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_NO_NA, R_set_altinteger_No_NA_method, bridge::t_int_no_na::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_SUM, R_set_altinteger_Sum_method, bridge::t_int_sum::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MIN, R_set_altinteger_Min_method, bridge::t_int_min::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MAX, R_set_altinteger_Max_method, bridge::t_int_max::<#tramp_ty>);
         },
         "Real" => quote::quote! {
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_ELT { unsafe { R_set_altreal_Elt_method(cls, Some(bridge::t_real_elt::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_GET_REGION { unsafe { R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_IS_SORTED { unsafe { R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_NO_NA { unsafe { R_set_altreal_No_NA_method(cls, Some(bridge::t_real_no_na::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_SUM { unsafe { R_set_altreal_Sum_method(cls, Some(bridge::t_real_sum::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MIN { unsafe { R_set_altreal_Min_method(cls, Some(bridge::t_real_min::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MAX { unsafe { R_set_altreal_Max_method(cls, Some(bridge::t_real_max::<#tramp_ty>)) }; }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_ELT, R_set_altreal_Elt_method, bridge::t_real_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_GET_REGION, R_set_altreal_Get_region_method, bridge::t_real_get_region::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_IS_SORTED, R_set_altreal_Is_sorted_method, bridge::t_real_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_NO_NA, R_set_altreal_No_NA_method, bridge::t_real_no_na::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_SUM, R_set_altreal_Sum_method, bridge::t_real_sum::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MIN, R_set_altreal_Min_method, bridge::t_real_min::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MAX, R_set_altreal_Max_method, bridge::t_real_max::<#tramp_ty>);
         },
         "Logical" => quote::quote! {
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_ELT { unsafe { R_set_altlogical_Elt_method(cls, Some(bridge::t_lgl_elt::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_GET_REGION { unsafe { R_set_altlogical_Get_region_method(cls, Some(bridge::t_lgl_get_region::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_IS_SORTED { unsafe { R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_NO_NA { unsafe { R_set_altlogical_No_NA_method(cls, Some(bridge::t_lgl_no_na::<#tramp_ty>)) }; }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_ELT, R_set_altlogical_Elt_method, bridge::t_lgl_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_GET_REGION, R_set_altlogical_Get_region_method, bridge::t_lgl_get_region::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_IS_SORTED, R_set_altlogical_Is_sorted_method, bridge::t_lgl_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_NO_NA, R_set_altlogical_No_NA_method, bridge::t_lgl_no_na::<#tramp_ty>);
         },
         "Raw" => quote::quote! {
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_ELT { unsafe { R_set_altraw_Elt_method(cls, Some(bridge::t_raw_elt::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION { unsafe { R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<#tramp_ty>)) }; }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_ELT, R_set_altraw_Elt_method, bridge::t_raw_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION, R_set_altraw_Get_region_method, bridge::t_raw_get_region::<#tramp_ty>);
         },
         "String" => quote::quote! {
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_ELT { unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED { unsafe { R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA { unsafe { R_set_altstring_No_NA_method(cls, Some(bridge::t_str_no_na::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT { unsafe { R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<#tramp_ty>)) }; }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_ELT, R_set_altstring_Elt_method, bridge::t_str_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED, R_set_altstring_Is_sorted_method, bridge::t_str_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA, R_set_altstring_No_NA_method, bridge::t_str_no_na::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT, R_set_altstring_Set_elt_method, bridge::t_str_set_elt::<#tramp_ty>);
         },
         "List" => quote::quote! {
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_ELT { unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<#tramp_ty>)) }; }
-            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT { unsafe { R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<#tramp_ty>)) }; }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_ELT, R_set_altlist_Elt_method, bridge::t_list_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT, R_set_altlist_Set_elt_method, bridge::t_list_set_elt::<#tramp_ty>);
         },
         _ => quote::quote! {},
     };
@@ -1050,20 +1050,14 @@ fn expand_altrep_struct(
             unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
                 use ::miniextendr_api::altrep_bridge as bridge;
                 use ::miniextendr_api::ffi::altrep::*;
+                // Local helper to reduce boilerplate
+                macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
                 // Base: length only (others not yet implemented via trampolines here)
-                if <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_LENGTH {
-                    unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)) };
-                }
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<#tramp_ty>);
                 // Vec-level setters
-                if <#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR {
-                    unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<#tramp_ty>)) };
-                }
-                if <#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL {
-                    unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<#tramp_ty>)) };
-                }
-                if <#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET {
-                    unsafe { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<#tramp_ty>)) };
-                }
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<#tramp_ty>);
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<#tramp_ty>);
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<#tramp_ty>);
                 // Family-specific
                 #family_setters
             }
