@@ -47,13 +47,15 @@ dnl Create a document.rs.in file and replace certain places with the crate name.
 # Rust-safe tarname (hyphens → underscores)
 pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
+pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
+AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
 
 # Ensure template exists
 AS_IF([test ! -f "$srcdir/src/rust/document.rs.in"], [
   mkdir -p "$srcdir/src/rust"
   cat >"$srcdir/src/rust/document.rs.in" <<'EOF'
-use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS@ as DEPS;
-use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS@ as PARTS;
+use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
+use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();
@@ -91,13 +93,18 @@ dnl adjust to changing package name.
 AS_IF([test ! -f "$abs_srcdir/entrypoint.c.in"], [
   mkdir -p "$abs_srcdir"
   cat >"$abs_srcdir/entrypoint.c.in" <<EOF
+// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
+extern void miniextendr_runtime_init(void);
+extern void miniextendr_altrep_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    miniextendr_runtime_init();
+    miniextendr_altrep_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);

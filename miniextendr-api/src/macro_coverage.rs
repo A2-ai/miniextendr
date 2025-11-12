@@ -156,7 +156,7 @@ miniextendr_module! {
     extern "C" fn C_coverage_direct;
     extern fn C_coverage_indirect;
 
-    struct ShowcaseStruct;
+    // struct ShowcaseStruct; // ALTREP showcase intentionally omitted in coverage
 }
 
 mod nested {

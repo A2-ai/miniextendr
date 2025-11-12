@@ -5,9 +5,11 @@
 
 extern void R_init_rpkg_miniextendr(DllInfo * dll);
 extern void miniextendr_runtime_init(void);
+extern void miniextendr_altrep_init(void);
 
 void R_init_rpkg(DllInfo *dll) {
     miniextendr_runtime_init();
+    miniextendr_altrep_init();
     R_init_rpkg_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
