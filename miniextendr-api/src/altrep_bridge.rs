@@ -31,7 +31,11 @@ pub unsafe extern "C" fn t_dataptr_or_null<T: traits::AltVec>(x: SEXP) -> *const
 /// # Safety
 /// Called by R; `x` must be a valid ALTREP vector for `T`. `indx` and `call` are valid
 /// R objects provided by R. Must run on the R thread.
-pub unsafe extern "C" fn t_extract_subset<T: traits::AltVec>(x: SEXP, indx: SEXP, call: SEXP) -> SEXP {
+pub unsafe extern "C" fn t_extract_subset<T: traits::AltVec>(
+    x: SEXP,
+    indx: SEXP,
+    call: SEXP,
+) -> SEXP {
     T::extract_subset(x, indx, call)
 }
 
