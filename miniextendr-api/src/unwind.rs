@@ -16,21 +16,22 @@ static R_TASK_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<RTask>> =
     std::sync::OnceLock::new();
 
 thread_local! {
-    ///
+    /// When true, the global panic hook prints a concise file:line banner.
+    pub static PANIC_BANNER_ENABLED: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     ///
     ///
     /// See [`R_TASK_TX`]
     pub static R_TASK_RX_SLOT: std::cell::RefCell<Option<std::sync::mpsc::Receiver<RTask>>>  = const { std::cell::RefCell::new(None) };
 }
 
-pub static WORKER_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<WorkerCommand>> =
+static WORKER_TX: std::sync::OnceLock<std::sync::mpsc::SyncSender<WorkerCommand>> =
     std::sync::OnceLock::new();
 
 type WorkerReply = Result<SendSEXP, std::borrow::Cow<'static, str>>;
 type ReplySender = std::sync::mpsc::SyncSender<WorkerReply>;
 
 #[doc(hidden)]
-pub enum WorkerCommand {
+enum WorkerCommand {
     Run {
         job: Box<dyn FnOnce() -> WorkerReply + Send>,
         reply: ReplySender,
@@ -48,13 +49,17 @@ impl std::fmt::Debug for WorkerCommand {
 }
 
 #[doc(hidden)]
-pub enum RTask {
+enum RTask {
     Call {
         job: Box<dyn FnOnce() -> SendSEXP + Send>,
         reply: ReplySender,
     },
-    Result(WorkerReply),
     Wake,
+    /// FIFO barrier used to drain all pending R tasks before continuing.
+    /// The dispatcher acks this by sending `()` when the barrier is reached.
+    Barrier {
+        ack: std::sync::mpsc::SyncSender<()>,
+    },
 }
 
 impl std::fmt::Debug for RTask {
@@ -65,8 +70,8 @@ impl std::fmt::Debug for RTask {
                 .field("job", &"Box<dyn FnOnce() -> SendSEXP + Send>")
                 .field("reply", reply)
                 .finish(),
-            Self::Result(arg0) => f.debug_tuple("Result").field(arg0).finish(),
             Self::Wake => f.debug_struct("Wake").finish(),
+            Self::Barrier { .. } => f.debug_struct("Barrier").finish(),
         }
     }
 }
@@ -75,6 +80,23 @@ impl std::fmt::Debug for RTask {
 extern "C" fn miniextendr_runtime_init() {
     RUNTIME_ONCE.call_once_force(|_once_state| {
         // TODO: use _once_state for tracing messages
+        // Install a single global panic hook that is gated by a TLS flag so that
+        // only threads that opt-in print the concise banner.
+        let old = std::panic::take_hook();
+        std::panic::set_hook(Box::new(move |panic_info| {
+            if PANIC_BANNER_ENABLED.with(|flag| flag.get()) {
+                if let Some(location) = panic_info.location() {
+                    eprintln!(
+                        "Rust panic at src/rust/{}:{}",
+                        location.file(),
+                        location.line()
+                    );
+                }
+            } else {
+                (old)(panic_info);
+            }
+        }));
+
         let (r_task_tx, r_task_rx) = std::sync::mpsc::sync_channel(1);
         R_TASK_TX
             .set(r_task_tx)
@@ -91,21 +113,35 @@ extern "C" fn miniextendr_runtime_init() {
             .set(worker_tx)
             .expect("worker runtime already initialised");
 
+        // Enable concise panic banner on the R dispatcher thread as well.
+        PANIC_BANNER_ENABLED.with(|flag| flag.set(true));
+
         std::thread::Builder::new()
             .name("miniextendr worker".to_string())
             .spawn(move || {
+                // Enable panic banner printing in the worker thread.
+                PANIC_BANNER_ENABLED.with(|flag| flag.set(true));
                 while let Ok(cmd) = worker_rx.recv() {
                     match cmd {
                         WorkerCommand::Run { job, reply } => {
-                            let result = {
-                                let _hook_guard = PanicHookGuard::print_error_location();
+                            // Catch panics and, on error, insert a FIFO barrier so
+                            // the dispatcher drains all pending R tasks before we
+                            // propagate the error back to R.
+                            let result =
                                 match std::panic::catch_unwind(std::panic::AssertUnwindSafe(job)) {
                                     Ok(job_result) => job_result,
                                     Err(panic) => {
+                                        // Request the dispatcher to drain pending R tasks.
+                                        if let Some(tx) = R_TASK_TX.get() {
+                                            let (ack_tx, ack_rx) = std::sync::mpsc::sync_channel(0);
+                                            // This blocks until the dispatcher reaches the barrier,
+                                            // guaranteeing FIFO drain of earlier tasks.
+                                            let _ = tx.send(RTask::Barrier { ack: ack_tx });
+                                            let _ = ack_rx.recv();
+                                        }
                                         Err(miniextendr_api::unwind::panic_payload_to_string(panic))
                                     }
-                                }
-                            };
+                                };
                             reply.send(result).unwrap();
                             if let Some(tx) = R_TASK_TX.get() {
                                 // Wake the dispatcher in case it's blocked waiting for work.
@@ -119,7 +155,7 @@ extern "C" fn miniextendr_runtime_init() {
     });
 }
 
-pub fn with_r<R, T>(r: R) -> Result<SEXP, std::borrow::Cow<'static, str>>
+pub fn with_r<R, T>(r: R) -> std::result::Result<SEXP, std::borrow::Cow<'static, str>>
 where
     R: FnOnce() -> T + Send + 'static,
     T: IntoR + 'static,
@@ -140,10 +176,25 @@ where
         .map(|value| value.get())
 }
 
+/// Convenience for exported FFI wrappers: run `r` on the R dispatcher and
+/// throw via `Rf_errorcall` on failure so that errors surface as R conditions.
+pub unsafe fn with_r_throw<R, T>(call: SEXP, r: R) -> SEXP
+where
+    R: FnOnce() -> T + Send + 'static,
+    T: IntoR + 'static,
+{
+    match with_r(r) {
+        Ok(sexp) => sexp,
+        Err(message) => unsafe { raise_r_error_call(call, &message) },
+    }
+}
+
 pub unsafe fn call_worker<F>(call: SEXP, job: F) -> SEXP
 where
     F: FnOnce() -> WorkerReply + Send + 'static,
 {
+    // Enable panic banner printing on the R dispatcher thread for this call.
+    PANIC_BANNER_ENABLED.with(|flag| flag.set(true));
     let (worker_reply_tx, worker_reply_rx) = std::sync::mpsc::sync_channel(1);
 
     WORKER_TX
@@ -217,12 +268,12 @@ where
                         );
                     };
                 }
-                // Prior versions sent worker results over this channel.
-                // If encountered, ignore and continue; the real result is read
-                // from `worker_reply_rx` above which is correctly associated to
-                // this call.
-                RTask::Result(_result) => continue,
                 RTask::Wake => continue,
+                RTask::Barrier { ack } => {
+                    // Acknowledge the barrier to let the worker continue.
+                    ack.send(()).unwrap();
+                    continue;
+                }
             }
         }
     });
@@ -264,37 +315,5 @@ pub fn raise_r_error(message: &str) -> ! {
     }
 }
 
-type PanicHook = Box<dyn Fn(&std::panic::PanicHookInfo) + Send + Sync + 'static>;
-
-pub struct PanicHookGuard(Option<PanicHook>);
-
-impl PanicHookGuard {
-    pub fn print_error_location() -> Self {
-        let old = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|panic_info| {
-            if let Some(location) = panic_info.location() {
-                println!(
-                    "Rust error occurred in file 'src/rust/{}' at line {}",
-                    location.file(),
-                    location.line()
-                )
-            };
-        }));
-        Self(Some(old))
-    }
-
-    pub fn print_nothing() -> Self {
-        let old = std::panic::take_hook();
-        std::panic::set_hook(Box::new(|_panic_info| {}));
-        Self(Some(old))
-    }
-}
-
-impl Drop for PanicHookGuard {
-    fn drop(&mut self) {
-        if let Some(old) = self.0.take() {
-            println!("Reset panic hook!");
-            std::panic::set_hook(old);
-        }
-    }
-}
+// Deprecated: per-call panic hook swapping removed in favor of a single global
+// hook gated by a thread-local flag.
