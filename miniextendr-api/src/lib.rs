@@ -55,6 +55,9 @@ pub use miniextendr_macros::miniextendr_module;
 
 pub mod altrep;
 pub mod altrep_traits;
+pub mod altrep_bridge;
+pub mod altrep_registration;
+pub mod altrep_std_impls;
 pub mod ffi;
 pub mod into_r;
 pub mod unwind;

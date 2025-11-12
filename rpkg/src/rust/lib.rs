@@ -41,6 +41,7 @@ fn drop_on_panic_with_move() -> Result<(), Cow<'static, str>> {
     let _a = MsgOnDrop;
     with_r(|| unsafe {
         Rf_error(c"an r error occurred".as_ptr());
+        #[allow(unreachable_code)]
         R_NilValue
     })?;
     Ok(())
