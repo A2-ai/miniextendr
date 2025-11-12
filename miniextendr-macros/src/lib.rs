@@ -58,7 +58,7 @@ pub fn miniextendr(
 ) -> proc_macro::TokenStream {
     // If not a function, delegate to ALTREP path (allow structs/enums)
     if syn::parse::<syn::ItemFn>(item.clone()).is_err() {
-        return alttrep(attr, item);
+        return expand_altrep_struct(attr, item);
     }
 
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
@@ -451,14 +451,14 @@ pub fn miniextendr(
     // region: R wrappers generation in `fn`
     // normalize `named_dots` for R (no leading underscore)
     if has_dots && let Some(named) = &mut named_dots {
-            let mut arg_name = named.to_string();
-            if arg_name.starts_with("__") {
-                arg_name.insert_str(0, "private");
-            } else if arg_name.starts_with('_') {
-                arg_name.insert_str(0, "unused");
-            }
-            let arg_ident = syn::Ident::new(&arg_name, named.span());
-            *named = arg_ident;
+        let mut arg_name = named.to_string();
+        if arg_name.starts_with("__") {
+            arg_name.insert_str(0, "private");
+        } else if arg_name.starts_with('_') {
+            arg_name.insert_str(0, "unused");
+        }
+        let arg_ident = syn::Ident::new(&arg_name, named.span());
+        *named = arg_ident;
     }
 
     // Build both the .Call argument list and the formal parameter list in one pass
@@ -860,10 +860,11 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     .into()
 }
 
-/// Annotate a struct/enum to provide ALTREP registration and metadata.
-/// Example: #[alttrep(class = "rust_altint", pkg = "mypkg", base = "Int")]
-#[proc_macro_attribute]
-pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// Internal: expand ALTREP struct/enum registration for #[miniextendr] when used on a type.
+fn expand_altrep_struct(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
     use syn::spanned::Spanned;
     let input: syn::Item = match syn::parse(item.clone()) {
         Ok(it) => it,
@@ -882,7 +883,8 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
 
     // Parse attr list: class = "...", pkg = "...", base = "..."
     use syn::parse::Parser;
-    let parser = syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
+    let parser =
+        syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
     let args = match parser.parse(attr) {
         Ok(v) => v,
         Err(e) => return e.into_compile_error().into(),
@@ -892,21 +894,35 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
     let mut base_name = None::<String>;
     let mut delegate_ty: Option<syn::Type> = None;
     for nv in args {
-        let key = nv.path.get_ident().map(|i| i.to_string()).unwrap_or_default();
-        if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(s), .. }) = nv.value {
+        let key = nv
+            .path
+            .get_ident()
+            .map(|i| i.to_string())
+            .unwrap_or_default();
+        if let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(s),
+            ..
+        }) = nv.value
+        {
             match key.as_str() {
                 "class" => class_name = Some(s.value()),
                 "pkg" => pkg_name = Some(s.value()),
                 "base" => base_name = Some(s.value()),
                 _ => {}
             }
-        } else if let syn::Expr::Path(p) = nv.value && key == "delegate" {
-            delegate_ty = Some(syn::Type::Path(syn::TypePath { qself: None, path: p.path }));
+        } else if let syn::Expr::Path(p) = nv.value
+            && key == "delegate"
+        {
+            delegate_ty = Some(syn::Type::Path(syn::TypePath {
+                qself: None,
+                path: p.path,
+            }));
         }
     }
     let class_name = class_name.expect("#[alttrep] missing class = \"...\"");
     let pkg_name = pkg_name.expect("#[alttrep] missing pkg = \"...\"");
-    let base_name = base_name.expect("#[alttrep] missing base = \"Int|Real|Logical|Raw|String|List\"");
+    let base_name =
+        base_name.expect("#[alttrep] missing base = \"Int|Real|Logical|Raw|String|List\"");
 
     let base_variant: syn::Expr = match base_name.as_str() {
         "Int" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Int),
@@ -915,21 +931,62 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
         "Raw" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Raw),
         "String" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::String),
         "List" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::List),
-        _ => return syn::Error::new_spanned(
-            syn::LitStr::new(&base_name, ident.span()),
-            "base must be one of Int|Real|Logical|Raw|String|List",
-        ).into_compile_error().into(),
+        _ => {
+            return syn::Error::new_spanned(
+                syn::LitStr::new(&base_name, ident.span()),
+                "base must be one of Int|Real|Logical|Raw|String|List",
+            )
+            .into_compile_error()
+            .into();
+        }
     };
 
     // Decide which type to use for trampolines (delegate or self)
-    let tramp_ty: syn::Type = if let Some(delegate) = delegate_ty.clone() { delegate } else { syn::parse_quote!(#ident) };
-    let family_install: proc_macro2::TokenStream = match base_name.as_str() {
-        "Int" => quote::quote! { bridge::install_int::<#tramp_ty>(cls); },
-        "Real" => quote::quote! { bridge::install_real::<#tramp_ty>(cls); },
-        "Logical" => quote::quote! { bridge::install_lgl::<#tramp_ty>(cls); },
-        "Raw" => quote::quote! { bridge::install_raw::<#tramp_ty>(cls); },
-        "String" => quote::quote! { bridge::install_str::<#tramp_ty>(cls); },
-        "List" => quote::quote! { bridge::install_list::<#tramp_ty>(cls); },
+    let tramp_ty: syn::Type = if let Some(delegate) = delegate_ty.clone() {
+        delegate
+    } else {
+        syn::parse_quote!(#ident)
+    };
+    // Generate per-family setter calls gated by the trampoline type's trait flags
+    let family_setters: proc_macro2::TokenStream = match base_name.as_str() {
+        "Int" => quote::quote! {
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_ELT { unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_GET_REGION { unsafe { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_IS_SORTED { unsafe { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_NO_NA { unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_SUM { unsafe { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MIN { unsafe { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MAX { unsafe { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<#tramp_ty>)) }; }
+        },
+        "Real" => quote::quote! {
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_ELT { unsafe { R_set_altreal_Elt_method(cls, Some(bridge::t_real_elt::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_GET_REGION { unsafe { R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_IS_SORTED { unsafe { R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_NO_NA { unsafe { R_set_altreal_No_NA_method(cls, Some(bridge::t_real_no_na::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_SUM { unsafe { R_set_altreal_Sum_method(cls, Some(bridge::t_real_sum::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MIN { unsafe { R_set_altreal_Min_method(cls, Some(bridge::t_real_min::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MAX { unsafe { R_set_altreal_Max_method(cls, Some(bridge::t_real_max::<#tramp_ty>)) }; }
+        },
+        "Logical" => quote::quote! {
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_ELT { unsafe { R_set_altlogical_Elt_method(cls, Some(bridge::t_lgl_elt::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_GET_REGION { unsafe { R_set_altlogical_Get_region_method(cls, Some(bridge::t_lgl_get_region::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_IS_SORTED { unsafe { R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_NO_NA { unsafe { R_set_altlogical_No_NA_method(cls, Some(bridge::t_lgl_no_na::<#tramp_ty>)) }; }
+        },
+        "Raw" => quote::quote! {
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_ELT { unsafe { R_set_altraw_Elt_method(cls, Some(bridge::t_raw_elt::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION { unsafe { R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<#tramp_ty>)) }; }
+        },
+        "String" => quote::quote! {
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_ELT { unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED { unsafe { R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA { unsafe { R_set_altstring_No_NA_method(cls, Some(bridge::t_str_no_na::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT { unsafe { R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<#tramp_ty>)) }; }
+        },
+        "List" => quote::quote! {
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_ELT { unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<#tramp_ty>)) }; }
+            if <#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT { unsafe { R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<#tramp_ty>)) }; }
+        },
         _ => quote::quote! {},
     };
     let make_class: proc_macro2::TokenStream = match base_name.as_str() {
@@ -972,116 +1029,10 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
     let class_cstr = syn::LitStr::new(&class_name, ident.span());
     let pkg_cstr = syn::LitStr::new(&pkg_name, ident.span());
 
-    // Optional trait implementations by delegation
-    let del_impls: proc_macro2::TokenStream = if let Some(delegate) = delegate_ty.clone() {
-        let base_impl = match base_name.as_str() {
-            "Int" => quote::quote! { impl ::miniextendr_api::altrep_traits::AltInteger for #ident #ty_generics #where_clause {
-                const HAS_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_ELT;
-                const HAS_GET_REGION: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_GET_REGION;
-                const HAS_IS_SORTED: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_IS_SORTED;
-                const HAS_NO_NA: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_NO_NA;
-                const HAS_SUM: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_SUM;
-                const HAS_MIN: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MIN;
-                const HAS_MAX: bool = <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MAX;
-                fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::elt(x,i) }
-                fn get_region(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t, n: ::miniextendr_api::ffi::R_xlen_t, buf: *mut i32) -> ::miniextendr_api::ffi::R_xlen_t { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::get_region(x,i,n,buf) }
-                fn is_sorted(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::is_sorted(x) }
-                fn no_na(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::no_na(x) }
-                fn sum(x: ::miniextendr_api::ffi::SEXP, narm: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::sum(x,narm) }
-                fn min(x: ::miniextendr_api::ffi::SEXP, narm: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::min(x,narm) }
-                fn max(x: ::miniextendr_api::ffi::SEXP, narm: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltInteger>::max(x,narm) }
-            } },
-            "Real" => quote::quote! { impl ::miniextendr_api::altrep_traits::AltReal for #ident #ty_generics #where_clause {
-                const HAS_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_ELT;
-                const HAS_GET_REGION: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_GET_REGION;
-                const HAS_IS_SORTED: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_IS_SORTED;
-                const HAS_NO_NA: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_NO_NA;
-                const HAS_SUM: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_SUM;
-                const HAS_MIN: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_MIN;
-                const HAS_MAX: bool = <#delegate as ::miniextendr_api::altrep_traits::AltReal>::HAS_MAX;
-                fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> f64 { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::elt(x,i) }
-                fn get_region(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t, n: ::miniextendr_api::ffi::R_xlen_t, buf: *mut f64) -> ::miniextendr_api::ffi::R_xlen_t { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::get_region(x,i,n,buf) }
-                fn is_sorted(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::is_sorted(x) }
-                fn no_na(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::no_na(x) }
-                fn sum(x: ::miniextendr_api::ffi::SEXP, narm: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::sum(x,narm) }
-                fn min(x: ::miniextendr_api::ffi::SEXP, narm: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::min(x,narm) }
-                fn max(x: ::miniextendr_api::ffi::SEXP, narm: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltReal>::max(x,narm) }
-            } },
-            "Logical" => quote::quote! { impl ::miniextendr_api::altrep_traits::AltLogical for #ident #ty_generics #where_clause {
-                const HAS_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::HAS_ELT;
-                const HAS_GET_REGION: bool = <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::HAS_GET_REGION;
-                const HAS_IS_SORTED: bool = <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::HAS_IS_SORTED;
-                const HAS_NO_NA: bool = <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::HAS_NO_NA;
-                fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::elt(x,i) }
-                fn get_region(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t, n: ::miniextendr_api::ffi::R_xlen_t, buf: *mut i32) -> ::miniextendr_api::ffi::R_xlen_t { <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::get_region(x,i,n,buf) }
-                fn is_sorted(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::is_sorted(x) }
-                fn no_na(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltLogical>::no_na(x) }
-            } },
-            "Raw" => quote::quote! { impl ::miniextendr_api::altrep_traits::AltRaw for #ident #ty_generics #where_clause {
-                const HAS_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltRaw>::HAS_ELT;
-                const HAS_GET_REGION: bool = <#delegate as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION;
-                fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> u8 { <#delegate as ::miniextendr_api::altrep_traits::AltRaw>::elt(x,i) }
-                fn get_region(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t, n: ::miniextendr_api::ffi::R_xlen_t, buf: *mut u8) -> ::miniextendr_api::ffi::R_xlen_t { <#delegate as ::miniextendr_api::altrep_traits::AltRaw>::get_region(x,i,n,buf) }
-            } },
-            "String" => quote::quote! { impl ::miniextendr_api::altrep_traits::AltString for #ident #ty_generics #where_clause {
-                const HAS_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltString>::HAS_ELT;
-                const HAS_SET_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT;
-                const HAS_IS_SORTED: bool = <#delegate as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED;
-                const HAS_NO_NA: bool = <#delegate as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA;
-                fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltString>::elt(x,i) }
-                fn set_elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t, v: ::miniextendr_api::ffi::SEXP) { <#delegate as ::miniextendr_api::altrep_traits::AltString>::set_elt(x,i,v) }
-                fn is_sorted(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltString>::is_sorted(x) }
-                fn no_na(x: ::miniextendr_api::ffi::SEXP) -> i32 { <#delegate as ::miniextendr_api::altrep_traits::AltString>::no_na(x) }
-            } },
-            "List" => quote::quote! { impl ::miniextendr_api::altrep_traits::AltList for #ident #ty_generics #where_clause {
-                const HAS_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltList>::HAS_ELT;
-                const HAS_SET_ELT: bool = <#delegate as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT;
-                fn elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltList>::elt(x,i) }
-                fn set_elt(x: ::miniextendr_api::ffi::SEXP, i: ::miniextendr_api::ffi::R_xlen_t, v: ::miniextendr_api::ffi::SEXP) { <#delegate as ::miniextendr_api::altrep_traits::AltList>::set_elt(x,i,v) }
-            } },
-            _ => quote::quote!(),
-        };
-        quote::quote! {
-            impl ::miniextendr_api::altrep_traits::Altrep for #ident #ty_generics #where_clause {
-                const HAS_LENGTH: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_LENGTH;
-                const HAS_SERIALIZED_STATE: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_SERIALIZED_STATE;
-                const HAS_UNSERIALIZE_EX: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE_EX;
-                const HAS_UNSERIALIZE: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE;
-                const HAS_DUPLICATE: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE;
-                const HAS_DUPLICATE_EX: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE_EX;
-                const HAS_COERCE: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_COERCE;
-                const HAS_INSPECT: bool = <#delegate as ::miniextendr_api::altrep_traits::Altrep>::HAS_INSPECT;
-                fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::length(x) }
-                fn serialized_state(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::serialized_state(x) }
-                fn unserialize_ex(class: ::miniextendr_api::ffi::SEXP, state: ::miniextendr_api::ffi::SEXP, attr: ::miniextendr_api::ffi::SEXP, objf: i32, levs: i32) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::unserialize_ex(class,state,attr,objf,levs) }
-                fn unserialize(class: ::miniextendr_api::ffi::SEXP, state: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::unserialize(class,state) }
-                fn duplicate(x: ::miniextendr_api::ffi::SEXP, deep: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::duplicate(x,deep) }
-                fn duplicate_ex(x: ::miniextendr_api::ffi::SEXP, deep: bool) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::duplicate_ex(x,deep) }
-                fn coerce(x: ::miniextendr_api::ffi::SEXP, to_type: ::miniextendr_api::ffi::SEXPTYPE) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::coerce(x,to_type) }
-                fn inspect(x: ::miniextendr_api::ffi::SEXP, pre: i32, deep: i32, pvec: i32) -> bool { <#delegate as ::miniextendr_api::altrep_traits::Altrep>::inspect(x,pre,deep,pvec) }
-            }
-            impl ::miniextendr_api::altrep_traits::AltVec for #ident #ty_generics #where_clause {
-                const HAS_DATAPTR: bool = <#delegate as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR;
-                const HAS_DATAPTR_OR_NULL: bool = <#delegate as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL;
-                const HAS_EXTRACT_SUBSET: bool = <#delegate as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET;
-                fn dataptr(x: ::miniextendr_api::ffi::SEXP, writable: bool) -> *mut std::ffi::c_void { <#delegate as ::miniextendr_api::altrep_traits::AltVec>::dataptr(x, writable) }
-                fn dataptr_or_null(x: ::miniextendr_api::ffi::SEXP) -> *const std::ffi::c_void { <#delegate as ::miniextendr_api::altrep_traits::AltVec>::dataptr_or_null(x) }
-                fn extract_subset(x: ::miniextendr_api::ffi::SEXP, indx: ::miniextendr_api::ffi::SEXP, call: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::SEXP { <#delegate as ::miniextendr_api::altrep_traits::AltVec>::extract_subset(x,indx,call) }
-            }
-            #base_impl
-        }
-    } else { quote::quote!() };
+    // No trait forwarding: rely on trampoline type's trait impls.
 
-    // Emit family marker impl to select blanket RegisterAltrep implementation
-    let family_marker_impl: proc_macro2::TokenStream = match base_name.as_str() {
-        "Int" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::IntKind; } },
-        "Real" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::RealKind; } },
-        "Logical" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::LogicalKind; } },
-        "Raw" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::RawKind; } },
-        "String" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::StringKind; } },
-        "List" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::ListKind; } },
-        _ => quote::quote!(),
-    };
+    // No marker traits needed.
+    let _family_marker_impl: proc_macro2::TokenStream = quote::quote! {};
 
     let expanded = quote::quote! {
         #input
@@ -1095,15 +1046,26 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
             }
         }
 
-        // Select family kind via marker, then register per-type
-        #family_marker_impl
-
         impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
             unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
                 use ::miniextendr_api::altrep_bridge as bridge;
-                bridge::install_base::<#tramp_ty>(cls);
-                bridge::install_vec::<#tramp_ty>(cls);
-                #family_install
+                use ::miniextendr_api::ffi::altrep::*;
+                // Base: length only (others not yet implemented via trampolines here)
+                if <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_LENGTH {
+                    unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)) };
+                }
+                // Vec-level setters
+                if <#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR {
+                    unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<#tramp_ty>)) };
+                }
+                if <#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL {
+                    unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<#tramp_ty>)) };
+                }
+                if <#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET {
+                    unsafe { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<#tramp_ty>)) };
+                }
+                // Family-specific
+                #family_setters
             }
         }
 
@@ -1115,7 +1077,6 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
             }
         }
 
-        #del_impls
     };
 
     expanded.into()

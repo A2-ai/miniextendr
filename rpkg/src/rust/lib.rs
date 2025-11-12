@@ -123,13 +123,13 @@ fn add_left_mut(mut left: i32, right: i32) -> i32 {
 }
 
 #[miniextendr]
-fn add_right_mut(left: i32, mut right: i32) -> i32 {
-    left + *&mut right
+fn add_right_mut(left: i32, right: i32) -> i32 {
+    left + right
 }
 
 #[miniextendr]
-fn add_left_right_mut(mut left: i32, mut right: i32) -> i32 {
-    *&mut left + *&mut right
+fn add_left_right_mut(left: i32, right: i32) -> i32 {
+    left + right
 }
 
 // endregion
