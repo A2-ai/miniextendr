@@ -900,10 +900,8 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
                 "base" => base_name = Some(s.value()),
                 _ => {}
             }
-        } else if let syn::Expr::Path(p) = nv.value {
-            if key == "delegate" {
-                delegate_ty = Some(syn::Type::Path(syn::TypePath { qself: None, path: p.path }));
-            }
+        } else if let syn::Expr::Path(p) = nv.value && key == "delegate" {
+            delegate_ty = Some(syn::Type::Path(syn::TypePath { qself: None, path: p.path }));
         }
     }
     let class_name = class_name.expect("#[alttrep] missing class = \"...\"");
@@ -923,15 +921,52 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
         ).into_compile_error().into(),
     };
 
-    let reg_call: syn::Expr = match base_name.as_str() {
-        "Int" => syn::parse_quote!(unsafe { ::miniextendr_api::altrep::register_altinteger_class::<#ident>() }),
-        "Real" => syn::parse_quote!(unsafe { ::miniextendr_api::altrep::register_altreal_class::<#ident>() }),
-        "Logical" => syn::parse_quote!(unsafe { ::miniextendr_api::altrep::register_altlogical_class::<#ident>() }),
-        "Raw" => syn::parse_quote!(unsafe { ::miniextendr_api::altrep::register_altraw_class::<#ident>() }),
-        "String" => syn::parse_quote!(unsafe { ::miniextendr_api::altrep::register_altstring_class::<#ident>() }),
-        "List" => syn::parse_quote!(unsafe { ::miniextendr_api::altrep::register_altlist_class::<#ident>() }),
-        _ => unreachable!(),
+    // Decide which type to use for trampolines (delegate or self)
+    let tramp_ty: syn::Type = if let Some(delegate) = delegate_ty.clone() { delegate } else { syn::parse_quote!(#ident) };
+    let family_install: proc_macro2::TokenStream = match base_name.as_str() {
+        "Int" => quote::quote! { bridge::install_int::<#tramp_ty>(cls); },
+        "Real" => quote::quote! { bridge::install_real::<#tramp_ty>(cls); },
+        "Logical" => quote::quote! { bridge::install_lgl::<#tramp_ty>(cls); },
+        "Raw" => quote::quote! { bridge::install_raw::<#tramp_ty>(cls); },
+        "String" => quote::quote! { bridge::install_str::<#tramp_ty>(cls); },
+        "List" => quote::quote! { bridge::install_list::<#tramp_ty>(cls); },
+        _ => quote::quote! {},
     };
+    let make_class: proc_macro2::TokenStream = match base_name.as_str() {
+        "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "Logical" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        _ => quote::quote! { unreachable!() },
+    };
+
+    // Registration: per-type; create class handle then install methods via MethodRegistrar
 
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
     let class_cstr = syn::LitStr::new(&class_name, ident.span());
@@ -1037,6 +1072,17 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
         }
     } else { quote::quote!() };
 
+    // Emit family marker impl to select blanket RegisterAltrep implementation
+    let family_marker_impl: proc_macro2::TokenStream = match base_name.as_str() {
+        "Int" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::IntKind; } },
+        "Real" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::RealKind; } },
+        "Logical" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::LogicalKind; } },
+        "Raw" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::RawKind; } },
+        "String" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::StringKind; } },
+        "List" => quote::quote! { impl ::miniextendr_api::altrep_registration::HasAltrepKind for #ident #ty_generics #where_clause { type Kind = ::miniextendr_api::altrep_registration::ListKind; } },
+        _ => quote::quote!(),
+    };
+
     let expanded = quote::quote! {
         #input
 
@@ -1045,12 +1091,28 @@ pub fn alttrep(attr: proc_macro::TokenStream, item: proc_macro::TokenStream) -> 
             const PKG_NAME: &'static std::ffi::CStr = c #pkg_cstr;
             const BASE: ::miniextendr_api::ffi::altrep::RBase = #base_variant;
             unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
-                <#ident as ::miniextendr_api::altrep_traits::Altrep>::length(x)
+                <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)
+            }
+        }
+
+        // Select family kind via marker, then register per-type
+        #family_marker_impl
+
+        impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
+            unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
+                use ::miniextendr_api::altrep_bridge as bridge;
+                bridge::install_base::<#tramp_ty>(cls);
+                bridge::install_vec::<#tramp_ty>(cls);
+                #family_install
             }
         }
 
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
-            fn register() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t { #reg_call }
+            fn register() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
+                let cls = unsafe { #make_class };
+                unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
+                cls
+            }
         }
 
         #del_impls

@@ -7,7 +7,6 @@ use std::sync::{Arc, OnceLock};
 
 // Use the project's FFI definitions and types.
 use crate::altrep_traits as traits;
-use crate::altrep_registration::RegisterAltrep;
 use crate::ffi::altrep::*;
 use crate::ffi::*;
 
@@ -265,12 +264,12 @@ unsafe extern "C" fn list_finalizer(ep: SEXP) {
 
 /// Must be called once (lazy-initialized on first constructor use).
 unsafe fn ensure_classes() {
-    ALTINT.get_or_init(|| AltIntClass::register());
-    ALTREAL.get_or_init(|| AltRealClass::register());
-    ALTSTR.get_or_init(|| AltStrClass::register());
-    ALTLOG.get_or_init(|| AltLogicalClass::register());
-    ALTRAW.get_or_init(|| AltRawClass::register());
-    ALTLIST.get_or_init(|| AltListClass::register());
+    ALTINT.get_or_init(|| unsafe { register_altinteger_class::<AltIntClass>() });
+    ALTREAL.get_or_init(|| unsafe { register_altreal_class::<AltRealClass>() });
+    ALTSTR.get_or_init(|| unsafe { register_altstring_class::<AltStrClass>() });
+    ALTLOG.get_or_init(|| unsafe { register_altlogical_class::<AltLogicalClass>() });
+    ALTRAW.get_or_init(|| unsafe { register_altraw_class::<AltRawClass>() });
+    ALTLIST.get_or_init(|| unsafe { register_altlist_class::<AltListClass>() });
 }
 
 /// Initialize and register all built-in ALTREP classes.
@@ -1448,11 +1447,7 @@ impl traits::AltInteger for AltIntClass {
     }
 }
 
-impl crate::altrep_registration::RegisterAltrep for AltIntClass {
-    fn register() -> R_altrep_class_t {
-        unsafe { register_altinteger_class::<AltIntClass>() }
-    }
-}
+// RegisterAltrep is provided via blanket impls in altrep_registration.rs
 
 struct AltRealClass;
 impl AltrepClass for AltRealClass {
@@ -1545,11 +1540,7 @@ impl traits::AltReal for AltRealClass {
     }
 }
 
-impl crate::altrep_registration::RegisterAltrep for AltRealClass {
-    fn register() -> R_altrep_class_t {
-        unsafe { register_altreal_class::<AltRealClass>() }
-    }
-}
+// RegisterAltrep via blanket impl
 
 struct AltStrClass;
 impl AltrepClass for AltStrClass {
@@ -1581,11 +1572,7 @@ impl traits::AltString for AltStrClass {
     }
 }
 
-impl crate::altrep_registration::RegisterAltrep for AltStrClass {
-    fn register() -> R_altrep_class_t {
-        unsafe { register_altstring_class::<AltStrClass>() }
-    }
-}
+// RegisterAltrep via blanket impl
 
 struct AltLogicalClass;
 impl AltrepClass for AltLogicalClass {
@@ -1642,11 +1629,7 @@ impl traits::AltLogical for AltLogicalClass {
     }
 }
 
-impl crate::altrep_registration::RegisterAltrep for AltLogicalClass {
-    fn register() -> R_altrep_class_t {
-        unsafe { register_altlogical_class::<AltLogicalClass>() }
-    }
-}
+// RegisterAltrep via blanket impl
 
 struct AltRawClass;
 impl AltrepClass for AltRawClass {
@@ -1695,11 +1678,7 @@ impl traits::AltRaw for AltRawClass {
     }
 }
 
-impl crate::altrep_registration::RegisterAltrep for AltRawClass {
-    fn register() -> R_altrep_class_t {
-        unsafe { register_altraw_class::<AltRawClass>() }
-    }
-}
+// RegisterAltrep via blanket impl
 
 struct AltListClass;
 impl AltrepClass for AltListClass {
@@ -1724,8 +1703,4 @@ impl traits::AltList for AltListClass {
     }
 }
 
-impl crate::altrep_registration::RegisterAltrep for AltListClass {
-    fn register() -> R_altrep_class_t {
-        unsafe { register_altlist_class::<AltListClass>() }
-    }
-}
+// RegisterAltrep via blanket impl
