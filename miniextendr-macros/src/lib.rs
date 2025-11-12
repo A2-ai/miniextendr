@@ -875,7 +875,7 @@ fn expand_altrep_struct(
         syn::Item::Struct(s) => (s.ident.clone(), s.generics.clone()),
         syn::Item::Enum(e) => (e.ident.clone(), e.generics.clone()),
         _ => {
-            return syn::Error::new(input.span(), "#[alttrep] supports only structs and enums")
+            return syn::Error::new(input.span(), "#[miniextendr] on types supports only structs and enums")
                 .into_compile_error()
                 .into();
         }
@@ -919,10 +919,10 @@ fn expand_altrep_struct(
             }));
         }
     }
-    let class_name = class_name.expect("#[alttrep] missing class = \"...\"");
-    let pkg_name = pkg_name.expect("#[alttrep] missing pkg = \"...\"");
+    let class_name = class_name.expect("#[miniextendr] missing class = \"...\"");
+    let pkg_name = pkg_name.expect("#[miniextendr] missing pkg = \"...\"");
     let base_name =
-        base_name.expect("#[alttrep] missing base = \"Int|Real|Logical|Raw|String|List\"");
+        base_name.expect("#[miniextendr] missing base = \"Int|Real|Logical|Raw|String|List\"");
 
     let base_variant: syn::Expr = match base_name.as_str() {
         "Int" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Int),
