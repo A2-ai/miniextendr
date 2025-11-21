@@ -81,9 +81,9 @@ pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
 
 dnl ---- ensure document.rs.in exists (template) ----
-AS_IF([test ! -f "$abs_top_srcdir/src/rust/document.rs.in"], [
-  mkdir -p "$abs_top_srcdir/src/rust" || AC_MSG_ERROR([cannot mkdir $abs_top_srcdir/src/rust])
-  cat >"$abs_top_srcdir/src/rust/document.rs.in" <<EOF
+AS_IF([test ! -f "$abs_rpkg_src/rust/document.rs.in"], [
+  mkdir -p "$abs_rpkg_src/rust" || AC_MSG_ERROR([cannot mkdir $abs_rpkg_src/rust])
+  cat >"$abs_rpkg_src/rust/document.rs.in" <<EOF
 // NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
 use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
@@ -169,7 +169,7 @@ VENDOR_OUT="$ROOT_MINIEXTENDR_REPO/vendor"
 SYNC1="--sync=$ROOT_MINIEXTENDR_REPO/Cargo.toml"
 SYNC2="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-api/Cargo.toml"
 SYNC3="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-macros/Cargo.toml"
-SYNC4="--sync=$abs_top_srcdir/src/rust/Cargo.toml"
+SYNC4="--sync=$abs_rpkg_src/rust/Cargo.toml"
 VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
 AC_SUBST([VENDOR_SYNC_FLAGS])
 AC_SUBST([VENDOR_OUT])

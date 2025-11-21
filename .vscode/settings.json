@@ -10,4 +10,5 @@
   ],
   "rust-analyzer.check.command": "check",
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/src/rust/ra_target",
+  // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpfulk to ai tools
 }
