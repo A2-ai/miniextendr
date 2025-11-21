@@ -608,14 +608,24 @@ PACKAGE_URL=''
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+VENDOR_OUT
+VENDOR_SYNC_FLAGS
+OPTIONAL_CARGO_DEPS
+RUST_SOURCES
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
+CARGO_LIBDIR
+CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
 CARGO_PROFILE
 CARGO_TARGET_DIR
+RUST_TOOLCHAIN
+RUSTC
+CARGO
 ROOT_MINIEXTENDR_REPO
-ABS_SRCDIR
+ABS_RPKG_SRCDIR
+ABS_TOP_SRCDIR
 target_alias
 host_alias
 build_alias
@@ -662,10 +672,12 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
+RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
 CARGO_STATICLIB_NAME
-ENV_RUSTFLAGS'
+ENV_RUSTFLAGS
+CARGO_BUILD_TARGET'
 
 
 # Initialize some variables set by options.
@@ -1281,6 +1293,8 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
+  RUST_TOOLCHAIN
+              Rust toolchain selector like '+stable' or '+nightly'
   CARGO_TARGET_DIR
               Cargo target directory (default: src/rust/target)
   CARGO_PROFILE
@@ -1289,6 +1303,8 @@ Some influential environment variables:
               Name of Rust static library
   ENV_RUSTFLAGS
               Rust compiler flags passed as RUSTFLAGS
+  CARGO_BUILD_TARGET
+              Cargo build target triple (e.g. aarch64-apple-darwin)
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -1734,39 +1750,284 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
+
 : ${R_HOME=`R RHOME`}
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
 
-
 abs_top_srcdir=`(cd "$srcdir" && pwd)`
-abs_srcdir="$abs_top_srcdir/src"
-ABS_SRCDIR="$abs_srcdir"
+ABS_TOP_SRCDIR="$abs_top_srcdir"
+
+abs_rpkg_src="$abs_top_srcdir/src"
+ABS_RPKG_SRCDIR="$abs_rpkg_src"
 
 
-ROOT_MINIEXTENDR_REPO="$abs_srcdir/../.."
+root_miniextendr_repo=`(cd "$abs_rpkg_src/../.." && pwd)`
+ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
 
 
-# TODO: Add all these to the R build process
-# https://doc.rust-lang.org/cargo/reference/environment-variables.html
+if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}cargo", so it can be a program name with args.
+set dummy ${ac_tool_prefix}cargo; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_CARGO+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $CARGO in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_CARGO="$CARGO" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_CARGO="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
 
-: ${CARGO_TARGET_DIR="$abs_srcdir/rust/target"}
+  ;;
+esac ;;
+esac
+fi
+CARGO=$ac_cv_path_CARGO
+if test -n "$CARGO"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $CARGO" >&5
+printf "%s\n" "$CARGO" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+fi
+if test -z "$ac_cv_path_CARGO"; then
+  ac_pt_CARGO=$CARGO
+  # Extract the first word of "cargo", so it can be a program name with args.
+set dummy cargo; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_ac_pt_CARGO+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $ac_pt_CARGO in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_ac_pt_CARGO="$ac_pt_CARGO" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_ac_pt_CARGO="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+ac_pt_CARGO=$ac_cv_path_ac_pt_CARGO
+if test -n "$ac_pt_CARGO"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_pt_CARGO" >&5
+printf "%s\n" "$ac_pt_CARGO" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+  if test "x$ac_pt_CARGO" = x; then
+    CARGO="no"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
+printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
+ac_tool_warned=yes ;;
+esac
+    CARGO=$ac_pt_CARGO
+  fi
+else
+  CARGO="$ac_cv_path_CARGO"
+fi
+
+if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}rustc", so it can be a program name with args.
+set dummy ${ac_tool_prefix}rustc; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_RUSTC+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $RUSTC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_RUSTC="$RUSTC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_RUSTC="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+RUSTC=$ac_cv_path_RUSTC
+if test -n "$RUSTC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $RUSTC" >&5
+printf "%s\n" "$RUSTC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+fi
+if test -z "$ac_cv_path_RUSTC"; then
+  ac_pt_RUSTC=$RUSTC
+  # Extract the first word of "rustc", so it can be a program name with args.
+set dummy rustc; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_ac_pt_RUSTC+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $ac_pt_RUSTC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_ac_pt_RUSTC="$ac_pt_RUSTC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_ac_pt_RUSTC="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+ac_pt_RUSTC=$ac_cv_path_ac_pt_RUSTC
+if test -n "$ac_pt_RUSTC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_pt_RUSTC" >&5
+printf "%s\n" "$ac_pt_RUSTC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+  if test "x$ac_pt_RUSTC" = x; then
+    RUSTC="no"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
+printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
+ac_tool_warned=yes ;;
+esac
+    RUSTC=$ac_pt_RUSTC
+  fi
+else
+  RUSTC="$ac_cv_path_RUSTC"
+fi
+
+if test "x$CARGO" = "xno"
+then :
+  as_fn_error $? "\`cargo\` not found" "$LINENO" 5
+fi
+if test "x$RUSTC" = "xno"
+then :
+  as_fn_error $? "\`rustc\` not found" "$LINENO" 5
+fi
+
+
+
+
+: ${RUST_TOOLCHAIN=""}
+
+
+
+: ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
 
 
 
 : ${CARGO_PROFILE="release"}
 
 
-# TODO: read this from Cargo.toml manually.. or somewhere else
 
-# TODO: use cargo metadata to figure out what the library or libraries ought to be named!
 : ${CARGO_STATICLIB_NAME="juice"}
 
 
 
-
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
+
+
+
+: ${CARGO_BUILD_TARGET=""}
+
+
+if test -n "$CARGO_BUILD_TARGET"; then
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE"
+else
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
+fi
 
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: R_HOME                = $R_HOME" >&5
@@ -1779,9 +2040,16 @@ printf "%s\n" "$as_me: CARGO_PROFILE         = $CARGO_PROFILE" >&6;}
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&5
 printf "%s\n" "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_LIBDIR          = $CARGO_LIBDIR" >&5
+printf "%s\n" "$as_me: CARGO_LIBDIR          = $CARGO_LIBDIR" >&6;}
+if test -n "$RUST_TOOLCHAIN"
+then :
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&5
+printf "%s\n" "$as_me: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&6;}
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
+printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
 
-# TODO
-# Rust-safe tarname (hyphens → underscores)
 pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
 PACKAGE_TARNAME_RS=$pkg_rs
 
@@ -1789,14 +2057,14 @@ pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
 
-# Ensure template exists
-if test ! -f "$srcdir/src/rust/document.rs.in"
+if test ! -f "$abs_top_srcdir/src/rust/document.rs.in"
 then :
 
-  mkdir -p "$srcdir/src/rust"
-  cat >"$srcdir/src/rust/document.rs.in" <<'EOF'
-use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
-use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
+  mkdir -p "$abs_top_srcdir/src/rust" || as_fn_error $? "cannot mkdir $abs_top_srcdir/src/rust" "$LINENO" 5
+  cat >"$abs_top_srcdir/src/rust/document.rs.in" <<EOF
+// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
+use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
+use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();
@@ -1824,25 +2092,26 @@ EOF
 
 fi
 
-# Generate the concrete file with substitutions
 ac_config_files="$ac_config_files src/rust/document.rs"
 
 
-
-
-# Ensure entrypoint.c.in exists
-if test ! -f "$abs_srcdir/entrypoint.c.in"
+if test ! -f "$abs_rpkg_src/entrypoint.c.in"
 then :
 
-  mkdir -p "$abs_srcdir"
-  cat >"$abs_srcdir/entrypoint.c.in" <<EOF
+  mkdir -p "$abs_rpkg_src" || as_fn_error $? "cannot mkdir $abs_rpkg_src" "$LINENO" 5
+  cat >"$abs_rpkg_src/entrypoint.c.in" <<EOF
+// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
+extern void miniextendr_runtime_init(void);
+extern void miniextendr_altrep_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    miniextendr_runtime_init();
+    miniextendr_altrep_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
@@ -1852,12 +2121,56 @@ EOF
 
 fi
 
-# TODO
 
-ac_config_files="$ac_config_files src/rust/Cargo.toml src/Makevars .cargo/config.toml src/entrypoint.c"
+RUST_SRC_DIR="$abs_rpkg_src/rust"
+RUST_SOURCES=
+if test -d "$RUST_SRC_DIR"; then
+  RUST_SOURCES=`(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
+    | sed "s|^.|$RUST_SRC_DIR|" \
+    | tr '\012' ' ')`
+fi
 
 
-ac_config_commands="$ac_config_commands postcopy"
+OPTIONAL_CARGO_DEPS=
+for f in \
+  "$RUST_SRC_DIR/build.rs" \
+  "$RUST_SRC_DIR/.cargo/config.toml" \
+  "$RUST_SRC_DIR/rust-toolchain.toml" \
+  "$RUST_SRC_DIR/rust-toolchain"
+do
+  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
+done
+
+
+VENDOR_OUT="$ROOT_MINIEXTENDR_REPO/vendor"
+SYNC1="--sync=$ROOT_MINIEXTENDR_REPO/Cargo.toml"
+SYNC2="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-api/Cargo.toml"
+SYNC3="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-macros/Cargo.toml"
+SYNC4="--sync=$abs_top_srcdir/src/rust/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
+
+
+
+RUST_DOT_CARGO_DIR="$RUST_SRC_DIR/.cargo"
+if test ! -f "$RUST_DOT_CARGO_DIR/config.toml"
+then :
+
+  mkdir -p "$RUST_DOT_CARGO_DIR" || as_fn_error $? "cannot mkdir $RUST_DOT_CARGO_DIR" "$LINENO" 5
+  cat > "$RUST_DOT_CARGO_DIR/config.toml" <<EOF
+source.crates-io
+replace-with = "vendored-sources"
+
+source.vendored-sources
+directory = "$VENDOR_OUT"
+
+build
+target-dir = "$CARGO_TARGET_DIR"
+EOF
+
+fi
+
+ac_config_files="$ac_config_files src/rust/Cargo.toml src/Makevars src/entrypoint.c"
+
 
 
 cat >confcache <<\_ACEOF
@@ -2419,7 +2732,6 @@ esac
 cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 # Files that config.status was made for.
 config_files="$ac_config_files"
-config_commands="$ac_config_commands"
 
 _ACEOF
 
@@ -2443,9 +2755,6 @@ Usage: $0 [OPTION]... [TAG]...
 
 Configuration files:
 $config_files
-
-Configuration commands:
-$config_commands
 
 Report bugs to the package provider."
 
@@ -2568,9 +2877,7 @@ do
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
-    ".cargo/config.toml") CONFIG_FILES="$CONFIG_FILES .cargo/config.toml" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
-    "postcopy") CONFIG_COMMANDS="$CONFIG_COMMANDS postcopy" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -2583,7 +2890,6 @@ done
 # bizarre bug on SunOS 4.1.3.
 if $ac_need_defaults; then
   test ${CONFIG_FILES+y} || CONFIG_FILES=$config_files
-  test ${CONFIG_COMMANDS+y} || CONFIG_COMMANDS=$config_commands
 fi
 
 # Have a temporary directory for convenience.  Make it in the build tree
@@ -2772,7 +3078,7 @@ cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
 fi # test -n "$CONFIG_FILES"
 
 
-eval set X "  :F $CONFIG_FILES      :C $CONFIG_COMMANDS"
+eval set X "  :F $CONFIG_FILES      "
 shift
 for ac_tag
 do
@@ -2982,19 +3288,9 @@ which seems to be undefined.  Please make sure it is defined" >&2;}
  ;;
 
 
-  :C)  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: executing $ac_file commands" >&5
-printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
- ;;
-  esac
-
-
-  case $ac_file$ac_mode in
-    "postcopy":C)
-  mkdir -p ../.cargo 2>/dev/null || true
-  cp .cargo/config.toml ../.cargo/config.toml 2>/dev/null || true
- ;;
 
   esac
+
 done # for ac_tag
 
 
@@ -3031,4 +3327,11 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
 printf "%s\n" "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
 
+
+if test -d "$ROOT_MINIEXTENDR_REPO/.git"; then
+  mkdir -p "$ROOT_MINIEXTENDR_REPO/.cargo" \
+    || as_fn_error $? "cannot mkdir $ROOT_MINIEXTENDR_REPO/.cargo" "$LINENO" 5
+  cp "$ABS_RPKG_SRCDIR/rust/.cargo/config.toml" \
+    "$ROOT_MINIEXTENDR_REPO/.cargo/config.toml"
+fi
 

@@ -1,1 +1,4 @@
 ^LICENSE\.md$
+^src/rust/ra_target$
+^src/rust/target$
+^dev$
