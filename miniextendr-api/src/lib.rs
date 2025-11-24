@@ -63,34 +63,11 @@ pub mod into_r;
 pub mod unwind;
 pub mod unwind_protect;
 
-pub mod error {
-    // use crate::ffi::Rprintf;
-    // use std::{
-    //     cell::RefCell,
-    //     ffi::{CStr, CString},
-    // };
+// TODO: finish the error module
+pub mod error;
 
-    // work-in-progress: Use common buffer for the *const char APIs..
-    // thread_local! {
-    //     /// Buffer using in `rprintln`/`rprint`/`rerror`
-    //     pub static R_MESSAGE_BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(256));
-    // }
-}
-
-pub mod dots {
-    use crate::ffi::SEXP;
-
-    /// Rust type representing `...`.
-    ///
-    /// See [`miniextendr`] macro for more information.
-    ///
-    /// [`miniextendr`]: crate::miniextendr
-    #[derive(Debug)]
-    pub struct Dots {
-        // Dots is always passed to us, they need no protection.
-        pub inner: SEXP,
-    }
-}
+// TODO: finish the dots module...
+pub mod dots;
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`

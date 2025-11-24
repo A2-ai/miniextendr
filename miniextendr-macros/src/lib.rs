@@ -370,7 +370,6 @@ pub fn miniextendr(
         },
     };
     //TODO: add an invisibility attribute to miniextendr(invisible)
-
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else {
@@ -402,7 +401,7 @@ pub fn miniextendr(
                 || attr
                     .parse_nested_meta(|meta| {
                         if meta.path.is_ident("no_mangle") {
-                            Err(meta.error("found #[no_mangle]"))
+                            Err(meta.error("found #[unsafe(no_mangle)]"))
                         } else {
                             Ok(())
                         }

@@ -320,5 +320,53 @@ pub fn raise_r_error(message: &str) -> ! {
     }
 }
 
-// Deprecated: per-call panic hook swapping removed in favor of a single global
-// hook gated by a thread-local flag.
+// Public entry-point --------------------------------------------------------
+
+pub fn with_rust_worker<F>(f: F) -> crate::ffi::SEXP
+where
+    F: FnOnce() -> Result<crate::ffi::SendSEXP, ()> + Send + 'static,
+{
+    let (reply_tx, reply_rx) = mpsc::sync_channel::<RustWorkerResult>(0);
+    if let Err(mpsc::SendError((task, reply))) = WORK_TX
+        .get()
+        .expect("worker sender not initialised")
+        .send((Box::new(f), reply_tx))
+    {
+        drop(task);
+        drop(reply);
+        raise_r_error_static(c"worker disconnected");
+    }
+
+    // service loop
+    loop {
+        let message = {
+            let guard = MAIN_RTASK_RX
+                .get()
+                .expect("main receiver not initialised")
+                .lock()
+                .expect("main receiver poisoned");
+            guard.recv()
+        };
+        match message {
+            Ok(RTaskRequest::RGuard { task, reply }) => run_on_main(task, reply),
+            Ok(RTaskRequest::Done) | Err(_) => break,
+        }
+    }
+
+    let outcome = reply_rx.recv();
+    match outcome {
+        Ok(Ok(Ok(ans))) => ans.get(),
+        Ok(Ok(Err(()))) => {
+            drop(reply_rx);
+            raise_r_error_static(c"R error during guarded call");
+        }
+        Ok(Err(payload)) => {
+            drop(reply_rx);
+            payload_to_r_error(payload)
+        }
+        Err(_) => {
+            drop(reply_rx);
+            raise_r_error_static(c"reply channel disconnected");
+        }
+    }
+}

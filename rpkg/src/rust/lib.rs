@@ -164,6 +164,7 @@ extern "C" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
+#[allow(clippy::diverging_sub_expression)]
 extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
     unsafe {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -180,6 +181,7 @@ extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
+#[allow(clippy::diverging_sub_expression)]
 extern "C" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
     std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) })
         .join()

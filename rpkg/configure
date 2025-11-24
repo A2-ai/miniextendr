@@ -605,6 +605,7 @@ PACKAGE_STRING='rpkg 1.0'
 PACKAGE_BUGREPORT=''
 PACKAGE_URL=''
 
+ac_unique_file="$abs_srcdir/Makevars.in"
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
