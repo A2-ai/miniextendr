@@ -60,7 +60,6 @@ pub mod altrep_std_impls;
 pub mod altrep_traits;
 pub mod ffi;
 pub mod into_r;
-pub mod unwind;
 pub mod unwind_protect;
 
 // TODO: finish the error module

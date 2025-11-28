@@ -1,10 +1,7 @@
-use std::borrow::Cow;
-
 use miniextendr_api::ffi::{R_NilValue, Rf_error, SEXP};
-use miniextendr_api::unwind::with_r;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-use miniextendr_api::unwind_protect::with_unwind_protect;
+use miniextendr_api::unwind_protect::{with_r_unwind_protect, with_unwind_protect};
 
 // region
 
@@ -13,14 +10,7 @@ struct MsgOnDrop;
 
 impl Drop for MsgOnDrop {
     fn drop(&mut self) {
-        let _ = with_r(|| unsafe {
-            miniextendr_api::ffi::Rprintf(
-                c"%s".as_ptr(),
-                c"R printing: Dropped `MsgOnDrop`!\n".as_ptr(),
-            );
-            R_NilValue
-        });
-        println!("Rust printing: Dropped on `MsgOnDrop`!");
+        println!("[Rust] Dropped `MsgOnDrop`!");
     }
 }
 
@@ -37,14 +27,11 @@ fn drop_on_panic() {
 }
 
 #[miniextendr]
-fn drop_on_panic_with_move() -> Result<(), Cow<'static, str>> {
+fn drop_on_panic_with_move() {
     let _a = MsgOnDrop;
-    with_r(|| unsafe {
+    unsafe {
         Rf_error(c"an r error occurred".as_ptr());
-        #[allow(unreachable_code)]
-        R_NilValue
-    })?;
-    Ok(())
+    }
 }
 
 // endregion
@@ -109,6 +96,89 @@ fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     // WARNING: doesn't drop
     unsafe {
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+    }
+}
+
+// endregion
+
+// region: with_r_unwind_protect tests
+
+/// Simple RAII type that prints when dropped (without using with_r to avoid deadlocks)
+struct SimpleDropMsg(&'static str);
+impl Drop for SimpleDropMsg {
+    fn drop(&mut self) {
+        eprintln!("[Rust] Dropped: {}", self.0);
+    }
+}
+
+/// Test that with_r_unwind_protect works for normal (non-error) path.
+/// Destructors should run normally when the closure completes successfully.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C" fn C_unwind_protect_normal() -> SEXP {
+    with_r_unwind_protect(|| {
+        let _a = SimpleDropMsg("stack resource");
+        let _b = Box::new(SimpleDropMsg("heap resource"));
+        unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(42) }
+    })
+}
+
+/// Test that with_r_unwind_protect cleans up on R error.
+/// Resources captured by the closure ARE dropped when an R error occurs.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C" fn C_unwind_protect_r_error() -> SEXP {
+    // Create resources BEFORE the protected region
+    let a = SimpleDropMsg("captured resource 1");
+    let b = Box::new(SimpleDropMsg("captured resource 2 (boxed)"));
+
+    with_r_unwind_protect(move || {
+        // Access resources without moving them out of closure's captured state
+        eprintln!("[Rust] Inside closure, using captured resources");
+        eprintln!("[Rust] a.0 = {}", a.0);
+        eprintln!("[Rust] b.0 = {}", b.0);
+
+        // Now trigger R error - cleanup should drop a and b
+        unsafe {
+            ::miniextendr_api::ffi::Rf_error(
+                c"%s".as_ptr(),
+                c"intentional R error for testing".as_ptr(),
+            )
+        };
+        #[allow(unreachable_code)]
+        unsafe {
+            // This is never reached, but we need to "use" a and b
+            // to prevent the compiler from moving them earlier
+            drop(a);
+            drop(b);
+            ::miniextendr_api::ffi::R_NilValue
+        }
+    })
+}
+
+/// Minimal test using low-level with_unwind_protect
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C" fn C_unwind_protect_lowlevel_test() -> SEXP {
+    eprintln!("[Rust] Starting low-level unwind protect test");
+    unsafe {
+        with_unwind_protect(
+            || {
+                eprintln!("[Rust] Inside protected function, about to trigger R error");
+                ::miniextendr_api::ffi::Rf_error(
+                    c"%s".as_ptr(),
+                    c"test R error".as_ptr(),
+                );
+                #[allow(unreachable_code)]
+                ::miniextendr_api::ffi::R_NilValue
+            },
+            |jump| {
+                eprintln!("[Rust] Cleanup callback called, jump={}", jump);
+            },
+        )
     }
 }
 
@@ -286,6 +356,10 @@ miniextendr_module! {
     fn add_panic_heap;
     fn add_r_error_heap;
 
+    extern "C" fn C_unwind_protect_normal;
+    extern "C" fn C_unwind_protect_r_error;
+    extern "C" fn C_unwind_protect_lowlevel_test;
+
     fn add_left_mut;
     fn add_right_mut;
     fn add_left_right_mut;
@@ -362,15 +436,8 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 // region: rust worker thread
 
 #[miniextendr]
-fn do_nothing() -> Result<SEXP, Cow<'static, str>> {
-    miniextendr_api::unwind::with_r(|| {
-        use miniextendr_api::ffi;
-
-        // panic!("intentional panic inside with_r"); // #2: test
-        // unsafe { miniextendr_api::ffi::Rf_error(c"intentional r error inside with_r".as_ptr()) }; // #1: test!
-
-        unsafe { ffi::Rf_ScalarInteger(42) }
-    })
+fn do_nothing() -> SEXP {
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }
 }
 
 // endregion

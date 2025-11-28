@@ -2106,11 +2106,9 @@ then :
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
-extern void miniextendr_runtime_init(void);
 extern void miniextendr_altrep_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    miniextendr_runtime_init();
     miniextendr_altrep_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
@@ -2151,25 +2149,7 @@ VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
 
 
 
-RUST_DOT_CARGO_DIR="$RUST_SRC_DIR/.cargo"
-if test ! -f "$RUST_DOT_CARGO_DIR/config.toml"
-then :
-
-  mkdir -p "$RUST_DOT_CARGO_DIR" || as_fn_error $? "cannot mkdir $RUST_DOT_CARGO_DIR" "$LINENO" 5
-  cat > "$RUST_DOT_CARGO_DIR/config.toml" <<EOF
-source.crates-io
-replace-with = "vendored-sources"
-
-source.vendored-sources
-directory = "$VENDOR_OUT"
-
-build
-target-dir = "$CARGO_TARGET_DIR"
-EOF
-
-fi
-
-ac_config_files="$ac_config_files src/rust/Cargo.toml src/Makevars src/entrypoint.c"
+ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml src/Makevars src/entrypoint.c"
 
 
 
@@ -2876,6 +2856,7 @@ do
   case $ac_config_target in
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
+    "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
 

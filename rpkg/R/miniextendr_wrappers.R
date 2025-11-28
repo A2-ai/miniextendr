@@ -30,6 +30,18 @@ add_r_error_heap <- function(unused_left, unused_right) {
     .Call(C_add_r_error_heap, .call = match.call(), unused_left, unused_right)
 }
 
+unsafe_C_unwind_protect_normal <- function() {
+    .Call(C_unwind_protect_normal)
+}
+
+unsafe_C_unwind_protect_r_error <- function() {
+    .Call(C_unwind_protect_r_error)
+}
+
+unsafe_C_unwind_protect_lowlevel_test <- function() {
+    .Call(C_unwind_protect_lowlevel_test)
+}
+
 add_left_mut <- function(left, right) {
     .Call(C_add_left_mut, .call = match.call(), left, right)
 }

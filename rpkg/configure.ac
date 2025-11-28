@@ -126,11 +126,9 @@ AS_IF([test ! -f "$abs_rpkg_src/entrypoint.c.in"], [
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
-extern void miniextendr_runtime_init(void);
 extern void miniextendr_altrep_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    miniextendr_runtime_init();
     miniextendr_altrep_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
@@ -174,25 +172,10 @@ VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
 AC_SUBST([VENDOR_SYNC_FLAGS])
 AC_SUBST([VENDOR_OUT])
 
-dnl Make cargo use the vendored dir (no network during build)
-RUST_DOT_CARGO_DIR="$RUST_SRC_DIR/.cargo"
-AS_IF([test ! -f "$RUST_DOT_CARGO_DIR/config.toml"], [
-  mkdir -p "$RUST_DOT_CARGO_DIR" || AC_MSG_ERROR([cannot mkdir $RUST_DOT_CARGO_DIR])
-  cat > "$RUST_DOT_CARGO_DIR/config.toml" <<EOF
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "$VENDOR_OUT"
-
-[build]
-target-dir = "$CARGO_TARGET_DIR"
-EOF
-])
-
 dnl ---- output files ----
 AC_CONFIG_FILES([
   src/rust/Cargo.toml
+  src/rust/.cargo/config.toml
   src/Makevars
   src/entrypoint.c
 ])

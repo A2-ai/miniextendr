@@ -271,14 +271,13 @@ pub fn miniextendr(
     let is_invisible_return_type: bool;
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
-    let option_none_error = quote::quote! {
-        || ::std::borrow::Cow::Borrowed(concat!(
+    let option_none_error_msg = quote::quote! {
+        concat!(
             "miniextendr function `",
             stringify!(#rust_ident),
             "` returned None"
-        ))
+        )
     };
-    let result_err_mapper = quote::quote!(|err| ::std::borrow::Cow::Owned(format!("{err:?}")));
     let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
@@ -312,20 +311,24 @@ pub fn miniextendr(
                     // -> Option<()>
                     is_invisible_return_type = true;
                     post_call_statements.push(quote::quote! {
-                        #rust_result_ident.ok_or_else(#option_none_error.clone())?;
+                        if #rust_result_ident.is_none() {
+                            panic!(#option_none_error_msg);
+                        }
                     });
                     quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
                     // -> Option<T>
                     post_call_statements.push(quote::quote! {
-                        let #rust_result_ident =
-                            #rust_result_ident.ok_or_else(#option_none_error.clone())?;
+                        let #rust_result_ident = match #rust_result_ident {
+                            Some(v) => v,
+                            None => panic!(#option_none_error_msg),
+                        };
                     });
                     if is_sexp_inner {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
                     }
                 }
             }
@@ -345,19 +348,24 @@ pub fn miniextendr(
                     // -> Result<(), E>
                     is_invisible_return_type = true;
                     post_call_statements.push(quote::quote! {
-                        #rust_result_ident.map_err(#result_err_mapper)?;
+                        if let Err(e) = #rust_result_ident {
+                            panic!("{:?}", e);
+                        }
                     });
                     quote::quote! { ::miniextendr_api::ffi::R_NilValue }
                 } else {
                     is_invisible_return_type = false;
                     // -> Result<T, E>
                     post_call_statements.push(quote::quote! {
-                        let #rust_result_ident = #rust_result_ident.map_err(#result_err_mapper)?;
+                        let #rust_result_ident = match #rust_result_ident {
+                            Ok(v) => v,
+                            Err(e) => panic!("{:?}", e),
+                        };
                     });
                     if ok_is_sexp {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
                     }
                 }
             }
@@ -365,7 +373,7 @@ pub fn miniextendr(
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
             }
         },
     };
@@ -380,15 +388,20 @@ pub fn miniextendr(
             #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
 
-                unsafe {
-                        ::miniextendr_api::unwind::call_worker(#call_param_ident, move || {
-                            #(#closure_statements)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            let __miniextendr_sexp_result = #return_expression;
-                            let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result);
-                            Ok(__miniextendr_sexp_result)
-                        })
+                let __miniextendr_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                    #(#closure_statements)*
+                    let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                    #(#post_call_statements)*
+                    let __miniextendr_sexp_result = #return_expression;
+                    __miniextendr_sexp_result
+                }));
+
+                match __miniextendr_result {
+                    Ok(sexp) => sexp,
+                    Err(panic) => {
+                        let msg = ::miniextendr_api::unwind_protect::panic_payload_to_string(panic);
+                        unsafe { ::miniextendr_api::unwind_protect::raise_r_error_call(#call_param_ident, &msg) }
+                    }
                 }
             }
         }

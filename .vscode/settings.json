@@ -9,9 +9,9 @@
     "--release"
   ],
   "rust-analyzer.check.command": "check",
-  "rust-analyzer.cargo.targetDir": "${workspaceFolder}/src/rust/ra_target",
+  "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",
   "rust-analyzer.cargo.extraEnv": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/src/rust/target"
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
   }
   // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpfulk to ai tools
 }
