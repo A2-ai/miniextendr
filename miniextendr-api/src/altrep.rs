@@ -142,7 +142,7 @@ pub trait ListBackend: Send + Sync + 'static {
 }
 
 // -- helpers to store/retrieve Box<dyn Backend> behind an external ptr --
-unsafe fn make_eptr<T: ?Sized>(b: Box<T>, fin: unsafe extern "C" fn(SEXP)) -> SEXP {
+unsafe fn make_eptr<T: ?Sized>(b: Box<T>, fin: unsafe extern "C-unwind" fn(SEXP)) -> SEXP {
     let ep = unsafe { R_MakeExternalPtr(Box::into_raw(b).cast(), R_NilValue, R_NilValue) };
     unsafe { R_RegisterCFinalizerEx(ep, Some(fin), Rboolean::TRUE) };
     ep
@@ -163,7 +163,7 @@ pub unsafe fn altrep_int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
     unsafe { int_backend(x) }
 }
 
-unsafe extern "C" fn int_finalizer(ep: SEXP) {
+unsafe extern "C-unwind" fn int_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
         drop(unsafe { Box::<Box<dyn IntBackend>>::from_raw(raw.cast()) });
@@ -181,7 +181,7 @@ unsafe fn real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
 pub unsafe fn altrep_real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
     unsafe { real_backend(x) }
 }
-unsafe extern "C" fn real_finalizer(ep: SEXP) {
+unsafe extern "C-unwind" fn real_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
         drop(unsafe { Box::<Box<dyn RealBackend>>::from_raw(raw.cast()) });
@@ -199,7 +199,7 @@ unsafe fn str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
 pub unsafe fn altrep_str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
     unsafe { str_backend(x) }
 }
-unsafe extern "C" fn str_finalizer(ep: SEXP) {
+unsafe extern "C-unwind" fn str_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
         unsafe { drop(Box::<Box<dyn StringBackend>>::from_raw(raw.cast())) };
@@ -217,7 +217,7 @@ unsafe fn lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
 pub unsafe fn altrep_lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
     unsafe { lgl_backend(x) }
 }
-unsafe extern "C" fn lgl_finalizer(ep: SEXP) {
+unsafe extern "C-unwind" fn lgl_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
         drop(unsafe { Box::<Box<dyn LogicalBackend>>::from_raw(raw.cast()) });
@@ -235,7 +235,7 @@ unsafe fn raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
 pub unsafe fn altrep_raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
     unsafe { raw_backend(x) }
 }
-unsafe extern "C" fn raw_finalizer(ep: SEXP) {
+unsafe extern "C-unwind" fn raw_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
         drop(unsafe { Box::<Box<dyn RawBackend>>::from_raw(raw.cast()) });
@@ -253,7 +253,7 @@ unsafe fn list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
 pub unsafe fn altrep_list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
     unsafe { list_backend(x) }
 }
-unsafe extern "C" fn list_finalizer(ep: SEXP) {
+unsafe extern "C-unwind" fn list_finalizer(ep: SEXP) {
     let raw = unsafe { R_ExternalPtrAddr(ep) };
     if !raw.is_null() {
         drop(unsafe { Box::<Box<dyn ListBackend>>::from_raw(raw.cast()) });
@@ -274,7 +274,7 @@ unsafe fn ensure_classes() {
 
 /// Initialize and register all built-in ALTREP classes.
 #[unsafe(no_mangle)]
-pub extern "C" fn miniextendr_altrep_init() {
+pub extern "C-unwind" fn miniextendr_altrep_init() {
     unsafe { ensure_classes() };
 }
 
@@ -357,7 +357,7 @@ pub unsafe fn new_altrep_int_from_slice_static(s: &'static [i32]) -> SEXP {
 pub unsafe fn new_altrep_int_from_mmap(
     ptr: *const i32,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
 ) -> SEXP {
     unsafe { new_altrep_int(Box::new(IntMmap::new(ptr, len, cleanup))) }
 }
@@ -382,7 +382,7 @@ pub unsafe fn new_altrep_real_from_slice_static(s: &'static [f64]) -> SEXP {
 pub unsafe fn new_altrep_real_from_mmap(
     ptr: *const f64,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
 ) -> SEXP {
     unsafe { new_altrep_real(Box::new(RealMmap::new(ptr, len, cleanup))) }
 }
@@ -424,7 +424,7 @@ pub unsafe fn new_altrep_lgl_from_slice_static(s: &'static [i32]) -> SEXP {
 pub unsafe fn new_altrep_lgl_from_mmap(
     ptr: *const i32,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
 ) -> SEXP {
     unsafe { new_altrep_lgl(Box::new(LogicalMmap::new(ptr, len, cleanup))) }
 }
@@ -449,7 +449,7 @@ pub unsafe fn new_altrep_raw_from_slice_static(s: &'static [Rbyte]) -> SEXP {
 pub unsafe fn new_altrep_raw_from_mmap(
     ptr: *const Rbyte,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
 ) -> SEXP {
     unsafe { new_altrep_raw(Box::new(RawMmap::new(ptr, len, cleanup))) }
 }
@@ -517,7 +517,7 @@ impl IntBackend for IntArc {
 pub struct IntMmap {
     ptr: *const i32,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
 }
 unsafe impl Send for IntMmap {}
 unsafe impl Sync for IntMmap {}
@@ -528,7 +528,7 @@ impl IntMmap {
     pub unsafe fn new(
         ptr: *const i32,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }
@@ -650,7 +650,7 @@ impl RealBackend for RealSliceMat {
 pub struct RealMmap {
     ptr: *const f64,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
 }
 unsafe impl Send for RealMmap {}
 unsafe impl Sync for RealMmap {}
@@ -661,7 +661,7 @@ impl RealMmap {
     pub unsafe fn new(
         ptr: *const f64,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }
@@ -783,7 +783,7 @@ impl LogicalBackend for LogicalSliceMat {
 pub struct LogicalMmap {
     ptr: *const i32,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
 }
 unsafe impl Send for LogicalMmap {}
 unsafe impl Sync for LogicalMmap {}
@@ -794,7 +794,7 @@ impl LogicalMmap {
     pub unsafe fn new(
         ptr: *const i32,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }
@@ -916,7 +916,7 @@ impl RawBackend for RawSliceMat {
 pub struct RawMmap {
     ptr: *const Rbyte,
     len: usize,
-    cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+    cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
 }
 unsafe impl Send for RawMmap {}
 unsafe impl Sync for RawMmap {}
@@ -927,7 +927,7 @@ impl RawMmap {
     pub unsafe fn new(
         ptr: *const Rbyte,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }
@@ -1111,7 +1111,7 @@ impl ListBackend for OwnedList {
 /// # Safety
 /// Must be called by R with valid SEXP arguments. Panics or errors
 /// in this function must not unwind across the FFI boundary.
-pub unsafe extern "C" fn C_altrep_compact_int(
+pub unsafe extern "C-unwind" fn C_altrep_compact_int(
     _call: SEXP,
     n_: SEXP,
     start_: SEXP,
@@ -1130,7 +1130,7 @@ pub unsafe extern "C" fn C_altrep_compact_int(
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a REALSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> SEXP {
     let b = unsafe { OwnedReal::from_reals_sexp(x) };
     unsafe { new_altrep_real(Box::new(b)) }
 }
@@ -1138,7 +1138,7 @@ pub unsafe extern "C" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a STRSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> SEXP {
     let b = unsafe { Utf8Vec::from_strs_sexp(x) };
     unsafe { new_altrep_str(Box::new(b)) }
 }
@@ -1146,7 +1146,7 @@ pub unsafe extern "C" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a LGLSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
     let b = unsafe { OwnedLogical::from_lgls_sexp(x) };
     unsafe { new_altrep_lgl(Box::new(b)) }
 }
@@ -1154,7 +1154,7 @@ pub unsafe extern "C" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a RAWSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
     let b = unsafe { OwnedRaw::from_raw_sexp(x) };
     unsafe { new_altrep_raw(Box::new(b)) }
 }
@@ -1162,7 +1162,7 @@ pub unsafe extern "C" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a VECSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C" fn C_altrep_from_list(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_list(_call: SEXP, x: SEXP) -> SEXP {
     let b = unsafe { OwnedList::from_list_sexp(x) };
     unsafe { new_altrep_list(Box::new(b)) }
 }

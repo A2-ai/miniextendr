@@ -159,7 +159,7 @@ impl RealBackend for RealSliceMat {
 pub struct RealMmap {
     pub ptr: *const f64,
     pub len: usize,
-    pub cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+    pub cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
 }
 unsafe impl Send for RealMmap {}
 unsafe impl Sync for RealMmap {}
@@ -170,7 +170,7 @@ impl RealMmap {
     pub unsafe fn new(
         ptr: *const f64,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const f64, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }
@@ -370,7 +370,7 @@ impl LogicalBackend for LogicalSliceMat {
 pub struct LogicalMmap {
     pub ptr: *const i32,
     pub len: usize,
-    pub cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+    pub cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
 }
 unsafe impl Send for LogicalMmap {}
 unsafe impl Sync for LogicalMmap {}
@@ -381,7 +381,7 @@ impl LogicalMmap {
     pub unsafe fn new(
         ptr: *const i32,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const i32, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }
@@ -503,7 +503,7 @@ impl RawBackend for RawSliceMat {
 pub struct RawMmap {
     pub ptr: *const Rbyte,
     pub len: usize,
-    pub cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+    pub cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
 }
 unsafe impl Send for RawMmap {}
 unsafe impl Sync for RawMmap {}
@@ -514,7 +514,7 @@ impl RawMmap {
     pub unsafe fn new(
         ptr: *const Rbyte,
         len: usize,
-        cleanup: Option<unsafe extern "C" fn(*const Rbyte, usize)>,
+        cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
     ) -> Self {
         Self { ptr, len, cleanup }
     }

@@ -388,7 +388,7 @@ pub fn miniextendr(
         quote::quote! {
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
-            #vis extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
 
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect(|| {
@@ -568,7 +568,7 @@ pub fn miniextendr(
 
     // endregion
 
-    let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
+    let abi = abi.unwrap_or(syn::parse_quote!(extern "C-unwind"));
     let expanded: proc_macro::TokenStream = quote::quote! {
         // rust function!
         #original_item
@@ -583,7 +583,7 @@ pub fn miniextendr(
         // registration of C wrapper in R
 
         // TODO: unhide docs if you add the num_args and the rust-name, then the C wrapper name!
-        // also handle the case where there is no rust-name because it is an `unsafe extern "C"` being exported!
+        // also handle the case where there is no rust-name because it is an `unsafe extern "C-unwind"` being exported!
         #[doc(hidden)]
         #[inline(always)]
         #[allow(non_snake_case)]
@@ -755,7 +755,7 @@ impl syn::parse::Parse for ExtendrModule {
 }
 
 // TODO: Currently, miniextendr_module does not distinguish between
-// `extern "C" fn` and `fn` items.. they are treated alike.
+// `extern "C-unwind" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let miniextendr_module = syn::parse_macro_input!(item as ExtendrModule);
@@ -842,7 +842,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         #[allow(non_snake_case)]
         /// Internal function that is used by R to register the exported
         /// miniextendr items.
-        pub(crate) extern "C" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
+        pub(crate) extern "C-unwind" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
             static CALL_ENTRIES: [::miniextendr_api::ffi::R_CallMethodDef; {#call_entries_len + 1}] = [
                 #(#call_entries,)*
                 ::miniextendr_api::ffi::R_CallMethodDef {

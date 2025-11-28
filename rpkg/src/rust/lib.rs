@@ -116,7 +116,7 @@ impl Drop for SimpleDropMsg {
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-extern "C" fn C_unwind_protect_normal() -> SEXP {
+extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
     with_r_unwind_protect(|| {
         let _a = SimpleDropMsg("stack resource");
         let _b = Box::new(SimpleDropMsg("heap resource"));
@@ -129,7 +129,7 @@ extern "C" fn C_unwind_protect_normal() -> SEXP {
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-extern "C" fn C_unwind_protect_r_error() -> SEXP {
+extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
     // Create resources BEFORE the protected region
     let a = SimpleDropMsg("captured resource 1");
     let b = Box::new(SimpleDropMsg("captured resource 2 (boxed)"));
@@ -162,7 +162,7 @@ extern "C" fn C_unwind_protect_r_error() -> SEXP {
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-extern "C" fn C_unwind_protect_lowlevel_test() -> SEXP {
+extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
     eprintln!("[Rust] Starting low-level unwind protect test");
     unsafe {
         with_r_unwind_protect(|| {
@@ -200,7 +200,7 @@ fn add_left_right_mut(left: i32, right: i32) -> i32 {
 
 #[unsafe(no_mangle)]
 #[miniextendr]
-extern "C" fn C_just_panic() -> ::miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_just_panic() -> ::miniextendr_api::ffi::SEXP {
     panic!("just panic, no capture");
 }
 
@@ -209,7 +209,7 @@ extern "C" fn C_just_panic() -> ::miniextendr_api::ffi::SEXP {
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-extern "C" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
     let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
     let _ = dbg!(result);
     unsafe { ::miniextendr_api::ffi::R_NilValue }
@@ -218,7 +218,7 @@ extern "C" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-extern "C" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
     unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) }
 }
 
@@ -226,7 +226,7 @@ extern "C" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
-extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
     unsafe {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             miniextendr_api::ffi::Rf_error(c"arg1".as_ptr())
@@ -242,7 +242,7 @@ extern "C" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
-extern "C" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
     std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) })
         .join()
         .unwrap();
@@ -253,7 +253,7 @@ extern "C" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-extern "C" fn C_r_print_in_thread() -> ::miniextendr_api::ffi::SEXP {
+extern "C-unwind" fn C_r_print_in_thread() -> ::miniextendr_api::ffi::SEXP {
     std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"arg1".as_ptr()) })
         .join()
         .unwrap();
@@ -295,7 +295,7 @@ fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-extern "C" fn C_check_interupt_after() -> SEXP {
+extern "C-unwind" fn C_check_interupt_after() -> SEXP {
     use miniextendr_api::ffi::R_CheckUserInterrupt;
 
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -309,7 +309,7 @@ extern "C" fn C_check_interupt_after() -> SEXP {
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-extern "C" fn C_check_interupt_unwind() -> SEXP {
+extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
     use miniextendr_api::ffi::R_CheckUserInterrupt;
 
     std::thread::sleep(std::time::Duration::from_secs(2));
@@ -341,9 +341,9 @@ miniextendr_module! {
     fn add_panic_heap;
     fn add_r_error_heap;
 
-    extern "C" fn C_unwind_protect_normal;
-    extern "C" fn C_unwind_protect_r_error;
-    extern "C" fn C_unwind_protect_lowlevel_test;
+    extern "C-unwind" fn C_unwind_protect_normal;
+    extern "C-unwind" fn C_unwind_protect_r_error;
+    extern "C-unwind" fn C_unwind_protect_lowlevel_test;
 
     fn add_left_mut;
     fn add_right_mut;
@@ -351,8 +351,8 @@ miniextendr_module! {
 
     fn take_and_return_nothing;
 
-    extern "C" fn C_just_panic;
-    extern "C" fn C_panic_and_catch;
+    extern "C-unwind" fn C_just_panic;
+    extern "C-unwind" fn C_panic_and_catch;
 
     fn drop_message_on_success;
     fn drop_on_panic;

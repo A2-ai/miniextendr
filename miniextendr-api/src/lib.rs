@@ -14,7 +14,7 @@
 /// In case of function arguments beginning with `_*`, then the R wrapper renames the argument
 /// to `unused_*`, as it is not allowed for a variable to begin with `_` in R.
 ///
-/// ## `extern "C"`
+/// ## `extern "C-unwind"`
 ///
 /// A function with the C ABI may be provided as
 ///
@@ -24,7 +24,7 @@
 ///
 /// #[miniextendr]
 /// #[unsafe(no_mangle)]
-/// extern "C" fn C_foo() -> SEXP { unsafe { R_NilValue } }
+/// extern "C-unwind" fn C_foo() -> SEXP { unsafe { R_NilValue } }
 /// ```
 ///
 /// Here, the provided function definition is the C wrapper, there are no Rust definition, therefore
@@ -64,6 +64,8 @@ pub mod unwind_protect;
 
 // TODO: finish the error module
 pub mod error;
+
+pub mod backtrace;
 
 // TODO: finish the dots module...
 pub mod dots;

@@ -9,10 +9,12 @@
 //! **Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
 //! Use these APIs to ensure cleanup happens even when R errors occur.
 //!
+#[allow(unused_imports)]
+use std::panic::resume_unwind;
 use std::{
     cell::LazyCell,
     ffi::c_void,
-    panic::{AssertUnwindSafe, catch_unwind, resume_unwind},
+    panic::{AssertUnwindSafe, catch_unwind},
 };
 
 use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
@@ -70,7 +72,27 @@ where
                 if payload.downcast_ref::<RError>().is_some() {
                     R_ContinueUnwind(R_CONTINUATION_TOKEN.with(|x| **x));
                 } else {
-                    resume_unwind(payload);
+                    // FIRST APPROACH
+                    // resume_unwind(payload);
+                    // SECOND APPROACH
+                    // convert every "real panic" to an R error..
+                    let error_message: &str = if let Some(&message) = payload.downcast_ref::<&str>()
+                    {
+                        message
+                    } else if let Some(message) = payload.downcast_ref::<String>() {
+                        message.as_str()
+                    } else if let Some(message) = payload.downcast_ref::<&String>() {
+                        message.as_str()
+                    } else {
+                        "panic payload could not be unpacked"
+                    };
+
+                    let c_error_message =
+                        std::ffi::CString::new(error_message).unwrap_or_else(|_| {
+                            std::ffi::CString::new("<invalid panic message>").unwrap()
+                        });
+
+                    ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_error_message.as_ptr());
                 }
             }
         }

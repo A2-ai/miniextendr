@@ -125,10 +125,12 @@ AS_IF([test ! -f "$abs_rpkg_src/entrypoint.c.in"], [
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>
 
-extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
+extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 extern void miniextendr_altrep_init(void);
+extern void register_miniextendr_panic_hook(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    register_miniextendr_panic_hook();
     miniextendr_altrep_init();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 

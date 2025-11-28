@@ -3,7 +3,7 @@
 //! Layout overview
 //! - FFI: raw setters/types live in `crate::ffi::altrep`.
 //! - Traits: safe, opt‑in method surfaces in `crate::altrep_traits` (with HAS_* flags).
-//! - Bridge: generic extern "C" trampolines in `crate::altrep_bridge` call trait methods.
+//! - Bridge: generic extern "C-unwind" trampolines in `crate::altrep_bridge` call trait methods.
 //! - Macro: `#[miniextendr]` on a struct emits an `impl RegisterAltrep` that:
 //!   - Creates the class handle via `R_make_alt*`.
 //!   - Installs only methods whose `<T as Trait>::HAS_*` are true by wiring
