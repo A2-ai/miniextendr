@@ -26,7 +26,7 @@ struct ClosureContext<FunClosure, CleanClosure> {
     clean: Option<CleanClosure>,
 }
 
-unsafe extern "C" fn fun_tramp<F, C>(data: *mut std::ffi::c_void) -> ffi::SEXP
+unsafe extern "C-unwind" fn fun_tramp<F, C>(data: *mut std::ffi::c_void) -> ffi::SEXP
 where
     F: FnOnce() -> ffi::SEXP,
 {
@@ -35,7 +35,7 @@ where
     f()
 }
 
-unsafe extern "C" fn clean_tramp<F, C>(data: *mut std::ffi::c_void, jump: ffi::Rboolean)
+unsafe extern "C-unwind" fn clean_tramp<F, C>(data: *mut std::ffi::c_void, jump: ffi::Rboolean)
 where
     C: FnOnce(bool),
 {
@@ -69,7 +69,7 @@ where
     }));
 
     unsafe {
-        ffi::R_UnwindProtect(
+        ffi::R_UnwindProtect_C_unwind(
             Some(fun_tramp::<FunClosure, CleanClosure>),
             data.cast(),
             Some(clean_tramp::<FunClosure, CleanClosure>),
@@ -155,18 +155,37 @@ where
         jump_occurred: bool,
     }
 
-    unsafe extern "C" fn trampoline<C, F, T>(data: *mut std::ffi::c_void) -> ffi::SEXP
+    unsafe extern "C-unwind" fn trampoline<C, F, T>(data: *mut std::ffi::c_void) -> ffi::SEXP
     where
         F: FnOnce(&mut C) -> T,
     {
         let data = unsafe { &mut *(data as *mut CallData<C, F, T>) };
-        let f = data.f.take().unwrap();
-        let cleanup = data.cleanup.as_mut().unwrap();
-        data.result = Some(f(cleanup));
-        std::ptr::null_mut()
+
+        // Catch panics inside the trampoline. Even with C-unwind, we can't let panics
+        // propagate through R's C code (R_UnwindProtect wasn't compiled with C++
+        // exception support). Instead, we catch the panic and convert it to an R error,
+        // which triggers R_UnwindProtect's cleanup mechanism for proper resource cleanup.
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            let f = data.f.take().unwrap();
+            let cleanup = data.cleanup.as_mut().unwrap();
+            f(cleanup)
+        }));
+
+        match result {
+            Ok(value) => {
+                data.result = Some(value);
+                std::ptr::null_mut()
+            }
+            Err(panic) => {
+                // Convert panic to R error. This triggers R_UnwindProtect's cleanup
+                // callback, ensuring drops happen before the error propagates.
+                let msg = panic_payload_to_string(panic);
+                raise_r_error(&msg)
+            }
+        }
     }
 
-    unsafe extern "C" fn cleanup_cb<C, F, T>(data: *mut std::ffi::c_void, jump: ffi::Rboolean) {
+    unsafe extern "C-unwind" fn cleanup_cb<C, F, T>(data: *mut std::ffi::c_void, jump: ffi::Rboolean) {
         let data = unsafe { &mut *(data as *mut CallData<C, F, T>) };
         if jump != ffi::Rboolean::FALSE {
             // R error occurred - mark it and drop cleanup data
@@ -187,7 +206,7 @@ where
             jump_occurred: false,
         };
 
-        ffi::R_UnwindProtect(
+        ffi::R_UnwindProtect_C_unwind(
             Some(trampoline::<C, F, T>),
             &mut data as *mut _ as *mut std::ffi::c_void,
             Some(cleanup_cb::<C, F, T>),

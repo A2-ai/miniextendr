@@ -240,11 +240,11 @@ pub fn miniextendr(
                     });
                 } else if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast();
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast();
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast() };
                     });
                 }
             }
@@ -255,11 +255,11 @@ pub fn miniextendr(
                 });
                 if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast();
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast();
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast() };
                     });
                 }
             }
@@ -282,14 +282,14 @@ pub fn miniextendr(
         // no arrow
         syn::ReturnType::Default => {
             is_invisible_return_type = true;
-            quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
             }
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible_return_type = false;
@@ -315,7 +315,7 @@ pub fn miniextendr(
                             panic!(#option_none_error_msg);
                         }
                     });
-                    quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
                     // -> Option<T>
@@ -352,7 +352,7 @@ pub fn miniextendr(
                             panic!("{:?}", e);
                         }
                     });
-                    quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
                     // -> Result<T, E>
@@ -382,19 +382,22 @@ pub fn miniextendr(
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else {
+        // The generated wrapper uses catch_unwind to catch Rust panics and convert
+        // them to R errors. For R error protection (ensuring drops when R calls
+        // Rf_error), users should wrap their code in with_r_unwind_protect explicitly.
         quote::quote! {
             #[doc = "C wrapper method for TODO"]
             #[unsafe(no_mangle)]
-            #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+            #vis extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
 
-                let __miniextendr_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let __miniextendr_result = ::std::panic::catch_unwind(|| {
                     #(#closure_statements)*
                     let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
                     #(#post_call_statements)*
                     let __miniextendr_sexp_result = #return_expression;
                     __miniextendr_sexp_result
-                }));
+                });
 
                 match __miniextendr_result {
                     Ok(sexp) => sexp,
