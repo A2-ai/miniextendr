@@ -270,6 +270,8 @@ pub fn miniextendr(
             "` returned None"
         )
     };
+
+    // Generate return expression (converts Rust result to SEXP)
     let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
@@ -281,7 +283,7 @@ pub fn miniextendr(
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
             }
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible_return_type = false;
@@ -294,15 +296,13 @@ pub fn miniextendr(
                     == Some(&syn::Ident::new("Option", p.path.span())) =>
             {
                 let seg = p.path.segments.last().unwrap();
-                // check ONLY the first type argument of Option<T>
                 let inner_ty = first_type_argument(seg);
                 let is_unit_inner = inner_ty.is_some_and(is_unit_type);
                 let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
                 if is_unit_inner {
-                    // -> Option<()>
                     is_invisible_return_type = true;
-                    post_call_statements.push(quote::quote! {
+                            post_call_statements.push(quote::quote! {
                         if #rust_result_ident.is_none() {
                             panic!(#option_none_error_msg);
                         }
@@ -310,7 +310,6 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    // -> Option<T>
                     post_call_statements.push(quote::quote! {
                         let #rust_result_ident = match #rust_result_ident {
                             Some(v) => v,
@@ -331,15 +330,13 @@ pub fn miniextendr(
                     == Some(&syn::Ident::new("Result", p.path.span())) =>
             {
                 let seg = p.path.segments.last().unwrap();
-                // check ONLY the first type argument (Ok type) of Result<Ok, Err>
                 let ok_ty = first_type_argument(seg);
                 let ok_is_unit = ok_ty.is_some_and(is_unit_type);
                 let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
 
                 if ok_is_unit {
-                    // -> Result<(), E>
                     is_invisible_return_type = true;
-                    post_call_statements.push(quote::quote! {
+                            post_call_statements.push(quote::quote! {
                         if let Err(e) = #rust_result_ident {
                             panic!("{:?}", e);
                         }
@@ -347,7 +344,6 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    // -> Result<T, E>
                     post_call_statements.push(quote::quote! {
                         let #rust_result_ident = match #rust_result_ident {
                             Ok(v) => v,
@@ -365,20 +361,22 @@ pub fn miniextendr(
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
+                    quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
             }
         },
     };
     //TODO: add an invisibility attribute to miniextendr(invisible)
 
+    // Always use main thread with unwind protection.
+    // The worker thread approach is unsafe for functions that call R APIs directly.
+    // TODO: Add an attribute like #[miniextendr(worker)] to opt-in to worker thread for pure Rust code.
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else {
-        // The generated wrapper uses catch_unwind to catch Rust panics and convert
-        // them to R errors. For R error protection (ensuring drops when R calls
-        // Rf_error), users should wrap their code in with_r_unwind_protect explicitly.
+        // Use with_r_unwind_protect on main thread
+        let c_wrapper_doc = format!("C wrapper for [`{}`].", rust_ident);
         quote::quote! {
-            #[doc = "C wrapper method for TODO"]
+            #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
@@ -388,8 +386,7 @@ pub fn miniextendr(
                         #(#closure_statements)*
                         let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
                         #(#post_call_statements)*
-                        let __miniextendr_sexp_result = #return_expression;
-                        __miniextendr_sexp_result
+                        #return_expression
                     },
                     Some(#call_param_ident),
                 )
@@ -556,7 +553,14 @@ pub fn miniextendr(
         "{} <- function({}) {{\n    {}\n}}",
         r_wrapper_ident, formals_joined, r_wrapper_return_str
     );
-    let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper_ident.span());
+    // Use a raw string literal for better readability in macro expansion
+    let r_wrapper_str: proc_macro2::TokenStream = {
+        use std::str::FromStr;
+        // Indent each line by 4 spaces for nicer formatting
+        let indented = r_wrapper_string.replace('\n', "\n    ");
+        let raw = format!("r#\"\n    {}\n\"#", indented);
+        proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
+    };
 
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     let r_wrapper_generator = quote::format_ident!("R_WRAPPER_{rust_ident_upper}");
@@ -564,6 +568,17 @@ pub fn miniextendr(
     // endregion
 
     let abi = abi.unwrap_or(syn::parse_quote!(extern "C-unwind"));
+
+    // Generate doc strings with links
+    let r_wrapper_doc = format!(
+        "R wrapper code for [`{}`], calls [`{}`].",
+        rust_ident, c_ident
+    );
+    let call_method_def_doc = format!(
+        "R call method definition for [`{}`] (C wrapper: [`{}`]).",
+        rust_ident, c_ident
+    );
+
     let expanded: proc_macro::TokenStream = quote::quote! {
         // rust function!
         #original_item
@@ -572,14 +587,11 @@ pub fn miniextendr(
         #c_wrapper
 
         // R wrapper
+        #[doc = #r_wrapper_doc]
         const #r_wrapper_generator: &str = #r_wrapper_str;
 
-
         // registration of C wrapper in R
-
-        // TODO: unhide docs if you add the num_args and the rust-name, then the C wrapper name!
-        // also handle the case where there is no rust-name because it is an `unsafe extern "C-unwind"` being exported!
-        #[doc(hidden)]
+        #[doc = #call_method_def_doc]
         #[inline(always)]
         #[allow(non_snake_case)]
         const fn #call_method_def() -> ::miniextendr_api::ffi::R_CallMethodDef {
@@ -819,24 +831,41 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module_upper}");
     let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module_upper}");
 
+    // Generate doc string listing all registered functions
+    let fn_links: Vec<String> = miniextendr_module
+        .extendr_fn
+        .iter()
+        .map(|f| format!("[`{}`]", f.ident))
+        .collect();
+    let struct_links: Vec<String> = miniextendr_module
+        .extendr_struct
+        .iter()
+        .map(|s| format!("[`{}`]", s.ident))
+        .collect();
+    let module_doc = if fn_links.is_empty() && struct_links.is_empty() {
+        format!("R entrypoint for module `{}`.", module)
+    } else {
+        let mut doc = format!("R entrypoint for module `{}`.\n\n# Registered items\n", module);
+        if !fn_links.is_empty() {
+            doc.push_str(&format!("- Functions: {}\n", fn_links.join(", ")));
+        }
+        if !struct_links.is_empty() {
+            doc.push_str(&format!("- ALTREP types: {}\n", struct_links.join(", ")));
+        }
+        doc
+    };
+
     // endregion
     quote::quote! {
-
-        //TODO: still need to deal with modules and their respective wrappers..
-        // what to do here?
 
         #[doc(hidden)]
         pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
         #[doc(hidden)]
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
 
-        //TODO: add the use-modules and their entry point docs to the doc!
-
-        // #[doc(hidden)]
+        #[doc = #module_doc]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
-        /// Internal function that is used by R to register the exported
-        /// miniextendr items.
         pub(crate) extern "C-unwind" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
             static CALL_ENTRIES: [::miniextendr_api::ffi::R_CallMethodDef; {#call_entries_len + 1}] = [
                 #(#call_entries,)*
@@ -1040,9 +1069,24 @@ fn expand_altrep_struct(
     // No marker traits needed.
     let _family_marker_impl: proc_macro2::TokenStream = quote::quote! {};
 
+    // Generate doc strings for trait impls
+    let altrep_class_doc = format!(
+        "ALTREP class descriptor for [`{}`] (class: `{}`, pkg: `{}`, base: `{}`).",
+        ident, class_name, pkg_name, base_name
+    );
+    let method_registrar_doc = format!(
+        "Method installer for [`{}`] ALTREP class.",
+        ident
+    );
+    let register_altrep_doc = format!(
+        "Registration entry point for [`{}`] ALTREP class.",
+        ident
+    );
+
     let expanded = quote::quote! {
         #input
 
+        #[doc = #altrep_class_doc]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = c #class_cstr;
             const PKG_NAME: &'static std::ffi::CStr = c #pkg_cstr;
@@ -1052,6 +1096,7 @@ fn expand_altrep_struct(
             }
         }
 
+        #[doc = #method_registrar_doc]
         impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
             unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
                 use ::miniextendr_api::altrep_bridge as bridge;
@@ -1069,6 +1114,7 @@ fn expand_altrep_struct(
             }
         }
 
+        #[doc = #register_altrep_doc]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
             fn register() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
                 let cls = unsafe { #make_class };
@@ -1077,6 +1123,127 @@ fn expand_altrep_struct(
             }
         }
 
+    };
+
+    expanded.into()
+}
+
+/// Generate thread-checked wrappers for R FFI functions.
+///
+/// Apply this to an `extern "C-unwind"` block to generate checked wrappers
+/// that assert we're on the main thread in debug builds.
+///
+/// **Limitations:**
+/// - Variadic functions and statics are passed through unchanged
+/// - Only non-variadic functions get checked wrappers
+///
+/// # Example
+///
+/// ```ignore
+/// #[r_ffi_checked]
+/// unsafe extern "C-unwind" {
+///     pub fn Rf_ScalarInteger(arg1: i32) -> SEXP;
+/// }
+/// ```
+///
+/// Generates:
+/// ```ignore
+/// unsafe extern "C-unwind" {
+///     #[link_name = "Rf_ScalarInteger"]
+///     pub fn Rf_ScalarInteger_unchecked(arg1: i32) -> SEXP;
+/// }
+///
+/// #[inline]
+/// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
+///     debug_assert!(is_r_main_thread(), "Rf_ScalarInteger called from non-main thread");
+///     Rf_ScalarInteger_unchecked(arg1)
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn r_ffi_checked(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let foreign_mod = syn::parse_macro_input!(item as syn::ItemForeignMod);
+
+    let abi = &foreign_mod.abi;
+    let mut unchecked_items = Vec::new();
+    let mut checked_wrappers = Vec::new();
+
+    for item in &foreign_mod.items {
+        match item {
+            syn::ForeignItem::Fn(fn_item) => {
+                let is_variadic = fn_item.sig.variadic.is_some();
+
+                // Check if function already has #[link_name] - if so, pass through unchanged
+                let has_link_name = fn_item.attrs.iter().any(|attr| attr.path().is_ident("link_name"));
+
+                if is_variadic || has_link_name {
+                    // Pass through variadic functions and functions with explicit link_name unchanged
+                    unchecked_items.push(item.clone());
+                } else {
+                    // Generate checked wrapper for non-variadic functions
+                    let vis = &fn_item.vis;
+                    let fn_name = &fn_item.sig.ident;
+                    let fn_name_str = fn_name.to_string();
+                    let unchecked_name = quote::format_ident!("{}_unchecked", fn_name);
+                    let inputs = &fn_item.sig.inputs;
+                    let output = &fn_item.sig.output;
+                    // Filter out link_name attributes (already checked above, but be safe)
+                    let attrs: Vec<_> = fn_item.attrs.iter()
+                        .filter(|attr| !attr.path().is_ident("link_name"))
+                        .collect();
+
+                    // Generate the unchecked FFI binding with #[link_name]
+                    let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
+                    let unchecked_fn: syn::ForeignItem = syn::parse_quote! {
+                        #(#attrs)*
+                        #[link_name = #link_name]
+                        #vis fn #unchecked_name(#inputs) #output;
+                    };
+                    unchecked_items.push(unchecked_fn);
+
+                    // Generate a checked wrapper function
+                    let arg_names: Vec<_> = inputs
+                        .iter()
+                        .filter_map(|arg| {
+                            if let syn::FnArg::Typed(pat_type) = arg {
+                                if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+                                    return Some(pat_ident.ident.clone());
+                                }
+                            }
+                            None
+                        })
+                        .collect();
+
+                    let wrapper = quote::quote! {
+                        #(#attrs)*
+                        #[inline]
+                        #[allow(non_snake_case)]
+                        #vis unsafe fn #fn_name(#inputs) #output {
+                            #[cfg(debug_assertions)]
+                            if !::miniextendr_api::thread_safety::is_r_main_thread() {
+                                panic!(concat!("R API `", #fn_name_str, "` called from non-main thread"));
+                            }
+                            #unchecked_name(#(#arg_names),*)
+                        }
+                    };
+                    checked_wrappers.push(wrapper);
+                }
+            }
+            _ => {
+                // Pass through statics and other items unchanged
+                unchecked_items.push(item.clone());
+            }
+        }
+    }
+
+    let expanded = quote::quote! {
+        unsafe #abi {
+            #(#unchecked_items)*
+        }
+
+        #(#checked_wrappers)*
     };
 
     expanded.into()

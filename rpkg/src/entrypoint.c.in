@@ -6,10 +6,12 @@
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 extern void miniextendr_altrep_init(void);
 extern void register_miniextendr_panic_hook(void);
+extern void miniextendr_init_worker(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     register_miniextendr_panic_hook();
     miniextendr_altrep_init();
+    miniextendr_init_worker();
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);

@@ -146,3 +146,11 @@ unsafe_C_check_interupt_unwind <- function() {
     .Call(C_check_interupt_unwind)
 }
 
+unsafe_C_worker_drop_on_success <- function() {
+    .Call(C_worker_drop_on_success)
+}
+
+unsafe_C_worker_drop_on_panic <- function() {
+    .Call(C_worker_drop_on_panic)
+}
+

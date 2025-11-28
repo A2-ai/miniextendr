@@ -77,7 +77,6 @@ pub enum Rboolean {
     TRUE = 1,
 }
 
-// TODO: I don't think `R_CFinalizer_t` can be None, so maybe it ought to be NonNull
 #[allow(non_camel_case_types)]
 pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
 
@@ -89,14 +88,14 @@ pub type R_CFinalizer_t_C_unwind = ::std::option::Option<unsafe extern "C-unwind
 #[allow(non_camel_case_types)]
 pub enum cetype_t {
     CE_NATIVE = 0,
-    CE_UTF8 = 1, /* ... */
+    CE_UTF8 = 1,
 }
 pub use cetype_t::CE_UTF8;
+use miniextendr_macros::r_ffi_checked;
 
-// Note: We intentionally declare some functions twice with different signatures
-// (extern "C-unwind" and extern "C-unwind") using #[link_name]. This is safe because
-// the ABI is compatible at runtime - only the Rust type system differs.
+#[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
+#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
@@ -117,6 +116,7 @@ unsafe extern "C-unwind" {
 
     // R_ext/Error.h
     pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
+    pub fn Rf_warning(arg1: *const ::std::os::raw::c_char, ...);
     pub fn Rprintf(arg1: *const ::std::os::raw::c_char, ...);
 
     pub fn R_MakeUnwindCont() -> SEXP;
@@ -133,8 +133,7 @@ unsafe extern "C-unwind" {
         cont: SEXP,
     ) -> SEXP;
 
-    /// Version of `R_UnwindProtect` that accepts `extern "C-unwind"` function pointers,
-    /// allowing Rust panics to unwind through the trampolines.
+    /// Version of `R_UnwindProtect` that accepts `extern "C-unwind"` function pointers
     #[link_name = "R_UnwindProtect"]
     pub fn R_UnwindProtect_C_unwind(
         fun: ::std::option::Option<
@@ -149,7 +148,6 @@ unsafe extern "C-unwind" {
     ) -> SEXP;
 
     // Rinternals.h
-
     #[doc = " External pointer interface"]
     pub fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
@@ -190,6 +188,12 @@ unsafe extern "C-unwind" {
     pub fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
     pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
+
+    // Cons cell accessors
+    pub fn CAR(e: SEXP) -> SEXP;
+    pub fn CDR(e: SEXP) -> SEXP;
+    pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
+    pub fn RAW(x: SEXP) -> *mut Rbyte;
     pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
@@ -260,29 +264,25 @@ pub struct R_CallMethodDef_C_unwind {
 // TODO: investigate why Sync is necessary...
 unsafe impl Sync for R_CallMethodDef {}
 
-// FIXME: move to an ffi crate or similar..
+
+#[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
+#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
-        // croutines: *const R_CMethodDef,
         croutines: *const ::std::os::raw::c_void,
         callRoutines: *const R_CallMethodDef,
-        // fortranRoutines: *const R_FortranMethodDef,
         fortranRoutines: *const ::std::os::raw::c_void,
-        // externalRoutines: *const R_ExternalMethodDef,
         externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
     #[link_name = "R_registerRoutines"]
     pub fn R_registerRoutines_C_unwind(
         info: *mut DllInfo,
-        // croutines: *const R_CMethodDef,
         croutines: *const ::std::os::raw::c_void,
         callRoutines: *const R_CallMethodDef_C_unwind,
-        // fortranRoutines: *const R_FortranMethodDef,
         fortranRoutines: *const ::std::os::raw::c_void,
-        // externalRoutines: *const R_ExternalMethodDef,
         externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 

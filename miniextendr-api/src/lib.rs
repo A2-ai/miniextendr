@@ -52,6 +52,7 @@
 /// [`Dots`]: dots::Dots
 pub use miniextendr_macros::miniextendr;
 pub use miniextendr_macros::miniextendr_module;
+pub use miniextendr_macros::r_ffi_checked;
 
 pub mod altrep;
 pub mod altrep_bridge;
@@ -61,11 +62,14 @@ pub mod altrep_traits;
 pub mod ffi;
 pub mod into_r;
 pub mod unwind_protect;
+pub mod worker;
 
-// TODO: finish the error module
+// Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;
+pub use error::{r_print, r_println, r_stop, r_warning};
 
 pub mod backtrace;
+pub mod thread_safety;
 
 // TODO: finish the dots module...
 pub mod dots;

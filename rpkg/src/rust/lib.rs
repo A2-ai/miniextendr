@@ -10,7 +10,10 @@ struct MsgOnDrop;
 
 impl Drop for MsgOnDrop {
     fn drop(&mut self) {
-        println!("[Rust] Dropped `MsgOnDrop`!");
+        use std::io::Write;
+        let mut stdout = std::io::stdout().lock();
+        writeln!(stdout, "[Rust] Dropped `MsgOnDrop`!").unwrap();
+        stdout.flush().unwrap();
     }
 }
 
@@ -379,6 +382,10 @@ miniextendr_module! {
     extern fn C_check_interupt_after;
     extern fn C_check_interupt_unwind;
 
+    // Worker thread tests
+    extern "C-unwind" fn C_worker_drop_on_success;
+    extern "C-unwind" fn C_worker_drop_on_panic;
+
     // ALTREP .Call entrypoints are used directly from R in R/altrep.R
 }
 
@@ -423,6 +430,43 @@ fn invisibly_result_return_ok() -> Result<(), ()> {
 #[miniextendr]
 fn do_nothing() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }
+}
+
+// endregion
+
+// region: worker thread tests
+
+use miniextendr_api::worker::run_on_worker;
+
+/// Test that drops run on the worker thread during normal completion.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_worker_drop_on_success() -> SEXP {
+    let result = run_on_worker(|| {
+        let _a = SimpleDropMsg("worker: stack resource");
+        let _b = Box::new(SimpleDropMsg("worker: heap resource"));
+        42
+    });
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test that drops run when Rust code panics on the worker thread.
+/// Panic is caught by catch_unwind, converted to R error after unwind.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        let _a = SimpleDropMsg("worker: resource before panic");
+        let _b = Box::new(SimpleDropMsg("worker: boxed resource before panic"));
+
+        eprintln!("[Rust] Worker: about to panic");
+        panic!("intentional panic from worker");
+    });
+    // Never reached - panic converts to R error
+    #[allow(unreachable_code)]
+    unsafe { R_NilValue }
 }
 
 // endregion
