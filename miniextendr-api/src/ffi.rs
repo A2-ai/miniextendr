@@ -150,7 +150,9 @@ unsafe extern "C-unwind" {
     pub fn R_MakeUnwindCont() -> SEXP;
     pub fn R_ContinueUnwind(cont: SEXP) -> !;
     pub fn R_UnwindProtect(
-        fun: ::std::option::Option<unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP>,
+        fun: ::std::option::Option<
+            unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP,
+        >,
         fun_data: *mut ::std::os::raw::c_void,
         cleanfun: ::std::option::Option<
             unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void, Rboolean),
@@ -299,7 +301,7 @@ unsafe extern "C-unwind" {
         // externalRoutines: *const R_ExternalMethodDef,
         externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
-    
+
     #[link_name = "R_registerRoutines"]
     pub fn R_registerRoutines_C_unwind(
         info: *mut DllInfo,

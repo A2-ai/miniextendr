@@ -391,13 +391,16 @@ pub fn miniextendr(
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
 
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(|| {
-                    #(#closure_statements)*
-                    let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                    #(#post_call_statements)*
-                    let __miniextendr_sexp_result = #return_expression;
-                    __miniextendr_sexp_result
-                })
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || {
+                        #(#closure_statements)*
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        #(#post_call_statements)*
+                        let __miniextendr_sexp_result = #return_expression;
+                        __miniextendr_sexp_result
+                    },
+                    Some(#call_param_ident),
+                )
             }
         }
     };
@@ -883,9 +886,12 @@ fn expand_altrep_struct(
         syn::Item::Struct(s) => (s.ident.clone(), s.generics.clone()),
         syn::Item::Enum(e) => (e.ident.clone(), e.generics.clone()),
         _ => {
-            return syn::Error::new(input.span(), "#[miniextendr] on types supports only structs and enums")
-                .into_compile_error()
-                .into();
+            return syn::Error::new(
+                input.span(),
+                "#[miniextendr] on types supports only structs and enums",
+            )
+            .into_compile_error()
+            .into();
         }
     };
 

@@ -121,7 +121,7 @@ extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
         let _a = SimpleDropMsg("stack resource");
         let _b = Box::new(SimpleDropMsg("heap resource"));
         unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(42) }
-    })
+    }, None)
 }
 
 /// Test that with_r_unwind_protect cleans up on R error.
@@ -155,7 +155,7 @@ extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
             drop(b);
             ::miniextendr_api::ffi::R_NilValue
         }
-    })
+    }, None)
 }
 
 /// Minimal test using low-level with_unwind_protect
@@ -170,7 +170,7 @@ extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
             ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr());
             #[allow(unreachable_code)]
             ::miniextendr_api::ffi::R_NilValue
-        })
+        }, None)
     }
 }
 
@@ -318,7 +318,7 @@ extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
         with_r_unwind_protect(|| {
             R_CheckUserInterrupt();
             R_NilValue
-        });
+        }, None);
         R_NilValue
     }
 }

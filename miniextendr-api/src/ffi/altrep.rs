@@ -71,7 +71,12 @@ pub type R_altinteger_Max_method_t =
 pub type R_altreal_Elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> f64>;
 pub type R_altreal_Get_region_method_t = ::std::option::Option<
-    unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t, arg3: R_xlen_t, arg4: *mut f64) -> R_xlen_t,
+    unsafe extern "C-unwind" fn(
+        arg1: SEXP,
+        arg2: R_xlen_t,
+        arg3: R_xlen_t,
+        arg4: *mut f64,
+    ) -> R_xlen_t,
 >;
 pub type R_altreal_Is_sorted_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
@@ -103,7 +108,12 @@ pub type R_altlogical_Sum_method_t =
 pub type R_altraw_Elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rbyte>;
 pub type R_altraw_Get_region_method_t = ::std::option::Option<
-    unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t, arg3: R_xlen_t, arg4: *mut Rbyte) -> R_xlen_t,
+    unsafe extern "C-unwind" fn(
+        arg1: SEXP,
+        arg2: R_xlen_t,
+        arg3: R_xlen_t,
+        arg4: *mut Rbyte,
+    ) -> R_xlen_t,
 >;
 // pub type R_altcomplex_Elt_method_t =
 //     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rcomplex>;
