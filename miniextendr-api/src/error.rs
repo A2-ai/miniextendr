@@ -25,8 +25,8 @@ use std::ffi::CString;
 /// Debug-only check that we're on R's main thread.
 #[inline]
 fn debug_assert_main_thread(#[allow(unused)] fn_name: &str) {
-    #[cfg(debug_assertions)]
-    if !crate::thread_safety::is_r_main_thread() {
+    // #[cfg(debug_assertions)]
+    if !crate::worker::is_r_main_thread() {
         panic!("{} called from non-main thread", fn_name);
     }
 }
@@ -46,7 +46,7 @@ pub fn r_stop(msg: &str) -> ! {
     debug_assert_main_thread("r_stop");
     let c_msg = CString::new(msg).expect("r_stop: message contains null bytes");
     unsafe {
-        crate::ffi::Rf_error(c"%s".as_ptr(), c_msg.as_ptr());
+        crate::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
     }
 }
 
@@ -74,7 +74,7 @@ pub fn r_warning(msg: &str) {
     debug_assert_main_thread("r_warning");
     let c_msg = CString::new(msg).expect("r_warning: message contains null bytes");
     unsafe {
-        crate::ffi::Rf_warning(c"%s".as_ptr(), c_msg.as_ptr());
+        crate::ffi::Rf_warning_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
     }
 }
 
@@ -84,7 +84,7 @@ pub fn r_print(msg: &str) {
     debug_assert_main_thread("r_print");
     let c_msg = CString::new(msg).expect("r_print: message contains null bytes");
     unsafe {
-        crate::ffi::Rprintf(c"%s".as_ptr(), c_msg.as_ptr());
+        crate::ffi::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
     }
 }
 
@@ -94,6 +94,6 @@ pub fn r_println(msg: &str) {
     debug_assert_main_thread("r_println");
     let c_msg = CString::new(msg).expect("r_println: message contains null bytes");
     unsafe {
-        crate::ffi::Rprintf(c"%s\n".as_ptr(), c_msg.as_ptr());
+        crate::ffi::Rprintf_unchecked(c"%s\n".as_ptr(), c_msg.as_ptr());
     }
 }

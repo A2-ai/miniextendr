@@ -23,7 +23,7 @@ thread_local! {
     });
 }
 /// Convert a Rust panic payload into an R error and continue unwinding on the R side.
-pub(crate) fn panic_payload_to_r_error(payload: Box<dyn Any + Send>, call: Option<SEXP>) -> ! {
+pub(crate) unsafe fn panic_payload_to_r_error(payload: Box<dyn Any + Send>, call: Option<SEXP>) -> ! {
     let error_message: &str = if let Some(&message) = payload.downcast_ref::<&str>() {
         message
     } else if let Some(message) = payload.downcast_ref::<String>() {
@@ -39,9 +39,9 @@ pub(crate) fn panic_payload_to_r_error(payload: Box<dyn Any + Send>, call: Optio
 
     unsafe {
         if let Some(call) = call {
-            ::miniextendr_api::ffi::Rf_errorcall(call, c"%s".as_ptr(), c_error_message.as_ptr());
+            ::miniextendr_api::ffi::Rf_errorcall_unchecked(call, c"%s".as_ptr(), c_error_message.as_ptr());
         } else {
-            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c_error_message.as_ptr());
+            ::miniextendr_api::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_error_message.as_ptr());
         }
     }
 }

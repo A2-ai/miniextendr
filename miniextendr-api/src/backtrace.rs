@@ -7,7 +7,7 @@
 /// If the environment variable `MINIEXTENDR_BACKTRACE` is set to either `true` or `1`,
 /// then it displays the entire Rust panic traceback (default hook), otherwise it omits the panic backtrace.
 #[unsafe(no_mangle)]
-pub extern "C-unwind" fn register_miniextendr_panic_hook() {
+pub extern "C-unwind" fn miniextendr_panic_hook() {
     static RUN_ONCE: std::sync::Once = std::sync::Once::new();
     RUN_ONCE.call_once_force(|x| {
         // just ignore repeated calls to this function

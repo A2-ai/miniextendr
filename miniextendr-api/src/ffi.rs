@@ -93,6 +93,21 @@ pub enum cetype_t {
 pub use cetype_t::CE_UTF8;
 use miniextendr_macros::r_ffi_checked;
 
+
+#[allow(clashing_extern_declarations)]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    #[link_name = "Rf_error"]
+    pub fn Rf_error_unchecked(arg1: *const ::std::os::raw::c_char, ...) -> !;
+    #[link_name = "Rf_errorcall"]
+    pub fn Rf_errorcall_unchecked(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
+    // R_ext/Error.h
+    #[link_name = "Rf_warning"]
+    pub fn Rf_warning_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+    #[link_name = "Rprintf"]
+    pub fn Rprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+}
+
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
@@ -103,7 +118,6 @@ unsafe extern "C-unwind" {
     pub static R_NaString: SEXP;
 
     // Rinternals.h
-    pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
     pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     pub fn Rf_mkCharLenCE(
         x: *const ::std::os::raw::c_char,
@@ -114,10 +128,6 @@ unsafe extern "C-unwind" {
     pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
 
-    // R_ext/Error.h
-    pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
-    pub fn Rf_warning(arg1: *const ::std::os::raw::c_char, ...);
-    pub fn Rprintf(arg1: *const ::std::os::raw::c_char, ...);
 
     pub fn R_MakeUnwindCont() -> SEXP;
     pub fn R_ContinueUnwind(cont: SEXP) -> !;

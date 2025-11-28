@@ -1150,7 +1150,7 @@ fn expand_altrep_struct(
 ///     pub fn Rf_ScalarInteger_unchecked(arg1: i32) -> SEXP;
 /// }
 ///
-/// #[inline]
+/// #[inline(always)]
 /// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
 ///     debug_assert!(is_r_main_thread(), "Rf_ScalarInteger called from non-main thread");
 ///     Rf_ScalarInteger_unchecked(arg1)
@@ -1220,11 +1220,11 @@ pub fn r_ffi_checked(
 
                     let wrapper = quote::quote! {
                         #(#attrs)*
-                        #[inline]
+                        #[inline(always)]
                         #[allow(non_snake_case)]
                         #vis unsafe fn #fn_name(#inputs) #output {
                             // #[cfg(debug_assertions)]
-                            if !::miniextendr_api::thread_safety::is_r_main_thread() {
+                            if !::miniextendr_api::worker::is_r_main_thread() {
                                 panic!(concat!("R API `", #fn_name_str, "` called from non-main thread"));
                             }
                             #unchecked_name(#(#arg_names),*)
