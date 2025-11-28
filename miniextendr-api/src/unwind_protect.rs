@@ -28,7 +28,7 @@ thread_local! {
 
 pub fn with_r_unwind_protect<F>(f: F, call: Option<SEXP>) -> SEXP
 where
-    F: FnOnce() -> SEXP,
+    F: FnMut() -> SEXP,
 {
     struct RError;
 
@@ -63,18 +63,19 @@ where
     }
 
     struct CallData<F> {
-        f: Option<F>,
+        f: F,
         panic_payload: Option<Box<dyn Any + Send>>,
     }
 
     unsafe extern "C-unwind" fn trampoline<F>(data: *mut c_void) -> SEXP
     where
-        F: FnOnce() -> SEXP,
+        F: FnMut() -> SEXP,
     {
         let data = unsafe { data.cast::<CallData<F>>().as_mut().unwrap() };
-        let f = data.f.take().unwrap();
 
-        match catch_unwind(AssertUnwindSafe(f)) {
+        // Call f in place - don't move it out of CallData.
+        // This way, if longjmp happens, CallData still owns f and will drop it.
+        match catch_unwind(AssertUnwindSafe(|| (data.f)())) {
             Ok(result) => result,
             Err(payload) => {
                 data.panic_payload = Some(payload);
@@ -86,7 +87,7 @@ where
 
     unsafe {
         let data = Box::into_raw(Box::new(CallData {
-            f: Some(f),
+            f,
             panic_payload: None,
         }));
 
@@ -112,6 +113,7 @@ where
                 result
             }
             Err(payload) => {
+                // CallData is dropped here, which drops f and its captured resources!
                 drop(data);
                 if payload.downcast_ref::<RError>().is_some() {
                     R_ContinueUnwind(R_CONTINUATION_TOKEN.with(|x| **x));

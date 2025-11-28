@@ -196,7 +196,7 @@ pub fn miniextendr(
         }
     }));
     // dbg!(&wrapper_inputs);
-    let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    let pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     for arg in inputs.iter() {
@@ -218,10 +218,6 @@ pub fn miniextendr(
                 }
             }
             syn::Type::Reference(r) => {
-                let send_ident = quote::format_ident!("__miniextendr_arg_{ident}");
-                pre_call_statements.push(quote::quote! {
-                    let #send_ident = unsafe { ::miniextendr_api::ffi::SendSEXP::new(#ident) };
-                });
                 let is_dots = matches!(
                     r.elem.as_ref(),
                     syn::Type::Path(tp)
@@ -235,31 +231,27 @@ pub fn miniextendr(
                 if is_dots {
                     let storage_ident = quote::format_ident!("{}_storage", ident);
                     closure_statements.push(quote::quote! {
-                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #send_ident.get() };
+                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
                         let #ident = &#storage_ident;
                     });
                 } else if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast() };
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#ident).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast() };
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast() };
                     });
                 }
             }
             _ => {
-                let send_ident = quote::format_ident!("__miniextendr_arg_{ident}");
-                pre_call_statements.push(quote::quote! {
-                    let #send_ident = unsafe { ::miniextendr_api::ffi::SendSEXP::new(#ident) };
-                });
                 if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast() };
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#ident).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast() };
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast() };
                     });
                 }
             }

@@ -69,34 +69,6 @@ pub enum SEXPTYPE {
 pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
-/// Send-only handle to a SEXP pointer.
-#[repr(transparent)]
-#[derive(Debug)]
-pub struct SendSEXP {
-    pub inner: SEXP,
-    /// PhantomData<Cell<()>> forces !Sync.
-    pub _not_sync: std::marker::PhantomData<std::cell::Cell<()>>,
-}
-unsafe impl Send for SendSEXP {}
-
-impl SendSEXP {
-    #[inline(always)]
-    /// # Safety
-    /// Caller must supply a valid SEXP pointer whose ownership can be
-    /// transferred to this sendable wrapper.
-    pub unsafe fn new(inner: SEXP) -> Self {
-        Self {
-            inner,
-            _not_sync: std::marker::PhantomData,
-        }
-    }
-
-    #[inline(always)]
-    pub fn get(self) -> SEXP {
-        self.inner
-    }
-}
-
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
