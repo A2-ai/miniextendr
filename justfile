@@ -101,6 +101,10 @@ devtools-test FILTER="":
 load:
     cd rpkg && Rscript -e 'devtools::load_all()'
 
+alias rcmdinstall := r-cmd-install
+r-cmd-install *args:
+    R CMD INSTALL rpkg
+
 # Run R CMD check on rpkg
 alias rcmdcheck := r-cmd-check
 r-cmd-check *args:
