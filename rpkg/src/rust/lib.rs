@@ -1,7 +1,7 @@
 use miniextendr_api::ffi::{R_NilValue, Rf_error, SEXP};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-use miniextendr_api::unwind_protect::{with_r_unwind_protect, with_unwind_protect};
+use miniextendr_api::unwind_protect::with_r_unwind_protect;
 
 // region
 
@@ -165,20 +165,12 @@ extern "C" fn C_unwind_protect_r_error() -> SEXP {
 extern "C" fn C_unwind_protect_lowlevel_test() -> SEXP {
     eprintln!("[Rust] Starting low-level unwind protect test");
     unsafe {
-        with_unwind_protect(
-            || {
-                eprintln!("[Rust] Inside protected function, about to trigger R error");
-                ::miniextendr_api::ffi::Rf_error(
-                    c"%s".as_ptr(),
-                    c"test R error".as_ptr(),
-                );
-                #[allow(unreachable_code)]
-                ::miniextendr_api::ffi::R_NilValue
-            },
-            |jump| {
-                eprintln!("[Rust] Cleanup callback called, jump={}", jump);
-            },
-        )
+        with_r_unwind_protect(|| {
+            eprintln!("[Rust] Inside protected function, about to trigger R error");
+            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr());
+            #[allow(unreachable_code)]
+            ::miniextendr_api::ffi::R_NilValue
+        })
     }
 }
 
@@ -323,17 +315,10 @@ extern "C" fn C_check_interupt_unwind() -> SEXP {
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     unsafe {
-        with_unwind_protect(
-            || {
-                R_CheckUserInterrupt();
-                R_NilValue
-            },
-            |jump| {
-                if jump {
-                    println!("jump occurred, i.e. an interupt!");
-                }
-            },
-        );
+        with_r_unwind_protect(|| {
+            R_CheckUserInterrupt();
+            R_NilValue
+        });
         R_NilValue
     }
 }

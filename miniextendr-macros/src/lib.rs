@@ -391,21 +391,13 @@ pub fn miniextendr(
             #vis extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
 
-                let __miniextendr_result = ::std::panic::catch_unwind(|| {
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(|| {
                     #(#closure_statements)*
                     let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
                     #(#post_call_statements)*
                     let __miniextendr_sexp_result = #return_expression;
                     __miniextendr_sexp_result
-                });
-
-                match __miniextendr_result {
-                    Ok(sexp) => sexp,
-                    Err(panic) => {
-                        let msg = ::miniextendr_api::unwind_protect::panic_payload_to_string(panic);
-                        unsafe { ::miniextendr_api::unwind_protect::raise_r_error_call(#call_param_ident, &msg) }
-                    }
-                }
+                })
             }
         }
     };

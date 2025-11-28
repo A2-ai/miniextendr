@@ -121,6 +121,10 @@ pub enum cetype_t {
 }
 pub use cetype_t::CE_UTF8;
 
+// Note: We intentionally declare some functions twice with different signatures
+// (extern "C" and extern "C-unwind") using #[link_name]. This is safe because
+// the ABI is compatible at runtime - only the Rust type system differs.
+#[allow(clashing_extern_declarations)]
 unsafe extern "C" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
@@ -283,6 +287,7 @@ pub struct R_CallMethodDef_C_unwind {
 unsafe impl Sync for R_CallMethodDef {}
 
 // FIXME: move to an ffi crate or similar..
+#[allow(clashing_extern_declarations)]
 unsafe extern "C" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
