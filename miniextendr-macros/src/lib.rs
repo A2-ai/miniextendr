@@ -283,7 +283,7 @@ pub fn miniextendr(
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
             }
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible_return_type = false;
@@ -302,7 +302,7 @@ pub fn miniextendr(
 
                 if is_unit_inner {
                     is_invisible_return_type = true;
-                            post_call_statements.push(quote::quote! {
+                    post_call_statements.push(quote::quote! {
                         if #rust_result_ident.is_none() {
                             panic!(#option_none_error_msg);
                         }
@@ -336,7 +336,7 @@ pub fn miniextendr(
 
                 if ok_is_unit {
                     is_invisible_return_type = true;
-                            post_call_statements.push(quote::quote! {
+                    post_call_statements.push(quote::quote! {
                         if let Err(e) = #rust_result_ident {
                             panic!("{:?}", e);
                         }
@@ -361,7 +361,7 @@ pub fn miniextendr(
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                    quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
+                quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
             }
         },
     };
@@ -845,7 +845,10 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let module_doc = if fn_links.is_empty() && struct_links.is_empty() {
         format!("R entrypoint for module `{}`.", module)
     } else {
-        let mut doc = format!("R entrypoint for module `{}`.\n\n# Registered items\n", module);
+        let mut doc = format!(
+            "R entrypoint for module `{}`.\n\n# Registered items\n",
+            module
+        );
         if !fn_links.is_empty() {
             doc.push_str(&format!("- Functions: {}\n", fn_links.join(", ")));
         }
@@ -1074,14 +1077,8 @@ fn expand_altrep_struct(
         "ALTREP class descriptor for [`{}`] (class: `{}`, pkg: `{}`, base: `{}`).",
         ident, class_name, pkg_name, base_name
     );
-    let method_registrar_doc = format!(
-        "Method installer for [`{}`] ALTREP class.",
-        ident
-    );
-    let register_altrep_doc = format!(
-        "Registration entry point for [`{}`] ALTREP class.",
-        ident
-    );
+    let method_registrar_doc = format!("Method installer for [`{}`] ALTREP class.", ident);
+    let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
 
     let expanded = quote::quote! {
         #input
@@ -1176,7 +1173,10 @@ pub fn r_ffi_checked(
                 let is_variadic = fn_item.sig.variadic.is_some();
 
                 // Check if function already has #[link_name] - if so, pass through unchanged
-                let has_link_name = fn_item.attrs.iter().any(|attr| attr.path().is_ident("link_name"));
+                let has_link_name = fn_item
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("link_name"));
 
                 if is_variadic || has_link_name {
                     // Pass through variadic functions and functions with explicit link_name unchanged
@@ -1190,7 +1190,9 @@ pub fn r_ffi_checked(
                     let inputs = &fn_item.sig.inputs;
                     let output = &fn_item.sig.output;
                     // Filter out link_name attributes (already checked above, but be safe)
-                    let attrs: Vec<_> = fn_item.attrs.iter()
+                    let attrs: Vec<_> = fn_item
+                        .attrs
+                        .iter()
                         .filter(|attr| !attr.path().is_ident("link_name"))
                         .collect();
 
@@ -1221,7 +1223,7 @@ pub fn r_ffi_checked(
                         #[inline]
                         #[allow(non_snake_case)]
                         #vis unsafe fn #fn_name(#inputs) #output {
-                            #[cfg(debug_assertions)]
+                            // #[cfg(debug_assertions)]
                             if !::miniextendr_api::thread_safety::is_r_main_thread() {
                                 panic!(concat!("R API `", #fn_name_str, "` called from non-main thread"));
                             }

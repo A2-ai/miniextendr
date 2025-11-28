@@ -264,7 +264,6 @@ pub struct R_CallMethodDef_C_unwind {
 // TODO: investigate why Sync is necessary...
 unsafe impl Sync for R_CallMethodDef {}
 
-
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]

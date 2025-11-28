@@ -120,11 +120,14 @@ impl Drop for SimpleDropMsg {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
-    with_r_unwind_protect(|| {
-        let _a = SimpleDropMsg("stack resource");
-        let _b = Box::new(SimpleDropMsg("heap resource"));
-        unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(42) }
-    }, None)
+    with_r_unwind_protect(
+        || {
+            let _a = SimpleDropMsg("stack resource");
+            let _b = Box::new(SimpleDropMsg("heap resource"));
+            unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(42) }
+        },
+        None,
+    )
 }
 
 /// Test that with_r_unwind_protect cleans up on R error.
@@ -137,28 +140,31 @@ extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
     let a = SimpleDropMsg("captured resource 1");
     let b = Box::new(SimpleDropMsg("captured resource 2 (boxed)"));
 
-    with_r_unwind_protect(move || {
-        // Access resources without moving them out of closure's captured state
-        eprintln!("[Rust] Inside closure, using captured resources");
-        eprintln!("[Rust] a.0 = {}", a.0);
-        eprintln!("[Rust] b.0 = {}", b.0);
+    with_r_unwind_protect(
+        move || {
+            // Access resources without moving them out of closure's captured state
+            eprintln!("[Rust] Inside closure, using captured resources");
+            eprintln!("[Rust] a.0 = {}", a.0);
+            eprintln!("[Rust] b.0 = {}", b.0);
 
-        // Now trigger R error - cleanup should drop a and b
-        unsafe {
-            ::miniextendr_api::ffi::Rf_error(
-                c"%s".as_ptr(),
-                c"intentional R error for testing".as_ptr(),
-            )
-        };
-        #[allow(unreachable_code)]
-        unsafe {
-            // This is never reached, but we need to "use" a and b
-            // to prevent the compiler from moving them earlier
-            drop(a);
-            drop(b);
-            ::miniextendr_api::ffi::R_NilValue
-        }
-    }, None)
+            // Now trigger R error - cleanup should drop a and b
+            unsafe {
+                ::miniextendr_api::ffi::Rf_error(
+                    c"%s".as_ptr(),
+                    c"intentional R error for testing".as_ptr(),
+                )
+            };
+            #[allow(unreachable_code)]
+            unsafe {
+                // This is never reached, but we need to "use" a and b
+                // to prevent the compiler from moving them earlier
+                drop(a);
+                drop(b);
+                ::miniextendr_api::ffi::R_NilValue
+            }
+        },
+        None,
+    )
 }
 
 /// Minimal test using low-level with_unwind_protect
@@ -168,12 +174,15 @@ extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
 extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
     eprintln!("[Rust] Starting low-level unwind protect test");
     unsafe {
-        with_r_unwind_protect(|| {
-            eprintln!("[Rust] Inside protected function, about to trigger R error");
-            ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr());
-            #[allow(unreachable_code)]
-            ::miniextendr_api::ffi::R_NilValue
-        }, None)
+        with_r_unwind_protect(
+            || {
+                eprintln!("[Rust] Inside protected function, about to trigger R error");
+                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr());
+                #[allow(unreachable_code)]
+                ::miniextendr_api::ffi::R_NilValue
+            },
+            None,
+        )
     }
 }
 
@@ -318,10 +327,13 @@ extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
     std::thread::sleep(std::time::Duration::from_secs(2));
 
     unsafe {
-        with_r_unwind_protect(|| {
-            R_CheckUserInterrupt();
-            R_NilValue
-        }, None);
+        with_r_unwind_protect(
+            || {
+                R_CheckUserInterrupt();
+                R_NilValue
+            },
+            None,
+        );
         R_NilValue
     }
 }
@@ -466,7 +478,9 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
     });
     // Never reached - panic converts to R error
     #[allow(unreachable_code)]
-    unsafe { R_NilValue }
+    unsafe {
+        R_NilValue
+    }
 }
 
 // endregion

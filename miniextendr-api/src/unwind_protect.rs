@@ -6,7 +6,12 @@
 //! **Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
 //! Use this API to ensure cleanup happens even when R errors occur.
 //!
-use std::{any::Any, cell::LazyCell, ffi::c_void, panic::{AssertUnwindSafe, catch_unwind}};
+use std::{
+    any::Any,
+    cell::LazyCell,
+    ffi::c_void,
+    panic::{AssertUnwindSafe, catch_unwind},
+};
 
 use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
 

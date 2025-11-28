@@ -5,9 +5,9 @@
 //! The main thread then converts the result to SEXP or raises an R error.
 
 use std::any::Any;
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::mpsc::{self, Receiver, SyncSender};
+use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::OnceLock;
+use std::sync::mpsc::{self, SyncSender};
 use std::thread;
 
 use crate::ffi;
@@ -67,15 +67,6 @@ where
     }
 }
 
-fn worker_loop(job_rx: Receiver<AnyJob>) {
-    loop {
-        match job_rx.recv() {
-            Ok(job) => job(),
-            Err(_) => break,
-        }
-    }
-}
-
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_init_worker() {
     crate::thread_safety::init_main_thread();
@@ -86,7 +77,14 @@ pub extern "C-unwind" fn miniextendr_init_worker() {
     let (job_tx, job_rx) = mpsc::sync_channel::<AnyJob>(0);
     thread::Builder::new()
         .name("miniextendr-worker".into())
-        .spawn(move || worker_loop(job_rx))
+        .spawn(move || {
+            loop {
+                match job_rx.recv() {
+                    Ok(job) => job(),
+                    Err(_) => break,
+                }
+            }
+        })
         .expect("failed to spawn worker thread");
 
     JOB_TX.set(job_tx).expect("worker already initialized");
