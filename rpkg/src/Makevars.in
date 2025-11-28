@@ -33,6 +33,11 @@ CARGO_TOML = \
   $(ROOT_MINIEXTENDR_REPO)/miniextendr-api/Cargo.toml \
   $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros/Cargo.toml
 
+all: RUN_CARGO_ALWAYS
+
+RUN_CARGO_ALWAYS: $(SHLIB)
+	@touch -t 197001010000 $(SHLIB)
+
 $(SHLIB): vendor $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 vendor: $(CARGO_TOML)
