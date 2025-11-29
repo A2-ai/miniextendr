@@ -2,7 +2,7 @@
 replace-with = "vendored-sources"
 
 [source.vendored-sources]
-directory = "/Users/elea/Documents/GitHub/as_cpp_exceptions/vendor"
+directory = "/Users/elea/Documents/GitHub/as_cpp_exceptions/rpkg/inst/vendor"
 
 [build]
 target-dir = "/Users/elea/Documents/GitHub/as_cpp_exceptions/rpkg/src/rust/target"

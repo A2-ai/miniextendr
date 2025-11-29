@@ -1753,6 +1753,9 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 : ${R_HOME=`R RHOME`}
 
+: ${NOT_CRAN="true"}
+export NOT_CRAN
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
@@ -2144,12 +2147,11 @@ do
 done
 
 
-VENDOR_OUT="$ROOT_MINIEXTENDR_REPO/vendor"
-SYNC1="--sync=$ROOT_MINIEXTENDR_REPO/Cargo.toml"
-SYNC2="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-api/Cargo.toml"
-SYNC3="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-macros/Cargo.toml"
-SYNC4="--sync=$abs_rpkg_src/rust/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
+VENDOR_OUT="$abs_top_srcdir/inst/vendor"
+SYNC1="--sync=$abs_rpkg_src/rust/Cargo.toml"
+SYNC2="--sync=$VENDOR_OUT/miniextendr-api/Cargo.toml"
+SYNC3="--sync=$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3"
 
 
 

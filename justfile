@@ -90,16 +90,23 @@ vendor:
 
 # Load and test rpkg with devtools
 devtools-test FILTER="":
-    @cd rpkg && \
     if [ "{{FILTER}}" = "" ]; then \
-      Rscript -e 'devtools::test()'; \
+      Rscript -e 'devtools::test("rpkg")'; \
     else \
-      Rscript -e 'devtools::test(filter = "{{FILTER}}")'; \
+      Rscript -e 'devtools::test("rpkg", filter = "{{FILTER}}")'; \
     fi
 
 # Load rpkg with devtools::load_all
 load:
-    cd rpkg && Rscript -e 'devtools::load_all()'
+    Rscript -e 'devtools::load_all("rpkg")'
+
+# Install rpkg with devtools::install
+devtools-install:
+    Rscript -e 'devtools::install("rpkg")'
+
+# Check rpkg with devtools::check
+devtools-check:
+    Rscript -e 'devtools::check("rpkg")'
 
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args:
@@ -124,8 +131,7 @@ r-cmd-check *args:
         *)  CHECK_DIR_ARG="'$(pwd)/$CHECK_DIR'" ;; \
       esac; \
     fi \
-    && cd rpkg \
-    && Rscript -e "rcmdcheck::rcmdcheck(args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
+    && Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
 
 # Build R package tarball
 test-r-build:
@@ -134,8 +140,8 @@ test-r-build:
 
 # Quick smoke test of rpkg functions
 smoke-test:
-    cd rpkg && Rscript -e ' \
-      devtools::load_all(".", quiet = TRUE); \
+    Rscript -e ' \
+      devtools::load_all("rpkg", quiet = TRUE); \
       cat("add(2L, 3L) =", add(2L, 3L), "\n"); \
       cat("drop_message_on_success() =", drop_message_on_success(), "\n"); \
       tryCatch(add_panic(1L, 2L), error = function(e) cat("Caught panic:", conditionMessage(e), "\n")); \

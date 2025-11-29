@@ -3,6 +3,10 @@ AC_INIT([rpkg], [1.0])
 dnl ensure R_HOME is set
 : ${R_HOME=`R RHOME`}
 
+dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
+: ${NOT_CRAN="true"}
+export NOT_CRAN
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
@@ -166,13 +170,12 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring ----
-VENDOR_OUT="$ROOT_MINIEXTENDR_REPO/vendor"
-SYNC1="--sync=$ROOT_MINIEXTENDR_REPO/Cargo.toml"
-SYNC2="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-api/Cargo.toml"
-SYNC3="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-macros/Cargo.toml"
-SYNC4="--sync=$abs_rpkg_src/rust/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
+dnl ---- vendoring (in inst/vendor for self-contained builds) ----
+VENDOR_OUT="$abs_top_srcdir/inst/vendor"
+SYNC1="--sync=$abs_rpkg_src/rust/Cargo.toml"
+SYNC2="--sync=$VENDOR_OUT/miniextendr-api/Cargo.toml"
+SYNC3="--sync=$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3"
 AC_SUBST([VENDOR_SYNC_FLAGS])
 AC_SUBST([VENDOR_OUT])
 

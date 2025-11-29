@@ -29,9 +29,8 @@ OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 ## Manifests to watch; touching any will refresh vendor/
 CARGO_TOML = \
   $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
-  $(ROOT_MINIEXTENDR_REPO)/Cargo.toml \
-  $(ROOT_MINIEXTENDR_REPO)/miniextendr-api/Cargo.toml \
-  $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros/Cargo.toml
+  $(VENDOR_OUT)/miniextendr-api/Cargo.toml \
+  $(VENDOR_OUT)/miniextendr-macros/Cargo.toml
 
 all: RUN_CARGO_ALWAYS
 
@@ -41,13 +40,12 @@ RUN_CARGO_ALWAYS: $(SHLIB)
 $(SHLIB): vendor $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 vendor: $(CARGO_TOML)
-	$(CARGO) $(RUST_TOOLCHAIN) vendor $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT) > /dev/null 2>&1
+	if [ "$$NOT_CRAN" = "true" ]; then \
+	  $(CARGO) $(RUST_TOOLCHAIN) vendor --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
+	fi
 
-$(ABS_RPKG_SRCDIR)/rust/Cargo.lock: $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-	$(CARGO) $(RUST_TOOLCHAIN) generate-lockfile --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-
-$(CARGO_AR): vendor $(ABS_RPKG_SRCDIR)/rust/Cargo.lock $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
-	@env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+$(CARGO_AR): vendor $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 	$(CARGO) $(RUST_TOOLCHAIN) build --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)
@@ -58,7 +56,7 @@ $(R_WRAPPERS_GENERATED): $(CARGO_AR)
 	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)
-	cp $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT)
+	@cp $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT)
 
 clean:
-	@if [ "$$NOT_CRAN" != "true" ]; then rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); fi
+	if [ "$$NOT_CRAN" != "true" ]; then rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); fi
