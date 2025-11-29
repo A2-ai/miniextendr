@@ -493,6 +493,50 @@ fn test_logical_slice_all_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> 
 
 mod altrep;
 
+// ALTREP .Call wrappers (delegating to miniextendr_api)
+// Named with rpkg_ prefix to avoid symbol collision with miniextendr_api exports.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
+    unsafe { miniextendr_api::altrep::C_altrep_compact_int(n, start, step) }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_altrep_from_doubles(x: SEXP) -> SEXP {
+    unsafe { miniextendr_api::altrep::C_altrep_from_doubles(x) }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_altrep_from_strings(x: SEXP) -> SEXP {
+    unsafe { miniextendr_api::altrep::C_altrep_from_strings(x) }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
+    unsafe { miniextendr_api::altrep::C_altrep_from_logicals(x) }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_altrep_from_raw(x: SEXP) -> SEXP {
+    unsafe { miniextendr_api::altrep::C_altrep_from_raw(x) }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
+    unsafe { miniextendr_api::altrep::C_altrep_from_list(x) }
+}
+
 miniextendr_module! {
     mod rpkg;
     // ALTREP entrypoints are called directly from R via R/altrep.R
@@ -584,7 +628,13 @@ miniextendr_module! {
     // Wildcard parameter test
     fn underscore_it_all;
 
-    // ALTREP .Call entrypoints are used directly from R in R/altrep.R
+    // ALTREP .Call entrypoints
+    extern "C-unwind" fn rpkg_altrep_compact_int;
+    extern "C-unwind" fn rpkg_altrep_from_doubles;
+    extern "C-unwind" fn rpkg_altrep_from_strings;
+    extern "C-unwind" fn rpkg_altrep_from_logicals;
+    extern "C-unwind" fn rpkg_altrep_from_raw;
+    extern "C-unwind" fn rpkg_altrep_from_list;
 }
 
 // endregion

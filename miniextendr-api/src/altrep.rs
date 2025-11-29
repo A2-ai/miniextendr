@@ -154,11 +154,14 @@ unsafe fn ep_as<'a, T>(ep: SEXP) -> &'a T {
 // ========= INT class + trampolines =========
 unsafe fn int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
     let ep = unsafe { R_altrep_data1(x) };
+    // Double-boxing is necessary: Box<dyn Trait> is a fat pointer (2 words),
+    // but R's external pointer can only store a thin pointer (1 word).
+    // So we store Box<Box<dyn Trait>> which is a thin pointer to heap-allocated fat pointer.
     unsafe { ep_as::<Box<dyn IntBackend>>(ep).as_ref() }
 }
 /// # Safety
 /// `x` must be an ALTREP INTSXP created by this crate, with data1
-/// holding a valid `Box<dyn IntBackend>` pointer.
+/// holding a valid `Box<Box<dyn IntBackend>>` pointer.
 pub unsafe fn altrep_int_backend<'a>(x: SEXP) -> &'a dyn IntBackend {
     unsafe { int_backend(x) }
 }
@@ -177,7 +180,7 @@ unsafe fn real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP REALSXP created by this crate, with data1
-/// holding a valid `Box<dyn RealBackend>` pointer.
+/// holding a valid `Box<Box<dyn RealBackend>>` pointer.
 pub unsafe fn altrep_real_backend<'a>(x: SEXP) -> &'a dyn RealBackend {
     unsafe { real_backend(x) }
 }
@@ -195,7 +198,7 @@ unsafe fn str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP STRSXP created by this crate, with data1
-/// holding a valid `Box<dyn StringBackend>` pointer.
+/// holding a valid `Box<Box<dyn StringBackend>>` pointer.
 pub unsafe fn altrep_str_backend<'a>(x: SEXP) -> &'a dyn StringBackend {
     unsafe { str_backend(x) }
 }
@@ -213,7 +216,7 @@ unsafe fn lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP LGLSXP created by this crate, with data1
-/// holding a valid `Box<dyn LogicalBackend>` pointer.
+/// holding a valid `Box<Box<dyn LogicalBackend>>` pointer.
 pub unsafe fn altrep_lgl_backend<'a>(x: SEXP) -> &'a dyn LogicalBackend {
     unsafe { lgl_backend(x) }
 }
@@ -231,7 +234,7 @@ unsafe fn raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP `RAWSXP` created by this crate, with data1
-/// holding a valid `Box<dyn RawBackend>` pointer.
+/// holding a valid `Box<Box<dyn RawBackend>>` pointer.
 pub unsafe fn altrep_raw_backend<'a>(x: SEXP) -> &'a dyn RawBackend {
     unsafe { raw_backend(x) }
 }
@@ -249,7 +252,7 @@ unsafe fn list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
 }
 /// # Safety
 /// `x` must be an ALTREP VECSXP created by this crate, with data1
-/// holding a valid `Box<dyn ListBackend>` pointer.
+/// holding a valid `Box<Box<dyn ListBackend>>` pointer.
 pub unsafe fn altrep_list_backend<'a>(x: SEXP) -> &'a dyn ListBackend {
     unsafe { list_backend(x) }
 }
@@ -286,6 +289,7 @@ pub extern "C-unwind" fn miniextendr_altrep_init() {
 /// The provided backend must remain valid for the lifetime of the ALTREP object.
 pub unsafe fn new_altrep_int(b: Box<dyn IntBackend>) -> SEXP {
     unsafe { ensure_classes() };
+    // Double-box: Box<dyn Trait> is a fat pointer, R's external pointer only holds thin pointers
     let ep = unsafe { make_eptr(Box::new(b), int_finalizer) };
     unsafe { R_new_altrep(*ALTINT.get().unwrap(), ep, R_NilValue) }
 }
@@ -454,656 +458,8 @@ pub unsafe fn new_altrep_raw_from_mmap(
     unsafe { new_altrep_raw(Box::new(RawMmap::new(ptr, len, cleanup))) }
 }
 
-// ========= Example backends (moved to altrep_std_impls) =========
+// ========= Standard backends re-exported from altrep_std_impls =========
 pub use crate::altrep_std_impls::*;
-
-// ========= Stock numeric/string backends =========
-
-// INT backends
-pub struct IntVec {
-    data: Box<[i32]>,
-}
-impl From<Vec<i32>> for IntVec {
-    fn from(v: Vec<i32>) -> Self {
-        Self {
-            data: v.into_boxed_slice(),
-        }
-    }
-}
-impl IntBackend for IntVec {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(&self.data)
-    }
-}
-
-pub struct IntArc {
-    data: Arc<[i32]>,
-}
-impl From<Arc<[i32]>> for IntArc {
-    fn from(data: Arc<[i32]>) -> Self {
-        Self { data }
-    }
-}
-impl IntBackend for IntArc {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(&self.data)
-    }
-}
-
-pub struct IntMmap {
-    ptr: *const i32,
-    len: usize,
-    cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
-}
-unsafe impl Send for IntMmap {}
-unsafe impl Sync for IntMmap {}
-impl IntMmap {
-    /// # Safety
-    /// Caller guarantees the pointer and length designate a valid, readable buffer
-    /// for the lifetime of the ALTREP object or until `cleanup` is called.
-    pub unsafe fn new(
-        ptr: *const i32,
-        len: usize,
-        cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
-    ) -> Self {
-        Self { ptr, len, cleanup }
-    }
-}
-impl Drop for IntMmap {
-    fn drop(&mut self) {
-        if let Some(f) = self.cleanup {
-            unsafe { f(self.ptr, self.len) }
-        }
-    }
-}
-impl IntBackend for IntMmap {
-    fn len(&self) -> R_xlen_t {
-        self.len as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        unsafe { *self.ptr.add(i as usize) }
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let start = i as usize;
-        let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
-    }
-}
-
-// REAL backends
-pub struct RealVec {
-    data: Box<[f64]>,
-}
-impl From<Vec<f64>> for RealVec {
-    fn from(v: Vec<f64>) -> Self {
-        Self {
-            data: v.into_boxed_slice(),
-        }
-    }
-}
-impl RealBackend for RealVec {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> f64 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[f64]> {
-        Some(&self.data)
-    }
-}
-
-pub struct RealArc {
-    data: Arc<[f64]>,
-}
-impl From<Arc<[f64]>> for RealArc {
-    fn from(data: Arc<[f64]>) -> Self {
-        Self { data }
-    }
-}
-impl RealBackend for RealArc {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> f64 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[f64]> {
-        Some(&self.data)
-    }
-}
-
-pub struct RealSliceMat {
-    src: &'static [f64],
-    materialized: OnceLock<Box<[f64]>>,
-}
-impl RealSliceMat {
-    pub fn new(src: &'static [f64]) -> Self {
-        Self {
-            src,
-            materialized: OnceLock::new(),
-        }
-    }
-}
-impl RealBackend for RealSliceMat {
-    fn len(&self) -> R_xlen_t {
-        self.src.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> f64 {
-        self.src[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.src[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[f64]> {
-        let bx = self
-            .materialized
-            .get_or_init(|| self.src.to_vec().into_boxed_slice());
-        Some(&**bx)
-    }
-}
-
-pub struct RealMmap {
-    ptr: *const f64,
-    len: usize,
-    cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
-}
-unsafe impl Send for RealMmap {}
-unsafe impl Sync for RealMmap {}
-impl RealMmap {
-    /// # Safety
-    /// Caller guarantees the pointer and length designate a valid, readable buffer
-    /// for the lifetime of the ALTREP object or until `cleanup` is called.
-    pub unsafe fn new(
-        ptr: *const f64,
-        len: usize,
-        cleanup: Option<unsafe extern "C-unwind" fn(*const f64, usize)>,
-    ) -> Self {
-        Self { ptr, len, cleanup }
-    }
-}
-impl Drop for RealMmap {
-    fn drop(&mut self) {
-        if let Some(f) = self.cleanup {
-            unsafe { f(self.ptr, self.len) }
-        }
-    }
-}
-impl RealBackend for RealMmap {
-    fn len(&self) -> R_xlen_t {
-        self.len as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> f64 {
-        unsafe { *self.ptr.add(i as usize) }
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [f64]) -> R_xlen_t {
-        let start = i as usize;
-        let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[f64]> {
-        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
-    }
-}
-
-// LOGICAL backends (i32 with NA support)
-pub struct LogicalVec {
-    data: Box<[i32]>,
-}
-impl From<Vec<i32>> for LogicalVec {
-    fn from(v: Vec<i32>) -> Self {
-        Self {
-            data: v.into_boxed_slice(),
-        }
-    }
-}
-impl LogicalBackend for LogicalVec {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(&self.data)
-    }
-}
-
-pub struct LogicalArc {
-    data: Arc<[i32]>,
-}
-impl From<Arc<[i32]>> for LogicalArc {
-    fn from(data: Arc<[i32]>) -> Self {
-        Self { data }
-    }
-}
-impl LogicalBackend for LogicalArc {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(&self.data)
-    }
-}
-
-pub struct LogicalSliceMat {
-    src: &'static [i32],
-    materialized: OnceLock<Box<[i32]>>,
-}
-impl LogicalSliceMat {
-    pub fn new(src: &'static [i32]) -> Self {
-        Self {
-            src,
-            materialized: OnceLock::new(),
-        }
-    }
-}
-impl LogicalBackend for LogicalSliceMat {
-    fn len(&self) -> R_xlen_t {
-        self.src.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        self.src[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.src[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        let bx = self
-            .materialized
-            .get_or_init(|| self.src.to_vec().into_boxed_slice());
-        Some(&**bx)
-    }
-}
-
-pub struct LogicalMmap {
-    ptr: *const i32,
-    len: usize,
-    cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
-}
-unsafe impl Send for LogicalMmap {}
-unsafe impl Sync for LogicalMmap {}
-impl LogicalMmap {
-    /// # Safety
-    /// Caller guarantees the pointer and length designate a valid, readable buffer
-    /// for the lifetime of the ALTREP object or until `cleanup` is called.
-    pub unsafe fn new(
-        ptr: *const i32,
-        len: usize,
-        cleanup: Option<unsafe extern "C-unwind" fn(*const i32, usize)>,
-    ) -> Self {
-        Self { ptr, len, cleanup }
-    }
-}
-impl Drop for LogicalMmap {
-    fn drop(&mut self) {
-        if let Some(f) = self.cleanup {
-            unsafe { f(self.ptr, self.len) }
-        }
-    }
-}
-impl LogicalBackend for LogicalMmap {
-    fn len(&self) -> R_xlen_t {
-        self.len as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        unsafe { *self.ptr.add(i as usize) }
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let start = i as usize;
-        let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
-    }
-}
-
-// RAW backends (Rbyte)
-pub struct RawVec {
-    data: Box<[Rbyte]>,
-}
-impl From<Vec<Rbyte>> for RawVec {
-    fn from(v: Vec<Rbyte>) -> Self {
-        Self {
-            data: v.into_boxed_slice(),
-        }
-    }
-}
-impl RawBackend for RawVec {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> Rbyte {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[Rbyte]> {
-        Some(&self.data)
-    }
-}
-
-pub struct RawArc {
-    data: Arc<[Rbyte]>,
-}
-impl From<Arc<[Rbyte]>> for RawArc {
-    fn from(data: Arc<[Rbyte]>) -> Self {
-        Self { data }
-    }
-}
-impl RawBackend for RawArc {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> Rbyte {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[Rbyte]> {
-        Some(&self.data)
-    }
-}
-
-pub struct RawSliceMat {
-    src: &'static [Rbyte],
-    materialized: OnceLock<Box<[Rbyte]>>,
-}
-impl RawSliceMat {
-    pub fn new(src: &'static [Rbyte]) -> Self {
-        Self {
-            src,
-            materialized: OnceLock::new(),
-        }
-    }
-}
-impl RawBackend for RawSliceMat {
-    fn len(&self) -> R_xlen_t {
-        self.src.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> Rbyte {
-        self.src[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.src[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[Rbyte]> {
-        let bx = self
-            .materialized
-            .get_or_init(|| self.src.to_vec().into_boxed_slice());
-        Some(&**bx)
-    }
-}
-
-pub struct RawMmap {
-    ptr: *const Rbyte,
-    len: usize,
-    cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
-}
-unsafe impl Send for RawMmap {}
-unsafe impl Sync for RawMmap {}
-impl RawMmap {
-    /// # Safety
-    /// Caller guarantees the pointer and length designate a valid, readable buffer
-    /// for the lifetime of the ALTREP object or until `cleanup` is called.
-    pub unsafe fn new(
-        ptr: *const Rbyte,
-        len: usize,
-        cleanup: Option<unsafe extern "C-unwind" fn(*const Rbyte, usize)>,
-    ) -> Self {
-        Self { ptr, len, cleanup }
-    }
-}
-impl Drop for RawMmap {
-    fn drop(&mut self) {
-        if let Some(f) = self.cleanup {
-            unsafe { f(self.ptr, self.len) }
-        }
-    }
-}
-impl RawBackend for RawMmap {
-    fn len(&self) -> R_xlen_t {
-        self.len as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> Rbyte {
-        unsafe { *self.ptr.add(i as usize) }
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
-        let start = i as usize;
-        let end = ((i + n).min(self.len())) as usize;
-        let src = unsafe { core::slice::from_raw_parts(self.ptr.add(start), end - start) };
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[Rbyte]> {
-        Some(unsafe { core::slice::from_raw_parts(self.ptr, self.len) })
-    }
-}
-
-// STRING backends
-pub struct Utf8Arc {
-    data: Arc<[String]>,
-}
-impl From<Arc<[String]>> for Utf8Arc {
-    fn from(data: Arc<[String]>) -> Self {
-        Self { data }
-    }
-}
-impl StringBackend for Utf8Arc {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn utf8_at(&self, i: R_xlen_t) -> Option<&str> {
-        Some(self.data[i as usize].as_str())
-    }
-}
-
-pub struct Utf8Slice {
-    data: &'static [&'static str],
-}
-impl Utf8Slice {
-    pub fn new(data: &'static [&'static str]) -> Self {
-        Self { data }
-    }
-}
-impl StringBackend for Utf8Slice {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn utf8_at(&self, i: R_xlen_t) -> Option<&str> {
-        Some(self.data[i as usize])
-    }
-}
-
-/// Owned contiguous i32 buffer for LOGICALSXP.
-pub struct OwnedLogical {
-    data: Box<[i32]>,
-}
-impl OwnedLogical {
-    /// # Safety
-    /// `x` must be a LGLSXP; caller guarantees it is valid and points to readable memory.
-    pub unsafe fn from_lgls_sexp(x: SEXP) -> Self {
-        unsafe {
-            let n = Rf_xlength(x) as usize;
-            let ptr = LOGICAL_OR_NULL(x);
-            let slice = if ptr.is_null() {
-                &[]
-            } else {
-                core::slice::from_raw_parts(ptr, n)
-            };
-            Self {
-                data: slice.to_vec().into_boxed_slice(),
-            }
-        }
-    }
-}
-impl LogicalBackend for OwnedLogical {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> i32 {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [i32]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[i32]> {
-        Some(&self.data)
-    }
-    fn no_na(&self) -> i32 {
-        0
-    }
-}
-
-/// Owned contiguous raw buffer for RAWSXP.
-pub struct OwnedRaw {
-    data: Box<[Rbyte]>,
-}
-impl OwnedRaw {
-    /// # Safety
-    /// `x` must be a RAWSXP; caller guarantees it is valid and points to readable memory.
-    pub unsafe fn from_raw_sexp(x: SEXP) -> Self {
-        unsafe {
-            let n = Rf_xlength(x) as usize;
-            let ptr = DATAPTR_RO(x) as *const Rbyte;
-            let slice = core::slice::from_raw_parts(ptr, n);
-            Self {
-                data: slice.to_vec().into_boxed_slice(),
-            }
-        }
-    }
-}
-impl RawBackend for OwnedRaw {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> Rbyte {
-        self.data[i as usize]
-    }
-    fn get_region(&self, i: R_xlen_t, n: R_xlen_t, out: &mut [Rbyte]) -> R_xlen_t {
-        let end = (i + n).min(self.len()) as usize;
-        let src = &self.data[i as usize..end];
-        out[..src.len()].copy_from_slice(src);
-        src.len() as R_xlen_t
-    }
-    fn dataptr(&self) -> Option<&[Rbyte]> {
-        Some(&self.data)
-    }
-}
-
-/// Owned list of SEXP values for VECSXP.
-pub struct OwnedList {
-    data: Vec<SEXP>,
-}
-impl OwnedList {
-    pub fn from_sexps(v: Vec<SEXP>) -> Self {
-        Self { data: v }
-    }
-    /// # Safety
-    /// `x` must be a VECSXP; caller guarantees its contents are readable.
-    pub unsafe fn from_list_sexp(x: SEXP) -> Self {
-        unsafe {
-            let n = Rf_xlength(x);
-            let mut v = Vec::with_capacity(n as usize);
-            for i in 0..n {
-                let elt = VECTOR_ELT(x, i);
-                v.push(elt);
-            }
-            Self { data: v }
-        }
-    }
-}
-unsafe impl Send for OwnedList {}
-unsafe impl Sync for OwnedList {}
-impl ListBackend for OwnedList {
-    fn len(&self) -> R_xlen_t {
-        self.data.len() as R_xlen_t
-    }
-    fn elt(&self, i: R_xlen_t) -> SEXP {
-        self.data[i as usize]
-    }
-}
 
 // ========= R-callable C wrappers (no macros, pure .Call) =========
 
@@ -1112,25 +468,24 @@ impl ListBackend for OwnedList {
 /// Must be called by R with valid SEXP arguments. Panics or errors
 /// in this function must not unwind across the FFI boundary.
 pub unsafe extern "C-unwind" fn C_altrep_compact_int(
-    _call: SEXP,
     n_: SEXP,
     start_: SEXP,
     step_: SEXP,
 ) -> SEXP {
     // Expect INTSXP scalars; read via DATAPTR_RO
-    let n = unsafe { *DATAPTR_RO(n_).cast() };
-    let start = unsafe { *DATAPTR_RO(start_).cast() };
-    let step = unsafe { *DATAPTR_RO(step_).cast() };
+    let n: i32 = unsafe { *DATAPTR_RO(n_).cast() };
+    let start: i32 = unsafe { *DATAPTR_RO(start_).cast() };
+    let step: i32 = unsafe { *DATAPTR_RO(step_).cast() };
     if step != 1 && step != -1 {
         return unsafe { R_NilValue };
     }
-    unsafe { new_altrep_int(Box::new(CompactIntSeq::new(n, start, step))) }
+    unsafe { new_altrep_int(Box::new(CompactIntSeq::new(n as R_xlen_t, start, step))) }
 }
 
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a REALSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C-unwind" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_doubles(x: SEXP) -> SEXP {
     let b = unsafe { OwnedReal::from_reals_sexp(x) };
     unsafe { new_altrep_real(Box::new(b)) }
 }
@@ -1138,7 +493,7 @@ pub unsafe extern "C-unwind" fn C_altrep_from_doubles(_call: SEXP, x: SEXP) -> S
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a STRSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C-unwind" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_strings(x: SEXP) -> SEXP {
     let b = unsafe { Utf8Vec::from_strs_sexp(x) };
     unsafe { new_altrep_str(Box::new(b)) }
 }
@@ -1146,7 +501,7 @@ pub unsafe extern "C-unwind" fn C_altrep_from_strings(_call: SEXP, x: SEXP) -> S
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a LGLSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C-unwind" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_logicals(x: SEXP) -> SEXP {
     let b = unsafe { OwnedLogical::from_lgls_sexp(x) };
     unsafe { new_altrep_lgl(Box::new(b)) }
 }
@@ -1154,7 +509,7 @@ pub unsafe extern "C-unwind" fn C_altrep_from_logicals(_call: SEXP, x: SEXP) -> 
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a RAWSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C-unwind" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_raw(x: SEXP) -> SEXP {
     let b = unsafe { OwnedRaw::from_raw_sexp(x) };
     unsafe { new_altrep_raw(Box::new(b)) }
 }
@@ -1162,7 +517,7 @@ pub unsafe extern "C-unwind" fn C_altrep_from_raw(_call: SEXP, x: SEXP) -> SEXP 
 #[unsafe(no_mangle)]
 /// # Safety
 /// Must be called by R with a VECSXP `x` value; must not unwind across FFI.
-pub unsafe extern "C-unwind" fn C_altrep_from_list(_call: SEXP, x: SEXP) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_from_list(x: SEXP) -> SEXP {
     let b = unsafe { OwnedList::from_list_sexp(x) };
     unsafe { new_altrep_list(Box::new(b)) }
 }

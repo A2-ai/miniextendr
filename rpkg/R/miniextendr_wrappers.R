@@ -270,3 +270,27 @@ underscore_it_all <- function(private__unused0, private__unused1) {
     invisible(.Call(C_underscore_it_all, .call = match.call(), private__unused0, private__unused1))
 }
 
+unsafe_rpkg_altrep_compact_int <- function(n, start, step) {
+    .Call(rpkg_altrep_compact_int, n, start, step)
+}
+
+unsafe_rpkg_altrep_from_doubles <- function(x) {
+    .Call(rpkg_altrep_from_doubles, x)
+}
+
+unsafe_rpkg_altrep_from_strings <- function(x) {
+    .Call(rpkg_altrep_from_strings, x)
+}
+
+unsafe_rpkg_altrep_from_logicals <- function(x) {
+    .Call(rpkg_altrep_from_logicals, x)
+}
+
+unsafe_rpkg_altrep_from_raw <- function(x) {
+    .Call(rpkg_altrep_from_raw, x)
+}
+
+unsafe_rpkg_altrep_from_list <- function(x) {
+    .Call(rpkg_altrep_from_list, x)
+}
+
