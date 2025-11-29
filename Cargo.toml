@@ -11,3 +11,6 @@ miniextendr-macros = { path = "miniextendr-macros"}
 version = "0.1.0"
 edition = "2024"
 exclude = ["vendor", "rpkg/inst/vendor"]
+
+[profile.release]
+debug-assertions = true
