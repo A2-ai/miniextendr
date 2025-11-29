@@ -57,6 +57,9 @@
 /// - `#[miniextendr(visible)]` - Force the R wrapper to return visibly.
 ///   Overrides the default invisible behavior for unit-returning functions.
 ///
+/// - `#[miniextendr(check_interrupt)]` - Check for user interrupts (Ctrl+C) before executing.
+///   Calls `R_CheckUserInterrupt()` at the start of the function. Implies `main_thread`.
+///
 /// Multiple attributes can be combined: `#[miniextendr(main_thread, invisible)]`
 ///
 /// ## R wrappers

@@ -61,9 +61,10 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
-    // Parse function-level attributes: #[miniextendr(main_thread, invisible)]
+    // Parse function-level attributes: #[miniextendr(main_thread, invisible, check_interrupt)]
     let mut force_main_thread = false;
     let mut force_invisible: Option<bool> = None;
+    let mut check_interrupt = false;
     if !attr.is_empty() {
         let attr_idents = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
         for ident in attr_idents {
@@ -73,6 +74,8 @@ pub fn miniextendr(
                 force_invisible = Some(true);
             } else if ident == "visible" {
                 force_invisible = Some(false);
+            } else if ident == "check_interrupt" {
+                check_interrupt = true;
             }
         }
     }
@@ -212,7 +215,12 @@ pub fn miniextendr(
         }
     }));
     // dbg!(&wrapper_inputs);
-    let pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    if check_interrupt {
+        pre_call_statements.push(quote::quote! {
+            unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
+        });
+    }
     let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     for arg in inputs.iter() {
@@ -280,8 +288,8 @@ pub fn miniextendr(
         }
     }
 
-    //TODO: add an invisibility attribute to miniextendr(invisible)
-    // after this block, otherwise it will be overwritten.
+    // Automatic invisibility detection based on return type.
+    // Can be overridden with #[miniextendr(invisible)] or #[miniextendr(visible)].
     let is_invisible_return_type: bool;
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
@@ -404,7 +412,8 @@ pub fn miniextendr(
     // Worker thread provides proper panic catching with destructor cleanup.
     // Functions returning SEXP or taking Dots must stay on main thread (SEXP/Dots aren't Send).
     // Use #[miniextendr(main_thread)] to force main thread for functions that call R APIs internally.
-    let use_main_thread = returns_sexp || has_dots || force_main_thread;
+    // check_interrupt also requires main thread since R_CheckUserInterrupt must be called there.
+    let use_main_thread = returns_sexp || has_dots || force_main_thread || check_interrupt;
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else if use_main_thread {

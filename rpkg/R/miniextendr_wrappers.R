@@ -130,6 +130,10 @@ force_visible_unit <- function() {
     .Call(C_force_visible_unit, .call = match.call())
 }
 
+with_interrupt_check <- function(x) {
+    .Call(C_with_interrupt_check, .call = match.call(), x)
+}
+
 unsafe_C_r_error <- function() {
     .Call(C_r_error)
 }

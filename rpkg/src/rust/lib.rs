@@ -538,6 +538,7 @@ miniextendr_module! {
     fn invisibly_result_return_ok;
     fn force_invisible_i32;
     fn force_visible_unit;
+    fn with_interrupt_check;
 
     extern fn C_r_error;
     extern fn C_r_error_in_catch;
@@ -618,6 +619,12 @@ fn force_invisible_i32() -> i32 {
 // Test explicit visible attribute (force () return to be visible)
 #[miniextendr(visible)]
 fn force_visible_unit() {}
+
+// Test check_interrupt attribute - checks for Ctrl+C before executing
+#[miniextendr(check_interrupt)]
+fn with_interrupt_check(x: i32) -> i32 {
+    x * 2
+}
 
 // endregion
 
