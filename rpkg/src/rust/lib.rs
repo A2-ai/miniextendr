@@ -33,7 +33,7 @@ fn drop_on_panic() {
 fn drop_on_panic_with_move() {
     let _a = MsgOnDrop;
     unsafe {
-        Rf_error(c"an r error occurred".as_ptr());
+        Rf_error(c"%s".as_ptr(), c"an r error occurred".as_ptr());
     }
 }
 
@@ -77,7 +77,7 @@ fn add_panic(_left: i32, _right: i32) -> i32 {
 #[miniextendr]
 fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
-    // WARNING: doesn't drop
+    // WARNING: doesn't drop (unless using with_r_unwind_protect)
     unsafe {
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     };
@@ -96,7 +96,7 @@ fn add_panic_heap(_left: i32, _right: i32) -> i32 {
 #[miniextendr]
 fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
-    // WARNING: doesn't drop
+    // WARNING: doesn't drop (unless using with_r_unwind_protect)
     unsafe {
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     }
@@ -231,7 +231,8 @@ extern "C-unwind" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 extern "C-unwind" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
-    unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) }
+    // Use unchecked - this is testing raw R error behavior
+    unsafe { miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr()) }
 }
 
 #[miniextendr]
@@ -241,7 +242,8 @@ extern "C-unwind" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
 extern "C-unwind" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
     unsafe {
         let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            miniextendr_api::ffi::Rf_error(c"arg1".as_ptr())
+            // Use unchecked - this is testing raw R error behavior
+            miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr())
         }))
         .unwrap();
         miniextendr_api::ffi::R_NilValue
@@ -249,13 +251,14 @@ extern "C-unwind" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
 }
 
 /// This crashes immediately. R is simply not present on the spawned thread, hence the present segfault.
-///
+/// With the checked `Rf_error`, this would panic instead (which is the correct behavior).
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
 extern "C-unwind" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
-    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"arg1".as_ptr()) })
+    // Use checked Rf_error - will panic with clear message about wrong thread
+    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr()) })
         .join()
         .unwrap();
     unsafe { miniextendr_api::ffi::R_NilValue }
@@ -266,7 +269,7 @@ extern "C-unwind" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 extern "C-unwind" fn C_r_print_in_thread() -> ::miniextendr_api::ffi::SEXP {
-    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"arg1".as_ptr()) })
+    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf_unchecked(c"arg1".as_ptr()) })
         .join()
         .unwrap();
     unsafe { miniextendr_api::ffi::R_NilValue }

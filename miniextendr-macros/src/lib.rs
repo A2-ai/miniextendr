@@ -61,6 +61,17 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
+    // Parse function-level attributes: #[miniextendr(main_thread)]
+    let mut force_main_thread = false;
+    if !attr.is_empty() {
+        let attr_idents = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
+        for ident in attr_idents {
+            if ident == "main_thread" {
+                force_main_thread = true;
+            }
+        }
+    }
+
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
     // dots support here
@@ -236,22 +247,22 @@ pub fn miniextendr(
                     });
                 } else if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#ident).cast() };
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#ident).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast() };
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#ident).cast() };
                     });
                 }
             }
             _ => {
                 if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR(#ident).cast() };
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#ident).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO(#ident).cast() };
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#ident).cast() };
                     });
                 }
             }
@@ -272,6 +283,8 @@ pub fn miniextendr(
     };
 
     // Generate return expression (converts Rust result to SEXP)
+    // Also track whether return type involves SEXP (can't use worker strategy for those)
+    let mut returns_sexp = false;
     let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
@@ -287,6 +300,7 @@ pub fn miniextendr(
             }
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible_return_type = false;
+                returns_sexp = true;
                 quote::quote! { #rust_result_ident }
             }
 
@@ -310,6 +324,9 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
+                    if is_sexp_inner {
+                        returns_sexp = true;
+                    }
                     post_call_statements.push(quote::quote! {
                         let #rust_result_ident = match #rust_result_ident {
                             Some(v) => v,
@@ -319,7 +336,7 @@ pub fn miniextendr(
                     if is_sexp_inner {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
+                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger_unchecked(#rust_result_ident) } }
                     }
                 }
             }
@@ -344,6 +361,9 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
+                    if ok_is_sexp {
+                        returns_sexp = true;
+                    }
                     post_call_statements.push(quote::quote! {
                         let #rust_result_ident = match #rust_result_ident {
                             Ok(v) => v,
@@ -353,7 +373,7 @@ pub fn miniextendr(
                     if ok_is_sexp {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
+                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger_unchecked(#rust_result_ident) } }
                     }
                 }
             }
@@ -361,20 +381,22 @@ pub fn miniextendr(
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) } }
+                quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger_unchecked(#rust_result_ident) } }
             }
         },
     };
     //TODO: add an invisibility attribute to miniextendr(invisible)
 
-    // Always use main thread with unwind protection.
-    // The worker thread approach is unsafe for functions that call R APIs directly.
-    // TODO: Add an attribute like #[miniextendr(worker)] to opt-in to worker thread for pure Rust code.
+    // Use worker strategy by default for functions that don't return SEXP.
+    // Worker thread provides proper panic catching with destructor cleanup.
+    // Functions returning SEXP or taking Dots must stay on main thread (SEXP/Dots aren't Send).
+    // Use #[miniextendr(main_thread)] to force main thread for functions that call R APIs internally.
+    let use_main_thread = returns_sexp || has_dots || force_main_thread;
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
-    } else {
-        // Use with_r_unwind_protect on main thread
-        let c_wrapper_doc = format!("C wrapper for [`{}`].", rust_ident);
+    } else if use_main_thread {
+        // SEXP-returning or Dots-taking functions: use with_r_unwind_protect on main thread
+        let c_wrapper_doc = format!("C wrapper for [`{}`] (main thread).", rust_ident);
         quote::quote! {
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
@@ -390,6 +412,28 @@ pub fn miniextendr(
                     },
                     Some(#call_param_ident),
                 )
+            }
+        }
+    } else {
+        // Pure Rust functions: use worker thread strategy
+        // 1. Argument conversion on main thread
+        // 2. Function execution + Option/Result handling on worker thread
+        // 3. SEXP conversion on main thread
+        let c_wrapper_doc = format!("C wrapper for [`{}`] (worker thread).", rust_ident);
+        quote::quote! {
+            #[doc = #c_wrapper_doc]
+            #[unsafe(no_mangle)]
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                #(#pre_call_statements)*
+                #(#closure_statements)*
+
+                let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                    let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                    #(#post_call_statements)*
+                    #rust_result_ident
+                });
+
+                #return_expression
             }
         }
     };
@@ -885,7 +929,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(#altrep_regs;)*
 
             unsafe {
-                ::miniextendr_api::ffi::R_registerRoutines(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
+                ::miniextendr_api::ffi::R_registerRoutines_unchecked(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
                 // these are already present in entrypoint.c!
                 // R_useDynamicSymbols(dll, Rboolean::FALSE);
                 // R_forceSymbols(dll, Rboolean::TRUE);

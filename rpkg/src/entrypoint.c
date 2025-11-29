@@ -5,13 +5,13 @@
 
 extern void R_init_rpkg_miniextendr(DllInfo *dll);
 extern void miniextendr_altrep_init(void);
-extern void register_miniextendr_panic_hook(void);
-extern void miniextendr_init_worker(void);
+extern void miniextendr_panic_hook(void);
+extern void miniextendr_worker_init(void);
 
 void R_init_rpkg(DllInfo *dll) {
-    register_miniextendr_panic_hook();
+    miniextendr_panic_hook();
     miniextendr_altrep_init();
-    miniextendr_init_worker();
+    miniextendr_worker_init();
     R_init_rpkg_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);

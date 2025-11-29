@@ -93,7 +93,7 @@ pub enum cetype_t {
 pub use cetype_t::CE_UTF8;
 use miniextendr_macros::r_ffi_checked;
 
-
+// Unchecked variadic functions (internal use only, no thread check)
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
@@ -101,11 +101,51 @@ unsafe extern "C-unwind" {
     pub fn Rf_error_unchecked(arg1: *const ::std::os::raw::c_char, ...) -> !;
     #[link_name = "Rf_errorcall"]
     pub fn Rf_errorcall_unchecked(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
-    // R_ext/Error.h
     #[link_name = "Rf_warning"]
     pub fn Rf_warning_unchecked(arg1: *const ::std::os::raw::c_char, ...);
     #[link_name = "Rprintf"]
     pub fn Rprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+}
+
+/// Checked wrapper for `Rf_error` - panics if called from non-main thread.
+/// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rf_error(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) -> ! {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rf_error called from non-main thread");
+    }
+    unsafe { Rf_error_unchecked(fmt, arg1) }
+}
+
+/// Checked wrapper for `Rf_errorcall` - panics if called from non-main thread.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rf_errorcall(call: SEXP, fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) -> ! {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rf_errorcall called from non-main thread");
+    }
+    unsafe { Rf_errorcall_unchecked(call, fmt, arg1) }
+}
+
+/// Checked wrapper for `Rf_warning` - panics if called from non-main thread.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rf_warning called from non-main thread");
+    }
+    unsafe { Rf_warning_unchecked(fmt, arg1) }
+}
+
+/// Checked wrapper for `Rprintf` - panics if called from non-main thread.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rprintf called from non-main thread");
+    }
+    unsafe { Rprintf_unchecked(fmt, arg1) }
 }
 
 #[r_ffi_checked]
@@ -127,7 +167,6 @@ unsafe extern "C-unwind" {
     pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
     pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
-
 
     pub fn R_MakeUnwindCont() -> SEXP;
     pub fn R_ContinueUnwind(cont: SEXP) -> !;
