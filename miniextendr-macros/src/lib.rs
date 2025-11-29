@@ -522,18 +522,18 @@ pub fn miniextendr(
         // Pure Rust functions: use worker thread strategy
         // 1. Argument conversion on main thread
         // 2. Function execution + Option/Result handling on worker thread
-        // 3. SEXP conversion on main thread
+        // 3. SEXP conversion on main thread (protected by with_r_unwind_protect)
         //
         // The entire body is wrapped in catch_unwind to catch panics from:
         // - TryFromSexp::try_from_sexp().unwrap() (argument conversion)
-        // - IntoR::into_sexp() (result conversion)
-        // These run outside run_on_worker, so need separate protection.
+        // - IntoR::into_sexp() (result conversion) - also wrapped in with_r_unwind_protect
+        //   to catch R errors (longjmp) from SEXP creation (e.g., allocation failure)
         let c_wrapper_doc = format!("C wrapper for [`{}`] (worker thread).", rust_ident);
         quote::quote! {
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #(#pre_call_statements)*
                     #(#closure_statements)*
 
@@ -543,7 +543,12 @@ pub fn miniextendr(
                         #rust_result_ident
                     });
 
-                    #return_expression
+                    // Wrap SEXP conversion in with_r_unwind_protect to catch R errors
+                    // (e.g., allocation failure in Rf_ScalarString)
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        move || #return_expression,
+                        None,
+                    )
                 }));
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
@@ -1284,7 +1289,7 @@ fn expand_altrep_struct(
             fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
                 use std::sync::OnceLock;
                 static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
-                *CLASS.get_or_init(|| {
+                *CLASS.get_or_init(move || {
                     let cls = unsafe { #make_class };
                     unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
                     cls
