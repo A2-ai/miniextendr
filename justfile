@@ -95,7 +95,7 @@ vendor:
 
 # Load and test rpkg with devtools
 devtools-test FILTER="":
-    if [ "{{FILTER}}" = "" ]; then \
+    if [ -z "{{FILTER}}" ]; then \
       Rscript -e 'devtools::test("rpkg")'; \
     else \
       Rscript -e 'devtools::test("rpkg", filter = "{{FILTER}}")'; \

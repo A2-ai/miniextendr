@@ -1,4 +1,8 @@
 //! miniextendr-api: core runtime, FFI, ALTREP, and macros
+//!
+//! Note: ALTREP trait methods receive raw SEXP pointers from R's runtime.
+//! These are safe to dereference because R guarantees valid SEXPs in ALTREP callbacks.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Export a rust function to R
 /// Derive macro for implementing `TypedExternal` on a type.

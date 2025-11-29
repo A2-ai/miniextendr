@@ -298,3 +298,47 @@ unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)
 }
 
+extptr_counter_new <- function(initial) {
+    .Call(C_extptr_counter_new, .call = match.call(), initial)
+}
+
+unsafe_C_extptr_counter_get <- function(ptr) {
+    .Call(C_extptr_counter_get, ptr)
+}
+
+unsafe_C_extptr_counter_increment <- function(ptr) {
+    .Call(C_extptr_counter_increment, ptr)
+}
+
+extptr_point_new <- function(x, y) {
+    .Call(C_extptr_point_new, .call = match.call(), x, y)
+}
+
+unsafe_C_extptr_point_get_x <- function(ptr) {
+    .Call(C_extptr_point_get_x, ptr)
+}
+
+unsafe_C_extptr_point_get_y <- function(ptr) {
+    .Call(C_extptr_point_get_y, ptr)
+}
+
+unsafe_C_extptr_type_mismatch_test <- function(ptr) {
+    .Call(C_extptr_type_mismatch_test, ptr)
+}
+
+unsafe_C_extptr_null_test <- function(ptr) {
+    .Call(C_extptr_null_test, ptr)
+}
+
+unsafe_C_extptr_is_counter <- function(ptr) {
+    .Call(C_extptr_is_counter, ptr)
+}
+
+unsafe_C_extptr_is_point <- function(ptr) {
+    .Call(C_extptr_is_point, ptr)
+}
+
+unsafe_rpkg_vec_int_altrep <- function(x) {
+    .Call(rpkg_vec_int_altrep, x)
+}
+
