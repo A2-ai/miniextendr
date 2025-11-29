@@ -25,16 +25,18 @@ use crate::ffi::{
     Rf_install, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
 };
 
-/// A wrapper around SEXP that implements Send.
+/// A wrapper around [`SEXP`] that implements Send.
 ///
 /// # Safety
 ///
-/// This wrapper is **only** safe when used with `with_r_thread` to transfer
-/// a SEXP created on the main thread back to the calling thread. The SEXP
+/// This wrapper is **only** safe when used with [`with_r_thread`] to transfer
+/// a [`SEXP`] created on the main thread back to the calling thread. The `SEXP`
 /// itself is not thread-safe, but the pointer value can be safely transmitted
 /// between threads as long as R APIs are only called on the main thread.
 ///
-/// Do not use this to enable concurrent access to SEXPs from multiple threads.
+/// Do not use this to enable concurrent access to [`SEXP`]s from multiple threads.
+/// 
+/// [`with_r_thread`]: crate::worker::with_r_thread
 #[repr(transparent)]
 struct SendableSexp(SEXP);
 
@@ -44,12 +46,12 @@ struct SendableSexp(SEXP);
 // 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
 unsafe impl Send for SendableSexp {}
 
-/// A wrapper around a raw pointer that implements Send.
+/// A wrapper around a raw pointer that implements [`Send`].
 ///
 /// # Safety
 ///
 /// This is safe to send between threads because it's just a memory address.
-/// The data T is owned and transferred to the main thread before being accessed.
+/// The data `T` is owned and transferred to the main thread before being accessed.
 #[repr(transparent)]
 struct SendablePtr<T>(NonNull<T>, PhantomData<T>);
 
@@ -58,7 +60,7 @@ struct SendablePtr<T>(NonNull<T>, PhantomData<T>);
 unsafe impl<T> Send for SendablePtr<T> {}
 
 impl<T> SendablePtr<T> {
-    /// Create a new SendablePtr from a raw pointer.
+    /// Create a new `SendablePtr` from a raw pointer.
     ///
     /// # Safety
     ///
@@ -76,20 +78,16 @@ impl<T> SendablePtr<T> {
     }
 }
 
-/// Index of the StableTypeId RAWSXP in the prot VECSXP
+/// Index of the StableTypeId RAWSXP contained in the `prot` (a `VECSXP` list)
 const PROT_TYPE_ID_INDEX: isize = 0;
-/// Index of user-protected objects in the prot VECSXP
+/// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
 const PROT_USER_INDEX: isize = 1;
-/// Length of the prot VECSXP
+/// Length of the `prot` list (`VECSXP`)
 const PROT_VEC_LEN: isize = 2;
-
-// =============================================================================
-// Stable Type Identification
-// =============================================================================
 
 /// A stable type identifier that works across different rustc versions.
 ///
-/// Unlike `std::any::TypeId`, this uses `std::any::type_name` which provides
+/// Unlike [`std::any::TypeId`], this uses [`std::any::type_name`] which provides
 /// a stable string representation. We hash this at compile time for fast comparison.
 ///
 /// Note: `type_name` output isn't guaranteed to be unique across all types,
@@ -104,6 +102,10 @@ const PROT_VEC_LEN: isize = 2;
 pub struct StableTypeId {
     /// Hash of the type name (for fast comparison)
     hash: u64,
+    
+    // TODO: i don't know why the name is just not given by a &str or something
+    // like that
+    
     /// Length of the type name
     name_len: usize,
     /// Pointer to the static type name string
@@ -317,10 +319,6 @@ pub struct ExternalPtr<T: TypedExternal> {
 }
 
 impl<T: TypedExternal> ExternalPtr<T> {
-    // =========================================================================
-    // Constructors (Box-equivalent)
-    // =========================================================================
-
     /// Allocates memory on the heap and places `x` into it.
     ///
     /// This function can be called from any thread:
