@@ -266,3 +266,7 @@ test_logical_slice_all_true <- function(x) {
     .Call(C_test_logical_slice_all_true, .call = match.call(), x)
 }
 
+underscore_it_all <- function(private__unused0, private__unused1) {
+    invisible(.Call(C_underscore_it_all, .call = match.call(), private__unused0, private__unused1))
+}
+

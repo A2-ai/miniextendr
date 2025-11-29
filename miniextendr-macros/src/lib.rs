@@ -82,6 +82,28 @@ pub fn miniextendr(
 
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
+    // Transform `_` wildcard patterns to synthetic identifiers `__unused0`, `__unused1`, etc.
+    // This is needed because `_` doesn't bind to a variable, but we need parameter names
+    // for the C wrapper and R wrapper.
+    let mut unused_counter = 0usize;
+    for arg in &mut item.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
+                let synthetic_name = format!("__unused{}", unused_counter);
+                unused_counter += 1;
+                let synthetic_ident =
+                    syn::Ident::new(&synthetic_name, pat_type.pat.span());
+                pat_type.pat = Box::new(syn::Pat::Ident(syn::PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: synthetic_ident,
+                    subpat: None,
+                }));
+            }
+        }
+    }
+
     // dots support here
     //TODO: move to ExtendrFunction?
     let has_dots = item.sig.variadic.is_some();
@@ -91,8 +113,9 @@ pub fn miniextendr(
             if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
                 Some(named_dots_ident.ident.clone())
             } else {
-                // FIXME: maybe an error? what could lead to here?
-                None
+                // Pattern match on dots that isn't a simple ident (e.g., `(a, b): ...`)
+                // This is not supported in R's ... semantics
+                panic!("variadic pattern must be a simple identifier, got: {:?}", named_dots.0);
             }
         } else {
             // unnamed dots
@@ -110,8 +133,17 @@ pub fn miniextendr(
             .push(if let Some(named_dots) = named_dots.as_ref() {
                 syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
             } else {
-                // cannot use `_` as variable name, thus cannot use it as a placeholder for `...``
-                // FIXME: check that no other parameter is called `_dots`!
+                // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
+                // Check that no existing parameter is named `_dots`
+                for arg in &item.sig.inputs {
+                    if let syn::FnArg::Typed(pat_type) = arg {
+                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+                            if pat_ident.ident == "_dots" {
+                                panic!("parameter named `_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead");
+                            }
+                        }
+                    }
+                }
                 syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
             });
     }
@@ -206,10 +238,12 @@ pub fn miniextendr(
                         let ident = pat_ident;
                         syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
                     }
-                    syn::Pat::Wild(_pat_wild) => {
-                        todo!("what should c wrapper do with _ args?")
+                    syn::Pat::Wild(_) => {
+                        unreachable!("wildcard patterns should have been transformed to synthetic identifiers")
                     }
-                    _ => todo!(),
+                    _ => {
+                        panic!("unsupported pattern in function argument: {:?}", pat)
+                    }
                 }
             }
         }
@@ -488,7 +522,7 @@ pub fn miniextendr(
             .into();
         }
 
-        // TODO: check that the return type is SEXP;
+        // Validate return type is SEXP for extern "C-unwind" functions
         match output {
             non_return_type @ syn::ReturnType::Default => {
                 return syn::Error::new(non_return_type.span(), "output must be SEXP")

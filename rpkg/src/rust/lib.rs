@@ -581,6 +581,9 @@ miniextendr_module! {
     fn test_logical_slice_any_true;
     fn test_logical_slice_all_true;
 
+    // Wildcard parameter test
+    fn underscore_it_all;
+
     // ALTREP .Call entrypoints are used directly from R in R/altrep.R
 }
 
@@ -630,9 +633,9 @@ fn with_interrupt_check(x: i32) -> i32 {
 
 // region: weird
 
-// FIXME: should compile...
-// #[miniextendr]
-// fn underscore_it_all(_: i32, _: f64) {}
+// Test that wildcard `_` parameters work (transformed to synthetic names internally)
+#[miniextendr]
+fn underscore_it_all(_: i32, _: f64) {}
 
 // endregion
 

@@ -354,7 +354,12 @@ pub struct R_CallMethodDef_C_unwind {
     pub numArgs: ::std::os::raw::c_int,
 }
 
-// TODO: investigate why Sync is necessary...
+// SAFETY: R_CallMethodDef contains raw pointers which don't impl Sync by default.
+// However, Sync is required to store these in static arrays for R's method registration.
+// This is safe because:
+// 1. The name pointer points to static C string literals (&'static CStr)
+// 2. The fun pointer is a static function pointer
+// 3. These are read-only after initialization during R_init_*
 unsafe impl Sync for R_CallMethodDef {}
 
 #[r_ffi_checked]
