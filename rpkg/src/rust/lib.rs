@@ -341,6 +341,154 @@ extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
     }
 }
 
+// region: scalar conversion tests
+
+// i32 tests
+#[miniextendr]
+fn test_i32_identity(x: i32) -> i32 {
+    x
+}
+
+#[miniextendr]
+fn test_i32_add_one(x: i32) -> i32 {
+    x + 1
+}
+
+#[miniextendr]
+fn test_i32_sum(a: i32, b: i32, c: i32) -> i32 {
+    a + b + c
+}
+
+// f64 tests
+#[miniextendr]
+fn test_f64_identity(x: f64) -> f64 {
+    x
+}
+
+#[miniextendr]
+fn test_f64_add_one(x: f64) -> f64 {
+    x + 1.0
+}
+
+#[miniextendr]
+fn test_f64_multiply(a: f64, b: f64) -> f64 {
+    a * b
+}
+
+// u8 (raw) tests
+#[miniextendr]
+fn test_u8_identity(x: u8) -> u8 {
+    x
+}
+
+#[miniextendr]
+fn test_u8_add_one(x: u8) -> u8 {
+    x.wrapping_add(1)
+}
+
+// Rboolean tests
+#[miniextendr]
+fn test_logical_identity(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+    x
+}
+
+#[miniextendr]
+fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    match x {
+        Rboolean::TRUE => Rboolean::FALSE,
+        _ => Rboolean::TRUE,
+    }
+}
+
+#[miniextendr]
+fn test_logical_and(a: miniextendr_api::ffi::Rboolean, b: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    match (a, b) {
+        (Rboolean::TRUE, Rboolean::TRUE) => Rboolean::TRUE,
+        _ => Rboolean::FALSE,
+    }
+}
+
+// Mixed type tests
+#[miniextendr]
+fn test_i32_to_f64(x: i32) -> f64 {
+    x as f64
+}
+
+#[miniextendr]
+fn test_f64_to_i32(x: f64) -> i32 {
+    x as i32
+}
+
+// Slice tests - i32
+#[miniextendr]
+fn test_i32_slice_len(x: &'static [i32]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+fn test_i32_slice_sum(x: &'static [i32]) -> i32 {
+    x.iter().sum()
+}
+
+#[miniextendr]
+fn test_i32_slice_first(x: &'static [i32]) -> i32 {
+    x.first().copied().unwrap_or(0)
+}
+
+#[miniextendr]
+fn test_i32_slice_last(x: &'static [i32]) -> i32 {
+    x.last().copied().unwrap_or(0)
+}
+
+// Slice tests - f64
+#[miniextendr]
+fn test_f64_slice_len(x: &'static [f64]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
+    x.iter().sum()
+}
+
+#[miniextendr]
+fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
+    if x.is_empty() { 0.0 } else { x.iter().sum::<f64>() / x.len() as f64 }
+}
+
+// Slice tests - u8 (raw)
+#[miniextendr]
+fn test_u8_slice_len(x: &'static [u8]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
+    x.iter().map(|&b| b as i32).sum()
+}
+
+// Slice tests - logical
+#[miniextendr]
+fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::Rboolean]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+fn test_logical_slice_any_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    if x.iter().any(|&b| b == Rboolean::TRUE) { Rboolean::TRUE } else { Rboolean::FALSE }
+}
+
+#[miniextendr]
+fn test_logical_slice_all_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    if x.iter().all(|&b| b == Rboolean::TRUE) { Rboolean::TRUE } else { Rboolean::FALSE }
+}
+
+// endregion
+
 // region: miniextendr_module! tests
 
 mod altrep;
@@ -400,6 +548,35 @@ miniextendr_module! {
     // Worker thread tests
     extern "C-unwind" fn C_worker_drop_on_success;
     extern "C-unwind" fn C_worker_drop_on_panic;
+
+    // Scalar conversion tests
+    fn test_i32_identity;
+    fn test_i32_add_one;
+    fn test_i32_sum;
+    fn test_f64_identity;
+    fn test_f64_add_one;
+    fn test_f64_multiply;
+    fn test_u8_identity;
+    fn test_u8_add_one;
+    fn test_logical_identity;
+    fn test_logical_not;
+    fn test_logical_and;
+    fn test_i32_to_f64;
+    fn test_f64_to_i32;
+
+    // Slice conversion tests
+    fn test_i32_slice_len;
+    fn test_i32_slice_sum;
+    fn test_i32_slice_first;
+    fn test_i32_slice_last;
+    fn test_f64_slice_len;
+    fn test_f64_slice_sum;
+    fn test_f64_slice_mean;
+    fn test_u8_slice_len;
+    fn test_u8_slice_sum;
+    fn test_logical_slice_len;
+    fn test_logical_slice_any_true;
+    fn test_logical_slice_all_true;
 
     // ALTREP .Call entrypoints are used directly from R in R/altrep.R
 }

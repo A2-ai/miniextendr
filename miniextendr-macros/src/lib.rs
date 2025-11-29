@@ -239,11 +239,17 @@ pub fn miniextendr(
                             .map(|s| s.ident == "Dots")
                             .unwrap_or(false)
                 );
+                let is_slice = matches!(r.elem.as_ref(), syn::Type::Slice(_));
                 if is_dots {
                     let storage_ident = quote::format_ident!("{}_storage", ident);
                     closure_statements.push(quote::quote! {
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
                         let #ident = &#storage_ident;
+                    });
+                } else if is_slice {
+                    // Slice references use TryFromSexp
+                    closure_statements.push(quote::quote! {
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
                 } else if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
@@ -258,11 +264,11 @@ pub fn miniextendr(
             _ => {
                 if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#ident).cast() };
+                        let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#ident).cast() };
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
                 }
             }
@@ -336,7 +342,7 @@ pub fn miniextendr(
                     if is_sexp_inner {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger_unchecked(#rust_result_ident) } }
+                        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
                     }
                 }
             }
@@ -373,7 +379,7 @@ pub fn miniextendr(
                     if ok_is_sexp {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger_unchecked(#rust_result_ident) } }
+                        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
                     }
                 }
             }
@@ -381,7 +387,7 @@ pub fn miniextendr(
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! { unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger_unchecked(#rust_result_ident) } }
+                quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
             }
         },
     };

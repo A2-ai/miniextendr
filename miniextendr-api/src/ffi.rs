@@ -254,7 +254,7 @@ unsafe extern "C-unwind" {
     // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
     pub fn Rf_ScalarInteger(arg1: ::std::os::raw::c_int) -> SEXP;
     pub fn Rf_ScalarLogical(arg1: ::std::os::raw::c_int) -> SEXP;
-    // pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
+    pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
     pub fn Rf_ScalarReal(arg1: f64) -> SEXP;
     pub fn Rf_ScalarString(arg1: SEXP) -> SEXP;
 
@@ -296,7 +296,7 @@ unsafe extern "C-unwind" {
     pub fn INTEGER0(x: SEXP) -> *mut ::std::os::raw::c_int;
     pub fn REAL0(x: SEXP) -> *mut f64;
     // pub fn COMPLEX0(x: SEXP) -> *mut Rcomplex;
-    // pub fn RAW0(x: SEXP) -> *mut Rbyte;
+    pub fn RAW0(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // utils.h

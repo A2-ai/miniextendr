@@ -154,3 +154,103 @@ unsafe_C_worker_drop_on_panic <- function() {
     .Call(C_worker_drop_on_panic)
 }
 
+test_i32_identity <- function(x) {
+    .Call(C_test_i32_identity, .call = match.call(), x)
+}
+
+test_i32_add_one <- function(x) {
+    .Call(C_test_i32_add_one, .call = match.call(), x)
+}
+
+test_i32_sum <- function(a, b, c) {
+    .Call(C_test_i32_sum, .call = match.call(), a, b, c)
+}
+
+test_f64_identity <- function(x) {
+    .Call(C_test_f64_identity, .call = match.call(), x)
+}
+
+test_f64_add_one <- function(x) {
+    .Call(C_test_f64_add_one, .call = match.call(), x)
+}
+
+test_f64_multiply <- function(a, b) {
+    .Call(C_test_f64_multiply, .call = match.call(), a, b)
+}
+
+test_u8_identity <- function(x) {
+    .Call(C_test_u8_identity, .call = match.call(), x)
+}
+
+test_u8_add_one <- function(x) {
+    .Call(C_test_u8_add_one, .call = match.call(), x)
+}
+
+test_logical_identity <- function(x) {
+    .Call(C_test_logical_identity, .call = match.call(), x)
+}
+
+test_logical_not <- function(x) {
+    .Call(C_test_logical_not, .call = match.call(), x)
+}
+
+test_logical_and <- function(a, b) {
+    .Call(C_test_logical_and, .call = match.call(), a, b)
+}
+
+test_i32_to_f64 <- function(x) {
+    .Call(C_test_i32_to_f64, .call = match.call(), x)
+}
+
+test_f64_to_i32 <- function(x) {
+    .Call(C_test_f64_to_i32, .call = match.call(), x)
+}
+
+test_i32_slice_len <- function(x) {
+    .Call(C_test_i32_slice_len, .call = match.call(), x)
+}
+
+test_i32_slice_sum <- function(x) {
+    .Call(C_test_i32_slice_sum, .call = match.call(), x)
+}
+
+test_i32_slice_first <- function(x) {
+    .Call(C_test_i32_slice_first, .call = match.call(), x)
+}
+
+test_i32_slice_last <- function(x) {
+    .Call(C_test_i32_slice_last, .call = match.call(), x)
+}
+
+test_f64_slice_len <- function(x) {
+    .Call(C_test_f64_slice_len, .call = match.call(), x)
+}
+
+test_f64_slice_sum <- function(x) {
+    .Call(C_test_f64_slice_sum, .call = match.call(), x)
+}
+
+test_f64_slice_mean <- function(x) {
+    .Call(C_test_f64_slice_mean, .call = match.call(), x)
+}
+
+test_u8_slice_len <- function(x) {
+    .Call(C_test_u8_slice_len, .call = match.call(), x)
+}
+
+test_u8_slice_sum <- function(x) {
+    .Call(C_test_u8_slice_sum, .call = match.call(), x)
+}
+
+test_logical_slice_len <- function(x) {
+    .Call(C_test_logical_slice_len, .call = match.call(), x)
+}
+
+test_logical_slice_any_true <- function(x) {
+    .Call(C_test_logical_slice_any_true, .call = match.call(), x)
+}
+
+test_logical_slice_all_true <- function(x) {
+    .Call(C_test_logical_slice_all_true, .call = match.call(), x)
+}
+

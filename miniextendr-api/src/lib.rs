@@ -70,7 +70,7 @@ pub mod error;
 pub use error::{r_print, r_println, r_stop, r_warning};
 
 // Re-export from_r
-pub use from_r::{SexpExt, SexpTypeError};
+pub use from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 
 pub mod backtrace;
 
