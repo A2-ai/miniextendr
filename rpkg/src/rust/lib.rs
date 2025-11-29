@@ -77,7 +77,6 @@ fn add_panic(_left: i32, _right: i32) -> i32 {
 #[miniextendr]
 fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
-    // WARNING: doesn't drop (unless using with_r_unwind_protect)
     unsafe {
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     };
@@ -96,7 +95,6 @@ fn add_panic_heap(_left: i32, _right: i32) -> i32 {
 #[miniextendr]
 fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
-    // WARNING: doesn't drop (unless using with_r_unwind_protect)
     unsafe {
         ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
     }
@@ -512,7 +510,45 @@ impl Altrep for ConstantIntClass {
     }
 }
 
-impl AltVec for ConstantIntClass {}
+impl AltVec for ConstantIntClass {
+    const HAS_DATAPTR: bool = true;
+    const HAS_DATAPTR_OR_NULL: bool = true;
+    fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
+        use miniextendr_api::ffi::{
+            R_altrep_data2, R_set_altrep_data2, R_NilValue, Rf_allocVector, Rf_protect,
+            Rf_unprotect, INTEGER0, SEXPTYPE,
+        };
+        // Materialize the data if not already expanded
+        unsafe {
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                let n = Self::length(x);
+                let val = Rf_allocVector(SEXPTYPE::INTSXP, n);
+                Rf_protect(val);
+                let buf = INTEGER0(val);
+                for i in 0..n {
+                    *buf.offset(i as isize) = Self::elt(x, i);
+                }
+                R_set_altrep_data2(x, val);
+                Rf_unprotect(1);
+                buf.cast()
+            } else {
+                INTEGER0(expanded).cast()
+            }
+        }
+    }
+    fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
+        use miniextendr_api::ffi::{R_altrep_data2, R_NilValue, INTEGER0};
+        unsafe {
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                core::ptr::null()
+            } else {
+                INTEGER0(expanded).cast()
+            }
+        }
+    }
+}
 
 impl AltInteger for ConstantIntClass {
     const HAS_ELT: bool = true;
@@ -529,8 +565,8 @@ impl AltInteger for ConstantIntClass {
 pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
     use miniextendr_api::ffi::altrep::R_new_altrep;
     use miniextendr_api::altrep_registration::RegisterAltrep;
-    // Get the registered class and create an instance
-    let cls = ConstantIntClass::register();
+    // Get the (already registered) class and create an instance
+    let cls = ConstantIntClass::get_or_init_class();
     unsafe { R_new_altrep(cls, R_NilValue, R_NilValue) }
 }
 

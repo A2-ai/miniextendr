@@ -1,5 +1,35 @@
 //! ALTREP "from scratch" core for miniextendr-api: one class per base kind
 //! (INT, REAL, STRING). No libR-sys/extendr dependencies; only raw FFI.
+//!
+//! # ALTREP Method Return Conventions
+//!
+//! R's ALTREP API uses two distinct "no result" values with different semantics:
+//!
+//! - **`NULL` (C null pointer, `core::ptr::null_mut()` in Rust)**: Signals "I cannot
+//!   compute this efficiently; please use the default fallback." R will then compute
+//!   the result itself using DATAPTR/Elt methods.
+//!
+//! - **`R_NilValue`**: A valid SEXP pointing to R's nil singleton. Returning this
+//!   means "the result is nil" — a legitimate return value, not a fallback signal.
+//!
+//! This distinction matters for methods like Sum, Min, Max, Duplicate, Coerce, and
+//! Extract_subset. For example, in `do_summary` (summary.c), R checks:
+//!
+//! ```c
+//! if (toret != NULL) {
+//!     return toret;  // Use ALTREP's result
+//! }
+//! // ... fall through to default computation
+//! ```
+//!
+//! If Sum returns `R_NilValue`, R would use nil as the sum result (wrong!).
+//! If Sum returns `NULL`, R computes the sum itself (correct fallback).
+//!
+//! R's default ALTREP methods follow this pattern:
+//! ```c
+//! static SEXP altreal_Sum_default(SEXP x, Rboolean narm) { return NULL; }
+//! static SEXP altrep_Duplicate_default(SEXP x, Rboolean deep) { return NULL; }
+//! ```
 
 use core::ffi::c_void;
 use core::slice;
@@ -476,9 +506,6 @@ pub unsafe extern "C-unwind" fn C_altrep_compact_int(
     let n: i32 = unsafe { *DATAPTR_RO(n_).cast() };
     let start: i32 = unsafe { *DATAPTR_RO(start_).cast() };
     let step: i32 = unsafe { *DATAPTR_RO(step_).cast() };
-    if step != 1 && step != -1 {
-        return unsafe { R_NilValue };
-    }
     unsafe { new_altrep_int(Box::new(CompactIntSeq::new(n as R_xlen_t, start, step))) }
 }
 
@@ -1049,19 +1076,32 @@ impl traits::AltVec for AltIntClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
     fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        // Materialize the data if not already expanded
         unsafe {
-            int_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *mut c_void)
-                .unwrap_or(core::ptr::null_mut())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                let n = int_backend(x).len();
+                let val = Rf_allocVector(SEXPTYPE::INTSXP, n);
+                Rf_protect(val);
+                // Fill using get_region
+                let buf = INTEGER0(val);
+                int_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
+                R_set_altrep_data2(x, val);
+                Rf_unprotect(1);
+                buf.cast()
+            } else {
+                INTEGER0(expanded).cast()
+            }
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const c_void {
         unsafe {
-            int_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *const c_void)
-                .unwrap_or(core::ptr::null())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                core::ptr::null()
+            } else {
+                INTEGER0(expanded).cast()
+            }
         }
     }
 }
@@ -1086,8 +1126,13 @@ impl traits::AltInteger for AltIntClass {
     fn no_na(x: SEXP) -> i32 {
         unsafe { int_backend(x).no_na() }
     }
-    fn sum(x: SEXP, _narm: bool) -> SEXP {
+    fn sum(x: SEXP, narm: bool) -> SEXP {
         let b = unsafe { int_backend(x) };
+        // Return NULL (not R_NilValue!) to signal "use default fallback".
+        // See module docs for NULL vs R_NilValue semantics.
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut();
+        }
         let mut acc: i64 = 0;
         let n = b.len();
         for i in 0..n {
@@ -1095,9 +1140,15 @@ impl traits::AltInteger for AltIntClass {
         }
         unsafe { Rf_ScalarReal(acc as f64) }
     }
-    fn min(x: SEXP, _narm: bool) -> SEXP {
+    fn min(x: SEXP, narm: bool) -> SEXP {
         let b = unsafe { int_backend(x) };
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut();
+        }
         let n = b.len();
+        if n == 0 {
+            return core::ptr::null_mut();
+        }
         let mut m = b.elt(0);
         for i in 1..n {
             let v = b.elt(i);
@@ -1107,9 +1158,15 @@ impl traits::AltInteger for AltIntClass {
         }
         unsafe { Rf_ScalarInteger(m) }
     }
-    fn max(x: SEXP, _narm: bool) -> SEXP {
+    fn max(x: SEXP, narm: bool) -> SEXP {
         let b = unsafe { int_backend(x) };
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut();
+        }
         let n = b.len();
+        if n == 0 {
+            return core::ptr::null_mut();
+        }
         let mut m = b.elt(0);
         for i in 1..n {
             let v = b.elt(i);
@@ -1142,19 +1199,31 @@ impl traits::AltVec for AltRealClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
     fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        // Materialize the data if not already expanded
         unsafe {
-            real_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *mut c_void)
-                .unwrap_or(core::ptr::null_mut())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                let n = real_backend(x).len();
+                let val = Rf_allocVector(SEXPTYPE::REALSXP, n);
+                Rf_protect(val);
+                let buf = REAL0(val);
+                real_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
+                R_set_altrep_data2(x, val);
+                Rf_unprotect(1);
+                buf.cast()
+            } else {
+                REAL0(expanded).cast()
+            }
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const c_void {
         unsafe {
-            real_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *const c_void)
-                .unwrap_or(core::ptr::null())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                core::ptr::null()
+            } else {
+                REAL0(expanded).cast()
+            }
         }
     }
 }
@@ -1179,8 +1248,12 @@ impl traits::AltReal for AltRealClass {
     fn no_na(x: SEXP) -> i32 {
         unsafe { real_backend(x).no_na() }
     }
-    fn sum(x: SEXP, _narm: bool) -> SEXP {
+    fn sum(x: SEXP, narm: bool) -> SEXP {
         let b = unsafe { real_backend(x) };
+        // Only use fast path if no NA handling needed
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut(); // Let R handle it
+        }
         let mut acc = 0.0;
         let n = b.len();
         for i in 0..n {
@@ -1188,9 +1261,15 @@ impl traits::AltReal for AltRealClass {
         }
         unsafe { Rf_ScalarReal(acc) }
     }
-    fn min(x: SEXP, _narm: bool) -> SEXP {
+    fn min(x: SEXP, narm: bool) -> SEXP {
         let b = unsafe { real_backend(x) };
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut();
+        }
         let n = b.len();
+        if n == 0 {
+            return core::ptr::null_mut();
+        }
         let mut m = b.elt(0);
         for i in 1..n {
             let v = b.elt(i);
@@ -1200,9 +1279,15 @@ impl traits::AltReal for AltRealClass {
         }
         unsafe { Rf_ScalarReal(m) }
     }
-    fn max(x: SEXP, _narm: bool) -> SEXP {
+    fn max(x: SEXP, narm: bool) -> SEXP {
         let b = unsafe { real_backend(x) };
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut();
+        }
         let n = b.len();
+        if n == 0 {
+            return core::ptr::null_mut();
+        }
         let mut m = b.elt(0);
         for i in 1..n {
             let v = b.elt(i);
@@ -1267,19 +1352,31 @@ impl traits::AltVec for AltLogicalClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
     fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        // Materialize the data if not already expanded
         unsafe {
-            lgl_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *mut c_void)
-                .unwrap_or(core::ptr::null_mut())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                let n = lgl_backend(x).len();
+                let val = Rf_allocVector(SEXPTYPE::LGLSXP, n);
+                Rf_protect(val);
+                let buf = LOGICAL0(val);
+                lgl_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
+                R_set_altrep_data2(x, val);
+                Rf_unprotect(1);
+                buf.cast()
+            } else {
+                LOGICAL0(expanded).cast()
+            }
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const c_void {
         unsafe {
-            lgl_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *const c_void)
-                .unwrap_or(core::ptr::null())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                core::ptr::null()
+            } else {
+                LOGICAL0(expanded).cast()
+            }
         }
     }
 }
@@ -1288,6 +1385,7 @@ impl traits::AltLogical for AltLogicalClass {
     const HAS_GET_REGION: bool = true;
     const HAS_IS_SORTED: bool = true;
     const HAS_NO_NA: bool = true;
+    const HAS_SUM: bool = true;
     fn elt(x: SEXP, i: R_xlen_t) -> i32 {
         unsafe { lgl_backend(x).elt(i) }
     }
@@ -1300,6 +1398,20 @@ impl traits::AltLogical for AltLogicalClass {
     }
     fn no_na(x: SEXP) -> i32 {
         unsafe { lgl_backend(x).no_na() }
+    }
+    fn sum(x: SEXP, narm: bool) -> SEXP {
+        let b = unsafe { lgl_backend(x) };
+        // Only use fast path if no NA handling needed
+        if narm || b.no_na() == 0 {
+            return core::ptr::null_mut(); // Let R handle it
+        }
+        let mut acc: i64 = 0;
+        let n = b.len();
+        for i in 0..n {
+            acc += b.elt(i) as i64;
+        }
+        // Logical sum returns integer
+        unsafe { Rf_ScalarInteger(acc as i32) }
     }
 }
 
@@ -1324,19 +1436,31 @@ impl traits::AltVec for AltRawClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
     fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        // Materialize the data if not already expanded
         unsafe {
-            raw_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *mut c_void)
-                .unwrap_or(core::ptr::null_mut())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                let n = raw_backend(x).len();
+                let val = Rf_allocVector(SEXPTYPE::RAWSXP, n);
+                Rf_protect(val);
+                let buf = RAW0(val);
+                raw_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
+                R_set_altrep_data2(x, val);
+                Rf_unprotect(1);
+                buf.cast()
+            } else {
+                RAW0(expanded).cast()
+            }
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const c_void {
         unsafe {
-            raw_backend(x)
-                .dataptr()
-                .map(|s| s.as_ptr() as *const c_void)
-                .unwrap_or(core::ptr::null())
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                core::ptr::null()
+            } else {
+                RAW0(expanded).cast()
+            }
         }
     }
 }

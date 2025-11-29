@@ -249,6 +249,7 @@ unsafe extern "C-unwind" {
 
     pub fn Rf_protect(arg1: SEXP) -> SEXP;
     pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
+    pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
 
     // Rinternals.h
     // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;

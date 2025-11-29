@@ -887,7 +887,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|s| {
             let ty = &s.ident;
-            syn::parse_quote!(#ty::register())
+            syn::parse_quote!(<#ty as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class())
         })
         .collect();
 
@@ -1063,12 +1063,12 @@ fn expand_altrep_struct(
         base_name.expect("#[miniextendr] missing base = \"Int|Real|Logical|Raw|String|List\"");
 
     let base_variant: syn::Expr = match base_name.as_str() {
-        "Int" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Int),
-        "Real" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Real),
-        "Logical" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Logical),
-        "Raw" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Raw),
-        "String" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::String),
-        "List" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::List),
+        "Int" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Int),
+        "Real" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Real),
+        "Logical" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Logical),
+        "Raw" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Raw),
+        "String" => syn::parse_quote!(::miniextendr_api::altrep::RBase::String),
+        "List" => syn::parse_quote!(::miniextendr_api::altrep::RBase::List),
         _ => {
             return syn::Error::new_spanned(
                 syn::LitStr::new(&base_name, ident.span()),
@@ -1194,7 +1194,7 @@ fn expand_altrep_struct(
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
             const PKG_NAME: &'static std::ffi::CStr = #pkg_cstr;
-            const BASE: ::miniextendr_api::ffi::altrep::RBase = #base_variant;
+            const BASE: ::miniextendr_api::altrep::RBase = #base_variant;
             unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
                 <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)
             }
@@ -1220,10 +1220,14 @@ fn expand_altrep_struct(
 
         #[doc = #register_altrep_doc]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
-            fn register() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
-                let cls = unsafe { #make_class };
-                unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
-                cls
+            fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
+                use std::sync::OnceLock;
+                static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+                *CLASS.get_or_init(|| {
+                    let cls = unsafe { #make_class };
+                    unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
+                    cls
+                })
             }
         }
 

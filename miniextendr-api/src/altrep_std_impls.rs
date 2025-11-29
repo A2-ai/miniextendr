@@ -68,7 +68,7 @@ impl RealBackend for OwnedReal {
         Some(&self.data)
     }
     fn no_na(&self) -> i32 {
-        1
+        0 // We don't track NA status; return unknown
     }
 }
 

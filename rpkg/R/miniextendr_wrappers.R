@@ -294,3 +294,7 @@ unsafe_rpkg_altrep_from_list <- function(x) {
     .Call(rpkg_altrep_from_list, x)
 }
 
+unsafe_rpkg_constant_int <- function() {
+    .Call(rpkg_constant_int)
+}
+
