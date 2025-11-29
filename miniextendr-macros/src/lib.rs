@@ -61,13 +61,18 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
-    // Parse function-level attributes: #[miniextendr(main_thread)]
+    // Parse function-level attributes: #[miniextendr(main_thread, invisible)]
     let mut force_main_thread = false;
+    let mut force_invisible: Option<bool> = None;
     if !attr.is_empty() {
         let attr_idents = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
         for ident in attr_idents {
             if ident == "main_thread" {
                 force_main_thread = true;
+            } else if ident == "invisible" {
+                force_invisible = Some(true);
+            } else if ident == "visible" {
+                force_invisible = Some(false);
             }
         }
     }
@@ -391,7 +396,9 @@ pub fn miniextendr(
             }
         },
     };
-    //TODO: add an invisibility attribute to miniextendr(invisible)
+
+    // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
+    let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
 
     // Use worker strategy by default for functions that don't return SEXP.
     // Worker thread provides proper panic catching with destructor cleanup.

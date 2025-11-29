@@ -536,6 +536,8 @@ miniextendr_module! {
     fn invisibly_option_return_none;
     fn invisibly_option_return_some;
     fn invisibly_result_return_ok;
+    fn force_invisible_i32;
+    fn force_visible_unit;
 
     extern fn C_r_error;
     extern fn C_r_error_in_catch;
@@ -606,6 +608,16 @@ fn invisibly_option_return_some() -> Option<()> {
 fn invisibly_result_return_ok() -> Result<(), ()> {
     Ok(())
 }
+
+// Test explicit invisible attribute (force i32 return to be invisible)
+#[miniextendr(invisible)]
+fn force_invisible_i32() -> i32 {
+    42
+}
+
+// Test explicit visible attribute (force () return to be visible)
+#[miniextendr(visible)]
+fn force_visible_unit() {}
 
 // endregion
 

@@ -122,6 +122,14 @@ invisibly_result_return_ok <- function() {
     invisible(.Call(C_invisibly_result_return_ok, .call = match.call()))
 }
 
+force_invisible_i32 <- function() {
+    invisible(.Call(C_force_invisible_i32, .call = match.call()))
+}
+
+force_visible_unit <- function() {
+    .Call(C_force_visible_unit, .call = match.call())
+}
+
 unsafe_C_r_error <- function() {
     .Call(C_r_error)
 }

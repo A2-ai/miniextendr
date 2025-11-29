@@ -44,9 +44,26 @@
 /// It is necessary to add register these functions using [`miniextendr_module`] in order for them to
 /// be available in the surrounding R package.
 ///
+/// ## Attributes
+///
+/// The macro supports the following attributes:
+///
+/// - `#[miniextendr(main_thread)]` - Force the function to run on the main R thread.
+///   Use this for functions that call R APIs internally.
+///
+/// - `#[miniextendr(invisible)]` - Force the R wrapper to return invisibly.
+///   Normally, functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly.
+///
+/// - `#[miniextendr(visible)]` - Force the R wrapper to return visibly.
+///   Overrides the default invisible behavior for unit-returning functions.
+///
+/// Multiple attributes can be combined: `#[miniextendr(main_thread, invisible)]`
+///
 /// ## R wrappers
 ///
-// TODO
+/// The generated R wrapper calls the C wrapper via `.Call()`. By default:
+/// - Functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly
+/// - All other return types are visible
 ///
 /// [`&Dots`]: dots::Dots
 /// [`Dots`]: dots::Dots
