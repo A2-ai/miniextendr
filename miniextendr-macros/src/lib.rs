@@ -523,21 +523,34 @@ pub fn miniextendr(
         // 1. Argument conversion on main thread
         // 2. Function execution + Option/Result handling on worker thread
         // 3. SEXP conversion on main thread
+        //
+        // The entire body is wrapped in catch_unwind to catch panics from:
+        // - TryFromSexp::try_from_sexp().unwrap() (argument conversion)
+        // - IntoR::into_sexp() (result conversion)
+        // These run outside run_on_worker, so need separate protection.
         let c_wrapper_doc = format!("C wrapper for [`{}`] (worker thread).", rust_ident);
         quote::quote! {
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                #(#pre_call_statements)*
-                #(#closure_statements)*
+                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                    #(#pre_call_statements)*
+                    #(#closure_statements)*
 
-                let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
-                    let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                    #(#post_call_statements)*
-                    #rust_result_ident
-                });
+                    let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        #(#post_call_statements)*
+                        #rust_result_ident
+                    });
 
-                #return_expression
+                    #return_expression
+                }));
+                match __miniextendr_panic_result {
+                    Ok(sexp) => sexp,
+                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
+                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    ),
+                }
             }
         }
     };
