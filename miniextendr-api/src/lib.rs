@@ -92,6 +92,7 @@ pub mod from_r;
 pub mod into_r;
 pub mod unwind_protect;
 pub mod worker;
+pub use worker::*;
 
 // Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;
@@ -110,8 +111,8 @@ pub mod dots;
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
 pub mod externalptr;
 pub use externalptr::{
-    altrep_data1_as, altrep_data1_mut, altrep_data2_as, ErasedExternalPtr, ExternalPtr,
-    ExternalSlice, StableTypeId, TypedExternal,
+    ErasedExternalPtr, ExternalPtr, ExternalSlice, StableTypeId, TypedExternal, altrep_data1_as,
+    altrep_data1_mut, altrep_data2_as,
 };
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"

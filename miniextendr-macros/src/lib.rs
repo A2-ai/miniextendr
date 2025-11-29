@@ -101,9 +101,9 @@ pub fn miniextendr(
                 // Nested: unsafe(main_thread)
                 syn::Meta::List(list) => {
                     if list.path.is_ident("unsafe") {
-                        let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> =
-                            list.parse_args_with(syn::punctuated::Punctuated::parse_terminated)
-                                .expect("expected identifier in unsafe(...)");
+                        let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> = list
+                            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+                            .expect("expected identifier in unsafe(...)");
                         for ident in nested {
                             if ident == "main_thread" {
                                 force_main_thread = true;

@@ -70,7 +70,7 @@ pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
 /// Extension trait for SEXP providing safe(r) accessors.
-pub trait SexpExt {
+pub(crate) trait SexpExt {
     /// Get the type of this SEXP.
     ///
     /// # Safety

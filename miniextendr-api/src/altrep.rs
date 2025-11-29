@@ -1241,7 +1241,7 @@ impl traits::AltVec for AltIntClass {
             // Verify it's a contiguous increasing sequence: first, first+1, first+2, ...
             for i in 1..idx_len {
                 let expected = first_idx.wrapping_add(i as i32);
-                let actual = *idx_ptr.add(i as usize);
+                let actual = *idx_ptr.add(i);
                 if actual != expected {
                     return core::ptr::null_mut();
                 }

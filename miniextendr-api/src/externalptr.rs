@@ -69,9 +69,9 @@ impl<T> SendablePtr<T> {
         Self(unsafe { NonNull::new_unchecked(ptr) }, PhantomData)
     }
 
-    /// Get the raw pointer.
+    /// Get the raw pointer, consuming self.
     #[inline]
-    fn as_ptr(self) -> *mut T {
+    fn into_ptr(self) -> *mut T {
         self.0.as_ptr()
     }
 }
@@ -347,7 +347,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         // Returns SendableSexp which can be sent back
         let sendable_sexp = crate::worker::with_r_thread(move || {
             // This runs on main thread - unwrap the pointer
-            let ptr: *mut T = sendable_ptr.as_ptr();
+            let ptr: *mut T = sendable_ptr.into_ptr();
             SendableSexp(unsafe { Self::create_extptr_sexp(ptr) })
         });
 
@@ -385,10 +385,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// This is the internal function that actually calls R APIs.
     #[inline]
     unsafe fn create_extptr_sexp(ptr: *mut T) -> SEXP {
-        debug_assert!(
-            !ptr.is_null(),
-            "create_extptr_sexp received null pointer"
-        );
+        debug_assert!(!ptr.is_null(), "create_extptr_sexp received null pointer");
 
         // Create the tag symbol for human-readable type identification
         let tag = unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) };
@@ -1442,7 +1439,7 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
         // Transmute the lifetime to 'static - this is safe because:
         // 1. The ExternalPtr is protected by R's GC as part of the ALTREP object
         // 2. The ALTREP object `x` is kept alive by R during the callback
-        erased.downcast_mut::<T>().map(|r| &mut *(r as *mut T))
+        erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
     }
 }
 
