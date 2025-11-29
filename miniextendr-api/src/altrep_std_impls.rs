@@ -1,9 +1,11 @@
 //! Standard ALTREP backends (Vec/Arc/Slice/Mmap/Owned) split out for clarity.
 
-use crate::altrep::{IntBackend, ListBackend, LogicalBackend, RawBackend, RealBackend, StringBackend};
+use crate::altrep::{
+    IntBackend, ListBackend, LogicalBackend, RawBackend, RealBackend, StringBackend,
+};
 use crate::ffi::{
-    DATAPTR_RO, LOGICAL_OR_NULL, R_NaString, R_xlen_t, Rbyte, Rf_translateCharUTF8, Rf_xlength,
-    SEXP, STRING_ELT, VECTOR_ELT,
+    DATAPTR_RO, LOGICAL_OR_NULL, R_NaString, R_xlen_t, Rbyte, Rf_translateCharUTF8, SEXP,
+    STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use core::slice;
 use std::sync::{Arc, OnceLock};
@@ -80,7 +82,9 @@ impl IntBackend for CompactIntSeq {
             return None;
         }
         // New compact sequence: start_new = start + index * step
-        let new_start = self.start.wrapping_add(self.step.wrapping_mul(start as i32));
+        let new_start = self
+            .start
+            .wrapping_add(self.step.wrapping_mul(start as i32));
         Some(Box::new(CompactIntSeq::new(count, new_start, self.step)))
     }
 }
@@ -94,8 +98,8 @@ impl OwnedReal {
     /// `x` must be a REALSXP vector; its data must remain valid for the duration
     /// of the copy. Must be called on the R thread with R initialized.
     pub unsafe fn from_reals_sexp(x: SEXP) -> Self {
-        let n = unsafe { crate::ffi::Rf_xlength(x) } as usize;
-        let ptr = unsafe { DATAPTR_RO(x) as *const f64 };
+        let n = x.xlength() as usize;
+        let ptr = unsafe { DATAPTR_RO(x).cast() };
         let slice = unsafe { slice::from_raw_parts(ptr, n) };
         Self {
             data: slice.to_vec().into_boxed_slice(),
@@ -265,7 +269,7 @@ impl Utf8Vec {
     /// `x` must be a STRSXP vector and used on the R thread. Elements are copied
     /// to owned Strings; NA elements are tracked separately.
     pub unsafe fn from_strs_sexp(x: SEXP) -> Self {
-        let n: R_xlen_t = unsafe { crate::ffi::Rf_xlength(x) };
+        let n: R_xlen_t = x.xlength();
         let mut data = Vec::with_capacity(n as usize);
         let mut na = Vec::with_capacity(n as usize);
         for i in 0..n {
@@ -621,7 +625,7 @@ impl OwnedList {
     /// `x` must be a VECSXP list. Elements are shallow-copied SEXP handles.
     /// The caller must ensure the source remains protected from GC.
     pub unsafe fn from_list_sexp(x: SEXP) -> Self {
-        let n: R_xlen_t = unsafe { Rf_xlength(x) };
+        let n: R_xlen_t = x.xlength();
         let mut v = Vec::with_capacity(n as usize);
         for i in 0..n {
             let elt = unsafe { VECTOR_ELT(x, i) };
@@ -784,7 +788,7 @@ impl OwnedLogical {
     /// `x` must be a LGLSXP; caller guarantees it is valid and points to readable memory.
     pub unsafe fn from_lgls_sexp(x: SEXP) -> Self {
         unsafe {
-            let n = Rf_xlength(x) as usize;
+            let n = x.xlength() as usize;
             let ptr = LOGICAL_OR_NULL(x);
             let data = if ptr.is_null() {
                 Vec::new().into_boxed_slice()
@@ -825,8 +829,8 @@ impl OwnedRaw {
     /// `x` must be a RAWSXP; caller guarantees it is valid and points to readable memory.
     pub unsafe fn from_raw_sexp(x: SEXP) -> Self {
         unsafe {
-            let n = Rf_xlength(x) as usize;
-            let ptr = DATAPTR_RO(x) as *const Rbyte;
+            let n = x.xlength() as usize;
+            let ptr = DATAPTR_RO(x).cast();
             let data = slice::from_raw_parts(ptr, n).to_vec().into_boxed_slice();
             Self { data }
         }

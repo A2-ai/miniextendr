@@ -1,7 +1,4 @@
-//!
-//!
-//!
-//!
+//! Configurable panic hook for miniextendr-based R packages.
 
 /// This function registers a configurable print panic hook, for use in miniextendr-based R-packages.
 /// If the environment variable `MINIEXTENDR_BACKTRACE` is set to either `true` or `1`,

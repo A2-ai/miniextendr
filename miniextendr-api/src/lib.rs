@@ -1,6 +1,13 @@
 //! miniextendr-api: core runtime, FFI, ALTREP, and macros
+//!
+//! Note: ALTREP trait methods receive raw SEXP pointers from R's runtime.
+//! These are safe to dereference because R guarantees valid SEXPs in ALTREP callbacks.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Export a rust function to R
+/// Derive macro for implementing `TypedExternal` on a type.
+/// This enables the type to be stored in an `ExternalPtr<T>`.
+pub use miniextendr_macros::ExternalPtr;
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -80,6 +87,7 @@ pub mod altrep_registration;
 pub mod altrep_std_impls;
 pub mod altrep_traits;
 pub mod ffi;
+// Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
 pub mod unwind_protect;
@@ -92,10 +100,16 @@ pub use error::{r_print, r_println, r_stop, r_warning};
 // Re-export from_r
 pub use from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 
+// Note: RNativeType is pub(crate), imported directly in modules that need it
+
 pub mod backtrace;
 
 // TODO: finish the dots module...
 pub mod dots;
+
+// External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
+pub mod externalptr;
+pub use externalptr::{ErasedExternalPtr, ExternalPtr, ExternalSlice, StableTypeId, TypedExternal};
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`

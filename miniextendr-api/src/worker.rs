@@ -96,11 +96,8 @@ pub extern "C-unwind" fn miniextendr_worker_init() {
         thread::Builder::new()
             .name("miniextendr-worker".into())
             .spawn(move || {
-                loop {
-                    match job_rx.recv() {
-                        Ok(job) => job(),
-                        Err(_) => break,
-                    }
+                while let Ok(job) = job_rx.recv() {
+                    job();
                 }
             })
             .expect("failed to spawn worker thread");
