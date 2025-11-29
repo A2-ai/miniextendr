@@ -117,14 +117,14 @@ pub(crate) fn coverage_panic_path() -> i32 {
 
 #[miniextendr]
 #[unsafe(no_mangle)]
-pub(crate) extern "C" fn C_coverage_direct() -> ffi::SEXP {
+pub(crate) extern "C-unwind" fn C_coverage_direct() -> ffi::SEXP {
     unsafe { ffi::R_NilValue }
 }
 
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
-pub(crate) extern "C" fn C_coverage_indirect() -> ffi::SEXP {
+pub(crate) extern "C-unwind" fn C_coverage_indirect() -> ffi::SEXP {
     unsafe { ffi::R_NilValue }
 }
 
@@ -153,7 +153,7 @@ miniextendr_module! {
     fn coverage_invisible_result;
     fn coverage_panic_path;
 
-    extern "C" fn C_coverage_direct;
+    extern "C-unwind" fn C_coverage_direct;
     extern fn C_coverage_indirect;
 
     // struct ShowcaseStruct; // ALTREP showcase intentionally omitted in coverage

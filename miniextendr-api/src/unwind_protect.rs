@@ -1,74 +1,131 @@
 //! Safe API for R's `R_UnwindProtect`
 //!
+//! This module provides [`with_r_unwind_protect`] for handling R errors with Rust cleanup.
+//! It automatically runs Rust destructors when R errors occur.
 //!
-//!  
+//! **Important**: R uses `longjmp` for error handling, which normally bypasses Rust destructors.
+//! Use this API to ensure cleanup happens even when R errors occur.
 //!
-use std::cell::LazyCell;
+use std::{
+    any::Any,
+    cell::LazyCell,
+    ffi::c_void,
+    panic::{AssertUnwindSafe, catch_unwind},
+};
 
-use crate::ffi;
+use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
 
 thread_local! {
-    static R_CONTINUATION_TOKEN: LazyCell<crate::ffi::SEXP> = LazyCell::new(|| unsafe {
-        let token = crate::ffi::R_MakeUnwindCont();
+    static R_CONTINUATION_TOKEN: LazyCell<SEXP> = LazyCell::new(|| unsafe {
+        let token = ffi::R_MakeUnwindCont();
         ffi::R_PreserveObject(token);
         token
     });
 }
+/// Convert a Rust panic payload into an R error and continue unwinding on the R side.
+pub(crate) unsafe fn panic_payload_to_r_error(
+    payload: Box<dyn Any + Send>,
+    call: Option<SEXP>,
+) -> ! {
+    let error_message: &str = if let Some(&message) = payload.downcast_ref::<&str>() {
+        message
+    } else if let Some(message) = payload.downcast_ref::<String>() {
+        message.as_str()
+    } else if let Some(message) = payload.downcast_ref::<&String>() {
+        message.as_str()
+    } else {
+        "panic payload could not be unpacked"
+    };
 
-struct ClosureContext<FunClosure, CleanClosure> {
-    fun: Option<FunClosure>,
-    clean: Option<CleanClosure>,
-}
-
-unsafe extern "C" fn fun_tramp<F, C>(data: *mut std::ffi::c_void) -> ffi::SEXP
-where
-    F: FnOnce() -> ffi::SEXP,
-{
-    let ctx = unsafe { data.cast::<ClosureContext<F, C>>().as_mut().unwrap() };
-    let f = ctx.fun.take().unwrap();
-    f()
-}
-
-unsafe extern "C" fn clean_tramp<F, C>(data: *mut std::ffi::c_void, jump: ffi::Rboolean)
-where
-    C: FnOnce(bool),
-{
-    let closure_ctx = unsafe { Box::from_raw(data.cast::<ClosureContext<F, C>>()) };
-    let ClosureContext { fun, clean } = *closure_ctx;
-    if let Some(fun) = fun {
-        drop(fun)
-    }
-    if let Some(clean) = clean {
-        clean(jump != ffi::Rboolean::FALSE)
-    }
-}
-
-/// Wrap a Rust closure with `R_UnwindProtect`.
-/// `clean` sees `true` if a non-local jump happened, `false` on normal return.
-///
-///
-/// # Safety
-/// Must be called from the R dispatcher thread. Closures must not unwind across FFI.
-pub unsafe fn with_unwind_protect<FunClosure, CleanClosure>(
-    fun: FunClosure,
-    clean: CleanClosure,
-) -> ffi::SEXP
-where
-    FunClosure: FnOnce() -> ffi::SEXP,
-    CleanClosure: FnOnce(bool),
-{
-    let data = Box::into_raw(Box::new(ClosureContext {
-        fun: Some(fun),
-        clean: Some(clean),
-    }));
+    let c_error_message = std::ffi::CString::new(error_message)
+        .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
 
     unsafe {
-        ffi::R_UnwindProtect(
-            Some(fun_tramp::<FunClosure, CleanClosure>),
-            data.cast(),
-            Some(clean_tramp::<FunClosure, CleanClosure>),
-            data.cast(),
-            R_CONTINUATION_TOKEN.with(|x| **x),
-        )
+        if let Some(call) = call {
+            ::miniextendr_api::ffi::Rf_errorcall_unchecked(
+                call,
+                c"%s".as_ptr(),
+                c_error_message.as_ptr(),
+            );
+        } else {
+            ::miniextendr_api::ffi::Rf_error_unchecked(c"%s".as_ptr(), c_error_message.as_ptr());
+        }
+    }
+}
+
+pub fn with_r_unwind_protect<F>(f: F, call: Option<SEXP>) -> SEXP
+where
+    F: FnMut() -> SEXP,
+{
+    struct RError;
+
+    unsafe extern "C-unwind" fn throw_r_error(_data: *mut c_void, jump: Rboolean) {
+        if jump != Rboolean::FALSE {
+            std::panic::panic_any(RError);
+        }
+    }
+
+    struct CallData<F> {
+        f: F,
+        panic_payload: Option<Box<dyn Any + Send>>,
+    }
+
+    unsafe extern "C-unwind" fn trampoline<F>(data: *mut c_void) -> SEXP
+    where
+        F: FnMut() -> SEXP,
+    {
+        let data = unsafe { data.cast::<CallData<F>>().as_mut().unwrap() };
+
+        // Call f in place - don't move it out of CallData.
+        // This way, if longjmp happens, CallData still owns f and will drop it.
+        match catch_unwind(AssertUnwindSafe(|| (data.f)())) {
+            Ok(result) => result,
+            Err(payload) => {
+                data.panic_payload = Some(payload);
+                // Return a benign value; caller will re-raise after R has unwound normally.
+                unsafe { ::miniextendr_api::ffi::R_NilValue }
+            }
+        }
+    }
+
+    unsafe {
+        let token = R_CONTINUATION_TOKEN.with(|x| **x);
+
+        let data = Box::into_raw(Box::new(CallData {
+            f,
+            panic_payload: None,
+        }));
+
+        let panic_result = catch_unwind(AssertUnwindSafe(|| {
+            R_UnwindProtect_C_unwind(
+                Some(trampoline::<F>),
+                data.cast(),
+                Some(throw_r_error),
+                std::ptr::null_mut(),
+                token,
+            )
+        }));
+
+        let mut data = Box::from_raw(data.cast::<CallData<F>>());
+
+        match panic_result {
+            Ok(result) => {
+                if let Some(payload) = data.panic_payload.take() {
+                    drop(data);
+                    panic_payload_to_r_error(payload, call);
+                }
+                drop(data);
+                result
+            }
+            Err(payload) => {
+                // CallData is dropped here, which drops f and its captured resources!
+                drop(data);
+                if payload.downcast_ref::<RError>().is_some() {
+                    R_ContinueUnwind(token);
+                } else {
+                    panic_payload_to_r_error(payload, call);
+                }
+            }
+        }
     }
 }

@@ -49,9 +49,16 @@ pub trait Altrep {
         unreachable!()
     }
 
-    /// Return `Some(true/false)` to override; `None` to keep default.
+    /// Return true if inspection was handled, false to use default.
+    /// The `inspect_subtree` callback can be used to recursively inspect child objects.
     const HAS_INSPECT: bool = false;
-    fn inspect(_x: SEXP, _pre: i32, _deep: i32, _pvec: i32) -> bool {
+    fn inspect(
+        _x: SEXP,
+        _pre: i32,
+        _deep: i32,
+        _pvec: i32,
+        _inspect_subtree: Option<unsafe extern "C-unwind" fn(SEXP, i32, i32, i32)>,
+    ) -> bool {
         unreachable!()
     }
 }

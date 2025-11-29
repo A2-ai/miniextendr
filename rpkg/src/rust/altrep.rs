@@ -1,2 +1,1 @@
-// This module intentionally left empty. ALTREP externs are registered
-// in the top-level miniextendr_module in lib.rs and imported via `use altrep;`.
+// ALTREP wrappers are defined in lib.rs to be visible to miniextendr_module!

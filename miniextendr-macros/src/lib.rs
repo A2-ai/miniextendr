@@ -61,7 +61,48 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
+    // Parse function-level attributes: #[miniextendr(main_thread, invisible, check_interrupt)]
+    let mut force_main_thread = false;
+    let mut force_invisible: Option<bool> = None;
+    let mut check_interrupt = false;
+    if !attr.is_empty() {
+        let attr_idents = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
+        for ident in attr_idents {
+            if ident == "main_thread" {
+                force_main_thread = true;
+            } else if ident == "invisible" {
+                force_invisible = Some(true);
+            } else if ident == "visible" {
+                force_invisible = Some(false);
+            } else if ident == "check_interrupt" {
+                check_interrupt = true;
+            }
+        }
+    }
+
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
+
+    // Transform `_` wildcard patterns to synthetic identifiers `__unused0`, `__unused1`, etc.
+    // This is needed because `_` doesn't bind to a variable, but we need parameter names
+    // for the C wrapper and R wrapper.
+    let mut unused_counter = 0usize;
+    for arg in &mut item.sig.inputs {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
+                let synthetic_name = format!("__unused{}", unused_counter);
+                unused_counter += 1;
+                let synthetic_ident =
+                    syn::Ident::new(&synthetic_name, pat_type.pat.span());
+                pat_type.pat = Box::new(syn::Pat::Ident(syn::PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: synthetic_ident,
+                    subpat: None,
+                }));
+            }
+        }
+    }
 
     // dots support here
     //TODO: move to ExtendrFunction?
@@ -72,8 +113,9 @@ pub fn miniextendr(
             if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
                 Some(named_dots_ident.ident.clone())
             } else {
-                // FIXME: maybe an error? what could lead to here?
-                None
+                // Pattern match on dots that isn't a simple ident (e.g., `(a, b): ...`)
+                // This is not supported in R's ... semantics
+                panic!("variadic pattern must be a simple identifier, got: {:?}", named_dots.0);
             }
         } else {
             // unnamed dots
@@ -91,8 +133,17 @@ pub fn miniextendr(
             .push(if let Some(named_dots) = named_dots.as_ref() {
                 syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
             } else {
-                // cannot use `_` as variable name, thus cannot use it as a placeholder for `...``
-                // FIXME: check that no other parameter is called `_dots`!
+                // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
+                // Check that no existing parameter is named `_dots`
+                for arg in &item.sig.inputs {
+                    if let syn::FnArg::Typed(pat_type) = arg {
+                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+                            if pat_ident.ident == "_dots" {
+                                panic!("parameter named `_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead");
+                            }
+                        }
+                    }
+                }
                 syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
             });
     }
@@ -187,16 +238,23 @@ pub fn miniextendr(
                         let ident = pat_ident;
                         syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
                     }
-                    syn::Pat::Wild(_pat_wild) => {
-                        todo!("what should c wrapper do with _ args?")
+                    syn::Pat::Wild(_) => {
+                        unreachable!("wildcard patterns should have been transformed to synthetic identifiers")
                     }
-                    _ => todo!(),
+                    _ => {
+                        panic!("unsupported pattern in function argument: {:?}", pat)
+                    }
                 }
             }
         }
     }));
     // dbg!(&wrapper_inputs);
     let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    if check_interrupt {
+        pre_call_statements.push(quote::quote! {
+            unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
+        });
+    }
     let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     for arg in inputs.iter() {
@@ -218,10 +276,6 @@ pub fn miniextendr(
                 }
             }
             syn::Type::Reference(r) => {
-                let send_ident = quote::format_ident!("__miniextendr_arg_{ident}");
-                pre_call_statements.push(quote::quote! {
-                    let #send_ident = unsafe { ::miniextendr_api::ffi::SendSEXP::new(#ident) };
-                });
                 let is_dots = matches!(
                     r.elem.as_ref(),
                     syn::Type::Path(tp)
@@ -232,68 +286,74 @@ pub fn miniextendr(
                             .map(|s| s.ident == "Dots")
                             .unwrap_or(false)
                 );
+                let is_slice = matches!(r.elem.as_ref(), syn::Type::Slice(_));
                 if is_dots {
                     let storage_ident = quote::format_ident!("{}_storage", ident);
                     closure_statements.push(quote::quote! {
-                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #send_ident.get() };
+                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
                         let #ident = &#storage_ident;
+                    });
+                } else if is_slice {
+                    // Slice references use TryFromSexp
+                    closure_statements.push(quote::quote! {
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
                 } else if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast();
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#ident).cast() };
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast();
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#ident).cast() };
                     });
                 }
             }
             _ => {
-                let send_ident = quote::format_ident!("__miniextendr_arg_{ident}");
-                pre_call_statements.push(quote::quote! {
-                    let #send_ident = unsafe { ::miniextendr_api::ffi::SendSEXP::new(#ident) };
-                });
                 if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {
-                        let mut #ident = *::miniextendr_api::ffi::DATAPTR(#send_ident.get()).cast();
+                        let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
                 } else {
                     closure_statements.push(quote::quote! {
-                        let #ident = *::miniextendr_api::ffi::DATAPTR_RO(#send_ident.get()).cast();
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
                 }
             }
         }
     }
 
-    //TODO: add an invisibility attribute to miniextendr(invisible)
-    // after this block, otherwise it will be overwritten.
+    // Automatic invisibility detection based on return type.
+    // Can be overridden with #[miniextendr(invisible)] or #[miniextendr(visible)].
     let is_invisible_return_type: bool;
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
-    let option_none_error = quote::quote! {
-        || ::std::borrow::Cow::Borrowed(concat!(
+    let option_none_error_msg = quote::quote! {
+        concat!(
             "miniextendr function `",
             stringify!(#rust_ident),
             "` returned None"
-        ))
+        )
     };
-    let result_err_mapper = quote::quote!(|err| ::std::borrow::Cow::Owned(format!("{err:?}")));
+
+    // Generate return expression (converts Rust result to SEXP)
+    // Also track whether return type involves SEXP (can't use worker strategy for those)
+    let mut returns_sexp = false;
     let return_expression = match &output {
         // no arrow
         syn::ReturnType::Default => {
             is_invisible_return_type = true;
-            quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
         }
 
         syn::ReturnType::Type(_, ty) => match ty.as_ref() {
             // -> ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
                 is_invisible_return_type = true;
-                quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
             }
             syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
                 is_invisible_return_type = false;
+                returns_sexp = true;
                 quote::quote! { #rust_result_ident }
             }
 
@@ -303,29 +363,33 @@ pub fn miniextendr(
                     == Some(&syn::Ident::new("Option", p.path.span())) =>
             {
                 let seg = p.path.segments.last().unwrap();
-                // check ONLY the first type argument of Option<T>
                 let inner_ty = first_type_argument(seg);
                 let is_unit_inner = inner_ty.is_some_and(is_unit_type);
                 let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
                 if is_unit_inner {
-                    // -> Option<()>
                     is_invisible_return_type = true;
                     post_call_statements.push(quote::quote! {
-                        #rust_result_ident.ok_or_else(#option_none_error.clone())?;
+                        if #rust_result_ident.is_none() {
+                            panic!(#option_none_error_msg);
+                        }
                     });
-                    quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    // -> Option<T>
+                    if is_sexp_inner {
+                        returns_sexp = true;
+                    }
                     post_call_statements.push(quote::quote! {
-                        let #rust_result_ident =
-                            #rust_result_ident.ok_or_else(#option_none_error.clone())?;
+                        let #rust_result_ident = match #rust_result_ident {
+                            Some(v) => v,
+                            None => panic!(#option_none_error_msg),
+                        };
                     });
                     if is_sexp_inner {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
                     }
                 }
             }
@@ -336,28 +400,33 @@ pub fn miniextendr(
                     == Some(&syn::Ident::new("Result", p.path.span())) =>
             {
                 let seg = p.path.segments.last().unwrap();
-                // check ONLY the first type argument (Ok type) of Result<Ok, Err>
                 let ok_ty = first_type_argument(seg);
                 let ok_is_unit = ok_ty.is_some_and(is_unit_type);
                 let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
 
                 if ok_is_unit {
-                    // -> Result<(), E>
                     is_invisible_return_type = true;
                     post_call_statements.push(quote::quote! {
-                        #rust_result_ident.map_err(#result_err_mapper)?;
+                        if let Err(e) = #rust_result_ident {
+                            panic!("{:?}", e);
+                        }
                     });
-                    quote::quote! { ::miniextendr_api::ffi::R_NilValue }
+                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    // -> Result<T, E>
+                    if ok_is_sexp {
+                        returns_sexp = true;
+                    }
                     post_call_statements.push(quote::quote! {
-                        let #rust_result_ident = #rust_result_ident.map_err(#result_err_mapper)?;
+                        let #rust_result_ident = match #rust_result_ident {
+                            Ok(v) => v,
+                            Err(e) => panic!("{:?}", e),
+                        };
                     });
                     if ok_is_sexp {
                         quote::quote! { #rust_result_ident }
                     } else {
-                        quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
                     }
                 }
             }
@@ -365,31 +434,62 @@ pub fn miniextendr(
             // all other T
             _ => {
                 is_invisible_return_type = false;
-                quote::quote! { ::miniextendr_api::ffi::Rf_ScalarInteger(#rust_result_ident) }
+                quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
             }
         },
     };
-    //TODO: add an invisibility attribute to miniextendr(invisible)
 
+    // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
+    let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
+
+    // Use worker strategy by default for functions that don't return SEXP.
+    // Worker thread provides proper panic catching with destructor cleanup.
+    // Functions returning SEXP or taking Dots must stay on main thread (SEXP/Dots aren't Send).
+    // Use #[miniextendr(main_thread)] to force main thread for functions that call R APIs internally.
+    // check_interrupt also requires main thread since R_CheckUserInterrupt must be called there.
+    let use_main_thread = returns_sexp || has_dots || force_main_thread || check_interrupt;
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
-    } else {
+    } else if use_main_thread {
+        // SEXP-returning or Dots-taking functions: use with_r_unwind_protect on main thread
+        let c_wrapper_doc = format!("C wrapper for [`{}`] (main thread).", rust_ident);
         quote::quote! {
-            #[doc = "C wrapper method for TODO"]
+            #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
-            #vis unsafe extern "C" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #(#pre_call_statements)*
 
-                unsafe {
-                        ::miniextendr_api::unwind::call_worker(#call_param_ident, move || {
-                            #(#closure_statements)*
-                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                            #(#post_call_statements)*
-                            let __miniextendr_sexp_result = #return_expression;
-                            let __miniextendr_sexp_result = ::miniextendr_api::ffi::SendSEXP::new(__miniextendr_sexp_result);
-                            Ok(__miniextendr_sexp_result)
-                        })
-                }
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || {
+                        #(#closure_statements)*
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        #(#post_call_statements)*
+                        #return_expression
+                    },
+                    Some(#call_param_ident),
+                )
+            }
+        }
+    } else {
+        // Pure Rust functions: use worker thread strategy
+        // 1. Argument conversion on main thread
+        // 2. Function execution + Option/Result handling on worker thread
+        // 3. SEXP conversion on main thread
+        let c_wrapper_doc = format!("C wrapper for [`{}`] (worker thread).", rust_ident);
+        quote::quote! {
+            #[doc = #c_wrapper_doc]
+            #[unsafe(no_mangle)]
+            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                #(#pre_call_statements)*
+                #(#closure_statements)*
+
+                let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                    let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                    #(#post_call_statements)*
+                    #rust_result_ident
+                });
+
+                #return_expression
             }
         }
     };
@@ -422,7 +522,7 @@ pub fn miniextendr(
             .into();
         }
 
-        // TODO: check that the return type is SEXP;
+        // Validate return type is SEXP for extern "C-unwind" functions
         match output {
             non_return_type @ syn::ReturnType::Default => {
                 return syn::Error::new(non_return_type.span(), "output must be SEXP")
@@ -553,14 +653,32 @@ pub fn miniextendr(
         "{} <- function({}) {{\n    {}\n}}",
         r_wrapper_ident, formals_joined, r_wrapper_return_str
     );
-    let r_wrapper_str = syn::LitStr::new(&r_wrapper_string, r_wrapper_ident.span());
+    // Use a raw string literal for better readability in macro expansion
+    let r_wrapper_str: proc_macro2::TokenStream = {
+        use std::str::FromStr;
+        // Indent each line by 4 spaces for nicer formatting
+        let indented = r_wrapper_string.replace('\n', "\n    ");
+        let raw = format!("r#\"\n    {}\n\"#", indented);
+        proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
+    };
 
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     let r_wrapper_generator = quote::format_ident!("R_WRAPPER_{rust_ident_upper}");
 
     // endregion
 
-    let abi = abi.unwrap_or(syn::parse_quote!(extern "C"));
+    let abi = abi.unwrap_or(syn::parse_quote!(extern "C-unwind"));
+
+    // Generate doc strings with links
+    let r_wrapper_doc = format!(
+        "R wrapper code for [`{}`], calls [`{}`].",
+        rust_ident, c_ident
+    );
+    let call_method_def_doc = format!(
+        "R call method definition for [`{}`] (C wrapper: [`{}`]).",
+        rust_ident, c_ident
+    );
+
     let expanded: proc_macro::TokenStream = quote::quote! {
         // rust function!
         #original_item
@@ -569,14 +687,11 @@ pub fn miniextendr(
         #c_wrapper
 
         // R wrapper
+        #[doc = #r_wrapper_doc]
         const #r_wrapper_generator: &str = #r_wrapper_str;
 
-
         // registration of C wrapper in R
-
-        // TODO: unhide docs if you add the num_args and the rust-name, then the C wrapper name!
-        // also handle the case where there is no rust-name because it is an `unsafe extern "C"` being exported!
-        #[doc(hidden)]
+        #[doc = #call_method_def_doc]
         #[inline(always)]
         #[allow(non_snake_case)]
         const fn #call_method_def() -> ::miniextendr_api::ffi::R_CallMethodDef {
@@ -747,7 +862,7 @@ impl syn::parse::Parse for ExtendrModule {
 }
 
 // TODO: Currently, miniextendr_module does not distinguish between
-// `extern "C" fn` and `fn` items.. they are treated alike.
+// `extern "C-unwind" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let miniextendr_module = syn::parse_macro_input!(item as ExtendrModule);
@@ -772,7 +887,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|s| {
             let ty = &s.ident;
-            syn::parse_quote!(#ty::register())
+            syn::parse_quote!(<#ty as ::miniextendr_api::altrep_registration::RegisterAltrep>::get_or_init_class())
         })
         .collect();
 
@@ -816,25 +931,45 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module_upper}");
     let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module_upper}");
 
+    // Generate doc string listing all registered functions
+    let fn_links: Vec<String> = miniextendr_module
+        .extendr_fn
+        .iter()
+        .map(|f| format!("[`{}`]", f.ident))
+        .collect();
+    let struct_links: Vec<String> = miniextendr_module
+        .extendr_struct
+        .iter()
+        .map(|s| format!("[`{}`]", s.ident))
+        .collect();
+    let module_doc = if fn_links.is_empty() && struct_links.is_empty() {
+        format!("R entrypoint for module `{}`.", module)
+    } else {
+        let mut doc = format!(
+            "R entrypoint for module `{}`.\n\n# Registered items\n",
+            module
+        );
+        if !fn_links.is_empty() {
+            doc.push_str(&format!("- Functions: {}\n", fn_links.join(", ")));
+        }
+        if !struct_links.is_empty() {
+            doc.push_str(&format!("- ALTREP types: {}\n", struct_links.join(", ")));
+        }
+        doc
+    };
+
     // endregion
     quote::quote! {
-
-        //TODO: still need to deal with modules and their respective wrappers..
-        // what to do here?
 
         #[doc(hidden)]
         pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
         #[doc(hidden)]
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
 
-        //TODO: add the use-modules and their entry point docs to the doc!
-
-        // #[doc(hidden)]
+        #[doc = #module_doc]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
-        /// Internal function that is used by R to register the exported
-        /// miniextendr items.
-        pub(crate) extern "C" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
+        pub(crate) extern "C-unwind" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
             static CALL_ENTRIES: [::miniextendr_api::ffi::R_CallMethodDef; {#call_entries_len + 1}] = [
                 #(#call_entries,)*
                 ::miniextendr_api::ffi::R_CallMethodDef {
@@ -850,7 +985,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(#altrep_regs;)*
 
             unsafe {
-                ::miniextendr_api::ffi::R_registerRoutines(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
+                ::miniextendr_api::ffi::R_registerRoutines_unchecked(dll, std::ptr::null(), CALL_ENTRIES.as_ptr(), std::ptr::null(), std::ptr::null());
                 // these are already present in entrypoint.c!
                 // R_useDynamicSymbols(dll, Rboolean::FALSE);
                 // R_forceSymbols(dll, Rboolean::TRUE);
@@ -875,9 +1010,12 @@ fn expand_altrep_struct(
         syn::Item::Struct(s) => (s.ident.clone(), s.generics.clone()),
         syn::Item::Enum(e) => (e.ident.clone(), e.generics.clone()),
         _ => {
-            return syn::Error::new(input.span(), "#[miniextendr] on types supports only structs and enums")
-                .into_compile_error()
-                .into();
+            return syn::Error::new(
+                input.span(),
+                "#[miniextendr] on types supports only structs and enums",
+            )
+            .into_compile_error()
+            .into();
         }
     };
 
@@ -925,12 +1063,12 @@ fn expand_altrep_struct(
         base_name.expect("#[miniextendr] missing base = \"Int|Real|Logical|Raw|String|List\"");
 
     let base_variant: syn::Expr = match base_name.as_str() {
-        "Int" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Int),
-        "Real" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Real),
-        "Logical" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Logical),
-        "Raw" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::Raw),
-        "String" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::String),
-        "List" => syn::parse_quote!(::miniextendr_api::ffi::altrep::RBase::List),
+        "Int" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Int),
+        "Real" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Real),
+        "Logical" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Logical),
+        "Raw" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Raw),
+        "String" => syn::parse_quote!(::miniextendr_api::altrep::RBase::String),
+        "List" => syn::parse_quote!(::miniextendr_api::altrep::RBase::List),
         _ => {
             return syn::Error::new_spanned(
                 syn::LitStr::new(&base_name, ident.span()),
@@ -1026,26 +1164,43 @@ fn expand_altrep_struct(
     // Registration: per-type; create class handle then install methods via MethodRegistrar
 
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let class_cstr = syn::LitStr::new(&class_name, ident.span());
-    let pkg_cstr = syn::LitStr::new(&pkg_name, ident.span());
+    // Use LitCStr for proper C string literal generation (c"...")
+    let class_cstr = syn::LitCStr::new(
+        &std::ffi::CString::new(class_name.as_str()).unwrap(),
+        ident.span(),
+    );
+    let pkg_cstr = syn::LitCStr::new(
+        &std::ffi::CString::new(pkg_name.as_str()).unwrap(),
+        ident.span(),
+    );
 
     // No trait forwarding: rely on trampoline type's trait impls.
 
     // No marker traits needed.
     let _family_marker_impl: proc_macro2::TokenStream = quote::quote! {};
 
+    // Generate doc strings for trait impls
+    let altrep_class_doc = format!(
+        "ALTREP class descriptor for [`{}`] (class: `{}`, pkg: `{}`, base: `{}`).",
+        ident, class_name, pkg_name, base_name
+    );
+    let method_registrar_doc = format!("Method installer for [`{}`] ALTREP class.", ident);
+    let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
+
     let expanded = quote::quote! {
         #input
 
+        #[doc = #altrep_class_doc]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
-            const CLASS_NAME: &'static std::ffi::CStr = c #class_cstr;
-            const PKG_NAME: &'static std::ffi::CStr = c #pkg_cstr;
-            const BASE: ::miniextendr_api::ffi::altrep::RBase = #base_variant;
+            const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
+            const PKG_NAME: &'static std::ffi::CStr = #pkg_cstr;
+            const BASE: ::miniextendr_api::altrep::RBase = #base_variant;
             unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
                 <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)
             }
         }
 
+        #[doc = #method_registrar_doc]
         impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
             unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
                 use ::miniextendr_api::altrep_bridge as bridge;
@@ -1063,14 +1218,145 @@ fn expand_altrep_struct(
             }
         }
 
+        #[doc = #register_altrep_doc]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
-            fn register() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
-                let cls = unsafe { #make_class };
-                unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
-                cls
+            fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
+                use std::sync::OnceLock;
+                static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+                *CLASS.get_or_init(|| {
+                    let cls = unsafe { #make_class };
+                    unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
+                    cls
+                })
             }
         }
 
+    };
+
+    expanded.into()
+}
+
+/// Generate thread-checked wrappers for R FFI functions.
+///
+/// Apply this to an `extern "C-unwind"` block to generate checked wrappers
+/// that assert we're on the main thread in debug builds.
+///
+/// **Limitations:**
+/// - Variadic functions and statics are passed through unchanged
+/// - Only non-variadic functions get checked wrappers
+///
+/// # Example
+///
+/// ```ignore
+/// #[r_ffi_checked]
+/// unsafe extern "C-unwind" {
+///     pub fn Rf_ScalarInteger(arg1: i32) -> SEXP;
+/// }
+/// ```
+///
+/// Generates:
+/// ```ignore
+/// unsafe extern "C-unwind" {
+///     #[link_name = "Rf_ScalarInteger"]
+///     pub fn Rf_ScalarInteger_unchecked(arg1: i32) -> SEXP;
+/// }
+///
+/// #[inline(always)]
+/// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
+///     debug_assert!(is_r_main_thread(), "Rf_ScalarInteger called from non-main thread");
+///     Rf_ScalarInteger_unchecked(arg1)
+/// }
+/// ```
+#[proc_macro_attribute]
+pub fn r_ffi_checked(
+    _attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    let foreign_mod = syn::parse_macro_input!(item as syn::ItemForeignMod);
+
+    let abi = &foreign_mod.abi;
+    let mut unchecked_items = Vec::new();
+    let mut checked_wrappers = Vec::new();
+
+    for item in &foreign_mod.items {
+        match item {
+            syn::ForeignItem::Fn(fn_item) => {
+                let is_variadic = fn_item.sig.variadic.is_some();
+
+                // Check if function already has #[link_name] - if so, pass through unchanged
+                let has_link_name = fn_item
+                    .attrs
+                    .iter()
+                    .any(|attr| attr.path().is_ident("link_name"));
+
+                if is_variadic || has_link_name {
+                    // Pass through variadic functions and functions with explicit link_name unchanged
+                    unchecked_items.push(item.clone());
+                } else {
+                    // Generate checked wrapper for non-variadic functions
+                    let vis = &fn_item.vis;
+                    let fn_name = &fn_item.sig.ident;
+                    let fn_name_str = fn_name.to_string();
+                    let unchecked_name = quote::format_ident!("{}_unchecked", fn_name);
+                    let inputs = &fn_item.sig.inputs;
+                    let output = &fn_item.sig.output;
+                    // Filter out link_name attributes (already checked above, but be safe)
+                    let attrs: Vec<_> = fn_item
+                        .attrs
+                        .iter()
+                        .filter(|attr| !attr.path().is_ident("link_name"))
+                        .collect();
+
+                    // Generate the unchecked FFI binding with #[link_name]
+                    let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
+                    let unchecked_fn: syn::ForeignItem = syn::parse_quote! {
+                        #(#attrs)*
+                        #[link_name = #link_name]
+                        #vis fn #unchecked_name(#inputs) #output;
+                    };
+                    unchecked_items.push(unchecked_fn);
+
+                    // Generate a checked wrapper function
+                    let arg_names: Vec<_> = inputs
+                        .iter()
+                        .filter_map(|arg| {
+                            if let syn::FnArg::Typed(pat_type) = arg {
+                                if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+                                    return Some(pat_ident.ident.clone());
+                                }
+                            }
+                            None
+                        })
+                        .collect();
+
+                    let wrapper = quote::quote! {
+                        #(#attrs)*
+                        #[inline(always)]
+                        #[allow(non_snake_case)]
+                        #vis unsafe fn #fn_name(#inputs) #output {
+                            // #[cfg(debug_assertions)]
+                            if !::miniextendr_api::worker::is_r_main_thread() {
+                                panic!(concat!("R API `", #fn_name_str, "` called from non-main thread"));
+                            }
+                            #unchecked_name(#(#arg_names),*)
+                        }
+                    };
+                    checked_wrappers.push(wrapper);
+                }
+            }
+            _ => {
+                // Pass through statics and other items unchanged
+                unchecked_items.push(item.clone());
+            }
+        }
+    }
+
+    let expanded = quote::quote! {
+        unsafe #abi {
+            #(#unchecked_items)*
+        }
+
+        #(#checked_wrappers)*
     };
 
     expanded.into()

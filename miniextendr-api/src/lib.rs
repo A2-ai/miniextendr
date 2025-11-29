@@ -14,7 +14,7 @@
 /// In case of function arguments beginning with `_*`, then the R wrapper renames the argument
 /// to `unused_*`, as it is not allowed for a variable to begin with `_` in R.
 ///
-/// ## `extern "C"`
+/// ## `extern "C-unwind"`
 ///
 /// A function with the C ABI may be provided as
 ///
@@ -24,7 +24,7 @@
 ///
 /// #[miniextendr]
 /// #[unsafe(no_mangle)]
-/// extern "C" fn C_foo() -> SEXP { unsafe { R_NilValue } }
+/// extern "C-unwind" fn C_foo() -> SEXP { unsafe { R_NilValue } }
 /// ```
 ///
 /// Here, the provided function definition is the C wrapper, there are no Rust definition, therefore
@@ -44,14 +44,35 @@
 /// It is necessary to add register these functions using [`miniextendr_module`] in order for them to
 /// be available in the surrounding R package.
 ///
+/// ## Attributes
+///
+/// The macro supports the following attributes:
+///
+/// - `#[miniextendr(main_thread)]` - Force the function to run on the main R thread.
+///   Use this for functions that call R APIs internally.
+///
+/// - `#[miniextendr(invisible)]` - Force the R wrapper to return invisibly.
+///   Normally, functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly.
+///
+/// - `#[miniextendr(visible)]` - Force the R wrapper to return visibly.
+///   Overrides the default invisible behavior for unit-returning functions.
+///
+/// - `#[miniextendr(check_interrupt)]` - Check for user interrupts (Ctrl+C) before executing.
+///   Calls `R_CheckUserInterrupt()` at the start of the function. Implies `main_thread`.
+///
+/// Multiple attributes can be combined: `#[miniextendr(main_thread, invisible)]`
+///
 /// ## R wrappers
 ///
-// TODO
+/// The generated R wrapper calls the C wrapper via `.Call()`. By default:
+/// - Functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly
+/// - All other return types are visible
 ///
 /// [`&Dots`]: dots::Dots
 /// [`Dots`]: dots::Dots
 pub use miniextendr_macros::miniextendr;
 pub use miniextendr_macros::miniextendr_module;
+pub use miniextendr_macros::r_ffi_checked;
 
 pub mod altrep;
 pub mod altrep_bridge;
@@ -59,12 +80,19 @@ pub mod altrep_registration;
 pub mod altrep_std_impls;
 pub mod altrep_traits;
 pub mod ffi;
+pub mod from_r;
 pub mod into_r;
-pub mod unwind;
 pub mod unwind_protect;
+pub mod worker;
 
-// TODO: finish the error module
+// Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;
+pub use error::{r_print, r_println, r_stop, r_warning};
+
+// Re-export from_r
+pub use from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+
+pub mod backtrace;
 
 // TODO: finish the dots module...
 pub mod dots;

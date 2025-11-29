@@ -3,6 +3,24 @@ AC_INIT([rpkg], [1.0])
 dnl ensure R_HOME is set
 : ${R_HOME=`R RHOME`}
 
+dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
+: ${NOT_CRAN="true"}
+export NOT_CRAN
+
+dnl Set cargo offline flag based on NOT_CRAN
+dnl - NOT_CRAN=true (dev): no --offline, regenerate lockfile
+dnl - NOT_CRAN not true (CRAN): use --offline, don't regenerate lockfile
+if test "$NOT_CRAN" = "true"; then
+  CARGO_OFFLINE_FLAG=""
+  GENERATE_LOCKFILE="yes"
+else
+  CARGO_OFFLINE_FLAG="--offline"
+  GENERATE_LOCKFILE="no"
+fi
+AC_SUBST([CARGO_OFFLINE_FLAG])
+AC_SUBST([GENERATE_LOCKFILE])
+AC_SUBST([NOT_CRAN])
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
@@ -24,6 +42,10 @@ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
+
+dnl Report rustc version (required by CRAN for Rust packages)
+RUSTC_VERSION=`$RUSTC --version`
+AC_MSG_NOTICE([using $RUSTC_VERSION])
 
 dnl Allow explicit toolchain (e.g. +nightly); default empty (use default toolchain)
 AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly'])
@@ -80,66 +102,8 @@ AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
 
-dnl ---- ensure document.rs.in exists (template) ----
-AS_IF([test ! -f "$abs_rpkg_src/rust/document.rs.in"], [
-  mkdir -p "$abs_rpkg_src/rust" || AC_MSG_ERROR([cannot mkdir $abs_rpkg_src/rust])
-  cat >"$abs_rpkg_src/rust/document.rs.in" <<EOF
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
-use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
-
-fn main() {
-    let dep_flat: Vec<&'static str> = DEPS.concat();
-    let roots: @<:@&@<:@&'static str@:>@; 2@:>@ = @<:@PARTS, &dep_flat@:>@;
-
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open("miniextendr_wrappers.R")
-        .unwrap();
-
-    let mut seen = std::collections::HashSet::new();
-    for group in roots {
-        for &s in group {
-            if seen.insert(s) {
-                use std::io::Write;
-                f.write_all(s.as_bytes()).unwrap();
-                f.write_all(b"\n\n").unwrap();
-            }
-        }
-    }
-}
-EOF
-])
-
-dnl Generate the concrete file with substitutions
+dnl Generate files from .in templates (templates must be committed)
 AC_CONFIG_FILES([src/rust/document.rs])
-
-dnl ---- ensure entrypoint.c.in exists ----
-AS_IF([test ! -f "$abs_rpkg_src/entrypoint.c.in"], [
-  mkdir -p "$abs_rpkg_src" || AC_MSG_ERROR([cannot mkdir $abs_rpkg_src])
-  cat >"$abs_rpkg_src/entrypoint.c.in" <<EOF
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
-extern void miniextendr_runtime_init(void);
-extern void miniextendr_altrep_init(void);
-
-void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    miniextendr_runtime_init();
-    miniextendr_altrep_init();
-    R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
-
-    R_useDynamicSymbols(dll, FALSE);
-    R_forceSymbols(dll, TRUE);
-}
-EOF
-])
-
 AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
 
 dnl ---- enumerate Rust sources for Make dependencies (no make wildcards) ----
@@ -164,35 +128,19 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring ----
-VENDOR_OUT="$ROOT_MINIEXTENDR_REPO/vendor"
-SYNC1="--sync=$ROOT_MINIEXTENDR_REPO/Cargo.toml"
-SYNC2="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-api/Cargo.toml"
-SYNC3="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-macros/Cargo.toml"
-SYNC4="--sync=$abs_rpkg_src/rust/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
+dnl ---- vendoring (in inst/vendor for self-contained builds) ----
+VENDOR_OUT="$abs_top_srcdir/inst/vendor"
+SYNC1="--sync=$abs_rpkg_src/rust/Cargo.toml"
+SYNC2="--sync=$VENDOR_OUT/miniextendr-api/Cargo.toml"
+SYNC3="--sync=$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3"
 AC_SUBST([VENDOR_SYNC_FLAGS])
 AC_SUBST([VENDOR_OUT])
-
-dnl Make cargo use the vendored dir (no network during build)
-RUST_DOT_CARGO_DIR="$RUST_SRC_DIR/.cargo"
-AS_IF([test ! -f "$RUST_DOT_CARGO_DIR/config.toml"], [
-  mkdir -p "$RUST_DOT_CARGO_DIR" || AC_MSG_ERROR([cannot mkdir $RUST_DOT_CARGO_DIR])
-  cat > "$RUST_DOT_CARGO_DIR/config.toml" <<EOF
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "$VENDOR_OUT"
-
-[build]
-target-dir = "$CARGO_TARGET_DIR"
-EOF
-])
 
 dnl ---- output files ----
 AC_CONFIG_FILES([
   src/rust/Cargo.toml
+  src/rust/.cargo/config.toml
   src/Makevars
   src/entrypoint.c
 ])

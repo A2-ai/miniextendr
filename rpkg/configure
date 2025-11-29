@@ -626,6 +626,9 @@ CARGO
 ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
+NOT_CRAN
+GENERATE_LOCKFILE
+CARGO_OFFLINE_FLAG
 target_alias
 host_alias
 build_alias
@@ -1753,6 +1756,20 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 : ${R_HOME=`R RHOME`}
 
+: ${NOT_CRAN="true"}
+export NOT_CRAN
+
+if test "$NOT_CRAN" = "true"; then
+  CARGO_OFFLINE_FLAG=""
+  GENERATE_LOCKFILE="yes"
+else
+  CARGO_OFFLINE_FLAG="--offline"
+  GENERATE_LOCKFILE="no"
+fi
+
+
+
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
@@ -1999,6 +2016,10 @@ fi
 
 
 
+RUSTC_VERSION=`$RUSTC --version`
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: using $RUSTC_VERSION" >&5
+printf "%s\n" "$as_me: using $RUSTC_VERSION" >&6;}
+
 
 : ${RUST_TOOLCHAIN=""}
 
@@ -2057,69 +2078,7 @@ pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
 
-if test ! -f "$abs_rpkg_src/rust/document.rs.in"
-then :
-
-  mkdir -p "$abs_rpkg_src/rust" || as_fn_error $? "cannot mkdir $abs_rpkg_src/rust" "$LINENO" 5
-  cat >"$abs_rpkg_src/rust/document.rs.in" <<EOF
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
-use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
-
-fn main() {
-    let dep_flat: Vec<&'static str> = DEPS.concat();
-    let roots: [&[&'static str]; 2] = [PARTS, &dep_flat];
-
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open("miniextendr_wrappers.R")
-        .unwrap();
-
-    let mut seen = std::collections::HashSet::new();
-    for group in roots {
-        for &s in group {
-            if seen.insert(s) {
-                use std::io::Write;
-                f.write_all(s.as_bytes()).unwrap();
-                f.write_all(b"\n\n").unwrap();
-            }
-        }
-    }
-}
-EOF
-
-fi
-
 ac_config_files="$ac_config_files src/rust/document.rs"
-
-
-if test ! -f "$abs_rpkg_src/entrypoint.c.in"
-then :
-
-  mkdir -p "$abs_rpkg_src" || as_fn_error $? "cannot mkdir $abs_rpkg_src" "$LINENO" 5
-  cat >"$abs_rpkg_src/entrypoint.c.in" <<EOF
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
-extern void miniextendr_runtime_init(void);
-extern void miniextendr_altrep_init(void);
-
-void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    miniextendr_runtime_init();
-    miniextendr_altrep_init();
-    R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
-
-    R_useDynamicSymbols(dll, FALSE);
-    R_forceSymbols(dll, TRUE);
-}
-EOF
-
-fi
 
 
 RUST_SRC_DIR="$abs_rpkg_src/rust"
@@ -2142,34 +2101,15 @@ do
 done
 
 
-VENDOR_OUT="$ROOT_MINIEXTENDR_REPO/vendor"
-SYNC1="--sync=$ROOT_MINIEXTENDR_REPO/Cargo.toml"
-SYNC2="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-api/Cargo.toml"
-SYNC3="--sync=$ROOT_MINIEXTENDR_REPO/miniextendr-macros/Cargo.toml"
-SYNC4="--sync=$abs_rpkg_src/rust/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3 $SYNC4"
+VENDOR_OUT="$abs_top_srcdir/inst/vendor"
+SYNC1="--sync=$abs_rpkg_src/rust/Cargo.toml"
+SYNC2="--sync=$VENDOR_OUT/miniextendr-api/Cargo.toml"
+SYNC3="--sync=$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3"
 
 
 
-RUST_DOT_CARGO_DIR="$RUST_SRC_DIR/.cargo"
-if test ! -f "$RUST_DOT_CARGO_DIR/config.toml"
-then :
-
-  mkdir -p "$RUST_DOT_CARGO_DIR" || as_fn_error $? "cannot mkdir $RUST_DOT_CARGO_DIR" "$LINENO" 5
-  cat > "$RUST_DOT_CARGO_DIR/config.toml" <<EOF
-source.crates-io
-replace-with = "vendored-sources"
-
-source.vendored-sources
-directory = "$VENDOR_OUT"
-
-build
-target-dir = "$CARGO_TARGET_DIR"
-EOF
-
-fi
-
-ac_config_files="$ac_config_files src/rust/Cargo.toml src/Makevars src/entrypoint.c"
+ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml src/Makevars src/entrypoint.c"
 
 
 
@@ -2876,6 +2816,7 @@ do
   case $ac_config_target in
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
+    "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
 

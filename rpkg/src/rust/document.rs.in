@@ -1,4 +1,3 @@
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
 use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
 
@@ -18,6 +17,12 @@ fn main() {
         for &s in group {
             if seen.insert(s) {
                 use std::io::Write;
+                let s = s.trim();
+                let s: String = s
+                    .lines()
+                    .map(|line| line.strip_prefix("    ").unwrap_or(line))
+                    .collect::<Vec<_>>()
+                    .join("\n");
                 f.write_all(s.as_bytes()).unwrap();
                 f.write_all(b"\n\n").unwrap();
             }

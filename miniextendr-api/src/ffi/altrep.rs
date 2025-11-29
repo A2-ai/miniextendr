@@ -3,10 +3,10 @@ use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, SEXP, SEXPTYPE};
 
 #[allow(non_camel_case_types)]
 pub type R_altrep_Coerce_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: SEXPTYPE) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: SEXPTYPE) -> SEXP>;
 
 pub type R_altrep_UnserializeEX_method_t = ::std::option::Option<
-    unsafe extern "C" fn(
+    unsafe extern "C-unwind" fn(
         arg1: SEXP,
         arg2: SEXP,
         arg3: SEXP,
@@ -15,21 +15,21 @@ pub type R_altrep_UnserializeEX_method_t = ::std::option::Option<
     ) -> SEXP,
 >;
 pub type R_altrep_Unserialize_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: SEXP) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: SEXP) -> SEXP>;
 pub type R_altrep_Serialized_state_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> SEXP>;
 pub type R_altrep_DuplicateEX_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altrep_Duplicate_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altrep_Inspect_method_t = ::std::option::Option<
-    unsafe extern "C" fn(
+    unsafe extern "C-unwind" fn(
         arg1: SEXP,
         arg2: ::std::os::raw::c_int,
         arg3: ::std::os::raw::c_int,
         arg4: ::std::os::raw::c_int,
         arg5: ::std::option::Option<
-            unsafe extern "C" fn(
+            unsafe extern "C-unwind" fn(
                 arg1: SEXP,
                 arg2: ::std::os::raw::c_int,
                 arg3: ::std::os::raw::c_int,
@@ -39,19 +39,19 @@ pub type R_altrep_Inspect_method_t = ::std::option::Option<
     ) -> Rboolean,
 >;
 pub type R_altrep_Length_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> R_xlen_t>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> R_xlen_t>;
 pub type R_altvec_Dataptr_method_t = ::std::option::Option<
-    unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> *mut ::std::os::raw::c_void,
+    unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> *mut ::std::os::raw::c_void,
 >;
 pub type R_altvec_Dataptr_or_null_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> *const ::std::os::raw::c_void>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> *const ::std::os::raw::c_void>;
 pub type R_altvec_Extract_subset_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: SEXP, arg3: SEXP) -> SEXP>;
 pub type R_altinteger_Elt_method_t = ::std::option::Option<
-    unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> ::std::os::raw::c_int,
+    unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> ::std::os::raw::c_int,
 >;
 pub type R_altinteger_Get_region_method_t = ::std::option::Option<
-    unsafe extern "C" fn(
+    unsafe extern "C-unwind" fn(
         arg1: SEXP,
         arg2: R_xlen_t,
         arg3: R_xlen_t,
@@ -59,35 +59,40 @@ pub type R_altinteger_Get_region_method_t = ::std::option::Option<
     ) -> R_xlen_t,
 >;
 pub type R_altinteger_Is_sorted_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altinteger_No_NA_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altinteger_Sum_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altinteger_Min_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altinteger_Max_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altreal_Elt_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> f64>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> f64>;
 pub type R_altreal_Get_region_method_t = ::std::option::Option<
-    unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t, arg3: R_xlen_t, arg4: *mut f64) -> R_xlen_t,
+    unsafe extern "C-unwind" fn(
+        arg1: SEXP,
+        arg2: R_xlen_t,
+        arg3: R_xlen_t,
+        arg4: *mut f64,
+    ) -> R_xlen_t,
 >;
 pub type R_altreal_Is_sorted_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altreal_No_NA_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altreal_Sum_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altreal_Min_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altreal_Max_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altlogical_Elt_method_t = ::std::option::Option<
-    unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> ::std::os::raw::c_int,
+    unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> ::std::os::raw::c_int,
 >;
 pub type R_altlogical_Get_region_method_t = ::std::option::Option<
-    unsafe extern "C" fn(
+    unsafe extern "C-unwind" fn(
         arg1: SEXP,
         arg2: R_xlen_t,
         arg3: R_xlen_t,
@@ -95,20 +100,25 @@ pub type R_altlogical_Get_region_method_t = ::std::option::Option<
     ) -> R_xlen_t,
 >;
 pub type R_altlogical_Is_sorted_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altlogical_No_NA_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altlogical_Sum_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: Rboolean) -> SEXP>;
 pub type R_altraw_Elt_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> Rbyte>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rbyte>;
 pub type R_altraw_Get_region_method_t = ::std::option::Option<
-    unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t, arg3: R_xlen_t, arg4: *mut Rbyte) -> R_xlen_t,
+    unsafe extern "C-unwind" fn(
+        arg1: SEXP,
+        arg2: R_xlen_t,
+        arg3: R_xlen_t,
+        arg4: *mut Rbyte,
+    ) -> R_xlen_t,
 >;
 // pub type R_altcomplex_Elt_method_t =
-//     ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> Rcomplex>;
+//     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rcomplex>;
 // pub type R_altcomplex_Get_region_method_t = ::std::option::Option<
-//     unsafe extern "C" fn(
+//     unsafe extern "C-unwind" fn(
 //         arg1: SEXP,
 //         arg2: R_xlen_t,
 //         arg3: R_xlen_t,
@@ -116,22 +126,22 @@ pub type R_altraw_Get_region_method_t = ::std::option::Option<
 //     ) -> R_xlen_t,
 // >;
 pub type R_altstring_Elt_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> SEXP>;
 pub type R_altstring_Set_elt_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t, arg3: SEXP)>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t, arg3: SEXP)>;
 pub type R_altstring_Is_sorted_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altstring_No_NA_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP) -> ::std::os::raw::c_int>;
 pub type R_altlist_Elt_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t) -> SEXP>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> SEXP>;
 pub type R_altlist_Set_elt_method_t =
-    ::std::option::Option<unsafe extern "C" fn(arg1: SEXP, arg2: R_xlen_t, arg3: SEXP)>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t, arg3: SEXP)>;
 #[repr(C)]
 pub struct R_altrep_class_t {
     pub ptr: SEXP,
 }
-unsafe extern "C" {
+unsafe extern "C-unwind" {
     pub fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
     pub fn R_make_altstring_class(
         cname: *const ::std::os::raw::c_char,

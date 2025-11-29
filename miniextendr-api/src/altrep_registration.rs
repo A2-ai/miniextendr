@@ -3,7 +3,7 @@
 //! Layout overview
 //! - FFI: raw setters/types live in `crate::ffi::altrep`.
 //! - Traits: safe, opt‑in method surfaces in `crate::altrep_traits` (with HAS_* flags).
-//! - Bridge: generic extern "C" trampolines in `crate::altrep_bridge` call trait methods.
+//! - Bridge: generic extern "C-unwind" trampolines in `crate::altrep_bridge` call trait methods.
 //! - Macro: `#[miniextendr]` on a struct emits an `impl RegisterAltrep` that:
 //!   - Creates the class handle via `R_make_alt*`.
 //!   - Installs only methods whose `<T as Trait>::HAS_*` are true by wiring
@@ -15,8 +15,12 @@
 use crate::ffi::altrep::R_altrep_class_t;
 
 /// Registration trait: implemented per type by the macro on struct items.
+///
+/// The `get_or_init_class` method returns the ALTREP class handle, initializing
+/// it on first call and returning the cached handle on subsequent calls.
 pub trait RegisterAltrep {
-    fn register() -> R_altrep_class_t;
+    /// Get the ALTREP class handle, initializing it if this is the first call.
+    fn get_or_init_class() -> R_altrep_class_t;
 }
 
 /// Macro-generated types implement this to install only the methods they need.

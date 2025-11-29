@@ -23,4 +23,4 @@ panic = "unwind"
 panic = "unwind"
 
 [dependencies]
-miniextendr-api = { path = "@ROOT_MINIEXTENDR_REPO@/miniextendr-api"}
+miniextendr-api = { path = "@VENDOR_OUT@/miniextendr-api" }

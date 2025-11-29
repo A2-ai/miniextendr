@@ -8,4 +8,6 @@ vendor
 dev_lib/
 Autoconf.html
 Autoconf_files/manual.css
-.cargo/config.toml
+rpkg/src/rust/ra_target
+rpkg/src/rust/target
+target

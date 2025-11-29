@@ -69,34 +69,6 @@ pub enum SEXPTYPE {
 pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
-/// Send-only handle to a SEXP pointer.
-#[repr(transparent)]
-#[derive(Debug)]
-pub struct SendSEXP {
-    pub inner: SEXP,
-    /// PhantomData<Cell<()>> forces !Sync.
-    pub _not_sync: std::marker::PhantomData<std::cell::Cell<()>>,
-}
-unsafe impl Send for SendSEXP {}
-
-impl SendSEXP {
-    #[inline(always)]
-    /// # Safety
-    /// Caller must supply a valid SEXP pointer whose ownership can be
-    /// transferred to this sendable wrapper.
-    pub unsafe fn new(inner: SEXP) -> Self {
-        Self {
-            inner,
-            _not_sync: std::marker::PhantomData,
-        }
-    }
-
-    #[inline(always)]
-    pub fn get(self) -> SEXP {
-        self.inner
-    }
-}
-
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -105,27 +77,112 @@ pub enum Rboolean {
     TRUE = 1,
 }
 
-// TODO: I don't think `R_CFinalizer_t` can be None, so maybe it ought to be NonNull
+impl From<bool> for Rboolean {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Rboolean::TRUE,
+            false => Rboolean::FALSE,
+        }
+    }
+}
+
+impl From<Rboolean> for bool {
+    fn from(value: Rboolean) -> Self {
+        match value {
+            Rboolean::FALSE => false,
+            Rboolean::TRUE => true,
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
-pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
+pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
+
+#[allow(non_camel_case_types)]
+pub type R_CFinalizer_t_C_unwind = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 #[allow(non_camel_case_types)]
 pub enum cetype_t {
     CE_NATIVE = 0,
-    CE_UTF8 = 1, /* ... */
+    CE_UTF8 = 1,
 }
 pub use cetype_t::CE_UTF8;
+use miniextendr_macros::r_ffi_checked;
 
-unsafe extern "C" {
+// Unchecked variadic functions (internal use only, no thread check)
+#[allow(clashing_extern_declarations)]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    #[link_name = "Rf_error"]
+    pub fn Rf_error_unchecked(arg1: *const ::std::os::raw::c_char, ...) -> !;
+    #[link_name = "Rf_errorcall"]
+    pub fn Rf_errorcall_unchecked(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
+    #[link_name = "Rf_warning"]
+    pub fn Rf_warning_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+    #[link_name = "Rprintf"]
+    pub fn Rprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+}
+
+/// Checked wrapper for `Rf_error` - panics if called from non-main thread.
+/// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rf_error(
+    fmt: *const ::std::os::raw::c_char,
+    arg1: *const ::std::os::raw::c_char,
+) -> ! {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rf_error called from non-main thread");
+    }
+    unsafe { Rf_error_unchecked(fmt, arg1) }
+}
+
+/// Checked wrapper for `Rf_errorcall` - panics if called from non-main thread.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rf_errorcall(
+    call: SEXP,
+    fmt: *const ::std::os::raw::c_char,
+    arg1: *const ::std::os::raw::c_char,
+) -> ! {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rf_errorcall called from non-main thread");
+    }
+    unsafe { Rf_errorcall_unchecked(call, fmt, arg1) }
+}
+
+/// Checked wrapper for `Rf_warning` - panics if called from non-main thread.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rf_warning called from non-main thread");
+    }
+    unsafe { Rf_warning_unchecked(fmt, arg1) }
+}
+
+/// Checked wrapper for `Rprintf` - panics if called from non-main thread.
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("Rprintf called from non-main thread");
+    }
+    unsafe { Rprintf_unchecked(fmt, arg1) }
+}
+
+#[r_ffi_checked]
+#[allow(clashing_extern_declarations)]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
     #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
     pub static R_NaString: SEXP;
 
     // Rinternals.h
-    pub fn Rf_errorcall(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
     pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     pub fn Rf_mkCharLenCE(
         x: *const ::std::os::raw::c_char,
@@ -136,24 +193,35 @@ unsafe extern "C" {
     pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
 
-    // R_ext/Error.h
-    pub fn Rf_error(arg1: *const ::std::os::raw::c_char, ...) -> !;
-    pub fn Rprintf(arg1: *const ::std::os::raw::c_char, ...);
-
     pub fn R_MakeUnwindCont() -> SEXP;
     pub fn R_ContinueUnwind(cont: SEXP) -> !;
     pub fn R_UnwindProtect(
-        fun: ::std::option::Option<unsafe extern "C" fn(*mut ::std::os::raw::c_void) -> SEXP>,
+        fun: ::std::option::Option<
+            unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP,
+        >,
         fun_data: *mut ::std::os::raw::c_void,
         cleanfun: ::std::option::Option<
-            unsafe extern "C" fn(*mut ::std::os::raw::c_void, Rboolean),
+            unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void, Rboolean),
+        >,
+        cleanfun_data: *mut ::std::os::raw::c_void,
+        cont: SEXP,
+    ) -> SEXP;
+
+    /// Version of `R_UnwindProtect` that accepts `extern "C-unwind"` function pointers
+    #[link_name = "R_UnwindProtect"]
+    pub fn R_UnwindProtect_C_unwind(
+        fun: ::std::option::Option<
+            unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void) -> SEXP,
+        >,
+        fun_data: *mut ::std::os::raw::c_void,
+        cleanfun: ::std::option::Option<
+            unsafe extern "C-unwind" fn(*mut ::std::os::raw::c_void, Rboolean),
         >,
         cleanfun_data: *mut ::std::os::raw::c_void,
         cont: SEXP,
     ) -> SEXP;
 
     // Rinternals.h
-
     #[doc = " External pointer interface"]
     pub fn R_MakeExternalPtr(p: *mut ::std::os::raw::c_void, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddr(s: SEXP) -> *mut ::std::os::raw::c_void;
@@ -165,7 +233,11 @@ unsafe extern "C" {
     pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
     #[doc = " Added in R 3.4.0"]
     pub fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
+    #[link_name = "R_MakeExternalPtrFn"]
+    pub fn R_MakeExternalPtrFn_C_unwind(p: DL_FUNC_C_unwind, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
+    #[link_name = "R_ExternalPtrAddrFn"]
+    pub fn R_ExternalPtrAddrFn_C_unwind(s: SEXP) -> DL_FUNC_C_unwind;
     pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
     pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
     pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
@@ -177,12 +249,13 @@ unsafe extern "C" {
 
     pub fn Rf_protect(arg1: SEXP) -> SEXP;
     pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
+    pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
 
     // Rinternals.h
     // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
     pub fn Rf_ScalarInteger(arg1: ::std::os::raw::c_int) -> SEXP;
     pub fn Rf_ScalarLogical(arg1: ::std::os::raw::c_int) -> SEXP;
-    // pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
+    pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
     pub fn Rf_ScalarReal(arg1: f64) -> SEXP;
     pub fn Rf_ScalarString(arg1: SEXP) -> SEXP;
 
@@ -190,6 +263,11 @@ unsafe extern "C" {
     pub fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
     pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;
+
+    // Cons cell accessors
+    pub fn CAR(e: SEXP) -> SEXP;
+    pub fn CDR(e: SEXP) -> SEXP;
+    pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
     pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
@@ -214,15 +292,34 @@ unsafe extern "C" {
     pub fn R_altrep_data2(x: SEXP) -> SEXP;
     pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
-    pub fn LOGICAL0(x: SEXP) -> *mut ::std::os::raw::c_int;
-    pub fn INTEGER0(x: SEXP) -> *mut ::std::os::raw::c_int;
-    pub fn REAL0(x: SEXP) -> *mut f64;
-    // pub fn COMPLEX0(x: SEXP) -> *mut Rcomplex;
-    // pub fn RAW0(x: SEXP) -> *mut Rbyte;
+    pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn REAL(x: SEXP) -> *mut f64;
+    // pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
+    pub fn RAW(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // utils.h
     pub fn R_CheckUserInterrupt();
+
+    // Type checking
+    pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
+}
+
+#[allow(non_snake_case)]
+pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
+    unsafe extern "C-unwind" {
+        #[link_name = "Rf_isS4"]
+        pub fn Rf_isS4_original(arg1: SEXP) -> u32;
+    }
+
+    unsafe {
+        if Rf_isS4_original(arg1) == 0 {
+            Rboolean::FALSE
+        } else {
+            Rboolean::TRUE
+        }
+    }
 }
 
 // region: registration!
@@ -232,7 +329,10 @@ unsafe extern "C" {
 pub struct DllInfo(::std::os::raw::c_void);
 
 #[allow(non_camel_case_types)]
-pub type DL_FUNC = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
+pub type DL_FUNC = ::std::option::Option<unsafe extern "C-unwind" fn(...) -> SEXP>;
+
+#[allow(non_camel_case_types)]
+pub type DL_FUNC_C_unwind = ::std::option::Option<unsafe extern "C-unwind" fn(...) -> SEXP>;
 
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
@@ -243,19 +343,43 @@ pub struct R_CallMethodDef {
     pub fun: DL_FUNC,
     pub numArgs: ::std::os::raw::c_int,
 }
-// TODO: investigate why Sync is necessary...
+
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+#[allow(non_camel_case_types)]
+#[allow(non_snake_case)]
+pub struct R_CallMethodDef_C_unwind {
+    pub name: *const ::std::os::raw::c_char,
+    pub fun: DL_FUNC_C_unwind,
+    pub numArgs: ::std::os::raw::c_int,
+}
+
+// SAFETY: R_CallMethodDef contains raw pointers which don't impl Sync by default.
+// However, Sync is required to store these in static arrays for R's method registration.
+// This is safe because:
+// 1. The name pointer points to static C string literals (&'static CStr)
+// 2. The fun pointer is a static function pointer
+// 3. These are read-only after initialization during R_init_*
 unsafe impl Sync for R_CallMethodDef {}
 
-// FIXME: move to an ffi crate or similar..
-unsafe extern "C" {
+#[r_ffi_checked]
+#[allow(clashing_extern_declarations)]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
-        // croutines: *const R_CMethodDef,
         croutines: *const ::std::os::raw::c_void,
         callRoutines: *const R_CallMethodDef,
-        // fortranRoutines: *const R_FortranMethodDef,
         fortranRoutines: *const ::std::os::raw::c_void,
-        // externalRoutines: *const R_ExternalMethodDef,
+        externalRoutines: *const ::std::os::raw::c_void,
+    ) -> ::std::os::raw::c_int;
+
+    #[link_name = "R_registerRoutines"]
+    pub fn R_registerRoutines_C_unwind(
+        info: *mut DllInfo,
+        croutines: *const ::std::os::raw::c_void,
+        callRoutines: *const R_CallMethodDef_C_unwind,
+        fortranRoutines: *const ::std::os::raw::c_void,
         externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
