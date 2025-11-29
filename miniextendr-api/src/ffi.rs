@@ -268,7 +268,6 @@ unsafe extern "C-unwind" {
     pub fn CAR(e: SEXP) -> SEXP;
     pub fn CDR(e: SEXP) -> SEXP;
     pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
-    pub fn RAW(x: SEXP) -> *mut Rbyte;
     pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
@@ -293,11 +292,11 @@ unsafe extern "C-unwind" {
     pub fn R_altrep_data2(x: SEXP) -> SEXP;
     pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
-    pub fn LOGICAL0(x: SEXP) -> *mut ::std::os::raw::c_int;
-    pub fn INTEGER0(x: SEXP) -> *mut ::std::os::raw::c_int;
-    pub fn REAL0(x: SEXP) -> *mut f64;
-    // pub fn COMPLEX0(x: SEXP) -> *mut Rcomplex;
-    pub fn RAW0(x: SEXP) -> *mut Rbyte;
+    pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn REAL(x: SEXP) -> *mut f64;
+    // pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
+    pub fn RAW(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // utils.h

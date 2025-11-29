@@ -132,4 +132,22 @@ if (file.exists(configure_script)) {
   }
 }
 
+# Step 4: Clean up CRAN-unfriendly hidden files in vendor
+message("Cleaning up hidden files in inst/vendor...")
+if (dir.exists(inst_vendor)) {
+  # Remove all hidden directories (.github, .vscode, .zed, .positron, etc.)
+  all_dirs <- list.dirs(inst_vendor, recursive = TRUE, full.names = TRUE)
+  hidden_dirs <- all_dirs[grepl("^\\.", basename(all_dirs))]
+  for (d in hidden_dirs) {
+    unlink(d, recursive = TRUE)
+  }
+
+  # Remove .cargo_vcs_info.json and .cargo-checksum.json files
+  hidden_json <- list.files(inst_vendor, pattern = "^\\.cargo.*\\.json$",
+                            recursive = TRUE, full.names = TRUE, all.files = TRUE)
+  if (length(hidden_json) > 0) file.remove(hidden_json)
+
+  message("  Done")
+}
+
 message("bootstrap.R completed successfully")

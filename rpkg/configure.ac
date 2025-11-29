@@ -7,6 +7,20 @@ dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
 : ${NOT_CRAN="true"}
 export NOT_CRAN
 
+dnl Set cargo offline flag based on NOT_CRAN
+dnl - NOT_CRAN=true (dev): no --offline, regenerate lockfile
+dnl - NOT_CRAN not true (CRAN): use --offline, don't regenerate lockfile
+if test "$NOT_CRAN" = "true"; then
+  CARGO_OFFLINE_FLAG=""
+  GENERATE_LOCKFILE="yes"
+else
+  CARGO_OFFLINE_FLAG="--offline"
+  GENERATE_LOCKFILE="no"
+fi
+AC_SUBST([CARGO_OFFLINE_FLAG])
+AC_SUBST([GENERATE_LOCKFILE])
+AC_SUBST([NOT_CRAN])
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
@@ -28,6 +42,10 @@ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
+
+dnl Report rustc version (required by CRAN for Rust packages)
+RUSTC_VERSION=`$RUSTC --version`
+AC_MSG_NOTICE([using $RUSTC_VERSION])
 
 dnl Allow explicit toolchain (e.g. +nightly); default empty (use default toolchain)
 AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly'])
@@ -84,68 +102,8 @@ AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
 
-dnl ---- ensure document.rs.in exists (template) ----
-AS_IF([test ! -f "$abs_rpkg_src/rust/document.rs.in"], [
-  mkdir -p "$abs_rpkg_src/rust" || AC_MSG_ERROR([cannot mkdir $abs_rpkg_src/rust])
-  cat >"$abs_rpkg_src/rust/document.rs.in" <<EOF
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
-use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
-
-fn main() {
-    let dep_flat: Vec<&'static str> = DEPS.concat();
-    let roots: @<:@&@<:@&'static str@:>@; 2@:>@ = @<:@PARTS, &dep_flat@:>@;
-
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open("miniextendr_wrappers.R")
-        .unwrap();
-
-    let mut seen = std::collections::HashSet::new();
-    for group in roots {
-        for &s in group {
-            if seen.insert(s) {
-                use std::io::Write;
-                f.write_all(s.as_bytes()).unwrap();
-                f.write_all(b"\n\n").unwrap();
-            }
-        }
-    }
-}
-EOF
-])
-
-dnl Generate the concrete file with substitutions
+dnl Generate files from .in templates (templates must be committed)
 AC_CONFIG_FILES([src/rust/document.rs])
-
-dnl ---- ensure entrypoint.c.in exists ----
-AS_IF([test ! -f "$abs_rpkg_src/entrypoint.c.in"], [
-  mkdir -p "$abs_rpkg_src" || AC_MSG_ERROR([cannot mkdir $abs_rpkg_src])
-  cat >"$abs_rpkg_src/entrypoint.c.in" <<EOF
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
-extern void miniextendr_altrep_init(void);
-extern void miniextendr_panic_hook(void);
-extern void miniextendr_worker_init(void);
-
-void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    miniextendr_panic_hook();
-    miniextendr_altrep_init();
-    miniextendr_worker_init();
-    R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
-
-    R_useDynamicSymbols(dll, FALSE);
-    R_forceSymbols(dll, TRUE);
-}
-EOF
-])
-
 AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
 
 dnl ---- enumerate Rust sources for Make dependencies (no make wildcards) ----

@@ -108,6 +108,10 @@ devtools-install:
 devtools-check:
     Rscript -e 'devtools::check("rpkg")'
 
+# Document rpkg with devtools::document
+devtools-document:
+    Rscript -e 'devtools::document("rpkg")'
+
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args:
     R CMD INSTALL rpkg

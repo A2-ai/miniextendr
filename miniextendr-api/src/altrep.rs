@@ -1130,7 +1130,7 @@ impl traits::Altrep for AltIntClass {
                 unsafe {
                     let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
                     Rf_protect(state);
-                    let p = INTEGER0(state);
+                    let p = INTEGER(state);
                     *p = len as i32;
                     *p.add(1) = start;
                     *p.add(2) = step;
@@ -1165,7 +1165,7 @@ impl traits::Altrep for AltIntClass {
                 let n = int_backend(x).len();
                 let val = Rf_allocVector(SEXPTYPE::INTSXP, n);
                 Rf_protect(val);
-                let buf = INTEGER0(val);
+                let buf = INTEGER(val);
                 int_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
                 Rf_unprotect(1);
                 val
@@ -1267,13 +1267,13 @@ impl traits::AltVec for AltIntClass {
                 let val = Rf_allocVector(SEXPTYPE::INTSXP, n);
                 Rf_protect(val);
                 // Fill using get_region
-                let buf = INTEGER0(val);
+                let buf = INTEGER(val);
                 int_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
                 R_set_altrep_data2(x, val);
                 Rf_unprotect(1);
                 buf.cast()
             } else {
-                INTEGER0(expanded).cast()
+                INTEGER(expanded).cast()
             }
         }
     }
@@ -1283,7 +1283,7 @@ impl traits::AltVec for AltIntClass {
             if expanded == R_NilValue {
                 core::ptr::null()
             } else {
-                INTEGER0(expanded).cast()
+                INTEGER(expanded).cast()
             }
         }
     }
@@ -1404,13 +1404,13 @@ impl traits::AltVec for AltRealClass {
                 let n = real_backend(x).len();
                 let val = Rf_allocVector(SEXPTYPE::REALSXP, n);
                 Rf_protect(val);
-                let buf = REAL0(val);
+                let buf = REAL(val);
                 real_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
                 R_set_altrep_data2(x, val);
                 Rf_unprotect(1);
                 buf.cast()
             } else {
-                REAL0(expanded).cast()
+                REAL(expanded).cast()
             }
         }
     }
@@ -1420,7 +1420,7 @@ impl traits::AltVec for AltRealClass {
             if expanded == R_NilValue {
                 core::ptr::null()
             } else {
-                REAL0(expanded).cast()
+                REAL(expanded).cast()
             }
         }
     }
@@ -1557,13 +1557,13 @@ impl traits::AltVec for AltLogicalClass {
                 let n = lgl_backend(x).len();
                 let val = Rf_allocVector(SEXPTYPE::LGLSXP, n);
                 Rf_protect(val);
-                let buf = LOGICAL0(val);
+                let buf = LOGICAL(val);
                 lgl_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
                 R_set_altrep_data2(x, val);
                 Rf_unprotect(1);
                 buf.cast()
             } else {
-                LOGICAL0(expanded).cast()
+                LOGICAL(expanded).cast()
             }
         }
     }
@@ -1573,7 +1573,7 @@ impl traits::AltVec for AltLogicalClass {
             if expanded == R_NilValue {
                 core::ptr::null()
             } else {
-                LOGICAL0(expanded).cast()
+                LOGICAL(expanded).cast()
             }
         }
     }
@@ -1641,13 +1641,13 @@ impl traits::AltVec for AltRawClass {
                 let n = raw_backend(x).len();
                 let val = Rf_allocVector(SEXPTYPE::RAWSXP, n);
                 Rf_protect(val);
-                let buf = RAW0(val);
+                let buf = RAW(val);
                 raw_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
                 R_set_altrep_data2(x, val);
                 Rf_unprotect(1);
                 buf.cast()
             } else {
-                RAW0(expanded).cast()
+                RAW(expanded).cast()
             }
         }
     }
@@ -1657,7 +1657,7 @@ impl traits::AltVec for AltRawClass {
             if expanded == R_NilValue {
                 core::ptr::null()
             } else {
-                RAW0(expanded).cast()
+                RAW(expanded).cast()
             }
         }
     }

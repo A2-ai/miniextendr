@@ -1,4 +1,3 @@
-// NOTICE: Any changes to this file, must also be applied to configure.ac's embedded version of this file!
 #include <R.h>
 #include <Rinternals.h>
 #include <R_ext/Rdynload.h>

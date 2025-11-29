@@ -22,36 +22,42 @@ PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
 VENDOR_SYNC_FLAGS = @VENDOR_SYNC_FLAGS@
 VENDOR_OUT = @VENDOR_OUT@
 
+CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
+GENERATE_LOCKFILE = @GENERATE_LOCKFILE@
+NOT_CRAN_FLAG = @NOT_CRAN@
+
 RUST_SOURCES = @RUST_SOURCES@
 OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 ## ----------------------------------------------------------------------
-
-## Manifests to watch; touching any will refresh vendor/
-CARGO_TOML = \
-  $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
-  $(VENDOR_OUT)/miniextendr-api/Cargo.toml \
-  $(VENDOR_OUT)/miniextendr-macros/Cargo.toml
 
 all: RUN_CARGO_ALWAYS
 
 RUN_CARGO_ALWAYS: $(SHLIB)
 	@touch -A -01 $(SHLIB)
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	  rm -rf $(VENDOR_OUT) $(ABS_RPKG_SRCDIR)/rust/.cargo; \
+	fi
 
 $(SHLIB): vendor $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
-vendor: $(CARGO_TOML)
-	if [ "$$NOT_CRAN" = "true" ]; then \
+vendor: $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+	if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
 	  $(CARGO) $(RUST_TOOLCHAIN) vendor --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
 	fi
 
-$(CARGO_AR): vendor $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+$(ABS_RPKG_SRCDIR)/rust/Cargo.lock: vendor
+	if [ "$(GENERATE_LOCKFILE)" = "yes" ]; then \
+	  $(CARGO) $(RUST_TOOLCHAIN) generate-lockfile --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml; \
+	fi
+
+$(CARGO_AR): $(ABS_RPKG_SRCDIR)/rust/Cargo.lock $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
 	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build --lib --profile $(CARGO_PROFILE) \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
-	$(CARGO) $(RUST_TOOLCHAIN) run --bin document --profile $(CARGO_PROFILE) \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) --bin document --profile $(CARGO_PROFILE) \
 	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)
 
@@ -59,4 +65,4 @@ $(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)
 	@cp $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT)
 
 clean:
-	if [ "$$NOT_CRAN" != "true" ]; then rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); fi
+	if [ "$(NOT_CRAN_FLAG)" != "true" ]; then rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); fi

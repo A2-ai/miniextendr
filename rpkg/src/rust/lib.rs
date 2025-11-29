@@ -516,7 +516,7 @@ impl AltVec for ConstantIntClass {
     fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
         use miniextendr_api::ffi::{
             R_altrep_data2, R_set_altrep_data2, R_NilValue, Rf_allocVector, Rf_protect,
-            Rf_unprotect, INTEGER0, SEXPTYPE,
+            Rf_unprotect, INTEGER, SEXPTYPE,
         };
         // Materialize the data if not already expanded
         unsafe {
@@ -525,7 +525,7 @@ impl AltVec for ConstantIntClass {
                 let n = Self::length(x);
                 let val = Rf_allocVector(SEXPTYPE::INTSXP, n);
                 Rf_protect(val);
-                let buf = INTEGER0(val);
+                let buf = INTEGER(val);
                 for i in 0..n {
                     *buf.offset(i as isize) = Self::elt(x, i);
                 }
@@ -533,18 +533,18 @@ impl AltVec for ConstantIntClass {
                 Rf_unprotect(1);
                 buf.cast()
             } else {
-                INTEGER0(expanded).cast()
+                INTEGER(expanded).cast()
             }
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
-        use miniextendr_api::ffi::{R_altrep_data2, R_NilValue, INTEGER0};
+        use miniextendr_api::ffi::{R_altrep_data2, R_NilValue, INTEGER};
         unsafe {
             let expanded = R_altrep_data2(x);
             if expanded == R_NilValue {
                 core::ptr::null()
             } else {
-                INTEGER0(expanded).cast()
+                INTEGER(expanded).cast()
             }
         }
     }
