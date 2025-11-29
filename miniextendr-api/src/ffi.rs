@@ -77,6 +77,24 @@ pub enum Rboolean {
     TRUE = 1,
 }
 
+impl From<bool> for Rboolean {
+    fn from(value: bool) -> Self {
+        match value {
+            true => Rboolean::TRUE,
+            false => Rboolean::FALSE,
+        }
+    }
+}
+
+impl From<Rboolean> for bool {
+    fn from(value: Rboolean) -> Self {
+        match value {
+            Rboolean::FALSE => false,
+            Rboolean::TRUE => true,
+        }
+    }
+}
+
 #[allow(non_camel_case_types)]
 pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
 
@@ -111,7 +129,10 @@ unsafe extern "C-unwind" {
 /// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
 #[inline(always)]
 #[allow(non_snake_case)]
-pub unsafe fn Rf_error(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) -> ! {
+pub unsafe fn Rf_error(
+    fmt: *const ::std::os::raw::c_char,
+    arg1: *const ::std::os::raw::c_char,
+) -> ! {
     if !crate::worker::is_r_main_thread() {
         panic!("Rf_error called from non-main thread");
     }
@@ -121,7 +142,11 @@ pub unsafe fn Rf_error(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::o
 /// Checked wrapper for `Rf_errorcall` - panics if called from non-main thread.
 #[inline(always)]
 #[allow(non_snake_case)]
-pub unsafe fn Rf_errorcall(call: SEXP, fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) -> ! {
+pub unsafe fn Rf_errorcall(
+    call: SEXP,
+    fmt: *const ::std::os::raw::c_char,
+    arg1: *const ::std::os::raw::c_char,
+) -> ! {
     if !crate::worker::is_r_main_thread() {
         panic!("Rf_errorcall called from non-main thread");
     }
@@ -276,6 +301,25 @@ unsafe extern "C-unwind" {
 
     // utils.h
     pub fn R_CheckUserInterrupt();
+
+    // Type checking
+    pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
+}
+
+#[allow(non_snake_case)]
+pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
+    unsafe extern "C-unwind" {
+        #[link_name = "Rf_isS4"]
+        pub fn Rf_isS4_original(arg1: SEXP) -> u32;
+    }
+
+    unsafe {
+        if Rf_isS4_original(arg1) == 0 {
+            Rboolean::FALSE
+        } else {
+            Rboolean::TRUE
+        }
+    }
 }
 
 // region: registration!

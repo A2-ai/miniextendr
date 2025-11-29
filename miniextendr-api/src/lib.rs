@@ -60,6 +60,7 @@ pub mod altrep_registration;
 pub mod altrep_std_impls;
 pub mod altrep_traits;
 pub mod ffi;
+pub mod from_r;
 pub mod into_r;
 pub mod unwind_protect;
 pub mod worker;
@@ -67,6 +68,9 @@ pub mod worker;
 // Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;
 pub use error::{r_print, r_println, r_stop, r_warning};
+
+// Re-export from_r
+pub use from_r::{SexpExt, SexpTypeError};
 
 pub mod backtrace;
 
