@@ -487,7 +487,7 @@ fn test_logical_slice_any_true(
     x: &'static [miniextendr_api::ffi::Rboolean],
 ) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.iter().any(|&b| b == Rboolean::TRUE) {
+    if x.contains(&Rboolean::TRUE) {
         Rboolean::TRUE
     } else {
         Rboolean::FALSE
@@ -531,6 +531,8 @@ impl Altrep for ConstantIntClass {
     }
 }
 
+// Safety: ALTREP callbacks are only called by R with valid SEXP arguments
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl AltVec for ConstantIntClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
@@ -548,7 +550,7 @@ impl AltVec for ConstantIntClass {
                 Rf_protect(val);
                 let buf = INTEGER(val);
                 for i in 0..n {
-                    *buf.offset(i as isize) = Self::elt(x, i);
+                    *buf.offset(i) = Self::elt(x, i);
                 }
                 R_set_altrep_data2(x, val);
                 Rf_unprotect(1);
@@ -580,6 +582,10 @@ impl AltInteger for ConstantIntClass {
 }
 
 /// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
+///
+/// # Safety
+///
+/// Must be called from R main thread with R properly initialized.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -595,6 +601,12 @@ pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
 
 // ALTREP .Call wrappers (delegating to miniextendr_api)
 // Named with rpkg_ prefix to avoid symbol collision with miniextendr_api exports.
+
+/// Create a compact integer sequence ALTREP.
+///
+/// # Safety
+///
+/// All SEXP arguments must be valid. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -602,6 +614,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, st
     unsafe { miniextendr_api::altrep::C_altrep_compact_int(n, start, step) }
 }
 
+/// Create an ALTREP from doubles.
+///
+/// # Safety
+///
+/// `x` must be a valid REALSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -609,6 +626,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_doubles(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_doubles(x) }
 }
 
+/// Create an ALTREP from strings.
+///
+/// # Safety
+///
+/// `x` must be a valid STRSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -616,6 +638,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_strings(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_strings(x) }
 }
 
+/// Create an ALTREP from logicals.
+///
+/// # Safety
+///
+/// `x` must be a valid LGLSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -623,6 +650,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_logicals(x) }
 }
 
+/// Create an ALTREP from raw bytes.
+///
+/// # Safety
+///
+/// `x` must be a valid RAWSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -630,12 +662,322 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_raw(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_raw(x) }
 }
 
+/// Create an ALTREP from a list.
+///
+/// # Safety
+///
+/// `x` must be a valid VECSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_list(x) }
 }
+
+// region: ExternalPtr tests
+
+use miniextendr_api::externalptr::ErasedExternalPtr;
+// Note: ExternalPtr type is accessed via full path to avoid conflict with derive macro
+use miniextendr_api::ExternalPtr as DeriveExternalPtr;
+
+/// A simple test struct for ExternalPtr
+#[derive(DeriveExternalPtr, Debug)]
+struct Counter {
+    value: i32,
+}
+
+/// Another test struct to verify type safety
+#[derive(DeriveExternalPtr, Debug)]
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+/// Create a new Counter wrapped in an ExternalPtr
+#[miniextendr]
+fn extptr_counter_new(initial: i32) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    let counter = Counter { value: initial };
+    let ptr = ExternalPtr::new(counter);
+    ptr.as_sexp()
+}
+
+/// Get the current value from a Counter ExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarInteger(ext.value),
+            None => Rf_ScalarInteger(i32::MIN), // NA_INTEGER equivalent
+        }
+    }
+}
+
+/// Increment the counter and return the new value
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP pointing to a Counter ExternalPtr.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        // Get mutable access via downcast_mut on erased pointer
+        let mut erased = ErasedExternalPtr::from_sexp(ptr);
+        if let Some(counter) = erased.downcast_mut::<Counter>() {
+            counter.value += 1;
+            return Rf_ScalarInteger(counter.value);
+        }
+        Rf_ScalarInteger(i32::MIN) // NA_INTEGER equivalent
+    }
+}
+
+/// Create a new Point wrapped in an ExternalPtr
+#[miniextendr]
+fn extptr_point_new(x: f64, y: f64) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    let point = Point { x, y };
+    let ptr = ExternalPtr::new(point);
+    ptr.as_sexp()
+}
+
+/// Get the x coordinate from a Point ExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarReal;
+    unsafe {
+        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarReal(ext.x),
+            None => Rf_ScalarReal(f64::NAN),
+        }
+    }
+}
+
+/// Get the y coordinate from a Point ExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarReal;
+    unsafe {
+        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarReal(ext.y),
+            None => Rf_ScalarReal(f64::NAN),
+        }
+    }
+}
+
+/// Test type safety: try to get a Counter from a Point (should fail)
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        // Try to interpret a Point as a Counter - should return None
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(_) => Rf_ScalarInteger(1),  // Unexpected success
+            None => Rf_ScalarInteger(0),     // Expected failure - type mismatch
+        }
+    }
+}
+
+/// Test with R's `new("externalptr")` - a null external pointer
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        // R's new("externalptr") creates a null external pointer
+        // Our try_from_sexp should return None for it
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(_) => Rf_ScalarInteger(1),  // Unexpected - null pointer should fail
+            None => Rf_ScalarInteger(0),     // Expected - null pointer detected
+        }
+    }
+}
+
+/// Check if an external pointer is a Counter using ErasedExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        let erased = ErasedExternalPtr::from_sexp(ptr);
+        if erased.is::<Counter>() {
+            Rf_ScalarInteger(1)
+        } else {
+            Rf_ScalarInteger(0)
+        }
+    }
+}
+
+/// Check if an external pointer is a Point using ErasedExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        let erased = ErasedExternalPtr::from_sexp(ptr);
+        if erased.is::<Point>() {
+            Rf_ScalarInteger(1)
+        } else {
+            Rf_ScalarInteger(0)
+        }
+    }
+}
+
+// endregion
+
+// region: ALTREP with ExternalPtr backend
+
+/// An ALTREP integer class that stores its data in an ExternalPtr
+#[derive(DeriveExternalPtr)]
+struct VecIntData {
+    data: Vec<i32>,
+}
+
+/// ALTREP class using ExternalPtr for storage
+#[miniextendr(class = "VecIntAltrep", pkg = "rpkg", base = "Int")]
+pub struct VecIntAltrepClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for VecIntAltrepClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::externalptr::ExternalPtr;
+        use miniextendr_api::ffi::R_altrep_data1;
+        unsafe {
+            let data1 = R_altrep_data1(x);
+            match ExternalPtr::<VecIntData>::try_from_sexp(data1) {
+                Some(ext) => ext.data.len() as R_xlen_t,
+                None => 0,
+            }
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for VecIntAltrepClass {
+    const HAS_DATAPTR: bool = true;
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
+        use miniextendr_api::ffi::R_altrep_data1;
+        unsafe {
+            let data1 = R_altrep_data1(x);
+            // Use ErasedExternalPtr for mutable access
+            let mut erased = ErasedExternalPtr::from_sexp(data1);
+            if let Some(vec_data) = erased.downcast_mut::<VecIntData>() {
+                return vec_data.data.as_mut_ptr().cast();
+            }
+            core::ptr::null_mut()
+        }
+    }
+
+    fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
+        use miniextendr_api::externalptr::ExternalPtr;
+        use miniextendr_api::ffi::R_altrep_data1;
+        unsafe {
+            let data1 = R_altrep_data1(x);
+            match ExternalPtr::<VecIntData>::try_from_sexp(data1) {
+                Some(ext) => ext.data.as_ptr().cast(),
+                None => core::ptr::null(),
+            }
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltInteger for VecIntAltrepClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        use miniextendr_api::externalptr::ExternalPtr;
+        use miniextendr_api::ffi::R_altrep_data1;
+        unsafe {
+            let data1 = R_altrep_data1(x);
+            match ExternalPtr::<VecIntData>::try_from_sexp(data1) {
+                Some(ext) => ext.data.get(i as usize).copied().unwrap_or(i32::MIN),
+                None => i32::MIN,
+            }
+        }
+    }
+}
+
+/// Create a VecIntAltrep instance from an integer vector
+///
+/// # Safety
+///
+/// Must be called from R main thread with valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_vec_int_altrep(x: SEXP) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+    use miniextendr_api::ffi::{Rf_xlength, INTEGER};
+
+    // Copy data from input SEXP
+    let n = unsafe { Rf_xlength(x) as usize };
+    let src = unsafe { INTEGER(x) };
+    let mut data = Vec::with_capacity(n);
+    for i in 0..n {
+        data.push(unsafe { *src.add(i) });
+    }
+
+    // Wrap in ExternalPtr
+    let ext_ptr = ExternalPtr::new(VecIntData { data });
+
+    // Create ALTREP instance
+    let cls = VecIntAltrepClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// endregion
 
 miniextendr_module! {
     mod rpkg;
@@ -739,6 +1081,22 @@ miniextendr_module! {
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
     extern "C-unwind" fn rpkg_constant_int;
+
+    // ExternalPtr tests
+    fn extptr_counter_new;
+    extern "C-unwind" fn C_extptr_counter_get;
+    extern "C-unwind" fn C_extptr_counter_increment;
+    fn extptr_point_new;
+    extern "C-unwind" fn C_extptr_point_get_x;
+    extern "C-unwind" fn C_extptr_point_get_y;
+    extern "C-unwind" fn C_extptr_type_mismatch_test;
+    extern "C-unwind" fn C_extptr_null_test;
+    extern "C-unwind" fn C_extptr_is_counter;
+    extern "C-unwind" fn C_extptr_is_point;
+
+    // ALTREP with ExternalPtr backend
+    struct VecIntAltrepClass;
+    extern "C-unwind" fn rpkg_vec_int_altrep;
 }
 
 // endregion

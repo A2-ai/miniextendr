@@ -87,6 +87,7 @@ pub fn miniextendr(
     // for the C wrapper and R wrapper.
     let mut unused_counter = 0usize;
     for arg in &mut item.sig.inputs {
+        #[allow(clippy::collapsible_if)]
         if let syn::FnArg::Typed(pat_type) = arg {
             if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
                 let synthetic_name = format!("__unused{}", unused_counter);
@@ -138,6 +139,7 @@ pub fn miniextendr(
                 // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
                 // Check that no existing parameter is named `_dots`
                 for arg in &item.sig.inputs {
+                    #[allow(clippy::collapsible_if)]
                     if let syn::FnArg::Typed(pat_type) = arg {
                         if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                             if pat_ident.ident == "_dots" {
@@ -1322,6 +1324,7 @@ pub fn r_ffi_checked(
                     let arg_names: Vec<_> = inputs
                         .iter()
                         .filter_map(|arg| {
+                            #[allow(clippy::collapsible_if)]
                             if let syn::FnArg::Typed(pat_type) = arg {
                                 if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                                     return Some(pat_ident.ident.clone());
@@ -1359,6 +1362,55 @@ pub fn r_ffi_checked(
         }
 
         #(#checked_wrappers)*
+    };
+
+    expanded.into()
+}
+
+/// Derive macro for implementing `TypedExternal` on a type.
+///
+/// This makes the type compatible with `ExternalPtr<T>` for storing in R's external pointers.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::TypedExternal;
+///
+/// #[derive(TypedExternal)]
+/// struct MyData {
+///     value: i32,
+/// }
+///
+/// // Now you can use ExternalPtr<MyData>
+/// let ptr = ExternalPtr::new(MyData { value: 42 });
+/// ```
+///
+/// # Generated Code
+///
+/// For a type `MyData`, this generates:
+///
+/// ```ignore
+/// impl TypedExternal for MyData {
+///     const TYPE_NAME: &'static str = "MyData";
+///     const TYPE_NAME_CSTR: &'static [u8] = b"MyData\0";
+/// }
+/// ```
+#[proc_macro_derive(ExternalPtr)]
+pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    // Create string literal from type name
+    let name_str = name.to_string();
+    let name_lit = syn::LitStr::new(&name_str, name.span());
+    let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
+
+    let expanded = quote::quote! {
+        impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
+            const TYPE_NAME: &'static str = #name_lit;
+            const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
+        }
     };
 
     expanded.into()

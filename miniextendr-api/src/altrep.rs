@@ -1207,13 +1207,13 @@ impl traits::AltVec for AltIntClass {
         // Check if indx is an integer vector representing a contiguous range
         // e.g., c(5, 6, 7, 8, 9) -> can extract compact subset
         unsafe {
-            let idx_type = TYPEOF(indx);
+            let idx_type = indx.type_of();
             // Only handle integer indices for now
             if idx_type != SEXPTYPE::INTSXP {
                 return core::ptr::null_mut();
             }
 
-            let idx_len = Rf_xlength(indx);
+            let idx_len = indx.xlength();
             if idx_len == 0 {
                 // Empty subset - return NULL to let R handle
                 return core::ptr::null_mut();

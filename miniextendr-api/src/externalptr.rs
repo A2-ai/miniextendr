@@ -22,8 +22,7 @@ use std::ptr::{self, NonNull};
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
     R_MakeExternalPtr, R_NilValue, R_RegisterCFinalizerEx, RAW, Rboolean, Rf_allocVector,
-    Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SET_VECTOR_ELT, SEXP, SEXPTYPE, TYPEOF,
-    VECTOR_ELT,
+    Rf_install, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
 };
 
 /// Index of the StableTypeId RAWSXP in the prot VECSXP
@@ -64,15 +63,26 @@ unsafe impl Send for StableTypeId {}
 unsafe impl Sync for StableTypeId {}
 
 impl StableTypeId {
-    /// Create a new StableTypeId for type T
+    /// Create a new StableTypeId from a static type name string.
+    ///
+    /// This is const and can be used in const contexts when the type name
+    /// is known at compile time (e.g., from `stringify!` in macros).
     #[inline]
-    pub fn of<T: ?Sized + 'static>() -> Self {
-        let name = std::any::type_name::<T>();
+    pub const fn from_name(name: &'static str) -> Self {
         Self {
             hash: const_hash_str(name),
             name_len: name.len(),
             name_ptr: name.as_ptr(),
         }
+    }
+
+    /// Create a new StableTypeId for type T using `std::any::type_name`.
+    ///
+    /// Note: This is NOT const because `type_name` is not const-stable.
+    /// For const contexts, use `from_name` with a compile-time string.
+    #[inline]
+    pub fn of<T: ?Sized + 'static>() -> Self {
+        Self::from_name(std::any::type_name::<T>())
     }
 
     /// Get the type name as a string slice
@@ -107,16 +117,16 @@ impl StableTypeId {
     /// - The RAWSXP is not the correct size
     #[inline]
     fn from_rawsxp(sexp: SEXP) -> Option<Self> {
-        if sexp.is_null() || sexp == unsafe { R_NilValue } {
+        if sexp.is_null_or_nil() {
             return None;
         }
 
-        if unsafe { TYPEOF(sexp) } != SEXPTYPE::RAWSXP {
+        if sexp.type_of() != SEXPTYPE::RAWSXP {
             return None;
         }
 
         let expected_size = mem::size_of::<Self>();
-        if unsafe { Rf_xlength(sexp) } as usize != expected_size {
+        if sexp.xlength() as usize != expected_size {
             return None;
         }
 
@@ -179,8 +189,11 @@ const fn const_hash_str(s: &str) -> u64 {
 ///
 /// This provides the stable type identification needed for runtime type checking.
 pub trait TypedExternal: 'static {
-    /// The stable type identifier for this type
-    const TYPE_ID: StableTypeId;
+    /// The type name as a static string (used for hashing and debugging)
+    const TYPE_NAME: &'static str;
+
+    /// The stable type identifier for this type (computed from TYPE_NAME)
+    const TYPE_ID: StableTypeId = StableTypeId::from_name(Self::TYPE_NAME);
 
     /// The type name as a C string (for R tag)
     const TYPE_NAME_CSTR: &'static [u8];
@@ -199,14 +212,7 @@ pub trait TypedExternal: 'static {
 macro_rules! impl_typed_external {
     ($ty:ty) => {
         impl $crate::externalptr::TypedExternal for $ty {
-            const TYPE_ID: $crate::externalptr::StableTypeId =
-                $crate::externalptr::StableTypeId::of::<$ty>();
-
-            // We can't use type_name in const context for the C string,
-            // so we use a function that will be called at runtime for the tag.
-            // However, since TYPE_NAME_CSTR needs to be const, we use stringify
-            // as a fallback. The tag is only for human debugging; type checking
-            // uses TYPE_ID which is consistent.
+            const TYPE_NAME: &'static str = stringify!($ty);
             const TYPE_NAME_CSTR: &'static [u8] = concat!(stringify!($ty), "\0").as_bytes();
         }
     };
@@ -220,8 +226,7 @@ macro_rules! impl_typed_external {
 macro_rules! impl_typed_external_with_tag {
     ($ty:ty, $tag:expr) => {
         impl $crate::externalptr::TypedExternal for $ty {
-            const TYPE_ID: $crate::externalptr::StableTypeId =
-                $crate::externalptr::StableTypeId::of::<$ty>();
+            const TYPE_NAME: &'static str = $tag;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
         }
     };
@@ -515,10 +520,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub fn protected(&self) -> SEXP {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null() || prot == R_NilValue {
+            if prot.is_null_or_nil() {
                 return R_NilValue;
             }
-            if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
                 return R_NilValue;
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
@@ -532,15 +537,20 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// Returns `false` if the prot structure is malformed (should not happen
     /// for ExternalPtrs created by this library).
+    ///
+    /// # Safety
+    ///
+    /// - `user_prot` must be a valid SEXP or R_NilValue
+    /// - Must be called from the R main thread
     #[inline]
     pub unsafe fn set_protected(&self, user_prot: SEXP) -> bool {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null() || prot == R_NilValue {
+            if prot.is_null_or_nil() {
                 debug_assert!(false, "ExternalPtr prot slot is null or R_NilValue");
                 return false;
             }
-            if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
                 debug_assert!(
                     false,
                     "ExternalPtr prot slot is not a VECSXP of expected length"
@@ -590,11 +600,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Extract prot VECSXP
         let prot = unsafe { R_ExternalPtrProtected(sexp) };
-        if prot.is_null() || prot == unsafe { R_NilValue } {
+        if prot.is_null_or_nil() {
             return None;
         }
-        if unsafe { TYPEOF(prot) } != SEXPTYPE::VECSXP || unsafe { Rf_xlength(prot) } < PROT_VEC_LEN
-        {
+        if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
             return None;
         }
 
@@ -628,11 +637,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Extract prot VECSXP
         let prot = unsafe { R_ExternalPtrProtected(sexp) };
-        if prot.is_null() || prot == unsafe { R_NilValue } {
+        if prot.is_null_or_nil() {
             return Err(TypeMismatchError::InvalidTypeId);
         }
-        if unsafe { TYPEOF(prot) } != SEXPTYPE::VECSXP || unsafe { Rf_xlength(prot) } < PROT_VEC_LEN
-        {
+        if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
             return Err(TypeMismatchError::InvalidTypeId);
         }
 
@@ -691,10 +699,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     pub fn stored_type_id(&self) -> Option<StableTypeId> {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null() || prot == R_NilValue {
+            if prot.is_null_or_nil() {
                 return None;
             }
-            if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
                 return None;
             }
             let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
@@ -851,10 +859,10 @@ impl ErasedExternalPtr {
     pub fn type_id(&self) -> Option<StableTypeId> {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null() || prot == R_NilValue {
+            if prot.is_null_or_nil() {
                 return None;
             }
-            if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
                 return None;
             }
             let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
@@ -867,10 +875,10 @@ impl ErasedExternalPtr {
     pub fn protected(&self) -> SEXP {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null() || prot == R_NilValue {
+            if prot.is_null_or_nil() {
                 return R_NilValue;
             }
-            if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
                 return R_NilValue;
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
@@ -880,14 +888,19 @@ impl ErasedExternalPtr {
     /// Sets the user-protected SEXP slot.
     ///
     /// Returns `false` if the prot structure is malformed.
+    ///
+    /// # Safety
+    ///
+    /// - `user_prot` must be a valid SEXP or R_NilValue
+    /// - Must be called from the R main thread
     #[inline]
     pub unsafe fn set_protected(&self, user_prot: SEXP) -> bool {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null() || prot == R_NilValue {
+            if prot.is_null_or_nil() {
                 return false;
             }
-            if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
                 return false;
             }
             SET_VECTOR_ELT(prot, PROT_USER_INDEX, user_prot);
