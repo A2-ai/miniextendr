@@ -25,7 +25,7 @@ use std::ffi::CString;
 /// Debug-only check that we're on R's main thread.
 #[inline]
 fn debug_assert_main_thread(#[allow(unused)] fn_name: &str) {
-    // #[cfg(debug_assertions)]
+    #[cfg(debug_assertions)]
     if !crate::worker::is_r_main_thread() {
         panic!("{} called from non-main thread", fn_name);
     }

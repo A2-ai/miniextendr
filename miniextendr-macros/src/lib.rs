@@ -1401,7 +1401,7 @@ pub fn r_ffi_checked(
                         #[inline(always)]
                         #[allow(non_snake_case)]
                         #vis unsafe fn #fn_name(#inputs) #output {
-                            // #[cfg(debug_assertions)]
+                            #[cfg(debug_assertions)]
                             if !::miniextendr_api::worker::is_r_main_thread() {
                                 panic!(concat!("R API `", #fn_name_str, "` called from non-main thread"));
                             }
