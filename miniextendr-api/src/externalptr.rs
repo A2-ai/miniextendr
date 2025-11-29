@@ -43,6 +43,27 @@ use crate::ffi::{
     VECTOR_ELT,
 };
 
+/// A wrapper around [`SEXP`] that implements Send.
+///
+/// # Safety
+///
+/// This wrapper is **only** safe when used with [`with_r_thread`] to transfer
+/// a [`SEXP`] created on the main thread back to the calling thread. The `SEXP`
+/// itself is not thread-safe, but the pointer value can be safely transmitted
+/// between threads as long as R APIs are only called on the main thread.
+///
+/// Do not use this to enable concurrent access to [`SEXP`]s from multiple threads.
+/// 
+/// [`with_r_thread`]: crate::worker::with_r_thread
+#[repr(transparent)]
+struct SendableSexp(SEXP);
+
+// SAFETY: This is safe because:
+// 1. SEXP is just a pointer (memory address)
+// 2. We only send it from main thread to worker after R API work is done
+// 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
+unsafe impl Send for SendableSexp {}
+
 /// A wrapper around a raw pointer that implements [`Send`].
 ///
 /// # Safety
@@ -75,22 +96,17 @@ impl<T> SendablePtr<T> {
     }
 }
 
-/// Index of the type SYMSXP contained in the `prot` (a `VECSXP` list)
+/// Index of the StableTypeId RAWSXP contained in the `prot` (a `VECSXP` list)
 const PROT_TYPE_ID_INDEX: isize = 0;
 /// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
 const PROT_USER_INDEX: isize = 1;
 /// Length of the `prot` list (`VECSXP`)
 const PROT_VEC_LEN: isize = 2;
 
-#[inline]
-fn is_type_erased<T: 'static>() -> bool {
-    TypeId::of::<T>() == TypeId::of::<()>()
-}
-
-/// Get the interned R symbol for a type's name.
+/// A stable type identifier that works across different rustc versions.
 ///
-/// R interns symbols via `Rf_install`, so the same string always returns
-/// the same pointer. This enables fast pointer comparison for type checking.
+/// Unlike [`std::any::TypeId`], this uses [`std::any::type_name`] which provides
+/// a stable string representation. We hash this at compile time for fast comparison.
 ///
 /// # Safety
 ///
@@ -102,12 +118,21 @@ unsafe fn type_symbol<T: TypedExternal>() -> SEXP {
 
 /// Unchecked version of [`type_symbol`] - no thread safety checks.
 ///
-/// # Safety
-///
-/// Must be called from R's main thread. No debug assertions.
-#[inline]
-unsafe fn type_symbol_unchecked<T: TypedExternal>() -> SEXP {
-    unsafe { Rf_install_unchecked(T::TYPE_NAME_CSTR.as_ptr().cast()) }
+/// This struct is `repr(C)` so it can be safely stored in a RAWSXP and
+/// retrieved via pointer cast.
+#[derive(Clone, Copy)]
+#[repr(C)]
+pub struct StableTypeId {
+    /// Hash of the type name (for fast comparison)
+    hash: u64,
+    
+    // TODO: i don't know why the name is just not given by a &str or something
+    // like that
+    
+    /// Length of the type name
+    name_len: usize,
+    /// Pointer to the static type name string
+    name_ptr: *const u8,
 }
 
 /// Get the type name from a stored symbol SEXP.
