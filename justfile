@@ -4,53 +4,57 @@ default:
     @just --list
 
 # Clean build artifacts
+alias cargo-clean := clean
 clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
     cargo clean --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-# Check all crates``
+# Check all crates
+alias cargo-check := check
 check *cargo_flags:
     cargo check --workspace {{cargo_flags}}
     cargo check --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-alias cargo-check := check
 
 # Build all crates
+alias cargo-build := build
 build *cargo_flags:
     cargo build --workspace {{cargo_flags}}
     cargo build --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run clippy on all crates
+alias cargo-clippy := clippy
 clippy *cargo_flags:
     cargo clippy --workspace {{cargo_flags}}
     cargo clippy --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Check documentation builds
+alias cargo-doc-check := doc-check
 doc-check *cargo_flags:
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     cargo doc --no-deps --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build and open documentation
+alias cargo-doc := doc
 doc *cargo_flags:
     cargo doc --document-private-items --workspace {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
 
-alias cargo-doc := doc
-
 # Check formatting
+alias cargo-fmt-check := fmt-check
 fmt-check *cargo_flags:
     cargo fmt --all {{cargo_flags}} -- --check
     cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
 
 # Format all code
+alias cargo-fmt := fmt
 fmt *cargo_flags:
     cargo fmt --all {{cargo_flags}}
     cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-alias cargo-fmt := fmt
-
 # Run tests
+alias cargo-test := test
 test *args:
     cargo_flags="" \
     && test_args="" \
@@ -63,23 +67,24 @@ test *args:
     && cargo test --manifest-path=rpkg/src/rust/Cargo.toml --no-fail-fast $cargo_flags -- --no-capture $test_args
 
 # Show dependency tree
+alias cargo-tree := tree
 tree *cargo_flags:
     cargo tree --workspace {{cargo_flags}}
     cargo tree --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Expand macros for rpkg (requires cargo-expand)
+alias cargo-expand := expand
 expand *cargo_flags:
     cargo expand --lib -p miniextendr-api {{cargo_flags}}
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-alias cargo-expand := expand
-
-# Run configure for rpkg
+# Run rebuild `./configure` and run it for `{rpkg}`
 configure:
     cd rpkg && autoconf && ./configure
 
 # Vendor dependencies
+alias cargo-vendor := vendor
 vendor:
     cargo vendor \
         --sync=Cargo.toml \
@@ -97,7 +102,8 @@ devtools-test FILTER="":
     fi
 
 # Load rpkg with devtools::load_all
-load:
+alias devtools-load_all := devtools-load
+devtools-load:
     Rscript -e 'devtools::load_all("rpkg")'
 
 # Install rpkg with devtools::install
@@ -114,7 +120,12 @@ devtools-document:
 
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args:
-    R CMD INSTALL rpkg
+    R CMD INSTALL {{args}} rpkg 
+
+# Build R package tarball
+alias rcmdbuild := r-cmd-build
+r-cmd-build *args:
+    R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
 alias rcmdcheck := r-cmd-check
@@ -137,17 +148,8 @@ r-cmd-check *args:
     fi \
     && Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
 
+# REVIEW THIS SLOP:
 # Build R package tarball
 test-r-build:
     R CMD build --compression=none rpkg
     tar -xvzf rpkg_0.0.0.9000.tar -C "$(mkdir -p rpkg_build && echo rpkg_build)"
-
-# Quick smoke test of rpkg functions
-smoke-test:
-    Rscript -e ' \
-      devtools::load_all("rpkg", quiet = TRUE); \
-      cat("add(2L, 3L) =", add(2L, 3L), "\n"); \
-      cat("drop_message_on_success() =", drop_message_on_success(), "\n"); \
-      tryCatch(add_panic(1L, 2L), error = function(e) cat("Caught panic:", conditionMessage(e), "\n")); \
-      cat("All smoke tests passed!\n") \
-    '

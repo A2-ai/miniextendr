@@ -304,6 +304,9 @@ unsafe extern "C-unwind" {
 
     // Type checking
     pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
+
+    // Symbol creation
+    pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
 }
 
 #[allow(non_snake_case)]

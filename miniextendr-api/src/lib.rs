@@ -97,6 +97,10 @@ pub mod backtrace;
 // TODO: finish the dots module...
 pub mod dots;
 
+// External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
+pub mod externalptr;
+pub use externalptr::{ErasedExternalPtr, ExternalPtr, ExternalSlice, StableTypeId, TypedExternal};
+
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`
 #[doc(hidden)]
