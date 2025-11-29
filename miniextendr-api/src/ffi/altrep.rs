@@ -1,5 +1,5 @@
 #![allow(non_camel_case_types)]
-use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, SEXP, SEXPTYPE};
+use crate::ffi::{DllInfo, R_xlen_t, Rboolean, Rbyte, Rcomplex, SEXP, SEXPTYPE};
 
 #[allow(non_camel_case_types)]
 pub type R_altrep_Coerce_method_t =
@@ -115,16 +115,16 @@ pub type R_altraw_Get_region_method_t = ::std::option::Option<
         arg4: *mut Rbyte,
     ) -> R_xlen_t,
 >;
-// pub type R_altcomplex_Elt_method_t =
-//     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rcomplex>;
-// pub type R_altcomplex_Get_region_method_t = ::std::option::Option<
-//     unsafe extern "C-unwind" fn(
-//         arg1: SEXP,
-//         arg2: R_xlen_t,
-//         arg3: R_xlen_t,
-//         arg4: *mut Rcomplex,
-//     ) -> R_xlen_t,
-// >;
+pub type R_altcomplex_Elt_method_t =
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rcomplex>;
+pub type R_altcomplex_Get_region_method_t = ::std::option::Option<
+    unsafe extern "C-unwind" fn(
+        arg1: SEXP,
+        arg2: R_xlen_t,
+        arg3: R_xlen_t,
+        arg4: *mut Rcomplex,
+    ) -> R_xlen_t,
+>;
 pub type R_altstring_Elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> SEXP>;
 pub type R_altstring_Set_elt_method_t =
@@ -244,11 +244,11 @@ unsafe extern "C-unwind" {
     pub fn R_set_altlogical_Sum_method(cls: R_altrep_class_t, fun: R_altlogical_Sum_method_t);
     pub fn R_set_altraw_Elt_method(cls: R_altrep_class_t, fun: R_altraw_Elt_method_t);
     pub fn R_set_altraw_Get_region_method(cls: R_altrep_class_t, fun: R_altraw_Get_region_method_t);
-    // pub fn R_set_altcomplex_Elt_method(cls: R_altrep_class_t, fun: R_altcomplex_Elt_method_t);
-    // pub fn R_set_altcomplex_Get_region_method(
-    //     cls: R_altrep_class_t,
-    //     fun: R_altcomplex_Get_region_method_t,
-    // );
+    pub fn R_set_altcomplex_Elt_method(cls: R_altrep_class_t, fun: R_altcomplex_Elt_method_t);
+    pub fn R_set_altcomplex_Get_region_method(
+        cls: R_altrep_class_t,
+        fun: R_altcomplex_Get_region_method_t,
+    );
     pub fn R_set_altstring_Elt_method(cls: R_altrep_class_t, fun: R_altstring_Elt_method_t);
     pub fn R_set_altstring_Set_elt_method(cls: R_altrep_class_t, fun: R_altstring_Set_elt_method_t);
     pub fn R_set_altstring_Is_sorted_method(

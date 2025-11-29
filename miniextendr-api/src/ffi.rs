@@ -4,6 +4,13 @@ pub mod altrep;
 pub type R_xlen_t = isize;
 pub type Rbyte = ::std::os::raw::c_uchar;
 
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+pub struct Rcomplex {
+    pub r: f64,
+    pub i: f64,
+}
+
 #[repr(u32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -296,7 +303,6 @@ unsafe extern "C-unwind" {
         ce: cetype_t,
     ) -> SEXP;
     pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
-    pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
 
     pub fn R_MakeUnwindCont() -> SEXP;
@@ -358,7 +364,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
 
     // Rinternals.h
-    // pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
+    pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
     pub fn Rf_ScalarInteger(arg1: ::std::os::raw::c_int) -> SEXP;
     pub fn Rf_ScalarLogical(arg1: ::std::os::raw::c_int) -> SEXP;
     pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
@@ -377,20 +383,20 @@ unsafe extern "C-unwind" {
     pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
-    // pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
-    // pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
-    // pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    // pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
-    // pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
-    // pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
-    // pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
+    pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
+    pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
+    pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
+    pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
+    pub fn COMPLEX_ELT(x: SEXP, i: R_xlen_t) -> Rcomplex;
+    pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
     pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    // pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    // pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    // pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
-    // pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
-    // pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
-    // pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
+    pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
+    pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
+    pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
+    pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
     pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
 
     pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
@@ -401,7 +407,7 @@ unsafe extern "C-unwind" {
     pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
     pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
     pub fn REAL(x: SEXP) -> *mut f64;
-    // pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
+    pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
     pub fn RAW(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 

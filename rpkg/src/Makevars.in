@@ -41,8 +41,10 @@ RUN_CARGO_ALWAYS: $(SHLIB)
 $(SHLIB): vendor $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 vendor: $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
-	if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-	  $(CARGO) $(RUST_TOOLCHAIN) vendor $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
+	@$(ECHO) "Vendoring started"
+	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
+	  env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	  $(CARGO) $(RUST_TOOLCHAIN) vendor --quiet $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
 	  rm -rf $(VENDOR_OUT)/miniextendr-api $(VENDOR_OUT)/miniextendr-macros; \
 	  cp -r $(ROOT_MINIEXTENDR_REPO)/miniextendr-api $(VENDOR_OUT)/; \
 	  cp -r $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros $(VENDOR_OUT)/; \
@@ -57,17 +59,19 @@ vendor: $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 	fi
 
 $(ABS_RPKG_SRCDIR)/rust/Cargo.lock: vendor
-	if [ "$(GENERATE_LOCKFILE)" = "yes" ]; then \
+	@if [ "$(GENERATE_LOCKFILE)" = "yes" ]; then \
+	  env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 	  $(CARGO) $(RUST_TOOLCHAIN) generate-lockfile --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml; \
 	fi
-
+	  
 $(CARGO_AR): $(ABS_RPKG_SRCDIR)/rust/Cargo.lock $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
-	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) --lib --profile $(CARGO_PROFILE) \
+	  env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	  $(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
+	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) --bin document --profile $(CARGO_PROFILE) \
 	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)

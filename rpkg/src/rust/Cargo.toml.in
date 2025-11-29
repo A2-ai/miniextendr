@@ -15,12 +15,5 @@ name = "@CARGO_STATICLIB_NAME@"
 path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
-[profile.release]
-debug = 1
-panic = "unwind"
-
-[profile.dev]
-panic = "unwind"
-
 [dependencies]
-miniextendr-api = { path = "@VENDOR_OUT@/miniextendr-api" }
+miniextendr-api = { workspace = true }
