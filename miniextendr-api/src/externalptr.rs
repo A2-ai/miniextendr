@@ -25,6 +25,57 @@ use crate::ffi::{
     Rf_install, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
 };
 
+/// A wrapper around SEXP that implements Send.
+///
+/// # Safety
+///
+/// This wrapper is **only** safe when used with `with_r_thread` to transfer
+/// a SEXP created on the main thread back to the calling thread. The SEXP
+/// itself is not thread-safe, but the pointer value can be safely transmitted
+/// between threads as long as R APIs are only called on the main thread.
+///
+/// Do not use this to enable concurrent access to SEXPs from multiple threads.
+#[repr(transparent)]
+struct SendableSexp(SEXP);
+
+// SAFETY: This is safe because:
+// 1. SEXP is just a pointer (memory address)
+// 2. We only send it from main thread to worker after R API work is done
+// 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
+unsafe impl Send for SendableSexp {}
+
+/// A wrapper around a raw pointer that implements Send.
+///
+/// # Safety
+///
+/// This is safe to send between threads because it's just a memory address.
+/// The data T is owned and transferred to the main thread before being accessed.
+#[repr(transparent)]
+struct SendablePtr<T>(NonNull<T>, PhantomData<T>);
+
+// SAFETY: The pointer is only used to transfer ownership to the main thread.
+// The data is not accessed concurrently from multiple threads.
+unsafe impl<T> Send for SendablePtr<T> {}
+
+impl<T> SendablePtr<T> {
+    /// Create a new SendablePtr from a raw pointer.
+    ///
+    /// # Safety
+    ///
+    /// The pointer must be non-null.
+    #[inline]
+    unsafe fn new_unchecked(ptr: *mut T) -> Self {
+        // SAFETY: Caller guarantees ptr is non-null
+        Self(unsafe { NonNull::new_unchecked(ptr) }, PhantomData)
+    }
+
+    /// Get the raw pointer.
+    #[inline]
+    fn as_ptr(self) -> *mut T {
+        self.0.as_ptr()
+    }
+}
+
 /// Index of the StableTypeId RAWSXP in the prot VECSXP
 const PROT_TYPE_ID_INDEX: isize = 0;
 /// Index of user-protected objects in the prot VECSXP
@@ -126,7 +177,7 @@ impl StableTypeId {
         }
 
         let expected_size = mem::size_of::<Self>();
-        if sexp.xlength() as usize != expected_size {
+        if sexp.len() != expected_size {
             return None;
         }
 
@@ -272,11 +323,99 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Allocates memory on the heap and places `x` into it.
     ///
+    /// This function can be called from any thread:
+    /// - If called from R's main thread, creates the ExternalPtr directly
+    /// - If called from the worker thread (during `run_on_worker`), automatically
+    ///   sends the R API calls to the main thread via [`with_r_thread`]
+    ///
+    /// # Panics
+    ///
+    /// Panics if called from a non-main thread outside of a `run_on_worker` context.
+    ///
     /// Equivalent to `Box::new`.
+    ///
+    /// [`with_r_thread`]: crate::worker::with_r_thread
     #[inline]
     pub fn new(x: T) -> Self {
+        // Box the value first (this is thread-safe)
         let ptr = Box::into_raw(Box::new(x));
-        unsafe { Self::from_raw(ptr) }
+        // Wrap in SendablePtr so it can be sent across thread boundary
+        // SAFETY: Box::into_raw never returns null
+        let sendable_ptr = unsafe { SendablePtr::new_unchecked(ptr) };
+
+        // Use with_r_thread to run R API calls on main thread
+        // Returns SendableSexp which can be sent back
+        let sendable_sexp = crate::worker::with_r_thread(move || {
+            // This runs on main thread - unwrap the pointer
+            let ptr: *mut T = sendable_ptr.as_ptr();
+            SendableSexp(unsafe { Self::create_extptr_sexp(ptr) })
+        });
+
+        Self {
+            sexp: sendable_sexp.0,
+            _marker: PhantomData,
+            _unsend: PhantomData,
+        }
+    }
+
+    /// Allocates memory on the heap and places `x` into it, without thread check.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. Calling from another thread
+    /// is undefined behavior (R APIs are not thread-safe).
+    ///
+    /// Use this in contexts where you know you're on main thread:
+    /// - ALTREP callbacks
+    /// - Inside `#[miniextendr(unsafe(main_thread))]` functions
+    /// - Inside `extern "C-unwind"` functions called directly by R
+    #[inline]
+    pub unsafe fn new_unchecked(x: T) -> Self {
+        let ptr = Box::into_raw(Box::new(x));
+        let sexp = unsafe { Self::create_extptr_sexp(ptr) };
+        Self {
+            sexp,
+            _marker: PhantomData,
+            _unsend: PhantomData,
+        }
+    }
+
+    /// Create an EXTPTRSXP from a raw pointer. Must be called from main thread.
+    ///
+    /// This is the internal function that actually calls R APIs.
+    #[inline]
+    unsafe fn create_extptr_sexp(ptr: *mut T) -> SEXP {
+        debug_assert!(
+            !ptr.is_null(),
+            "create_extptr_sexp received null pointer"
+        );
+
+        // Create the tag symbol for human-readable type identification
+        let tag = unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) };
+
+        // Create the prot VECSXP: [type_id_rawsxp, user_protected]
+        let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        unsafe { Rf_protect(prot) };
+
+        // Create a RAWSXP containing the StableTypeId for fast type checking
+        let type_id = T::TYPE_ID;
+        let type_id_raw = unsafe { type_id.to_rawsxp() };
+        unsafe { Rf_protect(type_id_raw) };
+
+        // Store type ID in slot 0
+        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_raw) };
+        // Slot 1 (user protected) starts as R_NilValue (already default)
+
+        // Create the external pointer with tag and prot
+        let sexp = unsafe { R_MakeExternalPtr(ptr.cast(), tag, prot) };
+        unsafe { Rf_protect(sexp) };
+
+        // Register the C finalizer that will call drop
+        unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
+
+        unsafe { Rf_unprotect(3) };
+
+        sexp
     }
 
     /// Constructs a new `ExternalPtr` with uninitialized contents.
@@ -308,40 +447,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - `raw` must have been allocated via `Box::into_raw` or equivalent
     /// - `raw` must not be null
     /// - Caller transfers ownership to the ExternalPtr
+    /// - Must be called from R's main thread
     ///
     /// Equivalent to `Box::from_raw`.
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        debug_assert!(
-            !raw.is_null(),
-            "ExternalPtr::from_raw received null pointer"
-        );
-
-        // Create the tag symbol for human-readable type identification
-        let tag = unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) };
-
-        // Create the prot VECSXP: [type_id_rawsxp, user_protected]
-        let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
-        unsafe { Rf_protect(prot) };
-
-        // Create a RAWSXP containing the StableTypeId for fast type checking
-        let type_id = T::TYPE_ID;
-        let type_id_raw = unsafe { type_id.to_rawsxp() };
-        unsafe { Rf_protect(type_id_raw) };
-
-        // Store type ID in slot 0
-        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_raw) };
-        // Slot 1 (user protected) starts as R_NilValue (already default)
-
-        // Create the external pointer with tag and prot
-        let sexp = unsafe { R_MakeExternalPtr(raw.cast(), tag, prot) };
-        unsafe { Rf_protect(sexp) };
-
-        // Register the C finalizer that will call drop
-        unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
-
-        unsafe { Rf_unprotect(3) };
-
+        let sexp = unsafe { Self::create_extptr_sexp(raw) };
         Self {
             sexp,
             _marker: PhantomData,
@@ -523,7 +634,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.is_null_or_nil() {
                 return R_NilValue;
             }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return R_NilValue;
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
@@ -550,7 +661,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 debug_assert!(false, "ExternalPtr prot slot is null or R_NilValue");
                 return false;
             }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 debug_assert!(
                     false,
                     "ExternalPtr prot slot is not a VECSXP of expected length"
@@ -603,7 +714,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if prot.is_null_or_nil() {
             return None;
         }
-        if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
             return None;
         }
 
@@ -640,7 +751,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         if prot.is_null_or_nil() {
             return Err(TypeMismatchError::InvalidTypeId);
         }
-        if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
             return Err(TypeMismatchError::InvalidTypeId);
         }
 
@@ -702,7 +813,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.is_null_or_nil() {
                 return None;
             }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return None;
             }
             let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
@@ -862,7 +973,7 @@ impl ErasedExternalPtr {
             if prot.is_null_or_nil() {
                 return None;
             }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return None;
             }
             let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
@@ -878,7 +989,7 @@ impl ErasedExternalPtr {
             if prot.is_null_or_nil() {
                 return R_NilValue;
             }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return R_NilValue;
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
@@ -900,7 +1011,7 @@ impl ErasedExternalPtr {
             if prot.is_null_or_nil() {
                 return false;
             }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.xlength() < PROT_VEC_LEN {
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return false;
             }
             SET_VECTOR_ELT(prot, PROT_USER_INDEX, user_prot);
@@ -1256,6 +1367,82 @@ impl<T: 'static> Drop for ExternalSlice<T> {
         unsafe {
             let _ = Vec::from_raw_parts(self.ptr.as_ptr(), self.len, self.capacity);
         }
+    }
+}
+
+// =============================================================================
+// ALTREP Helpers
+// =============================================================================
+
+/// Extract the ALTREP data1 slot as a typed `ExternalPtr<T>`.
+///
+/// This is a convenience function for ALTREP implementations that store
+/// their data in an `ExternalPtr` in the data1 slot.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread
+///
+/// # Example
+///
+/// ```ignore
+/// impl Altrep for MyAltrepClass {
+///     const HAS_LENGTH: bool = true;
+///     fn length(x: SEXP) -> R_xlen_t {
+///         match unsafe { altrep_data1_as::<MyData>(x) } {
+///             Some(ext) => ext.data.len() as R_xlen_t,
+///             None => 0,
+///         }
+///     }
+/// }
+/// ```
+#[inline]
+pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
+    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data1(x)) }
+}
+
+/// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
+///
+/// Similar to `altrep_data1_as`, but for the data2 slot.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread
+#[inline]
+pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
+    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data2(x)) }
+}
+
+/// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.
+///
+/// This is useful for ALTREP methods that need to mutate the underlying data.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread
+/// - The caller must ensure no other references to the data exist
+///
+/// # Example
+///
+/// ```ignore
+/// fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+///     match unsafe { altrep_data1_mut::<MyData>(x) } {
+///         Some(data) => data.buffer.as_mut_ptr().cast(),
+///         None => core::ptr::null_mut(),
+///     }
+/// }
+/// ```
+#[inline]
+pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
+    unsafe {
+        let mut erased = ErasedExternalPtr::from_sexp(crate::ffi::R_altrep_data1(x));
+        // Transmute the lifetime to 'static - this is safe because:
+        // 1. The ExternalPtr is protected by R's GC as part of the ALTREP object
+        // 2. The ALTREP object `x` is kept alive by R during the callback
+        erased.downcast_mut::<T>().map(|r| &mut *(r as *mut T))
     }
 }
 

@@ -51,6 +51,17 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
+/// Check if a type is `ExternalPtr<...>` which contains SEXP and is !Send.
+/// This is used to automatically force main_thread for functions returning ExternalPtr.
+fn is_external_ptr_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(p) if p
+        .path
+        .segments
+        .last()
+        .map(|s| s.ident == "ExternalPtr")
+        .unwrap_or(false))
+}
+
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
@@ -61,21 +72,46 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
-    // Parse function-level attributes: #[miniextendr(main_thread, invisible, check_interrupt)]
+    // Parse function-level attributes:
+    // - #[miniextendr(unsafe(main_thread))] - forces main thread execution (unsafe context)
+    // - #[miniextendr(invisible)] / #[miniextendr(visible)] - visibility control
+    // - #[miniextendr(check_interrupt)] - check for Ctrl+C before execution
     let mut force_main_thread = false;
     let mut force_invisible: Option<bool> = None;
     let mut check_interrupt = false;
     if !attr.is_empty() {
-        let attr_idents = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
-        for ident in attr_idents {
-            if ident == "main_thread" {
-                force_main_thread = true;
-            } else if ident == "invisible" {
-                force_invisible = Some(true);
-            } else if ident == "visible" {
-                force_invisible = Some(false);
-            } else if ident == "check_interrupt" {
-                check_interrupt = true;
+        let attr_metas = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
+        for meta in attr_metas {
+            match &meta {
+                // Simple identifiers: invisible, visible, check_interrupt
+                syn::Meta::Path(path) => {
+                    if let Some(ident) = path.get_ident() {
+                        if ident == "invisible" {
+                            force_invisible = Some(true);
+                        } else if ident == "visible" {
+                            force_invisible = Some(false);
+                        } else if ident == "check_interrupt" {
+                            check_interrupt = true;
+                        } else if ident == "main_thread" {
+                            // Legacy support - but warn/error in future?
+                            force_main_thread = true;
+                        }
+                    }
+                }
+                // Nested: unsafe(main_thread)
+                syn::Meta::List(list) => {
+                    if list.path.is_ident("unsafe") {
+                        let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> =
+                            list.parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+                                .expect("expected identifier in unsafe(...)");
+                        for ident in nested {
+                            if ident == "main_thread" {
+                                force_main_thread = true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -360,6 +396,12 @@ pub fn miniextendr(
                 returns_sexp = true;
                 quote::quote! { #rust_result_ident }
             }
+            // -> ExternalPtr<T> (contains SEXP, must run on main thread)
+            syn::Type::Path(_p) if is_external_ptr_type(ty.as_ref()) => {
+                is_invisible_return_type = false;
+                returns_sexp = true; // ExternalPtr contains SEXP, forces main_thread
+                quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+            }
 
             // -> Option<...> cases
             syn::Type::Path(p)
@@ -370,6 +412,7 @@ pub fn miniextendr(
                 let inner_ty = first_type_argument(seg);
                 let is_unit_inner = inner_ty.is_some_and(is_unit_type);
                 let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
+                let is_extptr_inner = inner_ty.is_some_and(is_external_ptr_type);
 
                 if is_unit_inner {
                     is_invisible_return_type = true;
@@ -381,7 +424,7 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    if is_sexp_inner {
+                    if is_sexp_inner || is_extptr_inner {
                         returns_sexp = true;
                     }
                     post_call_statements.push(quote::quote! {
@@ -407,6 +450,7 @@ pub fn miniextendr(
                 let ok_ty = first_type_argument(seg);
                 let ok_is_unit = ok_ty.is_some_and(is_unit_type);
                 let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
+                let ok_is_extptr = ok_ty.is_some_and(is_external_ptr_type);
 
                 if ok_is_unit {
                     is_invisible_return_type = true;
@@ -418,7 +462,7 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    if ok_is_sexp {
+                    if ok_is_sexp || ok_is_extptr {
                         returns_sexp = true;
                     }
                     post_call_statements.push(quote::quote! {

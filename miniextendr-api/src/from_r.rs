@@ -52,7 +52,7 @@ impl<T: RNativeType> TryFromSexp for T {
             }
             .into());
         }
-        let len = sexp.xlength() as usize;
+        let len = sexp.len();
         if len != 1 {
             return Err(SexpLengthError {
                 expected: 1,

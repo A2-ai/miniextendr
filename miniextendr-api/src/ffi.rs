@@ -70,7 +70,7 @@ pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
 /// Extension trait for SEXP providing safe(r) accessors.
-pub(crate) trait SexpExt {
+pub trait SexpExt {
     /// Get the type of this SEXP.
     ///
     /// # Safety
@@ -81,12 +81,12 @@ pub(crate) trait SexpExt {
     /// Check if this SEXP is null or R_NilValue.
     fn is_null_or_nil(&self) -> bool;
 
-    /// Get the length of this SEXP.
+    /// Get the length of this SEXP as `usize`.
     ///
     /// # Safety
     ///
     /// The SEXP must be valid.
-    fn xlength(&self) -> R_xlen_t;
+    fn len(&self) -> usize;
 
     /// Get a slice view of this SEXP's data.
     ///
@@ -109,8 +109,8 @@ impl SexpExt for SEXP {
     }
 
     #[inline]
-    fn xlength(&self) -> R_xlen_t {
-        unsafe { Rf_xlength(*self) }
+    fn len(&self) -> usize {
+        unsafe { Rf_xlength(*self) as usize }
     }
 
     #[inline]
@@ -121,7 +121,7 @@ impl SexpExt for SEXP {
             T::SEXP_TYPE,
             self.type_of()
         );
-        let len = self.xlength() as usize;
+        let len = self.len();
         if len == 0 {
             &[]
         } else {

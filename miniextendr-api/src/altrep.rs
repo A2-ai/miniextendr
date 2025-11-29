@@ -1213,7 +1213,7 @@ impl traits::AltVec for AltIntClass {
                 return core::ptr::null_mut();
             }
 
-            let idx_len = indx.xlength();
+            let idx_len = indx.len();
             if idx_len == 0 {
                 // Empty subset - return NULL to let R handle
                 return core::ptr::null_mut();
@@ -1251,7 +1251,7 @@ impl traits::AltVec for AltIntClass {
             let b = int_backend(x);
             // Convert to 0-based index
             let start_0based = (first_idx - 1) as R_xlen_t;
-            if let Some(new_backend) = b.extract_contiguous(start_0based, idx_len) {
+            if let Some(new_backend) = b.extract_contiguous(start_0based, idx_len as R_xlen_t) {
                 return new_altrep_int(new_backend);
             }
         }

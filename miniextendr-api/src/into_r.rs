@@ -57,3 +57,10 @@ impl IntoR for crate::ffi::Rboolean {
         unsafe { crate::ffi::Rf_ScalarLogical(self as i32) }
     }
 }
+
+impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_sexp()
+    }
+}
