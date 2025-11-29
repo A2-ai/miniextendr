@@ -158,6 +158,100 @@ test_altrep <- function() {
   stopifnot(cmp[3] == TRUE)
   cat("  1:3 > 1:", paste(cmp, collapse=","), "\n")
 
+  # ============================================
+  # 5. O(1) OPTIMIZATIONS
+  # ============================================
+
+  cat("\n--- 16. O(1) SUM: arithmetic series formula ---\n")
+  big_seq <- altrep_compact_int(1000000L, 1L, 1L)  # 1:1000000
+  # Sum should be n*(n+1)/2 = 500000500000
+  expected_sum <- 1000000 * 1000001 / 2
+  actual_sum <- sum(big_seq)
+  stopifnot(actual_sum == expected_sum)
+  cat("  sum(1:1000000) =", actual_sum, "(O(1) formula)\n")
+
+  cat("--- 17. O(1) MIN/MAX ---\n")
+  stopifnot(min(big_seq) == 1L)
+  stopifnot(max(big_seq) == 1000000L)
+  # Descending sequence
+  desc_seq <- altrep_compact_int(100L, 100L, -1L)  # 100, 99, ..., 1
+  stopifnot(min(desc_seq) == 1L)
+  stopifnot(max(desc_seq) == 100L)
+  cat("  min/max work for ascending and descending sequences\n")
+
+  # ============================================
+  # 6. INSPECT (debugging)
+  # ============================================
+
+  cat("\n--- 18. INSPECT: .Internal(inspect()) ---\n")
+  cat("  Inspecting compact sequence:\n")
+  .Internal(inspect(big_seq))
+  cat("  (inspect output above)\n")
+
+  # ============================================
+  # 7. SERIALIZATION (saveRDS/readRDS)
+  # ============================================
+
+  cat("\n--- 19. SERIALIZATION: saveRDS/readRDS ---\n")
+  # Create a compact sequence
+  compact_ser <- altrep_compact_int(100L, 1L, 1L)  # 1:100
+  stopifnot(all(compact_ser == 1:100))
+
+  # Save and reload
+  tmp <- tempfile(fileext = ".rds")
+  saveRDS(compact_ser, tmp)
+  reloaded <- readRDS(tmp)
+  unlink(tmp)
+
+  # Verify the reloaded object is identical
+  stopifnot(length(reloaded) == 100L)
+  stopifnot(all(reloaded == 1:100))
+  stopifnot(sum(reloaded) == 5050L)  # sum(1:100)
+  cat("  serialization: round-trip successful, length =", length(reloaded), "sum =", sum(reloaded), "\n")
+
+  cat("--- 20. SERIALIZATION: large sequence ---\n")
+  big_compact <- altrep_compact_int(1000000L, 1L, 1L)  # 1:1000000
+  tmp2 <- tempfile(fileext = ".rds")
+  saveRDS(big_compact, tmp2)
+  big_reloaded <- readRDS(tmp2)
+  unlink(tmp2)
+  stopifnot(length(big_reloaded) == 1000000L)
+  stopifnot(sum(big_reloaded) == 500000500000)  # O(1) sum should still work
+  cat("  large sequence round-trip: length =", length(big_reloaded), "sum =", sum(big_reloaded), "\n")
+
+  # ============================================
+  # 8. EXTRACT_SUBSET (optimized subsetting)
+  # ============================================
+
+  cat("\n--- 21. EXTRACT_SUBSET: contiguous range ---\n")
+  big_seq2 <- altrep_compact_int(100L, 1L, 1L)  # 1:100
+  # Extract contiguous subset using integer indices
+  subset_range <- big_seq2[10:20]  # Elements 10 to 20
+  stopifnot(length(subset_range) == 11L)
+  stopifnot(subset_range[1] == 10L)
+  stopifnot(subset_range[11] == 20L)
+  stopifnot(sum(subset_range) == sum(10:20))
+  cat("  contiguous subset [10:20]: length =", length(subset_range), "sum =", sum(subset_range), "\n")
+
+  cat("--- 22. EXTRACT_SUBSET: large contiguous range ---\n")
+  huge_seq <- altrep_compact_int(10000000L, 1L, 1L)  # 1:10000000
+  # Extract large contiguous subset - should remain compact and have O(1) sum
+  huge_subset <- huge_seq[1000000:2000000]  # 1M elements
+  stopifnot(length(huge_subset) == 1000001L)
+  stopifnot(huge_subset[1] == 1000000L)
+  expected_sum <- sum(as.numeric(1000000:2000000))
+  actual_sum <- sum(huge_subset)
+  stopifnot(actual_sum == expected_sum)
+  cat("  large subset [1M:2M]: length =", length(huge_subset), "sum =", actual_sum, "\n")
+
+  cat("--- 23. EXTRACT_SUBSET: descending source ---\n")
+  desc_seq <- altrep_compact_int(50L, 100L, -2L)  # 100, 98, 96, ..., 2
+  desc_subset <- desc_seq[10:20]  # Elements at positions 10-20
+  stopifnot(length(desc_subset) == 11L)
+  stopifnot(desc_subset[1] == 100L - 2L * 9L)  # 82
+  stopifnot(desc_subset[11] == 100L - 2L * 19L)  # 62
+  cat("  descending subset: first =", desc_subset[1], "last =", desc_subset[11], "\n")
+
   cat("\n========================================\n")
   cat("All ALTREP tests passed!\n")
   cat("========================================\n")

@@ -82,6 +82,29 @@ pub trait IntBackend: Send + Sync + 'static {
     fn is_empty(&self) -> bool {
         self.len() == 0
     }
+    /// Optional O(1) sum computation. Return None to use default O(n) iteration.
+    fn sum(&self) -> Option<f64> {
+        None
+    }
+    /// Optional O(1) min computation. Return None to use default O(n) iteration.
+    fn min(&self) -> Option<i32> {
+        None
+    }
+    /// Optional O(1) max computation. Return None to use default O(n) iteration.
+    fn max(&self) -> Option<i32> {
+        None
+    }
+    /// For serialization: return compact representation (len, start, step) if this is
+    /// a compact integer sequence. Return None to use default materialized serialization.
+    fn as_compact_seq(&self) -> Option<(R_xlen_t, i32, i32)> {
+        None
+    }
+    /// For extract_subset optimization: extract a contiguous subsequence.
+    /// Returns None to use default O(n) extraction.
+    /// `start` is 0-based, `count` is the number of elements.
+    fn extract_contiguous(&self, _start: R_xlen_t, _count: R_xlen_t) -> Option<Box<dyn IntBackend>> {
+        None
+    }
 }
 
 /// Real backend
@@ -638,11 +661,35 @@ pub unsafe fn register_altinteger_class<T: AltrepClass + traits::AltVec + traits
     {
         use crate::altrep_bridge as bridge;
         use crate::ffi::altrep::*;
-        // Base (only Length)
+        // Base (Length, Duplicate, Inspect, Serialization)
         set_if!(
             <T as traits::Altrep>::HAS_LENGTH,
             R_set_altrep_Length_method,
             bridge::t_length::<T>,
+            cls
+        );
+        set_if!(
+            <T as traits::Altrep>::HAS_DUPLICATE,
+            R_set_altrep_Duplicate_method,
+            bridge::t_duplicate::<T>,
+            cls
+        );
+        set_if!(
+            <T as traits::Altrep>::HAS_INSPECT,
+            R_set_altrep_Inspect_method,
+            bridge::t_inspect::<T>,
+            cls
+        );
+        set_if!(
+            <T as traits::Altrep>::HAS_SERIALIZED_STATE,
+            R_set_altrep_Serialized_state_method,
+            bridge::t_serialized_state::<T>,
+            cls
+        );
+        set_if!(
+            <T as traits::Altrep>::HAS_UNSERIALIZE,
+            R_set_altrep_Unserialize_method,
+            bridge::t_unserialize::<T>,
             cls
         );
         // Vec
@@ -1071,10 +1118,146 @@ impl traits::Altrep for AltIntClass {
     fn length(x: SEXP) -> R_xlen_t {
         unsafe { int_backend(x).len() }
     }
+
+    const HAS_SERIALIZED_STATE: bool = true;
+    fn serialized_state(x: SEXP) -> SEXP {
+        // If backend supports compact serialization, return [len, start, step]
+        // Otherwise return NULL to let R materialize and serialize normally
+        let b = unsafe { int_backend(x) };
+        if let Some((len, start, step)) = b.as_compact_seq() {
+            // Only serialize compactly if len fits in i32 (most cases)
+            if len <= i32::MAX as R_xlen_t && len >= i32::MIN as R_xlen_t {
+                unsafe {
+                    let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
+                    Rf_protect(state);
+                    let p = INTEGER0(state);
+                    *p = len as i32;
+                    *p.add(1) = start;
+                    *p.add(2) = step;
+                    Rf_unprotect(1);
+                    return state;
+                }
+            }
+        }
+        // Return NULL to use default materialized serialization
+        core::ptr::null_mut()
+    }
+
+    const HAS_UNSERIALIZE: bool = true;
+    fn unserialize(_class: SEXP, state: SEXP) -> SEXP {
+        // Reconstruct CompactIntSeq from serialized state [len, start, step]
+        unsafe {
+            let p = DATAPTR_RO(state) as *const i32;
+            let len = *p as R_xlen_t;
+            let start = *p.add(1);
+            let step = *p.add(2);
+            new_altrep_int(Box::new(CompactIntSeq::new(len, start, step)))
+        }
+    }
+
+    const HAS_DUPLICATE: bool = true;
+    fn duplicate(x: SEXP, deep: bool) -> SEXP {
+        // If deep copy requested or already expanded, materialize
+        unsafe {
+            let expanded = R_altrep_data2(x);
+            if deep || expanded != R_NilValue {
+                // Materialize: allocate and copy
+                let n = int_backend(x).len();
+                let val = Rf_allocVector(SEXPTYPE::INTSXP, n);
+                Rf_protect(val);
+                let buf = INTEGER0(val);
+                int_backend(x).get_region(0, n, slice::from_raw_parts_mut(buf, n as usize));
+                Rf_unprotect(1);
+                val
+            } else {
+                // Return NULL to let R use default duplication
+                core::ptr::null_mut()
+            }
+        }
+    }
+
+    const HAS_INSPECT: bool = true;
+    fn inspect(
+        x: SEXP,
+        _pre: i32,
+        _deep: i32,
+        _pvec: i32,
+        _inspect_subtree: Option<unsafe extern "C-unwind" fn(SEXP, i32, i32, i32)>,
+    ) -> bool {
+        unsafe {
+            let n = int_backend(x).len();
+            let expanded = R_altrep_data2(x);
+            let status = if expanded == R_NilValue {
+                c"compact"
+            } else {
+                c"expanded"
+            };
+            // Print info using Rprintf
+            let fmt = c" rust_altint [len=%ld, %s]\n".as_ptr();
+            Rprintf_unchecked(fmt, n as std::os::raw::c_long, status.as_ptr());
+        }
+        true
+    }
 }
 impl traits::AltVec for AltIntClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
+    const HAS_EXTRACT_SUBSET: bool = true;
+    fn extract_subset(x: SEXP, indx: SEXP, _call: SEXP) -> SEXP {
+        // Check if indx is an integer vector representing a contiguous range
+        // e.g., c(5, 6, 7, 8, 9) -> can extract compact subset
+        unsafe {
+            let idx_type = TYPEOF(indx);
+            // Only handle integer indices for now
+            if idx_type != SEXPTYPE::INTSXP {
+                return core::ptr::null_mut();
+            }
+
+            let idx_len = Rf_xlength(indx);
+            if idx_len == 0 {
+                // Empty subset - return NULL to let R handle
+                return core::ptr::null_mut();
+            }
+
+            // Get pointer to index data
+            let idx_ptr = INTEGER_OR_NULL(indx);
+            if idx_ptr.is_null() {
+                return core::ptr::null_mut();
+            }
+
+            // Check if indices form a contiguous range starting at first[0]
+            let first_idx = *idx_ptr;
+            if first_idx <= 0 {
+                // Negative or zero indices - let R handle
+                return core::ptr::null_mut();
+            }
+
+            // Check for NA in first element
+            if first_idx == i32::MIN {
+                // NA_INTEGER
+                return core::ptr::null_mut();
+            }
+
+            // Verify it's a contiguous increasing sequence: first, first+1, first+2, ...
+            for i in 1..idx_len {
+                let expected = first_idx.wrapping_add(i as i32);
+                let actual = *idx_ptr.add(i as usize);
+                if actual != expected {
+                    return core::ptr::null_mut();
+                }
+            }
+
+            // It's contiguous! Try to extract a compact subset
+            let b = int_backend(x);
+            // Convert to 0-based index
+            let start_0based = (first_idx - 1) as R_xlen_t;
+            if let Some(new_backend) = b.extract_contiguous(start_0based, idx_len) {
+                return new_altrep_int(new_backend);
+            }
+        }
+        // Fall back to default extraction
+        core::ptr::null_mut()
+    }
     fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
         // Materialize the data if not already expanded
         unsafe {
@@ -1133,6 +1316,11 @@ impl traits::AltInteger for AltIntClass {
         if narm || b.no_na() == 0 {
             return core::ptr::null_mut();
         }
+        // Try O(1) backend optimization first (e.g., arithmetic series formula)
+        if let Some(sum) = b.sum() {
+            return unsafe { Rf_ScalarReal(sum) };
+        }
+        // Fall back to O(n) iteration
         let mut acc: i64 = 0;
         let n = b.len();
         for i in 0..n {
@@ -1145,6 +1333,11 @@ impl traits::AltInteger for AltIntClass {
         if narm || b.no_na() == 0 {
             return core::ptr::null_mut();
         }
+        // Try O(1) backend optimization first
+        if let Some(m) = b.min() {
+            return unsafe { Rf_ScalarInteger(m) };
+        }
+        // Fall back to O(n) iteration
         let n = b.len();
         if n == 0 {
             return core::ptr::null_mut();
@@ -1163,6 +1356,11 @@ impl traits::AltInteger for AltIntClass {
         if narm || b.no_na() == 0 {
             return core::ptr::null_mut();
         }
+        // Try O(1) backend optimization first
+        if let Some(m) = b.max() {
+            return unsafe { Rf_ScalarInteger(m) };
+        }
+        // Fall back to O(n) iteration
         let n = b.len();
         if n == 0 {
             return core::ptr::null_mut();

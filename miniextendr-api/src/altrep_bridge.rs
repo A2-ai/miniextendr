@@ -39,6 +39,40 @@ pub unsafe extern "C-unwind" fn t_extract_subset<T: traits::AltVec>(
     T::extract_subset(x, indx, call)
 }
 
+/// # Safety
+/// Called by R; `x` must be a valid ALTREP for `T`. `deep` indicates deep copy.
+pub unsafe extern "C-unwind" fn t_duplicate<T: traits::Altrep>(x: SEXP, deep: Rboolean) -> SEXP {
+    T::duplicate(x, matches!(deep, Rboolean::TRUE))
+}
+
+/// # Safety
+/// Called by R for inspect; `x` must be a valid ALTREP for `T`.
+pub unsafe extern "C-unwind" fn t_inspect<T: traits::Altrep>(
+    x: SEXP,
+    pre: i32,
+    deep: i32,
+    pvec: i32,
+    inspect_subtree: Option<unsafe extern "C-unwind" fn(SEXP, i32, i32, i32)>,
+) -> Rboolean {
+    if T::inspect(x, pre, deep, pvec, inspect_subtree) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
+}
+
+/// # Safety
+/// Called by R for serialization; `x` must be a valid ALTREP for `T`.
+pub unsafe extern "C-unwind" fn t_serialized_state<T: traits::Altrep>(x: SEXP) -> SEXP {
+    T::serialized_state(x)
+}
+
+/// # Safety
+/// Called by R for unserialization; `class` and `state` are valid SEXPs from R.
+pub unsafe extern "C-unwind" fn t_unserialize<T: traits::Altrep>(class: SEXP, state: SEXP) -> SEXP {
+    T::unserialize(class, state)
+}
+
 // Integer family
 /// # Safety
 /// Called by R; `x` must be a valid ALTREP INTSXP for `T` and `i` within bounds.
@@ -215,25 +249,25 @@ pub unsafe fn install_base<T: traits::Altrep>(cls: R_altrep_class_t) {
         unsafe { R_set_altrep_Length_method(cls, Some(t_length::<T>)) };
     }
     if <T as traits::Altrep>::HAS_SERIALIZED_STATE {
-        unsafe { R_set_altrep_Serialized_state_method(cls, None) };
+        unsafe { R_set_altrep_Serialized_state_method(cls, Some(t_serialized_state::<T>)) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE_EX {
         unsafe { R_set_altrep_UnserializeEX_method(cls, None) };
     }
     if <T as traits::Altrep>::HAS_UNSERIALIZE {
-        unsafe { R_set_altrep_Unserialize_method(cls, None) };
+        unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE_EX {
         unsafe { R_set_altrep_DuplicateEX_method(cls, None) };
     }
     if <T as traits::Altrep>::HAS_DUPLICATE {
-        unsafe { R_set_altrep_Duplicate_method(cls, None) };
+        unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
     }
     if <T as traits::Altrep>::HAS_COERCE {
         unsafe { R_set_altrep_Coerce_method(cls, None) };
     }
     if <T as traits::Altrep>::HAS_INSPECT {
-        unsafe { R_set_altrep_Inspect_method(cls, None) };
+        unsafe { R_set_altrep_Inspect_method(cls, Some(t_inspect::<T>)) };
     }
 }
 

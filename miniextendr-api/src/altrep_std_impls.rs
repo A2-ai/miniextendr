@@ -32,6 +32,57 @@ impl IntBackend for CompactIntSeq {
     fn no_na(&self) -> i32 {
         1
     }
+    /// O(1) sum using arithmetic series formula: n * (first + last) / 2
+    fn sum(&self) -> Option<f64> {
+        if self.len == 0 {
+            return Some(0.0);
+        }
+        let n = self.len as f64;
+        let first = self.start as f64;
+        let step = self.step as f64;
+        // Sum of arithmetic sequence: n/2 * (2*first + (n-1)*step)
+        // Equivalent to: n * (first + last) / 2 where last = first + (n-1)*step
+        Some((n / 2.0) * (2.0 * first + (n - 1.0) * step))
+    }
+    /// O(1) min: either first or last element depending on step sign
+    fn min(&self) -> Option<i32> {
+        if self.len == 0 {
+            return None;
+        }
+        if self.step >= 0 {
+            Some(self.start) // First element is min for ascending
+        } else {
+            Some(self.elt(self.len - 1)) // Last element is min for descending
+        }
+    }
+    /// O(1) max: either first or last element depending on step sign
+    fn max(&self) -> Option<i32> {
+        if self.len == 0 {
+            return None;
+        }
+        if self.step >= 0 {
+            Some(self.elt(self.len - 1)) // Last element is max for ascending
+        } else {
+            Some(self.start) // First element is max for descending
+        }
+    }
+    /// Enable compact serialization for this sequence
+    fn as_compact_seq(&self) -> Option<(R_xlen_t, i32, i32)> {
+        Some((self.len, self.start, self.step))
+    }
+    /// Extract a contiguous subsequence as a new compact sequence
+    fn extract_contiguous(
+        &self,
+        start: R_xlen_t,
+        count: R_xlen_t,
+    ) -> Option<Box<dyn crate::altrep::IntBackend>> {
+        if start < 0 || count <= 0 || start + count > self.len {
+            return None;
+        }
+        // New compact sequence: start_new = start + index * step
+        let new_start = self.start.wrapping_add(self.step.wrapping_mul(start as i32));
+        Some(Box::new(CompactIntSeq::new(count, new_start, self.step)))
+    }
 }
 
 // Owned/Arc/Slice/Map for Real
