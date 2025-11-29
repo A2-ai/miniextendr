@@ -493,6 +493,49 @@ fn test_logical_slice_all_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> 
 
 mod altrep;
 
+// region: proc-macro ALTREP test
+// This tests the #[miniextendr] on struct path for custom ALTREP classes.
+
+use miniextendr_api::altrep_traits::{Altrep, AltVec, AltInteger};
+use miniextendr_api::ffi::R_xlen_t;
+
+/// A simple custom ALTREP integer class: always returns the constant 42.
+#[miniextendr(class = "ConstantInt", pkg = "rpkg", base = "Int")]
+pub struct ConstantIntClass;
+
+// Implement the required traits for ConstantIntClass
+impl Altrep for ConstantIntClass {
+    const HAS_LENGTH: bool = true;
+    fn length(_x: SEXP) -> R_xlen_t {
+        // Always length 10
+        10
+    }
+}
+
+impl AltVec for ConstantIntClass {}
+
+impl AltInteger for ConstantIntClass {
+    const HAS_ELT: bool = true;
+    fn elt(_x: SEXP, _i: R_xlen_t) -> i32 {
+        // Every element is 42
+        42
+    }
+}
+
+/// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    // Get the registered class and create an instance
+    let cls = ConstantIntClass::register();
+    unsafe { R_new_altrep(cls, R_NilValue, R_NilValue) }
+}
+
+// endregion
+
 // ALTREP .Call wrappers (delegating to miniextendr_api)
 // Named with rpkg_ prefix to avoid symbol collision with miniextendr_api exports.
 #[miniextendr]
@@ -635,6 +678,10 @@ miniextendr_module! {
     extern "C-unwind" fn rpkg_altrep_from_logicals;
     extern "C-unwind" fn rpkg_altrep_from_raw;
     extern "C-unwind" fn rpkg_altrep_from_list;
+
+    // Proc-macro ALTREP test: struct registers the class, fn creates instances
+    struct ConstantIntClass;
+    extern "C-unwind" fn rpkg_constant_int;
 }
 
 // endregion

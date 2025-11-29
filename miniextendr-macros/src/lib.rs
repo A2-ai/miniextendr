@@ -1164,8 +1164,15 @@ fn expand_altrep_struct(
     // Registration: per-type; create class handle then install methods via MethodRegistrar
 
     let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
-    let class_cstr = syn::LitStr::new(&class_name, ident.span());
-    let pkg_cstr = syn::LitStr::new(&pkg_name, ident.span());
+    // Use LitCStr for proper C string literal generation (c"...")
+    let class_cstr = syn::LitCStr::new(
+        &std::ffi::CString::new(class_name.as_str()).unwrap(),
+        ident.span(),
+    );
+    let pkg_cstr = syn::LitCStr::new(
+        &std::ffi::CString::new(pkg_name.as_str()).unwrap(),
+        ident.span(),
+    );
 
     // No trait forwarding: rely on trampoline type's trait impls.
 
@@ -1185,8 +1192,8 @@ fn expand_altrep_struct(
 
         #[doc = #altrep_class_doc]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
-            const CLASS_NAME: &'static std::ffi::CStr = c #class_cstr;
-            const PKG_NAME: &'static std::ffi::CStr = c #pkg_cstr;
+            const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
+            const PKG_NAME: &'static std::ffi::CStr = #pkg_cstr;
             const BASE: ::miniextendr_api::ffi::altrep::RBase = #base_variant;
             unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
                 <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)

@@ -24,3 +24,8 @@ altrep_from_raw <- function(x) {
 altrep_from_list <- function(x) {
   .Call(rpkg_altrep_from_list, x)
 }
+
+# Proc-macro ALTREP test: creates ConstantIntClass instances (always 42, length 10)
+altrep_constant_int <- function() {
+  .Call(rpkg_constant_int)
+}
