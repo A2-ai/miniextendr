@@ -166,6 +166,118 @@ unsafe_C_worker_drop_on_panic <- function() {
     .Call(C_worker_drop_on_panic)
 }
 
+unsafe_C_test_worker_simple <- function() {
+    .Call(C_test_worker_simple)
+}
+
+unsafe_C_test_worker_with_r_thread <- function() {
+    .Call(C_test_worker_with_r_thread)
+}
+
+unsafe_C_test_worker_multiple_r_calls <- function() {
+    .Call(C_test_worker_multiple_r_calls)
+}
+
+unsafe_C_test_worker_panic_simple <- function() {
+    .Call(C_test_worker_panic_simple)
+}
+
+unsafe_C_test_worker_panic_with_drops <- function() {
+    .Call(C_test_worker_panic_with_drops)
+}
+
+unsafe_C_test_worker_panic_in_r_thread <- function() {
+    .Call(C_test_worker_panic_in_r_thread)
+}
+
+unsafe_C_test_worker_panic_in_r_thread_with_drops <- function() {
+    .Call(C_test_worker_panic_in_r_thread_with_drops)
+}
+
+unsafe_C_test_worker_r_error_in_r_thread <- function() {
+    .Call(C_test_worker_r_error_in_r_thread)
+}
+
+unsafe_C_test_worker_r_error_with_drops <- function() {
+    .Call(C_test_worker_r_error_with_drops)
+}
+
+unsafe_C_test_worker_r_calls_then_error <- function() {
+    .Call(C_test_worker_r_calls_then_error)
+}
+
+unsafe_C_test_worker_r_calls_then_panic <- function() {
+    .Call(C_test_worker_r_calls_then_panic)
+}
+
+test_worker_return_i32 <- function() {
+    .Call(C_test_worker_return_i32, .call = match.call())
+}
+
+test_worker_return_string <- function() {
+    .Call(C_test_worker_return_string, .call = match.call())
+}
+
+test_worker_return_f64 <- function() {
+    .Call(C_test_worker_return_f64, .call = match.call())
+}
+
+unsafe_C_test_extptr_from_worker <- function() {
+    .Call(C_test_extptr_from_worker)
+}
+
+unsafe_C_test_multiple_extptrs_from_worker <- function() {
+    .Call(C_test_multiple_extptrs_from_worker)
+}
+
+test_main_thread_r_api <- function() {
+    .Call(C_test_main_thread_r_api, .call = match.call())
+}
+
+test_main_thread_r_error <- function() {
+    .Call(C_test_main_thread_r_error, .call = match.call())
+}
+
+test_main_thread_r_error_with_drops <- function() {
+    .Call(C_test_main_thread_r_error_with_drops, .call = match.call())
+}
+
+unsafe_C_test_wrong_thread_r_api <- function() {
+    .Call(C_test_wrong_thread_r_api)
+}
+
+unsafe_C_test_nested_helper_from_worker <- function() {
+    .Call(C_test_nested_helper_from_worker)
+}
+
+unsafe_C_test_nested_multiple_helpers <- function() {
+    .Call(C_test_nested_multiple_helpers)
+}
+
+unsafe_C_test_nested_with_r_thread <- function() {
+    .Call(C_test_nested_with_r_thread)
+}
+
+unsafe_C_test_call_worker_fn_from_main <- function() {
+    .Call(C_test_call_worker_fn_from_main)
+}
+
+unsafe_C_test_nested_worker_calls <- function() {
+    .Call(C_test_nested_worker_calls)
+}
+
+unsafe_C_test_nested_with_error <- function() {
+    .Call(C_test_nested_with_error)
+}
+
+unsafe_C_test_nested_with_panic <- function() {
+    .Call(C_test_nested_with_panic)
+}
+
+unsafe_C_test_deep_with_r_thread_sequence <- function() {
+    .Call(C_test_deep_with_r_thread_sequence)
+}
+
 test_i32_identity <- function(x) {
     .Call(C_test_i32_identity, .call = match.call(), x)
 }
@@ -296,5 +408,49 @@ unsafe_rpkg_altrep_from_list <- function(x) {
 
 unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)
+}
+
+extptr_counter_new <- function(initial) {
+    .Call(C_extptr_counter_new, .call = match.call(), initial)
+}
+
+unsafe_C_extptr_counter_get <- function(ptr) {
+    .Call(C_extptr_counter_get, ptr)
+}
+
+unsafe_C_extptr_counter_increment <- function(ptr) {
+    .Call(C_extptr_counter_increment, ptr)
+}
+
+extptr_point_new <- function(x, y) {
+    .Call(C_extptr_point_new, .call = match.call(), x, y)
+}
+
+unsafe_C_extptr_point_get_x <- function(ptr) {
+    .Call(C_extptr_point_get_x, ptr)
+}
+
+unsafe_C_extptr_point_get_y <- function(ptr) {
+    .Call(C_extptr_point_get_y, ptr)
+}
+
+unsafe_C_extptr_type_mismatch_test <- function(ptr) {
+    .Call(C_extptr_type_mismatch_test, ptr)
+}
+
+unsafe_C_extptr_null_test <- function(ptr) {
+    .Call(C_extptr_null_test, ptr)
+}
+
+unsafe_C_extptr_is_counter <- function(ptr) {
+    .Call(C_extptr_is_counter, ptr)
+}
+
+unsafe_C_extptr_is_point <- function(ptr) {
+    .Call(C_extptr_is_point, ptr)
+}
+
+unsafe_rpkg_vec_int_altrep <- function(x) {
+    .Call(rpkg_vec_int_altrep, x)
 }
 

@@ -102,7 +102,11 @@ pub trait IntBackend: Send + Sync + 'static {
     /// For extract_subset optimization: extract a contiguous subsequence.
     /// Returns None to use default O(n) extraction.
     /// `start` is 0-based, `count` is the number of elements.
-    fn extract_contiguous(&self, _start: R_xlen_t, _count: R_xlen_t) -> Option<Box<dyn IntBackend>> {
+    fn extract_contiguous(
+        &self,
+        _start: R_xlen_t,
+        _count: R_xlen_t,
+    ) -> Option<Box<dyn IntBackend>> {
         None
     }
 }
@@ -520,11 +524,7 @@ pub use crate::altrep_std_impls::*;
 /// # Safety
 /// Must be called by R with valid SEXP arguments. Panics or errors
 /// in this function must not unwind across the FFI boundary.
-pub unsafe extern "C-unwind" fn C_altrep_compact_int(
-    n_: SEXP,
-    start_: SEXP,
-    step_: SEXP,
-) -> SEXP {
+pub unsafe extern "C-unwind" fn C_altrep_compact_int(n_: SEXP, start_: SEXP, step_: SEXP) -> SEXP {
     // Expect INTSXP scalars; read via DATAPTR_RO
     let n: i32 = unsafe { *DATAPTR_RO(n_).cast() };
     let start: i32 = unsafe { *DATAPTR_RO(start_).cast() };
@@ -1147,7 +1147,7 @@ impl traits::Altrep for AltIntClass {
     fn unserialize(_class: SEXP, state: SEXP) -> SEXP {
         // Reconstruct CompactIntSeq from serialized state [len, start, step]
         unsafe {
-            let p = DATAPTR_RO(state) as *const i32;
+            let p = DATAPTR_RO(state).cast::<i32>();
             let len = *p as R_xlen_t;
             let start = *p.add(1);
             let step = *p.add(2);
@@ -1207,13 +1207,13 @@ impl traits::AltVec for AltIntClass {
         // Check if indx is an integer vector representing a contiguous range
         // e.g., c(5, 6, 7, 8, 9) -> can extract compact subset
         unsafe {
-            let idx_type = TYPEOF(indx);
+            let idx_type = indx.type_of();
             // Only handle integer indices for now
             if idx_type != SEXPTYPE::INTSXP {
                 return core::ptr::null_mut();
             }
 
-            let idx_len = Rf_xlength(indx);
+            let idx_len = indx.len();
             if idx_len == 0 {
                 // Empty subset - return NULL to let R handle
                 return core::ptr::null_mut();
@@ -1241,7 +1241,7 @@ impl traits::AltVec for AltIntClass {
             // Verify it's a contiguous increasing sequence: first, first+1, first+2, ...
             for i in 1..idx_len {
                 let expected = first_idx.wrapping_add(i as i32);
-                let actual = *idx_ptr.add(i as usize);
+                let actual = *idx_ptr.add(i);
                 if actual != expected {
                     return core::ptr::null_mut();
                 }
@@ -1251,7 +1251,7 @@ impl traits::AltVec for AltIntClass {
             let b = int_backend(x);
             // Convert to 0-based index
             let start_0based = (first_idx - 1) as R_xlen_t;
-            if let Some(new_backend) = b.extract_contiguous(start_0based, idx_len) {
+            if let Some(new_backend) = b.extract_contiguous(start_0based, idx_len as R_xlen_t) {
                 return new_altrep_int(new_backend);
             }
         }

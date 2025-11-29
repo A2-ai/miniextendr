@@ -22,6 +22,7 @@ thread_local! {
         token
     });
 }
+
 /// Convert a Rust panic payload into an R error and continue unwinding on the R side.
 pub(crate) unsafe fn panic_payload_to_r_error(
     payload: Box<dyn Any + Send>,
@@ -53,76 +54,106 @@ pub(crate) unsafe fn panic_payload_to_r_error(
     }
 }
 
-pub fn with_r_unwind_protect<F>(f: F, call: Option<SEXP>) -> SEXP
+/// Execute a closure with R unwind protection.
+///
+/// If the closure panics, the panic is caught and converted to an R error.
+/// If R raises an error (longjmp), all Rust RAII resources are properly dropped
+/// before R continues unwinding.
+///
+/// # Arguments
+///
+/// * `f` - The closure to execute
+/// * `call` - Optional R call SEXP for better error messages
+///
+/// # Example
+///
+/// ```ignore
+/// let result: i32 = with_r_unwind_protect(|| {
+///     // Code that might call R APIs that can error
+///     42
+/// }, None);
+/// ```
+pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
 where
-    F: FnMut() -> SEXP,
+    F: FnOnce() -> R,
 {
-    struct RError;
+    /// Marker type for R errors caught by R_UnwindProtect's cleanup handler.
+    struct RErrorMarker;
 
-    unsafe extern "C-unwind" fn throw_r_error(_data: *mut c_void, jump: Rboolean) {
-        if jump != Rboolean::FALSE {
-            std::panic::panic_any(RError);
-        }
-    }
-
-    struct CallData<F> {
-        f: F,
+    struct CallData<F, R> {
+        f: Option<F>,
+        result: Option<R>,
         panic_payload: Option<Box<dyn Any + Send>>,
     }
 
-    unsafe extern "C-unwind" fn trampoline<F>(data: *mut c_void) -> SEXP
+    unsafe extern "C-unwind" fn trampoline<F, R>(data: *mut c_void) -> SEXP
     where
-        F: FnMut() -> SEXP,
+        F: FnOnce() -> R,
     {
-        let data = unsafe { data.cast::<CallData<F>>().as_mut().unwrap() };
+        let data = unsafe { data.cast::<CallData<F, R>>().as_mut().unwrap() };
+        let f = data.f.take().expect("trampoline: closure already consumed");
 
-        // Call f in place - don't move it out of CallData.
-        // This way, if longjmp happens, CallData still owns f and will drop it.
-        match catch_unwind(AssertUnwindSafe(|| (data.f)())) {
-            Ok(result) => result,
+        match catch_unwind(AssertUnwindSafe(f)) {
+            Ok(result) => {
+                data.result = Some(result);
+                unsafe { crate::ffi::R_NilValue }
+            }
             Err(payload) => {
                 data.panic_payload = Some(payload);
-                // Return a benign value; caller will re-raise after R has unwound normally.
-                unsafe { ::miniextendr_api::ffi::R_NilValue }
+                unsafe { crate::ffi::R_NilValue }
             }
+        }
+    }
+
+    unsafe extern "C-unwind" fn cleanup_handler(_data: *mut c_void, jump: Rboolean) {
+        if jump != Rboolean::FALSE {
+            // R is about to longjmp - trigger a Rust panic so we can unwind properly
+            std::panic::panic_any(RErrorMarker);
         }
     }
 
     unsafe {
         let token = R_CONTINUATION_TOKEN.with(|x| **x);
 
-        let data = Box::into_raw(Box::new(CallData {
-            f,
+        let data = Box::into_raw(Box::new(CallData::<F, R> {
+            f: Some(f),
+            result: None,
             panic_payload: None,
         }));
 
         let panic_result = catch_unwind(AssertUnwindSafe(|| {
             R_UnwindProtect_C_unwind(
-                Some(trampoline::<F>),
+                Some(trampoline::<F, R>),
                 data.cast(),
-                Some(throw_r_error),
+                Some(cleanup_handler),
                 std::ptr::null_mut(),
                 token,
             )
         }));
 
-        let mut data = Box::from_raw(data.cast::<CallData<F>>());
+        let mut data = Box::from_raw(data);
 
         match panic_result {
-            Ok(result) => {
+            Ok(_) => {
+                // Check if trampoline caught a panic
                 if let Some(payload) = data.panic_payload.take() {
                     drop(data);
                     panic_payload_to_r_error(payload, call);
                 }
-                drop(data);
-                result
+                // Normal completion - return the result
+                data.result
+                    .take()
+                    .expect("result not set after successful completion")
             }
             Err(payload) => {
-                // CallData is dropped here, which drops f and its captured resources!
+                // Drop data first to run destructors
                 drop(data);
-                if payload.downcast_ref::<RError>().is_some() {
+                // Check if this was an R error or a Rust panic
+                if payload.downcast_ref::<RErrorMarker>().is_some() {
+                    // R error - continue R's unwind
                     R_ContinueUnwind(token);
                 } else {
+                    // Rust panic - convert to R error
                     panic_payload_to_r_error(payload, call);
                 }
             }

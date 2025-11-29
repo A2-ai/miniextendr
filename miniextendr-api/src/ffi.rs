@@ -69,6 +69,91 @@ pub enum SEXPTYPE {
 pub struct SEXPREC(::std::os::raw::c_void);
 pub type SEXP = *mut SEXPREC;
 
+/// Extension trait for SEXP providing safe(r) accessors.
+pub(crate) trait SexpExt {
+    /// Get the type of this SEXP.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid (not null and not freed).
+    fn type_of(&self) -> SEXPTYPE;
+
+    /// Check if this SEXP is null or R_NilValue.
+    fn is_null_or_nil(&self) -> bool;
+
+    /// Get the length of this SEXP as `usize`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    fn len(&self) -> usize;
+
+    /// Get a slice view of this SEXP's data.
+    ///
+    /// # Safety
+    ///
+    /// - The SEXP must be valid and of the correct type for T
+    /// - The returned slice borrows from R's memory; the SEXP must remain protected
+    fn as_slice<T: RNativeType>(&self) -> &'static [T];
+}
+
+impl SexpExt for SEXP {
+    #[inline]
+    fn type_of(&self) -> SEXPTYPE {
+        unsafe { TYPEOF(*self) }
+    }
+
+    #[inline]
+    fn is_null_or_nil(&self) -> bool {
+        self.is_null() || std::ptr::addr_eq(*self, unsafe { R_NilValue })
+    }
+
+    #[inline]
+    fn len(&self) -> usize {
+        unsafe { Rf_xlength(*self) as usize }
+    }
+
+    #[inline]
+    fn as_slice<T: RNativeType>(&self) -> &'static [T] {
+        debug_assert!(
+            self.type_of() == T::SEXP_TYPE,
+            "SEXP type mismatch: expected {:?}, got {:?}",
+            T::SEXP_TYPE,
+            self.type_of()
+        );
+        let len = self.len();
+        if len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(DATAPTR_RO(*self).cast(), len) }
+        }
+    }
+}
+
+/// Marker trait for types that correspond to R's native vector element types.
+///
+/// This enables blanket implementations for `TryFromSexp` and safe conversions.
+pub(crate) trait RNativeType: Sized + Copy + 'static {
+    /// The SEXPTYPE for vectors containing this element type.
+    const SEXP_TYPE: SEXPTYPE;
+}
+
+impl RNativeType for i32 {
+    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::INTSXP;
+}
+
+impl RNativeType for f64 {
+    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
+}
+
+impl RNativeType for u8 {
+    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::RAWSXP;
+}
+
+impl RNativeType for Rboolean {
+    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::LGLSXP;
+}
+
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -127,6 +212,11 @@ unsafe extern "C-unwind" {
 
 /// Checked wrapper for `Rf_error` - panics if called from non-main thread.
 /// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `fmt` and `arg1` must be valid null-terminated C strings
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn Rf_error(
@@ -140,6 +230,12 @@ pub unsafe fn Rf_error(
 }
 
 /// Checked wrapper for `Rf_errorcall` - panics if called from non-main thread.
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `call` must be a valid SEXP or R_NilValue
+/// - `fmt` and `arg1` must be valid null-terminated C strings
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn Rf_errorcall(
@@ -154,6 +250,11 @@ pub unsafe fn Rf_errorcall(
 }
 
 /// Checked wrapper for `Rf_warning` - panics if called from non-main thread.
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `fmt` and `arg1` must be valid null-terminated C strings
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
@@ -164,6 +265,11 @@ pub unsafe fn Rf_warning(fmt: *const ::std::os::raw::c_char, arg1: *const ::std:
 }
 
 /// Checked wrapper for `Rprintf` - panics if called from non-main thread.
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `fmt` and `arg1` must be valid null-terminated C strings
 #[inline(always)]
 #[allow(non_snake_case)]
 pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
@@ -304,8 +410,16 @@ unsafe extern "C-unwind" {
 
     // Type checking
     pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
+
+    // Symbol creation
+    pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
 }
 
+/// Check if a SEXP is an S4 object.
+///
+/// # Safety
+///
+/// - `arg1` must be a valid SEXP
 #[allow(non_snake_case)]
 pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
     unsafe extern "C-unwind" {

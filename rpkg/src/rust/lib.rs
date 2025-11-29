@@ -256,9 +256,11 @@ extern "C-unwind" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
 #[unsafe(no_mangle)]
 extern "C-unwind" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
     // Use checked Rf_error - will panic with clear message about wrong thread
-    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr()) })
-        .join()
-        .unwrap();
+    std::thread::spawn(|| unsafe {
+        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr())
+    })
+    .join()
+    .unwrap();
     unsafe { miniextendr_api::ffi::R_NilValue }
 }
 
@@ -400,7 +402,10 @@ fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::
 }
 
 #[miniextendr]
-fn test_logical_and(a: miniextendr_api::ffi::Rboolean, b: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+fn test_logical_and(
+    a: miniextendr_api::ffi::Rboolean,
+    b: miniextendr_api::ffi::Rboolean,
+) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
     match (a, b) {
         (Rboolean::TRUE, Rboolean::TRUE) => Rboolean::TRUE,
@@ -453,7 +458,11 @@ fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
 
 #[miniextendr]
 fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
-    if x.is_empty() { 0.0 } else { x.iter().sum::<f64>() / x.len() as f64 }
+    if x.is_empty() {
+        0.0
+    } else {
+        x.iter().sum::<f64>() / x.len() as f64
+    }
 }
 
 // Slice tests - u8 (raw)
@@ -474,15 +483,27 @@ fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::Rboolean]) -> i32 {
 }
 
 #[miniextendr]
-fn test_logical_slice_any_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> miniextendr_api::ffi::Rboolean {
+fn test_logical_slice_any_true(
+    x: &'static [miniextendr_api::ffi::Rboolean],
+) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.iter().any(|&b| b == Rboolean::TRUE) { Rboolean::TRUE } else { Rboolean::FALSE }
+    if x.contains(&Rboolean::TRUE) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
 }
 
 #[miniextendr]
-fn test_logical_slice_all_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> miniextendr_api::ffi::Rboolean {
+fn test_logical_slice_all_true(
+    x: &'static [miniextendr_api::ffi::Rboolean],
+) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.iter().all(|&b| b == Rboolean::TRUE) { Rboolean::TRUE } else { Rboolean::FALSE }
+    if x.iter().all(|&b| b == Rboolean::TRUE) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
 }
 
 // endregion
@@ -494,7 +515,7 @@ mod altrep;
 // region: proc-macro ALTREP test
 // This tests the #[miniextendr] on struct path for custom ALTREP classes.
 
-use miniextendr_api::altrep_traits::{Altrep, AltVec, AltInteger};
+use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep};
 use miniextendr_api::ffi::R_xlen_t;
 
 /// A simple custom ALTREP integer class: always returns the constant 42.
@@ -510,13 +531,15 @@ impl Altrep for ConstantIntClass {
     }
 }
 
+// Safety: ALTREP callbacks are only called by R with valid SEXP arguments
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl AltVec for ConstantIntClass {
     const HAS_DATAPTR: bool = true;
     const HAS_DATAPTR_OR_NULL: bool = true;
     fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
         use miniextendr_api::ffi::{
-            R_altrep_data2, R_set_altrep_data2, R_NilValue, Rf_allocVector, Rf_protect,
-            Rf_unprotect, INTEGER, SEXPTYPE,
+            INTEGER, R_NilValue, R_altrep_data2, R_set_altrep_data2, Rf_allocVector, Rf_protect,
+            Rf_unprotect, SEXPTYPE,
         };
         // Materialize the data if not already expanded
         unsafe {
@@ -527,7 +550,7 @@ impl AltVec for ConstantIntClass {
                 Rf_protect(val);
                 let buf = INTEGER(val);
                 for i in 0..n {
-                    *buf.offset(i as isize) = Self::elt(x, i);
+                    *buf.offset(i) = Self::elt(x, i);
                 }
                 R_set_altrep_data2(x, val);
                 Rf_unprotect(1);
@@ -538,7 +561,7 @@ impl AltVec for ConstantIntClass {
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
-        use miniextendr_api::ffi::{R_altrep_data2, R_NilValue, INTEGER};
+        use miniextendr_api::ffi::{INTEGER, R_NilValue, R_altrep_data2};
         unsafe {
             let expanded = R_altrep_data2(x);
             if expanded == R_NilValue {
@@ -559,12 +582,16 @@ impl AltInteger for ConstantIntClass {
 }
 
 /// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
+///
+/// # Safety
+///
+/// Must be called from R main thread with R properly initialized.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
-    use miniextendr_api::ffi::altrep::R_new_altrep;
     use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
     // Get the (already registered) class and create an instance
     let cls = ConstantIntClass::get_or_init_class();
     unsafe { R_new_altrep(cls, R_NilValue, R_NilValue) }
@@ -574,6 +601,12 @@ pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
 
 // ALTREP .Call wrappers (delegating to miniextendr_api)
 // Named with rpkg_ prefix to avoid symbol collision with miniextendr_api exports.
+
+/// Create a compact integer sequence ALTREP.
+///
+/// # Safety
+///
+/// All SEXP arguments must be valid. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -581,6 +614,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, st
     unsafe { miniextendr_api::altrep::C_altrep_compact_int(n, start, step) }
 }
 
+/// Create an ALTREP from doubles.
+///
+/// # Safety
+///
+/// `x` must be a valid REALSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -588,6 +626,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_doubles(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_doubles(x) }
 }
 
+/// Create an ALTREP from strings.
+///
+/// # Safety
+///
+/// `x` must be a valid STRSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -595,6 +638,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_strings(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_strings(x) }
 }
 
+/// Create an ALTREP from logicals.
+///
+/// # Safety
+///
+/// `x` must be a valid LGLSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -602,6 +650,11 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_logicals(x) }
 }
 
+/// Create an ALTREP from raw bytes.
+///
+/// # Safety
+///
+/// `x` must be a valid RAWSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -609,12 +662,299 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_raw(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_raw(x) }
 }
 
+/// Create an ALTREP from a list.
+///
+/// # Safety
+///
+/// `x` must be a valid VECSXP. Must be called from R main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::altrep::C_altrep_from_list(x) }
 }
+
+// region: ExternalPtr tests
+
+use miniextendr_api::externalptr::ErasedExternalPtr;
+// Note: ExternalPtr type is accessed via full path to avoid conflict with derive macro
+use miniextendr_api::ExternalPtr as DeriveExternalPtr;
+
+/// A simple test struct for ExternalPtr
+#[derive(DeriveExternalPtr, Debug)]
+struct Counter {
+    value: i32,
+}
+
+/// Another test struct to verify type safety
+#[derive(DeriveExternalPtr, Debug)]
+struct Point {
+    x: f64,
+    y: f64,
+}
+
+/// Create a new Counter wrapped in an ExternalPtr
+#[miniextendr(unsafe(main_thread))]
+fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
+    miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
+}
+
+/// Get the current value from a Counter ExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarInteger(ext.value),
+            None => Rf_ScalarInteger(i32::MIN), // NA_INTEGER equivalent
+        }
+    }
+}
+
+/// Increment the counter and return the new value
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP pointing to a Counter ExternalPtr.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        // Get mutable access via downcast_mut on erased pointer
+        let mut erased = ErasedExternalPtr::from_sexp(ptr);
+        if let Some(counter) = erased.downcast_mut::<Counter>() {
+            counter.value += 1;
+            return Rf_ScalarInteger(counter.value);
+        }
+        Rf_ScalarInteger(i32::MIN) // NA_INTEGER equivalent
+    }
+}
+
+/// Create a new Point wrapped in an ExternalPtr
+#[miniextendr(unsafe(main_thread))]
+fn extptr_point_new(x: f64, y: f64) -> miniextendr_api::externalptr::ExternalPtr<Point> {
+    miniextendr_api::externalptr::ExternalPtr::new(Point { x, y })
+}
+
+/// Get the x coordinate from a Point ExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarReal;
+    unsafe {
+        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarReal(ext.x),
+            None => Rf_ScalarReal(f64::NAN),
+        }
+    }
+}
+
+/// Get the y coordinate from a Point ExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarReal;
+    unsafe {
+        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarReal(ext.y),
+            None => Rf_ScalarReal(f64::NAN),
+        }
+    }
+}
+
+/// Test type safety: try to get a Counter from a Point (should fail)
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        // Try to interpret a Point as a Counter - should return None
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(_) => Rf_ScalarInteger(1), // Unexpected success
+            None => Rf_ScalarInteger(0),    // Expected failure - type mismatch
+        }
+    }
+}
+
+/// Test with R's `new("externalptr")` - a null external pointer
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        // R's new("externalptr") creates a null external pointer
+        // Our try_from_sexp should return None for it
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(_) => Rf_ScalarInteger(1), // Unexpected - null pointer should fail
+            None => Rf_ScalarInteger(0),    // Expected - null pointer detected
+        }
+    }
+}
+
+/// Check if an external pointer is a Counter using ErasedExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        let erased = ErasedExternalPtr::from_sexp(ptr);
+        if erased.is::<Counter>() {
+            Rf_ScalarInteger(1)
+        } else {
+            Rf_ScalarInteger(0)
+        }
+    }
+}
+
+/// Check if an external pointer is a Point using ErasedExternalPtr
+///
+/// # Safety
+///
+/// `ptr` must be a valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        let erased = ErasedExternalPtr::from_sexp(ptr);
+        if erased.is::<Point>() {
+            Rf_ScalarInteger(1)
+        } else {
+            Rf_ScalarInteger(0)
+        }
+    }
+}
+
+// endregion
+
+// region: ALTREP with ExternalPtr backend
+
+/// An ALTREP integer class that stores its data in an ExternalPtr
+#[derive(DeriveExternalPtr)]
+struct VecIntData {
+    data: Vec<i32>,
+}
+
+/// ALTREP class using ExternalPtr for storage
+#[miniextendr(class = "VecIntAltrep", pkg = "rpkg", base = "Int")]
+pub struct VecIntAltrepClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for VecIntAltrepClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<VecIntData>(x) } {
+            Some(ext) => ext.data.len() as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for VecIntAltrepClass {
+    const HAS_DATAPTR: bool = true;
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
+        use miniextendr_api::altrep_data1_mut;
+        match unsafe { altrep_data1_mut::<VecIntData>(x) } {
+            Some(vec_data) => vec_data.data.as_mut_ptr().cast(),
+            None => core::ptr::null_mut(),
+        }
+    }
+
+    fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<VecIntData>(x) } {
+            Some(ext) => ext.data.as_ptr().cast(),
+            None => core::ptr::null(),
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltInteger for VecIntAltrepClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<VecIntData>(x) } {
+            Some(ext) => ext.data.get(i as usize).copied().unwrap_or(i32::MIN),
+            None => i32::MIN,
+        }
+    }
+}
+
+/// Create a VecIntAltrep instance from an integer vector
+///
+/// # Safety
+///
+/// Must be called from R main thread with valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_vec_int_altrep(x: SEXP) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+    use miniextendr_api::ffi::{INTEGER, Rf_xlength};
+
+    // Copy data from input SEXP
+    let n = unsafe { Rf_xlength(x) } as usize;
+    let src = unsafe { INTEGER(x) };
+    let mut data = Vec::with_capacity(n);
+    for i in 0..n {
+        data.push(unsafe { *src.add(i) });
+    }
+
+    // Wrap in ExternalPtr
+    let ext_ptr = ExternalPtr::new(VecIntData { data });
+
+    // Create ALTREP instance
+    let cls = VecIntAltrepClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// endregion
 
 miniextendr_module! {
     mod rpkg;
@@ -671,9 +1011,41 @@ miniextendr_module! {
     extern fn C_check_interupt_after;
     extern fn C_check_interupt_unwind;
 
-    // Worker thread tests
+    // Worker thread tests (basic)
     extern "C-unwind" fn C_worker_drop_on_success;
     extern "C-unwind" fn C_worker_drop_on_panic;
+
+    // Comprehensive worker/with_r_thread tests
+    extern "C-unwind" fn C_test_worker_simple;
+    extern "C-unwind" fn C_test_worker_with_r_thread;
+    extern "C-unwind" fn C_test_worker_multiple_r_calls;
+    extern "C-unwind" fn C_test_worker_panic_simple;
+    extern "C-unwind" fn C_test_worker_panic_with_drops;
+    extern "C-unwind" fn C_test_worker_panic_in_r_thread;
+    extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops;
+    extern "C-unwind" fn C_test_worker_r_error_in_r_thread;
+    extern "C-unwind" fn C_test_worker_r_error_with_drops;
+    extern "C-unwind" fn C_test_worker_r_calls_then_error;
+    extern "C-unwind" fn C_test_worker_r_calls_then_panic;
+    fn test_worker_return_i32;
+    fn test_worker_return_string;
+    fn test_worker_return_f64;
+    extern "C-unwind" fn C_test_extptr_from_worker;
+    extern "C-unwind" fn C_test_multiple_extptrs_from_worker;
+    fn test_main_thread_r_api;
+    fn test_main_thread_r_error;
+    fn test_main_thread_r_error_with_drops;
+    extern "C-unwind" fn C_test_wrong_thread_r_api;
+
+    // Nested wrapper tests
+    extern "C-unwind" fn C_test_nested_helper_from_worker;
+    extern "C-unwind" fn C_test_nested_multiple_helpers;
+    extern "C-unwind" fn C_test_nested_with_r_thread;
+    extern "C-unwind" fn C_test_call_worker_fn_from_main;
+    extern "C-unwind" fn C_test_nested_worker_calls;
+    extern "C-unwind" fn C_test_nested_with_error;
+    extern "C-unwind" fn C_test_nested_with_panic;
+    extern "C-unwind" fn C_test_deep_with_r_thread_sequence;
 
     // Scalar conversion tests
     fn test_i32_identity;
@@ -718,6 +1090,22 @@ miniextendr_module! {
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
     extern "C-unwind" fn rpkg_constant_int;
+
+    // ExternalPtr tests
+    fn extptr_counter_new;
+    extern "C-unwind" fn C_extptr_counter_get;
+    extern "C-unwind" fn C_extptr_counter_increment;
+    fn extptr_point_new;
+    extern "C-unwind" fn C_extptr_point_get_x;
+    extern "C-unwind" fn C_extptr_point_get_y;
+    extern "C-unwind" fn C_extptr_type_mismatch_test;
+    extern "C-unwind" fn C_extptr_null_test;
+    extern "C-unwind" fn C_extptr_is_counter;
+    extern "C-unwind" fn C_extptr_is_point;
+
+    // ALTREP with ExternalPtr backend
+    struct VecIntAltrepClass;
+    extern "C-unwind" fn rpkg_vec_int_altrep;
 }
 
 // endregion
@@ -783,7 +1171,7 @@ fn do_nothing() -> SEXP {
 
 // region: worker thread tests
 
-use miniextendr_api::worker::run_on_worker;
+use miniextendr_api::worker::{run_on_worker, with_r_thread};
 
 /// Test that drops run on the worker thread during normal completion.
 #[miniextendr]
@@ -816,6 +1204,558 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
     unsafe {
         R_NilValue
     }
+}
+
+// =============================================================================
+// Comprehensive worker/with_r_thread tests
+// =============================================================================
+
+// -----------------------------------------------------------------------------
+// Test 1: Simple worker execution - no R API calls
+// -----------------------------------------------------------------------------
+
+/// Worker executes pure Rust code, returns result.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_simple() -> SEXP {
+    let result = run_on_worker(|| {
+        let a = 10;
+        let b = 32;
+        a + b
+    });
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+// -----------------------------------------------------------------------------
+// Test 2: Worker with with_r_thread - call R API from worker
+// -----------------------------------------------------------------------------
+
+/// Worker uses with_r_thread to call R API, returns i32 (Send-able).
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_with_r_thread() -> SEXP {
+    let result = run_on_worker(|| {
+        let value = 123;
+        // Call R API on main thread, return i32 (Send)
+        with_r_thread(move || {
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(value) };
+            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        })
+    });
+    // Convert to SEXP on main thread after run_on_worker returns
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Worker makes multiple with_r_thread calls, each returning Send-able values.
+/// Final SEXP creation happens on main thread.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_multiple_r_calls() -> SEXP {
+    let values = run_on_worker(|| {
+        // First R call: get some value
+        let v1 = with_r_thread(|| 10i32);
+
+        // Second R call: compute something
+        let v2 = with_r_thread(move || v1 + 20);
+
+        // Third R call: final computation
+        let v3 = with_r_thread(move || v2 + 30);
+
+        // Return tuple of values (all Send)
+        (v1, v2, v3)
+    });
+
+    // Create the SEXP vector on main thread
+    unsafe {
+        let vec = miniextendr_api::ffi::Rf_allocVector(miniextendr_api::ffi::SEXPTYPE::INTSXP, 3);
+        miniextendr_api::ffi::Rf_protect(vec);
+        let ptr = miniextendr_api::ffi::INTEGER(vec);
+        *ptr.offset(0) = values.0;
+        *ptr.offset(1) = values.1;
+        *ptr.offset(2) = values.2;
+        miniextendr_api::ffi::Rf_unprotect(1);
+        vec
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 3: Panic scenarios
+// -----------------------------------------------------------------------------
+
+/// Panic on worker thread (no with_r_thread).
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_panic_simple() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        panic!("simple panic on worker");
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// Panic on worker with RAII resources - drops must run.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_panic_with_drops() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        let _resource1 = SimpleDropMsg("test_panic_drops: resource1");
+        let _resource2 = Box::new(SimpleDropMsg("test_panic_drops: resource2 (boxed)"));
+        panic!("panic after creating resources");
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// Panic INSIDE a with_r_thread callback.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_panic_in_r_thread() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        with_r_thread::<_, ()>(|| {
+            panic!("panic inside with_r_thread callback");
+        });
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// Panic in with_r_thread with resources - worker resources must still drop.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        let _worker_resource = SimpleDropMsg("test: worker resource before with_r_thread");
+
+        with_r_thread::<_, ()>(|| {
+            let _main_resource = SimpleDropMsg("test: main thread resource before panic");
+            panic!("panic in with_r_thread with resources");
+        });
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 4: R error scenarios (via with_r_thread)
+// -----------------------------------------------------------------------------
+
+/// R error inside with_r_thread callback.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_r_error_in_r_thread() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        with_r_thread::<_, ()>(|| unsafe {
+            miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error in with_r_thread".as_ptr());
+        });
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// R error with RAII resources - both worker and main thread resources must drop.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_r_error_with_drops() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        let _worker_resource = SimpleDropMsg("r_error_drops: worker resource");
+
+        with_r_thread::<_, ()>(|| {
+            let _main_resource = SimpleDropMsg("r_error_drops: main thread resource");
+            unsafe {
+                miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error with drops test".as_ptr());
+            }
+        });
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 5: Mixed scenarios - some R calls succeed, then error/panic
+// -----------------------------------------------------------------------------
+
+/// Multiple R calls, last one errors.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_r_calls_then_error() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        // First R call succeeds - return a simple i32 instead of SEXP
+        let val1 = with_r_thread(|| 1i32);
+        eprintln!("[Rust] First R call succeeded, got {}", val1);
+
+        // Second R call succeeds
+        let val2 = with_r_thread(|| 2i32);
+        eprintln!("[Rust] Second R call succeeded, got {}", val2);
+
+        // Third R call errors
+        with_r_thread::<_, ()>(|| unsafe {
+            miniextendr_api::ffi::Rf_error(
+                c"%s".as_ptr(),
+                c"Error after successful calls".as_ptr(),
+            );
+        });
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// Multiple R calls, then panic in Rust (not in R).
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        // Successful R call - return i32 instead of SEXP
+        let val = with_r_thread(|| 42i32);
+        eprintln!(
+            "[Rust] R call succeeded with {}, now panicking in Rust",
+            val
+        );
+
+        panic!("Rust panic after successful R call");
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 6: Return value propagation
+// -----------------------------------------------------------------------------
+
+/// Test that i32 return from worker works.
+#[miniextendr]
+fn test_worker_return_i32() -> i32 {
+    // This uses worker strategy automatically (returns non-SEXP)
+    let x = 21;
+    x * 2
+}
+
+/// Test that String return from worker works.
+#[miniextendr]
+fn test_worker_return_string() -> String {
+    // Uses worker strategy
+    format!("hello from {}", "worker")
+}
+
+/// Test that f64 return from worker works.
+#[miniextendr]
+fn test_worker_return_f64() -> f64 {
+    std::f64::consts::PI * 2.0
+}
+
+// -----------------------------------------------------------------------------
+// Test 7: ExternalPtr creation (must be main thread - ExternalPtr is !Send)
+// -----------------------------------------------------------------------------
+
+/// Test ExternalPtr creation and usage on main thread.
+/// Note: ExternalPtr is !Send, so it can only be used on main thread.
+#[miniextendr(unsafe(main_thread))]
+fn test_extptr_on_main_thread() -> i32 {
+    use miniextendr_api::externalptr::ExternalPtr;
+    let ptr = ExternalPtr::new(Counter { value: 99 });
+    ptr.value
+}
+
+/// Test ExternalPtr creation with computation done on worker.
+/// The computation happens on worker, but ExternalPtr creation happens on main thread
+/// since ExternalPtr is !Send. We run_on_worker to get Send-able values, then create SEXP after.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_extptr_from_worker() -> SEXP {
+    // Do computation on worker, return Send-able value
+    let value = run_on_worker(|| {
+        let a = 42;
+        let b = 58;
+        a + b
+    });
+
+    // Create ExternalPtr on main thread (after run_on_worker returns)
+    use miniextendr_api::externalptr::ExternalPtr;
+    let ptr = ExternalPtr::new(Counter { value });
+    ptr.as_sexp()
+}
+
+/// Test creating multiple ExternalPtrs with values computed on worker.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
+    // Compute values on worker, return tuple (all Send)
+    let (counter_val, point_x, point_y) = run_on_worker(|| {
+        let counter_val = 50 + 50;
+        let point_x = 0.5 + 1.0;
+        let point_y = 1.5 + 1.0;
+        (counter_val, point_x, point_y)
+    });
+
+    // Create ExternalPtrs on main thread
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::{
+        Rf_allocVector, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXPTYPE,
+    };
+
+    unsafe {
+        // Create a list of 2 elements
+        let list = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+        Rf_protect(list);
+
+        // Create Counter ExternalPtr
+        let counter_ptr = ExternalPtr::new(Counter { value: counter_val });
+        SET_VECTOR_ELT(list, 0, counter_ptr.as_sexp());
+
+        // Create Point ExternalPtr
+        let point_ptr = ExternalPtr::new(Point {
+            x: point_x,
+            y: point_y,
+        });
+        SET_VECTOR_ELT(list, 1, point_ptr.as_sexp());
+
+        Rf_unprotect(1);
+        list
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 8: Main thread functions (via attribute)
+// -----------------------------------------------------------------------------
+
+/// Function that must run on main thread (uses R API directly).
+#[miniextendr(unsafe(main_thread))]
+fn test_main_thread_r_api() -> i32 {
+    // This runs on main thread, can call R API directly
+    let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+    unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+}
+
+/// Main thread function that triggers R error.
+#[miniextendr(unsafe(main_thread))]
+fn test_main_thread_r_error() -> i32 {
+    unsafe {
+        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr())
+    }
+}
+
+/// Main thread function with RAII drops that triggers R error.
+#[miniextendr(unsafe(main_thread))]
+fn test_main_thread_r_error_with_drops() -> i32 {
+    let _resource = SimpleDropMsg("main_thread_r_error: resource");
+    unsafe {
+        miniextendr_api::ffi::Rf_error(
+            c"%s".as_ptr(),
+            c"R error from main_thread fn with drops".as_ptr(),
+        )
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 9: Calling checked R APIs from wrong thread (should panic clearly)
+// -----------------------------------------------------------------------------
+
+/// This demonstrates what happens if you call a checked R API from worker
+/// without using with_r_thread - it should panic with clear message.
+/// NOTE: This is an intentional misuse for testing error messages.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_wrong_thread_r_api() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        // This should panic because Rf_ScalarInteger is checked
+        // and we're not on main thread
+        let _ = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+// -----------------------------------------------------------------------------
+// Test 10: Nested wrappers - calling miniextendr functions from miniextendr functions
+// -----------------------------------------------------------------------------
+
+/// Helper that calls with_r_thread and returns a Send-able value.
+fn helper_r_call_value(value: i32) -> i32 {
+    with_r_thread(move || {
+        // Create SEXP on main thread, extract value, return i32
+        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(value * 2) };
+        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+    })
+}
+/// Nested: call helper function from worker.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_nested_helper_from_worker() -> SEXP {
+    let result = run_on_worker(|| helper_r_call_value(21));
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Nested: multiple helper calls with with_r_thread.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_nested_multiple_helpers() -> SEXP {
+    let result = run_on_worker(|| {
+        let v1 = helper_r_call_value(10);
+        let v2 = helper_r_call_value(20);
+        v1 + v2
+    });
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Nested with_r_thread calls - with_r_thread inside with_r_thread.
+/// Since with_r_thread checks if already on main thread, this should work.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_nested_with_r_thread() -> SEXP {
+    let result = run_on_worker(|| {
+        with_r_thread(|| {
+            // Already on main thread, nested call runs directly
+            with_r_thread(|| 42i32)
+        })
+    });
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test calling a miniextendr function that uses worker strategy from main thread.
+/// The inner function will use run_on_worker, outer is extern "C-unwind".
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_call_worker_fn_from_main() -> SEXP {
+    // Call add() which uses worker strategy internally
+    // This should work: we're on main thread, add() spawns worker job
+    let result = add(10, 32);
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Call a worker-strategy function from inside run_on_worker.
+/// This tests nested run_on_worker - the inner call should detect
+/// we're on worker and use with_r_thread's direct execution path.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_nested_worker_calls() -> SEXP {
+    let result = run_on_worker(|| {
+        // We're on worker thread now
+        // Call helper_r_call_value which uses with_r_thread and returns i32 (Send)
+        let val = helper_r_call_value(100);
+
+        // Return i32 (Send-able) from run_on_worker
+        val * 2
+    });
+    // Convert to SEXP on main thread
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Complex nested scenario: worker -> multiple with_r_thread -> one errors.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_nested_with_error() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        let _resource = SimpleDropMsg("nested_error: outer resource");
+
+        // First nested call succeeds
+        let val = with_r_thread(|| {
+            let _inner_resource = SimpleDropMsg("nested_error: first call resource");
+            42i32
+        });
+        eprintln!("[Rust] First nested call returned: {}", val);
+
+        // Second nested call errors
+        with_r_thread::<_, ()>(|| {
+            let _inner_resource = SimpleDropMsg("nested_error: second call resource");
+            unsafe {
+                miniextendr_api::ffi::Rf_error(
+                    c"%s".as_ptr(),
+                    c"Error in nested with_r_thread".as_ptr(),
+                )
+            }
+        })
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// Complex nested scenario: worker -> multiple with_r_thread -> one panics.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_nested_with_panic() -> SEXP {
+    run_on_worker::<_, ()>(|| {
+        let _resource = SimpleDropMsg("nested_panic: outer resource");
+
+        // First nested call succeeds
+        let val = with_r_thread(|| {
+            let _inner_resource = SimpleDropMsg("nested_panic: first call resource");
+            42i32
+        });
+        eprintln!("[Rust] First nested call returned: {}", val);
+
+        // Second nested call panics
+        with_r_thread::<_, ()>(|| {
+            let _inner_resource = SimpleDropMsg("nested_panic: second call resource");
+            panic!("Panic in nested with_r_thread");
+        })
+    });
+    #[allow(unreachable_code)]
+    unsafe {
+        R_NilValue
+    }
+}
+
+/// Deep nesting: with_r_thread called many times in sequence.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub extern "C-unwind" fn C_test_deep_with_r_thread_sequence() -> SEXP {
+    let sum = run_on_worker(|| {
+        let mut sum = 0i32;
+
+        for i in 0..10 {
+            let current = sum;
+            sum = with_r_thread(move || {
+                let new_sum = current + i;
+                eprintln!("[Rust] Iteration {}: sum = {}", i, new_sum);
+                new_sum
+            });
+        }
+
+        sum
+    });
+
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) }
 }
 
 // endregion

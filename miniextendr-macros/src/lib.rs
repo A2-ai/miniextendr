@@ -51,6 +51,17 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
+/// Check if a type is `ExternalPtr<...>` which contains SEXP and is !Send.
+/// This is used to automatically force main_thread for functions returning ExternalPtr.
+fn is_external_ptr_type(ty: &syn::Type) -> bool {
+    matches!(ty, syn::Type::Path(p) if p
+        .path
+        .segments
+        .last()
+        .map(|s| s.ident == "ExternalPtr")
+        .unwrap_or(false))
+}
+
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
@@ -61,21 +72,46 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
-    // Parse function-level attributes: #[miniextendr(main_thread, invisible, check_interrupt)]
+    // Parse function-level attributes:
+    // - #[miniextendr(unsafe(main_thread))] - forces main thread execution (unsafe context)
+    // - #[miniextendr(invisible)] / #[miniextendr(visible)] - visibility control
+    // - #[miniextendr(check_interrupt)] - check for Ctrl+C before execution
     let mut force_main_thread = false;
     let mut force_invisible: Option<bool> = None;
     let mut check_interrupt = false;
     if !attr.is_empty() {
-        let attr_idents = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated);
-        for ident in attr_idents {
-            if ident == "main_thread" {
-                force_main_thread = true;
-            } else if ident == "invisible" {
-                force_invisible = Some(true);
-            } else if ident == "visible" {
-                force_invisible = Some(false);
-            } else if ident == "check_interrupt" {
-                check_interrupt = true;
+        let attr_metas = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
+        for meta in attr_metas {
+            match &meta {
+                // Simple identifiers: invisible, visible, check_interrupt
+                syn::Meta::Path(path) => {
+                    if let Some(ident) = path.get_ident() {
+                        if ident == "invisible" {
+                            force_invisible = Some(true);
+                        } else if ident == "visible" {
+                            force_invisible = Some(false);
+                        } else if ident == "check_interrupt" {
+                            check_interrupt = true;
+                        } else if ident == "main_thread" {
+                            // Legacy support - but warn/error in future?
+                            force_main_thread = true;
+                        }
+                    }
+                }
+                // Nested: unsafe(main_thread)
+                syn::Meta::List(list) => {
+                    if list.path.is_ident("unsafe") {
+                        let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> = list
+                            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+                            .expect("expected identifier in unsafe(...)");
+                        for ident in nested {
+                            if ident == "main_thread" {
+                                force_main_thread = true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
             }
         }
     }
@@ -87,12 +123,12 @@ pub fn miniextendr(
     // for the C wrapper and R wrapper.
     let mut unused_counter = 0usize;
     for arg in &mut item.sig.inputs {
+        #[allow(clippy::collapsible_if)]
         if let syn::FnArg::Typed(pat_type) = arg {
             if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
                 let synthetic_name = format!("__unused{}", unused_counter);
                 unused_counter += 1;
-                let synthetic_ident =
-                    syn::Ident::new(&synthetic_name, pat_type.pat.span());
+                let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
                 pat_type.pat = Box::new(syn::Pat::Ident(syn::PatIdent {
                     attrs: vec![],
                     by_ref: None,
@@ -115,7 +151,10 @@ pub fn miniextendr(
             } else {
                 // Pattern match on dots that isn't a simple ident (e.g., `(a, b): ...`)
                 // This is not supported in R's ... semantics
-                panic!("variadic pattern must be a simple identifier, got: {:?}", named_dots.0);
+                panic!(
+                    "variadic pattern must be a simple identifier, got: {:?}",
+                    named_dots.0
+                );
             }
         } else {
             // unnamed dots
@@ -136,6 +175,7 @@ pub fn miniextendr(
                 // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
                 // Check that no existing parameter is named `_dots`
                 for arg in &item.sig.inputs {
+                    #[allow(clippy::collapsible_if)]
                     if let syn::FnArg::Typed(pat_type) = arg {
                         if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                             if pat_ident.ident == "_dots" {
@@ -356,6 +396,12 @@ pub fn miniextendr(
                 returns_sexp = true;
                 quote::quote! { #rust_result_ident }
             }
+            // -> ExternalPtr<T> (contains SEXP, must run on main thread)
+            syn::Type::Path(_p) if is_external_ptr_type(ty.as_ref()) => {
+                is_invisible_return_type = false;
+                returns_sexp = true; // ExternalPtr contains SEXP, forces main_thread
+                quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+            }
 
             // -> Option<...> cases
             syn::Type::Path(p)
@@ -366,6 +412,7 @@ pub fn miniextendr(
                 let inner_ty = first_type_argument(seg);
                 let is_unit_inner = inner_ty.is_some_and(is_unit_type);
                 let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
+                let is_extptr_inner = inner_ty.is_some_and(is_external_ptr_type);
 
                 if is_unit_inner {
                     is_invisible_return_type = true;
@@ -377,7 +424,7 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    if is_sexp_inner {
+                    if is_sexp_inner || is_extptr_inner {
                         returns_sexp = true;
                     }
                     post_call_statements.push(quote::quote! {
@@ -403,6 +450,7 @@ pub fn miniextendr(
                 let ok_ty = first_type_argument(seg);
                 let ok_is_unit = ok_ty.is_some_and(is_unit_type);
                 let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
+                let ok_is_extptr = ok_ty.is_some_and(is_external_ptr_type);
 
                 if ok_is_unit {
                     is_invisible_return_type = true;
@@ -414,7 +462,7 @@ pub fn miniextendr(
                     quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
                 } else {
                     is_invisible_return_type = false;
-                    if ok_is_sexp {
+                    if ok_is_sexp || ok_is_extptr {
                         returns_sexp = true;
                     }
                     post_call_statements.push(quote::quote! {
@@ -474,22 +522,40 @@ pub fn miniextendr(
         // Pure Rust functions: use worker thread strategy
         // 1. Argument conversion on main thread
         // 2. Function execution + Option/Result handling on worker thread
-        // 3. SEXP conversion on main thread
+        // 3. SEXP conversion on main thread (protected by with_r_unwind_protect)
+        //
+        // The entire body is wrapped in catch_unwind to catch panics from:
+        // - TryFromSexp::try_from_sexp().unwrap() (argument conversion)
+        // - IntoR::into_sexp() (result conversion) - also wrapped in with_r_unwind_protect
+        //   to catch R errors (longjmp) from SEXP creation (e.g., allocation failure)
         let c_wrapper_doc = format!("C wrapper for [`{}`] (worker thread).", rust_ident);
         quote::quote! {
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                #(#pre_call_statements)*
-                #(#closure_statements)*
+                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    #(#pre_call_statements)*
+                    #(#closure_statements)*
 
-                let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
-                    let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                    #(#post_call_statements)*
-                    #rust_result_ident
-                });
+                    let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                        #(#post_call_statements)*
+                        #rust_result_ident
+                    });
 
-                #return_expression
+                    // Wrap SEXP conversion in with_r_unwind_protect to catch R errors
+                    // (e.g., allocation failure in Rf_ScalarString)
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        move || #return_expression,
+                        None,
+                    )
+                }));
+                match __miniextendr_panic_result {
+                    Ok(sexp) => sexp,
+                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
+                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    ),
+                }
             }
         }
     };
@@ -1223,7 +1289,7 @@ fn expand_altrep_struct(
             fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
                 use std::sync::OnceLock;
                 static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
-                *CLASS.get_or_init(|| {
+                *CLASS.get_or_init(move || {
                     let cls = unsafe { #make_class };
                     unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
                     cls
@@ -1320,6 +1386,7 @@ pub fn r_ffi_checked(
                     let arg_names: Vec<_> = inputs
                         .iter()
                         .filter_map(|arg| {
+                            #[allow(clippy::collapsible_if)]
                             if let syn::FnArg::Typed(pat_type) = arg {
                                 if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
                                     return Some(pat_ident.ident.clone());
@@ -1357,6 +1424,55 @@ pub fn r_ffi_checked(
         }
 
         #(#checked_wrappers)*
+    };
+
+    expanded.into()
+}
+
+/// Derive macro for implementing `TypedExternal` on a type.
+///
+/// This makes the type compatible with `ExternalPtr<T>` for storing in R's external pointers.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::TypedExternal;
+///
+/// #[derive(TypedExternal)]
+/// struct MyData {
+///     value: i32,
+/// }
+///
+/// // Now you can use ExternalPtr<MyData>
+/// let ptr = ExternalPtr::new(MyData { value: 42 });
+/// ```
+///
+/// # Generated Code
+///
+/// For a type `MyData`, this generates:
+///
+/// ```ignore
+/// impl TypedExternal for MyData {
+///     const TYPE_NAME: &'static str = "MyData";
+///     const TYPE_NAME_CSTR: &'static [u8] = b"MyData\0";
+/// }
+/// ```
+#[proc_macro_derive(ExternalPtr)]
+pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    // Create string literal from type name
+    let name_str = name.to_string();
+    let name_lit = syn::LitStr::new(&name_str, name.span());
+    let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
+
+    let expanded = quote::quote! {
+        impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
+            const TYPE_NAME: &'static str = #name_lit;
+            const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
+        }
     };
 
     expanded.into()
