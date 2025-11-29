@@ -44,6 +44,11 @@ type TypeErasedWorkerMessage = WorkerMessage<Box<dyn Any + Send>>;
 
 // Thread-local channels for worker -> main communication during run_on_worker
 thread_local! {
+    static R_CONTINUATION_TOKEN: std::cell::LazyCell<SEXP> = std::cell::LazyCell::new(|| unsafe {
+        let token = ffi::R_MakeUnwindCont();
+        ffi::R_PreserveObject(token);
+        token
+    });
     // Channel to send messages (work requests or done) to main thread
     #[allow(clippy::type_complexity)]
     static WORKER_TO_MAIN_TX: RefCell<Option<SyncSender<TypeErasedWorkerMessage>>> = const { RefCell::new(None) };
@@ -154,6 +159,9 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
+    /// Marker type for R errors caught by R_UnwindProtect's cleanup handler.
+    struct RErrorMarker;
+
     let job_tx = JOB_TX
         .get()
         .expect("worker not initialized - call miniextendr_worker_init first");
@@ -207,7 +215,98 @@ where
                 // 1. Catch Rust panics and send them as errors to the worker
                 // 2. Catch R errors (longjmp) via cleanup handler and send error to worker
                 //    before R continues unwinding (function never returns in that case)
-                let response = execute_work_with_unwind_protect(work, &response_tx);
+
+                struct CallData {
+                    work: Option<MainThreadWork>,
+                    result: Option<Box<dyn Any + Send>>,
+                    panic_payload: Option<Box<dyn Any + Send>>,
+                    response_tx_ptr: *const SyncSender<MainThreadResponse>,
+                }
+
+                unsafe extern "C-unwind" fn trampoline(data: *mut std::ffi::c_void) -> SEXP {
+                    let data = unsafe { data.cast::<CallData>().as_mut().unwrap() };
+                    let work = data.work.take().expect("trampoline: work already consumed");
+
+                    match catch_unwind(AssertUnwindSafe(work)) {
+                        Ok(result) => {
+                            data.result = Some(result);
+                            unsafe { ffi::R_NilValue }
+                        }
+                        Err(payload) => {
+                            data.panic_payload = Some(payload);
+                            unsafe { ffi::R_NilValue }
+                        }
+                    }
+                }
+
+                unsafe extern "C-unwind" fn cleanup_handler(
+                    data: *mut std::ffi::c_void,
+                    jump: Rboolean,
+                ) {
+                    if jump != Rboolean::FALSE {
+                        // R is about to longjmp - send an error response to the worker first!
+                        // This prevents the worker from blocking forever.
+                        let data = unsafe { data.cast::<CallData>().as_ref().unwrap() };
+                        let response_tx = unsafe { &*data.response_tx_ptr };
+
+                        // Send error response - ignore send errors since we're about to unwind anyway
+                        let _ = response_tx.send(Err("R error occurred".to_string()));
+
+                        // Now trigger a Rust panic so catch_unwind below can catch it
+                        // and we can properly continue R's unwind
+                        std::panic::panic_any(RErrorMarker);
+                    }
+                }
+
+                let response: MainThreadResponse = unsafe {
+                    let token = R_CONTINUATION_TOKEN.with(|x| **x);
+
+                    let data = Box::into_raw(Box::new(CallData {
+                        work: Some(work),
+                        result: None,
+                        panic_payload: None,
+                        response_tx_ptr: std::ptr::from_ref(&response_tx),
+                    }));
+
+                    let panic_result = catch_unwind(AssertUnwindSafe(|| {
+                        ffi::R_UnwindProtect_C_unwind(
+                            Some(trampoline),
+                            data.cast(),
+                            Some(cleanup_handler),
+                            data.cast(), // Pass data to cleanup handler too
+                            token,
+                        )
+                    }));
+
+                    let mut data = Box::from_raw(data);
+
+                    match panic_result {
+                        Ok(_) => {
+                            // Check if trampoline caught a panic
+                            if let Some(payload) = data.panic_payload.take() {
+                                Err(panic_payload_to_string(&payload))
+                            } else {
+                                // Normal completion - return the result
+                                Ok(data
+                                    .result
+                                    .take()
+                                    .expect("result not set after successful completion"))
+                            }
+                        }
+                        Err(payload) => {
+                            // Check if this was an R error (cleanup handler already sent response)
+                            if payload.downcast_ref::<RErrorMarker>().is_some() {
+                                // R error - drop data before continuing R's unwind
+                                drop(data);
+                                // Response was already sent in cleanup handler
+                                ffi::R_ContinueUnwind(token);
+                            }
+                            // Rust panic - return as error response
+                            Err(panic_payload_to_string(&payload))
+                        }
+                    }
+                };
+
                 response_tx
                     .send(response)
                     .expect("worker response channel closed");
@@ -219,112 +318,6 @@ where
                         .expect("type mismatch in run_on_worker result"),
                     Err(msg) => panic_message_to_r_error(msg),
                 };
-            }
-        }
-    }
-}
-
-/// Marker type for R errors caught by R_UnwindProtect's cleanup handler.
-struct RErrorMarker;
-
-thread_local! {
-    static R_CONTINUATION_TOKEN: std::cell::LazyCell<SEXP> = std::cell::LazyCell::new(|| unsafe {
-        let token = ffi::R_MakeUnwindCont();
-        ffi::R_PreserveObject(token);
-        token
-    });
-}
-
-/// Execute work with R_UnwindProtect to catch both panics and R errors.
-/// Returns the response for normal completion or panic.
-/// On R errors, drops resources and continues R unwind (never returns).
-fn execute_work_with_unwind_protect(
-    work: MainThreadWork,
-    response_tx: &SyncSender<MainThreadResponse>,
-) -> MainThreadResponse {
-    struct CallData {
-        work: Option<MainThreadWork>,
-        result: Option<Box<dyn Any + Send>>,
-        panic_payload: Option<Box<dyn Any + Send>>,
-        response_tx_ptr: *const SyncSender<MainThreadResponse>,
-    }
-
-    unsafe extern "C-unwind" fn trampoline(data: *mut std::ffi::c_void) -> SEXP {
-        let data = unsafe { data.cast::<CallData>().as_mut().unwrap() };
-        let work = data.work.take().expect("trampoline: work already consumed");
-
-        match catch_unwind(AssertUnwindSafe(work)) {
-            Ok(result) => {
-                data.result = Some(result);
-                unsafe { ffi::R_NilValue }
-            }
-            Err(payload) => {
-                data.panic_payload = Some(payload);
-                unsafe { ffi::R_NilValue }
-            }
-        }
-    }
-
-    unsafe extern "C-unwind" fn cleanup_handler(data: *mut std::ffi::c_void, jump: Rboolean) {
-        if jump != Rboolean::FALSE {
-            // R is about to longjmp - send an error response to the worker first!
-            // This prevents the worker from blocking forever.
-            let data = unsafe { data.cast::<CallData>().as_ref().unwrap() };
-            let response_tx = unsafe { &*data.response_tx_ptr };
-
-            // Send error response - ignore send errors since we're about to unwind anyway
-            let _ = response_tx.send(Err("R error occurred".to_string()));
-
-            // Now trigger a Rust panic so catch_unwind below can catch it
-            // and we can properly continue R's unwind
-            std::panic::panic_any(RErrorMarker);
-        }
-    }
-
-    unsafe {
-        let token = R_CONTINUATION_TOKEN.with(|x| **x);
-
-        let data = Box::into_raw(Box::new(CallData {
-            work: Some(work),
-            result: None,
-            panic_payload: None,
-            response_tx_ptr: std::ptr::from_ref(response_tx),
-        }));
-
-        let panic_result = catch_unwind(AssertUnwindSafe(|| {
-            ffi::R_UnwindProtect_C_unwind(
-                Some(trampoline),
-                data.cast(),
-                Some(cleanup_handler),
-                data.cast(), // Pass data to cleanup handler too
-                token,
-            )
-        }));
-
-        let mut data = Box::from_raw(data);
-
-        match panic_result {
-            Ok(_) => {
-                // Check if trampoline caught a panic
-                if let Some(payload) = data.panic_payload.take() {
-                    return Err(panic_payload_to_string(&payload));
-                }
-                // Normal completion - return the result
-                Ok(data
-                    .result
-                    .take()
-                    .expect("result not set after successful completion"))
-            }
-            Err(payload) => {
-                // Check if this was an R error (cleanup handler already sent response)
-                if payload.downcast_ref::<RErrorMarker>().is_some() {
-                    // R error - drop data before continuing R's unwind
-                    drop(data);
-                    // Response was already sent in cleanup handler
-                    ffi::R_ContinueUnwind(token);
-                }
-                // Rust panic - return as error response
-                Err(panic_payload_to_string(&payload))
             }
         }
     }
