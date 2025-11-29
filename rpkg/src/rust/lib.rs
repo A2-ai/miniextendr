@@ -256,9 +256,11 @@ extern "C-unwind" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
 #[unsafe(no_mangle)]
 extern "C-unwind" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
     // Use checked Rf_error - will panic with clear message about wrong thread
-    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr()) })
-        .join()
-        .unwrap();
+    std::thread::spawn(|| unsafe {
+        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr())
+    })
+    .join()
+    .unwrap();
     unsafe { miniextendr_api::ffi::R_NilValue }
 }
 
@@ -400,7 +402,10 @@ fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::
 }
 
 #[miniextendr]
-fn test_logical_and(a: miniextendr_api::ffi::Rboolean, b: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+fn test_logical_and(
+    a: miniextendr_api::ffi::Rboolean,
+    b: miniextendr_api::ffi::Rboolean,
+) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
     match (a, b) {
         (Rboolean::TRUE, Rboolean::TRUE) => Rboolean::TRUE,
@@ -453,7 +458,11 @@ fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
 
 #[miniextendr]
 fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
-    if x.is_empty() { 0.0 } else { x.iter().sum::<f64>() / x.len() as f64 }
+    if x.is_empty() {
+        0.0
+    } else {
+        x.iter().sum::<f64>() / x.len() as f64
+    }
 }
 
 // Slice tests - u8 (raw)
@@ -474,15 +483,27 @@ fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::Rboolean]) -> i32 {
 }
 
 #[miniextendr]
-fn test_logical_slice_any_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> miniextendr_api::ffi::Rboolean {
+fn test_logical_slice_any_true(
+    x: &'static [miniextendr_api::ffi::Rboolean],
+) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.iter().any(|&b| b == Rboolean::TRUE) { Rboolean::TRUE } else { Rboolean::FALSE }
+    if x.iter().any(|&b| b == Rboolean::TRUE) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
 }
 
 #[miniextendr]
-fn test_logical_slice_all_true(x: &'static [miniextendr_api::ffi::Rboolean]) -> miniextendr_api::ffi::Rboolean {
+fn test_logical_slice_all_true(
+    x: &'static [miniextendr_api::ffi::Rboolean],
+) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.iter().all(|&b| b == Rboolean::TRUE) { Rboolean::TRUE } else { Rboolean::FALSE }
+    if x.iter().all(|&b| b == Rboolean::TRUE) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
 }
 
 // endregion
@@ -494,7 +515,7 @@ mod altrep;
 // region: proc-macro ALTREP test
 // This tests the #[miniextendr] on struct path for custom ALTREP classes.
 
-use miniextendr_api::altrep_traits::{Altrep, AltVec, AltInteger};
+use miniextendr_api::altrep_traits::{AltInteger, AltVec, Altrep};
 use miniextendr_api::ffi::R_xlen_t;
 
 /// A simple custom ALTREP integer class: always returns the constant 42.
@@ -515,8 +536,8 @@ impl AltVec for ConstantIntClass {
     const HAS_DATAPTR_OR_NULL: bool = true;
     fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
         use miniextendr_api::ffi::{
-            R_altrep_data2, R_set_altrep_data2, R_NilValue, Rf_allocVector, Rf_protect,
-            Rf_unprotect, INTEGER, SEXPTYPE,
+            INTEGER, R_NilValue, R_altrep_data2, R_set_altrep_data2, Rf_allocVector, Rf_protect,
+            Rf_unprotect, SEXPTYPE,
         };
         // Materialize the data if not already expanded
         unsafe {
@@ -538,7 +559,7 @@ impl AltVec for ConstantIntClass {
         }
     }
     fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
-        use miniextendr_api::ffi::{R_altrep_data2, R_NilValue, INTEGER};
+        use miniextendr_api::ffi::{INTEGER, R_NilValue, R_altrep_data2};
         unsafe {
             let expanded = R_altrep_data2(x);
             if expanded == R_NilValue {
@@ -563,8 +584,8 @@ impl AltInteger for ConstantIntClass {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
-    use miniextendr_api::ffi::altrep::R_new_altrep;
     use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
     // Get the (already registered) class and create an instance
     let cls = ConstantIntClass::get_or_init_class();
     unsafe { R_new_altrep(cls, R_NilValue, R_NilValue) }

@@ -20,10 +20,9 @@ use std::pin::Pin;
 use std::ptr::{self, NonNull};
 
 use crate::ffi::{
-    Rboolean, Rf_allocVector, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength,
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
-    R_MakeExternalPtr, R_NilValue, R_RegisterCFinalizerEx, R_SetExternalPtrAddr,
-    R_SetExternalPtrProtected, R_SetExternalPtrTag, RAW, SET_VECTOR_ELT, SEXP, SEXPTYPE, TYPEOF,
+    R_MakeExternalPtr, R_NilValue, R_RegisterCFinalizerEx, RAW, Rboolean, Rf_allocVector,
+    Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, SET_VECTOR_ELT, SEXP, SEXPTYPE, TYPEOF,
     VECTOR_ELT,
 };
 
@@ -67,7 +66,7 @@ unsafe impl Sync for StableTypeId {}
 impl StableTypeId {
     /// Create a new StableTypeId for type T
     #[inline]
-    pub const fn of<T: ?Sized + 'static>() -> Self {
+    pub fn of<T: ?Sized + 'static>() -> Self {
         let name = std::any::type_name::<T>();
         Self {
             hash: const_hash_str(name),
@@ -94,10 +93,10 @@ impl StableTypeId {
     ///
     /// The returned SEXP must be protected by the caller if needed.
     #[inline]
-    unsafe fn to_rawsxp(&self) -> SEXP {
+    unsafe fn to_rawsxp(self) -> SEXP {
         let size = mem::size_of::<Self>();
-        let raw = Rf_allocVector(SEXPTYPE::RAWSXP, size as isize);
-        ptr::copy_nonoverlapping(self as *const Self as *const u8, RAW(raw), size);
+        let raw = unsafe { Rf_allocVector(SEXPTYPE::RAWSXP, size as isize) };
+        unsafe { ptr::copy_nonoverlapping(std::ptr::from_ref(&self).cast(), RAW(raw), size) };
         raw
     }
 
@@ -107,23 +106,23 @@ impl StableTypeId {
     /// - The SEXP is not a RAWSXP
     /// - The RAWSXP is not the correct size
     #[inline]
-    unsafe fn from_rawsxp(sexp: SEXP) -> Option<Self> {
-        if sexp.is_null() || sexp == R_NilValue {
+    fn from_rawsxp(sexp: SEXP) -> Option<Self> {
+        if sexp.is_null() || sexp == unsafe { R_NilValue } {
             return None;
         }
 
-        if TYPEOF(sexp) != SEXPTYPE::RAWSXP {
+        if unsafe { TYPEOF(sexp) } != SEXPTYPE::RAWSXP {
             return None;
         }
 
         let expected_size = mem::size_of::<Self>();
-        if Rf_xlength(sexp) as usize != expected_size {
+        if unsafe { Rf_xlength(sexp) } as usize != expected_size {
             return None;
         }
 
         let mut result = MaybeUninit::<Self>::uninit();
-        ptr::copy_nonoverlapping(RAW(sexp), result.as_mut_ptr() as *mut u8, expected_size);
-        Some(result.assume_init())
+        unsafe { ptr::copy_nonoverlapping(RAW(sexp), result.as_mut_ptr().cast(), expected_size) };
+        Some(unsafe { result.assume_init() })
     }
 }
 
@@ -308,32 +307,35 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Equivalent to `Box::from_raw`.
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
-        debug_assert!(!raw.is_null(), "ExternalPtr::from_raw received null pointer");
+        debug_assert!(
+            !raw.is_null(),
+            "ExternalPtr::from_raw received null pointer"
+        );
 
         // Create the tag symbol for human-readable type identification
-        let tag = Rf_install(T::TYPE_NAME_CSTR.as_ptr() as *const std::ffi::c_char);
+        let tag = unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) };
 
         // Create the prot VECSXP: [type_id_rawsxp, user_protected]
-        let prot = Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN);
-        Rf_protect(prot);
+        let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        unsafe { Rf_protect(prot) };
 
         // Create a RAWSXP containing the StableTypeId for fast type checking
         let type_id = T::TYPE_ID;
-        let type_id_raw = type_id.to_rawsxp();
-        Rf_protect(type_id_raw);
+        let type_id_raw = unsafe { type_id.to_rawsxp() };
+        unsafe { Rf_protect(type_id_raw) };
 
         // Store type ID in slot 0
-        SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_raw);
+        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_raw) };
         // Slot 1 (user protected) starts as R_NilValue (already default)
 
         // Create the external pointer with tag and prot
-        let sexp = R_MakeExternalPtr(raw as *mut std::ffi::c_void, tag, prot);
-        Rf_protect(sexp);
+        let sexp = unsafe { R_MakeExternalPtr(raw.cast(), tag, prot) };
+        unsafe { Rf_protect(sexp) };
 
         // Register the C finalizer that will call drop
-        R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE);
+        unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
 
-        Rf_unprotect(3);
+        unsafe { Rf_unprotect(3) };
 
         Self {
             sexp,
@@ -350,7 +352,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Equivalent to `Box::into_raw`.
     #[inline]
     pub fn into_raw(this: Self) -> *mut T {
-        let ptr = unsafe { R_ExternalPtrAddr(this.sexp) as *mut T };
+        let ptr = unsafe { R_ExternalPtrAddr(this.sexp).cast() };
 
         // Clear the external pointer so the finalizer becomes a no-op
         unsafe { R_ClearExternalPtr(this.sexp) };
@@ -401,7 +403,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe {
             let layout = Layout::new::<T>();
             if layout.size() > 0 {
-                std::alloc::dealloc(ptr as *mut u8, layout);
+                std::alloc::dealloc(ptr.cast(), layout);
             }
         }
 
@@ -441,8 +443,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Since `ExternalPtr` implements `DerefMut`, using this with `!Unpin`
     /// types requires careful handling to avoid moving the inner value.
     #[inline]
-    pub unsafe fn pin_unchecked(x: T) -> Pin<Self> {
-        Pin::new_unchecked(Self::new(x))
+    pub fn pin_unchecked(x: T) -> Pin<Self> {
+        unsafe { Pin::new_unchecked(Self::new(x)) }
     }
 
     /// Converts a `ExternalPtr<T>` into a `Pin<ExternalPtr<T>>`.
@@ -463,26 +465,26 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
     /// Returns a reference to the underlying value.
     #[inline]
-    pub fn as_ref(this: &Self) -> &T {
-        unsafe { &*(R_ExternalPtrAddr(this.sexp) as *const T) }
+    pub fn as_ref(&self) -> Option<&T> {
+        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_ref() }
     }
 
     /// Returns a mutable reference to the underlying value.
     #[inline]
-    pub fn as_mut(this: &mut Self) -> &mut T {
-        unsafe { &mut *(R_ExternalPtrAddr(this.sexp) as *mut T) }
+    pub fn as_mut(&mut self) -> Option<&mut T> {
+        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_mut() }
     }
 
     /// Returns the raw pointer without consuming the ExternalPtr.
     #[inline]
-    pub fn as_ptr(this: &Self) -> *const T {
-        unsafe { R_ExternalPtrAddr(this.sexp) as *const T }
+    pub fn as_ptr(&self) -> *const T {
+        unsafe { R_ExternalPtrAddr(self.sexp).cast() }
     }
 
     /// Returns the raw mutable pointer without consuming the ExternalPtr.
     #[inline]
-    pub fn as_mut_ptr(this: &mut Self) -> *mut T {
-        unsafe { R_ExternalPtrAddr(this.sexp) as *mut T }
+    pub fn as_mut_ptr(&mut self) -> *mut T {
+        unsafe { R_ExternalPtrAddr(self.sexp).cast() }
     }
 
     // =========================================================================
@@ -531,7 +533,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Returns `false` if the prot structure is malformed (should not happen
     /// for ExternalPtrs created by this library).
     #[inline]
-    pub fn set_protected(&self, user_prot: SEXP) -> bool {
+    pub unsafe fn set_protected(&self, user_prot: SEXP) -> bool {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
             if prot.is_null() || prot == R_NilValue {
@@ -581,22 +583,23 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure no other ExternalPtr owns this SEXP
     pub unsafe fn try_from_sexp(sexp: SEXP) -> Option<Self> {
         // Check if pointer is null
-        let ptr = R_ExternalPtrAddr(sexp);
+        let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
             return None;
         }
 
         // Extract prot VECSXP
-        let prot = R_ExternalPtrProtected(sexp);
-        if prot.is_null() || prot == R_NilValue {
+        let prot = unsafe { R_ExternalPtrProtected(sexp) };
+        if prot.is_null() || prot == unsafe { R_NilValue } {
             return None;
         }
-        if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+        if unsafe { TYPEOF(prot) } != SEXPTYPE::VECSXP || unsafe { Rf_xlength(prot) } < PROT_VEC_LEN
+        {
             return None;
         }
 
         // Extract StableTypeId RAWSXP from slot 0
-        let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+        let type_id_raw = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
         let stored_type_id = StableTypeId::from_rawsxp(type_id_raw)?;
 
         // Compare with expected type
@@ -618,22 +621,23 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Same as `try_from_sexp`.
     pub unsafe fn try_from_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
         // Check if pointer is null
-        let ptr = R_ExternalPtrAddr(sexp);
+        let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
             return Err(TypeMismatchError::NullPointer);
         }
 
         // Extract prot VECSXP
-        let prot = R_ExternalPtrProtected(sexp);
-        if prot.is_null() || prot == R_NilValue {
+        let prot = unsafe { R_ExternalPtrProtected(sexp) };
+        if prot.is_null() || prot == unsafe { R_NilValue } {
             return Err(TypeMismatchError::InvalidTypeId);
         }
-        if TYPEOF(prot) != SEXPTYPE::VECSXP || Rf_xlength(prot) < PROT_VEC_LEN {
+        if unsafe { TYPEOF(prot) } != SEXPTYPE::VECSXP || unsafe { Rf_xlength(prot) } < PROT_VEC_LEN
+        {
             return Err(TypeMismatchError::InvalidTypeId);
         }
 
         // Extract StableTypeId RAWSXP from slot 0
-        let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+        let type_id_raw = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
         let stored_type_id = match StableTypeId::from_rawsxp(type_id_raw) {
             Some(id) => id,
             None => return Err(TypeMismatchError::InvalidTypeId),
@@ -729,7 +733,11 @@ impl fmt::Display for TypeMismatchError {
             Self::NullPointer => write!(f, "external pointer is null"),
             Self::InvalidTypeId => write!(f, "external pointer has no valid type id"),
             Self::Mismatch { expected, found } => {
-                write!(f, "type mismatch: expected `{}`, found `{}`", expected, found)
+                write!(
+                    f,
+                    "type mismatch: expected `{}`, found `{}`",
+                    expected, found
+                )
             }
         }
     }
@@ -766,12 +774,12 @@ where
     ///
     /// Equivalent to `Box::assume_init`.
     #[inline]
-    pub unsafe fn assume_init(self) -> ExternalPtr<T> {
+    pub fn assume_init(self) -> ExternalPtr<T> {
         // Get the raw pointer (this clears the original SEXP, making its finalizer a no-op)
-        let ptr = Self::into_raw(self) as *mut T;
+        let ptr = Self::into_raw(self).cast();
 
         // Create a new ExternalPtr with T's type info
-        ExternalPtr::from_raw(ptr)
+        unsafe { ExternalPtr::from_raw(ptr) }
     }
 
     /// Writes a value and converts to initialized.
@@ -873,7 +881,7 @@ impl ErasedExternalPtr {
     ///
     /// Returns `false` if the prot structure is malformed.
     #[inline]
-    pub fn set_protected(&self, user_prot: SEXP) -> bool {
+    pub unsafe fn set_protected(&self, user_prot: SEXP) -> bool {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
             if prot.is_null() || prot == R_NilValue {
@@ -900,7 +908,6 @@ impl ErasedExternalPtr {
     pub fn downcast<T: TypedExternal>(self) -> Result<ExternalPtr<T>, Self> {
         if self.is::<T>() {
             let sexp = self.sexp;
-            mem::forget(self); // Prevent any future Drop from running
             Ok(ExternalPtr {
                 sexp,
                 _marker: PhantomData,
@@ -916,12 +923,8 @@ impl ErasedExternalPtr {
     pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
         if self.is::<T>() {
             unsafe {
-                let ptr = R_ExternalPtrAddr(self.sexp) as *const T;
-                if ptr.is_null() {
-                    None
-                } else {
-                    Some(&*ptr)
-                }
+                let ptr = R_ExternalPtrAddr(self.sexp).cast::<T>();
+                if ptr.is_null() { None } else { Some(&*ptr) }
             }
         } else {
             None
@@ -933,12 +936,8 @@ impl ErasedExternalPtr {
     pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
         if self.is::<T>() {
             unsafe {
-                let ptr = R_ExternalPtrAddr(self.sexp) as *mut T;
-                if ptr.is_null() {
-                    None
-                } else {
-                    Some(&mut *ptr)
-                }
+                let ptr = R_ExternalPtrAddr(self.sexp).cast::<T>();
+                if ptr.is_null() { None } else { Some(&mut *ptr) }
             }
         } else {
             None
@@ -955,42 +954,42 @@ impl<T: TypedExternal> Deref for ExternalPtr<T> {
 
     #[inline]
     fn deref(&self) -> &T {
-        Self::as_ref(self)
+        Self::as_ref(self).unwrap()
     }
 }
 
 impl<T: TypedExternal> DerefMut for ExternalPtr<T> {
     #[inline]
     fn deref_mut(&mut self) -> &mut T {
-        Self::as_mut(self)
+        Self::as_mut(self).unwrap()
     }
 }
 
 impl<T: TypedExternal> AsRef<T> for ExternalPtr<T> {
     #[inline]
     fn as_ref(&self) -> &T {
-        Self::as_ref(self)
+        Self::as_ref(self).unwrap()
     }
 }
 
 impl<T: TypedExternal> AsMut<T> for ExternalPtr<T> {
     #[inline]
     fn as_mut(&mut self) -> &mut T {
-        Self::as_mut(self)
+        Self::as_mut(self).unwrap()
     }
 }
 
 impl<T: TypedExternal> std::borrow::Borrow<T> for ExternalPtr<T> {
     #[inline]
     fn borrow(&self) -> &T {
-        Self::as_ref(self)
+        Self::as_ref(self).unwrap()
     }
 }
 
 impl<T: TypedExternal> std::borrow::BorrowMut<T> for ExternalPtr<T> {
     #[inline]
     fn borrow_mut(&mut self) -> &mut T {
-        Self::as_mut(self)
+        Self::as_mut(self).unwrap()
     }
 }
 
@@ -1150,8 +1149,15 @@ impl<T: TypedExternal> Drop for ExternalPtr<T> {
 ///
 /// This function is registered with R_RegisterCFinalizerEx and called when
 /// the EXTPTRSXP is garbage collected.
-unsafe extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
-    let ptr = R_ExternalPtrAddr(sexp) as *mut T;
+extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
+    if sexp.is_null() {
+        return;
+    }
+    if std::ptr::addr_eq(sexp, unsafe { R_NilValue }) {
+        return;
+    }
+
+    let ptr = unsafe { R_ExternalPtrAddr(sexp).cast::<T>() };
 
     // Guard against double-finalization
     if ptr.is_null() {
@@ -1159,10 +1165,10 @@ unsafe extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
     }
 
     // Clear the external pointer first (prevents double-free if called again)
-    R_ClearExternalPtr(sexp);
+    unsafe { R_ClearExternalPtr(sexp) };
 
     // Reconstruct the Box and let it drop
-    drop(Box::from_raw(ptr));
+    drop(unsafe { Box::from_raw(ptr) });
 }
 
 // =============================================================================
@@ -1203,7 +1209,7 @@ impl<T: 'static> ExternalSlice<T> {
     /// Create from a boxed slice (capacity == len).
     pub fn from_boxed(boxed: Box<[T]>) -> Self {
         let len = boxed.len();
-        let ptr = Box::into_raw(boxed) as *mut T;
+        let ptr = Box::into_raw(boxed).cast();
         Self {
             ptr: unsafe { NonNull::new_unchecked(ptr) },
             len,

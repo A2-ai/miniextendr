@@ -1,6 +1,8 @@
 //! Standard ALTREP backends (Vec/Arc/Slice/Mmap/Owned) split out for clarity.
 
-use crate::altrep::{IntBackend, ListBackend, LogicalBackend, RawBackend, RealBackend, StringBackend};
+use crate::altrep::{
+    IntBackend, ListBackend, LogicalBackend, RawBackend, RealBackend, StringBackend,
+};
 use crate::ffi::{
     DATAPTR_RO, LOGICAL_OR_NULL, R_NaString, R_xlen_t, Rbyte, Rf_translateCharUTF8, Rf_xlength,
     SEXP, STRING_ELT, VECTOR_ELT,
@@ -80,7 +82,9 @@ impl IntBackend for CompactIntSeq {
             return None;
         }
         // New compact sequence: start_new = start + index * step
-        let new_start = self.start.wrapping_add(self.step.wrapping_mul(start as i32));
+        let new_start = self
+            .start
+            .wrapping_add(self.step.wrapping_mul(start as i32));
         Some(Box::new(CompactIntSeq::new(count, new_start, self.step)))
     }
 }
@@ -95,7 +99,7 @@ impl OwnedReal {
     /// of the copy. Must be called on the R thread with R initialized.
     pub unsafe fn from_reals_sexp(x: SEXP) -> Self {
         let n = unsafe { crate::ffi::Rf_xlength(x) } as usize;
-        let ptr = unsafe { DATAPTR_RO(x) as *const f64 };
+        let ptr = unsafe { DATAPTR_RO(x).cast() };
         let slice = unsafe { slice::from_raw_parts(ptr, n) };
         Self {
             data: slice.to_vec().into_boxed_slice(),
@@ -826,7 +830,7 @@ impl OwnedRaw {
     pub unsafe fn from_raw_sexp(x: SEXP) -> Self {
         unsafe {
             let n = Rf_xlength(x) as usize;
-            let ptr = DATAPTR_RO(x) as *const Rbyte;
+            let ptr = DATAPTR_RO(x).cast();
             let data = slice::from_raw_parts(ptr, n).to_vec().into_boxed_slice();
             Self { data }
         }

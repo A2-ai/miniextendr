@@ -91,8 +91,7 @@ pub fn miniextendr(
             if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
                 let synthetic_name = format!("__unused{}", unused_counter);
                 unused_counter += 1;
-                let synthetic_ident =
-                    syn::Ident::new(&synthetic_name, pat_type.pat.span());
+                let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
                 pat_type.pat = Box::new(syn::Pat::Ident(syn::PatIdent {
                     attrs: vec![],
                     by_ref: None,
@@ -115,7 +114,10 @@ pub fn miniextendr(
             } else {
                 // Pattern match on dots that isn't a simple ident (e.g., `(a, b): ...`)
                 // This is not supported in R's ... semantics
-                panic!("variadic pattern must be a simple identifier, got: {:?}", named_dots.0);
+                panic!(
+                    "variadic pattern must be a simple identifier, got: {:?}",
+                    named_dots.0
+                );
             }
         } else {
             // unnamed dots
