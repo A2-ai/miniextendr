@@ -2102,10 +2102,9 @@ done
 
 
 VENDOR_OUT="$abs_top_srcdir/inst/vendor"
-SYNC1="--sync=$abs_rpkg_src/rust/Cargo.toml"
-SYNC2="--sync=$VENDOR_OUT/miniextendr-api/Cargo.toml"
-SYNC3="--sync=$VENDOR_OUT/miniextendr-macros/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3"
+SYNC1="--sync=$root_miniextendr_repo/miniextendr-api/Cargo.toml"
+SYNC2="--sync=$root_miniextendr_repo/miniextendr-macros/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2"
 
 
 
@@ -3268,11 +3267,4 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
 printf "%s\n" "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
 
-
-if test -d "$ROOT_MINIEXTENDR_REPO/.git"; then
-  mkdir -p "$ROOT_MINIEXTENDR_REPO/.cargo" \
-    || as_fn_error $? "cannot mkdir $ROOT_MINIEXTENDR_REPO/.cargo" "$LINENO" 5
-  cp "$ABS_RPKG_SRCDIR/rust/.cargo/config.toml" \
-    "$ROOT_MINIEXTENDR_REPO/.cargo/config.toml"
-fi
 

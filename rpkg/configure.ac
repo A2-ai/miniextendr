@@ -130,10 +130,10 @@ AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- vendoring (in inst/vendor for self-contained builds) ----
 VENDOR_OUT="$abs_top_srcdir/inst/vendor"
-SYNC1="--sync=$abs_rpkg_src/rust/Cargo.toml"
-SYNC2="--sync=$VENDOR_OUT/miniextendr-api/Cargo.toml"
-SYNC3="--sync=$VENDOR_OUT/miniextendr-macros/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2 $SYNC3"
+dnl Only sync workspace crates (not rpkg - it has circular vendor path refs)
+SYNC1="--sync=$root_miniextendr_repo/miniextendr-api/Cargo.toml"
+SYNC2="--sync=$root_miniextendr_repo/miniextendr-macros/Cargo.toml"
+VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2"
 AC_SUBST([VENDOR_SYNC_FLAGS])
 AC_SUBST([VENDOR_OUT])
 
@@ -149,11 +149,3 @@ dnl Also install a copy at top-level .cargo for dev ergonomics
 dnl this is specific to miniextendr repository
 
 AC_OUTPUT
-
-dnl Keep root .cargo in sync when running configure inside the repo.
-if test -d "$ROOT_MINIEXTENDR_REPO/.git"; then
-  mkdir -p "$ROOT_MINIEXTENDR_REPO/.cargo" \
-    || AC_MSG_ERROR([cannot mkdir $ROOT_MINIEXTENDR_REPO/.cargo])
-  cp "$ABS_RPKG_SRCDIR/rust/.cargo/config.toml" \
-    "$ROOT_MINIEXTENDR_REPO/.cargo/config.toml"
-fi

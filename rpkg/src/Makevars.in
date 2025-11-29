@@ -42,7 +42,18 @@ $(SHLIB): vendor $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 vendor: $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 	if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-	  $(CARGO) $(RUST_TOOLCHAIN) vendor --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
+	  $(CARGO) $(RUST_TOOLCHAIN) vendor $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
+	  rm -rf $(VENDOR_OUT)/miniextendr-api $(VENDOR_OUT)/miniextendr-macros; \
+	  cp -r $(ROOT_MINIEXTENDR_REPO)/miniextendr-api $(VENDOR_OUT)/; \
+	  cp -r $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros $(VENDOR_OUT)/; \
+	  sed -i '' \
+	    -e 's/edition\.workspace = true/edition = "2024"/' \
+	    -e 's/version\.workspace = true/version = "0.1.0"/' \
+	    $(VENDOR_OUT)/miniextendr-api/Cargo.toml; \
+	  sed -i '' \
+	    -e 's/edition\.workspace = true/edition = "2024"/' \
+	    -e 's/version\.workspace = true/version = "0.1.0"/' \
+	    $(VENDOR_OUT)/miniextendr-macros/Cargo.toml; \
 	fi
 
 $(ABS_RPKG_SRCDIR)/rust/Cargo.lock: vendor

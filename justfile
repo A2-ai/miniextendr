@@ -79,11 +79,11 @@ expand *cargo_flags:
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-# Run rebuild `./configure` and run it for `{rpkg}`
-configure:
+# Vendor rpkg deps and run ./configure
+configure: vendor-rpkg
     cd rpkg && autoconf && ./configure
 
-# Vendor dependencies
+# Vendor dependencies (workspace-level)
 alias cargo-vendor := vendor
 vendor:
     cargo vendor \
@@ -92,6 +92,28 @@ vendor:
         --sync=miniextendr-macros/Cargo.toml \
         --sync=rpkg/src/rust/Cargo.toml \
         vendor
+
+# Vendor dependencies for rpkg (into inst/vendor)
+# Also copies local workspace crates since cargo vendor only handles crates.io deps
+# Patches Cargo.toml to remove workspace inheritance (not available when vendored)
+vendor-rpkg:
+    cargo vendor \
+        --sync=miniextendr-api/Cargo.toml \
+        --sync=miniextendr-macros/Cargo.toml \
+        rpkg/inst/vendor
+    rm -rf rpkg/inst/vendor/miniextendr-api rpkg/inst/vendor/miniextendr-macros
+    cp -r miniextendr-api rpkg/inst/vendor/
+    cp -r miniextendr-macros rpkg/inst/vendor/
+    @# Patch miniextendr-api Cargo.toml - remove workspace inheritance
+    sed -i '' \
+        -e 's/edition\.workspace = true/edition = "2024"/' \
+        -e 's/version\.workspace = true/version = "0.1.0"/' \
+        rpkg/inst/vendor/miniextendr-api/Cargo.toml
+    @# Patch miniextendr-macros Cargo.toml - remove workspace inheritance
+    sed -i '' \
+        -e 's/edition\.workspace = true/edition = "2024"/' \
+        -e 's/version\.workspace = true/version = "0.1.0"/' \
+        rpkg/inst/vendor/miniextendr-macros/Cargo.toml
 
 # Load and test rpkg with devtools
 devtools-test FILTER="":
