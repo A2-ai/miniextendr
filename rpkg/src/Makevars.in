@@ -47,31 +47,40 @@ all: $(SHLIB)
 
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
-# Run cargo vendor when lockfile doesn't exist (dev mode only)
-# Note: miniextendr crates are synced by configure, not here
-vendor_deps:
+vendor: $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+	@$(ECHO) "Vendoring started"
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-	  if [ ! -f "$(CARGO_LOCK)" ]; then \
-	    echo "Generating Cargo.lock and vendoring dependencies..."; \
-	    env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	    $(CARGO) $(RUST_TOOLCHAIN) vendor --quiet \
-	      --manifest-path $(CARGO_TOML) $(VENDOR_OUT); \
-	  fi; \
+	  env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	  $(CARGO) $(RUST_TOOLCHAIN) vendor --quiet $(VENDOR_SYNC_FLAGS) $(VENDOR_OUT); \
+	  rm -rf $(VENDOR_OUT)/miniextendr-api $(VENDOR_OUT)/miniextendr-macros; \
+	  cp -r $(ROOT_MINIEXTENDR_REPO)/miniextendr-api $(VENDOR_OUT)/; \
+	  cp -r $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros $(VENDOR_OUT)/; \
+	  sed -i '' \
+	    -e 's/edition\.workspace = true/edition = "2024"/' \
+	    -e 's/version\.workspace = true/version = "0.1.0"/' \
+	    $(VENDOR_OUT)/miniextendr-api/Cargo.toml; \
+	  sed -i '' \
+	    -e 's/edition\.workspace = true/edition = "2024"/' \
+	    -e 's/version\.workspace = true/version = "0.1.0"/' \
+	    $(VENDOR_OUT)/miniextendr-macros/Cargo.toml; \
 	fi
 
-# Build the Rust static library
-$(CARGO_AR): vendor_deps $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
-	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --lib --profile $(CARGO_PROFILE) \
-	  --manifest-path $(CARGO_TOML) \
+$(ABS_RPKG_SRCDIR)/rust/Cargo.lock: vendor
+	@if [ "$(GENERATE_LOCKFILE)" = "yes" ]; then \
+	  env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	  $(CARGO) $(RUST_TOOLCHAIN) generate-lockfile --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml; \
+	fi
+	  
+$(CARGO_AR): $(ABS_RPKG_SRCDIR)/rust/Cargo.lock $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+	  env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	  $(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) --lib --profile $(CARGO_PROFILE) \
+	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
-	@# Touch Cargo.toml to force document binary rebuild with current features
-	@touch $(CARGO_TOML)
 	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --bin document --profile $(CARGO_PROFILE) \
-	  --manifest-path $(CARGO_TOML) \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) --bin document --profile $(CARGO_PROFILE) \
+	  --manifest-path $(ABS_RPKG_SRCDIR)/rust/Cargo.toml \
 	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)

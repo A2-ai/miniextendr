@@ -17,10 +17,5 @@ bench = false
 path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
-[features]
-default = []
-nonapi = ["miniextendr-api/nonapi"]
-connections = ["miniextendr-api/connections"]
-
 [dependencies]
-miniextendr-api = { path = "../vendor/miniextendr-api" }
+miniextendr-api = { workspace = true }

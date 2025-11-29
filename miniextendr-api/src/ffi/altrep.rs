@@ -110,6 +110,16 @@ pub type R_altcomplex_Elt_method_t =
 pub type R_altcomplex_Get_region_method_t = ::std::option::Option<
     unsafe extern "C-unwind" fn(sx: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut Rcomplex) -> R_xlen_t,
 >;
+pub type R_altcomplex_Elt_method_t =
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> Rcomplex>;
+pub type R_altcomplex_Get_region_method_t = ::std::option::Option<
+    unsafe extern "C-unwind" fn(
+        arg1: SEXP,
+        arg2: R_xlen_t,
+        arg3: R_xlen_t,
+        arg4: *mut Rcomplex,
+    ) -> R_xlen_t,
+>;
 pub type R_altstring_Elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(x: SEXP, i: R_xlen_t) -> SEXP>;
 pub type R_altstring_Set_elt_method_t =

@@ -748,7 +748,6 @@ unsafe extern "C-unwind" {
     #[doc(alias = "xlength")]
     #[doc(alias = "XLENGTH")]
     pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
-    #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
     #[doc(alias = "getCharCE")]
     pub fn Rf_getCharCE(x: SEXP) -> cetype_t;
@@ -857,18 +856,12 @@ unsafe extern "C-unwind" {
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
-    #[doc(alias = "ScalarComplex")]
-    pub fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
-    #[doc(alias = "ScalarInteger")]
-    pub fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
-    #[doc(alias = "ScalarLogical")]
-    pub fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
-    #[doc(alias = "ScalarRaw")]
-    pub fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
-    #[doc(alias = "ScalarReal")]
-    pub fn Rf_ScalarReal(x: f64) -> SEXP;
-    #[doc(alias = "ScalarString")]
-    pub fn Rf_ScalarString(x: SEXP) -> SEXP;
+    pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
+    pub fn Rf_ScalarInteger(arg1: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarLogical(arg1: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
+    pub fn Rf_ScalarReal(arg1: f64) -> SEXP;
+    pub fn Rf_ScalarString(arg1: SEXP) -> SEXP;
 
     // Rinternals.h
     /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.
@@ -1064,8 +1057,6 @@ unsafe extern "C-unwind" {
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
     pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
     pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
-
-    // Element-wise accessors (ALTREP-aware)
     pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
     pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
@@ -1073,74 +1064,23 @@ unsafe extern "C-unwind" {
     pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
     pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
-    pub fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
     pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
     pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
     pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
-    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
-
-    // endregion
-
-    // region: SEXP metadata accessors
-
-    /// Get the length of a SEXP as `int` (for short vectors < 2^31).
-    ///
-    /// For long vectors, use `Rf_xlength()` instead.
-    /// Returns 0 for R_NilValue.
-    pub fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
-
-    /// Get the length of a SEXP as `R_xlen_t` (supports long vectors).
-    ///
-    /// ALTREP-aware: will call ALTREP Length method if needed.
-    pub fn XLENGTH(x: SEXP) -> R_xlen_t;
-
-    /// Get the true length (allocated capacity) of a vector.
-    ///
-    /// May be larger than LENGTH for vectors with reserved space.
-    /// ALTREP-aware.
-    pub fn TRUELENGTH(x: SEXP) -> R_xlen_t;
-
-    /// Get the attributes pairlist of a SEXP.
-    ///
-    /// Returns R_NilValue if no attributes.
-    pub fn ATTRIB(x: SEXP) -> SEXP;
-
-    /// Set the attributes pairlist of a SEXP.
-    ///
-    /// # Safety
-    ///
-    /// `v` must be a pairlist or R_NilValue
-    pub fn SET_ATTRIB(x: SEXP, v: SEXP);
-
-    /// Check if SEXP has the "object" bit set (has a class).
-    ///
-    /// Returns non-zero if object has a class attribute.
-    pub fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
-
-    /// Set the "object" bit.
-    pub fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
-
-    /// Get the LEVELS field (for factors).
-    pub fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
-
-    /// Set the LEVELS field (for factors).
-    ///
-    /// Returns the value that was set.
-    pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
-
-    // endregion
-
-    // region: ALTREP support
+    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
 
     pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
     pub fn R_altrep_data1(x: SEXP) -> SEXP;
     pub fn R_altrep_data2(x: SEXP) -> SEXP;
     pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
-
-    /// Check if a SEXP is an ALTREP object (returns non-zero if true).
+    pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
+    pub fn REAL(x: SEXP) -> *mut f64;
+    pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
+    pub fn RAW(x: SEXP) -> *mut Rbyte;
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // endregion
