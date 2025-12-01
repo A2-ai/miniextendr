@@ -11,6 +11,7 @@
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
 
 use std::alloc::Layout;
+use std::any::TypeId;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -84,6 +85,11 @@ const PROT_TYPE_ID_INDEX: isize = 0;
 const PROT_USER_INDEX: isize = 1;
 /// Length of the `prot` list (`VECSXP`)
 const PROT_VEC_LEN: isize = 2;
+
+#[inline]
+fn is_type_erased<T: 'static>() -> bool {
+    TypeId::of::<T>() == TypeId::of::<()>()
+}
 
 /// A stable type identifier that works across different rustc versions.
 ///
@@ -283,6 +289,11 @@ macro_rules! impl_typed_external_with_tag {
             const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
         }
     };
+}
+
+impl TypedExternal for () {
+    const TYPE_NAME: &'static str = "()";
+    const TYPE_NAME_CSTR: &'static [u8] = b"()\0";
 }
 
 // =============================================================================
@@ -718,7 +729,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let stored_type_id = StableTypeId::from_rawsxp(type_id_raw)?;
 
         // Compare with expected type
-        if stored_type_id != T::TYPE_ID {
+        if !is_type_erased::<T>() && stored_type_id != T::TYPE_ID {
             return None;
         }
 
@@ -759,7 +770,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Compare with expected type
         let expected = T::TYPE_ID;
-        if stored_type_id != expected {
+        if !is_type_erased::<T>() && stored_type_id != expected {
             return Err(TypeMismatchError::Mismatch {
                 expected: expected.name(),
                 found: stored_type_id.name(),
@@ -814,6 +825,47 @@ impl<T: TypedExternal> ExternalPtr<T> {
             let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
             StableTypeId::from_rawsxp(type_id_raw)
         }
+    }
+}
+
+impl ExternalPtr<()> {
+    /// Create a type-erased ExternalPtr from an EXTPTRSXP without checking the stored StableTypeId.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid EXTPTRSXP
+    /// - Caller must ensure exclusive ownership semantics are upheld
+    #[inline]
+    pub unsafe fn from_sexp(sexp: SEXP) -> Self {
+        debug_assert!(sexp.type_of() == SEXPTYPE::EXTPTRSXP);
+        unsafe { Self::from_sexp_unchecked(sexp) }
+    }
+
+    /// Check whether the stored StableTypeId matches `T`.
+    #[inline]
+    pub fn is<T: TypedExternal>(&self) -> bool {
+        if self.is_null() {
+            return false;
+        }
+        matches!(self.stored_type_id(), Some(id) if id == T::TYPE_ID)
+    }
+
+    /// Downcast to an immutable reference of the stored type if it matches `T`.
+    #[inline]
+    pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
+        if !self.is::<T>() {
+            return None;
+        }
+        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_ref() }
+    }
+
+    /// Downcast to a mutable reference of the stored type if it matches `T`.
+    #[inline]
+    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
+        if !self.is::<T>() {
+            return None;
+        }
+        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_mut() }
     }
 }
 
@@ -909,160 +961,7 @@ where
         }
     }
 }
-
-// =============================================================================
-// Erased ExternalPtr (for downcasting)
-// =============================================================================
-
-/// A type-erased external pointer.
-///
-/// This is useful when you need to store external pointers of different types
-/// in a collection, or when interfacing with R where the type is not known
-/// at compile time.
-///
-/// # Thread Safety
-///
-/// Like `ExternalPtr`, this is `!Send` and `!Sync` because it wraps an R SEXP.
-pub struct ErasedExternalPtr {
-    sexp: SEXP,
-    /// Makes this type !Send and !Sync
-    _unsend: PhantomUnsend,
-}
-
-impl ErasedExternalPtr {
-    /// Create an erased pointer from any ExternalPtr.
-    #[inline]
-    pub fn new<T: TypedExternal>(ptr: ExternalPtr<T>) -> Self {
-        let sexp = ptr.sexp;
-        mem::forget(ptr); // Don't run ExternalPtr's drop
-        Self {
-            sexp,
-            _unsend: PhantomData,
-        }
-    }
-
-    /// Create from a raw SEXP.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be a valid EXTPTRSXP with a StableTypeId in prot.
-    #[inline]
-    pub unsafe fn from_sexp(sexp: SEXP) -> Self {
-        Self {
-            sexp,
-            _unsend: PhantomData,
-        }
-    }
-
-    /// Get the underlying SEXP.
-    #[inline]
-    pub fn as_sexp(&self) -> SEXP {
-        self.sexp
-    }
-
-    /// Get the stored type ID, if valid.
-    #[inline]
-    pub fn type_id(&self) -> Option<StableTypeId> {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return None;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return None;
-            }
-            let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
-            StableTypeId::from_rawsxp(type_id_raw)
-        }
-    }
-
-    /// Returns the user-protected SEXP slot.
-    #[inline]
-    pub fn protected(&self) -> SEXP {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return R_NilValue;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return R_NilValue;
-            }
-            VECTOR_ELT(prot, PROT_USER_INDEX)
-        }
-    }
-
-    /// Sets the user-protected SEXP slot.
-    ///
-    /// Returns `false` if the prot structure is malformed.
-    ///
-    /// # Safety
-    ///
-    /// - `user_prot` must be a valid SEXP or R_NilValue
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn set_protected(&self, user_prot: SEXP) -> bool {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return false;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return false;
-            }
-            SET_VECTOR_ELT(prot, PROT_USER_INDEX, user_prot);
-            true
-        }
-    }
-
-    /// Check if this pointer holds type T.
-    #[inline]
-    pub fn is<T: TypedExternal>(&self) -> bool {
-        self.type_id().map(|id| id == T::TYPE_ID).unwrap_or(false)
-    }
-
-    /// Attempt to downcast to a concrete ExternalPtr type.
-    ///
-    /// Returns `Err(self)` if the type doesn't match.
-    #[inline]
-    pub fn downcast<T: TypedExternal>(self) -> Result<ExternalPtr<T>, Self> {
-        if self.is::<T>() {
-            let sexp = self.sexp;
-            Ok(ExternalPtr {
-                sexp,
-                _marker: PhantomData,
-                _unsend: PhantomData,
-            })
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Attempt to get a reference to the inner value as type T.
-    #[inline]
-    pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            unsafe {
-                let ptr = R_ExternalPtrAddr(self.sexp).cast::<T>();
-                if ptr.is_null() { None } else { Some(&*ptr) }
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Attempt to get a mutable reference to the inner value as type T.
-    #[inline]
-    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            unsafe {
-                let ptr = R_ExternalPtrAddr(self.sexp).cast::<T>();
-                if ptr.is_null() { None } else { Some(&mut *ptr) }
-            }
-        } else {
-            None
-        }
-    }
-}
+pub type ErasedExternalPtr = ExternalPtr<()>;
 
 // =============================================================================
 // Trait Implementations
@@ -1440,10 +1339,6 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
         erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
     }
 }
-
-// =============================================================================
-// Tests
-// =============================================================================
 
 #[cfg(test)]
 mod tests {
