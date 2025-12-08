@@ -86,16 +86,6 @@ impl_te_generic!(<T> std::collections::BTreeSet<T>, "BTreeSet");
 // =============================================================================
 
 impl_te_generic!(<T> Box<T>, "Box");
-
-// Box<[T]> is a special case - it's a fat pointer (Sized) wrapping a DST.
-// Unlike Box<T> where T: Sized, Box<[T]> can store dynamically-sized slices.
-// This is useful for ALTREP when you want fixed-size heap allocation without
-// Vec's capacity overhead.
-impl<T: 'static> TypedExternal for Box<[T]> {
-    const TYPE_NAME: &'static str = "BoxSlice";
-    const TYPE_NAME_CSTR: &'static [u8] = b"BoxSlice\0";
-}
-
 impl_te_generic!(<T> std::rc::Rc<T>, "Rc");
 impl_te_generic!(<T> std::sync::Arc<T>, "Arc");
 impl_te_generic!(<T> std::cell::Cell<T>, "Cell");
@@ -105,13 +95,7 @@ impl_te_generic!(<T> std::sync::Mutex<T>, "Mutex");
 impl_te_generic!(<T> std::sync::RwLock<T>, "RwLock");
 impl_te_generic!(<T> std::sync::OnceLock<T>, "OnceLock");
 impl_te_generic!(<T> std::pin::Pin<T>, "Pin");
-// ManuallyDrop<T> shares T's type symbol, allowing ExternalPtr<ManuallyDrop<T>>
-// to interoperate with ExternalPtr<T>. This is safe because ManuallyDrop<T> is
-// #[repr(transparent)] and has identical memory layout to T.
-impl<T: TypedExternal> TypedExternal for std::mem::ManuallyDrop<T> {
-    const TYPE_NAME: &'static str = T::TYPE_NAME;
-    const TYPE_NAME_CSTR: &'static [u8] = T::TYPE_NAME_CSTR;
-}
+impl_te_generic!(<T> std::mem::ManuallyDrop<T>, "ManuallyDrop");
 impl_te_generic!(<T> std::mem::MaybeUninit<T>, "MaybeUninit");
 impl_te_generic!(<T> std::marker::PhantomData<T>, "PhantomData");
 
@@ -236,24 +220,4 @@ impl_te_generic!(<A, B, C, D, E, F, G, H, I, J, K, L> (A, B, C, D, E, F, G, H, I
 impl<T: 'static, const N: usize> TypedExternal for [T; N] {
     const TYPE_NAME: &'static str = "Array";
     const TYPE_NAME_CSTR: &'static [u8] = b"Array\0";
-}
-
-// =============================================================================
-// Static slices
-// =============================================================================
-//
-// `&'static [T]` is Sized (it's a fat pointer: ptr + len, 2 words) and satisfies
-// 'static, so it can be stored directly in ExternalPtr.
-//
-// Use cases:
-// - Const arrays: `static DATA: [i32; 5] = [1, 2, 3, 4, 5]; altrep(&DATA)`
-// - Leaked data: `let leaked: &'static [i32] = Box::leak(vec![1, 2, 3].into_boxed_slice());`
-// - Memory-mapped files with 'static lifetime
-//
-// Note: The data must genuinely live forever. If using Box::leak, the memory
-// is never freed (intentional memory leak for the lifetime of the process).
-
-impl<T: 'static> TypedExternal for &'static [T] {
-    const TYPE_NAME: &'static str = "StaticSlice";
-    const TYPE_NAME_CSTR: &'static [u8] = b"StaticSlice\0";
 }

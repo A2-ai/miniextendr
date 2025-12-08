@@ -315,12 +315,6 @@ pub use externalptr::{
 // TypedExternal implementations for std types
 pub mod externalptr_std;
 
-// R object preservation and allocator
-pub mod preserve;
-
-pub mod allocator;
-pub use allocator::RAllocator;
-
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`
 #[doc(hidden)]
