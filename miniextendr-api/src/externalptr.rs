@@ -5,7 +5,7 @@
 //!
 //! This means you can hand ownership of Rust-allocated data to R and let its GC
 //! decide when to drop it. The `tag` slot is a human-friendly type name, and the
-//! `prot` slot stores both the type symbol and any R objects you want to keep
+//! `prot` slot stores both the StableTypeId and any R objects you want to keep
 //! alive alongside the pointer. Neither slot is an R class attribute; if you
 //! want an S3/S4 class, attach it yourself in R.
 //!
@@ -53,7 +53,7 @@ use crate::ffi::{
 /// between threads as long as R APIs are only called on the main thread.
 ///
 /// Do not use this to enable concurrent access to [`SEXP`]s from multiple threads.
-/// 
+///
 /// [`with_r_thread`]: crate::worker::with_r_thread
 #[repr(transparent)]
 struct SendableSexp(SEXP);
@@ -130,10 +130,9 @@ unsafe fn type_symbol<T: TypedExternal>() -> SEXP {
 pub struct StableTypeId {
     /// Hash of the type name (for fast comparison)
     hash: u64,
-    
+
     // TODO: i don't know why the name is just not given by a &str or something
     // like that
-    
     /// Length of the type name
     name_len: usize,
     /// Pointer to the static type name string
