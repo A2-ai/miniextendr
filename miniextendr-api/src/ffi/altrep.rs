@@ -137,10 +137,16 @@ pub type R_altlist_Elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t) -> SEXP>;
 pub type R_altlist_Set_elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t, arg3: SEXP)>;
+#[derive(Clone, Copy)]
 #[repr(C)]
 pub struct R_altrep_class_t {
     pub ptr: SEXP,
 }
+
+// SAFETY: R_altrep_class_t is only used on R's main thread.
+// The class is created once during package init and stored in a static.
+unsafe impl Send for R_altrep_class_t {}
+unsafe impl Sync for R_altrep_class_t {}
 unsafe extern "C-unwind" {
     pub fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
     pub fn R_make_altstring_class(

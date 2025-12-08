@@ -11,3 +11,4 @@ Autoconf_files/manual.css
 rpkg/src/rust/ra_target
 rpkg/src/rust/target
 target
+background/

@@ -84,7 +84,6 @@ pub use miniextendr_macros::r_ffi_checked;
 pub mod altrep;
 pub mod altrep_bridge;
 pub mod altrep_registration;
-pub mod altrep_std_impls;
 pub mod altrep_traits;
 pub mod ffi;
 // Note: SexpExt is pub(crate), imported directly in modules that need it

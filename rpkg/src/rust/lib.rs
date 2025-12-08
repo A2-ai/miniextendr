@@ -599,81 +599,6 @@ pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
 
 // endregion
 
-// ALTREP .Call wrappers (delegating to miniextendr_api)
-// Named with rpkg_ prefix to avoid symbol collision with miniextendr_api exports.
-
-/// Create a compact integer sequence ALTREP.
-///
-/// # Safety
-///
-/// All SEXP arguments must be valid. Must be called from R main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
-    unsafe { miniextendr_api::altrep::C_altrep_compact_int(n, start, step) }
-}
-
-/// Create an ALTREP from doubles.
-///
-/// # Safety
-///
-/// `x` must be a valid REALSXP. Must be called from R main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_doubles(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::altrep::C_altrep_from_doubles(x) }
-}
-
-/// Create an ALTREP from strings.
-///
-/// # Safety
-///
-/// `x` must be a valid STRSXP. Must be called from R main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_strings(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::altrep::C_altrep_from_strings(x) }
-}
-
-/// Create an ALTREP from logicals.
-///
-/// # Safety
-///
-/// `x` must be a valid LGLSXP. Must be called from R main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::altrep::C_altrep_from_logicals(x) }
-}
-
-/// Create an ALTREP from raw bytes.
-///
-/// # Safety
-///
-/// `x` must be a valid RAWSXP. Must be called from R main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_raw(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::altrep::C_altrep_from_raw(x) }
-}
-
-/// Create an ALTREP from a list.
-///
-/// # Safety
-///
-/// `x` must be a valid VECSXP. Must be called from R main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
-    unsafe { miniextendr_api::altrep::C_altrep_from_list(x) }
-}
-
 // region: ExternalPtr tests
 
 use miniextendr_api::externalptr::ErasedExternalPtr;
@@ -1078,14 +1003,6 @@ miniextendr_module! {
 
     // Wildcard parameter test
     fn underscore_it_all;
-
-    // ALTREP .Call entrypoints
-    extern "C-unwind" fn rpkg_altrep_compact_int;
-    extern "C-unwind" fn rpkg_altrep_from_doubles;
-    extern "C-unwind" fn rpkg_altrep_from_strings;
-    extern "C-unwind" fn rpkg_altrep_from_logicals;
-    extern "C-unwind" fn rpkg_altrep_from_raw;
-    extern "C-unwind" fn rpkg_altrep_from_list;
 
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
