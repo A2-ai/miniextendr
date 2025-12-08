@@ -3,6 +3,16 @@
 //! This provides ownership semantics similar to Box<T>, with the key difference
 //! that cleanup is deferred to R's garbage collector via finalizers.
 //!
+//! This means you can hand ownership of Rust-allocated data to R and let its GC
+//! decide when to drop it. The `tag` slot is a human-friendly type name, and the
+//! `prot` slot stores both the StableTypeId and any R objects you want to keep
+//! alive alongside the pointer. Neither slot is an R class attribute; if you
+//! want an S3/S4 class, attach it yourself in R.
+//!
+//! `PartialEq`/`PartialOrd` compare the pointee values (like `Box<T>`). Use
+//! `ptr_eq` when you care about pointer identity, and `as_ref()`/`as_mut()` for
+//! explicit by-value comparisons.
+//!
 //! # Type Identification
 //!
 //! The `tag` slot holds a human-readable symbol (type name).
@@ -36,7 +46,7 @@ use crate::ffi::{
 /// between threads as long as R APIs are only called on the main thread.
 ///
 /// Do not use this to enable concurrent access to [`SEXP`]s from multiple threads.
-/// 
+///
 /// [`with_r_thread`]: crate::worker::with_r_thread
 #[repr(transparent)]
 struct SendableSexp(SEXP);
@@ -108,10 +118,9 @@ fn is_type_erased<T: 'static>() -> bool {
 pub struct StableTypeId {
     /// Hash of the type name (for fast comparison)
     hash: u64,
-    
+
     // TODO: i don't know why the name is just not given by a &str or something
     // like that
-    
     /// Length of the type name
     name_len: usize,
     /// Pointer to the static type name string
@@ -607,6 +616,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
     #[inline]
     pub fn as_mut_ptr(&mut self) -> *mut T {
         unsafe { R_ExternalPtrAddr(self.sexp).cast() }
+    }
+
+    /// Checks whether two `ExternalPtr`s refer to the same allocation (pointer identity).
+    ///
+    /// This ignores the pointee values. Use this when you need alias detection;
+    /// prefer `PartialEq`/`PartialOrd` or `as_ref()` for value comparisons.
+    #[inline]
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        let a = unsafe { R_ExternalPtrAddr(this.sexp).cast::<()>().cast_const() };
+        let b = unsafe { R_ExternalPtrAddr(other.sexp).cast::<()>().cast_const() };
+        ptr::eq(a, b)
     }
 
     // =========================================================================
