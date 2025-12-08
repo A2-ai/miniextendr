@@ -14,15 +14,6 @@
   },
   "terminal.integrated.env.windows": {
     "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
-  },
-  "terminal.integrated.env.osx": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
-  },
-  "terminal.integrated.env.linux": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
-  },
-  "terminal.integrated.env.windows": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
   }
   // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpful to ai tools
 
