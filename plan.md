@@ -137,12 +137,14 @@ Multiple commits tweaking configure scripts. Check if all complexity is justifie
 The codebase has **two distinct ALTREP systems** that serve different purposes:
 
 **Backend Traits** (`altrep.rs` + `altrep_std_impls.rs`):
+
 - Simpler API: `IntBackend`, `RealBackend`, `StringBackend`, etc.
 - Single class per type (6 global handles)
 - Used by standard implementations: `CompactIntSeq`, `OwnedReal`, etc.
 - Good for: common cases with less boilerplate
 
 **Method Traits** (`altrep_traits.rs` + `altrep_bridge.rs` + proc-macro):
+
 - Full control: `Altrep`, `AltVec`, `AltInteger`, etc.
 - Each struct gets its own ALTREP class
 - Used by custom classes: `ConstantIntClass`, `VecIntAltrepClass`
@@ -153,6 +155,7 @@ The codebase has **two distinct ALTREP systems** that serve different purposes:
 #### 2. ExternalPtr: StableTypeId Complexity
 
 The `StableTypeId` design stores:
+
 - Hash of type name (u64)
 - Length of name (usize)
 - Raw pointer to name string (*const u8)
@@ -166,6 +169,7 @@ There's a TODO questioning this: "i don't know why the name is just not given by
 #### 3. dots.rs: Minimal but Complete
 
 Only 12 LOC - just a struct definition:
+
 ```rust
 pub struct Dots { pub inner: SEXP }
 ```
@@ -189,6 +193,7 @@ The actual handling is in the proc-macro. The TODO "finish the dots module" may 
 #### 6. SendableSexp / SendablePtr Wrappers
 
 Two newtype wrappers exist to implement `Send` for cross-thread transfer:
+
 - `SendableSexp(SEXP)` - for SEXP pointers
 - `SendablePtr<T>(NonNull<T>)` - for typed pointers
 
@@ -197,18 +202,21 @@ Two newtype wrappers exist to implement `Send` for cross-thread transfer:
 ### Clean-Up Already Done
 
 Commit history shows previous clean-ups:
+
 - `b4d126b`: "removed all previous experiments" (-219 lines)
 - `87c9f7c`: "removed ErasedExternalPtr" (-160 lines, simplified to type alias)
 
 ### Remaining TODOs in Code
 
 Only 2 TODOs found:
+
 1. `externalptr.rs:122` - StableTypeId name storage question
 2. `lib.rs:108` - "finish the dots module" (may be outdated)
 
 ### Summary
 
 **NOT Redundant/Superfluous**:
+
 - Two ALTREP approaches (different use cases)
 - macro_coverage.rs (testing infrastructure)
 - SendableSexp/SendablePtr (required for threading)
@@ -216,6 +224,7 @@ Only 2 TODOs found:
 - backtrace.rs (useful utility)
 
 **Worth Reviewing**:
+
 - `StableTypeId` in externalptr.rs - could potentially be simplified
 - The TODO about dots module - verify if still valid
 
