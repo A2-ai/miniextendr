@@ -26,6 +26,82 @@ pub enum RBase {
     List,
 }
 
+// =============================================================================
+// AltrepBase trait - maps Rust data types to R base types
+// =============================================================================
+
+/// Trait that maps a Rust data type to its R ALTREP base type.
+///
+/// This trait allows the proc-macro to infer the appropriate R base type
+/// from the data type, eliminating the need for explicit `base = "..."` attributes.
+///
+/// # Example
+///
+/// ```ignore
+/// // Vec<i32> implements AltrepBase with BASE = RBase::Int
+/// #[miniextendr(class = "MyInts", pkg = "mypkg")]
+/// pub struct MyInts(Vec<i32>);  // base type inferred automatically
+/// ```
+pub trait AltrepBase {
+    /// The R base type this data maps to.
+    const BASE: RBase;
+}
+
+// Standard Vec implementations
+impl AltrepBase for Vec<i32> {
+    const BASE: RBase = RBase::Int;
+}
+
+impl AltrepBase for Vec<f64> {
+    const BASE: RBase = RBase::Real;
+}
+
+impl AltrepBase for Vec<bool> {
+    const BASE: RBase = RBase::Logical;
+}
+
+impl AltrepBase for Vec<u8> {
+    const BASE: RBase = RBase::Raw;
+}
+
+impl AltrepBase for Vec<String> {
+    const BASE: RBase = RBase::String;
+}
+
+// Range implementations
+impl AltrepBase for std::ops::Range<i32> {
+    const BASE: RBase = RBase::Int;
+}
+
+impl AltrepBase for std::ops::Range<i64> {
+    const BASE: RBase = RBase::Int;
+}
+
+impl AltrepBase for std::ops::Range<f64> {
+    const BASE: RBase = RBase::Real;
+}
+
+// Array implementations
+impl<const N: usize> AltrepBase for [i32; N] {
+    const BASE: RBase = RBase::Int;
+}
+
+impl<const N: usize> AltrepBase for [f64; N] {
+    const BASE: RBase = RBase::Real;
+}
+
+impl<const N: usize> AltrepBase for [bool; N] {
+    const BASE: RBase = RBase::Logical;
+}
+
+impl<const N: usize> AltrepBase for [u8; N] {
+    const BASE: RBase = RBase::Raw;
+}
+
+impl<const N: usize> AltrepBase for [String; N] {
+    const BASE: RBase = RBase::String;
+}
+
 /// Trait implemented by ALTREP classes via `#[miniextendr]`.
 ///
 /// This trait is automatically implemented when using the proc-macro with

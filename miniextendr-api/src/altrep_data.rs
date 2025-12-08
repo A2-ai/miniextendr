@@ -179,6 +179,15 @@ impl Logical {
             _ => Logical::True,
         }
     }
+
+    /// Convert from Rust bool (no NA representation).
+    pub fn from_bool(b: bool) -> Self {
+        if b {
+            Logical::True
+        } else {
+            Logical::False
+        }
+    }
 }
 
 /// Trait for types that can back an ALTLOGICAL vector.
@@ -894,5 +903,120 @@ impl<'a> AltrepLen for &[&'a str] {
 impl<'a> AltStringData for &[&'a str] {
     fn elt(&self, i: usize) -> Option<&str> {
         Some(self[i])
+    }
+}
+
+// =============================================================================
+// Built-in implementations for arrays (owned, fixed-size)
+// =============================================================================
+
+impl<const N: usize> AltrepLen for [i32; N] {
+    fn len(&self) -> usize {
+        N
+    }
+}
+
+impl<const N: usize> AltIntegerData for [i32; N] {
+    fn elt(&self, i: usize) -> i32 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(self.as_slice())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let end = (start + len).min(N);
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.iter().any(|&x| x == i32::MIN))
+    }
+}
+
+impl<const N: usize> AltrepLen for [f64; N] {
+    fn len(&self) -> usize {
+        N
+    }
+}
+
+impl<const N: usize> AltRealData for [f64; N] {
+    fn elt(&self, i: usize) -> f64 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        Some(self.as_slice())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        let end = (start + len).min(N);
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.iter().any(|x| x.is_nan()))
+    }
+}
+
+impl<const N: usize> AltrepLen for [bool; N] {
+    fn len(&self) -> usize {
+        N
+    }
+}
+
+impl<const N: usize> AltLogicalData for [bool; N] {
+    fn elt(&self, i: usize) -> Logical {
+        Logical::from_bool(self[i])
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // bool arrays can't have NA
+    }
+}
+
+impl<const N: usize> AltrepLen for [u8; N] {
+    fn len(&self) -> usize {
+        N
+    }
+}
+
+impl<const N: usize> AltRawData for [u8; N] {
+    fn elt(&self, i: usize) -> u8 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        Some(self.as_slice())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
+        let end = (start + len).min(N);
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+impl<const N: usize> AltrepLen for [String; N] {
+    fn len(&self) -> usize {
+        N
+    }
+}
+
+impl<const N: usize> AltStringData for [String; N] {
+    fn elt(&self, i: usize) -> Option<&str> {
+        Some(self[i].as_str())
     }
 }

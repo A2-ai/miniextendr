@@ -8,17 +8,14 @@ dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
 export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline, regenerate lockfile
-dnl - NOT_CRAN not true (CRAN): use --offline, don't regenerate lockfile
+dnl - NOT_CRAN=true (dev): no --offline
+dnl - NOT_CRAN not true (CRAN): use --offline
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  GENERATE_LOCKFILE="yes"
 else
   CARGO_OFFLINE_FLAG="--offline"
-  GENERATE_LOCKFILE="no"
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
-AC_SUBST([GENERATE_LOCKFILE])
 AC_SUBST([NOT_CRAN])
 
 # TODO: write a rust analyzer friendly command.
@@ -130,11 +127,6 @@ AC_SUBST([OPTIONAL_CARGO_DEPS])
 
 dnl ---- vendoring (in inst/vendor for self-contained builds) ----
 VENDOR_OUT="$abs_top_srcdir/inst/vendor"
-dnl Only sync workspace crates (not rpkg - it has circular vendor path refs)
-SYNC1="--sync=$root_miniextendr_repo/miniextendr-api/Cargo.toml"
-SYNC2="--sync=$root_miniextendr_repo/miniextendr-macros/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2"
-AC_SUBST([VENDOR_SYNC_FLAGS])
 AC_SUBST([VENDOR_OUT])
 
 dnl ---- output files ----

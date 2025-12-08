@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
-members = ["miniextendr-api", "miniextendr-macros", "rpkg/src/rust"]
-exclude = ["vendor", "rpkg/inst/vendor"]
+members = ["miniextendr-api", "miniextendr-macros"]
+exclude = ["vendor", "rpkg/src/rust", "rpkg/inst/vendor"]
 
 [workspace.dependencies]
 miniextendr-api = { path = "miniextendr-api"}

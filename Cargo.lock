@@ -37,13 +37,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rpkg"
-version = "0.1.0"
-dependencies = [
- "miniextendr-api",
-]
-
-[[package]]
 name = "syn"
 version = "2.0.111"
 source = "registry+https://github.com/rust-lang/crates.io-index"

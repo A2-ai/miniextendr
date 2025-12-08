@@ -123,16 +123,8 @@ if (dir.exists(miniextendr_api_src)) {
   message("  Source not found, skipping (may already be bundled)")
 }
 
-# Step 3: Run configure to generate Cargo.toml, config.toml, Makevars
-if (file.exists(configure_script)) {
-  message("Running configure...")
-  status <- system("./configure")
-  if (status != 0) {
-    stop("configure failed with status ", status)
-  }
-}
-
-# Step 4: Clean up CRAN-unfriendly hidden files in vendor
+# Step 3: Clean up CRAN-unfriendly hidden files in vendor
+# Note: configure is run by R CMD INSTALL, not here
 message("Cleaning up hidden files in inst/vendor...")
 if (dir.exists(inst_vendor)) {
   # Remove all hidden directories (.github, .vscode, .zed, .positron, etc.)

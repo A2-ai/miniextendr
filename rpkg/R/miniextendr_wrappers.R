@@ -406,18 +406,6 @@ repeating_raw <- function(pattern, n) {
     .Call(C_repeating_raw, .call = match.call(), pattern, n)
 }
 
-lazy_list <- function(n) {
-    .Call(C_lazy_list, .call = match.call(), n)
-}
-
-fibonacci <- function(n) {
-    .Call(C_fibonacci, .call = match.call(), n)
-}
-
-unsafe_rpkg_powers_of_2 <- function() {
-    .Call(rpkg_powers_of_2)
-}
-
 extptr_counter_new <- function(initial) {
     .Call(C_extptr_counter_new, .call = match.call(), initial)
 }
@@ -460,9 +448,5 @@ unsafe_C_extptr_is_point <- function(ptr) {
 
 unsafe_rpkg_simple_vec_int <- function(x) {
     .Call(rpkg_simple_vec_int, x)
-}
-
-unsafe_rpkg_vec_int_altrep <- function(x) {
-    .Call(rpkg_vec_int_altrep, x)
 }
 

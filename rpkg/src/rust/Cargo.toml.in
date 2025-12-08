@@ -5,6 +5,9 @@ edition = "2024"
 # edition = "2021" # testing 2021 compatibility!
 publish = false
 
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
 [[bin]]
 name = "document"
 path = "document.rs"
@@ -16,4 +19,4 @@ path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-miniextendr-api = { workspace = true }
+miniextendr-api = { path = "../../inst/vendor/miniextendr-api" }
