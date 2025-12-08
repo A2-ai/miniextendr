@@ -5,7 +5,7 @@
 //!
 //! This means you can hand ownership of Rust-allocated data to R and let its GC
 //! decide when to drop it. The `tag` slot is a human-friendly type name, and the
-//! `prot` slot stores both the StableTypeId and any R objects you want to keep
+//! `prot` slot stores both the type symbol and any R objects you want to keep
 //! alive alongside the pointer. Neither slot is an R class attribute; if you
 //! want an S3/S4 class, attach it yourself in R.
 //!
@@ -36,11 +36,8 @@ use std::ptr::{self, NonNull};
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
-    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_NilValue, R_RegisterCFinalizerEx,
-    R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
-    Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
-    Rf_unprotect_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
-    VECTOR_ELT,
+    R_MakeExternalPtr, R_NilValue, R_RegisterCFinalizerEx, Rboolean, Rf_allocVector, Rf_install,
+    Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
 };
 
 /// A wrapper around [`SEXP`] that implements Send.
@@ -96,7 +93,7 @@ impl<T> SendablePtr<T> {
     }
 }
 
-/// Index of the StableTypeId RAWSXP contained in the `prot` (a `VECSXP` list)
+/// Index of the type SYMSXP contained in the `prot` (a `VECSXP` list)
 const PROT_TYPE_ID_INDEX: isize = 0;
 /// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
 const PROT_USER_INDEX: isize = 1;
@@ -108,10 +105,10 @@ fn is_type_erased<T: 'static>() -> bool {
     TypeId::of::<T>() == TypeId::of::<()>()
 }
 
-/// A stable type identifier that works across different rustc versions.
+/// Get the interned R symbol for a type's name.
 ///
-/// Unlike [`std::any::TypeId`], this uses [`std::any::type_name`] which provides
-/// a stable string representation. We hash this at compile time for fast comparison.
+/// R interns symbols via `Rf_install`, so the same string always returns
+/// the same pointer. This enables fast pointer comparison for type checking.
 ///
 /// # Safety
 ///
@@ -119,24 +116,6 @@ fn is_type_erased<T: 'static>() -> bool {
 #[inline]
 unsafe fn type_symbol<T: TypedExternal>() -> SEXP {
     unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) }
-}
-
-/// Unchecked version of [`type_symbol`] - no thread safety checks.
-///
-/// This struct is `repr(C)` so it can be safely stored in a RAWSXP and
-/// retrieved via pointer cast.
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct StableTypeId {
-    /// Hash of the type name (for fast comparison)
-    hash: u64,
-
-    // TODO: i don't know why the name is just not given by a &str or something
-    // like that
-    /// Length of the type name
-    name_len: usize,
-    /// Pointer to the static type name string
-    name_ptr: *const u8,
 }
 
 /// Get the type name from a stored symbol SEXP.
@@ -323,41 +302,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
 
         unsafe { Rf_unprotect(2) };
-
-        sexp
-    }
-
-    /// Create an EXTPTRSXP from a raw pointer without thread safety checks.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from R's main thread. No debug assertions for thread safety.
-    #[inline]
-    unsafe fn create_extptr_sexp_unchecked(ptr: *mut T) -> SEXP {
-        debug_assert!(
-            !ptr.is_null(),
-            "create_extptr_sexp_unchecked received null pointer"
-        );
-
-        // Create the type symbol (R interns symbols, so same string = same pointer)
-        let type_sym = unsafe { type_symbol_unchecked::<T>() };
-
-        // Create the prot VECSXP: [type_symbol, user_protected]
-        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
-        unsafe { Rf_protect_unchecked(prot) };
-
-        // Store type symbol in slot 0 for fast pointer-based type checking
-        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_sym) };
-        // Slot 1 (user protected) starts as R_NilValue (already default)
-
-        // Create the external pointer with tag (same symbol) and prot
-        let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr.cast(), type_sym, prot) };
-        unsafe { Rf_protect_unchecked(sexp) };
-
-        // Register the C finalizer that will call drop
-        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
-
-        unsafe { Rf_unprotect_unchecked(2) };
 
         sexp
     }
@@ -734,8 +678,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
             return None;
         }
 
-        // Compare with expected type
-        if !is_type_erased::<T>() && stored_type_id != T::TYPE_ID {
+        // Compare symbols by pointer (R interns symbols)
+        let expected_sym = unsafe { type_symbol::<T>() };
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym, expected_sym) {
             return None;
         }
 
@@ -773,9 +718,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
             return Err(TypeMismatchError::InvalidTypeId);
         }
 
-        // Compare with expected type
-        let expected = T::TYPE_ID;
-        if !is_type_erased::<T>() && stored_type_id != expected {
+        // Compare symbols by pointer (R interns symbols)
+        let expected_sym = unsafe { type_symbol::<T>() };
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym, expected_sym) {
             return Err(TypeMismatchError::Mismatch {
                 expected: T::TYPE_NAME,
                 found: unsafe { symbol_name(stored_sym) },
@@ -837,7 +782,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 }
 
 impl ExternalPtr<()> {
-    /// Create a type-erased ExternalPtr from an EXTPTRSXP without checking the stored StableTypeId.
+    /// Create a type-erased ExternalPtr from an EXTPTRSXP without checking the stored type.
     ///
     /// # Safety
     ///
@@ -849,13 +794,24 @@ impl ExternalPtr<()> {
         unsafe { Self::from_sexp_unchecked(sexp) }
     }
 
-    /// Check whether the stored StableTypeId matches `T`.
+    /// Check whether the stored type symbol matches `T`.
     #[inline]
     pub fn is<T: TypedExternal>(&self) -> bool {
         if self.is_null() {
             return false;
         }
-        matches!(self.stored_type_id(), Some(id) if id == T::TYPE_ID)
+        unsafe {
+            let prot = R_ExternalPtrProtected(self.sexp);
+            if prot.is_null_or_nil() || prot.type_of() != SEXPTYPE::VECSXP {
+                return false;
+            }
+            let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+            if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+                return false;
+            }
+            let expected_sym = type_symbol::<T>();
+            std::ptr::eq(stored_sym, expected_sym)
+        }
     }
 
     /// Downcast to an immutable reference of the stored type if it matches `T`.
@@ -1366,32 +1322,6 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
         // 1. The ExternalPtr is protected by R's GC as part of the ALTREP object
         // 2. The ALTREP object `x` is kept alive by R during the callback
         erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_stable_type_id() {
-        let id1 = StableTypeId::of::<i32>();
-        let id2 = StableTypeId::of::<i32>();
-        let id3 = StableTypeId::of::<u32>();
-
-        assert_eq!(id1, id2);
-        assert_ne!(id1, id3);
-        assert_eq!(id1.name(), "i32");
-    }
-
-    #[test]
-    fn test_const_hash() {
-        let h1 = const_hash_str("hello");
-        let h2 = const_hash_str("hello");
-        let h3 = const_hash_str("world");
-
-        assert_eq!(h1, h2);
-        assert_ne!(h1, h3);
     }
 }
 

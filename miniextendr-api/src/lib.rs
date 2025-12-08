@@ -308,18 +308,8 @@ pub mod externalptr;
 #[cfg(feature = "connections")]
 pub mod connection;
 pub use externalptr::{
-    ErasedExternalPtr,
-    ExternalPtr,
-    ExternalSlice,
-    TypedExternal,
-    // ALTREP helpers (checked)
-    altrep_data1_as,
-    // ALTREP helpers (unchecked - for performance-critical callbacks)
-    altrep_data1_as_unchecked,
-    altrep_data1_mut,
-    altrep_data1_mut_unchecked,
-    altrep_data2_as,
-    altrep_data2_as_unchecked,
+    ErasedExternalPtr, ExternalPtr, ExternalSlice, TypedExternal, altrep_data1_as,
+    altrep_data1_mut, altrep_data2_as,
 };
 
 // TypedExternal implementations for std types

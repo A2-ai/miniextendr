@@ -2,34 +2,14 @@
 
 A Rust-R interoperability framework for building R packages with Rust backends.
 
-## Build Commands
-
-**Always use the justfile** for building, testing, and checking the project. Run `just` to see all available commands.
-
-| Command | Description |
-|---------|-------------|
-| `just check` | Check all crates compile |
-| `just build` | Build all crates |
-| `just clippy` | Run clippy lints |
-| `just fmt` | Format all code |
-| `just test` | Run Rust tests |
-| `just configure` | Vendor deps and run ./configure |
-| `just devtools-test` | Run R tests via devtools |
-| `just devtools-load` | Load rpkg with devtools::load_all |
-| `just r-cmd-install` | Install rpkg via R CMD INSTALL |
-| `just r-cmd-check` | Run R CMD check |
-
----
-
 ## Architecture Overview
 
 ```
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         R Package (rpkg)                            │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐  │
-│  │ R/miniextendr_  │  │ src/entrypoint.c│  │ src/rust/lib.rs     │  │
-│  │ wrappers.R      │  │ (R_init_*)      │  │ (#[miniextendr] fns)│  │
-│  │ (auto-generated)│  │ (init glue)     │  │ (exports + tests)   │  │
+│  │ R/wrappers.R    │  │ src/entrypoint.c│  │ src/rust/lib.rs     │  │
+│  │ (auto-generated)│  │ (R_init_*)      │  │ (#[miniextendr] fns)│  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -38,23 +18,20 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 │                      miniextendr-macros                             │
 │  • #[miniextendr] - generates C wrappers + R wrappers               │
 │  • miniextendr_module! - registers functions with R                 │
-│  • #[r_ffi_checked] - thread-checked R FFI wrappers                 │
+│  • #[r_ffi_checked] - thread-safe R FFI wrappers                    │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                       miniextendr-api                               │
-│  ┌──────────┐ ┌──────────┐ ┌─────────────┐ ┌──────────────────────┐ │
-│  │ ffi.rs   │ │ worker.rs│ │ externalptr │ │ altrep_* (data/impl) │ │
-│  │ (R FFI)  │ │ (worker) │ │ (EXTPTRSXP) │ │ (ALTREP system)      │ │
-│  └──────────┘ └──────────┘ └─────────────┘ └──────────────────────┘ │
+│  ┌──────────┐ ┌──────────┐ ┌─────────────┐ ┌────────────────────┐   │
+│  │ ffi.rs   │ │worker.rs │ │externalptr.rs│ │ altrep*.rs (5)    │   │
+│  │ (R FFI)  │ │(threading)│ │(Box for R)  │ │ (lazy vectors)    │   │
+│  └──────────┘ └──────────┘ └─────────────┘ └────────────────────┘   │
 │  ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ ┌─────────────┐  │
-│  │ unwind_protect│ │ from_r.rs    │ │ into_r.rs   │ │ error.rs    │  │
-│  │ (longjmp-safe)│ │ (SEXP→Rust)  │ │ (Rust→SEXP) │ │ (r_error!)  │  │
+│  │unwind_protect│ │ from_r.rs    │ │ into_r.rs   │ │ error.rs    │  │
+│  │(R error safe)│ │ (SEXP→Rust)  │ │ (Rust→SEXP) │ │ (r_error!)  │  │
 │  └──────────────┘ └──────────────┘ └─────────────┘ └─────────────┘  │
-│  ┌──────────┐ ┌──────────┐ ┌──────────┐                            │
-│  │ thread.rs│ │ coerce.rs│ │ dots.rs  │                            │
-│  └──────────┘ └──────────┘ └──────────┘                            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -62,7 +39,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 
 ## Module Documentation
 
-### 1. ffi.rs - R FFI Definitions
+### 1. ffi.rs - R FFI Definitions (510 LOC)
 
 Raw FFI bindings to R's C API.
 
@@ -110,8 +87,7 @@ R_UnwindProtect(...)       // Catch R errors with cleanup
 
 #### Thread Safety
 
-Most R FFI functions have checked wrappers that panic if called from a non-main thread when
-`cfg(debug_assertions)` is enabled (this repo keeps `debug-assertions = true` in the release profile):
+All R FFI functions have checked wrappers that panic if called from non-main thread:
 
 ```rust
 // Checked (panics if wrong thread)
@@ -136,19 +112,18 @@ trait SexpExt {
 trait RNativeType {
     const SEXP_TYPE: SEXPTYPE;
 }
-// Implemented for: i32, f64, u8, RLogical
+// Implemented for: i32, f64, u8, Rboolean
 ```
 
 ---
 
-### 2. worker.rs - Worker Thread Pattern
+### 2. worker.rs - Worker Thread Pattern (352 LOC)
 
 Execute Rust code on a separate thread with proper panic handling.
 
 #### Problem Solved
 
 R uses `longjmp` for error handling, which skips Rust destructors. The worker thread pattern:
-
 1. Runs Rust code on a worker thread where `catch_unwind` works
 2. Catches panics and converts them to R errors
 3. Allows calling R APIs from worker via message passing
@@ -215,7 +190,7 @@ Main thread: convert to SEXP or R error
 
 ---
 
-### 3. unwind_protect.rs - R Error Protection
+### 3. unwind_protect.rs - R Error Protection (162 LOC)
 
 Safe wrapper for `R_UnwindProtect` to run Rust destructors on R errors.
 
@@ -256,7 +231,7 @@ extern "C-unwind" fn C_risky_operation() -> SEXP {
 
 ---
 
-### 4. externalptr.rs - Box-like Owned Pointer
+### 4. externalptr.rs - Box-like Owned Pointer (1,244 LOC)
 
 Store Rust objects in R's external pointer SEXP.
 
@@ -275,7 +250,7 @@ pub struct ExternalPtr<T: TypedExternal> {
 ```rust
 pub trait TypedExternal: 'static {
     const TYPE_NAME: &'static str;
-    const TYPE_NAME_CSTR: &'static [u8];  // Null-terminated
+        const TYPE_NAME_CSTR: &'static [u8];  // Null-terminated
 }
 
 // Derive macro available:
@@ -350,84 +325,89 @@ fn counter_increment(ptr: ExternalPtr<Counter>) -> i32 {
 
 ---
 
-### 5. ALTREP (altrep_*.rs)
+### 5. ALTREP Modules (~3,163 LOC total)
 
 Alternative Representations for lazy/compact R vectors.
 
-Core modules:
+#### Two Approaches
 
-- `altrep.rs` / `altrep_registration.rs` - proc-macro-facing types, base inference, registration
-- `altrep_traits.rs` - low-level method-trait hierarchy (mirrors R method tables)
-- `altrep_data.rs` - high-level data traits (more ergonomic APIs)
-- `altrep_bridge.rs` - trampolines + adapters between data traits and R callbacks
-- `altrep_impl.rs` - built-in implementations for common Rust types
+**Approach 1: Backend Traits** (simpler, for common cases)
 
-See `altrep.md` for the full design doc and examples.
+Files: `altrep.rs`, `altrep_std_impls.rs`
 
-#### Proc-Macro Approach
+```rust
+// Define a backend
+pub trait IntBackend: Send + Sync + 'static {
+    fn len(&self) -> R_xlen_t;
+    fn elt(&self, i: R_xlen_t) -> i32;
 
-Define custom ALTREP classes with full method control using the `#[miniextendr]` proc-macro:
+    // Optional optimizations
+    fn get_region(&self, i, n, out: &mut [i32]) -> R_xlen_t { ... }
+    fn dataptr(&self) -> Option<&[i32]> { None }
+    fn is_sorted(&self) -> i32 { 0 }
+    fn no_na(&self) -> i32 { 0 }
+    fn sum(&self) -> Option<f64> { None }  // O(1) sum if known
+    fn min(&self) -> Option<i32> { None }
+    fn max(&self) -> Option<i32> { None }
+}
+
+// Create ALTREP
+let sexp = unsafe { new_altrep_int(Box::new(my_backend)) };
+```
+
+Standard backends provided:
+- `CompactIntSeq` - arithmetic sequences (1:1000000)
+- `IntVec`, `RealVec` - Vec-backed
+- `IntArc`, `RealArc` - Arc-backed (shared)
+- `IntSliceMat`, `RealSliceMat` - static slice with lazy materialization
+- `IntMmap`, `RealMmap` - memory-mapped
+- `Utf8Vec`, `Utf8Arc`, `Utf8Slice` - string backends
+- `LogicalVec`, `LogicalArc`, etc.
+
+**Approach 2: Method Traits** (full control)
+
+Files: `altrep_traits.rs`, `altrep_bridge.rs`, `altrep_registration.rs`
 
 ```rust
 // Define custom class with full ALTREP method control
-#[miniextendr(class = "ConstantInt", pkg = "rpkg", base = "Int")]
+#[miniextendr]
 struct ConstantIntClass;
 
 impl Altrep for ConstantIntClass {
-    fn length(_x: SEXP) -> R_xlen_t { 10 }  // Always length 10
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t { ... }
+
+    const HAS_DUPLICATE: bool = true;
+    fn duplicate(x: SEXP, deep: bool) -> SEXP { ... }
 }
 
 impl AltVec for ConstantIntClass {
-    // Defaults are fine (no dataptr, no subset optimization).
+    const HAS_DATAPTR: bool = true;
+    fn dataptr(x: SEXP, writable: bool) -> *mut c_void { ... }
 }
 
 impl AltInteger for ConstantIntClass {
     const HAS_ELT: bool = true;
-    fn elt(x: SEXP, i: R_xlen_t) -> i32 { 42 }  // Always returns 42
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 { ... }
 
     const HAS_SUM: bool = true;
-    fn sum(x: SEXP, narm: bool) -> SEXP {
-        // O(1) sum: 42 * 10 = 420
-        unsafe { Rf_ScalarReal(420.0) }
-    }
+    fn sum(x: SEXP, narm: bool) -> SEXP { ... }
 }
 ```
 
-#### Method Traits
+#### When to Use Which
 
-| Trait | Methods | Purpose |
-|-------|---------|---------|
-| `Altrep` | `length`, `duplicate`, `coerce`, `serialize` | Base ALTREP methods |
-| `AltVec` | `dataptr`, `dataptr_or_null`, `extract_subset` | Vector access |
-| `AltInteger` | `elt`, `get_region`, `is_sorted`, `no_na`, `sum`, `min`, `max` | Integer-specific |
-| `AltReal` | (same as AltInteger) | Real-specific |
-| `AltLogical` | `elt`, `get_region`, `is_sorted`, `no_na`, `sum` | Logical-specific |
-| `AltRaw` | `elt`, `get_region` | Raw-specific |
-| `AltString` | `elt`, `set_elt`, `is_sorted`, `no_na` | String-specific |
-| `AltList` | `elt`, `set_elt` | List-specific |
-
-Each method has a corresponding `HAS_*` constant. Set to `true` to enable the method; the proc-macro only registers methods where `HAS_*` is true.
-
-#### Class Registration
-
-Classes are registered lazily on first use via `OnceLock`:
-
-```rust
-// Generated by proc-macro
-impl RegisterAltrep for ConstantIntClass {
-    fn get_or_init_class() -> R_altrep_class_t {
-        static CLASS: OnceLock<R_altrep_class_t> = OnceLock::new();
-        *CLASS.get_or_init(|| {
-            // Create class and install methods
-            ...
-        })
-    }
-}
-```
+| Use Case | Approach |
+|----------|----------|
+| Wrap Vec/Arc in ALTREP | Backend traits |
+| Custom compact representation | Backend traits |
+| Need serialization hooks | Method traits |
+| Need custom coercion | Method traits |
+| Need multiple ALTREP classes | Method traits |
 
 ---
 
-### 6. from_r.rs - SEXP to Rust
+### 6. from_r.rs - SEXP to Rust (88 LOC)
 
 Convert R objects to Rust types.
 
@@ -441,14 +421,10 @@ pub trait TryFromSexp: Sized {
 impl TryFromSexp for i32 { ... }   // From INTSXP length-1
 impl TryFromSexp for f64 { ... }   // From REALSXP length-1
 impl TryFromSexp for u8  { ... }   // From RAWSXP length-1
-impl TryFromSexp for RLogical { ... } // From LGLSXP length-1 (0/1/NA_LOGICAL/other)
-impl TryFromSexp for bool { ... }  // From LGLSXP length-1 (NA -> error)
-impl TryFromSexp for Option<bool> { ... } // From LGLSXP length-1 (NA -> None)
 
 // Implemented for slices
 impl TryFromSexp for &'static [i32] { ... }
 impl TryFromSexp for &'static [f64] { ... }
-impl TryFromSexp for &'static [RLogical] { ... } // From LGLSXP (no UB on NA)
 ```
 
 #### Errors
@@ -457,13 +433,12 @@ impl TryFromSexp for &'static [RLogical] { ... } // From LGLSXP (no UB on NA)
 pub enum SexpError {
     Type(SexpTypeError),    // Wrong SEXPTYPE
     Length(SexpLengthError), // Wrong length (expected 1)
-    Na(SexpNaError),        // NA where not representable (e.g. bool)
 }
 ```
 
 ---
 
-### 7. into_r.rs - Rust to SEXP
+### 7. into_r.rs - Rust to SEXP (97 LOC)
 
 Convert Rust types to R objects.
 
@@ -477,8 +452,6 @@ impl IntoR for i32  { ... }  // Rf_ScalarInteger
 impl IntoR for f64  { ... }  // Rf_ScalarReal
 impl IntoR for u8   { ... }  // Rf_ScalarRaw
 impl IntoR for bool { ... }  // Rf_ScalarLogical
-impl IntoR for Option<bool> { ... } // Some(TRUE/FALSE), None -> NA_LOGICAL
-impl IntoR for RLogical { ... } // Rf_ScalarLogical(raw i32, incl. NA)
 impl IntoR for &str { ... }  // Rf_ScalarString(Rf_mkCharLenCE)
 impl IntoR for String { ... }
 impl IntoR for SEXP { ... }  // identity
@@ -487,7 +460,7 @@ impl<T: TypedExternal> IntoR for ExternalPtr<T> { ... }
 
 ---
 
-### 8. error.rs - Error Helpers
+### 8. error.rs - Error Helpers (96 LOC)
 
 Convenient R error/warning/print functions.
 
@@ -523,7 +496,7 @@ fn validate(x: i32) -> i32 {
 
 ---
 
-### 9. dots.rs - Variadic Arguments
+### 9. dots.rs - Variadic Arguments (12 LOC)
 
 Support for R's `...` arguments.
 
@@ -551,7 +524,7 @@ fn my_func(x: i32, ...) {
 
 ---
 
-### 10. backtrace.rs - Panic Hook
+### 10. backtrace.rs - Panic Hook (25 LOC)
 
 Configurable panic backtrace via environment variable.
 
@@ -564,7 +537,7 @@ Set `MINIEXTENDR_BACKTRACE=1` or `MINIEXTENDR_BACKTRACE=true` to see full backtr
 
 ---
 
-### 11. macro_coverage.rs - Test Infrastructure
+### 11. macro_coverage.rs - Test Infrastructure (168 LOC)
 
 Internal module that instantiates every macro variation for testing. Contains example functions covering:
 
@@ -586,7 +559,6 @@ Internal module that instantiates every macro variation for testing. Contains ex
 ### #[miniextendr] on Functions
 
 Generates:
-
 1. The original Rust function
 2. A C wrapper (`C_<name>`)
 3. An R wrapper string (`R_WRAPPER_<NAME>`)
@@ -598,7 +570,7 @@ Generates:
 #[miniextendr]                    // Basic usage
 #[miniextendr(invisible)]         // Force invisible return
 #[miniextendr(visible)]           // Force visible return
-#[miniextendr(unsafe(main_thread))] // Force main thread execution
+#[miniextendr(main_thread)]       // Force main thread execution
 #[miniextendr(check_interrupt)]   // Check Ctrl+C before running
 ```
 
@@ -607,8 +579,9 @@ Generates:
 | Condition | Strategy |
 |-----------|----------|
 | Returns `SEXP` | Main thread |
+| Returns `ExternalPtr<T>` | Main thread |
 | Takes `Dots` (`...`) | Main thread |
-| `#[miniextendr(unsafe(main_thread))]` | Main thread |
+| `#[miniextendr(main_thread)]` | Main thread |
 | `extern "C-unwind"` ABI | Main thread (direct C wrapper) |
 | Everything else | Worker thread |
 
@@ -616,7 +589,7 @@ Generates:
 
 For ALTREP class registration. Generates registration code for method trait implementations.
 
-### miniextendr_module
+### miniextendr_module!
 
 Registers functions and structs with R's dynamic loading.
 
@@ -636,7 +609,6 @@ miniextendr_module! {
 ```
 
 Generates:
-
 - `R_init_<module>` entry point
 - Call method registration array
 - R wrapper file content
@@ -651,7 +623,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_allocVector(t: SEXPTYPE, n: R_xlen_t) -> SEXP;
 }
 
-// Generates (when cfg(debug_assertions) is enabled):
+// Generates (in debug builds):
 pub unsafe fn Rf_allocVector(t: SEXPTYPE, n: R_xlen_t) -> SEXP {
     debug_assert!(is_r_main_thread(), "...");
     Rf_allocVector_unchecked(t, n)
@@ -682,7 +654,6 @@ Demonstrates all features with test functions:
 
 1. **ExternalPtr type identification** - Replaced `StableTypeId` (hash + len + ptr stored in RAWSXP) with R's interned symbols via `Rf_install()`. Type checking is now a simple pointer comparison. Removed ~143 LOC including `const_hash_str` FNV-1a hashing and serialization code.
 
-2. **Legacy ALTREP code removed** - Replaced older, parallel ALTREP experiments with the current `altrep_*` module set (data traits + method traits + proc-macro registration). See `altrep.md`.
 
 3. **`ErasedExternalPtr` simplified** - Converted to type alias (commit `87c9f7c`)
 
@@ -690,6 +661,18 @@ Demonstrates all features with test functions:
 
 ### Confirmed NOT Redundant
 
-1. **SendableSexp/SendablePtr** - Required for worker thread communication
-2. **macro_coverage.rs** - Intentional test infrastructure
-3. **dots.rs** - Intentionally minimal; `...` handling is macro-driven
+1. **Two ALTREP systems** - Different use cases (simple vs full control)
+2. **SendableSexp/SendablePtr** - Required for worker thread communication
+3. **macro_coverage.rs** - Intentional test infrastructure
+4. **StableTypeId vs TypeId** - StableTypeId works across rustc versions
+
+### Worth Investigating
+
+1. **StableTypeId complexity** - Stores hash + len + ptr, could maybe use `&'static str` directly
+2. **`// TODO: finish the dots module`** - Module appears complete despite TODO
+3. **Backend traits vs Method traits** - Could potentially unify API surface
+
+### Already Cleaned Up
+
+- `ErasedExternalPtr` simplified to type alias (commit `87c9f7c`)
+- Previous experiments removed (commit `b4d126b`, -219 lines)
