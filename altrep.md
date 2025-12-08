@@ -43,7 +43,7 @@ ALTREP (base)
 
 - `Elt(SEXP, i) -> i32` - element access
 - `Get_region(SEXP, i, n, buf) -> R_xlen_t` - bulk read
-- `Is_sorted(SEXP) -> i32` - sortedness hint (UNKNOWN=INT_MIN, unsorted=0, increasing=1, decreasing=-1, NA-first=±2)
+- `Is_sorted(SEXP) -> i32` - sortedness hint (UNKNOWN=INT_MIN, no=-1, increasing=0, decreasing=1, etc.)
 - `No_NA(SEXP) -> i32` - NA-free hint (0=unknown, 1=no NAs)
 - `Sum(SEXP, narm) -> SEXP` - optimized sum
 - `Min(SEXP, narm) -> SEXP` - optimized min
@@ -76,785 +76,936 @@ ALTREP (base)
 - `Elt(SEXP, i) -> SEXP` - returns element SEXP
 - `Set_elt(SEXP, i, v)` - set element
 
+### ALTREP is Vector-Only
+
+**ALTREP only supports vector types.** The available class constructors are:
+
+| Function | SEXPTYPE | R Type |
+|----------|----------|--------|
+| `R_make_altinteger_class` | INTSXP | integer |
+| `R_make_altreal_class` | REALSXP | double/numeric |
+| `R_make_altlogical_class` | LGLSXP | logical |
+| `R_make_altraw_class` | RAWSXP | raw |
+| `R_make_altcomplex_class` | CPLXSXP | complex |
+| `R_make_altstring_class` | STRSXP | character |
+| `R_make_altlist_class` | VECSXP | list |
+
+**NOT supported:** NILSXP, SYMSXP, LISTSXP (pairlist), CLOSXP, ENVSXP, PROMSXP, LANGSXP, EXPRSXP, etc.
+
 ### Required vs Optional Methods
 
-| Type | Required Methods |
-|------|------------------|
-| All | `length` |
-| ALTSTRING | `length` + `elt` |
-| ALTLIST | `length` + `elt` |
-| Numeric types | `length` + (`elt` OR `dataptr`) |
+From `altrep.c` defaults - methods that error if not provided vs those with safe defaults:
 
-## miniextendr ALTREP Architecture
+#### REQUIRED Methods (error if missing)
 
-### Two-Layer Design
+| Method | Type | Why Required |
+|--------|------|--------------|
+| `Length` | All | R cannot determine vector length without it |
+| `Elt` | ALTSTRING | No default - `ALTREP_ERROR_IN_CLASS("No Elt method found")` |
+| `Elt` | ALTLIST | No default - `ALTREP_ERROR_IN_CLASS("must provide an Elt method")` |
+| `Set_elt` | ALTSTRING | No default if you want mutability |
+| `Set_elt` | ALTLIST | No default if you want mutability |
+| `Dataptr` | All | Errors if called without override (but may never be called) |
 
-miniextendr uses a two-layer trait design:
+#### RECOMMENDED Methods (have defaults, but you likely want to override)
 
-1. **High-level data traits** (`altrep_data.rs`): User-friendly `&self` methods
-2. **Low-level FFI traits** (`altrep_traits.rs`): Raw `SEXP` callbacks for R
+| Method | Default Behavior | Why Override |
+|--------|------------------|--------------|
+| `Elt` (numeric) | Falls back to `DATAPTR()[i]` | Avoid forcing materialization |
+| `Get_region` | Loops over `Elt` | Bulk copy is faster |
+| `Duplicate` | Returns NULL → standard copy | Keep ALTREP representation |
+| `Serialized_state` | Returns NULL → expand & serialize | Preserve compact form |
+| `Unserialize` | Errors | Required if you provide `Serialized_state` |
 
+#### OPTIONAL Methods (safe defaults, override for optimization)
+
+| Method | Default | When to Override |
+|--------|---------|------------------|
+| `Dataptr_or_null` | Returns NULL | If you have contiguous memory |
+| `Is_sorted` | `UNKNOWN_SORTEDNESS` | If you know sortedness (e.g., Range) |
+| `No_NA` | `0` (unknown) | If you guarantee no NAs |
+| `Sum` | NULL → R loops | O(1) formula available (e.g., arithmetic series) |
+| `Min/Max` | NULL → R loops | O(1) if sorted or computed |
+| `Coerce` | NULL → standard coercion | Custom type conversion |
+| `Inspect` | Returns FALSE → default output | Custom debug printing |
+| `Extract_subset` | NULL → standard `[` | Optimized slicing |
+| `DuplicateEX` | Calls `Duplicate` + handles attrs | Usually not needed |
+| `UnserializeEX` | Calls `Unserialize` + restores attrs | Usually not needed |
+
+#### Minimum Viable ALTREP by Type
+
+**ALTINTEGER/ALTREAL/ALTLOGICAL/ALTRAW/ALTCOMPLEX:**
+```rust
+// Minimum: Length + (Elt OR Dataptr)
+impl AltInteger for MyType {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t { ... }
+
+    // Option A: Element access (lazy, no materialization)
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 { ... }
+
+    // Option B: Data pointer (if contiguous memory available)
+    // const HAS_DATAPTR: bool = true;
+    // fn dataptr(x: SEXP, w: bool) -> *mut c_void { ... }
+}
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    User Code                                    │
-│                                                                 │
-│  impl AltrepLen for MyData { fn len(&self) -> usize { ... } }  │
-│  impl AltIntegerData for MyData { fn elt(&self, i) -> i32 {...}}│
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ impl_altinteger_from_data!(MyData)
-┌─────────────────────────────────────────────────────────────────┐
-│                Generated Low-Level Traits                       │
-│                                                                 │
-│  impl Altrep for MyData { fn length(x: SEXP) -> R_xlen_t {...} }│
-│  impl AltInteger for MyData { fn elt(x: SEXP, i) -> i32 {...} } │
-└─────────────────────────────────────────────────────────────────┘
-                              │
-                              ▼ #[miniextendr(class=..., base=...)]
-┌─────────────────────────────────────────────────────────────────┐
-│                ALTREP Class Registration                        │
-│                                                                 │
-│  struct MyClass(MyData);  // 1-field wrapper                   │
-│  MyClass::into_altrep(data) -> SEXP                            │
-└─────────────────────────────────────────────────────────────────┘
+
+**ALTSTRING:**
+```rust
+// Minimum: Length + Elt (REQUIRED, no default!)
+impl AltString for MyType {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t { ... }
+
+    const HAS_ELT: bool = true;  // REQUIRED
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP { ... }  // Return CHARSXP
+}
 ```
 
-### High-Level Data Traits
+**ALTLIST:**
+```rust
+// Minimum: Length + Elt (REQUIRED, no default!)
+impl AltList for MyType {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t { ... }
+
+    const HAS_ELT: bool = true;  // REQUIRED
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP { ... }  // Return element SEXP
+}
+```
+
+## R's ALTREP Usage Patterns
+
+From `altclasses.c` and example packages:
+
+### Pattern 1: Compact Sequences (`compact_intseq`, `compact_realseq`)
+
+- **data1**: REALSXP with [n, start, inc]
+- **data2**: R_NilValue initially, becomes expanded vector if needed
+- **Length**: Returns n from data1
+- **Elt**: Returns start + i * inc
+- **Dataptr**: Expands to full vector on first call, stores in data2
+
+### Pattern 2: Memory-mapped Files (`simplemmap`)
+
+- **data1**: ExternalPtr to mmap address
+- **data2**: LISTSXP state (file, size, flags)
+- **Dataptr**: Returns mmap address if ptrOK
+- **Elt/Get_region**: Read directly from mmap
+
+### Pattern 3: Wrapper/Mutable (`mutable.c`)
+
+- **data1**: The underlying R vector
+- **data2**: R_NilValue
+- **All methods**: Delegate to underlying vector
+- **Duplicate**: Returns new wrapper sharing same data
+
+### Pattern 4: Deferred String Coercion
+
+- **data1**: Source vector (to be coerced)
+- **data2**: STRSXP cache (or R_NilValue)
+- **Elt**: Coerce on demand, cache result
+
+## miniextendr ALTREP Design
+
+### Trait Hierarchy (already in `altrep_traits.rs`)
 
 ```rust
-/// Base trait - all ALTREP types must provide length
-pub trait AltrepLen {
-    fn len(&self) -> usize;
-    fn is_empty(&self) -> bool { self.len() == 0 }
-}
-
-/// Integer vector data
-pub trait AltIntegerData: AltrepLen {
-    fn elt(&self, i: usize) -> i32;
-
-    // Optional methods with defaults
-    fn as_slice(&self) -> Option<&[i32]> { None }
-    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize { ... }
-    fn is_sorted(&self) -> Option<Sortedness> { None }
-    fn no_na(&self) -> Option<bool> { None }
-    fn sum(&self, na_rm: bool) -> Option<i64> { None }
-    fn min(&self, na_rm: bool) -> Option<i32> { None }
-    fn max(&self, na_rm: bool) -> Option<i32> { None }
-}
-
-/// Real vector data
-pub trait AltRealData: AltrepLen {
-    fn elt(&self, i: usize) -> f64;
-    // ... similar optional methods
-}
-
-/// Logical vector data (uses Logical enum: True, False, Na)
-pub trait AltLogicalData: AltrepLen {
-    fn elt(&self, i: usize) -> Logical;
-    // ...
-}
-
-/// Raw byte vector data
-pub trait AltRawData: AltrepLen {
-    fn elt(&self, i: usize) -> u8;
-    // ...
-}
-
-/// String vector data
-pub trait AltStringData: AltrepLen {
-    fn elt(&self, i: usize) -> Option<&str>;  // None = NA
-    // ...
-}
-
-/// List vector data
-pub trait AltListData: AltrepLen {
-    fn elt(&self, i: usize) -> SEXP;
-}
-```
-
-### Low-Level FFI Traits
-
-```rust
-/// Base ALTREP methods - length is REQUIRED
 pub trait Altrep {
-    fn length(x: SEXP) -> R_xlen_t;  // Required, no default
-
-    // Optional methods gated by HAS_* constants
-    const HAS_DUPLICATE: bool = false;
-    fn duplicate(_x: SEXP, _deep: bool) -> SEXP { unreachable!() }
-
-    const HAS_SERIALIZED_STATE: bool = false;
-    fn serialized_state(_x: SEXP) -> SEXP { unreachable!() }
-    // ...
+    const HAS_LENGTH: bool = false;
+    fn length(_x: SEXP) -> R_xlen_t { unreachable!() }
+    // ... other base methods
 }
 
-/// Vector-level methods
 pub trait AltVec: Altrep {
     const HAS_DATAPTR: bool = false;
     fn dataptr(_x: SEXP, _writable: bool) -> *mut c_void { unreachable!() }
-
-    const HAS_DATAPTR_OR_NULL: bool = false;
-    fn dataptr_or_null(_x: SEXP) -> *const c_void { unreachable!() }
     // ...
 }
 
-/// Integer methods
 pub trait AltInteger: AltVec {
     const HAS_ELT: bool = false;
     fn elt(_x: SEXP, _i: R_xlen_t) -> i32 { unreachable!() }
-
-    const HAS_GET_REGION: bool = false;
-    fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut i32) -> R_xlen_t { unreachable!() }
     // ...
 }
+// ... AltReal, AltLogical, AltRaw, AltComplex, AltString, AltList
 ```
 
-When `HAS_*` is `false`, the method is **not installed** with R, so R uses its default behavior.
+The `HAS_*` constants control which methods are installed. Default is `false`, meaning "use R's default behavior."
 
-### Bridge Macros
-
-Bridge macros generate low-level trait implementations from high-level data traits:
+### Class Registration Pattern
 
 ```rust
-// Generate Altrep, AltVec, AltInteger impls from AltIntegerData
-miniextendr_api::impl_altinteger_from_data!(MyData);
-
-// Similar macros for other types:
-// impl_altreal_from_data!(T)
-// impl_altlogical_from_data!(T)
-// impl_altraw_from_data!(T)
-// impl_altstring_from_data!(T)
-// impl_altlist_from_data!(T)
-// impl_altcomplex_from_data!(T)
-```
-
-The macros:
-
-- Extract data from SEXP via `altrep_data1_as::<T>(x)`
-- Convert Rust types to R types (e.g., `Option<bool>` to R's `i32` sortedness)
-- Set appropriate `HAS_*` flags based on trait methods
-
-### Built-in Implementations
-
-Standard types have built-in implementations:
-
-| Rust Type | Data Trait | Features |
-|-----------|------------|----------|
-| `Vec<i32>` | `AltIntegerData` | `dataptr`, `get_region`, `sum`, `min`, `max` |
-| `Vec<f64>` | `AltRealData` | `dataptr`, `get_region`, `sum`, `min`, `max` |
-| `Vec<bool>` | `AltLogicalData` | `no_na` (always true), `sum` |
-| `Vec<u8>` | `AltRawData` | `dataptr`, `get_region` |
-| `Vec<String>` | `AltStringData` | `no_na` (always true) |
-| `Box<[i32]>` | `AltIntegerData` | `dataptr`, `get_region`, `sum`, `min`, `max` |
-| `Box<[f64]>` | `AltRealData` | `dataptr`, `get_region`, `sum`, `min`, `max` |
-| `Box<[bool]>` | `AltLogicalData` | `no_na` (always true), `sum` |
-| `Box<[u8]>` | `AltRawData` | `dataptr`, `get_region` |
-| `Box<[String]>` | `AltStringData` | `no_na` (always true) |
-| `Range<i32>` | `AltIntegerData` | O(1) `sum`, `min`, `max`, `is_sorted` |
-| `Range<f64>` | `AltRealData` | O(1) `sum`, `min`, `max`, `is_sorted` |
-| `[T; N]` | (same as Vec) | Fixed-size arrays |
-| `&'static [T]` | (same as Vec) | Static slices with `dataptr` |
-
-### `Box<[T]>`, `&'static [T]`, and `&[T]`
-
-**R vectors are more like `Box<[T]>` than `Vec<T>`** - fixed size, heap-allocated, no capacity overhead.
-
-| Type | Can use with ALTREP? | Reason |
-|------|---------------------|--------|
-| `Vec<T>` | ✅ Yes | Owned, sized, works with ExternalPtr |
-| `[T; N]` | ✅ Yes | Owned, sized (compile-time length) |
-| `&'static [T]` | ✅ Yes | Static lifetime, sized (fat pointer) |
-| `Box<[T]>` | ✅ Yes | Owned, sized (fat pointer: ptr + len) |
-| `&[T]` | ❌ No | Borrowed - ALTREP must own its data |
-
-**`Box<[T]>` (owned slice):** Works because `Box<[T]>` is actually `Sized` - it's a fat pointer (2 words: ptr + len), same as `&[T]`. Use this when you want fixed-size data with no reallocation capability and no capacity overhead:
-
-```rust
-#[miniextendr(class = "BoxedInts", pkg = "mypkg")]
-pub struct BoxedIntsClass(Box<[i32]>);
-
-fn create_boxed(v: Vec<i32>) -> SEXP {
-    let boxed: Box<[i32]> = v.into_boxed_slice();
-    unsafe { BoxedIntsClass::into_altrep(boxed) }
-}
-```
-
-**`&'static [T]` (static slice):** Works because the fat pointer itself is `Sized` (2 words: ptr + len) and `'static` lifetime means the data lives forever - no dangling references. Use cases:
-
-```rust
-// Const arrays
-static DATA: [i32; 5] = [1, 2, 3, 4, 5];
-
-#[miniextendr(class = "StaticInts", pkg = "mypkg")]
-pub struct StaticIntsClass(&'static [i32]);
-
-fn create_static() -> SEXP {
-    unsafe { StaticIntsClass::into_altrep(&DATA[..]) }
+// Generated by proc-macro for each ALTREP type
+pub struct AltrepClass<T> {
+    class: R_altrep_class_t,
+    _marker: PhantomData<T>,
 }
 
-// Leaked data (intentional memory leak for process lifetime)
-fn create_leaked(v: Vec<i32>) -> SEXP {
-    let leaked: &'static [i32] = Box::leak(v.into_boxed_slice());
-    unsafe { StaticIntsClass::into_altrep(leaked) }
-}
+impl<T: AltInteger> AltrepClass<T> {
+    pub fn register(class_name: &CStr, pkg_name: &CStr, dll: *mut DllInfo) -> Self {
+        let class = unsafe { R_make_altinteger_class(class_name.as_ptr(), pkg_name.as_ptr(), dll) };
 
-// String literals
-static NAMES: [&'static str; 3] = ["alpha", "beta", "gamma"];
+        // Install methods based on HAS_* constants
+        if T::HAS_LENGTH {
+            unsafe { R_set_altrep_Length_method(class, Some(altrep_length_trampoline::<T>)) };
+        }
+        if T::HAS_ELT {
+            unsafe { R_set_altinteger_Elt_method(class, Some(altinteger_elt_trampoline::<T>)) };
+        }
+        // ... etc
 
-#[miniextendr(class = "StaticNames", pkg = "mypkg")]
-pub struct StaticNamesClass(&'static [&'static str]);
-```
-
-**`&[T]` (borrowed slice):** Cannot work at all. ALTREP objects are R objects that can be stored, serialized, passed around - they must *own* their data. A borrowed slice would become invalid when the borrow ends.
-
-**Practical recommendation:**
-
-- Use `Vec<T>` when you need to build data dynamically
-- Use `Box<[T]>` when you have a fixed-size collection (saves capacity field overhead)
-- Use `&'static [T]` for compile-time constants or leaked data
-
-### ALTREP Class Registration
-
-Use `#[miniextendr]` on a 1-field struct:
-
-```rust
-// 1. Define your data type with ExternalPtr derive
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct FibonacciData {
-    len: usize,
-}
-
-// 2. Implement high-level data traits
-impl AltrepLen for FibonacciData {
-    fn len(&self) -> usize { self.len }
-}
-
-impl AltIntegerData for FibonacciData {
-    fn elt(&self, i: usize) -> i32 {
-        // Compute fibonacci(i)
-        fib(i) as i32
+        Self { class, _marker: PhantomData }
     }
 
-    fn no_na(&self) -> Option<bool> { Some(true) }
-}
-
-// 3. Generate low-level traits
-miniextendr_api::impl_altinteger_from_data!(FibonacciData);
-
-// 4. Register ALTREP class with proc-macro
-#[miniextendr(class = "Fibonacci", pkg = "mypkg", base = "Int")]
-pub struct FibonacciClass(FibonacciData);
-
-// 5. Create instances
-fn create_fibonacci(n: i32) -> SEXP {
-    let data = FibonacciData { len: n as usize };
-    unsafe { FibonacciClass::into_altrep(data) }
+    pub fn new_instance(&self, data1: SEXP, data2: SEXP) -> SEXP {
+        unsafe { R_new_altrep(self.class, data1, data2) }
+    }
 }
 ```
 
-The `#[miniextendr]` macro on the struct:
-
-- Registers the ALTREP class with R via `R_make_altinteger_class`
-- Installs trampolines based on `HAS_*` flags
-- Generates `into_altrep(data) -> SEXP` for instance creation
-
-### Using Standard Types Directly
-
-For standard types, skip the data trait implementation:
+### Trampoline Functions
 
 ```rust
-// Vec<i32> already has built-in implementations
-#[miniextendr(class = "SimpleVecInt", pkg = "mypkg", base = "Int")]
-pub struct SimpleVecIntClass(Vec<i32>);
+unsafe extern "C-unwind" fn altrep_length_trampoline<T: Altrep>(x: SEXP) -> R_xlen_t {
+    T::length(x)
+}
 
-fn create_vec_int(data: Vec<i32>) -> SEXP {
-    unsafe { SimpleVecIntClass::into_altrep(data) }
+unsafe extern "C-unwind" fn altinteger_elt_trampoline<T: AltInteger>(x: SEXP, i: R_xlen_t) -> i32 {
+    T::elt(x, i)
 }
 ```
 
-### Auto-Inferred Base Type
+### ALTREP + ExternalPtr Pattern
 
-The `base` attribute is **optional**. The base type and method installation are automatically inferred from the inner data type via the `InferBase` trait:
+For wrapping Rust types as ALTREP vectors:
 
 ```rust
-// Base type "Real" is automatically inferred from Vec<f64>
-#[miniextendr(class = "MyReals", pkg = "mypkg")]
-pub struct MyRealsClass(Vec<f64>);
+/// Wraps a Rust type T as an ALTREP integer vector
+pub trait AltIntegerExt: Sized + 'static {
+    fn len(&self) -> usize;
+    fn get(&self, i: usize) -> Option<i32>;
 
-// Equivalent to:
-// #[miniextendr(class = "MyReals", pkg = "mypkg", base = "Real")]
+    // Optional optimizations
+    fn sum(&self) -> Option<i64> { None }
+    fn is_sorted(&self) -> Option<Sorted> { None }
+    fn has_na(&self) -> Option<bool> { None }
+}
+
+// Bridge implementation
+impl<T: AltIntegerExt> Altrep for AltrepWrapper<T> {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        let ptr = R_altrep_data1(x);
+        let wrapper: &T = ExternalPtr::from_sexp(ptr).unwrap();
+        wrapper.len() as R_xlen_t
+    }
+}
+
+impl<T: AltIntegerExt> AltInteger for AltrepWrapper<T> {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        let ptr = R_altrep_data1(x);
+        let wrapper: &T = ExternalPtr::from_sexp(ptr).unwrap();
+        wrapper.get(i as usize).unwrap_or(i32::MIN) // NA_INTEGER
+    }
+}
 ```
 
-Supported auto-inference mappings:
+## Rust Type → ALTREP Mapping
 
-| Inner Type | Inferred Base |
-|------------|---------------|
-| `Vec<i32>` | `Int` |
-| `Vec<f64>` | `Real` |
-| `Vec<bool>` | `Logical` |
-| `Vec<u8>` | `Raw` |
-| `Vec<String>` | `String` |
-| `Range<i32>`, `Range<i64>` | `Int` |
-| `Range<f64>` | `Real` |
-| `[i32; N]`, `[f64; N]`, etc. | Corresponding type |
-| `&'static [i32]`, `&'static [f64]`, etc. | Corresponding type |
-| `&'static [&'static str]` | `String` |
+### Type Mapping Table
 
-For custom data types, just use the appropriate `impl_alt*_from_data!` macro - it automatically enables base type inference:
+| Rust Type | ALTREP Class | Dataptr? | Notes |
+|-----------|--------------|----------|-------|
+| `Vec<i32>` | ALTINTEGER | Yes | Direct pointer access |
+| `Vec<f64>` | ALTREAL | Yes | Direct pointer access |
+| `Vec<bool>` | ALTLOGICAL | No | Must convert bool→i32 |
+| `Vec<u8>` | ALTRAW | Yes | Direct pointer access |
+| `Vec<Rcomplex>` | ALTCOMPLEX | Yes | Direct pointer access |
+| `Vec<String>` | ALTSTRING | No | Convert to CHARSXP on demand |
+| `Vec<SEXP>` | ALTLIST | No | Element access only |
+| `[T; N]` | (same as Vec) | Yes | Fixed-size arrays |
+| `Box<[T]>` | (same as Vec) | Yes | Owned slices |
+| `Range<i32>` | ALTINTEGER | No | Compact sequence |
+| `RangeInclusive<i32>` | ALTINTEGER | No | Compact sequence |
+| `Range<i64>` | ALTINTEGER | No | Check overflow to i32 |
+| `Iterator<Item=T>` | (by T) | No | Lazy, cache on Dataptr |
+| `HashMap<K,V>` | ALTLIST | No | Named list |
+| `BTreeMap<K,V>` | ALTLIST | No | Sorted named list |
+| `Option<T>` | (by T) | (by T) | None → NA |
+| `Result<T,E>` | (by T) | (by T) | Err → NA or error |
+| Custom struct | ALTLIST | No | Fields as named elements |
+
+### Detailed Type Mappings
+
+#### ALTINTEGER Types
 
 ```rust
-// The impl_altinteger_from_data! macro automatically enables base type inference
-miniextendr_api::impl_altinteger_from_data!(MyCustomData);
+// Vec<i32> - Full featured, direct memory access
+impl AltInteger for Vec<i32> {
+    // HAS_DATAPTR = true (contiguous memory)
+    // HAS_ELT = true
+    // HAS_GET_REGION = true (efficient bulk copy)
+    // HAS_NO_NA = false (can't know without scanning)
+    // HAS_IS_SORTED = false (can't know without scanning)
+}
 
-// Now you can omit base:
-#[miniextendr(class = "MyCustom", pkg = "mypkg")]  // No base needed!
-pub struct MyCustomClass(MyCustomData);
+// Range<i32> - Compact sequence (like R's 1:n)
+impl AltInteger for Range<i32> {
+    // HAS_DATAPTR = false (would force materialization!)
+    // HAS_ELT = true: start + i (O(1))
+    // HAS_LENGTH = true: end - start
+    // HAS_IS_SORTED = true: always INCREASING (or DECREASING if step < 0)
+    // HAS_NO_NA = true: ranges never contain NA
+    // HAS_SUM = true: arithmetic series formula O(1)
+    // HAS_MIN = true: start (or end-1 if decreasing)
+    // HAS_MAX = true: end-1 (or start if decreasing)
+}
+
+// Option<i32> - NA-aware scalar (for iterators)
+// None maps to NA_INTEGER (i32::MIN in R)
 ```
 
-All `impl_alt*_from_data!` macros automatically enable base type inference - no additional macro call needed.
-
-## Complete Example
+#### ALTREAL Types
 
 ```rust
-use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen, Sortedness};
-use miniextendr_api::{miniextendr, ExternalPtr};
+// Vec<f64> - Full featured
+impl AltReal for Vec<f64> {
+    // Same as Vec<i32> but f64 element type
+    // NA is NaN with specific bit pattern (R_NaReal)
+}
 
-/// Arithmetic sequence: start, start+step, start+2*step, ...
+// Linspace/arithmetic sequences
+struct RealSeq { start: f64, step: f64, len: usize }
+impl AltReal for RealSeq {
+    // HAS_DATAPTR = false
+    // HAS_ELT = true: start + i * step
+    // HAS_SUM/MIN/MAX = true (O(1) formulas)
+    // HAS_IS_SORTED = true (by step sign)
+    // HAS_NO_NA = true (computed values, no NA)
+}
+```
+
+#### ALTLOGICAL Types
+
+```rust
+// Vec<bool> - Requires conversion (bool is 1 byte, R logical is 4 bytes)
+impl AltLogical for Vec<bool> {
+    // HAS_DATAPTR = false (layout mismatch!)
+    // HAS_ELT = true: vec[i] as i32 (true=1, false=0)
+    // HAS_GET_REGION = true (with conversion loop)
+    // HAS_NO_NA = true (Rust bool can't be NA)
+}
+
+// Vec<Option<bool>> - NA-aware logical
+impl AltLogical for Vec<Option<bool>> {
+    // HAS_DATAPTR = false
+    // HAS_ELT = true: Some(true)=1, Some(false)=0, None=NA_LOGICAL
+    // HAS_NO_NA = false (can contain NA)
+}
+
+// BitVec (from bitvec crate) - Compact storage
+impl AltLogical for BitVec {
+    // HAS_DATAPTR = false (bit-packed, not i32 array)
+    // HAS_ELT = true: extract bit
+    // HAS_NO_NA = true (bits can't be NA)
+    // Memory: 1 bit per element vs 4 bytes in R
+}
+```
+
+#### ALTRAW Types
+
+```rust
+// Vec<u8> - Direct memory access
+impl AltRaw for Vec<u8> {
+    // HAS_DATAPTR = true
+    // HAS_ELT = true
+    // HAS_GET_REGION = true
+    // No NA concept for raw vectors
+}
+
+// &[u8], Bytes, etc. - borrowed data
+// Requires lifetime management via ExternalPtr prevent-drop mechanism
+```
+
+#### ALTCOMPLEX Types
+
+```rust
+// Vec<Rcomplex> or Vec<num::Complex<f64>>
+impl AltComplex for Vec<Rcomplex> {
+    // HAS_DATAPTR = true (if Rcomplex layout matches)
+    // HAS_ELT = true
+    // HAS_GET_REGION = true
+}
+
+// Note: Rcomplex is { r: f64, i: f64 }
+// num::Complex<f64> should have same layout (verify with #[repr(C)])
+```
+
+#### ALTSTRING Types
+
+```rust
+// Vec<String> - Deferred CHARSXP creation
+impl AltString for Vec<String> {
+    // HAS_DATAPTR = false (no contiguous CHARSXP array)
+    // HAS_ELT = true: Rf_mkCharLenCE(s.as_ptr(), s.len(), CE_UTF8)
+    // Consider caching CHARSXP results in data2
+}
+
+// Vec<&str> - Borrowed strings (lifetime concerns)
+// Vec<Option<String>> - NA support (None → R_NaString)
+
+// Lazy string generation
+struct DeferredStrings<F: Fn(usize) -> String> {
+    len: usize,
+    generator: F,
+    cache: RefCell<Vec<Option<SEXP>>>, // Cached CHARSXP values
+}
+```
+
+#### ALTLIST Types
+
+```rust
+// Vec<SEXP> - Generic list
+impl AltList for Vec<SEXP> {
+    // HAS_ELT = true: vec[i]
+    // HAS_SET_ELT = true: vec[i] = v (if mutable)
+}
+
+// HashMap<String, SEXP> - Named list
+impl AltList for HashMap<String, SEXP> {
+    // HAS_ELT = true: iterate to index (O(n) but unavoidable)
+    // Names attribute: keys as STRSXP
+    // Consider: store iteration order for O(1) access
+}
+
+// Struct as named list
 #[derive(ExternalPtr)]
-pub struct ArithSeq {
-    start: i32,
-    step: i32,
-    len: usize,
+struct MyStruct {
+    x: i32,      // $x -> ScalarInteger
+    y: f64,      // $y -> ScalarReal
+    z: String,   // $z -> ScalarString
 }
+// AltList length = 3, names = ["x", "y", "z"]
+// Elt(0) = x as SEXP, Elt(1) = y as SEXP, etc.
+```
 
-impl AltrepLen for ArithSeq {
-    fn len(&self) -> usize { self.len }
-}
+### Dataptr Considerations
 
-impl AltIntegerData for ArithSeq {
-    fn elt(&self, i: usize) -> i32 {
-        self.start + (i as i32) * self.step
+**When to provide Dataptr:**
+
+- Type has contiguous memory layout matching R's expectation
+- Memory is stable (won't move during R operations)
+- Read-only access is safe without synchronization
+
+**When NOT to provide Dataptr:**
+
+- Layout mismatch (bool vs i32, bit-packed, etc.)
+- Computed/lazy values (would force materialization)
+- Non-contiguous storage (HashMap, etc.)
+- Borrowed data with complex lifetime
+
+**Dataptr fallback pattern:**
+
+```rust
+impl AltVec for MyLazyType {
+    const HAS_DATAPTR: bool = true;
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr(x: SEXP, _writable: bool) -> *mut c_void {
+        // Check if already materialized
+        let data2 = R_altrep_data2(x);
+        if data2 != R_NilValue {
+            return DATAPTR(data2);
+        }
+        // Materialize and cache
+        let vec = materialize(x);
+        R_set_altrep_data2(x, vec);
+        DATAPTR(vec)
     }
 
-    fn is_sorted(&self) -> Option<Sortedness> {
-        Some(if self.step > 0 {
-            Sortedness::Increasing
-        } else if self.step < 0 {
-            Sortedness::Decreasing
+    fn dataptr_or_null(x: SEXP) -> *const c_void {
+        let data2 = R_altrep_data2(x);
+        if data2 != R_NilValue {
+            DATAPTR_RO(data2)
         } else {
-            Sortedness::Increasing  // All equal
-        })
-    }
-
-    fn no_na(&self) -> Option<bool> { Some(true) }
-
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
-        if self.len == 0 { return Some(0); }
-        let n = self.len as i64;
-        let first = self.start as i64;
-        let last = first + (n - 1) * self.step as i64;
-        Some(n * (first + last) / 2)  // O(1)
-    }
-
-    fn min(&self, _na_rm: bool) -> Option<i32> {
-        if self.len == 0 { None }
-        else if self.step >= 0 { Some(self.start) }
-        else { Some(self.elt(self.len - 1)) }
-    }
-
-    fn max(&self, _na_rm: bool) -> Option<i32> {
-        if self.len == 0 { None }
-        else if self.step <= 0 { Some(self.start) }
-        else { Some(self.elt(self.len - 1)) }
-    }
-}
-
-// Generate low-level traits (automatically enables base type inference)
-miniextendr_api::impl_altinteger_from_data!(ArithSeq);
-
-// Register class - no `base` attribute needed!
-#[miniextendr(class = "ArithSeq", pkg = "mypkg")]
-pub struct ArithSeqClass(ArithSeq);
-
-// R-callable constructor
-#[miniextendr]
-fn arith_seq(from: i32, by: i32, length_out: i32) -> SEXP {
-    let data = ArithSeq { start: from, step: by, len: length_out as usize };
-    unsafe { ArithSeqClass::into_altrep(data) }
-}
-
-// Register in module
-miniextendr_module! {
-    mod mypkg;
-    struct ArithSeqClass;
-    fn arith_seq;
-}
-```
-
-## Dataptr with Lazy Materialization
-
-Some ALTREP types compute values on-demand (e.g., arithmetic sequences, Fibonacci). They can benefit from **lazy materialization**: the full data buffer is only allocated when `Dataptr` is called, but individual element access via `Elt` or `Get_region` can compute values without materialization.
-
-### The Pattern
-
-```rust
-use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen, AltrepDataptr};
-
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct LazySequence {
-    start: i32,
-    step: i32,
-    len: usize,
-    /// Lazily-allocated buffer - None until Dataptr is called
-    materialized: Option<Vec<i32>>,
-}
-
-impl AltrepLen for LazySequence {
-    fn len(&self) -> usize { self.len }
-}
-
-impl AltIntegerData for LazySequence {
-    fn elt(&self, i: usize) -> i32 {
-        // Compute on-the-fly without materializing
-        self.start + (i as i32) * self.step
-    }
-    // ... other methods (sum, min, max can be O(1))
-}
-
-/// Implement AltrepDataptr for lazy materialization
-impl AltrepDataptr<i32> for LazySequence {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
-        // Materialize on first Dataptr access
-        if self.materialized.is_none() {
-            let data: Vec<i32> = (0..self.len)
-                .map(|i| self.start + (i as i32) * self.step)
-                .collect();
-            self.materialized = Some(data);
-        }
-        self.materialized.as_mut().map(|v| v.as_mut_ptr())
-    }
-
-    fn dataptr_or_null(&self) -> Option<*const i32> {
-        // Only return pointer if already materialized
-        // Returning None allows R to use Elt/Get_region for unmaterialized data
-        self.materialized.as_ref().map(|v| v.as_ptr())
-    }
-}
-
-// Use the `dataptr` variant to enable Dataptr methods (also enables base type inference)
-miniextendr_api::impl_altinteger_from_data!(LazySequence, dataptr);
-
-// Register ALTREP class - no `base` attribute needed!
-#[miniextendr(class = "LazySequence", pkg = "mypkg")]
-pub struct LazySequenceClass(LazySequence);
-```
-
-### Key Points
-
-1. **`Elt` computes on-the-fly**: No allocation needed for individual element access
-2. **`Dataptr` triggers materialization**: Full buffer is allocated and populated
-3. **`Dataptr_or_null` returns `None` until materialized**: R will use `Elt` if available
-4. **Use `dataptr` variant**: Pass `, dataptr` to `impl_alt*_from_data!` macro to enable these methods
-5. **Base type is auto-inferred**: All `impl_alt*_from_data!` macros enable inference, no `base = "..."` needed
-
-### When to Use Lazy Materialization
-
-- Arithmetic/geometric sequences where formulas allow O(1) element access
-- Fibonacci or other recurrence relations with memoization
-- Computed sequences that might never need full materialization
-- Memory-mapped files that shouldn't be loaded entirely into memory
-
-### Testing Materialization
-
-R code to test:
-
-```r
-# Create lazy sequence - not materialized yet
-x <- lazy_int_seq(1L, 100L, 1L)
-
-# Element access doesn't materialize
-x[1]  # Uses Elt method
-
-# Sum uses optimized method (O(1) for arithmetic sequences)
-sum(x)
-
-# Force materialization
-y <- x + 0L  # Dataptr is called
-```
-
-## Serialization Support
-
-ALTREP objects can be saved/loaded via `saveRDS()`/`readRDS()` by implementing the `AltrepSerialize` trait.
-
-### The Pattern
-
-```rust
-use miniextendr_api::altrep_data::AltrepSerialize;
-use miniextendr_api::ffi::{SEXP, Rf_allocVector, SET_INTEGER_ELT, INTEGER_ELT, INTSXP};
-
-impl AltrepSerialize for MySeqData {
-    fn serialized_state(&self) -> SEXP {
-        // Store parameters needed to reconstruct the ALTREP
-        unsafe {
-            let state = Rf_allocVector(INTSXP, 3);
-            SET_INTEGER_ELT(state, 0, self.start);
-            SET_INTEGER_ELT(state, 1, self.step);
-            SET_INTEGER_ELT(state, 2, self.len as i32);
-            state
-        }
-    }
-
-    fn unserialize(state: SEXP) -> Option<Self> {
-        unsafe {
-            let start = INTEGER_ELT(state, 0);
-            let step = INTEGER_ELT(state, 1);
-            let len = INTEGER_ELT(state, 2) as usize;
-            Some(MySeqData { start, step, len, materialized: None })
+            std::ptr::null() // Don't materialize
         }
     }
 }
-
-// Enable serialization with the `serialize` variant
-miniextendr_api::impl_altinteger_from_data!(MySeqData, serialize);
-
-// Or combine with dataptr:
-miniextendr_api::impl_altinteger_from_data!(MySeqData, dataptr, serialize);
 ```
 
-### Key Points
+### NA Handling by Type
 
-1. **`serialized_state()`**: Convert your data to an R object (list, vector, etc.)
-2. **`unserialize()`**: Reconstruct your data from that R object
-3. **Use `serialize` variant**: Pass `, serialize` to `impl_alt*_from_data!` macro
-4. **Don't serialize ephemeral state**: Computed caches, file handles, etc. should be reconstructed
+| R Type | NA Value | Rust Equivalent |
+|--------|----------|-----------------|
+| INTEGER | `NA_INTEGER` (i32::MIN) | `Option<i32>`, check for MIN |
+| REAL | `R_NaReal` (special NaN) | `Option<f64>`, f64::is_nan() |
+| LOGICAL | `NA_LOGICAL` (i32::MIN) | `Option<bool>` |
+| STRING | `R_NaString` (SEXP) | `Option<String>` |
+| COMPLEX | r=R_NaReal, i=R_NaReal | `Option<Complex<f64>>` |
+| RAW | No NA | `u8` directly |
+| LIST | Element can be anything | `Option<SEXP>` for NULL |
 
-### What to Serialize
+### C NULL vs R_NilValue Return Semantics
 
-- **Parameters**: Values that define the ALTREP (start, step, length for sequences)
-- **NOT materialized buffers**: Let them be recomputed on demand
-- **NOT pointers/handles**: They won't survive the save/load cycle
+**Critical distinction**: ALTREP methods use C `NULL` and R's `R_NilValue` for different purposes.
 
-## Extract_subset Optimization
+#### Summary Table
 
-ALTREP types can provide optimized subsetting (e.g., `x[1:10]`) by implementing `AltrepExtractSubset`.
+| Method | Return `NULL` | Return `R_NilValue` | Return actual SEXP |
+|--------|---------------|---------------------|-------------------|
+| `Serialized_state` | Use default serialization (expand to regular vector) | State is empty/nil but ALTREP-serialize | Serialize with this state |
+| `Duplicate` | Use default duplication | Return nil object (unusual) | Return duplicated object |
+| `Coerce` | Use default coercion | Coercion result is nil | Return coerced object |
+| `Sum/Min/Max` | Use default implementation | Result is NA/nil | Return computed result |
+| `Extract_subset` | Use default subsetting | Empty result | Return subset |
+| `Dataptr_or_null` | No pointer available (don't materialize) | — | Return data pointer |
+| `Elt` (list/string) | — | Element is NULL/missing | Return element |
 
-### When to Use
+#### Detailed Semantics (from `altrep.c`)
 
-- **Arithmetic sequences**: `seq(1, 1000000)[1:10]` can return a new sequence without materializing
-- **Lazy types**: Return another lazy object covering just the subset
-- **Memory-mapped files**: Return a view without loading everything
+**`Serialized_state` → NULL means "serialize as regular vector"**
 
-### Implementation
+```c
+// serialize.c:1053-1054
+SEXP state = ALTREP_SERIALIZED_STATE(s);
+if (info != NULL && state != NULL) {
+    // Serialize as ALTREP with state
+} else {
+    // Fall through: serialize as regular vector (expands ALTREP)
+}
+```
+
+- Return `NULL`: ALTREP is expanded to regular vector, then serialized normally
+- Return `R_NilValue`: Serialized as ALTREP with nil state (can reconstruct)
+- Return SEXP: Serialized as ALTREP with given state
+
+**`Duplicate` → NULL means "use default duplication"**
+
+```c
+// altrep.c:702-706
+SEXP ans = ALTREP_DUPLICATE(x, deep);
+if (ans != NULL && ans != x) {
+    // Handle attributes on the duplicate
+}
+// If NULL, R falls back to standard vector duplication
+```
+
+- Return `NULL`: R creates a standard (non-ALTREP) copy
+- Return original `x`: Share the object (no copy made)
+- Return new SEXP: Use this as the duplicate
+
+**`Coerce` → NULL means "use default coercion"**
+
+```c
+// Default: return NULL
+static SEXP altrep_Coerce_default(SEXP x, int type) { return NULL; }
+```
+
+- Return `NULL`: R's standard coercion applies
+- Return SEXP: Use this coerced value
+
+**`Dataptr_or_null` → NULL means "don't materialize"**
+
+```c
+// Used by INTEGER_OR_NULL, REAL_OR_NULL, etc.
+const int *x = INTEGER_OR_NULL(sx);
+if (x != NULL) {
+    // Fast path: direct memory access
+} else {
+    // Slow path: use ALTINTEGER_ELT per-element
+}
+```
+
+- Return `NULL`: Caller must use Elt/Get_region (no pointer available)
+- Return pointer: Caller can use direct memory access
+
+**`Sum/Min/Max` → NULL means "use default implementation"**
+
+```c
+static SEXP altinteger_Sum_default(SEXP x, Rboolean narm) { return NULL; }
+```
+
+- Return `NULL`: R computes using standard loop over elements
+- Return SEXP: Use this pre-computed result (optimization)
+
+**`Extract_subset` → NULL means "use default subsetting"**
+
+```c
+static SEXP altvec_Extract_subset_default(SEXP x, SEXP indx, SEXP call) {
+    return NULL;
+}
+```
+
+- Return `NULL`: R performs standard `[` subsetting
+- Return SEXP: Use this optimized subset
+
+#### Rust Implementation Pattern
 
 ```rust
-use miniextendr_api::altrep_data::AltrepExtractSubset;
+// Method that can opt-out (return NULL for default behavior)
+const HAS_SUM: bool = true;
+fn sum(x: SEXP, narm: bool) -> SEXP {
+    let this = self_from(x);
 
-impl AltrepExtractSubset for ArithSeqData {
-    fn extract_subset(&self, indices: &[i32]) -> Option<SEXP> {
-        // Check for contiguous range like 1:10
-        if is_contiguous_range(indices) {
-            let start_idx = indices[0] as usize - 1; // Convert to 0-based
-            let new_start = self.start + (start_idx as i32) * self.step;
-            let new_len = indices.len();
+    // Can compute efficiently?
+    if let Some(result) = this.try_fast_sum(narm) {
+        return Rf_ScalarReal(result);  // Return computed value
+    }
 
-            // Create a new ArithSeq for the subset
-            let new_data = ArithSeqData {
-                start: new_start,
-                step: self.step,
-                len: new_len,
-            };
-            return Some(unsafe { ArithSeqClass::into_altrep(new_data) });
+    // Can't optimize: return NULL for R's default
+    std::ptr::null_mut()  // C NULL, not R_NilValue!
+}
+
+// Method that returns an R value (R_NilValue is valid)
+const HAS_ELT: bool = true;
+fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
+    let this = self_from(x);
+
+    match this.get(i as usize) {
+        Some(value) => value.to_sexp(),
+        None => R_NilValue,  // Valid "element is nil" return
+    }
+}
+```
+
+#### Common Mistakes
+
+1. **Returning R_NilValue when you mean "no override"**
+
+   ```rust
+   // WRONG: This says "the serialized state is nil"
+   fn serialized_state(x: SEXP) -> SEXP { R_NilValue }
+
+   // RIGHT: This says "use default serialization"
+   fn serialized_state(x: SEXP) -> SEXP { std::ptr::null_mut() }
+   ```
+
+2. **Returning NULL from Elt methods**
+
+   ```rust
+   // WRONG for ALTSTRING/ALTLIST Elt: NULL is not a valid element
+   fn elt(x: SEXP, i: R_xlen_t) -> SEXP { std::ptr::null_mut() }
+
+   // RIGHT: R_NilValue represents a nil/missing element
+   fn elt(x: SEXP, i: R_xlen_t) -> SEXP { R_NilValue }
+   ```
+
+3. **Forgetting that Dataptr_or_null returning NULL is expected**
+
+   ```rust
+   // This is CORRECT - NULL means "use Elt instead"
+   fn dataptr_or_null(x: SEXP) -> *const c_void {
+       std::ptr::null()  // No pointer available, use element access
+   }
+   ```
+
+#### Consequence Summary
+
+| Return Value | Meaning | R's Behavior |
+|--------------|---------|--------------|
+| C `NULL` from optional method | "I don't handle this" | Use default/fallback implementation |
+| C `NULL` from Dataptr_or_null | "No pointer, use Elt" | Element-by-element access |
+| `R_NilValue` from Elt | "Element is nil/NULL" | Element value is R's NULL |
+| `R_NilValue` from state method | "State is empty but valid" | Serialize as ALTREP with nil state |
+
+### Optimization Opportunities
+
+| Method | Rust Type | Optimization |
+|--------|-----------|--------------|
+| `Sum` | `Range<i32>` | `n * (start + end - 1) / 2` O(1) |
+| `Sum` | `Vec<i32>` | SIMD via `iter().sum()` |
+| `Min/Max` | `Range<i32>` | `start` or `end-1` O(1) |
+| `Min/Max` | sorted `Vec` | First/last element O(1) |
+| `Is_sorted` | `Range` | Always sorted |
+| `Is_sorted` | `BTreeSet` | Always sorted |
+| `No_NA` | `Range`, `Vec<bool>` | Always true |
+| `Get_region` | `Vec<T>` | memcpy for contiguous |
+| `Extract_subset` | `Range` | Return new Range if contiguous |
+
+### Composite Types (Structs & Enums)
+
+#### Decision: ALTREP vs ExternalPtr
+
+Not every Rust type should be ALTREP. Use this guide:
+
+| Scenario | Approach | Why |
+|----------|----------|-----|
+| Type represents vector data | ALTREP | R sees it as a native vector |
+| Type is opaque handle | ExternalPtr only | No vector semantics |
+| Type has one "main" vector field | ALTREP (delegate) | Expose the vector, hide metadata |
+| Type is a "record" (row of data) | ExternalPtr or ALTLIST | Not a vector |
+| Type is a collection of records | ALTREP per column | Data frame pattern |
+
+#### Pattern 1: Single-Field Delegation
+
+Struct wraps a vector with metadata. Expose the vector via ALTREP:
+
+```rust
+struct TaggedIntegers {
+    tag: String,           // metadata, not exposed
+    data: Vec<i32>,        // the "real" data
+    sorted: bool,          // cached property
+}
+
+// ALTREP delegates to `data` field
+impl AltInteger for TaggedIntegers {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t { self_from(x).data.len() as R_xlen_t }
+
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 { self_from(x).data[i as usize] }
+
+    const HAS_DATAPTR: bool = true;
+    fn dataptr(x: SEXP, _w: bool) -> *mut c_void {
+        self_from(x).data.as_ptr() as *mut c_void
+    }
+
+    const HAS_IS_SORTED: bool = true;
+    fn is_sorted(x: SEXP) -> i32 {
+        if self_from(x).sorted { SORTED_INCR } else { UNKNOWN_SORTEDNESS }
+    }
+}
+```
+
+#### Pattern 2: Struct as Named ALTLIST
+
+Struct fields become named list elements:
+
+```rust
+#[derive(ExternalPtr)]
+#[miniextendr(altrep = "list")]
+struct Person {
+    name: String,    // $name -> character(1)
+    age: i32,        // $age -> integer(1)
+    scores: Vec<f64>, // $scores -> numeric vector
+}
+
+// Generated ALTREP implementation:
+impl AltList for Person {
+    const HAS_LENGTH: bool = true;
+    fn length(_x: SEXP) -> R_xlen_t { 3 } // number of fields
+
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
+        let this = self_from(x);
+        match i {
+            0 => Rf_mkString(this.name.as_ptr()),
+            1 => Rf_ScalarInteger(this.age),
+            2 => this.scores.to_sexp(), // Vec<f64> -> REALSXP
+            _ => R_NilValue,
         }
+    }
+}
+// Plus names attribute: c("name", "age", "scores")
+```
 
-        // For non-contiguous subsets, return None to let R handle it
-        None
+R usage: `person$name`, `person$age`, `person$scores`
+
+#### Pattern 3: Vec<Struct> as Columnar ALTREP
+
+Multiple structs → expose columns as ALTREP vectors:
+
+```rust
+struct Record { x: i32, y: f64, label: String }
+
+struct DataFrame {
+    records: Vec<Record>,
+}
+
+// Instead of one ALTREP, generate column accessors:
+impl DataFrame {
+    fn column_x(&self) -> impl AltInteger {
+        ColumnView { data: &self.records, extract: |r| r.x }
+    }
+    fn column_y(&self) -> impl AltReal {
+        ColumnView { data: &self.records, extract: |r| r.y }
     }
 }
 
-// Enable with the `subset` variant
-miniextendr_api::impl_altinteger_from_data!(ArithSeqData, subset);
-```
-
-### Notes
-
-- `indices` are 1-based R indices (NA represented as `i32::MIN`)
-- Return `None` to fall back to R's default subsetting
-- Return `Some(sexp)` with the optimized subset result
-
-## C NULL vs R_NilValue Return Semantics
-
-**Critical distinction**: for many ALTREP callbacks, C `NULL` (a null `SEXP` pointer) is a sentinel
-that means “not implemented / fall back to R’s default behavior”. `R_NilValue` is a real R object
-(the `NULL` object) and is **not** the same thing.
-
-| Method | Return `NULL` | Return `R_NilValue` |
-|--------|---------------|---------------------|
-| `Serialized_state` | Fall back to standard serialization | Serialize with `state = NULL` (rare; only if your class supports it) |
-| `Coerce` | Fall back to standard coercion | Coercion result is the `NULL` object (almost never what you want) |
-| `Duplicate` | Fall back to standard duplication | Duplication result is the `NULL` object (almost never what you want) |
-| `Extract_subset` | Fall back to standard subsetting | Subset result is the `NULL` object (almost never what you want) |
-| `Sum/Min/Max` | Fall back to standard summary | Summary result is the `NULL` object (use scalar `NA_*` to return NA) |
-| `Dataptr_or_null` | No pointer (use Elt) | — |
-| `Elt` (list) | — (must return a valid `SEXP`) | Element is `NULL` (valid list element) |
-
-The bridge macros use `NULL` when they need to signal “fall back to R”.
-
-## Sortedness Values
-
-```rust
-pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
-pub const KNOWN_UNSORTED: i32 = 0;
-pub const SORTED_INCR: i32 = 1;          // Increasing (may have ties)
-pub const SORTED_DECR: i32 = -1;         // Decreasing (may have ties)
-pub const SORTED_INCR_NA_1ST: i32 = 2;   // Increasing, NAs first
-pub const SORTED_DECR_NA_1ST: i32 = -2;  // Decreasing, NAs first
-```
-
-Use the `Sortedness` enum in high-level code:
-
-```rust
-pub enum Sortedness {
-    Unknown,
-    KnownUnsorted,
-    Increasing,
-    Decreasing,
-    IncreasingNaFirst,
-    DecreasingNaFirst,
+// Each column is lazy ALTREP - no data copying!
+struct ColumnView<'a, T, F> {
+    data: &'a [Record],
+    extract: F,
 }
-```
 
-## Methods Using R Defaults
-
-miniextendr has full trait infrastructure for optional ALTREP methods, but built-in types use R's defaults:
-
-| Method | Trait Support | Built-in Types | R Default Behavior |
-|--------|---------------|----------------|-------------------|
-| `Coerce` | `HAS_COERCE` + `coerce()` | Use default | Standard type conversion (e.g., int→real) |
-| `Duplicate` | `HAS_DUPLICATE` + `duplicate()` | Use default | Standard vector duplication |
-| `Set_elt` | `HAS_SET_ELT` + `set_elt()` | Use default | Standard element assignment |
-| `Serialized_state` | `AltrepSerialize` trait | Optional | Serialize as regular vector |
-
-**When to implement these in custom ALTREP:**
-
-- **Coerce**: Only if your ALTREP can produce a more efficient representation when coerced (e.g., R's compact sequences coerce int→real without expanding)
-- **Duplicate**: Only if you can duplicate more efficiently than element-by-element copy
-- **Set_elt**: Only for mutable string/list ALTREP (rare use case)
-- **Serialized_state**: When you want ALTREP to survive serialization/deserialization
-
-For most use cases, R's defaults are appropriate. The built-in implementations (`Vec<T>`, `Range<T>`, etc.) rely on defaults for these methods.
-
-### Example: Custom Coerce Implementation
-
-```rust
-impl Altrep for MyRangeClass {
-    const HAS_COERCE: bool = true;
-
-    fn coerce(x: SEXP, to_type: SEXPTYPE) -> SEXP {
-        // Return C NULL to use R's default coercion
-        // Or return a custom SEXP for optimized conversion
-        core::ptr::null_mut()
+impl<F: Fn(&Record) -> i32> AltInteger for ColumnView<'_, Record, F> {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        let this = self_from(x);
+        (this.extract)(&this.data[i as usize])
     }
-    // ... other methods
+    // HAS_DATAPTR = false (not contiguous in memory)
 }
 ```
 
-## Testing
+#### Pattern 4: Enum as Tagged Union
 
-### Rust Unit Tests
+```rust
+enum Value {
+    Int(i32),
+    Real(f64),
+    Text(String),
+    Missing,
+}
 
-The `altrep_data` module includes unit tests for pure Rust functionality. Run with:
+// Option 1: As ALTLIST where type varies by element
+impl AltList for Vec<Value> {
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
+        match &self_from(x)[i as usize] {
+            Value::Int(n) => Rf_ScalarInteger(*n),
+            Value::Real(r) => Rf_ScalarReal(*r),
+            Value::Text(s) => Rf_mkString(s.as_ptr()),
+            Value::Missing => R_NilValue,
+        }
+    }
+}
 
-```bash
-cargo test --manifest-path miniextendr-api/Cargo.toml
+// Option 2: Homogeneous enum variants as typed ALTREP
+enum IntOrNA { Value(i32), NA }
+impl AltInteger for Vec<IntOrNA> {
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        match self_from(x)[i as usize] {
+            IntOrNA::Value(n) => n,
+            IntOrNA::NA => NA_INTEGER,
+        }
+    }
+}
 ```
 
-Tests cover:
+#### Pattern 5: Nested Structures
 
-- **Enum conversions**: `Logical` (to/from R's int), `Sortedness` (to/from R's int)
-- **Vec implementations**: `AltIntegerData`, `AltRealData`, `AltLogicalData`, `AltRawData`, `AltStringData`
-- **Box<[T]> implementations**: Same traits as Vec, for owned slices
-- **Range implementations**: O(1) `sum`, `min`, `max` for arithmetic sequences
-- **Static slice implementations**: `&'static [T]` with NA handling
-- **Array implementations**: `[T; N]` for fixed-size arrays
-- **Edge cases**: Empty vectors, single elements, overflow handling, NA propagation
+```rust
+struct Outer {
+    metadata: Metadata,
+    inner: Inner,
+}
 
-### R Integration Tests
+struct Inner {
+    values: Vec<i32>,
+}
 
-The `rpkg` package includes testthat tests that verify ALTREP behavior from R. Run with:
-
-```r
-testthat::test_file("rpkg/tests/testthat/test-altrep.R")
+// Options:
+// A) Flatten: Outer exposes inner.values as ALTINTEGER
+// B) Nest: Outer as ALTLIST with $metadata and $inner sub-lists
+// C) Delegate: #[altrep(delegate)] on inner field
 ```
 
-Tests cover:
+#### When NOT to Use ALTREP for Composites
 
-- **Proc-macro ALTREP**: `ConstantIntClass` - element access, sum, length
-- **Complex ALTREP**: `UnitCircle` - roots of unity computation
-- **Lazy materialization**: `LazyIntSeqClass` - deferred computation, O(1) sum, materialization trigger
-- **Static slices**: `StaticIntsClass`, `StaticStringsClass` - const array ALTREP
-- **Leaked data**: `leaked_ints()` - `Box::leak()` pattern for process-lifetime data
-- **Box<[T]>**: `BoxedIntsClass` - owned slice ALTREP with dataptr support
+1. **Opaque handles**: Database connections, file handles, thread pools
+   - Use ExternalPtr only, no ALTREP
+   - R shouldn't try to index/iterate
 
-### Testing Custom ALTREP Classes
+2. **Mutable state with invariants**:
+   - ALTREP Elt/Dataptr bypass your API
+   - Use ExternalPtr + explicit getter methods
 
-When implementing custom ALTREP:
+3. **Complex lifetimes**:
+   - Borrowed data (`&'a T`) in struct fields
+   - ALTREP callbacks can't express lifetimes
+   - Either own the data or use careful prevent-drop
 
-1. **Test element access**: Verify `elt(i)` returns correct values
-2. **Test length**: Verify `len()` matches expected size
-3. **Test optional methods**: If you implement `sum`, `min`, `max`, verify correctness
-4. **Test NA handling**: Verify `na_rm` parameter works correctly
-5. **Test materialization**: If using lazy materialization, verify:
-   - Operations work before materialization
-   - Dataptr triggers materialization
-   - Values are correct after materialization
+4. **Non-vector semantics**:
+   - Trees, graphs, state machines
+   - Length/Elt don't make sense
+   - ExternalPtr + method dispatch
 
-Example R test:
+#### Composition Summary
 
-```r
-test_that("my ALTREP works", {
-  x <- my_altrep_constructor(10L)
-
-  # Basic operations
-
-  expect_equal(length(x), 10L)
-  expect_equal(x[1], expected_first_element)
-  expect_equal(x[10], expected_last_element)
-
-  # Optimized methods
-  expect_equal(sum(x), expected_sum)
-
-  # Dataptr operations (triggers materialization for lazy types)
-  y <- x + 0L
-  expect_equal(y, expected_vector)
-})
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Composite Type                            │
+├─────────────────────────────────────────────────────────────┤
+│ Has single vector field?                                     │
+│   YES → ALTREP delegates to that field                      │
+│   NO  ↓                                                     │
+├─────────────────────────────────────────────────────────────┤
+│ Fields are independently useful?                             │
+│   YES → ALTLIST with named elements                         │
+│   NO  ↓                                                     │
+├─────────────────────────────────────────────────────────────┤
+│ Is Vec<Struct>?                                              │
+│   YES → Columnar ALTREP (one per field)                     │
+│   NO  ↓                                                     │
+├─────────────────────────────────────────────────────────────┤
+│ Opaque/stateful/complex?                                     │
+│   YES → ExternalPtr only (no ALTREP)                        │
+└─────────────────────────────────────────────────────────────┘
 ```
 
-## Implementation Status
+## Proc-Macro Composition
 
-### Completed
+The `#[derive(ExternalPtr)]` macro should generate ALTREP support:
 
-- [x] Two-layer trait hierarchy (data traits + FFI traits)
-- [x] Bridge macros for all ALTREP types
-- [x] Built-in implementations for `Vec<T>`, `Range<T>`, `[T; N]`, `&'static [T]`
-- [x] Proc-macro ALTREP class registration
-- [x] `into_altrep()` instance creation
-- [x] Trampoline generation with `HAS_*` gating
-- [x] ExternalPtr integration for data storage
-- [x] FFI bindings for all R ALTREP APIs
+```rust
+#[derive(ExternalPtr)]
+#[miniextendr(altrep = "list")]  // Generate as ALTLIST
+struct MyData {
+    #[altrep(length)]
+    values: Vec<i32>,           // This field provides length
 
-- [x] `Dataptr` with lazy materialization pattern
-- [x] Auto-inferred base types for standard inner types
-- [x] Serialization support (`AltrepSerialize` trait)
-- [x] `Extract_subset` optimization (`AltrepExtractSubset` trait)
-- [x] Complex number ALTREP example (`UnitCircle` - roots of unity)
-- [x] Static slice support (`&'static [T]`) for const arrays and leaked data
-- [x] Owned slice support (`Box<[T]>`) for fixed-size heap data
-- [x] Rust unit tests for ALTREP data traits
-- [x] R integration tests (testthat) for ALTREP functionality
+    #[altrep(elt)]
+    fn get_element(&self, i: usize) -> SEXP { ... }
+}
+```
 
-### Not Yet Implemented
+### Composition Strategy
 
-- [ ] Memory-mapped file ALTREP
+For structs with multiple fields, the macro could:
+
+1. **Single-field delegation**: If one field is marked `#[altrep(delegate)]`, delegate all methods to that field's ALTREP impl
+
+2. **Multi-field composition**: Generate a custom ALTREP that combines fields:
+   - Length: Sum of field lengths, or user-specified
+   - Elt: Route to appropriate field based on index ranges
+
+3. **Custom methods**: Allow `#[altrep(method_name)]` on methods to override specific ALTREP methods
+
+## Implementation Phases
+
+### Phase 1: Core Infrastructure
+
+- [x] ALTREP trait hierarchy (`altrep_traits.rs`)
+- [ ] FFI bindings for R_make_alt**class, R_set** methods
+- [ ] Trampoline generation (const generic dispatch)
+- [ ] AltrepClass registration wrapper
+
+### Phase 2: Primitive ALTREP Types
+
+- [ ] AltInteger for `Vec<i32>`
+- [ ] AltReal for `Vec<f64>`
+- [ ] AltLogical for `Vec<bool>`
+- [ ] AltRaw for `Vec<u8>`
+- [ ] AltString for `Vec<String>`
+
+### Phase 3: Advanced Types
+
+- [ ] Range<i32> as compact integer sequence
+- [ ] Lazy/deferred coercion
+- [ ] Memory-mapped vectors (via memmap2 crate)
+
+### Phase 4: Proc-Macro Integration
+
+- [ ] `#[derive(Altrep)]` macro
+- [ ] Field delegation
+- [ ] Method composition
+- [ ] ExternalPtr + ALTREP integration
+
+## Key Design Decisions
+
+1. **Const generics for method dispatch**: Use `HAS_*` constants to avoid installing NULL methods
+
+2. **ExternalPtr in data1**: Store Rust data as ExternalPtr with proper Drop handling
+
+3. **State in data2**: Use for caching materialized vectors or metadata
+
+4. **Thread safety**: ALTREP callbacks may be called from any R thread; ensure Send/Sync bounds where needed
+
+5. **Panic safety**: Trampolines must catch panics and convert to R errors
 
 ## References
 

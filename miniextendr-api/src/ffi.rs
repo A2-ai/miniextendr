@@ -716,28 +716,9 @@ unsafe extern "C-unwind" {
     #[doc(alias = "NA_STRING")]
     pub static R_NaString: SEXP;
     pub static R_NamesSymbol: SEXP;
-    pub static R_DimSymbol: SEXP;
-    pub static R_DimNamesSymbol: SEXP;
-    pub static R_ClassSymbol: SEXP;
-    pub static R_RowNamesSymbol: SEXP;
-
-    pub static R_GlobalEnv: SEXP;
-    pub static R_BaseEnv: SEXP;
-    pub static R_EmptyEnv: SEXP;
-
-    // Special logical values (from internal Defn.h, not public API)
-    // These are gated behind `nonapi` feature as they may change across R versions.
-    #[cfg(feature = "nonapi")]
-    pub static R_TrueValue: SEXP;
-    #[cfg(feature = "nonapi")]
-    pub static R_FalseValue: SEXP;
-    #[cfg(feature = "nonapi")]
-    pub static R_LogicalNAValue: SEXP;
 
     // Rinternals.h
-    #[doc(alias = "mkChar")]
     pub fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
-    #[doc(alias = "mkCharLen")]
     pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     #[doc(alias = "mkCharLenCE")]
     pub fn Rf_mkCharLenCE(
@@ -808,51 +789,9 @@ unsafe extern "C-unwind" {
     pub fn R_PreserveObject(object: SEXP);
     pub fn R_ReleaseObject(object: SEXP);
 
-    #[doc(alias = "PROTECT")]
-    #[doc(alias = "protect")]
-    pub fn Rf_protect(s: SEXP) -> SEXP;
-    #[doc(alias = "UNPROTECT")]
-    #[doc(alias = "unprotect")]
-    pub fn Rf_unprotect(l: ::std::os::raw::c_int);
-    // Vector allocation functions
-    #[doc(alias = "allocVector")]
-    pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;
-    #[doc(alias = "allocMatrix")]
-    pub fn Rf_allocMatrix(
-        sexptype: SEXPTYPE,
-        nrow: ::std::os::raw::c_int,
-        ncol: ::std::os::raw::c_int,
-    ) -> SEXP;
-    #[doc(alias = "allocArray")]
-    pub fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
-    #[doc(alias = "alloc3DArray")]
-    pub fn Rf_alloc3DArray(
-        sexptype: SEXPTYPE,
-        nrow: ::std::os::raw::c_int,
-        ncol: ::std::os::raw::c_int,
-        nface: ::std::os::raw::c_int,
-    ) -> SEXP;
-
-    // Pairlist allocation
-    #[doc(alias = "allocList")]
-    pub fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
-    #[doc(alias = "allocLang")]
-    pub fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
-    #[doc(alias = "allocS4Object")]
-    pub fn Rf_allocS4Object() -> SEXP;
-    #[doc(alias = "allocSExp")]
-    pub fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
-
-    // Pairlist construction
-    #[doc(alias = "CONS")]
-    #[doc(alias = "cons")]
-    pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
-    #[doc(alias = "LCONS")]
-    #[doc(alias = "lcons")]
-    pub fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
-
-    // Attribute manipulation
-    #[doc(alias = "setAttrib")]
+    pub fn Rf_protect(arg1: SEXP) -> SEXP;
+    pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
+    pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
@@ -1064,6 +1003,7 @@ unsafe extern "C-unwind" {
     pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
     pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
     pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
