@@ -129,10 +129,26 @@ dnl ---- vendoring (in inst/vendor for self-contained builds) ----
 VENDOR_OUT="$abs_top_srcdir/inst/vendor"
 AC_SUBST([VENDOR_OUT])
 
+dnl Source replacement config: only use vendored sources on CRAN (offline builds)
+dnl Dev mode uses network for crates.io, path deps for miniextendr-*
+if test "$NOT_CRAN" = "true"; then
+  CARGO_SOURCE_REPLACE=""
+else
+  CARGO_SOURCE_REPLACE="[source.crates-io]
+replace-with = \"vendored-sources\"
+
+[source.vendored-sources]
+directory = \"$VENDOR_OUT\""
+fi
+AC_SUBST([CARGO_SOURCE_REPLACE])
+
 dnl ---- output files ----
+dnl Create .cargo directory (it's a hidden dir not included in tarball)
+mkdir -p src/rust/.cargo
+
 AC_CONFIG_FILES([
   src/rust/Cargo.toml
-  src/rust/.cargo/config.toml
+  src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars
   src/entrypoint.c
 ])

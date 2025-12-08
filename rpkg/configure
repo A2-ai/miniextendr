@@ -608,8 +608,8 @@ PACKAGE_URL=''
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+CARGO_SOURCE_REPLACE
 VENDOR_OUT
-VENDOR_SYNC_FLAGS
 OPTIONAL_CARGO_DEPS
 RUST_SOURCES
 PACKAGE_TARNAME_RS_UPPERCASE
@@ -627,7 +627,6 @@ ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 NOT_CRAN
-GENERATE_LOCKFILE
 CARGO_OFFLINE_FLAG
 target_alias
 host_alias
@@ -1761,12 +1760,9 @@ export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  GENERATE_LOCKFILE="yes"
 else
   CARGO_OFFLINE_FLAG="--offline"
-  GENERATE_LOCKFILE="no"
 fi
-
 
 
 
@@ -2102,13 +2098,22 @@ done
 
 
 VENDOR_OUT="$abs_top_srcdir/inst/vendor"
-SYNC1="--sync=$root_miniextendr_repo/miniextendr-api/Cargo.toml"
-SYNC2="--sync=$root_miniextendr_repo/miniextendr-macros/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2"
 
 
+if test "$NOT_CRAN" = "true"; then
+  CARGO_SOURCE_REPLACE=""
+else
+  CARGO_SOURCE_REPLACE="source.crates-io
+replace-with = \"vendored-sources\"
 
-ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml src/Makevars src/entrypoint.c"
+source.vendored-sources
+directory = \"$VENDOR_OUT\""
+fi
+
+
+mkdir -p src/rust/.cargo
+
+ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c"
 
 
 
@@ -2815,7 +2820,7 @@ do
   case $ac_config_target in
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
-    "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml" ;;
+    "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
 

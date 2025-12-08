@@ -4,9 +4,6 @@
   ],
   "rust-analyzer.check.command": "check",
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",
-  "rust-analyzer.cargo.extraEnv": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
-  },
   "terminal.integrated.env.osx": {
     "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
   },
