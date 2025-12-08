@@ -83,9 +83,17 @@ pub use miniextendr_macros::r_ffi_checked;
 
 pub mod altrep;
 pub mod altrep_bridge;
+pub mod altrep_data;
+pub mod altrep_impl;
 pub mod altrep_registration;
 pub mod altrep_traits;
 pub mod ffi;
+
+// Re-export high-level ALTREP data traits
+pub use altrep_data::{
+    AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
+    AltStringData, AltrepDataptr, AltrepLen, Logical, Sortedness,
+};
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;

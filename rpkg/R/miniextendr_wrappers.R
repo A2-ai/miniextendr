@@ -458,6 +458,10 @@ unsafe_C_extptr_is_point <- function(ptr) {
     .Call(C_extptr_is_point, ptr)
 }
 
+unsafe_rpkg_simple_vec_int <- function(x) {
+    .Call(rpkg_simple_vec_int, x)
+}
+
 unsafe_rpkg_vec_int_altrep <- function(x) {
     .Call(rpkg_vec_int_altrep, x)
 }

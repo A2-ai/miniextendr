@@ -1103,30 +1103,49 @@ fn expand_altrep_struct(
     let mut pkg_name = None::<String>;
     let mut base_name = None::<String>;
     let mut delegate_ty: Option<syn::Type> = None;
+    let mut delegate_data_ty: Option<syn::Type> = None;
     for nv in args {
         let key = nv
             .path
             .get_ident()
             .map(|i| i.to_string())
             .unwrap_or_default();
+        // Handle string literal values
         if let syn::Expr::Lit(syn::ExprLit {
             lit: syn::Lit::Str(s),
             ..
-        }) = nv.value
+        }) = &nv.value
         {
             match key.as_str() {
                 "class" => class_name = Some(s.value()),
                 "pkg" => pkg_name = Some(s.value()),
                 "base" => base_name = Some(s.value()),
+                // delegate_data can be a string literal for generic types like "Vec<i32>"
+                "delegate_data" => {
+                    delegate_data_ty = Some(
+                        syn::parse_str(&s.value())
+                            .expect("delegate_data string must be a valid type"),
+                    );
+                }
                 _ => {}
             }
-        } else if let syn::Expr::Path(p) = nv.value
-            && key == "delegate"
-        {
-            delegate_ty = Some(syn::Type::Path(syn::TypePath {
-                qself: None,
-                path: p.path,
-            }));
+        // Handle path values (delegate, delegate_data without generics)
+        } else if let syn::Expr::Path(p) = &nv.value {
+            match key.as_str() {
+                "delegate" => {
+                    delegate_ty = Some(syn::Type::Path(syn::TypePath {
+                        qself: None,
+                        path: p.path.clone(),
+                    }));
+                }
+                "delegate_data" => {
+                    delegate_data_ty = Some(syn::Type::Path(syn::TypePath {
+                        qself: None,
+                        path: p.path.clone(),
+                    }));
+                }
+                _ => {}
+            }
         }
     }
     let class_name = class_name.expect("#[miniextendr] missing class = \"...\"");
@@ -1151,9 +1170,12 @@ fn expand_altrep_struct(
         }
     };
 
-    // Decide which type to use for trampolines (delegate or self)
-    let tramp_ty: syn::Type = if let Some(delegate) = delegate_ty.clone() {
-        delegate
+    // Decide which type to use for trampolines (delegate_data > delegate > self)
+    // delegate_data also auto-generates the low-level traits from high-level data traits
+    let tramp_ty: syn::Type = if let Some(ref data_ty) = delegate_data_ty {
+        data_ty.clone()
+    } else if let Some(ref delegate) = delegate_ty {
+        delegate.clone()
     } else {
         syn::parse_quote!(#ident)
     };
@@ -1250,8 +1272,129 @@ fn expand_altrep_struct(
 
     // No trait forwarding: rely on trampoline type's trait impls.
 
-    // No marker traits needed.
-    let _family_marker_impl: proc_macro2::TokenStream = quote::quote! {};
+    // Note: When using delegate_data, the ALTREP trait implementations for the data type
+    // must already exist. For standard types like Vec<i32>, Vec<f64>, these are provided
+    // by miniextendr_api. For custom types, users should either:
+    // 1. Use a newtype wrapper that implements the data traits in their crate, OR
+    // 2. Use `delegate` with manual trait implementations
+    //
+    // We don't generate impl_alt*_from_data! here because:
+    // - Standard types are already implemented in miniextendr_api
+    // - Custom external types would violate Rust's orphan rules
+
+    // Generate helper methods and TryFromSexp for delegate_data types
+    let data_helper_impl: proc_macro2::TokenStream = if let Some(ref data_ty) = delegate_data_ty {
+        let ref_ident = quote::format_ident!("{}Ref", ident);
+        let mut_ident = quote::format_ident!("{}Mut", ident);
+        let ref_doc = format!(
+            "Immutable reference wrapper for [`{}`] ALTREP data. Implements `TryFromSexp` and `Deref<Target = {}>`.",
+            ident,
+            quote::quote!(#data_ty)
+        );
+        let mut_doc = format!(
+            "Mutable reference wrapper for [`{}`] ALTREP data. Implements `TryFromSexp`, `Deref`, and `DerefMut`.",
+            ident
+        );
+        quote::quote! {
+            impl #ident {
+                /// Create an ALTREP SEXP from the given data.
+                ///
+                /// # Safety
+                ///
+                /// Must be called from the R main thread.
+                pub unsafe fn into_altrep(data: #data_ty) -> ::miniextendr_api::ffi::SEXP {
+                    use ::miniextendr_api::altrep_registration::RegisterAltrep;
+                    use ::miniextendr_api::externalptr::ExternalPtr;
+                    use ::miniextendr_api::ffi::altrep::R_new_altrep;
+                    use ::miniextendr_api::ffi::R_NilValue;
+
+                    let ext_ptr = ExternalPtr::new(data);
+                    let cls = Self::get_or_init_class();
+                    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+                }
+            }
+
+            #[doc = #ref_doc]
+            pub struct #ref_ident(::miniextendr_api::externalptr::ExternalPtr<#data_ty>);
+
+            impl ::miniextendr_api::TryFromSexp for #ref_ident {
+                type Error = ::miniextendr_api::SexpTypeError;
+
+                fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
+                    use ::miniextendr_api::ffi::SEXPTYPE;
+
+                    // Check if it's an ALTREP object (ALTREP returns c_int, not bool)
+                    if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
+                        return Err(::miniextendr_api::SexpTypeError {
+                            expected: SEXPTYPE::INTSXP, // placeholder - ALTREP check failed
+                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                        });
+                    }
+
+                    // Extract the ExternalPtr from data1
+                    match unsafe { ::miniextendr_api::altrep_data1_as::<#data_ty>(sexp) } {
+                        Some(ptr) => Ok(#ref_ident(ptr)),
+                        None => Err(::miniextendr_api::SexpTypeError {
+                            expected: SEXPTYPE::EXTPTRSXP,
+                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                        }),
+                    }
+                }
+            }
+
+            impl std::ops::Deref for #ref_ident {
+                type Target = #data_ty;
+
+                fn deref(&self) -> &Self::Target {
+                    &*self.0
+                }
+            }
+
+            #[doc = #mut_doc]
+            pub struct #mut_ident(::miniextendr_api::externalptr::ExternalPtr<#data_ty>);
+
+            impl ::miniextendr_api::TryFromSexp for #mut_ident {
+                type Error = ::miniextendr_api::SexpTypeError;
+
+                fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
+                    use ::miniextendr_api::ffi::SEXPTYPE;
+
+                    // Check if it's an ALTREP object (ALTREP returns c_int, not bool)
+                    if unsafe { ::miniextendr_api::ffi::ALTREP(sexp) } == 0 {
+                        return Err(::miniextendr_api::SexpTypeError {
+                            expected: SEXPTYPE::INTSXP, // placeholder - ALTREP check failed
+                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                        });
+                    }
+
+                    // Extract the ExternalPtr from data1
+                    match unsafe { ::miniextendr_api::altrep_data1_as::<#data_ty>(sexp) } {
+                        Some(ptr) => Ok(#mut_ident(ptr)),
+                        None => Err(::miniextendr_api::SexpTypeError {
+                            expected: SEXPTYPE::EXTPTRSXP,
+                            actual: unsafe { ::miniextendr_api::ffi::TYPEOF(sexp) },
+                        }),
+                    }
+                }
+            }
+
+            impl std::ops::Deref for #mut_ident {
+                type Target = #data_ty;
+
+                fn deref(&self) -> &Self::Target {
+                    &*self.0
+                }
+            }
+
+            impl std::ops::DerefMut for #mut_ident {
+                fn deref_mut(&mut self) -> &mut Self::Target {
+                    &mut *self.0
+                }
+            }
+        }
+    } else {
+        quote::quote! {}
+    };
 
     // Generate doc strings for trait impls
     let altrep_class_doc = format!(
@@ -1263,6 +1406,9 @@ fn expand_altrep_struct(
 
     let expanded = quote::quote! {
         #input
+
+        // Helper methods for creating ALTREP instances
+        #data_helper_impl
 
         #[doc = #altrep_class_doc]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
