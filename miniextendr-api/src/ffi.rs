@@ -294,8 +294,10 @@ unsafe extern "C-unwind" {
     pub static R_NilValue: SEXP;
 
     pub static R_NaString: SEXP;
+    pub static R_NamesSymbol: SEXP;
 
     // Rinternals.h
+    pub fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
     pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     pub fn Rf_mkCharLenCE(
         x: *const ::std::os::raw::c_char,
@@ -362,6 +364,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_protect(arg1: SEXP) -> SEXP;
     pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
     pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
+    pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
     pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
@@ -392,6 +395,7 @@ unsafe extern "C-unwind" {
     pub fn RAW_ELT(x: SEXP, i: R_xlen_t) -> Rbyte;
     pub fn VECTOR_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
     pub fn STRING_ELT(x: SEXP, i: R_xlen_t) -> SEXP;
+    pub fn SET_STRING_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
     pub fn SET_LOGICAL_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_INTEGER_ELT(x: SEXP, i: R_xlen_t, v: ::std::os::raw::c_int);
     pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);

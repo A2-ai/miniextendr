@@ -791,6 +791,716 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
 
 // endregion
 
+// region: Additional ALTREP examples
+
+// =============================================================================
+// Example 1: Real ALTREP - Constant value (all elements are PI)
+// =============================================================================
+
+use miniextendr_api::altrep_traits::AltReal;
+
+/// A custom ALTREP real class: always returns PI.
+#[miniextendr(class = "ConstantReal", pkg = "rpkg", base = "Real")]
+pub struct ConstantRealClass;
+
+impl Altrep for ConstantRealClass {
+    const HAS_LENGTH: bool = true;
+    fn length(_x: SEXP) -> R_xlen_t {
+        10
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for ConstantRealClass {
+    const HAS_DATAPTR: bool = true;
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr(x: SEXP, _writable: bool) -> *mut core::ffi::c_void {
+        use miniextendr_api::ffi::{
+            R_NilValue, R_altrep_data2, R_set_altrep_data2, REAL, Rf_allocVector, Rf_protect,
+            Rf_unprotect, SEXPTYPE,
+        };
+        unsafe {
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                let n = Self::length(x);
+                let val = Rf_allocVector(SEXPTYPE::REALSXP, n);
+                Rf_protect(val);
+                let buf = REAL(val);
+                for i in 0..n {
+                    *buf.offset(i) = Self::elt(x, i);
+                }
+                R_set_altrep_data2(x, val);
+                Rf_unprotect(1);
+                buf.cast()
+            } else {
+                REAL(expanded).cast()
+            }
+        }
+    }
+
+    fn dataptr_or_null(x: SEXP) -> *const core::ffi::c_void {
+        use miniextendr_api::ffi::{R_NilValue, R_altrep_data2, REAL};
+        unsafe {
+            let expanded = R_altrep_data2(x);
+            if expanded == R_NilValue {
+                core::ptr::null()
+            } else {
+                REAL(expanded).cast()
+            }
+        }
+    }
+}
+
+impl AltReal for ConstantRealClass {
+    const HAS_ELT: bool = true;
+    fn elt(_x: SEXP, _i: R_xlen_t) -> f64 {
+        std::f64::consts::PI
+    }
+
+    // Optimized sum: n * PI
+    const HAS_SUM: bool = true;
+    fn sum(x: SEXP, _narm: bool) -> SEXP {
+        let n = Self::length(x) as f64;
+        unsafe { miniextendr_api::ffi::Rf_ScalarReal(n * std::f64::consts::PI) }
+    }
+}
+
+/// Create a ConstantReal ALTREP instance (all elements are PI, length 10).
+///
+/// # Safety
+/// Must be called from R main thread.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_constant_real() -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+    let cls = ConstantRealClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, R_NilValue, R_NilValue) }
+}
+
+// =============================================================================
+// Example 2: Real ALTREP - Arithmetic sequence (like R's seq())
+// =============================================================================
+
+/// Stores (start, step) for arithmetic sequence
+#[derive(DeriveExternalPtr)]
+struct ArithSeqData {
+    start: f64,
+    step: f64,
+    len: i64,
+}
+
+/// ALTREP class for arithmetic sequences: start, start+step, start+2*step, ...
+#[miniextendr(class = "ArithSeq", pkg = "rpkg", base = "Real")]
+pub struct ArithSeqClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for ArithSeqClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
+            Some(data) => data.len as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for ArithSeqClass {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltReal for ArithSeqClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> f64 {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
+            Some(data) => data.start + (i as f64) * data.step,
+            None => f64::NAN,
+        }
+    }
+
+    // Optimized sum using arithmetic series formula: n/2 * (first + last)
+    const HAS_SUM: bool = true;
+    fn sum(x: SEXP, _narm: bool) -> SEXP {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
+            Some(data) => {
+                let n = data.len as f64;
+                let first = data.start;
+                let last = data.start + (n - 1.0) * data.step;
+                let sum = n / 2.0 * (first + last);
+                unsafe { miniextendr_api::ffi::Rf_ScalarReal(sum) }
+            }
+            None => unsafe { miniextendr_api::ffi::Rf_ScalarReal(f64::NAN) },
+        }
+    }
+
+    // Optimized min/max for monotonic sequences
+    const HAS_MIN: bool = true;
+    fn min(x: SEXP, _narm: bool) -> SEXP {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
+            Some(data) => {
+                let min = if data.step >= 0.0 {
+                    data.start
+                } else {
+                    data.start + ((data.len - 1) as f64) * data.step
+                };
+                unsafe { miniextendr_api::ffi::Rf_ScalarReal(min) }
+            }
+            None => unsafe { miniextendr_api::ffi::Rf_ScalarReal(f64::NAN) },
+        }
+    }
+
+    const HAS_MAX: bool = true;
+    fn max(x: SEXP, _narm: bool) -> SEXP {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
+            Some(data) => {
+                let max = if data.step >= 0.0 {
+                    data.start + ((data.len - 1) as f64) * data.step
+                } else {
+                    data.start
+                };
+                unsafe { miniextendr_api::ffi::Rf_ScalarReal(max) }
+            }
+            None => unsafe { miniextendr_api::ffi::Rf_ScalarReal(f64::NAN) },
+        }
+    }
+
+    const HAS_IS_SORTED: bool = true;
+    fn is_sorted(x: SEXP) -> i32 {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
+            Some(data) => {
+                if data.step > 0.0 {
+                    1 // SORTED_INCR
+                } else if data.step < 0.0 {
+                    -1 // SORTED_DECR
+                } else {
+                    1 // All same value = sorted
+                }
+            }
+            None => 0, // UNKNOWN
+        }
+    }
+
+    const HAS_NO_NA: bool = true;
+    fn no_na(_x: SEXP) -> i32 {
+        1 // Arithmetic sequences never have NA
+    }
+}
+
+/// Create an ArithSeq ALTREP instance: seq(from, to, length.out)
+#[miniextendr]
+fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+
+    let len = length_out as i64;
+    let step = if len > 1 {
+        (to - from) / (len - 1) as f64
+    } else {
+        0.0
+    };
+
+    let ext_ptr = ExternalPtr::new(ArithSeqData {
+        start: from,
+        step,
+        len,
+    });
+
+    let cls = ArithSeqClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// =============================================================================
+// Example 3: Logical ALTREP - All TRUE or all FALSE
+// =============================================================================
+
+use miniextendr_api::altrep_traits::AltLogical;
+
+/// Stores the constant value and length
+#[derive(DeriveExternalPtr)]
+struct ConstantLogicalData {
+    value: i32, // TRUE=1, FALSE=0, NA=i32::MIN
+    len: i64,
+}
+
+/// ALTREP class for constant logical vectors
+#[miniextendr(class = "ConstantLogical", pkg = "rpkg", base = "Logical")]
+pub struct ConstantLogicalClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for ConstantLogicalClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ConstantLogicalData>(x) } {
+            Some(data) => data.len as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for ConstantLogicalClass {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltLogical for ConstantLogicalClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, _i: R_xlen_t) -> i32 {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ConstantLogicalData>(x) } {
+            Some(data) => data.value,
+            None => i32::MIN, // NA_LOGICAL
+        }
+    }
+
+    // Optimized sum: n * value (for sum(TRUE_vec) = n, sum(FALSE_vec) = 0)
+    const HAS_SUM: bool = true;
+    fn sum(x: SEXP, narm: bool) -> SEXP {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ConstantLogicalData>(x) } {
+            Some(data) => {
+                if data.value == i32::MIN {
+                    // NA
+                    if narm {
+                        unsafe { miniextendr_api::ffi::Rf_ScalarInteger(0) }
+                    } else {
+                        unsafe { miniextendr_api::ffi::Rf_ScalarInteger(i32::MIN) }
+                    }
+                } else {
+                    let sum = data.len as i32 * data.value;
+                    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) }
+                }
+            }
+            None => unsafe { miniextendr_api::ffi::Rf_ScalarInteger(i32::MIN) },
+        }
+    }
+
+    const HAS_NO_NA: bool = true;
+    fn no_na(x: SEXP) -> i32 {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<ConstantLogicalData>(x) } {
+            Some(data) => {
+                if data.value == i32::MIN {
+                    0
+                } else {
+                    1
+                }
+            }
+            None => 0,
+        }
+    }
+}
+
+/// Create a constant logical ALTREP: rep(value, n)
+#[miniextendr]
+fn constant_logical(value: i32, n: i32) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+
+    let ext_ptr = ExternalPtr::new(ConstantLogicalData {
+        value,
+        len: n as i64,
+    });
+
+    let cls = ConstantLogicalClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// =============================================================================
+// Example 4: String ALTREP - Lazy-generated strings
+// =============================================================================
+
+use miniextendr_api::altrep_traits::AltString;
+
+/// Generates strings like "item_0", "item_1", etc. on demand
+#[derive(DeriveExternalPtr)]
+struct LazyStringData {
+    prefix: String,
+    len: i64,
+}
+
+/// ALTREP class for lazily-generated strings
+#[miniextendr(class = "LazyString", pkg = "rpkg", base = "String")]
+pub struct LazyStringClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for LazyStringClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<LazyStringData>(x) } {
+            Some(data) => data.len as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for LazyStringClass {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltString for LazyStringClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
+        use miniextendr_api::altrep_data1_as;
+        use miniextendr_api::ffi::{Rf_mkCharLenCE, cetype_t};
+        match unsafe { altrep_data1_as::<LazyStringData>(x) } {
+            Some(data) => {
+                let s = format!("{}_{}", data.prefix, i);
+                unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8) }
+            }
+            None => unsafe { miniextendr_api::ffi::R_NaString },
+        }
+    }
+
+    const HAS_NO_NA: bool = true;
+    fn no_na(_x: SEXP) -> i32 {
+        1 // Generated strings are never NA
+    }
+}
+
+/// Create a LazyString ALTREP: generates "prefix_0", "prefix_1", ... on demand
+#[miniextendr]
+fn lazy_string(prefix: &str, n: i32) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+
+    let ext_ptr = ExternalPtr::new(LazyStringData {
+        prefix: prefix.to_string(),
+        len: n as i64,
+    });
+
+    let cls = LazyStringClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// =============================================================================
+// Example 5: Raw ALTREP - Repeating byte pattern
+// =============================================================================
+
+use miniextendr_api::altrep_traits::AltRaw;
+
+/// Repeating pattern of bytes
+#[derive(DeriveExternalPtr)]
+struct RepeatingRawData {
+    pattern: Vec<u8>,
+    total_len: i64,
+}
+
+/// ALTREP class for repeating raw byte patterns
+#[miniextendr(class = "RepeatingRaw", pkg = "rpkg", base = "Raw")]
+pub struct RepeatingRawClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for RepeatingRawClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<RepeatingRawData>(x) } {
+            Some(data) => data.total_len as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for RepeatingRawClass {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltRaw for RepeatingRawClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> u8 {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<RepeatingRawData>(x) } {
+            Some(data) => {
+                if data.pattern.is_empty() {
+                    0
+                } else {
+                    data.pattern[i as usize % data.pattern.len()]
+                }
+            }
+            None => 0,
+        }
+    }
+}
+
+/// Create a RepeatingRaw ALTREP: repeats pattern to fill n bytes
+#[miniextendr]
+fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+
+    let ext_ptr = ExternalPtr::new(RepeatingRawData {
+        pattern: pattern.to_vec(),
+        total_len: n as i64,
+    });
+
+    let cls = RepeatingRawClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// =============================================================================
+// Example 6: List ALTREP - Lazy list of numbered lists
+// =============================================================================
+
+use miniextendr_api::altrep_traits::AltList;
+
+/// Generates list elements on demand
+#[derive(DeriveExternalPtr)]
+struct LazyListData {
+    len: i64,
+}
+
+/// ALTREP class for lazily-generated lists
+#[miniextendr(class = "LazyList", pkg = "rpkg", base = "List")]
+pub struct LazyListClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for LazyListClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<LazyListData>(x) } {
+            Some(data) => data.len as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for LazyListClass {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltList for LazyListClass {
+    const HAS_ELT: bool = true;
+    fn elt(_x: SEXP, i: R_xlen_t) -> SEXP {
+        // Return a list with index info: list(index = i, squared = i*i)
+        use miniextendr_api::ffi::{
+            R_NamesSymbol, Rf_allocVector, Rf_protect, Rf_setAttrib, Rf_unprotect, SET_VECTOR_ELT,
+            SEXPTYPE,
+        };
+        unsafe {
+            let result = Rf_allocVector(SEXPTYPE::VECSXP, 2);
+            Rf_protect(result);
+
+            SET_VECTOR_ELT(result, 0, miniextendr_api::ffi::Rf_ScalarInteger(i as i32));
+            SET_VECTOR_ELT(
+                result,
+                1,
+                miniextendr_api::ffi::Rf_ScalarInteger((i * i) as i32),
+            );
+
+            // Set names
+            let names = Rf_allocVector(SEXPTYPE::STRSXP, 2);
+            Rf_protect(names);
+            miniextendr_api::ffi::SET_STRING_ELT(
+                names,
+                0,
+                miniextendr_api::ffi::Rf_mkChar(c"index".as_ptr()),
+            );
+            miniextendr_api::ffi::SET_STRING_ELT(
+                names,
+                1,
+                miniextendr_api::ffi::Rf_mkChar(c"squared".as_ptr()),
+            );
+            Rf_setAttrib(result, R_NamesSymbol, names);
+
+            Rf_unprotect(2);
+            result
+        }
+    }
+}
+
+/// Create a LazyList ALTREP: each element is list(index=i, squared=i*i)
+#[miniextendr]
+fn lazy_list(n: i32) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+
+    let ext_ptr = ExternalPtr::new(LazyListData { len: n as i64 });
+
+    let cls = LazyListClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// =============================================================================
+// Example 7: Integer ALTREP - Fibonacci sequence with memoization
+// =============================================================================
+
+use std::cell::RefCell;
+
+/// Fibonacci data with memoization cache
+#[derive(DeriveExternalPtr)]
+struct FibonacciData {
+    len: i64,
+    cache: RefCell<Vec<Option<i32>>>,
+}
+
+/// ALTREP class for Fibonacci sequence with memoization
+#[miniextendr(class = "Fibonacci", pkg = "rpkg", base = "Int")]
+pub struct FibonacciClass;
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl Altrep for FibonacciClass {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t {
+        use miniextendr_api::altrep_data1_as;
+        match unsafe { altrep_data1_as::<FibonacciData>(x) } {
+            Some(data) => data.len as R_xlen_t,
+            None => 0,
+        }
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for FibonacciClass {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltInteger for FibonacciClass {
+    const HAS_ELT: bool = true;
+    fn elt(x: SEXP, i: R_xlen_t) -> i32 {
+        use miniextendr_api::altrep_data1_as;
+
+        fn fib(n: usize, cache: &RefCell<Vec<Option<i32>>>) -> i32 {
+            if n <= 1 {
+                return n as i32;
+            }
+
+            // Check cache
+            {
+                let c = cache.borrow();
+                if let Some(&Some(v)) = c.get(n) {
+                    return v;
+                }
+            }
+
+            // Compute iteratively to avoid stack overflow
+            let mut c = cache.borrow_mut();
+            while c.len() <= n {
+                c.push(None);
+            }
+
+            if c[0].is_none() {
+                c[0] = Some(0);
+            }
+            if n >= 1 && c[1].is_none() {
+                c[1] = Some(1);
+            }
+
+            for idx in 2..=n {
+                if c[idx].is_none() {
+                    let a = c[idx - 1].unwrap_or(0);
+                    let b = c[idx - 2].unwrap_or(0);
+                    c[idx] = Some(a.saturating_add(b));
+                }
+            }
+
+            c[n].unwrap_or(0)
+        }
+
+        match unsafe { altrep_data1_as::<FibonacciData>(x) } {
+            Some(data) => fib(i as usize, &data.cache),
+            None => i32::MIN,
+        }
+    }
+
+    const HAS_NO_NA: bool = true;
+    fn no_na(_x: SEXP) -> i32 {
+        1 // Fibonacci values are never NA
+    }
+}
+
+/// Create a Fibonacci ALTREP: fib(0), fib(1), ..., fib(n-1)
+#[miniextendr]
+fn fibonacci(n: i32) -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+
+    let ext_ptr = ExternalPtr::new(FibonacciData {
+        len: n as i64,
+        cache: RefCell::new(Vec::new()),
+    });
+
+    let cls = FibonacciClass::get_or_init_class();
+    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+}
+
+// =============================================================================
+// Example 8: Integer ALTREP - Powers of 2
+// =============================================================================
+
+/// ALTREP class for powers of 2: 1, 2, 4, 8, 16, ...
+#[miniextendr(class = "PowersOf2", pkg = "rpkg", base = "Int")]
+pub struct PowersOf2Class;
+
+impl Altrep for PowersOf2Class {
+    const HAS_LENGTH: bool = true;
+    fn length(_x: SEXP) -> R_xlen_t {
+        31 // 2^0 to 2^30 fit in i32
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl AltVec for PowersOf2Class {}
+
+impl AltInteger for PowersOf2Class {
+    const HAS_ELT: bool = true;
+    fn elt(_x: SEXP, i: R_xlen_t) -> i32 {
+        if i >= 31 {
+            i32::MIN // NA for overflow
+        } else {
+            1 << i
+        }
+    }
+
+    // Optimized sum: 2^n - 1 (sum of geometric series)
+    const HAS_SUM: bool = true;
+    fn sum(_x: SEXP, _narm: bool) -> SEXP {
+        // Sum of 2^0 + 2^1 + ... + 2^30 = 2^31 - 1
+        let sum = (1i64 << 31) - 1;
+        unsafe { miniextendr_api::ffi::Rf_ScalarReal(sum as f64) }
+    }
+
+    const HAS_IS_SORTED: bool = true;
+    fn is_sorted(_x: SEXP) -> i32 {
+        1 // Always sorted ascending
+    }
+
+    const HAS_NO_NA: bool = true;
+    fn no_na(_x: SEXP) -> i32 {
+        1
+    }
+}
+
+/// Create a PowersOf2 ALTREP: 1, 2, 4, 8, ..., 2^30
+///
+/// # Safety
+/// Must be called from R main thread.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_powers_of_2() -> SEXP {
+    use miniextendr_api::altrep_registration::RegisterAltrep;
+    use miniextendr_api::ffi::altrep::R_new_altrep;
+    let cls = PowersOf2Class::get_or_init_class();
+    unsafe { R_new_altrep(cls, R_NilValue, R_NilValue) }
+}
+
+// endregion
+
 // region: ALTREP with ExternalPtr backend
 
 /// An ALTREP integer class that stores its data in an ExternalPtr
@@ -1007,6 +1717,35 @@ miniextendr_module! {
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
     extern "C-unwind" fn rpkg_constant_int;
+
+    // Additional ALTREP examples
+    // Real ALTREP
+    struct ConstantRealClass;
+    extern "C-unwind" fn rpkg_constant_real;
+    struct ArithSeqClass;
+    fn arith_seq;
+
+    // Logical ALTREP
+    struct ConstantLogicalClass;
+    fn constant_logical;
+
+    // String ALTREP
+    struct LazyStringClass;
+    fn lazy_string;
+
+    // Raw ALTREP
+    struct RepeatingRawClass;
+    fn repeating_raw;
+
+    // List ALTREP
+    struct LazyListClass;
+    fn lazy_list;
+
+    // More Integer ALTREP examples
+    struct FibonacciClass;
+    fn fibonacci;
+    struct PowersOf2Class;
+    extern "C-unwind" fn rpkg_powers_of_2;
 
     // ExternalPtr tests
     fn extptr_counter_new;

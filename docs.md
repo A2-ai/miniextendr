@@ -2,6 +2,25 @@
 
 A Rust-R interoperability framework for building R packages with Rust backends.
 
+## Build Commands
+
+**Always use the justfile** for building, testing, and checking the project. Run `just` to see all available commands.
+
+| Command | Description |
+|---------|-------------|
+| `just check` | Check all crates compile |
+| `just build` | Build all crates |
+| `just clippy` | Run clippy lints |
+| `just fmt` | Format all code |
+| `just test` | Run Rust tests |
+| `just configure` | Vendor deps and run ./configure |
+| `just devtools-test` | Run R tests via devtools |
+| `just devtools-load` | Load rpkg with devtools::load_all |
+| `just r-cmd-install` | Install rpkg via R CMD INSTALL |
+| `just r-cmd-check` | Run R CMD check |
+
+---
+
 ## Architecture Overview
 
 ```
