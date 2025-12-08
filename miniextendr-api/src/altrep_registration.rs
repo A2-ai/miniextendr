@@ -3,9 +3,9 @@
 //! ## Architecture
 //!
 //! - **FFI**: Raw setters/types in `crate::ffi::altrep`
-//! - **Traits**: Safe traits in `crate::altrep_traits` (`Altrep`, `AltVec`, `AltInteger`, etc.)
-//!   - Required methods: Compiler-enforced by trait definition
-//!   - Optional methods: Gated by HAS_* constants, defaults provided
+//! - **Traits**: Safe Core/Opt traits in `crate::altrep_traits`
+//!   - Core traits: Required methods (no defaults, compiler enforces)
+//!   - Opt traits: Optional methods (HAS_* gated, defaults to not installed)
 //! - **Bridge**: Generic `extern "C-unwind"` trampolines in `crate::altrep_bridge`
 //! - **Macro**: `#[miniextendr]` on a struct emits `impl RegisterAltrep` that:
 //!   - Creates the class handle via `R_make_alt*`
@@ -36,31 +36,78 @@ pub trait MethodRegistrar {
     unsafe fn install(cls: R_altrep_class_t);
 }
 
-// =============================================================================
-// Runtime dispatch helper for class creation
-// =============================================================================
-
-use crate::altrep::RBase;
-use crate::ffi::altrep::*;
-
-/// Create an ALTREP class handle based on the runtime base type.
+/// Marker trait for types that can be used as ALTREP integer vectors.
 ///
-/// # Safety
-/// Must be called during R initialization.
-pub unsafe fn make_class_by_base(
-    class_name: *const i8,
-    pkg_name: *const i8,
-    base: RBase,
-) -> R_altrep_class_t {
-    unsafe {
-        match base {
-            RBase::Int => R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut()),
-            RBase::Real => R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut()),
-            RBase::Logical => R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut()),
-            RBase::Raw => R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut()),
-            RBase::String => R_make_altstring_class(class_name, pkg_name, core::ptr::null_mut()),
-            RBase::List => R_make_altlist_class(class_name, pkg_name, core::ptr::null_mut()),
-            RBase::Complex => R_make_altcomplex_class(class_name, pkg_name, core::ptr::null_mut()),
-        }
-    }
+/// Requires `AltrepCore` (for `length`) and `AltIntegerCore` marker.
+/// The type must provide element access via either:
+/// - `AltIntegerOpt::HAS_ELT = true` with `elt()` implementation, OR
+/// - `AltVecOpt::HAS_DATAPTR = true` with `dataptr()` implementation
+pub trait AltIntegerRegistrar:
+    crate::altrep_traits::AltIntegerOpt + crate::altrep_traits::AltIntegerCore
+{
+}
+impl<T: crate::altrep_traits::AltIntegerOpt + crate::altrep_traits::AltIntegerCore>
+    AltIntegerRegistrar for T
+{
+}
+
+/// Marker trait for types that can be used as ALTREP real vectors.
+pub trait AltRealRegistrar:
+    crate::altrep_traits::AltRealOpt + crate::altrep_traits::AltRealCore
+{
+}
+impl<T: crate::altrep_traits::AltRealOpt + crate::altrep_traits::AltRealCore> AltRealRegistrar
+    for T
+{
+}
+
+/// Marker trait for types that can be used as ALTREP logical vectors.
+pub trait AltLogicalRegistrar:
+    crate::altrep_traits::AltLogicalOpt + crate::altrep_traits::AltLogicalCore
+{
+}
+impl<T: crate::altrep_traits::AltLogicalOpt + crate::altrep_traits::AltLogicalCore>
+    AltLogicalRegistrar for T
+{
+}
+
+/// Marker trait for types that can be used as ALTREP raw vectors.
+pub trait AltRawRegistrar:
+    crate::altrep_traits::AltRawOpt + crate::altrep_traits::AltRawCore
+{
+}
+impl<T: crate::altrep_traits::AltRawOpt + crate::altrep_traits::AltRawCore> AltRawRegistrar for T {}
+
+/// Marker trait for types that can be used as ALTREP complex vectors.
+pub trait AltComplexRegistrar:
+    crate::altrep_traits::AltComplexOpt + crate::altrep_traits::AltComplexCore
+{
+}
+impl<T: crate::altrep_traits::AltComplexOpt + crate::altrep_traits::AltComplexCore>
+    AltComplexRegistrar for T
+{
+}
+
+/// Marker trait for types that can be used as ALTREP string vectors.
+///
+/// Requires `AltStringCore` which mandates `elt()` implementation (no default).
+pub trait AltStringRegistrar:
+    crate::altrep_traits::AltStringOpt + crate::altrep_traits::AltStringCore
+{
+}
+impl<T: crate::altrep_traits::AltStringOpt + crate::altrep_traits::AltStringCore>
+    AltStringRegistrar for T
+{
+}
+
+/// Marker trait for types that can be used as ALTREP list vectors.
+///
+/// Requires `AltListCore` which mandates `elt()` implementation (no default).
+pub trait AltListRegistrar:
+    crate::altrep_traits::AltListOpt + crate::altrep_traits::AltListCore
+{
+}
+impl<T: crate::altrep_traits::AltListOpt + crate::altrep_traits::AltListCore> AltListRegistrar
+    for T
+{
 }

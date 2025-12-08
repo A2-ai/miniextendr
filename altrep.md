@@ -937,6 +937,279 @@ struct Inner {
 └─────────────────────────────────────────────────────────────┘
 ```
 
+## Compile-Time Enforcement of Required Methods
+
+The current `altrep_traits.rs` design with `HAS_*` constants is **insufficient** - it doesn't prevent users from forgetting required methods. The API should enforce correctness at compile time.
+
+### Problem with Current Design
+
+```rust
+// Current: User can forget required methods, only fails at runtime
+impl AltString for MyType {
+    const HAS_LENGTH: bool = true;
+    fn length(x: SEXP) -> R_xlen_t { 10 }
+    // Forgot HAS_ELT and elt() - compiles fine, crashes at runtime!
+}
+```
+
+### Solution 1: Builder Pattern with Type-State
+
+```rust
+// Type-state markers
+struct NeedsLength;
+struct NeedsElt;
+struct Ready;
+
+struct AltStringBuilder<State> {
+    class_name: &'static str,
+    pkg_name: &'static str,
+    length_fn: Option<fn(SEXP) -> R_xlen_t>,
+    elt_fn: Option<fn(SEXP, R_xlen_t) -> SEXP>,
+    // ... optional methods
+    _state: PhantomData<State>,
+}
+
+impl AltStringBuilder<NeedsLength> {
+    pub fn new(name: &'static str, pkg: &'static str) -> Self { ... }
+
+    // Must provide length - transitions state
+    pub fn length(self, f: fn(SEXP) -> R_xlen_t) -> AltStringBuilder<NeedsElt> {
+        AltStringBuilder {
+            length_fn: Some(f),
+            _state: PhantomData,
+            ..self
+        }
+    }
+}
+
+impl AltStringBuilder<NeedsElt> {
+    // Must provide elt - transitions to Ready
+    pub fn elt(self, f: fn(SEXP, R_xlen_t) -> SEXP) -> AltStringBuilder<Ready> {
+        AltStringBuilder {
+            elt_fn: Some(f),
+            _state: PhantomData,
+            ..self
+        }
+    }
+}
+
+impl AltStringBuilder<Ready> {
+    // Optional methods available in Ready state
+    pub fn set_elt(mut self, f: fn(SEXP, R_xlen_t, SEXP)) -> Self { ... }
+    pub fn is_sorted(mut self, f: fn(SEXP) -> i32) -> Self { ... }
+
+    // Only Ready state can build!
+    pub fn build(self, dll: *mut DllInfo) -> AltrepClass { ... }
+}
+
+// Usage - compile error if you forget required methods:
+let class = AltStringBuilder::new("my_strings", "mypkg")
+    .length(|x| my_len(x))
+    .elt(|x, i| my_elt(x, i))      // Required!
+    .is_sorted(|x| UNKNOWN)        // Optional
+    .build(dll);
+
+// This won't compile - can't call .build() without .elt():
+// let class = AltStringBuilder::new("bad", "pkg")
+//     .length(|x| 10)
+//     .build(dll);  // ERROR: no method `build` on AltStringBuilder<NeedsElt>
+```
+
+### Solution 2: Separate Required + Optional Traits (Recommended)
+
+The key insight: **C NULL tells R "use your default implementation"**. Optional methods should return NULL by default, which R interprets as "not overridden."
+
+```rust
+// Required methods - NO defaults, compiler enforces implementation
+trait AltStringCore {
+    fn length(x: SEXP) -> R_xlen_t;  // Must implement
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP;  // Must implement
+}
+
+// Optional methods - defaults return NULL (R uses its fallback)
+trait AltStringOpt: AltStringCore {
+    // Returns NULL → R falls back to error (read-only string)
+    fn set_elt(_x: SEXP, _i: R_xlen_t, _v: SEXP) -> *mut SEXPREC {
+        std::ptr::null_mut()  // NULL = not implemented
+    }
+
+    // Returns NULL → R falls back to UNKNOWN_SORTEDNESS
+    fn is_sorted(_x: SEXP) -> *mut SEXPREC {
+        std::ptr::null_mut()
+    }
+
+    // Returns NULL → R falls back to "unknown" (0)
+    fn no_na(_x: SEXP) -> *mut SEXPREC {
+        std::ptr::null_mut()
+    }
+}
+
+// For methods with non-pointer returns, use Option or sentinel
+trait AltIntegerOpt: AltIntegerCore {
+    // Option<i32> → None maps to NULL in registration
+    fn sum(_x: SEXP, _narm: bool) -> Option<SEXP> { None }
+    fn min(_x: SEXP, _narm: bool) -> Option<SEXP> { None }
+    fn max(_x: SEXP, _narm: bool) -> Option<SEXP> { None }
+}
+
+// Blanket impl: anything implementing Core gets default Opt
+impl<T: AltStringCore> AltStringOpt for T {}
+
+// Registration checks for NULL and skips R_set_* calls
+fn register_altstring<T: AltStringOpt>(
+    name: &CStr,
+    pkg: &CStr,
+    dll: *mut DllInfo
+) -> AltrepClass {
+    let class = R_make_altstring_class(...);
+
+    // Required methods - always install
+    R_set_altrep_Length_method(class, Some(length_trampoline::<T>));
+    R_set_altstring_Elt_method(class, Some(elt_trampoline::<T>));
+
+    // Optional methods - trampoline handles NULL return
+    // The trampoline checks if T's method returns null and returns appropriately
+    R_set_altstring_Set_elt_method(class, Some(set_elt_trampoline::<T>));
+    R_set_altstring_Is_sorted_method(class, Some(is_sorted_trampoline::<T>));
+
+    class
+}
+
+// Usage - compiler enforces required methods:
+struct MyStrings(Vec<String>);
+
+impl AltStringCore for MyStrings {
+    fn length(x: SEXP) -> R_xlen_t { /* must implement */ }
+    fn elt(x: SEXP, i: R_xlen_t) -> SEXP { /* must implement */ }
+}
+// AltStringOpt auto-implemented with NULL-returning defaults
+// User can override specific optional methods:
+impl AltStringOpt for MyStrings {
+    fn is_sorted(_x: SEXP) -> *mut SEXPREC {
+        // Actually implement sorting check
+        Rf_ScalarInteger(SORTED_INCR)
+    }
+    // set_elt and no_na remain default (NULL → use R's behavior)
+}
+```
+
+#### Alternative: Const-based Method Gating
+
+Instead of NULL returns, use const bools to control whether methods are installed:
+
+```rust
+trait AltStringOpt: AltStringCore {
+    // Const flags control registration
+    const HAS_SET_ELT: bool = false;
+    const HAS_IS_SORTED: bool = false;
+    const HAS_NO_NA: bool = false;
+
+    // Methods only called if const is true
+    fn set_elt(_x: SEXP, _i: R_xlen_t, _v: SEXP) { unreachable!() }
+    fn is_sorted(_x: SEXP) -> i32 { unreachable!() }
+    fn no_na(_x: SEXP) -> i32 { unreachable!() }
+}
+
+// Registration checks consts
+fn register<T: AltStringOpt>(...) {
+    // Required - always install
+    R_set_altrep_Length_method(class, Some(length_trampoline::<T>));
+    R_set_altstring_Elt_method(class, Some(elt_trampoline::<T>));
+
+    // Optional - only install if implemented
+    if T::HAS_SET_ELT {
+        R_set_altstring_Set_elt_method(class, Some(set_elt_trampoline::<T>));
+    }
+    // Not installing = R uses its default (which is NULL in the method table)
+}
+```
+
+This is cleaner because:
+
+1. **No runtime cost**: Method not installed means R never calls it
+2. **Clear intent**: `HAS_*` explicitly declares what's implemented
+3. **Proc-macro friendly**: Macro can generate `const HAS_* = true` for implemented methods
+
+### Solution 3: Per-Type Constructors
+
+Different constructors for each ALTREP type, each requiring their specific methods:
+
+```rust
+// For numeric types (ALTINTEGER/ALTREAL/etc) - Elt OR Dataptr required
+pub fn register_altinteger<T>(
+    name: &CStr,
+    pkg: &CStr,
+    dll: *mut DllInfo,
+    length: fn(SEXP) -> R_xlen_t,
+    access: IntegerAccess,  // Enum: either Elt or Dataptr
+) -> AltrepClass;
+
+pub enum IntegerAccess {
+    Elt(fn(SEXP, R_xlen_t) -> i32),
+    Dataptr(fn(SEXP, bool) -> *mut c_void),
+    Both {
+        elt: fn(SEXP, R_xlen_t) -> i32,
+        dataptr: fn(SEXP, bool) -> *mut c_void,
+    },
+}
+
+// For ALTSTRING/ALTLIST - Elt is always required
+pub fn register_altstring<T>(
+    name: &CStr,
+    pkg: &CStr,
+    dll: *mut DllInfo,
+    length: fn(SEXP) -> R_xlen_t,
+    elt: fn(SEXP, R_xlen_t) -> SEXP,  // Required parameter!
+) -> AltStringBuilder;  // Returns builder for optional methods
+
+// Usage:
+let class = register_altstring(
+    c"my_strings",
+    c"mypkg",
+    dll,
+    my_length,
+    my_elt,
+)
+.set_elt(my_set_elt)  // Optional
+.build();
+```
+
+### Recommended Approach
+
+Combine **Solution 1 (type-state builder)** for explicit construction with **Solution 2 (split traits)** for derive macros:
+
+```rust
+// Manual construction: type-state builder enforces requirements
+let class = AltIntegerBuilder::new("compact_seq", "mypkg")
+    .length(compact_length)
+    .elt(compact_elt)          // Required for lazy
+    // OR .dataptr(compact_dataptr) for contiguous
+    .sum(compact_sum)          // Optional optimization
+    .build(dll);
+
+// Derive macro: trait split enforces at impl level
+#[derive(AltInteger)]
+struct CompactSeq { start: i32, end: i32 }
+
+impl AltIntegerCore for CompactSeq {
+    fn length(&self) -> usize { (self.end - self.start) as usize }
+    fn elt(&self, i: usize) -> i32 { self.start + i as i32 }
+}
+// Optional: impl AltIntegerOpt to override defaults
+```
+
+### Type-Specific Requirements Summary
+
+| Type | Required | Pick One | Optional |
+|------|----------|----------|----------|
+| ALTINTEGER | `length` | `elt` OR `dataptr` | `get_region`, `sum`, `min`, `max`, `is_sorted`, `no_na` |
+| ALTREAL | `length` | `elt` OR `dataptr` | `get_region`, `sum`, `min`, `max`, `is_sorted`, `no_na` |
+| ALTLOGICAL | `length` | `elt` OR `dataptr` | `get_region`, `sum`, `is_sorted`, `no_na` |
+| ALTRAW | `length` | `elt` OR `dataptr` | `get_region` |
+| ALTCOMPLEX | `length` | `elt` OR `dataptr` | `get_region` |
+| ALTSTRING | `length`, `elt` | — | `set_elt`, `is_sorted`, `no_na` |
+| ALTLIST | `length`, `elt` | — | `set_elt` |
+
 ## Proc-Macro Composition
 
 The `#[derive(ExternalPtr)]` macro should generate ALTREP support:

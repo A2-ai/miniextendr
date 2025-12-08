@@ -203,18 +203,75 @@ pub fn miniextendr(
             unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
         });
     }
-    // Build conversion builder with coercion settings
-    let mut conversion_builder = RustConversionBuilder::new();
-    if coerce_all {
-        conversion_builder = conversion_builder.with_coerce_all();
-    }
-    for input in inputs.iter() {
-        if let syn::FnArg::Typed(pt) = input
-            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-        {
-            let param_name = pat_ident.ident.to_string();
-            if parsed.has_coerce_attr(&param_name) {
-                conversion_builder = conversion_builder.with_coerce_param(param_name);
+    let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
+    for arg in inputs.iter() {
+        let syn::FnArg::Typed(pat_type) = arg else {
+            // TODO: no support for self!
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            continue;
+        };
+        let ident = pat_ident.ident.clone();
+
+        match pat_type.ty.as_ref() {
+            syn::Type::Tuple(t) if t.elems.is_empty() => {
+                if pat_ident.mutability.is_some() {
+                    closure_statements.push(quote::quote! { let mut #ident = (); });
+                } else {
+                    closure_statements.push(quote::quote! { let #ident = (); });
+                }
+            }
+            syn::Type::Reference(r) => {
+                let is_dots = matches!(
+                    r.elem.as_ref(),
+                    syn::Type::Path(tp)
+                        if tp
+                            .path
+                            .segments
+                            .last()
+                            .map(|s| s.ident == "Dots")
+                            .unwrap_or(false)
+                );
+                let is_slice = matches!(r.elem.as_ref(), syn::Type::Slice(_));
+                // Check for &str - strings need TryFromSexp, not DATAPTR_RO
+                let is_str = matches!(
+                    r.elem.as_ref(),
+                    syn::Type::Path(tp) if tp.path.is_ident("str")
+                );
+                if is_dots {
+                    let storage_ident = quote::format_ident!("{}_storage", ident);
+                    closure_statements.push(quote::quote! {
+                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
+                        let #ident = &#storage_ident;
+                    });
+                } else if is_slice || is_str {
+                    // Slice references and &str use TryFromSexp
+                    // Strings must use STRING_ELT + R_CHAR, not DATAPTR_RO
+                    closure_statements.push(quote::quote! {
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                    });
+                } else if pat_ident.mutability.is_some() {
+                    closure_statements.push(quote::quote! {
+                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#ident).cast() };
+                    });
+                } else {
+                    closure_statements.push(quote::quote! {
+                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#ident).cast() };
+                    });
+                }
+            }
+            _ => {
+                if pat_ident.mutability.is_some() {
+                    closure_statements.push(quote::quote! {
+                        let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                    });
+                } else {
+                    closure_statements.push(quote::quote! {
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                    });
+                }
             }
         }
     }
@@ -1061,6 +1118,249 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         }
     }
     .into()
+}
+
+/// Internal: expand ALTREP struct/enum registration for #[miniextendr] when used on a type.
+fn expand_altrep_struct(
+    attr: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream {
+    use syn::spanned::Spanned;
+    let input: syn::Item = match syn::parse(item.clone()) {
+        Ok(it) => it,
+        Err(e) => return e.into_compile_error().into(),
+    };
+
+    let (ident, generics) = match &input {
+        syn::Item::Struct(s) => (s.ident.clone(), s.generics.clone()),
+        syn::Item::Enum(e) => (e.ident.clone(), e.generics.clone()),
+        _ => {
+            return syn::Error::new(
+                input.span(),
+                "#[miniextendr] on types supports only structs and enums",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
+
+    // Parse attr list: class = "...", pkg = "...", base = "..."
+    use syn::parse::Parser;
+    let parser =
+        syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
+    let args = match parser.parse(attr) {
+        Ok(v) => v,
+        Err(e) => return e.into_compile_error().into(),
+    };
+    let mut class_name = None::<String>;
+    let mut pkg_name = None::<String>;
+    let mut base_name = None::<String>;
+    let mut delegate_ty: Option<syn::Type> = None;
+    for nv in args {
+        let key = nv
+            .path
+            .get_ident()
+            .map(|i| i.to_string())
+            .unwrap_or_default();
+        if let syn::Expr::Lit(syn::ExprLit {
+            lit: syn::Lit::Str(s),
+            ..
+        }) = nv.value
+        {
+            match key.as_str() {
+                "class" => class_name = Some(s.value()),
+                "pkg" => pkg_name = Some(s.value()),
+                "base" => base_name = Some(s.value()),
+                _ => {}
+            }
+        } else if let syn::Expr::Path(p) = nv.value
+            && key == "delegate"
+        {
+            delegate_ty = Some(syn::Type::Path(syn::TypePath {
+                qself: None,
+                path: p.path,
+            }));
+        }
+    }
+    let class_name = class_name.expect("#[miniextendr] missing class = \"...\"");
+    let pkg_name = pkg_name.expect("#[miniextendr] missing pkg = \"...\"");
+    let base_name =
+        base_name.expect("#[miniextendr] missing base = \"Int|Real|Logical|Raw|String|List\"");
+
+    let base_variant: syn::Expr = match base_name.as_str() {
+        "Int" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Int),
+        "Real" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Real),
+        "Logical" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Logical),
+        "Raw" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Raw),
+        "String" => syn::parse_quote!(::miniextendr_api::altrep::RBase::String),
+        "List" => syn::parse_quote!(::miniextendr_api::altrep::RBase::List),
+        _ => {
+            return syn::Error::new_spanned(
+                syn::LitStr::new(&base_name, ident.span()),
+                "base must be one of Int|Real|Logical|Raw|String|List",
+            )
+            .into_compile_error()
+            .into();
+        }
+    };
+
+    // Decide which type to use for trampolines (delegate or self)
+    let tramp_ty: syn::Type = if let Some(delegate) = delegate_ty.clone() {
+        delegate
+    } else {
+        syn::parse_quote!(#ident)
+    };
+    // Generate per-family setter calls gated by the trampoline type's trait flags
+    let family_setters: proc_macro2::TokenStream = match base_name.as_str() {
+        "Int" => quote::quote! {
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_ELT, R_set_altinteger_Elt_method, bridge::t_int_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_GET_REGION, R_set_altinteger_Get_region_method, bridge::t_int_get_region::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_IS_SORTED, R_set_altinteger_Is_sorted_method, bridge::t_int_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_NO_NA, R_set_altinteger_No_NA_method, bridge::t_int_no_na::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_SUM, R_set_altinteger_Sum_method, bridge::t_int_sum::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MIN, R_set_altinteger_Min_method, bridge::t_int_min::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltInteger>::HAS_MAX, R_set_altinteger_Max_method, bridge::t_int_max::<#tramp_ty>);
+        },
+        "Real" => quote::quote! {
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_ELT, R_set_altreal_Elt_method, bridge::t_real_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_GET_REGION, R_set_altreal_Get_region_method, bridge::t_real_get_region::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_IS_SORTED, R_set_altreal_Is_sorted_method, bridge::t_real_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_NO_NA, R_set_altreal_No_NA_method, bridge::t_real_no_na::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_SUM, R_set_altreal_Sum_method, bridge::t_real_sum::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MIN, R_set_altreal_Min_method, bridge::t_real_min::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltReal>::HAS_MAX, R_set_altreal_Max_method, bridge::t_real_max::<#tramp_ty>);
+        },
+        "Logical" => quote::quote! {
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_ELT, R_set_altlogical_Elt_method, bridge::t_lgl_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_GET_REGION, R_set_altlogical_Get_region_method, bridge::t_lgl_get_region::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_IS_SORTED, R_set_altlogical_Is_sorted_method, bridge::t_lgl_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltLogical>::HAS_NO_NA, R_set_altlogical_No_NA_method, bridge::t_lgl_no_na::<#tramp_ty>);
+        },
+        "Raw" => quote::quote! {
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_ELT, R_set_altraw_Elt_method, bridge::t_raw_elt::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION, R_set_altraw_Get_region_method, bridge::t_raw_get_region::<#tramp_ty>);
+        },
+        "String" => quote::quote! {
+            // elt is ALWAYS required for ALTSTRING (no HAS_ELT check)
+            unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<#tramp_ty>)); }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED, R_set_altstring_Is_sorted_method, bridge::t_str_is_sorted::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA, R_set_altstring_No_NA_method, bridge::t_str_no_na::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT, R_set_altstring_Set_elt_method, bridge::t_str_set_elt::<#tramp_ty>);
+        },
+        "List" => quote::quote! {
+            // elt is ALWAYS required for ALTLIST (no HAS_ELT check)
+            unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<#tramp_ty>)); }
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT, R_set_altlist_Set_elt_method, bridge::t_list_set_elt::<#tramp_ty>);
+        },
+        _ => quote::quote! {},
+    };
+    let make_class: proc_macro2::TokenStream = match base_name.as_str() {
+        "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "Logical" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+            <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+            core::ptr::null_mut(),
+        ) },
+        _ => quote::quote! { unreachable!() },
+    };
+
+    // Registration: per-type; create class handle then install methods via MethodRegistrar
+
+    let (_impl_generics, ty_generics, where_clause) = generics.split_for_impl();
+    // Use LitCStr for proper C string literal generation (c"...")
+    let class_cstr = syn::LitCStr::new(
+        &std::ffi::CString::new(class_name.as_str()).unwrap(),
+        ident.span(),
+    );
+    let pkg_cstr = syn::LitCStr::new(
+        &std::ffi::CString::new(pkg_name.as_str()).unwrap(),
+        ident.span(),
+    );
+
+    // No trait forwarding: rely on trampoline type's trait impls.
+
+    // No marker traits needed.
+    let _family_marker_impl: proc_macro2::TokenStream = quote::quote! {};
+
+    // Generate doc strings for trait impls
+    let altrep_class_doc = format!(
+        "ALTREP class descriptor for [`{}`] (class: `{}`, pkg: `{}`, base: `{}`).",
+        ident, class_name, pkg_name, base_name
+    );
+    let method_registrar_doc = format!("Method installer for [`{}`] ALTREP class.", ident);
+    let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
+
+    let expanded = quote::quote! {
+        #input
+
+        #[doc = #altrep_class_doc]
+        impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
+            const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
+            const PKG_NAME: &'static std::ffi::CStr = #pkg_cstr;
+            const BASE: ::miniextendr_api::altrep::RBase = #base_variant;
+            unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
+                <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)
+            }
+        }
+
+        #[doc = #method_registrar_doc]
+        impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
+            unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
+                use ::miniextendr_api::altrep_bridge as bridge;
+                use ::miniextendr_api::ffi::altrep::*;
+                // Local helper to reduce boilerplate
+                macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
+                // Base: length is ALWAYS required (no HAS_LENGTH check)
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)); }
+                // Vec-level setters
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<#tramp_ty>);
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<#tramp_ty>);
+                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<#tramp_ty>);
+                // Family-specific
+                #family_setters
+            }
+        }
+
+        #[doc = #register_altrep_doc]
+        impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
+            fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
+                use std::sync::OnceLock;
+                static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+                *CLASS.get_or_init(move || {
+                    let cls = unsafe { #make_class };
+                    unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
+                    cls
+                })
+            }
+        }
+
+    };
+
+    expanded.into()
 }
 
 /// Generate thread-checked wrappers for R FFI functions.

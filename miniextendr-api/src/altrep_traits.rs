@@ -334,26 +334,94 @@ pub trait AltList: AltVec {
 }
 
 // =============================================================================
+// Type aliases for Core/Opt naming (alternative API)
+// =============================================================================
+
+/// Alias for types implementing the core Altrep functionality.
+pub trait AltrepCore: Altrep {}
+impl<T: Altrep> AltrepCore for T {}
+
+/// Alias for types implementing optional Altrep methods.
+pub trait AltrepOpt: Altrep {}
+impl<T: Altrep> AltrepOpt for T {}
+
+/// Alias for types implementing optional AltVec methods.
+pub trait AltVecOpt: AltVec {}
+impl<T: AltVec> AltVecOpt for T {}
+
+/// Marker + optional methods for integer ALTREP.
+pub trait AltIntegerCore: AltInteger {}
+impl<T: AltInteger> AltIntegerCore for T {}
+
+/// Alias for full integer functionality.
+pub trait AltIntegerOpt: AltInteger {}
+impl<T: AltInteger> AltIntegerOpt for T {}
+
+/// Marker + optional methods for real ALTREP.
+pub trait AltRealCore: AltReal {}
+impl<T: AltReal> AltRealCore for T {}
+
+/// Alias for full real functionality.
+pub trait AltRealOpt: AltReal {}
+impl<T: AltReal> AltRealOpt for T {}
+
+/// Marker + optional methods for logical ALTREP.
+pub trait AltLogicalCore: AltLogical {}
+impl<T: AltLogical> AltLogicalCore for T {}
+
+/// Alias for full logical functionality.
+pub trait AltLogicalOpt: AltLogical {}
+impl<T: AltLogical> AltLogicalOpt for T {}
+
+/// Marker + optional methods for raw ALTREP.
+pub trait AltRawCore: AltRaw {}
+impl<T: AltRaw> AltRawCore for T {}
+
+/// Alias for full raw functionality.
+pub trait AltRawOpt: AltRaw {}
+impl<T: AltRaw> AltRawOpt for T {}
+
+/// Marker + optional methods for complex ALTREP.
+pub trait AltComplexCore: AltComplex {}
+impl<T: AltComplex> AltComplexCore for T {}
+
+/// Alias for full complex functionality.
+pub trait AltComplexOpt: AltComplex {}
+impl<T: AltComplex> AltComplexOpt for T {}
+
+/// Marker + optional methods for string ALTREP.
+pub trait AltStringCore: AltString {}
+impl<T: AltString> AltStringCore for T {}
+
+/// Alias for full string functionality.
+pub trait AltStringOpt: AltString {}
+impl<T: AltString> AltStringOpt for T {}
+
+/// Marker + optional methods for list ALTREP.
+pub trait AltListCore: AltList {}
+impl<T: AltList> AltListCore for T {}
+
+/// Alias for full list functionality.
+pub trait AltListOpt: AltList {}
+impl<T: AltList> AltListOpt for T {}
+
+// =============================================================================
 // Constants
 // =============================================================================
 
 /// Unknown sortedness value (INT_MIN in R).
 pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
+/// Not sorted.
+pub const SORTED_NONE: i32 = -1;
+/// Sorted in increasing order.
+pub const SORTED_INCR: i32 = 0;
+/// Sorted in decreasing order.
+pub const SORTED_DECR: i32 = 1;
+/// Sorted in increasing order (strictly, no ties).
+pub const SORTED_INCR_STRICT: i32 = 2;
+/// Sorted in decreasing order (strictly, no ties).
+pub const SORTED_DECR_STRICT: i32 = -2;
 
-/// Known to be unsorted (`KNOWN_UNSORTED` in R).
-pub const KNOWN_UNSORTED: i32 = 0;
-
-/// Sorted in increasing order, possibly with ties (`SORTED_INCR` in R).
-pub const SORTED_INCR: i32 = 1;
-
-/// Sorted in decreasing order, possibly with ties (`SORTED_DECR` in R).
-pub const SORTED_DECR: i32 = -1;
-
-/// Sorted in increasing order, with NAs first (`SORTED_INCR_NA_1ST` in R).
-pub const SORTED_INCR_NA_1ST: i32 = 2;
-
-/// Sorted in decreasing order, with NAs first (`SORTED_DECR_NA_1ST` in R).
-pub const SORTED_DECR_NA_1ST: i32 = -2;
 /// NA value for integers.
 pub const NA_INTEGER: i32 = i32::MIN;
 /// NA value for logical (same as integer in R).

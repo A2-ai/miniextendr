@@ -34,13 +34,6 @@ pub unsafe extern "C-unwind" fn t_duplicate<T: Altrep>(x: SEXP, deep: Rboolean) 
     T::duplicate(x, matches!(deep, Rboolean::TRUE))
 }
 
-/// Trampoline for DuplicateEX method (extended duplication).
-/// # Safety
-/// `x` must be a valid SEXP for the ALTREP class backed by `T`.
-pub unsafe extern "C-unwind" fn t_duplicate_ex<T: Altrep>(x: SEXP, deep: Rboolean) -> SEXP {
-    T::duplicate_ex(x, matches!(deep, Rboolean::TRUE))
-}
-
 /// Trampoline for Inspect method.
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
@@ -70,19 +63,6 @@ pub unsafe extern "C-unwind" fn t_serialized_state<T: Altrep>(x: SEXP) -> SEXP {
 /// `class` and `state` must be valid SEXPs from R.
 pub unsafe extern "C-unwind" fn t_unserialize<T: Altrep>(class: SEXP, state: SEXP) -> SEXP {
     T::unserialize(class, state)
-}
-
-/// Trampoline for UnserializeEX method (extended unserialization with attributes).
-/// # Safety
-/// `class`, `state`, and `attr` must be valid SEXPs from R.
-pub unsafe extern "C-unwind" fn t_unserialize_ex<T: Altrep>(
-    class: SEXP,
-    state: SEXP,
-    attr: SEXP,
-    objf: ::std::os::raw::c_int,
-    levs: ::std::os::raw::c_int,
-) -> SEXP {
-    T::unserialize_ex(class, state, attr, objf, levs)
 }
 
 /// Trampoline for Coerce method.
@@ -281,8 +261,6 @@ pub unsafe extern "C-unwind" fn t_lgl_sum<T: AltLogical>(x: SEXP, narm: Rboolean
     T::sum(x, matches!(narm, Rboolean::TRUE))
 }
 
-// Note: R's ALTREP API does not expose min/max for logical vectors
-
 // =============================================================================
 // ALTRAW TRAMPOLINES
 // =============================================================================
@@ -397,14 +375,8 @@ pub unsafe fn install_base<T: Altrep>(cls: R_altrep_class_t) {
     if T::HAS_UNSERIALIZE {
         unsafe { R_set_altrep_Unserialize_method(cls, Some(t_unserialize::<T>)) };
     }
-    if T::HAS_UNSERIALIZE_EX {
-        unsafe { R_set_altrep_UnserializeEX_method(cls, Some(t_unserialize_ex::<T>)) };
-    }
     if T::HAS_DUPLICATE {
         unsafe { R_set_altrep_Duplicate_method(cls, Some(t_duplicate::<T>)) };
-    }
-    if T::HAS_DUPLICATE_EX {
-        unsafe { R_set_altrep_DuplicateEX_method(cls, Some(t_duplicate_ex::<T>)) };
     }
     if T::HAS_COERCE {
         unsafe { R_set_altrep_Coerce_method(cls, Some(t_coerce::<T>)) };
@@ -502,7 +474,6 @@ pub unsafe fn install_lgl<T: AltLogical>(cls: R_altrep_class_t) {
     if T::HAS_SUM {
         unsafe { R_set_altlogical_Sum_method(cls, Some(t_lgl_sum::<T>)) };
     }
-    // Note: R's ALTREP API does not expose min/max for logical vectors
 }
 
 /// Install raw-specific methods.

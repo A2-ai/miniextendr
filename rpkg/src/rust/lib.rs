@@ -54,17 +54,11 @@ use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
 // ConstantInt: An ALTREP integer that always returns the same value
 // -----------------------------------------------------------------------------
 
-/// Data type that stores a constant value and length
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct ConstantIntData {
-    value: i32,
-    len: usize,
-}
-
-// Implement high-level data traits
-impl AltrepLen for ConstantIntData {
-    fn len(&self) -> usize {
-        self.len
+// Implement the required traits for ConstantIntClass
+impl Altrep for ConstantIntClass {
+    fn length(_x: SEXP) -> R_xlen_t {
+        // Always length 10
+        10
     }
 }
 
@@ -326,7 +320,6 @@ use miniextendr_api::altrep_traits::AltReal;
 pub struct ConstantRealClass;
 
 impl Altrep for ConstantRealClass {
-    const HAS_LENGTH: bool = true;
     fn length(_x: SEXP) -> R_xlen_t {
         10
     }
@@ -420,7 +413,6 @@ pub struct ArithSeqClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for ArithSeqClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<ArithSeqData>(x) } {
@@ -559,7 +551,6 @@ pub struct ConstantLogicalClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for ConstantLogicalClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<ConstantLogicalData>(x) } {
@@ -656,7 +647,6 @@ pub struct LazyStringClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for LazyStringClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<LazyStringData>(x) } {
@@ -671,7 +661,6 @@ impl AltVec for LazyStringClass {}
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl AltString for LazyStringClass {
-    const HAS_ELT: bool = true;
     fn elt(x: SEXP, i: R_xlen_t) -> SEXP {
         use miniextendr_api::altrep_data1_as;
         use miniextendr_api::ffi::{Rf_mkCharLenCE, cetype_t};
@@ -725,7 +714,6 @@ pub struct RepeatingRawClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for RepeatingRawClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<RepeatingRawData>(x) } {
@@ -790,7 +778,6 @@ pub struct LazyListClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for LazyListClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<LazyListData>(x) } {
@@ -805,7 +792,6 @@ impl AltVec for LazyListClass {}
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl AltList for LazyListClass {
-    const HAS_ELT: bool = true;
     fn elt(_x: SEXP, i: R_xlen_t) -> SEXP {
         // Return a list with index info: list(index = i, squared = i*i)
         use miniextendr_api::ffi::{
@@ -876,7 +862,6 @@ pub struct FibonacciClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for FibonacciClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<FibonacciData>(x) } {
@@ -969,7 +954,6 @@ fn fibonacci(n: i32) -> SEXP {
 pub struct PowersOf2Class;
 
 impl Altrep for PowersOf2Class {
-    const HAS_LENGTH: bool = true;
     fn length(_x: SEXP) -> R_xlen_t {
         31 // 2^0 to 2^30 fit in i32
     }
@@ -1037,7 +1021,6 @@ pub struct VecIntAltrepClass;
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl Altrep for VecIntAltrepClass {
-    const HAS_LENGTH: bool = true;
     fn length(x: SEXP) -> R_xlen_t {
         use miniextendr_api::altrep_data1_as;
         match unsafe { altrep_data1_as::<VecIntData>(x) } {
