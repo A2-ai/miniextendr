@@ -386,6 +386,38 @@ unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)
 }
 
+unsafe_rpkg_constant_real <- function() {
+    .Call(rpkg_constant_real)
+}
+
+arith_seq <- function(from, to, length_out) {
+    .Call(C_arith_seq, .call = match.call(), from, to, length_out)
+}
+
+constant_logical <- function(value, n) {
+    .Call(C_constant_logical, .call = match.call(), value, n)
+}
+
+lazy_string <- function(prefix, n) {
+    .Call(C_lazy_string, .call = match.call(), prefix, n)
+}
+
+repeating_raw <- function(pattern, n) {
+    .Call(C_repeating_raw, .call = match.call(), pattern, n)
+}
+
+lazy_list <- function(n) {
+    .Call(C_lazy_list, .call = match.call(), n)
+}
+
+fibonacci <- function(n) {
+    .Call(C_fibonacci, .call = match.call(), n)
+}
+
+unsafe_rpkg_powers_of_2 <- function() {
+    .Call(rpkg_powers_of_2)
+}
+
 extptr_counter_new <- function(initial) {
     .Call(C_extptr_counter_new, .call = match.call(), initial)
 }

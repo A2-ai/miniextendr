@@ -327,14 +327,20 @@ pub fn miniextendr(
                             .unwrap_or(false)
                 );
                 let is_slice = matches!(r.elem.as_ref(), syn::Type::Slice(_));
+                // Check for &str - strings need TryFromSexp, not DATAPTR_RO
+                let is_str = matches!(
+                    r.elem.as_ref(),
+                    syn::Type::Path(tp) if tp.path.is_ident("str")
+                );
                 if is_dots {
                     let storage_ident = quote::format_ident!("{}_storage", ident);
                     closure_statements.push(quote::quote! {
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
                         let #ident = &#storage_ident;
                     });
-                } else if is_slice {
-                    // Slice references use TryFromSexp
+                } else if is_slice || is_str {
+                    // Slice references and &str use TryFromSexp
+                    // Strings must use STRING_ELT + R_CHAR, not DATAPTR_RO
                     closure_statements.push(quote::quote! {
                         let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
                     });
@@ -1182,13 +1188,15 @@ fn expand_altrep_struct(
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltRaw>::HAS_GET_REGION, R_set_altraw_Get_region_method, bridge::t_raw_get_region::<#tramp_ty>);
         },
         "String" => quote::quote! {
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_ELT, R_set_altstring_Elt_method, bridge::t_str_elt::<#tramp_ty>);
+            // elt is ALWAYS required for ALTSTRING (no HAS_ELT check)
+            unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<#tramp_ty>)); }
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_IS_SORTED, R_set_altstring_Is_sorted_method, bridge::t_str_is_sorted::<#tramp_ty>);
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_NO_NA, R_set_altstring_No_NA_method, bridge::t_str_no_na::<#tramp_ty>);
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltString>::HAS_SET_ELT, R_set_altstring_Set_elt_method, bridge::t_str_set_elt::<#tramp_ty>);
         },
         "List" => quote::quote! {
-            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_ELT, R_set_altlist_Elt_method, bridge::t_list_elt::<#tramp_ty>);
+            // elt is ALWAYS required for ALTLIST (no HAS_ELT check)
+            unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<#tramp_ty>)); }
             set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT, R_set_altlist_Set_elt_method, bridge::t_list_set_elt::<#tramp_ty>);
         },
         _ => quote::quote! {},
@@ -1273,8 +1281,8 @@ fn expand_altrep_struct(
                 use ::miniextendr_api::ffi::altrep::*;
                 // Local helper to reduce boilerplate
                 macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
-                // Base: length only (others not yet implemented via trampolines here)
-                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_LENGTH, R_set_altrep_Length_method, bridge::t_length::<#tramp_ty>);
+                // Base: length is ALWAYS required (no HAS_LENGTH check)
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)); }
                 // Vec-level setters
                 set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<#tramp_ty>);
                 set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<#tramp_ty>);
