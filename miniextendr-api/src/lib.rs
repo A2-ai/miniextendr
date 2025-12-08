@@ -229,6 +229,8 @@ pub use altrep_data::{
     AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
     AltStringData, AltrepDataptr, AltrepLen, Logical, Sortedness,
 };
+// Re-export AltrepBase for base type inference
+pub use altrep::{AltrepBase, RBase};
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;

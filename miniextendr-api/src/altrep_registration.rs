@@ -111,3 +111,38 @@ impl<T: crate::altrep_traits::AltListOpt + crate::altrep_traits::AltListCore> Al
     for T
 {
 }
+
+// =============================================================================
+// Runtime dispatch helper for class creation
+// =============================================================================
+
+use crate::altrep::RBase;
+use crate::ffi::altrep::*;
+
+/// Create an ALTREP class handle based on the runtime base type.
+///
+/// # Safety
+/// Must be called during R initialization.
+pub unsafe fn make_class_by_base(
+    class_name: *const i8,
+    pkg_name: *const i8,
+    base: RBase,
+) -> R_altrep_class_t {
+    unsafe {
+        match base {
+            RBase::Int => R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut()),
+            RBase::Real => R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut()),
+            RBase::Logical => R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut()),
+            RBase::Raw => R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut()),
+            RBase::String => R_make_altstring_class(class_name, pkg_name, core::ptr::null_mut()),
+            RBase::List => R_make_altlist_class(class_name, pkg_name, core::ptr::null_mut()),
+        }
+    }
+}
+
+// Note: Runtime dispatch for method installation (install_methods_by_base) is not possible
+// because Rust's type system requires compile-time trait bounds. The generic type T can't
+// simultaneously satisfy AltInteger + AltReal + AltLogical + etc.
+//
+// Instead, the macro generates family-specific method installation code at compile time
+// based on the explicit `base = "..."` attribute.

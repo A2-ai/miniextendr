@@ -168,8 +168,8 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (in src/vendor for builds, cleaned up post-install) ----
-VENDOR_OUT="$abs_rpkg_src/vendor"
+dnl ---- vendoring (in inst/vendor for self-contained builds) ----
+VENDOR_OUT="$abs_top_srcdir/inst/vendor"
 AC_SUBST([VENDOR_OUT])
 
 dnl Source locations for miniextendr crates (relative to rpkg root)

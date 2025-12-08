@@ -17,17 +17,103 @@ run_cmd <- function(cmd, args = character()) {
   invisible(result)
 }
 
-if (file.exists(configure_script)) {
-  message("Running ./configure...")
-  run_cmd(configure_script)
-  message("bootstrap.R completed successfully")
-} else {
-  message("configure script not found - running autoconf first")
-  run_cmd("autoconf")
-  if (file.exists(configure_script)) {
-    run_cmd(configure_script)
-    message("bootstrap.R completed successfully")
-  } else {
-    stop("Failed to generate configure script")
+workspace_values <- get_workspace_values()
+
+# Helper to copy directory recursively (excluding target dirs)
+copy_rust_pkg <- function(src, dst) {
+  if (!dir.exists(src)) {
+    stop("Source directory does not exist: ", src)
+  }
+
+  # Remove destination if exists
+  if (dir.exists(dst)) {
+    message("  Removing existing: ", basename(dst))
+    unlink(dst, recursive = TRUE)
+  }
+
+  # Create destination
+  dir.create(dst, recursive = TRUE, showWarnings = FALSE)
+
+  # Copy files (excluding target/, .git, etc.)
+  files <- list.files(src, all.files = TRUE, no.. = TRUE)
+  exclude <- c("target", ".git", ".gitignore")
+  files <- files[!files %in% exclude]
+
+  for (f in files) {
+    src_path <- file.path(src, f)
+    dst_path <- file.path(dst, f)
+    if (dir.exists(src_path)) {
+      dir.create(dst_path, recursive = TRUE, showWarnings = FALSE)
+      file.copy(src_path, dst, recursive = TRUE, overwrite = TRUE)
+    } else {
+      file.copy(src_path, dst_path, overwrite = TRUE)
+    }
   }
 }
+
+# Patch Cargo.toml to remove workspace inheritance
+patch_cargo_toml <- function(path) {
+  if (!file.exists(path)) {
+    stop("Cargo.toml not found: ", path)
+  }
+
+  lines <- readLines(path)
+
+  # Replace workspace inheritance with actual values from workspace Cargo.toml
+  version_replacement <- sprintf('version = "%s"', workspace_values$version)
+  edition_replacement <- sprintf('edition = "%s"', workspace_values$edition)
+  lines <- gsub('version\\.workspace\\s*=\\s*true', version_replacement, lines)
+  lines <- gsub('edition\\.workspace\\s*=\\s*true', edition_replacement, lines)
+
+  writeLines(lines, path)
+}
+
+# Step 1: Copy miniextendr-macros to inst/vendor
+message("Copying miniextendr-macros to inst/vendor...")
+if (dir.exists(miniextendr_macros_src)) {
+  copy_rust_pkg(miniextendr_macros_src, miniextendr_macros_dst)
+  patch_cargo_toml(file.path(miniextendr_macros_dst, "Cargo.toml"))
+  message("  Done")
+} else {
+  message("  Source not found, skipping (may already be bundled)")
+}
+
+# Step 2: Copy miniextendr-api to inst/vendor
+message("Copying miniextendr-api to inst/vendor...")
+if (dir.exists(miniextendr_api_src)) {
+  copy_rust_pkg(miniextendr_api_src, miniextendr_api_dst)
+  patch_cargo_toml(file.path(miniextendr_api_dst, "Cargo.toml"))
+  # Update path reference to sibling miniextendr-macros
+  api_cargo <- file.path(miniextendr_api_dst, "Cargo.toml")
+  lines <- readLines(api_cargo)
+  lines <- gsub(
+    'path\\s*=\\s*"[^"]*miniextendr-macros"',
+    'path = "../miniextendr-macros"',
+    lines
+  )
+  writeLines(lines, api_cargo)
+  message("  Done")
+} else {
+  message("  Source not found, skipping (may already be bundled)")
+}
+
+# Step 3: Clean up CRAN-unfriendly hidden files in vendor
+# Note: configure is run by R CMD INSTALL, not here
+message("Cleaning up hidden files in inst/vendor...")
+if (dir.exists(inst_vendor)) {
+  # Remove all hidden directories (.github, .vscode, .zed, .positron, etc.)
+  all_dirs <- list.dirs(inst_vendor, recursive = TRUE, full.names = TRUE)
+  hidden_dirs <- all_dirs[grepl("^\\.", basename(all_dirs))]
+  for (d in hidden_dirs) {
+    unlink(d, recursive = TRUE)
+  }
+
+  # Remove .cargo_vcs_info.json and .cargo-checksum.json files
+  hidden_json <- list.files(inst_vendor, pattern = "^\\.cargo.*\\.json$",
+                            recursive = TRUE, full.names = TRUE, all.files = TRUE)
+  if (length(hidden_json) > 0) file.remove(hidden_json)
+
+  message("  Done")
+}
+
+message("bootstrap.R completed successfully")

@@ -18,4 +18,4 @@ path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
 [dependencies]
-miniextendr-api = { workspace = true }
+miniextendr-api = { path = "../../inst/vendor/miniextendr-api" }
