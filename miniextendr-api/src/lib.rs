@@ -114,6 +114,9 @@ pub use externalptr::{
     altrep_data1_mut, altrep_data2_as,
 };
 
+// TypedExternal implementations for std types
+pub mod externalptr_std;
+
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`
 #[doc(hidden)]
