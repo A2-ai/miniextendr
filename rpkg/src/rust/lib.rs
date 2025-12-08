@@ -113,463 +113,47 @@ pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
 
 // endregion
 
-// region: Additional ALTREP examples - using new 1-field struct pattern
-//
-// The new ALTREP API requires:
-// 1. A data type that implements high-level data traits (AltrepLen, Alt*Data)
-// 2. Low-level trait impls generated via impl_alt*_from_data! macro
-// 3. A 1-field wrapper struct with #[miniextendr] macro
-//
-// For custom behavior that can't be expressed through the data traits,
-// manually implement the low-level traits on the data type.
+// region: ExternalPtr tests
 
-use miniextendr_api::altrep_data::{
-    AltListData, AltLogicalData, AltRawData, AltRealData, AltStringData, Logical,
-};
+use miniextendr_api::externalptr::ErasedExternalPtr;
+// Note: ExternalPtr type is accessed via full path to avoid conflict with derive macro
+use miniextendr_api::ExternalPtr as DeriveExternalPtr;
 
-// -----------------------------------------------------------------------------
-// ConstantReal: All elements are PI
-// -----------------------------------------------------------------------------
-
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct ConstantRealData {
-    value: f64,
-    len: usize,
+/// A simple test struct for ExternalPtr
+#[derive(DeriveExternalPtr, Debug)]
+struct Counter {
+    value: i32,
 }
 
-impl AltrepLen for ConstantRealData {
-    fn len(&self) -> usize {
-        self.len
-    }
+/// Another test struct to verify type safety
+#[derive(DeriveExternalPtr, Debug)]
+struct Point {
+    x: f64,
+    y: f64,
 }
 
-impl AltRealData for ConstantRealData {
-    fn elt(&self, _i: usize) -> f64 {
-        self.value
-    }
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.value.is_nan())
-    }
+/// Create a new Counter wrapped in an ExternalPtr
+#[miniextendr(unsafe(main_thread))]
+fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
+    miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }
 
-miniextendr_api::impl_altreal_from_data!(ConstantRealData);
-
-#[miniextendr(class = "ConstantReal", pkg = "rpkg")]
-pub struct ConstantRealClass(pub ConstantRealData);
-
-/// # Safety
-/// Caller must ensure this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_constant_real() -> SEXP {
-    let data = ConstantRealData {
-        value: std::f64::consts::PI,
-        len: 10,
-    };
-    ConstantRealClass::into_altrep(data)
-}
-
-// -----------------------------------------------------------------------------
-// ArithSeq: Arithmetic sequence (like R's seq())
-// -----------------------------------------------------------------------------
-
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct ArithSeqData {
-    start: f64,
-    step: f64,
-    len: usize,
-}
-
-impl AltrepLen for ArithSeqData {
-    fn len(&self) -> usize {
-        self.len
-    }
-}
-
-impl AltRealData for ArithSeqData {
-    fn elt(&self, i: usize) -> f64 {
-        self.start + (i as f64) * self.step
-    }
-    fn no_na(&self) -> Option<bool> {
-        Some(true)
-    }
-}
-
-miniextendr_api::impl_altreal_from_data!(ArithSeqData);
-
-#[miniextendr(class = "ArithSeq", pkg = "rpkg")]
-pub struct ArithSeqClass(pub ArithSeqData);
-
-#[miniextendr]
-fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
-    let len = length_out as usize;
-    let step = if len > 1 {
-        (to - from) / (len - 1) as f64
-    } else {
-        0.0
-    };
-    let data = ArithSeqData {
-        start: from,
-        step,
-        len,
-    };
-    ArithSeqClass::into_altrep(data)
-}
-
-// -----------------------------------------------------------------------------
-// LazyIntSeq: Integer arithmetic sequence with lazy materialization
-// This demonstrates the Dataptr lazy materialization pattern:
-// - Elements are computed on-demand via Elt/Get_region
-// - Full buffer is only allocated when Dataptr is called
-// - Dataptr_or_null returns NULL until materialized
-// -----------------------------------------------------------------------------
-
-/// Data type for lazy integer sequence with materialization support
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct LazyIntSeqData {
-    start: i32,
-    step: i32,
-    len: usize,
-    /// Lazily-allocated buffer for materialization
-    materialized: Option<Vec<i32>>,
-}
-
-impl AltrepLen for LazyIntSeqData {
-    fn len(&self) -> usize {
-        self.len
-    }
-}
-
-impl AltIntegerData for LazyIntSeqData {
-    fn elt(&self, i: usize) -> i32 {
-        // Compute element on-the-fly (no materialization needed)
-        self.start
-            .saturating_add((i as i32).saturating_mul(self.step))
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        // Check if any element would be NA (i32::MIN)
-        // This is a conservative check - we know the formula
-        Some(true)
-    }
-
-    fn is_sorted(&self) -> Option<miniextendr_api::altrep_data::Sortedness> {
-        use miniextendr_api::altrep_data::Sortedness;
-        if self.step < 0 {
-            Some(Sortedness::Decreasing)
-        } else {
-            // step == 0 (all same) or step > 0 are both non-decreasing
-            Some(Sortedness::Increasing)
-        }
-    }
-
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
-        // Arithmetic sequence sum: n * (first + last) / 2
-        let n = self.len as i64;
-        let first = self.start as i64;
-        let last = first + (self.len.saturating_sub(1) as i64) * (self.step as i64);
-        Some(n * (first + last) / 2)
-    }
-
-    fn min(&self, _na_rm: bool) -> Option<i32> {
-        if self.len == 0 {
-            None
-        } else if self.step >= 0 {
-            Some(self.start)
-        } else {
-            Some(self.elt(self.len - 1))
-        }
-    }
-
-    fn max(&self, _na_rm: bool) -> Option<i32> {
-        if self.len == 0 {
-            None
-        } else if self.step >= 0 {
-            Some(self.elt(self.len - 1))
-        } else {
-            Some(self.start)
-        }
-    }
-}
-
-/// Implement AltrepDataptr for lazy materialization
-impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LazyIntSeqData {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
-        // Materialize on first access
-        if self.materialized.is_none() {
-            eprintln!("[Rust] LazyIntSeq: Materializing {} elements...", self.len);
-            let data: Vec<i32> = (0..self.len)
-                .map(|i| {
-                    self.start
-                        .saturating_add((i as i32).saturating_mul(self.step))
-                })
-                .collect();
-            self.materialized = Some(data);
-            eprintln!("[Rust] LazyIntSeq: Materialization complete!");
-        }
-        self.materialized.as_mut().map(|v| v.as_mut_ptr())
-    }
-
-    fn dataptr_or_null(&self) -> Option<*const i32> {
-        // Only return pointer if already materialized
-        // This allows R to use Elt/Get_region for unmaterialized data
-        self.materialized.as_ref().map(|v| v.as_ptr())
-    }
-}
-
-// Implement serialization support
-impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
-    fn serialized_state(&self) -> SEXP {
-        // Store start, step, len in an integer vector
-        // Note: We don't serialize the materialized buffer - it will be recomputed on demand
-        unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
-            let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            SET_INTEGER_ELT(state, 0, self.start);
-            SET_INTEGER_ELT(state, 1, self.step);
-            SET_INTEGER_ELT(state, 2, self.len as i32);
-            state
-        }
-    }
-
-    #[allow(clippy::not_unsafe_ptr_arg_deref)]
-    fn unserialize(state: SEXP) -> Option<Self> {
-        unsafe {
-            use miniextendr_api::ffi::INTEGER_ELT;
-            let start = INTEGER_ELT(state, 0);
-            let step = INTEGER_ELT(state, 1);
-            let len = INTEGER_ELT(state, 2) as usize;
-            Some(LazyIntSeqData {
-                start,
-                step,
-                len,
-                materialized: None, // Fresh start - not materialized
-            })
-        }
-    }
-}
-
-// Use the dataptr + serialize variant to enable both Dataptr and serialization methods
-miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
-
-/// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
-#[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
-pub struct LazyIntSeqClass(pub LazyIntSeqData);
-
-/// Create a lazy integer sequence (similar to R's seq())
-/// Elements are computed on-demand; full buffer only allocated on DATAPTR access.
-#[miniextendr]
-pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
-    let len = if by == 0 {
-        1
-    } else {
-        ((to - from) / by + 1).max(0) as usize
-    };
-    let data = LazyIntSeqData {
-        start: from,
-        step: by,
-        len,
-        materialized: None,
-    };
-    LazyIntSeqClass::into_altrep(data)
-}
-
-/// Check if a LazyIntSeq has been materialized
+/// Get the current value from a Counter ExternalPtr
 ///
 /// # Safety
-/// Caller must ensure `x` is a valid SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
-    use miniextendr_api::altrep_data1_as;
-    use miniextendr_api::ffi::{ALTREP, Rf_ScalarLogical};
-
-    // Check if it's an ALTREP object
-    if unsafe { ALTREP(x) } == 0 {
-        return unsafe { Rf_ScalarLogical(0) }; // Not ALTREP
-    }
-
-    // Try to extract the data
-    match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {
-        Some(data) => {
-            let is_mat = data.materialized.is_some();
-            unsafe { Rf_ScalarLogical(if is_mat { 1 } else { 0 }) }
-        }
-        None => unsafe { Rf_ScalarLogical(0) },
-    }
-}
-
-/// Create a compact integer sequence with explicit length.
 ///
-/// This is the entrypoint used by R/altrep.R for integer ALTREP tests.
-///
-/// # Safety
-/// Caller must ensure this is called from R's main thread.
-/// @title ALTREP Unsafe Entry Points
-/// @name rpkg_altrep_unsafe
-/// @keywords internal
-/// @description ALTREP low-level entry points (unsafe)
-/// @examples \dontrun{
-/// x <- unsafe_rpkg_altrep_from_doubles(c(1, 2, 3))
-/// unsafe_rpkg_lazy_int_seq_is_materialized(x)
-/// }
-/// @aliases unsafe_rpkg_altrep_compact_int unsafe_rpkg_altrep_from_doubles
-/// @aliases unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
-/// @aliases unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
-/// @aliases unsafe_rpkg_constant_int unsafe_rpkg_constant_real
-/// @aliases unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
-/// @aliases unsafe_rpkg_lazy_int_seq_is_materialized
+/// `ptr` must be a valid SEXP.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
-    let n: i32 = TryFromSexp::try_from_sexp(n)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_compact_int: n: {err}"));
-    let start: i32 = TryFromSexp::try_from_sexp(start)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_compact_int: start: {err}"));
-    let step: i32 = TryFromSexp::try_from_sexp(step)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_compact_int: step: {err}"));
-
-    if n == i32::MIN || start == i32::MIN || step == i32::MIN {
-        miniextendr_api::r_error!("altrep_compact_int: n/start/step cannot be NA");
-    }
-    if n < 0 {
-        miniextendr_api::r_error!("altrep_compact_int: n must be >= 0");
-    }
-
-    let len = if n == 0 { 0 } else { n as usize };
-    let data = LazyIntSeqData {
-        start,
-        step,
-        len,
-        materialized: None,
-    };
-    LazyIntSeqClass::into_altrep(data)
-}
-
-// -----------------------------------------------------------------------------
-// ConstantLogical: All TRUE or all FALSE
-// -----------------------------------------------------------------------------
-
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct ConstantLogicalData {
-    value: Logical,
-    len: usize,
-}
-
-impl AltrepLen for ConstantLogicalData {
-    fn len(&self) -> usize {
-        self.len
-    }
-}
-
-impl AltLogicalData for ConstantLogicalData {
-    fn elt(&self, _i: usize) -> Logical {
-        self.value
-    }
-    fn no_na(&self) -> Option<bool> {
-        Some(!matches!(self.value, Logical::Na))
-    }
-}
-
-miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
-
-#[miniextendr(class = "ConstantLogical", pkg = "rpkg")]
-pub struct ConstantLogicalClass(pub ConstantLogicalData);
-
-#[miniextendr]
-fn constant_logical(value: i32, n: i32) -> SEXP {
-    let logical_value = match value {
-        0 => Logical::False,
-        i if i == i32::MIN => Logical::Na,
-        _ => Logical::True,
-    };
-    let data = ConstantLogicalData {
-        value: logical_value,
-        len: n as usize,
-    };
-    ConstantLogicalClass::into_altrep(data)
-}
-
-// -----------------------------------------------------------------------------
-// LogicalVec: Vec<Logical> wrapper (preserves NA)
-// -----------------------------------------------------------------------------
-
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct LogicalVecData {
-    data: Vec<Logical>,
-}
-
-impl AltrepLen for LogicalVecData {
-    fn len(&self) -> usize {
-        self.data.len()
-    }
-}
-
-impl AltLogicalData for LogicalVecData {
-    fn elt(&self, i: usize) -> Logical {
-        self.data[i]
-    }
-
-    fn no_na(&self) -> Option<bool> {
-        Some(!self.data.iter().any(|v| matches!(v, Logical::Na)))
-    }
-
-    fn sum(&self, na_rm: bool) -> Option<i64> {
-        let mut total = 0i64;
-        for v in &self.data {
-            match v {
-                Logical::True => total += 1,
-                Logical::False => {}
-                Logical::Na => {
-                    if !na_rm {
-                        return None;
-                    }
-                }
-            }
+pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
+    use miniextendr_api::externalptr::ExternalPtr;
+    use miniextendr_api::ffi::Rf_ScalarInteger;
+    unsafe {
+        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+            Some(ext) => Rf_ScalarInteger(ext.value),
+            None => Rf_ScalarInteger(i32::MIN), // NA_INTEGER equivalent
         }
-        Some(total)
-    }
-}
-
-miniextendr_api::impl_altlogical_from_data!(LogicalVecData);
-
-#[miniextendr(class = "LogicalVec", pkg = "rpkg")]
-pub struct LogicalVecClass(pub LogicalVecData);
-
-/// # Safety
-/// Caller must ensure `x` is a valid logical SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{LOGICAL, Rf_xlength};
-
-    let n = unsafe { Rf_xlength(x) } as usize;
-    let src = unsafe { LOGICAL(x) };
-    let mut data = Vec::with_capacity(n);
-    for i in 0..n {
-        data.push(Logical::from_r_int(unsafe { *src.add(i) }));
-    }
-
-    LogicalVecClass::into_altrep(LogicalVecData { data })
-}
-
-// -----------------------------------------------------------------------------
-// LazyString: Lazily-generated strings
-// -----------------------------------------------------------------------------
-
-#[derive(miniextendr_api::ExternalPtr)]
-pub struct LazyStringData {
-    pub prefix: String,
-    pub len: usize,
-}
-
-impl AltrepLen for LazyStringData {
-    fn len(&self) -> usize {
-        self.len
     }
 }
 
@@ -1032,12 +616,125 @@ miniextendr_module! {
     use nonapi;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
-    extern "C-unwind" fn rpkg_altrep_compact_int;
-    extern "C-unwind" fn rpkg_altrep_from_doubles;
-    extern "C-unwind" fn rpkg_altrep_from_strings;
-    extern "C-unwind" fn rpkg_altrep_from_logicals;
-    extern "C-unwind" fn rpkg_altrep_from_raw;
-    extern "C-unwind" fn rpkg_altrep_from_list;
+
+    fn add;
+    fn add2;
+    fn add3;
+    fn add4;
+    fn add_panic;
+    fn add_r_error;
+
+    fn add_panic_heap;
+    fn add_r_error_heap;
+
+    extern "C-unwind" fn C_unwind_protect_normal;
+    extern "C-unwind" fn C_unwind_protect_r_error;
+    extern "C-unwind" fn C_unwind_protect_lowlevel_test;
+
+    fn add_left_mut;
+    fn add_right_mut;
+    fn add_left_right_mut;
+
+    fn take_and_return_nothing;
+
+    extern "C-unwind" fn C_just_panic;
+    extern "C-unwind" fn C_panic_and_catch;
+
+    fn drop_message_on_success;
+    fn drop_on_panic;
+    fn drop_on_panic_with_move;
+
+    fn greetings_with_named_dots;
+    fn greetings_with_named_and_unused_dots;
+    fn greetings_with_nameless_dots;
+    fn greetings_last_as_named_dots;
+    fn greetings_last_as_named_and_unused_dots;
+    fn greetings_last_as_nameless_dots;
+
+    fn invisibly_return_no_arrow;
+    fn invisibly_return_arrow;
+    fn invisibly_option_return_none;
+    fn invisibly_option_return_some;
+    fn invisibly_result_return_ok;
+    fn force_invisible_i32;
+    fn force_visible_unit;
+    fn with_interrupt_check;
+
+    extern fn C_r_error;
+    extern fn C_r_error_in_catch;
+    extern fn C_r_error_in_thread;
+    extern fn C_r_print_in_thread;
+
+    extern fn C_check_interupt_after;
+    extern fn C_check_interupt_unwind;
+
+    // Worker thread tests (basic)
+    extern "C-unwind" fn C_worker_drop_on_success;
+    extern "C-unwind" fn C_worker_drop_on_panic;
+
+    // Comprehensive worker/with_r_thread tests
+    extern "C-unwind" fn C_test_worker_simple;
+    extern "C-unwind" fn C_test_worker_with_r_thread;
+    extern "C-unwind" fn C_test_worker_multiple_r_calls;
+    extern "C-unwind" fn C_test_worker_panic_simple;
+    extern "C-unwind" fn C_test_worker_panic_with_drops;
+    extern "C-unwind" fn C_test_worker_panic_in_r_thread;
+    extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops;
+    extern "C-unwind" fn C_test_worker_r_error_in_r_thread;
+    extern "C-unwind" fn C_test_worker_r_error_with_drops;
+    extern "C-unwind" fn C_test_worker_r_calls_then_error;
+    extern "C-unwind" fn C_test_worker_r_calls_then_panic;
+    fn test_worker_return_i32;
+    fn test_worker_return_string;
+    fn test_worker_return_f64;
+    extern "C-unwind" fn C_test_extptr_from_worker;
+    extern "C-unwind" fn C_test_multiple_extptrs_from_worker;
+    fn test_main_thread_r_api;
+    fn test_main_thread_r_error;
+    fn test_main_thread_r_error_with_drops;
+    extern "C-unwind" fn C_test_wrong_thread_r_api;
+
+    // Nested wrapper tests
+    extern "C-unwind" fn C_test_nested_helper_from_worker;
+    extern "C-unwind" fn C_test_nested_multiple_helpers;
+    extern "C-unwind" fn C_test_nested_with_r_thread;
+    extern "C-unwind" fn C_test_call_worker_fn_from_main;
+    extern "C-unwind" fn C_test_nested_worker_calls;
+    extern "C-unwind" fn C_test_nested_with_error;
+    extern "C-unwind" fn C_test_nested_with_panic;
+    extern "C-unwind" fn C_test_deep_with_r_thread_sequence;
+
+    // Scalar conversion tests
+    fn test_i32_identity;
+    fn test_i32_add_one;
+    fn test_i32_sum;
+    fn test_f64_identity;
+    fn test_f64_add_one;
+    fn test_f64_multiply;
+    fn test_u8_identity;
+    fn test_u8_add_one;
+    fn test_logical_identity;
+    fn test_logical_not;
+    fn test_logical_and;
+    fn test_i32_to_f64;
+    fn test_f64_to_i32;
+
+    // Slice conversion tests
+    fn test_i32_slice_len;
+    fn test_i32_slice_sum;
+    fn test_i32_slice_first;
+    fn test_i32_slice_last;
+    fn test_f64_slice_len;
+    fn test_f64_slice_sum;
+    fn test_f64_slice_mean;
+    fn test_u8_slice_len;
+    fn test_u8_slice_sum;
+    fn test_logical_slice_len;
+    fn test_logical_slice_any_true;
+    fn test_logical_slice_all_true;
+
+    // Wildcard parameter test
+    fn underscore_it_all;
 
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;

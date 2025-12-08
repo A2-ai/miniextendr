@@ -131,7 +131,7 @@ pub type R_altstring_No_NA_method_t =
 pub type R_altlist_Elt_method_t =
     ::std::option::Option<unsafe extern "C-unwind" fn(x: SEXP, i: R_xlen_t) -> SEXP>;
 pub type R_altlist_Set_elt_method_t =
-    ::std::option::Option<unsafe extern "C-unwind" fn(x: SEXP, i: R_xlen_t, v: SEXP)>;
+    ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP, arg2: R_xlen_t, arg3: SEXP)>;
 #[derive(Clone, Copy)]
 #[repr(C)]
 pub struct R_altrep_class_t {
@@ -142,9 +142,6 @@ pub struct R_altrep_class_t {
 // The class is created once during package init and stored in a static.
 unsafe impl Send for R_altrep_class_t {}
 unsafe impl Sync for R_altrep_class_t {}
-
-#[miniextendr_macros::r_ffi_checked]
-#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
 
