@@ -1007,7 +1007,52 @@ pub unsafe extern "C-unwind" fn rpkg_powers_of_2() -> SEXP {
 
 // endregion
 
-// region: ALTREP with ExternalPtr backend
+// region: ALTREP with ExternalPtr backend - SIMPLIFIED API
+
+// -----------------------------------------------------------------------------
+// NEW SIMPLIFIED API: Using delegate_data with built-in Vec<i32> implementation
+// -----------------------------------------------------------------------------
+// This is the simplest way to create an ALTREP integer vector backed by Vec<i32>.
+// The proc-macro auto-generates all trait implementations from the high-level
+// AltIntegerData trait which Vec<i32> already implements.
+
+/// Simple ALTREP integer class using the new delegate_data API.
+/// All trait implementations are auto-generated from Vec<i32>'s AltIntegerData impl.
+/// The proc-macro also generates `SimpleVecIntClass::into_altrep(data: Vec<i32>) -> SEXP`.
+#[miniextendr(class = "SimpleVecInt", pkg = "rpkg", base = "Int", delegate_data = "Vec<i32>")]
+pub struct SimpleVecIntClass;
+
+/// Create a SimpleVecInt ALTREP instance from an integer vector.
+///
+/// This demonstrates the simplified API - the proc-macro generates
+/// `SimpleVecIntClass::into_altrep()` for us!
+///
+/// # Safety
+///
+/// Must be called from R main thread with valid SEXP.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_simple_vec_int(x: SEXP) -> SEXP {
+    use miniextendr_api::ffi::{INTEGER, Rf_xlength};
+
+    // Copy data from input SEXP into Vec<i32>
+    let n = unsafe { Rf_xlength(x) } as usize;
+    let src = unsafe { INTEGER(x) };
+    let mut data = Vec::with_capacity(n);
+    for i in 0..n {
+        data.push(unsafe { *src.add(i) });
+    }
+
+    // Use the auto-generated helper method!
+    unsafe { SimpleVecIntClass::into_altrep(data) }
+}
+
+// -----------------------------------------------------------------------------
+// MANUAL API: For comparison and when you need custom behavior
+// -----------------------------------------------------------------------------
+// This is the original manual approach. Use this when you need custom behavior
+// that can't be expressed through the high-level data traits.
 
 /// An ALTREP integer class that stores its data in an ExternalPtr
 #[derive(DeriveExternalPtr)]
@@ -1557,49 +1602,11 @@ miniextendr_module! {
     extern "C-unwind" fn C_extptr_is_counter;
     extern "C-unwind" fn C_extptr_is_point;
 
-    // Lazy materialization ALTREP example
-    struct LazyIntSeqClass;
-    fn lazy_int_seq;
-    extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized;
-
-    // Logical ALTREP
-    struct ConstantLogicalClass;
-    fn constant_logical;
-    struct LogicalVecClass;
-
-    // String ALTREP
-    struct LazyStringClass;
-    fn lazy_string;
-    struct SimpleVecStringClass;
-
-    // Raw ALTREP
-    struct RepeatingRawClass;
-    fn repeating_raw;
-    struct SimpleVecRawClass;
-
-    // Complex ALTREP - unit circle (roots of unity)
-    struct UnitCircleClass;
-    fn unit_circle;
-
-    // ALTREP with Vec<i32> backend - simplified API
+    // ALTREP with ExternalPtr backend - simplified API
     struct SimpleVecIntClass;
     extern "C-unwind" fn rpkg_simple_vec_int;
 
-    // ALTREP with Vec<f64> backend - base type auto-inferred
-    struct InferredVecRealClass;
-    extern "C-unwind" fn rpkg_inferred_vec_real;
-
-    // List ALTREP
-    struct ListDataClass;
-
-    // Box<[T]> ALTREP example
-    struct BoxedIntsClass;
-    fn boxed_ints;
-
-    // Static slice ALTREP examples
-    struct StaticIntsClass;
-    fn static_ints;
-    fn leaked_ints;
-    struct StaticStringsClass;
-    fn static_strings;
+    // ALTREP with ExternalPtr backend - manual API
+    struct VecIntAltrepClass;
+    extern "C-unwind" fn rpkg_vec_int_altrep;
 }

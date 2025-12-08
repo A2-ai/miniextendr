@@ -226,33 +226,9 @@ pub mod ffi;
 
 // Re-export high-level ALTREP data traits
 pub use altrep_data::{
-    AltComplexData,
-    AltIntegerData,
-    AltListData,
-    AltLogicalData,
-    AltRawData,
-    AltRealData,
-    AltStringData,
-    AltrepDataptr,
-    AltrepLen,
-    // Iterator-backed ALTREP types (R-native)
-    IterComplexData,
-    // Iterator-backed ALTREP types (with Coerce support)
-    IterIntCoerceData,
-    IterIntData,
-    IterIntFromBoolData,
-    IterListData,
-    IterLogicalData,
-    IterRawData,
-    IterRealCoerceData,
-    IterRealData,
-    IterState,
-    IterStringData,
-    Logical,
-    Sortedness,
+    AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
+    AltStringData, AltrepDataptr, AltrepLen, Logical, Sortedness,
 };
-// Re-export RBase enum
-pub use altrep::RBase;
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
