@@ -417,8 +417,12 @@ unsafe extern "C-unwind" {
     // Type checking
     pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
 
-    // Symbol creation
+    // Symbol creation and access
     pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
+    /// Get the print name (CHARSXP) of a symbol (SYMSXP)
+    pub fn PRINTNAME(x: SEXP) -> SEXP;
+    /// Get the C string pointer from a CHARSXP
+    pub fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 }
 
 /// Check if a SEXP is an S4 object.
