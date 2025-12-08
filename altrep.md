@@ -135,6 +135,7 @@ From `altrep.c` defaults - methods that error if not provided vs those with safe
 #### Minimum Viable ALTREP by Type
 
 **ALTINTEGER/ALTREAL/ALTLOGICAL/ALTRAW/ALTCOMPLEX:**
+
 ```rust
 // Minimum: Length + (Elt OR Dataptr)
 impl AltInteger for MyType {
@@ -152,6 +153,7 @@ impl AltInteger for MyType {
 ```
 
 **ALTSTRING:**
+
 ```rust
 // Minimum: Length + Elt (REQUIRED, no default!)
 impl AltString for MyType {
@@ -164,6 +166,7 @@ impl AltString for MyType {
 ```
 
 **ALTLIST:**
+
 ```rust
 // Minimum: Length + Elt (REQUIRED, no default!)
 impl AltList for MyType {
