@@ -69,6 +69,10 @@ impl AltrepBase for Vec<String> {
     const BASE: RBase = RBase::String;
 }
 
+impl AltrepBase for Vec<crate::ffi::Rcomplex> {
+    const BASE: RBase = RBase::Complex;
+}
+
 // Range implementations
 impl AltrepBase for std::ops::Range<i32> {
     const BASE: RBase = RBase::Int;

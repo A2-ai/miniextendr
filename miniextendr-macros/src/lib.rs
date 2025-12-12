@@ -1205,10 +1205,11 @@ fn expand_altrep_struct(
             "Raw" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Raw),
             "String" => syn::parse_quote!(::miniextendr_api::altrep::RBase::String),
             "List" => syn::parse_quote!(::miniextendr_api::altrep::RBase::List),
+            "Complex" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Complex),
             _ => {
                 return syn::Error::new_spanned(
                     syn::LitStr::new(base_name, ident.span()),
-                    "base must be one of Int|Real|Logical|Raw|String|List",
+                    "base must be one of Int|Real|Logical|Raw|String|List|Complex",
                 )
                 .into_compile_error()
                 .into();
@@ -1267,6 +1268,10 @@ fn expand_altrep_struct(
                     unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<#tramp_ty>)); }
                     set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltList>::HAS_SET_ELT, R_set_altlist_Set_elt_method, bridge::t_list_set_elt::<#tramp_ty>);
                 },
+                "Complex" => quote::quote! {
+                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltComplex>::HAS_ELT, R_set_altcomplex_Elt_method, bridge::t_cplx_elt::<#tramp_ty>);
+                    set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltComplex>::HAS_GET_REGION, R_set_altcomplex_Get_region_method, bridge::t_cplx_get_region::<#tramp_ty>);
+                },
                 _ => quote::quote! {},
             };
             let make = match base_name.as_str() {
@@ -1296,6 +1301,11 @@ fn expand_altrep_struct(
                     core::ptr::null_mut(),
                 ) },
                 "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
+                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    core::ptr::null_mut(),
+                ) },
+                "Complex" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
                     core::ptr::null_mut(),
