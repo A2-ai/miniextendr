@@ -24,6 +24,7 @@ pub enum RBase {
     Raw,
     String,
     List,
+    Complex,
 }
 
 // =============================================================================
@@ -66,6 +67,10 @@ impl AltrepBase for Vec<u8> {
 
 impl AltrepBase for Vec<String> {
     const BASE: RBase = RBase::String;
+}
+
+impl AltrepBase for Vec<crate::ffi::Rcomplex> {
+    const BASE: RBase = RBase::Complex;
 }
 
 // Range implementations

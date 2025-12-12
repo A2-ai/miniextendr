@@ -947,8 +947,8 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
         // Store start, step, len in an integer vector
         // Note: We don't serialize the materialized buffer - it will be recomputed on demand
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, INTSXP};
-            let state = Rf_allocVector(INTSXP, 3);
+            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, SEXPTYPE};
+            let state = Rf_allocVector(SEXPTYPE::INTSXP, 3);
             SET_INTEGER_ELT(state, 0, self.start);
             SET_INTEGER_ELT(state, 1, self.step);
             SET_INTEGER_ELT(state, 2, self.len as i32);

@@ -136,6 +136,7 @@ pub unsafe fn make_class_by_base(
             RBase::Raw => R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut()),
             RBase::String => R_make_altstring_class(class_name, pkg_name, core::ptr::null_mut()),
             RBase::List => R_make_altlist_class(class_name, pkg_name, core::ptr::null_mut()),
+            RBase::Complex => R_make_altcomplex_class(class_name, pkg_name, core::ptr::null_mut()),
         }
     }
 }
