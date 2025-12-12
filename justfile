@@ -117,6 +117,10 @@ devtools-load:
 devtools-install:
     Rscript -e 'devtools::install("rpkg")'
 
+# Build rpkg with devtools::build
+devtools-build:
+    Rscript -e 'devtools::build("rpkg")'
+
 # Check rpkg with devtools::check
 devtools-check:
     Rscript -e 'devtools::check("rpkg")'

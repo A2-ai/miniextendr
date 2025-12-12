@@ -844,6 +844,247 @@ fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
 }
 
 // -----------------------------------------------------------------------------
+// LazyIntSeq: Integer arithmetic sequence with lazy materialization
+// This demonstrates the Dataptr lazy materialization pattern:
+// - Elements are computed on-demand via Elt/Get_region
+// - Full buffer is only allocated when Dataptr is called
+// - Dataptr_or_null returns NULL until materialized
+// -----------------------------------------------------------------------------
+
+/// Data type for lazy integer sequence with materialization support
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct LazyIntSeqData {
+    start: i32,
+    step: i32,
+    len: usize,
+    /// Lazily-allocated buffer for materialization
+    materialized: Option<Vec<i32>>,
+}
+
+impl AltrepLen for LazyIntSeqData {
+    fn len(&self) -> usize {
+        self.len
+    }
+}
+
+impl AltIntegerData for LazyIntSeqData {
+    fn elt(&self, i: usize) -> i32 {
+        // Compute element on-the-fly (no materialization needed)
+        self.start.saturating_add((i as i32).saturating_mul(self.step))
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        // Check if any element would be NA (i32::MIN)
+        // This is a conservative check - we know the formula
+        Some(true)
+    }
+
+    fn is_sorted(&self) -> Option<miniextendr_api::altrep_data::Sortedness> {
+        use miniextendr_api::altrep_data::Sortedness;
+        if self.step == 0 {
+            Some(Sortedness::Increasing) // All same value
+        } else if self.step > 0 {
+            Some(Sortedness::StrictlyIncreasing)
+        } else {
+            Some(Sortedness::StrictlyDecreasing)
+        }
+    }
+
+    fn sum(&self, _na_rm: bool) -> Option<i64> {
+        // Arithmetic sequence sum: n * (first + last) / 2
+        let n = self.len as i64;
+        let first = self.start as i64;
+        let last = first + (self.len.saturating_sub(1) as i64) * (self.step as i64);
+        Some(n * (first + last) / 2)
+    }
+
+    fn min(&self, _na_rm: bool) -> Option<i32> {
+        if self.len == 0 {
+            None
+        } else if self.step >= 0 {
+            Some(self.start)
+        } else {
+            Some(self.elt(self.len - 1))
+        }
+    }
+
+    fn max(&self, _na_rm: bool) -> Option<i32> {
+        if self.len == 0 {
+            None
+        } else if self.step >= 0 {
+            Some(self.elt(self.len - 1))
+        } else {
+            Some(self.start)
+        }
+    }
+}
+
+/// Implement AltrepDataptr for lazy materialization
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LazyIntSeqData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        // Materialize on first access
+        if self.materialized.is_none() {
+            eprintln!("[Rust] LazyIntSeq: Materializing {} elements...", self.len);
+            let data: Vec<i32> = (0..self.len)
+                .map(|i| self.start.saturating_add((i as i32).saturating_mul(self.step)))
+                .collect();
+            self.materialized = Some(data);
+            eprintln!("[Rust] LazyIntSeq: Materialization complete!");
+        }
+        self.materialized.as_mut().map(|v| v.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        // Only return pointer if already materialized
+        // This allows R to use Elt/Get_region for unmaterialized data
+        self.materialized.as_ref().map(|v| v.as_ptr())
+    }
+}
+
+// Implement serialization support
+impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
+    fn serialized_state(&self) -> SEXP {
+        // Store start, step, len in an integer vector
+        // Note: We don't serialize the materialized buffer - it will be recomputed on demand
+        unsafe {
+            use miniextendr_api::ffi::{Rf_allocVector, SET_INTEGER_ELT, INTSXP};
+            let state = Rf_allocVector(INTSXP, 3);
+            SET_INTEGER_ELT(state, 0, self.start);
+            SET_INTEGER_ELT(state, 1, self.step);
+            SET_INTEGER_ELT(state, 2, self.len as i32);
+            state
+        }
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        unsafe {
+            use miniextendr_api::ffi::INTEGER_ELT;
+            let start = INTEGER_ELT(state, 0);
+            let step = INTEGER_ELT(state, 1);
+            let len = INTEGER_ELT(state, 2) as usize;
+            Some(LazyIntSeqData {
+                start,
+                step,
+                len,
+                materialized: None, // Fresh start - not materialized
+            })
+        }
+    }
+}
+
+// Use the dataptr + serialize variant to enable both Dataptr and serialization methods
+miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
+
+// Implement AltrepBase and AltrepInstaller to enable auto-inference of base type
+impl miniextendr_api::altrep::AltrepBase for LazyIntSeqData {
+    const BASE: miniextendr_api::altrep::RBase = miniextendr_api::altrep::RBase::Int;
+}
+
+impl miniextendr_api::altrep_registration::AltrepInstaller for LazyIntSeqData {
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> miniextendr_api::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            miniextendr_api::ffi::altrep::R_make_altinteger_class(
+                class_name,
+                pkg_name,
+                core::ptr::null_mut(),
+            )
+        }
+    }
+
+    unsafe fn install_methods(cls: miniextendr_api::ffi::altrep::R_altrep_class_t) {
+        use miniextendr_api::altrep_traits::*;
+        use miniextendr_api::ffi::altrep::*;
+        use miniextendr_api::altrep_bridge as bridge;
+
+        // Install integer methods
+        if <Self as AltInteger>::HAS_ELT {
+            unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<Self>)) };
+        }
+        if <Self as AltInteger>::HAS_GET_REGION {
+            unsafe { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<Self>)) };
+        }
+        if <Self as AltInteger>::HAS_IS_SORTED {
+            unsafe { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<Self>)) };
+        }
+        if <Self as AltInteger>::HAS_NO_NA {
+            unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<Self>)) };
+        }
+        if <Self as AltInteger>::HAS_SUM {
+            unsafe { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<Self>)) };
+        }
+        if <Self as AltInteger>::HAS_MIN {
+            unsafe { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<Self>)) };
+        }
+        if <Self as AltInteger>::HAS_MAX {
+            unsafe { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<Self>)) };
+        }
+
+        // Install ALTVEC methods (dataptr)
+        if <Self as AltVec>::HAS_DATAPTR {
+            unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<Self>)) };
+        }
+        if <Self as AltVec>::HAS_DATAPTR_OR_NULL {
+            unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<Self>)) };
+        }
+
+        // Install serialization methods
+        if <Self as Altrep>::HAS_SERIALIZED_STATE {
+            unsafe { R_set_altrep_Serialized_state_method(cls, Some(bridge::t_serialized_state::<Self>)) };
+        }
+        // Note: Unserialize is handled by the wrapper class (LazyIntSeqClass) since
+        // it needs to call LazyIntSeqClass::into_altrep() which we can't do from here.
+    }
+}
+
+/// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
+#[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
+pub struct LazyIntSeqClass(LazyIntSeqData);
+
+/// Create a lazy integer sequence (similar to R's seq())
+/// Elements are computed on-demand; full buffer only allocated on DATAPTR access.
+#[miniextendr]
+pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
+    let len = if by == 0 {
+        1
+    } else {
+        ((to - from) / by + 1).max(0) as usize
+    };
+    let data = LazyIntSeqData {
+        start: from,
+        step: by,
+        len,
+        materialized: None,
+    };
+    unsafe { LazyIntSeqClass::into_altrep(data) }
+}
+
+/// Check if a LazyIntSeq has been materialized
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
+    use miniextendr_api::ffi::{ALTREP, Rf_ScalarLogical};
+    use miniextendr_api::altrep_data1_as;
+
+    // Check if it's an ALTREP object
+    if unsafe { ALTREP(x) } == 0 {
+        return unsafe { Rf_ScalarLogical(0) }; // Not ALTREP
+    }
+
+    // Try to extract the data
+    match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {
+        Some(data) => {
+            let is_mat = data.materialized.is_some();
+            unsafe { Rf_ScalarLogical(if is_mat { 1 } else { 0 }) }
+        }
+        None => unsafe { Rf_ScalarLogical(0) },
+    }
+}
+
+// -----------------------------------------------------------------------------
 // ConstantLogical: All TRUE or all FALSE
 // -----------------------------------------------------------------------------
 
@@ -948,6 +1189,92 @@ fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
 }
 
 // -----------------------------------------------------------------------------
+// UnitCircle: Complex numbers on the unit circle (e^(i*theta))
+// This demonstrates ALTREP for complex vectors
+// -----------------------------------------------------------------------------
+
+use miniextendr_api::altrep_data::AltComplexData;
+use miniextendr_api::ffi::Rcomplex;
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct UnitCircleData {
+    /// Number of points on the unit circle
+    n: usize,
+}
+
+impl AltrepLen for UnitCircleData {
+    fn len(&self) -> usize {
+        self.n
+    }
+}
+
+impl AltComplexData for UnitCircleData {
+    fn elt(&self, i: usize) -> Rcomplex {
+        // Generate e^(i * 2π * k/n) = cos(2πk/n) + i*sin(2πk/n)
+        let theta = 2.0 * std::f64::consts::PI * (i as f64) / (self.n as f64);
+        Rcomplex {
+            r: theta.cos(),
+            i: theta.sin(),
+        }
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
+        let end = (start + len).min(self.n);
+        for (buf_i, i) in (start..end).enumerate() {
+            buf[buf_i] = self.elt(i);
+        }
+        end - start
+    }
+}
+
+miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
+
+// Implement AltrepBase for auto-inference
+impl miniextendr_api::altrep::AltrepBase for UnitCircleData {
+    const BASE: miniextendr_api::altrep::RBase = miniextendr_api::altrep::RBase::Complex;
+}
+
+impl miniextendr_api::altrep_registration::AltrepInstaller for UnitCircleData {
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> miniextendr_api::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            miniextendr_api::ffi::altrep::R_make_altcomplex_class(
+                class_name,
+                pkg_name,
+                core::ptr::null_mut(),
+            )
+        }
+    }
+
+    unsafe fn install_methods(cls: miniextendr_api::ffi::altrep::R_altrep_class_t) {
+        use miniextendr_api::altrep_traits::AltComplex;
+        use miniextendr_api::ffi::altrep::*;
+        use miniextendr_api::altrep_bridge as bridge;
+
+        if <Self as AltComplex>::HAS_ELT {
+            unsafe { R_set_altcomplex_Elt_method(cls, Some(bridge::t_cplx_elt::<Self>)) };
+        }
+        if <Self as AltComplex>::HAS_GET_REGION {
+            unsafe { R_set_altcomplex_Get_region_method(cls, Some(bridge::t_cplx_get_region::<Self>)) };
+        }
+    }
+}
+
+/// ALTREP wrapper for UnitCircleData - generates complex numbers on unit circle
+#[miniextendr(class = "UnitCircle", pkg = "rpkg")]
+pub struct UnitCircleClass(UnitCircleData);
+
+/// Create complex numbers on the unit circle: e^(i * 2π * k/n) for k = 0, 1, ..., n-1
+/// These are the n-th roots of unity, evenly spaced around the unit circle.
+#[miniextendr]
+pub fn unit_circle(n: i32) -> SEXP {
+    let data = UnitCircleData { n: n as usize };
+    unsafe { UnitCircleClass::into_altrep(data) }
+}
+
+// -----------------------------------------------------------------------------
 // SimpleVecInt: Vec<i32> wrapper (simplest example)
 // -----------------------------------------------------------------------------
 
@@ -966,6 +1293,28 @@ pub unsafe extern "C-unwind" fn rpkg_simple_vec_int(x: SEXP) -> SEXP {
         data.push(unsafe { *src.add(i) });
     }
     unsafe { SimpleVecIntClass::into_altrep(data) }
+}
+
+// -----------------------------------------------------------------------------
+// InferredVecReal: Vec<f64> wrapper with base type inferred from inner type
+// -----------------------------------------------------------------------------
+
+/// Test case for auto-inferred base type (no explicit `base = "..."` attribute)
+#[miniextendr(class = "InferredVecReal", pkg = "rpkg")]
+pub struct InferredVecRealClass(Vec<f64>);
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn rpkg_inferred_vec_real(x: SEXP) -> SEXP {
+    use miniextendr_api::ffi::{REAL, Rf_xlength};
+    let n = unsafe { Rf_xlength(x) } as usize;
+    let src = unsafe { REAL(x) };
+    let mut data = Vec::with_capacity(n);
+    for i in 0..n {
+        data.push(unsafe { *src.add(i) });
+    }
+    unsafe { InferredVecRealClass::into_altrep(data) }
 }
 
 // endregion
@@ -1104,6 +1453,11 @@ miniextendr_module! {
     struct ArithSeqClass;
     fn arith_seq;
 
+    // Lazy materialization ALTREP example
+    struct LazyIntSeqClass;
+    fn lazy_int_seq;
+    extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized;
+
     // Logical ALTREP
     struct ConstantLogicalClass;
     fn constant_logical;
@@ -1115,6 +1469,10 @@ miniextendr_module! {
     // Raw ALTREP
     struct RepeatingRawClass;
     fn repeating_raw;
+
+    // Complex ALTREP - unit circle (roots of unity)
+    struct UnitCircleClass;
+    fn unit_circle;
 
     // ExternalPtr tests
     fn extptr_counter_new;
@@ -1131,6 +1489,10 @@ miniextendr_module! {
     // ALTREP with Vec<i32> backend - simplified API
     struct SimpleVecIntClass;
     extern "C-unwind" fn rpkg_simple_vec_int;
+
+    // ALTREP with Vec<f64> backend - base type auto-inferred
+    struct InferredVecRealClass;
+    extern "C-unwind" fn rpkg_inferred_vec_real;
 }
 
 // endregion

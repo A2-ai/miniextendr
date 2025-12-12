@@ -363,23 +363,188 @@ impl Sortedness {
 // Optional dataptr trait (separate from element access)
 // =============================================================================
 
-/// Marker trait for types that can provide a mutable data pointer.
+/// Trait for types that can provide a mutable data pointer.
 ///
 /// This is separate from element access because some ALTREP types
 /// compute elements on-the-fly but can materialize to a buffer.
+///
+/// ## Lazy Materialization Pattern
+///
+/// For types that compute values lazily (e.g., arithmetic sequences, Fibonacci),
+/// you can implement lazy materialization by:
+///
+/// 1. Store an `Option<Vec<T>>` for the materialized buffer
+/// 2. In `dataptr()`, compute all values and cache them
+/// 3. In `dataptr_or_null()`, return `None` until materialized
+///
+/// ```ignore
+/// struct LazySequence {
+///     start: i32,
+///     step: i32,
+///     len: usize,
+///     materialized: Option<Vec<i32>>,
+/// }
+///
+/// impl AltrepDataptr<i32> for LazySequence {
+///     fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+///         // Materialize on first access
+///         if self.materialized.is_none() {
+///             let data: Vec<i32> = (0..self.len)
+///                 .map(|i| self.start + (i as i32) * self.step)
+///                 .collect();
+///             self.materialized = Some(data);
+///         }
+///         self.materialized.as_mut().map(|v| v.as_mut_ptr())
+///     }
+///
+///     fn dataptr_or_null(&self) -> Option<*const i32> {
+///         // Only return pointer if already materialized
+///         self.materialized.as_ref().map(|v| v.as_ptr())
+///     }
+/// }
+/// ```
 pub trait AltrepDataptr<T> {
     /// Get a mutable pointer to the underlying data.
     ///
     /// If `writable` is true, R may modify the data.
     /// Return `None` if data cannot be accessed as a contiguous buffer.
+    ///
+    /// This method may trigger materialization of lazy data.
     fn dataptr(&mut self, writable: bool) -> Option<*mut T>;
 
     /// Get a read-only pointer without forcing materialization.
     ///
-    /// Return `None` if data is not already materialized.
+    /// Return `None` if data is not already materialized or cannot provide
+    /// a contiguous buffer. R will fall back to element-by-element access
+    /// via `Elt` when this returns `None`.
     fn dataptr_or_null(&self) -> Option<*const T> {
         None
     }
+}
+
+// =============================================================================
+// Serialization trait
+// =============================================================================
+
+/// Trait for ALTREP types that support serialization.
+///
+/// When an ALTREP object is saved (e.g., with `saveRDS()`), R calls `serialized_state`
+/// to get a representation that can be saved. When loaded, R calls `unserialize`
+/// to reconstruct the ALTREP object from that state.
+///
+/// ## How It Works
+///
+/// 1. **Saving**: R calls `serialized_state(x)` which should return an R object
+///    (typically a list or vector) containing all data needed to reconstruct the ALTREP.
+///
+/// 2. **Loading**: R calls `unserialize(class, state)` where `state` is what
+///    `serialized_state` returned. You reconstruct your ALTREP object from this.
+///
+/// ## Example
+///
+/// ```ignore
+/// use miniextendr_api::ffi::{SEXP, Rf_allocVector, INTSXP, SET_INTEGER_ELT, INTEGER_ELT};
+///
+/// impl AltrepSerialize for ArithSeqData {
+///     fn serialized_state(&self) -> SEXP {
+///         // Store start, step, len in an integer vector
+///         unsafe {
+///             let state = Rf_allocVector(INTSXP, 3);
+///             SET_INTEGER_ELT(state, 0, self.start);
+///             SET_INTEGER_ELT(state, 1, self.step);
+///             SET_INTEGER_ELT(state, 2, self.len as i32);
+///             state
+///         }
+///     }
+///
+///     fn unserialize(state: SEXP) -> Option<Self> {
+///         unsafe {
+///             let start = INTEGER_ELT(state, 0);
+///             let step = INTEGER_ELT(state, 1);
+///             let len = INTEGER_ELT(state, 2) as usize;
+///             Some(ArithSeqData { start, step, len })
+///         }
+///     }
+/// }
+/// ```
+///
+/// ## Notes
+///
+/// - The serialized state should be a standard R object (list, vector, etc.)
+/// - Avoid storing pointers or handles that won't survive serialization
+/// - For lazy types, decide whether to serialize the computed values or the parameters
+pub trait AltrepSerialize: Sized {
+    /// Convert the ALTREP data to a serializable R object.
+    ///
+    /// This is called when R needs to save the ALTREP (e.g., `saveRDS()`).
+    /// Return an R object that contains all information needed to reconstruct
+    /// the ALTREP on load.
+    fn serialized_state(&self) -> SEXP;
+
+    /// Reconstruct the ALTREP data from a serialized state.
+    ///
+    /// This is called when R loads a serialized ALTREP (e.g., `readRDS()`).
+    /// The `state` parameter is what `serialized_state()` returned.
+    ///
+    /// Return `None` if the state is invalid or cannot be deserialized.
+    fn unserialize(state: SEXP) -> Option<Self>;
+}
+
+/// Trait for creating an ALTREP SEXP from serialized state.
+///
+/// This is used by the `unserialize` callback to reconstruct the ALTREP object.
+/// It combines data unserialization with ALTREP instance creation.
+///
+/// This trait is automatically implemented by the `#[miniextendr]` macro
+/// for wrapper classes when the inner data type implements `AltrepSerialize`.
+pub trait AltrepUnserialize {
+    /// Create an ALTREP SEXP from serialized state.
+    ///
+    /// # Safety
+    /// Must be called from the R main thread during unserialization.
+    unsafe fn from_serialized_state(
+        class: crate::ffi::altrep::R_altrep_class_t,
+        state: SEXP,
+    ) -> SEXP;
+}
+
+// =============================================================================
+// Extract_subset optimization trait
+// =============================================================================
+
+/// Trait for ALTREP types that can provide optimized subsetting.
+///
+/// When R subsets an ALTREP (e.g., `x[1:10]`), it can call `Extract_subset` to get
+/// an optimized result. This is useful for:
+///
+/// - **Arithmetic sequences**: `seq(1, 1000000)[1:10]` can return a new sequence
+///   instead of materializing the full million elements
+/// - **Lazy types**: Can return another lazy object covering just the subset
+/// - **Memory-mapped files**: Can return a view without loading everything
+///
+/// ## Example
+///
+/// ```ignore
+/// impl AltrepExtractSubset for ArithSeqData {
+///     fn extract_subset(&self, indices: &[i32]) -> Option<SEXP> {
+///         // For simple contiguous subsets like 1:10, we could return a new ArithSeq
+///         // For general subsets, return None to let R handle it
+///         None
+///     }
+/// }
+/// ```
+///
+/// ## Notes
+///
+/// - `indices` contains 1-based R indices (may include NA as i32::MIN)
+/// - Return `None` to let R use default subsetting
+/// - Return `Some(sexp)` with the subset result
+pub trait AltrepExtractSubset {
+    /// Extract a subset of this ALTREP.
+    ///
+    /// `indices` contains the 1-based indices to extract.
+    /// Return `None` to fall back to R's default subsetting.
+    fn extract_subset(&self, indices: &[i32]) -> Option<SEXP>;
 }
 
 // =============================================================================

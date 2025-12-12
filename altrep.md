@@ -308,6 +308,36 @@ fn create_vec_int(data: Vec<i32>) -> SEXP {
 }
 ```
 
+### Auto-Inferred Base Type
+
+For standard types, the `base` attribute is **optional**. The base type is automatically inferred from the inner data type via the `AltrepBase` trait:
+
+```rust
+// Base type "Real" is automatically inferred from Vec<f64>
+#[miniextendr(class = "MyReals", pkg = "mypkg")]
+pub struct MyRealsClass(Vec<f64>);
+
+// Equivalent to:
+// #[miniextendr(class = "MyReals", pkg = "mypkg", base = "Real")]
+```
+
+Supported auto-inference mappings:
+
+| Inner Type | Inferred Base |
+|------------|---------------|
+| `Vec<i32>` | `Int` |
+| `Vec<f64>` | `Real` |
+| `Vec<bool>` | `Logical` |
+| `Vec<u8>` | `Raw` |
+| `Vec<String>` | `String` |
+| `Range<i32>`, `Range<i64>` | `Int` |
+| `Range<f64>` | `Real` |
+| `[i32; N]`, `[f64; N]`, etc. | Corresponding type |
+
+For custom data types, you must either:
+1. Implement `AltrepBase` for your type, OR
+2. Explicitly specify `base = "..."` in the attribute
+
 ## Complete Example
 
 ```rust
@@ -386,6 +416,232 @@ miniextendr_module! {
 }
 ```
 
+## Dataptr with Lazy Materialization
+
+Some ALTREP types compute values on-demand (e.g., arithmetic sequences, Fibonacci). They can benefit from **lazy materialization**: the full data buffer is only allocated when `Dataptr` is called, but individual element access via `Elt` or `Get_region` can compute values without materialization.
+
+### The Pattern
+
+```rust
+use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen, AltrepDataptr};
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct LazySequence {
+    start: i32,
+    step: i32,
+    len: usize,
+    /// Lazily-allocated buffer - None until Dataptr is called
+    materialized: Option<Vec<i32>>,
+}
+
+impl AltrepLen for LazySequence {
+    fn len(&self) -> usize { self.len }
+}
+
+impl AltIntegerData for LazySequence {
+    fn elt(&self, i: usize) -> i32 {
+        // Compute on-the-fly without materializing
+        self.start + (i as i32) * self.step
+    }
+    // ... other methods (sum, min, max can be O(1))
+}
+
+/// Implement AltrepDataptr for lazy materialization
+impl AltrepDataptr<i32> for LazySequence {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        // Materialize on first Dataptr access
+        if self.materialized.is_none() {
+            let data: Vec<i32> = (0..self.len)
+                .map(|i| self.start + (i as i32) * self.step)
+                .collect();
+            self.materialized = Some(data);
+        }
+        self.materialized.as_mut().map(|v| v.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        // Only return pointer if already materialized
+        // Returning None allows R to use Elt/Get_region for unmaterialized data
+        self.materialized.as_ref().map(|v| v.as_ptr())
+    }
+}
+
+// Use the `dataptr` variant to enable Dataptr methods
+miniextendr_api::impl_altinteger_from_data!(LazySequence, dataptr);
+
+// Implement AltrepBase and AltrepInstaller for base type auto-inference
+impl miniextendr_api::altrep::AltrepBase for LazySequence {
+    const BASE: miniextendr_api::altrep::RBase = miniextendr_api::altrep::RBase::Int;
+}
+
+impl miniextendr_api::altrep_registration::AltrepInstaller for LazySequence {
+    unsafe fn make_class(class_name: *const i8, pkg_name: *const i8)
+        -> miniextendr_api::ffi::altrep::R_altrep_class_t
+    {
+        unsafe {
+            miniextendr_api::ffi::altrep::R_make_altinteger_class(
+                class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: miniextendr_api::ffi::altrep::R_altrep_class_t) {
+        use miniextendr_api::altrep_traits::*;
+        use miniextendr_api::ffi::altrep::*;
+        use miniextendr_api::altrep_bridge as bridge;
+
+        // Install integer methods based on HAS_* flags
+        if <Self as AltInteger>::HAS_ELT {
+            unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<Self>)) };
+        }
+        // ... install other methods similarly
+
+        // Install ALTVEC methods (dataptr)
+        if <Self as AltVec>::HAS_DATAPTR {
+            unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<Self>)) };
+        }
+        if <Self as AltVec>::HAS_DATAPTR_OR_NULL {
+            unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<Self>)) };
+        }
+    }
+}
+
+// Register ALTREP class - NO base attribute needed!
+#[miniextendr(class = "LazySequence", pkg = "mypkg")]
+pub struct LazySequenceClass(LazySequence);
+```
+
+### Key Points
+
+1. **`Elt` computes on-the-fly**: No allocation needed for individual element access
+2. **`Dataptr` triggers materialization**: Full buffer is allocated and populated
+3. **`Dataptr_or_null` returns `None` until materialized**: R will use `Elt` if available
+4. **Use `dataptr` variant**: Pass `, dataptr` to `impl_alt*_from_data!` macro to enable these methods
+5. **Implement `AltrepBase` + `AltrepInstaller`**: Enables auto-inference so you don't need `base = "..."`
+
+### When to Use Lazy Materialization
+
+- Arithmetic/geometric sequences where formulas allow O(1) element access
+- Fibonacci or other recurrence relations with memoization
+- Computed sequences that might never need full materialization
+- Memory-mapped files that shouldn't be loaded entirely into memory
+
+### Testing Materialization
+
+R code to test:
+
+```r
+# Create lazy sequence - not materialized yet
+x <- lazy_int_seq(1L, 100L, 1L)
+
+# Element access doesn't materialize
+x[1]  # Uses Elt method
+
+# Sum uses optimized method (O(1) for arithmetic sequences)
+sum(x)
+
+# Force materialization
+y <- x + 0L  # Dataptr is called
+```
+
+## Serialization Support
+
+ALTREP objects can be saved/loaded via `saveRDS()`/`readRDS()` by implementing the `AltrepSerialize` trait.
+
+### The Pattern
+
+```rust
+use miniextendr_api::altrep_data::AltrepSerialize;
+use miniextendr_api::ffi::{SEXP, Rf_allocVector, SET_INTEGER_ELT, INTEGER_ELT, INTSXP};
+
+impl AltrepSerialize for MySeqData {
+    fn serialized_state(&self) -> SEXP {
+        // Store parameters needed to reconstruct the ALTREP
+        unsafe {
+            let state = Rf_allocVector(INTSXP, 3);
+            SET_INTEGER_ELT(state, 0, self.start);
+            SET_INTEGER_ELT(state, 1, self.step);
+            SET_INTEGER_ELT(state, 2, self.len as i32);
+            state
+        }
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        unsafe {
+            let start = INTEGER_ELT(state, 0);
+            let step = INTEGER_ELT(state, 1);
+            let len = INTEGER_ELT(state, 2) as usize;
+            Some(MySeqData { start, step, len, materialized: None })
+        }
+    }
+}
+
+// Enable serialization with the `serialize` variant
+miniextendr_api::impl_altinteger_from_data!(MySeqData, serialize);
+
+// Or combine with dataptr:
+miniextendr_api::impl_altinteger_from_data!(MySeqData, dataptr, serialize);
+```
+
+### Key Points
+
+1. **`serialized_state()`**: Convert your data to an R object (list, vector, etc.)
+2. **`unserialize()`**: Reconstruct your data from that R object
+3. **Use `serialize` variant**: Pass `, serialize` to `impl_alt*_from_data!` macro
+4. **Don't serialize ephemeral state**: Computed caches, file handles, etc. should be reconstructed
+
+### What to Serialize
+
+- **Parameters**: Values that define the ALTREP (start, step, length for sequences)
+- **NOT materialized buffers**: Let them be recomputed on demand
+- **NOT pointers/handles**: They won't survive the save/load cycle
+
+## Extract_subset Optimization
+
+ALTREP types can provide optimized subsetting (e.g., `x[1:10]`) by implementing `AltrepExtractSubset`.
+
+### When to Use
+
+- **Arithmetic sequences**: `seq(1, 1000000)[1:10]` can return a new sequence without materializing
+- **Lazy types**: Return another lazy object covering just the subset
+- **Memory-mapped files**: Return a view without loading everything
+
+### Implementation
+
+```rust
+use miniextendr_api::altrep_data::AltrepExtractSubset;
+
+impl AltrepExtractSubset for ArithSeqData {
+    fn extract_subset(&self, indices: &[i32]) -> Option<SEXP> {
+        // Check for contiguous range like 1:10
+        if is_contiguous_range(indices) {
+            let start_idx = indices[0] as usize - 1; // Convert to 0-based
+            let new_start = self.start + (start_idx as i32) * self.step;
+            let new_len = indices.len();
+
+            // Create a new ArithSeq for the subset
+            let new_data = ArithSeqData {
+                start: new_start,
+                step: self.step,
+                len: new_len,
+            };
+            return Some(unsafe { ArithSeqClass::into_altrep(new_data) });
+        }
+
+        // For non-contiguous subsets, return None to let R handle it
+        None
+    }
+}
+
+// Enable with the `subset` variant
+miniextendr_api::impl_altinteger_from_data!(ArithSeqData, subset);
+```
+
+### Notes
+
+- `indices` are 1-based R indices (NA represented as `i32::MIN`)
+- Return `None` to fall back to R's default subsetting
+- Return `Some(sexp)` with the optimized subset result
+
 ## C NULL vs R_NilValue Return Semantics
 
 **Critical distinction**: ALTREP methods use C `NULL` and R's `R_NilValue` for different purposes.
@@ -433,13 +689,15 @@ pub enum Sortedness {
 - [x] ExternalPtr integration for data storage
 - [x] FFI bindings for all R ALTREP APIs
 
+- [x] `Dataptr` with lazy materialization pattern
+- [x] Auto-inferred base types for standard inner types
+- [x] Serialization support (`AltrepSerialize` trait)
+- [x] `Extract_subset` optimization (`AltrepExtractSubset` trait)
+- [x] Complex number ALTREP example (`UnitCircle` - roots of unity)
+
 ### Not Yet Implemented
 
-- [ ] `Dataptr` with lazy materialization pattern
-- [ ] Serialization/unserialization support
-- [ ] `Extract_subset` optimization
 - [ ] Memory-mapped file ALTREP
-- [ ] Complex number ALTREP examples
 
 ## References
 
