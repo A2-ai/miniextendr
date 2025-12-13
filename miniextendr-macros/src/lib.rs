@@ -100,19 +100,10 @@ enum CoercionMapping {
     },
 }
 
-/// Check if a function argument has a `#[miniextendr(coerce)]` attribute.
-fn has_miniextendr_coerce_attr(attrs: &[syn::Attribute]) -> bool {
-    attrs.iter().any(|attr| {
-        if attr.path().is_ident("miniextendr") {
-            // Parse the attribute arguments to check for "coerce"
-            if let syn::Meta::List(list) = &attr.meta {
-                if let Ok(nested) = list.parse_args::<syn::Ident>() {
-                    return nested == "coerce";
-                }
-            }
-        }
-        false
-    })
+/// Check if an attribute is `#[miniextendr(coerce)]`.
+fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
+    attr.path().is_ident("miniextendr")
+        && matches!(&attr.meta, syn::Meta::List(list) if list.parse_args::<syn::Ident>().is_ok_and(|id| id == "coerce"))
 }
 
 /// Get the coercion mapping for a type, if it needs coercion.
@@ -125,29 +116,27 @@ fn get_coercion_mapping(ty: &syn::Type) -> Option<CoercionMapping> {
 
             // Check for Vec<T> types
             if type_name == "Vec" {
-                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                    if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
-                        if let syn::Type::Path(inner_path) = inner_ty {
-                            let inner_name = inner_path.path.segments.last()?.ident.to_string();
-                            return match inner_name.as_str() {
-                                // Vec<integer-like> from &[i32]
-                                "u16" | "i16" | "i8" | "u32" | "u64" | "i64" => {
-                                    let target_elem: proc_macro2::TokenStream =
-                                        inner_name.parse().ok()?;
-                                    Some(CoercionMapping::Vec {
-                                        r_native_elem: quote::quote!(i32),
-                                        target_elem,
-                                    })
-                                }
-                                // Vec<f32> from &[f64]
-                                "f32" => Some(CoercionMapping::Vec {
-                                    r_native_elem: quote::quote!(f64),
-                                    target_elem: quote::quote!(f32),
-                                }),
-                                _ => None,
-                            };
+                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                    && let Some(syn::GenericArgument::Type(syn::Type::Path(inner_path))) =
+                        args.args.first()
+                {
+                    let inner_name = inner_path.path.segments.last()?.ident.to_string();
+                    return match inner_name.as_str() {
+                        // Vec<integer-like> from &[i32]
+                        "u16" | "i16" | "i8" | "u32" | "u64" | "i64" => {
+                            let target_elem: proc_macro2::TokenStream = inner_name.parse().ok()?;
+                            Some(CoercionMapping::Vec {
+                                r_native_elem: quote::quote!(i32),
+                                target_elem,
+                            })
                         }
-                    }
+                        // Vec<f32> from &[f64]
+                        "f32" => Some(CoercionMapping::Vec {
+                            r_native_elem: quote::quote!(f64),
+                            target_elem: quote::quote!(f32),
+                        }),
+                        _ => None,
+                    };
                 }
                 return None;
             }
@@ -216,7 +205,7 @@ pub fn miniextendr(
                         }
                     }
                 }
-                // Nested: unsafe(main_thread), coerce(x, y)
+                // Nested: unsafe(main_thread)
                 syn::Meta::List(list) => {
                     if list.path.is_ident("unsafe") {
                         let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> = list
@@ -242,12 +231,11 @@ pub fn miniextendr(
         .inputs
         .iter()
         .filter_map(|arg| {
-            if let syn::FnArg::Typed(pat_type) = arg {
-                if has_miniextendr_coerce_attr(&pat_type.attrs) {
-                    if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
-                        return Some(pat_ident.ident.to_string());
-                    }
-                }
+            if let syn::FnArg::Typed(pat_type) = arg
+                && pat_type.attrs.iter().any(is_miniextendr_coerce_attr)
+                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+            {
+                return Some(pat_ident.ident.to_string());
             }
             None
         })
@@ -262,18 +250,9 @@ pub fn miniextendr(
         #[allow(clippy::collapsible_if)]
         if let syn::FnArg::Typed(pat_type) = arg {
             // Strip #[miniextendr(coerce)] attribute - we consume it, don't pass through
-            pat_type.attrs.retain(|attr| {
-                if attr.path().is_ident("miniextendr") {
-                    if let syn::Meta::List(list) = &attr.meta {
-                        if let Ok(nested) = list.parse_args::<syn::Ident>() {
-                            if nested == "coerce" {
-                                return false; // Remove this attribute
-                            }
-                        }
-                    }
-                }
-                true // Keep other attributes
-            });
+            pat_type
+                .attrs
+                .retain(|attr| !is_miniextendr_coerce_attr(attr));
 
             if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
                 let synthetic_name = format!("__unused{}", unused_counter);
@@ -521,7 +500,10 @@ pub fn miniextendr(
                             };
                         });
                     }
-                    Some(CoercionMapping::Vec { r_native_elem, target_elem }) => {
+                    Some(CoercionMapping::Vec {
+                        r_native_elem,
+                        target_elem,
+                    }) => {
                         // Vec coercion: extract R native slice, coerce element-wise
                         let mutability = if pat_ident.mutability.is_some() {
                             quote::quote!(mut)
@@ -1547,11 +1529,13 @@ fn expand_altrep_struct(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
                     core::ptr::null_mut(),
                 ) },
-                "Logical" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
+                "Logical" => {
+                    quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                        core::ptr::null_mut(),
+                    ) }
+                }
                 "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
@@ -1567,11 +1551,13 @@ fn expand_altrep_struct(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
                     core::ptr::null_mut(),
                 ) },
-                "Complex" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
+                "Complex" => {
+                    quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                        core::ptr::null_mut(),
+                    ) }
+                }
                 _ => quote::quote! { unreachable!() },
             };
             (setters, make)
