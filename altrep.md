@@ -334,26 +334,18 @@ Supported auto-inference mappings:
 | `Range<f64>` | `Real` |
 | `[i32; N]`, `[f64; N]`, etc. | Corresponding type |
 
-For custom data types, use the `impl_inferbase_*` macros to enable auto-inference:
+For custom data types, just use the appropriate `impl_alt*_from_data!` macro - it automatically enables base type inference:
 
 ```rust
-// After defining your data traits and calling impl_altinteger_from_data!
-miniextendr_api::impl_inferbase_integer!(MyCustomData);
+// The impl_altinteger_from_data! macro automatically enables base type inference
+miniextendr_api::impl_altinteger_from_data!(MyCustomData);
 
 // Now you can omit base:
 #[miniextendr(class = "MyCustom", pkg = "mypkg")]  // No base needed!
 pub struct MyCustomClass(MyCustomData);
 ```
 
-Available macros:
-
-- `impl_inferbase_integer!(T)` - for integer ALTREP types
-- `impl_inferbase_real!(T)` - for real/double ALTREP types
-- `impl_inferbase_logical!(T)` - for logical ALTREP types
-- `impl_inferbase_raw!(T)` - for raw byte ALTREP types
-- `impl_inferbase_string!(T)` - for string ALTREP types
-- `impl_inferbase_complex!(T)` - for complex number ALTREP types
-- `impl_inferbase_list!(T)` - for list ALTREP types
+All `impl_alt*_from_data!` macros automatically enable base type inference - no additional macro call needed.
 
 ## Complete Example
 
@@ -411,9 +403,8 @@ impl AltIntegerData for ArithSeq {
     }
 }
 
-// Generate low-level traits and enable base type inference
+// Generate low-level traits (automatically enables base type inference)
 miniextendr_api::impl_altinteger_from_data!(ArithSeq);
-miniextendr_api::impl_inferbase_integer!(ArithSeq);
 
 // Register class - no `base` attribute needed!
 #[miniextendr(class = "ArithSeq", pkg = "mypkg")]
@@ -484,11 +475,8 @@ impl AltrepDataptr<i32> for LazySequence {
     }
 }
 
-// Use the `dataptr` variant to enable Dataptr methods
+// Use the `dataptr` variant to enable Dataptr methods (also enables base type inference)
 miniextendr_api::impl_altinteger_from_data!(LazySequence, dataptr);
-
-// Enable base type auto-inference
-miniextendr_api::impl_inferbase_integer!(LazySequence);
 
 // Register ALTREP class - no `base` attribute needed!
 #[miniextendr(class = "LazySequence", pkg = "mypkg")]
@@ -501,7 +489,7 @@ pub struct LazySequenceClass(LazySequence);
 2. **`Dataptr` triggers materialization**: Full buffer is allocated and populated
 3. **`Dataptr_or_null` returns `None` until materialized**: R will use `Elt` if available
 4. **Use `dataptr` variant**: Pass `, dataptr` to `impl_alt*_from_data!` macro to enable these methods
-5. **Use `impl_inferbase_*` macro**: Enables auto-inference so you don't need `base = "..."`
+5. **Base type is auto-inferred**: All `impl_alt*_from_data!` macros enable inference, no `base = "..."` needed
 
 ### When to Use Lazy Materialization
 
