@@ -1,5 +1,18 @@
 pub trait IntoR {
     fn into_sexp(self) -> crate::ffi::SEXP;
+
+    /// Convert to SEXP without thread safety checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions.
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP
+    where
+        Self: Sized,
+    {
+        // Default: just call the checked version
+        self.into_sexp()
+    }
 }
 
 impl IntoR for crate::ffi::SEXP {
@@ -28,12 +41,22 @@ impl IntoR for i32 {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::Rf_ScalarInteger(self) }
     }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarInteger_unchecked(self) }
+    }
 }
 
 impl IntoR for f64 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::Rf_ScalarReal(self) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarReal_unchecked(self) }
     }
 }
 
@@ -42,6 +65,11 @@ impl IntoR for u8 {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::Rf_ScalarRaw(self) }
     }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarRaw_unchecked(self) }
+    }
 }
 
 impl IntoR for bool {
@@ -49,12 +77,22 @@ impl IntoR for bool {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::Rf_ScalarLogical(self as i32) }
     }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarLogical_unchecked(self as i32) }
+    }
 }
 
 impl IntoR for crate::ffi::Rboolean {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::Rf_ScalarLogical(self as i32) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarLogical_unchecked(self as i32) }
     }
 }
 
@@ -79,10 +117,27 @@ fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
     }
 }
 
+/// Unchecked version of [`str_to_charsxp`].
+#[inline]
+unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
+    unsafe {
+        if s.is_empty() {
+            crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), 0, crate::ffi::CE_UTF8)
+        } else {
+            crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8)
+        }
+    }
+}
+
 impl IntoR for String {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.as_str().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_str().into_sexp_unchecked() }
     }
 }
 
@@ -92,6 +147,14 @@ impl IntoR for &str {
         unsafe {
             let charsxp = str_to_charsxp(self);
             crate::ffi::Rf_ScalarString(charsxp)
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = str_to_charsxp_unchecked(self);
+            crate::ffi::Rf_ScalarString_unchecked(charsxp)
         }
     }
 }

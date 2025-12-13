@@ -95,6 +95,13 @@ pub(crate) trait SexpExt {
     /// The SEXP must be valid.
     fn len(&self) -> usize;
 
+    /// Get the length without thread checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions.
+    unsafe fn len_unchecked(&self) -> usize;
+
     /// Get a slice view of this SEXP's data.
     ///
     /// # Safety
@@ -102,6 +109,13 @@ pub(crate) trait SexpExt {
     /// - The SEXP must be valid and of the correct type for T
     /// - The returned slice borrows from R's memory; the SEXP must remain protected
     fn as_slice<T: RNativeType>(&self) -> &'static [T];
+
+    /// Get a slice view without thread checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions.
+    unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T];
 }
 
 impl SexpExt for SEXP {
@@ -121,6 +135,11 @@ impl SexpExt for SEXP {
     }
 
     #[inline]
+    unsafe fn len_unchecked(&self) -> usize {
+        unsafe { Rf_xlength_unchecked(*self) as usize }
+    }
+
+    #[inline]
     fn as_slice<T: RNativeType>(&self) -> &'static [T] {
         debug_assert!(
             self.type_of() == T::SEXP_TYPE,
@@ -133,6 +152,22 @@ impl SexpExt for SEXP {
             &[]
         } else {
             unsafe { std::slice::from_raw_parts(DATAPTR_RO(*self).cast(), len) }
+        }
+    }
+
+    #[inline]
+    unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T] {
+        debug_assert!(
+            self.type_of() == T::SEXP_TYPE,
+            "SEXP type mismatch: expected {:?}, got {:?}",
+            T::SEXP_TYPE,
+            self.type_of()
+        );
+        let len = unsafe { self.len_unchecked() };
+        if len == 0 {
+            &[]
+        } else {
+            unsafe { std::slice::from_raw_parts(DATAPTR_RO_unchecked(*self).cast(), len) }
         }
     }
 }

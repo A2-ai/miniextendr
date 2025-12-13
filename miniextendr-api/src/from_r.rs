@@ -46,6 +46,16 @@ impl From<SexpLengthError> for SexpError {
 pub trait TryFromSexp: Sized {
     type Error;
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error>;
+
+    /// Convert from SEXP without thread safety checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions.
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Default: just call the checked version
+        Self::try_from_sexp(sexp)
+    }
 }
 
 // Blanket implementation for scalar R native types
@@ -78,6 +88,36 @@ impl<T: RNativeType> TryFromSexp for T {
             .into()
         })
     }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+        unsafe { sexp.as_slice_unchecked::<T>() }
+            .first()
+            .cloned()
+            .ok_or_else(|| {
+                SexpLengthError {
+                    expected: 1,
+                    actual: 0,
+                }
+                .into()
+            })
+    }
 }
 
 // Blanket implementation for slices of R native types
@@ -94,6 +134,18 @@ impl<T: RNativeType> TryFromSexp for &'static [T] {
             });
         }
         Ok(sexp.as_slice::<T>())
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        Ok(unsafe { sexp.as_slice_unchecked::<T>() })
     }
 }
 
@@ -161,6 +213,53 @@ impl TryFromSexp for &'static str {
             .into()
         })
     }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{R_CHAR_unchecked, STRING_ELT_unchecked};
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        // Get the CHARSXP at index 0
+        let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
+
+        // Check for NA_STRING
+        if charsxp == unsafe { crate::ffi::R_NaString } {
+            return Ok("");
+        }
+
+        // Get the C string pointer
+        let c_str = unsafe { R_CHAR_unchecked(charsxp) };
+        if c_str.is_null() {
+            return Ok("");
+        }
+
+        // Convert to Rust str
+        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        rust_str.to_str().map_err(|_| {
+            SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual: SEXPTYPE::STRSXP,
+            }
+            .into()
+        })
+    }
 }
 
 /// Convert R character vector (STRSXP) to owned Rust String.
@@ -172,6 +271,12 @@ impl TryFromSexp for String {
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: &str = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(s.to_owned())
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: &str = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         Ok(s.to_owned())
     }
 }

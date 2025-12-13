@@ -125,6 +125,7 @@ pub use altrep::{AltrepBase, RBase};
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
+pub use into_r::IntoR;
 pub mod unwind_protect;
 pub mod worker;
 pub use worker::*;
