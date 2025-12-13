@@ -90,12 +90,99 @@ pub fn miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // Try to parse as function first
-    if syn::parse::<syn::ItemFn>(item.clone()).is_ok() {
-        // Continue with function handling below
-    } else if syn::parse::<syn::ItemImpl>(item.clone()).is_ok() {
-        // Delegate to impl block parser
-        return miniextendr_impl::expand_impl(attr, item);
+    // If not a function, delegate to ALTREP path (allow structs/enums)
+    if syn::parse::<syn::ItemFn>(item.clone()).is_err() {
+        return expand_altrep_struct(attr, item);
+    }
+
+    // Parse function-level attributes:
+    // - #[miniextendr(unsafe(main_thread))] - forces main thread execution (unsafe context)
+    // - #[miniextendr(invisible)] / #[miniextendr(visible)] - visibility control
+    // - #[miniextendr(check_interrupt)] - check for Ctrl+C before execution
+    let mut force_main_thread = false;
+    let mut force_invisible: Option<bool> = None;
+    let mut check_interrupt = false;
+    if !attr.is_empty() {
+        let attr_metas = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
+        for meta in attr_metas {
+            match &meta {
+                // Simple identifiers: invisible, visible, check_interrupt
+                syn::Meta::Path(path) => {
+                    if let Some(ident) = path.get_ident() {
+                        if ident == "invisible" {
+                            force_invisible = Some(true);
+                        } else if ident == "visible" {
+                            force_invisible = Some(false);
+                        } else if ident == "check_interrupt" {
+                            check_interrupt = true;
+                        } else if ident == "main_thread" {
+                            // Legacy support - but warn/error in future?
+                            force_main_thread = true;
+                        }
+                    }
+                }
+                // Nested: unsafe(main_thread)
+                syn::Meta::List(list) => {
+                    if list.path.is_ident("unsafe") {
+                        let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> = list
+                            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
+                            .expect("expected identifier in unsafe(...)");
+                        for ident in nested {
+                            if ident == "main_thread" {
+                                force_main_thread = true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+
+    let mut item = syn::parse_macro_input!(item as syn::ItemFn);
+
+    // Transform `_` wildcard patterns to synthetic identifiers `__unused0`, `__unused1`, etc.
+    // This is needed because `_` doesn't bind to a variable, but we need parameter names
+    // for the C wrapper and R wrapper.
+    let mut unused_counter = 0usize;
+    for arg in &mut item.sig.inputs {
+        #[allow(clippy::collapsible_if)]
+        if let syn::FnArg::Typed(pat_type) = arg {
+            if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
+                let synthetic_name = format!("__unused{}", unused_counter);
+                unused_counter += 1;
+                let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
+                *pat_type.pat = syn::Pat::Ident(syn::PatIdent {
+                    attrs: vec![],
+                    by_ref: None,
+                    mutability: None,
+                    ident: synthetic_ident,
+                    subpat: None,
+                });
+            }
+        }
+    }
+
+    // dots support here
+    //TODO: move to ExtendrFunction?
+    let has_dots = item.sig.variadic.is_some();
+    let mut named_dots: Option<syn::Ident> = if has_dots {
+        let dots = item.sig.variadic.as_ref().unwrap();
+        if let Some(named_dots) = dots.pat.as_ref() {
+            if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
+                Some(named_dots_ident.ident.clone())
+            } else {
+                // Pattern match on dots that isn't a simple ident (e.g., `(a, b): ...`)
+                // This is not supported in R's ... semantics
+                panic!(
+                    "variadic pattern must be a simple identifier, got: {:?}",
+                    named_dots.0
+                );
+            }
+        } else {
+            // unnamed dots
+            None
+        }
     } else {
         // Delegate to ALTREP path (structs/enums)
         return altrep::expand_altrep_struct(attr, item);
