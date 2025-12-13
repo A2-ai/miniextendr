@@ -460,6 +460,26 @@ test_coerce_attr_with_invisible <- function(x) {
 }
 
 #' @export
+test_per_arg_coerce_first <- function(x, y) {
+    .Call(C_test_per_arg_coerce_first, .call = match.call(), x, y)
+}
+
+#' @export
+test_per_arg_coerce_second <- function(x, y) {
+    .Call(C_test_per_arg_coerce_second, .call = match.call(), x, y)
+}
+
+#' @export
+test_per_arg_coerce_both <- function(x, y) {
+    .Call(C_test_per_arg_coerce_both, .call = match.call(), x, y)
+}
+
+#' @export
+test_per_arg_coerce_vec <- function(x, y) {
+    .Call(C_test_per_arg_coerce_vec, .call = match.call(), x, y)
+}
+
+#' @export
 unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)
 }
