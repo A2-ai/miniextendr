@@ -598,3 +598,48 @@ static_strings <- function() {
     .Call(C_static_strings, .call = match.call())
 }
 
+#' @export
+unsafe_C_test_spawn_with_r_simple <- function() {
+    .Call(C_test_spawn_with_r_simple)
+}
+
+#' @export
+unsafe_C_test_spawn_with_r_computation <- function() {
+    .Call(C_test_spawn_with_r_computation)
+}
+
+#' @export
+unsafe_C_test_r_thread_builder <- function() {
+    .Call(C_test_r_thread_builder)
+}
+
+#' @export
+unsafe_C_test_r_thread_builder_spawn_join <- function() {
+    .Call(C_test_r_thread_builder_spawn_join)
+}
+
+#' @export
+unsafe_C_test_stack_check_guard <- function() {
+    .Call(C_test_stack_check_guard)
+}
+
+#' @export
+unsafe_C_test_with_stack_checking_disabled <- function() {
+    .Call(C_test_with_stack_checking_disabled)
+}
+
+#' @export
+unsafe_C_test_spawn_multiple_r_calls <- function() {
+    .Call(C_test_spawn_multiple_r_calls)
+}
+
+#' @export
+unsafe_C_test_spawn_create_vector <- function() {
+    .Call(C_test_spawn_create_vector)
+}
+
+#' @export
+unsafe_C_test_stack_check_status <- function() {
+    .Call(C_test_stack_check_status)
+}
+

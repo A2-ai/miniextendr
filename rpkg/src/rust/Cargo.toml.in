@@ -18,5 +18,9 @@ name = "@CARGO_STATICLIB_NAME@"
 path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
+[features]
+default = ["nonapi"]
+nonapi = ["miniextendr-api/nonapi"]
+
 [dependencies]
 miniextendr-api = { path = "../../inst/vendor/miniextendr-api" }

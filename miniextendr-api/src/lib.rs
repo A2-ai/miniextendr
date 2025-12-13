@@ -35,9 +35,12 @@ pub use miniextendr_macros::RNative;
 /// In case of function arguments beginning with `_*`, then the R wrapper renames the argument
 /// to `unused_*`, as it is not allowed for a variable to begin with `_` in R.
 ///
-/// ## `extern "C-unwind"`
+/// ## `extern "C-unwind"` and the `unsafe_` prefix
 ///
-/// A function with the C ABI may be provided as
+/// When providing a raw C ABI function, the function IS the C wrapper (no safe Rust
+/// wrapper is generated). Since these functions bypass miniextendr's safety features
+/// (worker thread, panic handling, type conversion), the R wrapper is prefixed with
+/// `unsafe_` to signal this to R users.
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -45,11 +48,20 @@ pub use miniextendr_macros::RNative;
 ///
 /// #[miniextendr]
 /// #[unsafe(no_mangle)]
-/// extern "C-unwind" fn C_foo() -> SEXP { unsafe { R_NilValue } }
+/// extern "C-unwind" fn C_my_function() -> SEXP { unsafe { R_NilValue } }
 /// ```
 ///
-/// Here, the provided function definition is the C wrapper, there are no Rust definition, therefore
-/// the R wrapper is named `unsafe_*` together with the provided name.
+/// This generates:
+/// - C symbol: `C_my_function` (the function you wrote)
+/// - R wrapper: `unsafe_C_my_function()` (prefixed with `unsafe_`)
+///
+/// The `unsafe_` prefix indicates that:
+/// 1. The function runs directly on R's main thread (no worker thread isolation)
+/// 2. Panics may not be properly caught (depends on your implementation)
+/// 3. No automatic type conversion from R to Rust types
+///
+/// Use `extern "C-unwind"` when you need direct FFI control, such as for ALTREP
+/// callbacks or performance-critical code that handles its own safety.
 ///
 ///
 /// ## Variadic support: [`Dots`] / DotDotDot / `...`

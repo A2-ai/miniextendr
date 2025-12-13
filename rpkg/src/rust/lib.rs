@@ -1552,6 +1552,225 @@ miniextendr_module! {
     fn leaked_ints;
     struct StaticStringsClass;
     fn static_strings;
+
+    // Thread safety tests (nonapi feature)
+    extern "C-unwind" fn C_test_spawn_with_r_simple;
+    extern "C-unwind" fn C_test_spawn_with_r_computation;
+    extern "C-unwind" fn C_test_r_thread_builder;
+    extern "C-unwind" fn C_test_r_thread_builder_spawn_join;
+    extern "C-unwind" fn C_test_stack_check_guard;
+    extern "C-unwind" fn C_test_with_stack_checking_disabled;
+    extern "C-unwind" fn C_test_spawn_multiple_r_calls;
+    extern "C-unwind" fn C_test_spawn_create_vector;
+    extern "C-unwind" fn C_test_stack_check_status;
+}
+
+// endregion
+
+// region: Thread safety tests (nonapi feature)
+
+#[cfg(feature = "nonapi")]
+use miniextendr_api::thread::{
+    spawn_with_r, with_stack_checking_disabled, RThreadBuilder, StackCheckGuard,
+};
+
+/// Test spawn_with_r: spawn a thread and call R API from it.
+/// Returns the computed value to verify R API worked correctly.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_spawn_with_r_simple() -> SEXP {
+    let handle = spawn_with_r(|| {
+        // Call R API from spawned thread - this would segfault without the guard!
+        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+    })
+    .expect("failed to spawn thread");
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test spawn_with_r with computation: do actual work on the thread.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_spawn_with_r_computation() -> SEXP {
+    let handle = spawn_with_r(|| {
+        // Do some computation
+        let mut sum = 0i32;
+        for i in 1..=100 {
+            sum += i;
+        }
+
+        // Call R API to create result
+        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) };
+        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+    })
+    .expect("failed to spawn thread");
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test RThreadBuilder with custom stack size.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
+    let handle = RThreadBuilder::new()
+        .stack_size(16 * 1024 * 1024) // 16 MiB
+        .name("test-r-worker".to_string())
+        .spawn(|| {
+            // Verify we can call R API
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(123) };
+            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        })
+        .expect("failed to spawn thread");
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test RThreadBuilder::spawn_join convenience method.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
+    let result = RThreadBuilder::new()
+        .spawn_join(|| {
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(456) };
+            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        })
+        .expect("thread failed");
+
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test StackCheckGuard directly with std::thread::spawn.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_stack_check_guard() -> SEXP {
+    let handle = std::thread::spawn(|| {
+        // Manually disable stack checking
+        let _guard = StackCheckGuard::disable();
+
+        // Now safe to call R API
+        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(789) };
+        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+
+        // Guard restores original limit on drop
+    });
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test with_stack_checking_disabled closure wrapper.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_with_stack_checking_disabled() -> SEXP {
+    let handle = std::thread::spawn(|| {
+        with_stack_checking_disabled(|| {
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(999) };
+            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        })
+    });
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test multiple R API calls from spawned thread.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_spawn_multiple_r_calls() -> SEXP {
+    let handle = spawn_with_r(|| {
+        // Multiple R API calls
+        let s1 = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(10) };
+        let s2 = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(20) };
+        let s3 = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(30) };
+
+        let v1 = unsafe { *miniextendr_api::ffi::INTEGER(s1) };
+        let v2 = unsafe { *miniextendr_api::ffi::INTEGER(s2) };
+        let v3 = unsafe { *miniextendr_api::ffi::INTEGER(s3) };
+
+        v1 + v2 + v3
+    })
+    .expect("failed to spawn thread");
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test creating R vectors from spawned thread.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_spawn_create_vector() -> SEXP {
+    let handle = spawn_with_r(|| {
+        unsafe {
+            use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+
+            // Create an integer vector
+            let vec = Rf_allocVector(SEXPTYPE::INTSXP, 5);
+            Rf_protect(vec);
+
+            // Fill it
+            let ptr = INTEGER(vec);
+            for i in 0..5 {
+                *ptr.add(i) = (i + 1) as i32 * 10;
+            }
+
+            // Sum the values
+            let mut sum = 0;
+            for i in 0..5 {
+                sum += *ptr.add(i);
+            }
+
+            Rf_unprotect(1);
+            sum
+        }
+    })
+    .expect("failed to spawn thread");
+
+    let result = handle.join().expect("thread panicked");
+    // Should be 10 + 20 + 30 + 40 + 50 = 150
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+}
+
+/// Test that stack checking status can be queried.
+#[cfg(feature = "nonapi")]
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+pub unsafe extern "C-unwind" fn C_test_stack_check_status() -> SEXP {
+    use miniextendr_api::thread::{get_stack_config, is_stack_checking_disabled};
+
+    let handle = spawn_with_r(|| {
+        // Inside spawn_with_r, stack checking should be disabled
+        let is_disabled = is_stack_checking_disabled();
+
+        // Get config for debugging
+        let (_start, _limit, _dir) = get_stack_config();
+
+        if is_disabled { 1 } else { 0 }
+    })
+    .expect("failed to spawn thread");
+
+    let result = handle.join().expect("thread panicked");
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
 // endregion

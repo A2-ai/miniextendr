@@ -1079,6 +1079,71 @@ impl syn::parse::Parse for ExtendrModule {
     }
 }
 
+/// Register functions and ALTREP types with R's dynamic symbol registration.
+///
+/// This macro generates the `R_init_<module>_miniextendr` entrypoint that R calls
+/// when loading the shared library.
+///
+/// # Syntax
+///
+/// ```ignore
+/// miniextendr_module! {
+///     mod mymodule;
+///
+///     // Regular Rust functions (generates safe R wrapper)
+///     fn my_function;
+///
+///     // Raw C ABI functions (R wrapper prefixed with `unsafe_`)
+///     extern "C-unwind" fn C_my_raw_function;
+///
+///     // ALTREP types (registers the class with R)
+///     struct MyAltrepClass;
+///
+///     // Re-export from submodules
+///     use submodule;
+/// }
+/// ```
+///
+/// # Function Registration
+///
+/// ## Regular functions (`fn`)
+///
+/// For functions defined with `#[miniextendr]` that have a Rust signature:
+/// - C symbol: `C_<name>` (auto-generated wrapper)
+/// - R wrapper: `<name>()` (safe, with type conversion)
+///
+/// ## Extern functions (`extern "C-unwind" fn`)
+///
+/// For raw C ABI functions defined with `#[miniextendr]` and `extern "C-unwind"`:
+/// - C symbol: The function name you provided (e.g., `C_my_function`)
+/// - R wrapper: `unsafe_<name>()` (prefixed to indicate bypassed safety)
+///
+/// The `unsafe_` prefix signals to R users that these functions:
+/// 1. Run directly on R's thread (no worker thread isolation)
+/// 2. May not have proper panic handling
+/// 3. Don't perform automatic type conversion
+///
+/// # ALTREP Registration
+///
+/// Structs listed are registered as ALTREP classes during `R_init_*`.
+/// The struct must implement the appropriate ALTREP traits.
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn add(a: i32, b: i32) -> i32 { a + b }
+///
+/// #[miniextendr]
+/// #[unsafe(no_mangle)]
+/// extern "C-unwind" fn C_fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
+///
+/// miniextendr_module! {
+///     mod mypackage;
+///     fn add;                         // R: add(a, b)
+///     extern "C-unwind" fn C_fast_add; // R: unsafe_C_fast_add()
+/// }
+/// ```
 // TODO: Currently, miniextendr_module does not distinguish between
 // `extern "C-unwind" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
