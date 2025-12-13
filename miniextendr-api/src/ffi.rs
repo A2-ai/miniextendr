@@ -403,6 +403,9 @@ unsafe extern "C-unwind" {
     pub fn Rf_ScalarString(arg1: SEXP) -> SEXP;
 
     // Rinternals.h
+    /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.
+    /// Only available with `nonapi` feature.
+    #[cfg(feature = "nonapi")]
     pub fn DATAPTR(x: SEXP) -> *mut ::std::os::raw::c_void;
     pub fn DATAPTR_RO(x: SEXP) -> *const ::std::os::raw::c_void;
     pub fn DATAPTR_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_void;

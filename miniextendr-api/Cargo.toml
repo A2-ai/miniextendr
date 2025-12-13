@@ -3,5 +3,11 @@ name = "miniextendr-api"
 edition.workspace = true
 version.workspace = true
 
+[features]
+default = []
+## Enable non-API R functions. These may break with R updates and cause
+## `R CMD check` warnings. See NONAPI.md for details.
+nonapi = []
+
 [dependencies]
 miniextendr-macros = { path = "../miniextendr-macros" }
