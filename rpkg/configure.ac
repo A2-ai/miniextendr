@@ -168,9 +168,53 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (in inst/vendor for self-contained builds) ----
-VENDOR_OUT="$abs_top_srcdir/inst/vendor"
+dnl ---- vendoring (in src/vendor for builds, cleaned up post-install) ----
+VENDOR_OUT="$abs_rpkg_src/vendor"
 AC_SUBST([VENDOR_OUT])
+
+dnl Source locations for miniextendr crates (relative to rpkg root)
+MINIEXTENDR_API_SRC="$abs_top_srcdir/../miniextendr-api"
+MINIEXTENDR_MACROS_SRC="$abs_top_srcdir/../miniextendr-macros"
+
+dnl Sync miniextendr crates from monorepo to vendor (if sources exist)
+dnl This handles workspace inheritance by patching Cargo.toml during copy
+AC_MSG_CHECKING([for miniextendr source crates])
+if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
+  AC_MSG_RESULT([found, syncing to vendor])
+
+  dnl Create vendor directories
+  mkdir -p "$VENDOR_OUT/miniextendr-api"
+  mkdir -p "$VENDOR_OUT/miniextendr-macros"
+
+  dnl Sync miniextendr-api (excluding target, .git, Cargo.toml)
+  rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
+
+  dnl Sync miniextendr-macros (excluding target, .git, Cargo.toml)
+  rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+  dnl Clean up CRAN-unfriendly hidden files (e.g., .DS_Store, .gitignore)
+  find "$VENDOR_OUT" -name ".*" -type f -delete 2>/dev/null || true
+  find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
+
+  dnl Patch Cargo.toml to remove workspace inheritance
+  sed -e 's/edition\.workspace = true/edition = "2024"/' \
+      -e 's/version\.workspace = true/version = "0.1.0"/' \
+      "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+
+  sed -e 's/edition\.workspace = true/edition = "2024"/' \
+      -e 's/version\.workspace = true/version = "0.1.0"/' \
+      "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+  AC_MSG_NOTICE([miniextendr crates synced to $VENDOR_OUT])
+else
+  AC_MSG_RESULT([not found, using existing vendor])
+  dnl Sources not found - assume we're building from tarball with pre-vendored crates
+  if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+    AC_MSG_WARN([vendor/miniextendr-api not found - build may fail])
+  fi
+fi
 
 dnl Source replacement config: only use vendored sources on CRAN (offline builds)
 dnl Dev mode uses network for crates.io, path deps for miniextendr-*

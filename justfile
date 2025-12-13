@@ -95,12 +95,12 @@ vendor:
         --sync=rpkg/src/rust/Cargo.toml \
         vendor
 
-# Vendor crates.io dependencies for rpkg (into inst/vendor)
+# Vendor crates.io dependencies for rpkg (into src/vendor)
 # Local crates (miniextendr-api, miniextendr-macros) are handled by:
-# - Makevars.in copy_crates (dev builds)
+# - configure.ac rsync (dev builds)
 # - bootstrap.R (CRAN tarball builds)
 vendor-rpkg:
-    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/inst/vendor
+    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Load and test rpkg with devtools
 devtools-test FILTER="":
