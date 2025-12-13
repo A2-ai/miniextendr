@@ -1687,6 +1687,26 @@ impl AltRawData for &[u8] {
     }
 }
 
+impl AltrepLen for &[bool] {
+    fn len(&self) -> usize {
+        <[bool]>::len(self)
+    }
+}
+
+impl AltLogicalData for &[bool] {
+    fn elt(&self, i: usize) -> Logical {
+        Logical::from_bool(self[i])
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // bool can't be NA
+    }
+
+    fn sum(&self, _na_rm: bool) -> Option<i64> {
+        Some(self.iter().filter(|&&x| x).count() as i64)
+    }
+}
+
 impl AltrepLen for &[String] {
     fn len(&self) -> usize {
         <[String]>::len(self)
@@ -1710,6 +1730,22 @@ impl AltStringData for &[&str] {
         Some(self[i])
     }
 }
+
+// =============================================================================
+// NOTE on &'static [T] (static slices)
+// =============================================================================
+//
+// `&'static [T]` is Sized (fat pointer: ptr + len) and satisfies 'static,
+// so it can be used DIRECTLY with ALTREP via ExternalPtr.
+//
+// The data trait implementations above for `&[T]` already cover `&'static [T]`
+// since `&'static [T]` is a subtype of `&[T]`. The ALTREP trait implementations
+// (Altrep, AltVec, AltInteger, etc.) are provided separately in altrep_impl.rs.
+//
+// Use cases:
+// - Const arrays: `static DATA: [i32; 5] = [1, 2, 3, 4, 5]; create_altrep(&DATA[..])`
+// - Leaked data: `let s: &'static [i32] = Box::leak(vec.into_boxed_slice());`
+// - Memory-mapped files with 'static lifetime
 
 // =============================================================================
 // Built-in implementations for arrays (owned, fixed-size)

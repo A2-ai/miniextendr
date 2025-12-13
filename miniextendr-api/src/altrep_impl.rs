@@ -954,3 +954,394 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
         }
     }
 }
+
+// =============================================================================
+// Static slice implementations (&'static [T])
+// =============================================================================
+//
+// `&'static [T]` is Sized (fat pointer: ptr + len) and satisfies 'static,
+// so it can be used DIRECTLY with ALTREP via ExternalPtr.
+//
+// Use cases:
+// - Const arrays: `static DATA: [i32; 5] = [1, 2, 3, 4, 5]; create_altrep(&DATA[..])`
+// - Leaked data: `let s: &'static [i32] = Box::leak(vec.into_boxed_slice());`
+// - Memory-mapped files with 'static lifetime
+
+// Integer static slices
+impl crate::altrep_traits::Altrep for &'static [i32] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl crate::altrep_traits::AltVec for &'static [i32] {
+    const HAS_DATAPTR: bool = true;
+
+    fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
+        // Note: Returns pointer to static data. This is safe for read-only access.
+        // R may request writable=true but static data cannot be modified.
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .map(|d| d.as_ptr() as *mut std::ffi::c_void)
+            .unwrap_or(std::ptr::null_mut())
+    }
+
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .map(|d| d.as_ptr() as *const std::ffi::c_void)
+            .unwrap_or(std::ptr::null())
+    }
+}
+
+impl crate::altrep_traits::AltInteger for &'static [i32] {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .map(|d| crate::altrep_data::AltIntegerData::elt(&*d, i as usize))
+            .unwrap_or(i32::MIN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut i32,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                crate::altrep_data::AltIntegerData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+
+    const HAS_NO_NA: bool = true;
+
+    fn no_na(x: crate::ffi::SEXP) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .and_then(|d| crate::altrep_data::AltIntegerData::no_na(&*d))
+            .map(|b| if b { 1 } else { 0 })
+            .unwrap_or(0)
+    }
+
+    const HAS_SUM: bool = true;
+
+    fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .and_then(|d| crate::altrep_data::AltIntegerData::sum(&*d, narm))
+            .map(|s| {
+                if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
+                    unsafe { crate::ffi::Rf_ScalarInteger(s as i32) }
+                } else {
+                    unsafe { crate::ffi::Rf_ScalarReal(s as f64) }
+                }
+            })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+
+    const HAS_MIN: bool = true;
+
+    fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .and_then(|d| crate::altrep_data::AltIntegerData::min(&*d, narm))
+            .map(|m| unsafe { crate::ffi::Rf_ScalarInteger(m) })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+
+    const HAS_MAX: bool = true;
+
+    fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
+            .and_then(|d| crate::altrep_data::AltIntegerData::max(&*d, narm))
+            .map(|m| unsafe { crate::ffi::Rf_ScalarInteger(m) })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+}
+
+crate::impl_inferbase_integer!(&'static [i32]);
+
+// Real static slices
+impl crate::altrep_traits::Altrep for &'static [f64] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl crate::altrep_traits::AltVec for &'static [f64] {
+    const HAS_DATAPTR: bool = true;
+
+    fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .map(|d| d.as_ptr() as *mut std::ffi::c_void)
+            .unwrap_or(std::ptr::null_mut())
+    }
+
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .map(|d| d.as_ptr() as *const std::ffi::c_void)
+            .unwrap_or(std::ptr::null())
+    }
+}
+
+impl crate::altrep_traits::AltReal for &'static [f64] {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .map(|d| crate::altrep_data::AltRealData::elt(&*d, i as usize))
+            .unwrap_or(f64::NAN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut f64,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                crate::altrep_data::AltRealData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+
+    const HAS_NO_NA: bool = true;
+
+    fn no_na(x: crate::ffi::SEXP) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .and_then(|d| crate::altrep_data::AltRealData::no_na(&*d))
+            .map(|b| if b { 1 } else { 0 })
+            .unwrap_or(0)
+    }
+
+    const HAS_SUM: bool = true;
+
+    fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .and_then(|d| crate::altrep_data::AltRealData::sum(&*d, narm))
+            .map(|s| unsafe { crate::ffi::Rf_ScalarReal(s) })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+
+    const HAS_MIN: bool = true;
+
+    fn min(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .and_then(|d| crate::altrep_data::AltRealData::min(&*d, narm))
+            .map(|m| unsafe { crate::ffi::Rf_ScalarReal(m) })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+
+    const HAS_MAX: bool = true;
+
+    fn max(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
+            .and_then(|d| crate::altrep_data::AltRealData::max(&*d, narm))
+            .map(|m| unsafe { crate::ffi::Rf_ScalarReal(m) })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+}
+
+crate::impl_inferbase_real!(&'static [f64]);
+
+// Logical static slices
+impl crate::altrep_traits::Altrep for &'static [bool] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [bool]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl crate::altrep_traits::AltVec for &'static [bool] {}
+
+impl crate::altrep_traits::AltLogical for &'static [bool] {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [bool]>(x) }
+            .map(|d| crate::altrep_data::AltLogicalData::elt(&*d, i as usize).to_r_int())
+            .unwrap_or(crate::altrep_traits::NA_LOGICAL)
+    }
+
+    const HAS_NO_NA: bool = true;
+
+    fn no_na(x: crate::ffi::SEXP) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [bool]>(x) }
+            .and_then(|d| crate::altrep_data::AltLogicalData::no_na(&*d))
+            .map(|b| if b { 1 } else { 0 })
+            .unwrap_or(0)
+    }
+
+    const HAS_SUM: bool = true;
+
+    fn sum(x: crate::ffi::SEXP, narm: bool) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<&'static [bool]>(x) }
+            .and_then(|d| crate::altrep_data::AltLogicalData::sum(&*d, narm))
+            .map(|s| {
+                if s >= i32::MIN as i64 && s <= i32::MAX as i64 {
+                    unsafe { crate::ffi::Rf_ScalarInteger(s as i32) }
+                } else {
+                    unsafe { crate::ffi::Rf_ScalarReal(s as f64) }
+                }
+            })
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+}
+
+crate::impl_inferbase_logical!(&'static [bool]);
+
+// Raw static slices
+impl crate::altrep_traits::Altrep for &'static [u8] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl crate::altrep_traits::AltVec for &'static [u8] {
+    const HAS_DATAPTR: bool = true;
+
+    fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
+        unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
+            .map(|d| d.as_ptr() as *mut std::ffi::c_void)
+            .unwrap_or(std::ptr::null_mut())
+    }
+
+    const HAS_DATAPTR_OR_NULL: bool = true;
+
+    fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
+        unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
+            .map(|d| d.as_ptr() as *const std::ffi::c_void)
+            .unwrap_or(std::ptr::null())
+    }
+}
+
+impl crate::altrep_traits::AltRaw for &'static [u8] {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::Rbyte {
+        unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
+            .map(|d| crate::altrep_data::AltRawData::elt(&*d, i as usize))
+            .unwrap_or(0)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut crate::ffi::Rbyte,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                crate::altrep_data::AltRawData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+}
+
+crate::impl_inferbase_raw!(&'static [u8]);
+
+// String static slices (owned strings)
+impl crate::altrep_traits::Altrep for &'static [String] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [String]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl crate::altrep_traits::AltVec for &'static [String] {}
+
+impl crate::altrep_traits::AltString for &'static [String] {
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
+        match unsafe { crate::altrep_data1_as::<&'static [String]>(x) } {
+            Some(d) => {
+                match crate::altrep_data::AltStringData::elt(&*d, i as usize) {
+                    Some(s) => unsafe {
+                        crate::ffi::Rf_mkCharLenCE(
+                            s.as_ptr().cast(),
+                            s.len() as i32,
+                            crate::ffi::cetype_t::CE_UTF8,
+                        )
+                    },
+                    None => unsafe { crate::ffi::R_NaString },
+                }
+            }
+            None => unsafe { crate::ffi::R_NaString },
+        }
+    }
+
+    const HAS_NO_NA: bool = true;
+
+    fn no_na(x: crate::ffi::SEXP) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [String]>(x) }
+            .and_then(|d| crate::altrep_data::AltStringData::no_na(&*d))
+            .map(|b| if b { 1 } else { 0 })
+            .unwrap_or(0)
+    }
+}
+
+crate::impl_inferbase_string!(&'static [String]);
+
+// String static slices (str references)
+impl crate::altrep_traits::Altrep for &'static [&'static str] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl crate::altrep_traits::AltVec for &'static [&'static str] {}
+
+impl crate::altrep_traits::AltString for &'static [&'static str] {
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
+        match unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) } {
+            Some(d) => {
+                match crate::altrep_data::AltStringData::elt(&*d, i as usize) {
+                    Some(s) => unsafe {
+                        crate::ffi::Rf_mkCharLenCE(
+                            s.as_ptr().cast(),
+                            s.len() as i32,
+                            crate::ffi::cetype_t::CE_UTF8,
+                        )
+                    },
+                    None => unsafe { crate::ffi::R_NaString },
+                }
+            }
+            None => unsafe { crate::ffi::R_NaString },
+        }
+    }
+
+    const HAS_NO_NA: bool = true;
+
+    fn no_na(x: crate::ffi::SEXP) -> i32 {
+        unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) }
+            .and_then(|d| crate::altrep_data::AltStringData::no_na(&*d))
+            .map(|b| if b { 1 } else { 0 })
+            .unwrap_or(0)
+    }
+}
+
+crate::impl_inferbase_string!(&'static [&'static str]);

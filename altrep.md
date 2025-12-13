@@ -248,6 +248,67 @@ Standard types have built-in implementations:
 | `Range<i32>` | `AltIntegerData` | O(1) `sum`, `min`, `max`, `is_sorted` |
 | `Range<f64>` | `AltRealData` | O(1) `sum`, `min`, `max`, `is_sorted` |
 | `[T; N]` | (same as Vec) | Fixed-size arrays |
+| `&'static [T]` | (same as Vec) | Static slices with `dataptr` |
+
+### Why Not `Box<[T]>` or `&[T]`?
+
+**R vectors are more like `Box<[T]>` than `Vec<T>`** - fixed size, heap-allocated, no capacity overhead. However, there are limitations:
+
+| Type | Can use with ALTREP? | Reason |
+|------|---------------------|--------|
+| `Vec<T>` | ✅ Yes | Owned, sized, works with ExternalPtr |
+| `[T; N]` | ✅ Yes | Owned, sized (compile-time length) |
+| `&'static [T]` | ✅ Yes | Static lifetime, sized (fat pointer) |
+| `Box<[T]>` | ❌ No (directly) | DST - ExternalPtr requires `Sized` |
+| `&[T]` | ❌ No | Borrowed - ALTREP must own its data |
+
+**`&'static [T]` (static slice):** Works because the fat pointer itself is `Sized` (2 words: ptr + len) and `'static` lifetime means the data lives forever - no dangling references. Use cases:
+
+```rust
+// Const arrays
+static DATA: [i32; 5] = [1, 2, 3, 4, 5];
+
+#[miniextendr(class = "StaticInts", pkg = "mypkg")]
+pub struct StaticIntsClass(&'static [i32]);
+
+fn create_static() -> SEXP {
+    unsafe { StaticIntsClass::into_altrep(&DATA[..]) }
+}
+
+// Leaked data (intentional memory leak for process lifetime)
+fn create_leaked(v: Vec<i32>) -> SEXP {
+    let leaked: &'static [i32] = Box::leak(v.into_boxed_slice());
+    unsafe { StaticIntsClass::into_altrep(leaked) }
+}
+
+// String literals
+static NAMES: [&'static str; 3] = ["alpha", "beta", "gamma"];
+
+#[miniextendr(class = "StaticNames", pkg = "mypkg")]
+pub struct StaticNamesClass(&'static [&'static str]);
+```
+
+**`Box<[T]>` (owned slice):** Cannot be used directly because `[T]` is a DST (dynamically sized type). The `ExternalPtr` system stores data via R's external pointer mechanism, which requires `Sized` types. However, data trait implementations (`AltIntegerData`, etc.) are provided for `Box<[T]>` - you can use them in custom wrapper structs:
+
+```rust
+#[derive(ExternalPtr)]
+struct FixedIntArray {
+    data: Box<[i32]>,  // Fixed-size, no reallocation possible
+}
+
+impl AltrepLen for FixedIntArray {
+    fn len(&self) -> usize { self.data.len() }
+}
+
+impl AltIntegerData for FixedIntArray {
+    fn elt(&self, i: usize) -> i32 { self.data[i] }  // Delegates to Box<[i32]>
+    // ... other methods also delegate
+}
+```
+
+**`&[T]` (borrowed slice):** Cannot work at all. ALTREP objects are R objects that can be stored, serialized, passed around - they must *own* their data. A borrowed slice would become invalid when the borrow ends.
+
+**Practical recommendation:** Use `Vec<T>` for most ALTREP use cases. Use `&'static [T]` for compile-time constants or leaked data. If you need tight memory layout with runtime data, wrap `Box<[T]>` in a struct.
 
 ### ALTREP Class Registration
 
@@ -333,6 +394,8 @@ Supported auto-inference mappings:
 | `Range<i32>`, `Range<i64>` | `Int` |
 | `Range<f64>` | `Real` |
 | `[i32; N]`, `[f64; N]`, etc. | Corresponding type |
+| `&'static [i32]`, `&'static [f64]`, etc. | Corresponding type |
+| `&'static [&'static str]` | `String` |
 
 For custom data types, just use the appropriate `impl_alt*_from_data!` macro - it automatically enables base type inference:
 
@@ -655,7 +718,7 @@ pub enum Sortedness {
 
 - [x] Two-layer trait hierarchy (data traits + FFI traits)
 - [x] Bridge macros for all ALTREP types
-- [x] Built-in implementations for `Vec<T>`, `Range<T>`, `[T; N]`
+- [x] Built-in implementations for `Vec<T>`, `Range<T>`, `[T; N]`, `&'static [T]`
 - [x] Proc-macro ALTREP class registration
 - [x] `into_altrep()` instance creation
 - [x] Trampoline generation with `HAS_*` gating
@@ -667,6 +730,7 @@ pub enum Sortedness {
 - [x] Serialization support (`AltrepSerialize` trait)
 - [x] `Extract_subset` optimization (`AltrepExtractSubset` trait)
 - [x] Complex number ALTREP example (`UnitCircle` - roots of unity)
+- [x] Static slice support (`&'static [T]`) for const arrays and leaked data
 
 ### Not Yet Implemented
 
