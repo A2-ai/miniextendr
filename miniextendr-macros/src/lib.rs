@@ -68,6 +68,81 @@ fn is_pub_visibility(vis: &syn::Visibility) -> bool {
     matches!(vis, syn::Visibility::Public(_))
 }
 
+/// Result of coercion analysis for a type.
+/// Contains the R native type to extract from SEXP and the target type to coerce to.
+enum CoercionMapping {
+    /// Scalar coercion: extract R native type, coerce to target
+    Scalar {
+        r_native: proc_macro2::TokenStream,
+        target: proc_macro2::TokenStream,
+    },
+    /// Vec coercion: extract R native slice, coerce element-wise to Vec<target>
+    Vec {
+        r_native_elem: proc_macro2::TokenStream,
+        target_elem: proc_macro2::TokenStream,
+    },
+}
+
+/// Get the coercion mapping for a type, if it needs coercion.
+/// Returns None if the type is R-native (no coercion needed) or unknown.
+fn get_coercion_mapping(ty: &syn::Type) -> Option<CoercionMapping> {
+    match ty {
+        syn::Type::Path(type_path) => {
+            let seg = type_path.path.segments.last()?;
+            let type_name = seg.ident.to_string();
+
+            // Check for Vec<T> types
+            if type_name == "Vec" {
+                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                    if let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() {
+                        if let syn::Type::Path(inner_path) = inner_ty {
+                            let inner_name = inner_path.path.segments.last()?.ident.to_string();
+                            return match inner_name.as_str() {
+                                // Vec<integer-like> from &[i32]
+                                "u16" | "i16" | "i8" | "u32" | "u64" | "i64" => {
+                                    let target_elem: proc_macro2::TokenStream =
+                                        inner_name.parse().ok()?;
+                                    Some(CoercionMapping::Vec {
+                                        r_native_elem: quote::quote!(i32),
+                                        target_elem,
+                                    })
+                                }
+                                // Vec<f32> from &[f64]
+                                "f32" => Some(CoercionMapping::Vec {
+                                    r_native_elem: quote::quote!(f64),
+                                    target_elem: quote::quote!(f32),
+                                }),
+                                _ => None,
+                            };
+                        }
+                    }
+                }
+                return None;
+            }
+
+            // Check for scalar types
+            match type_name.as_str() {
+                // Integer-like types from i32
+                "u16" | "i16" | "i8" | "u32" | "u64" | "i64" => {
+                    let target: proc_macro2::TokenStream = type_name.parse().ok()?;
+                    Some(CoercionMapping::Scalar {
+                        r_native: quote::quote!(i32),
+                        target,
+                    })
+                }
+                // f32 from f64
+                "f32" => Some(CoercionMapping::Scalar {
+                    r_native: quote::quote!(f64),
+                    target: quote::quote!(f32),
+                }),
+                // R-native types or unknown - no coercion
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
@@ -82,14 +157,16 @@ pub fn miniextendr(
     // - #[miniextendr(unsafe(main_thread))] - forces main thread execution (unsafe context)
     // - #[miniextendr(invisible)] / #[miniextendr(visible)] - visibility control
     // - #[miniextendr(check_interrupt)] - check for Ctrl+C before execution
+    // - #[miniextendr(coerce)] - enable type coercion for non-R-native parameter types
     let mut force_main_thread = false;
     let mut force_invisible: Option<bool> = None;
     let mut check_interrupt = false;
+    let mut enable_coerce = false;
     if !attr.is_empty() {
         let attr_metas = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
         for meta in attr_metas {
             match &meta {
-                // Simple identifiers: invisible, visible, check_interrupt
+                // Simple identifiers: invisible, visible, check_interrupt, coerce
                 syn::Meta::Path(path) => {
                     if let Some(ident) = path.get_ident() {
                         if ident == "invisible" {
@@ -101,6 +178,8 @@ pub fn miniextendr(
                         } else if ident == "main_thread" {
                             // Legacy support - but warn/error in future?
                             force_main_thread = true;
+                        } else if ident == "coerce" {
+                            enable_coerce = true;
                         }
                     }
                 }
@@ -361,14 +440,58 @@ pub fn miniextendr(
                 }
             }
             _ => {
-                if pat_ident.mutability.is_some() {
-                    closure_statements.push(quote::quote! {
-                        let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                    });
+                // Check if coercion is enabled and type needs it
+                let coercion_mapping = if enable_coerce {
+                    get_coercion_mapping(pat_type.ty.as_ref())
                 } else {
-                    closure_statements.push(quote::quote! {
-                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                    });
+                    None
+                };
+
+                match coercion_mapping {
+                    Some(CoercionMapping::Scalar { r_native, target }) => {
+                        // Scalar coercion: extract R native, coerce to target
+                        let mutability = if pat_ident.mutability.is_some() {
+                            quote::quote!(mut)
+                        } else {
+                            quote::quote!()
+                        };
+                        closure_statements.push(quote::quote! {
+                            let #mutability #ident: #target = {
+                                let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                                ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val)
+                                    .expect(concat!("coercion to ", stringify!(#target), " failed"))
+                            };
+                        });
+                    }
+                    Some(CoercionMapping::Vec { r_native_elem, target_elem }) => {
+                        // Vec coercion: extract R native slice, coerce element-wise
+                        let mutability = if pat_ident.mutability.is_some() {
+                            quote::quote!(mut)
+                        } else {
+                            quote::quote!()
+                        };
+                        closure_statements.push(quote::quote! {
+                            let #mutability #ident: Vec<#target_elem> = {
+                                let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                                __r_slice.iter().copied()
+                                    .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
+                                    .collect::<Result<Vec<_>, _>>()
+                                    .expect(concat!("coercion to Vec<", stringify!(#target_elem), "> failed"))
+                            };
+                        });
+                    }
+                    None => {
+                        // No coercion - use standard TryFromSexp
+                        if pat_ident.mutability.is_some() {
+                            closure_statements.push(quote::quote! {
+                                let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                            });
+                        } else {
+                            closure_statements.push(quote::quote! {
+                                let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                            });
+                        }
+                    }
                 }
             }
         }

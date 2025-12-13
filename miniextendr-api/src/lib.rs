@@ -81,7 +81,12 @@ pub use miniextendr_macros::RNative;
 /// - `#[miniextendr(check_interrupt)]` - Check for user interrupts (Ctrl+C) before executing.
 ///   Calls `R_CheckUserInterrupt()` at the start of the function. Implies `main_thread`.
 ///
-/// Multiple attributes can be combined: `#[miniextendr(main_thread, invisible)]`
+/// - `#[miniextendr(coerce)]` - Enable type coercion for non-R-native parameter types.
+///   Allows using types like `u16`, `i16`, `i8`, `f32`, `Vec<u16>`, etc. as parameters.
+///   R values are extracted as native types (i32, f64) and coerced using [`TryCoerce`].
+///   See [`COERCE.md`] in the repository for details on supported coercions.
+///
+/// Multiple attributes can be combined: `#[miniextendr(coerce, invisible)]`
 ///
 /// ## R wrappers
 ///

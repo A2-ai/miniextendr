@@ -426,6 +426,39 @@ test_try_coerce_f64_to_i32 <- function(x) {
     .Call(C_test_try_coerce_f64_to_i32, .call = match.call(), x)
 }
 
+test_rnative_newtype <- function(id) {
+    .Call(C_test_rnative_newtype, .call = match.call(), id)
+}
+
+test_rnative_named_field <- function(temp) {
+    .Call(C_test_rnative_named_field, .call = match.call(), temp)
+}
+
+#' @export
+test_coerce_attr_u16 <- function(x) {
+    .Call(C_test_coerce_attr_u16, .call = match.call(), x)
+}
+
+#' @export
+test_coerce_attr_i16 <- function(x) {
+    .Call(C_test_coerce_attr_i16, .call = match.call(), x)
+}
+
+#' @export
+test_coerce_attr_vec_u16 <- function(x) {
+    .Call(C_test_coerce_attr_vec_u16, .call = match.call(), x)
+}
+
+#' @export
+test_coerce_attr_f32 <- function(x) {
+    .Call(C_test_coerce_attr_f32, .call = match.call(), x)
+}
+
+#' @export
+test_coerce_attr_with_invisible <- function(x) {
+    invisible(.Call(C_test_coerce_attr_with_invisible, .call = match.call(), x))
+}
+
 #' @export
 unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)

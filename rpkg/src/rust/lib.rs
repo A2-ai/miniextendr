@@ -1428,6 +1428,13 @@ miniextendr_module! {
     fn test_rnative_newtype;
     fn test_rnative_named_field;
 
+    // Coerce attribute tests
+    fn test_coerce_attr_u16;
+    fn test_coerce_attr_i16;
+    fn test_coerce_attr_vec_u16;
+    fn test_coerce_attr_f32;
+    fn test_coerce_attr_with_invisible;
+
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
     extern "C-unwind" fn rpkg_constant_int;
@@ -1631,6 +1638,42 @@ fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
         Err(CoerceError::PrecisionLoss) => i32::MIN,
         Err(CoerceError::NaN) => i32::MIN,
     }
+}
+
+// =============================================================================
+// #[miniextendr(coerce)] attribute tests
+// =============================================================================
+
+// Test 6: Coerce attribute - scalar i32 → u16
+// R: test_coerce_attr_u16(100L) should return 100
+// R: test_coerce_attr_u16(-1L) should error (overflow)
+#[miniextendr(coerce)]
+pub fn test_coerce_attr_u16(x: u16) -> i32 {
+    x as i32  // Return as R integer
+}
+
+// Test 7: Coerce attribute - scalar i32 → i16
+#[miniextendr(coerce)]
+pub fn test_coerce_attr_i16(x: i16) -> i32 {
+    x as i32
+}
+
+// Test 8: Coerce attribute - Vec<i32> → Vec<u16>
+#[miniextendr(coerce)]
+pub fn test_coerce_attr_vec_u16(x: Vec<u16>) -> i32 {
+    x.iter().map(|&v| v as i32).sum()
+}
+
+// Test 9: Coerce attribute - scalar f64 → f32
+#[miniextendr(coerce)]
+pub fn test_coerce_attr_f32(x: f32) -> f64 {
+    x as f64
+}
+
+// Test 10: Coerce attribute - combined with other attributes
+#[miniextendr(coerce, invisible)]
+pub fn test_coerce_attr_with_invisible(x: u16) -> i32 {
+    x as i32
 }
 
 // endregion

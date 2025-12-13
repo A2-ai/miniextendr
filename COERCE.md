@@ -148,9 +148,67 @@ process_as_integer(100u16); // u16 → i32
 
 ## Usage with `#[miniextendr]`
 
-### What Works
+### The `coerce` Attribute (Recommended)
 
-**Concrete functions using Coerce internally:**
+Use `#[miniextendr(coerce)]` to enable automatic type coercion for non-R-native parameter types:
+
+```rust
+// Scalar coercion: R integer (i32) → u16
+#[miniextendr(coerce)]
+fn process_u16(x: u16) -> i32 {
+    x as i32
+}
+
+// Vec coercion: R integer vector (&[i32]) → Vec<u16>
+#[miniextendr(coerce)]
+fn sum_u16_vec(x: Vec<u16>) -> i32 {
+    x.iter().map(|&v| v as i32).sum()
+}
+
+// Float narrowing: R double (f64) → f32
+#[miniextendr(coerce)]
+fn process_f32(x: f32) -> f64 {
+    x as f64
+}
+```
+
+**Supported coercions:**
+
+| Parameter Type | R Type | Coercion |
+|----------------|--------|----------|
+| `u16`, `i16`, `i8` | integer | `TryCoerce` (overflow → panic) |
+| `u32`, `u64`, `i64` | integer | `TryCoerce` (overflow → panic) |
+| `f32` | numeric | `Coerce` (may lose precision) |
+| `Vec<u16>`, `Vec<i16>`, etc. | integer vector | element-wise `TryCoerce` |
+| `Vec<f32>` | numeric vector | element-wise `Coerce` |
+
+**Example in R:**
+
+```r
+# Works - value fits in u16
+process_u16(100L)  # Returns 100
+
+# Errors - value doesn't fit in u16
+process_u16(-1L)   # Error: coercion to u16 failed: Overflow
+process_u16(70000L)  # Error: coercion to u16 failed: Overflow
+
+# Vec coercion
+sum_u16_vec(c(1L, 2L, 3L))  # Returns 6
+sum_u16_vec(c(1L, -1L, 3L)) # Error: coercion to Vec<u16> failed: Overflow
+```
+
+**Combining with other attributes:**
+
+```rust
+#[miniextendr(coerce, invisible)]
+fn process_silently(x: u16) -> i32 {
+    x as i32  // Returns invisibly
+}
+```
+
+### Manual Coercion (Alternative)
+
+For more control, accept R native types and coerce manually:
 
 ```rust
 #[miniextendr]

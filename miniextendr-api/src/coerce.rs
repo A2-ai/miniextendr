@@ -499,6 +499,14 @@ impl TryCoerce<i32> for f32 {
     }
 }
 
+// f64 → f32 narrowing (always succeeds, may lose precision or become inf)
+impl Coerce<f32> for f64 {
+    #[inline(always)]
+    fn coerce(self) -> f32 {
+        self as f32
+    }
+}
+
 // =============================================================================
 // Large int to f64 (fallible - precision)
 // =============================================================================
