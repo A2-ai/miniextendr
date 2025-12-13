@@ -175,13 +175,6 @@ pub trait SexpExt {
     /// The SEXP must be valid.
     fn len(&self) -> usize;
 
-    /// Get the length as `R_xlen_t`.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be valid.
-    fn xlength(&self) -> R_xlen_t;
-
     /// Get the length without thread checks.
     ///
     /// # Safety
@@ -193,69 +186,16 @@ pub trait SexpExt {
     ///
     /// # Safety
     ///
-    /// - The SEXP must be valid and of the correct type for `T`
-    /// - The SEXP must be protected from R's garbage collector for the entire
-    ///   duration the returned slice is used. This typically means the SEXP must
-    ///   be either:
-    ///   - An argument to a `.Call` function (protected by R's calling convention)
-    ///   - Explicitly protected via `PROTECT`/`UNPROTECT` or `R_PreserveObject`
-    ///   - Part of a protected container (e.g., element of a protected list)
-    /// - The returned slice has `'static` lifetime for API convenience, but this
-    ///   is a lie - the actual lifetime is tied to the SEXP's protection status.
-    ///   Holding the slice after the SEXP is unprotected is undefined behavior.
-    unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T];
+    /// - The SEXP must be valid and of the correct type for T
+    /// - The returned slice borrows from R's memory; the SEXP must remain protected
+    fn as_slice<T: RNativeType>(&self) -> &'static [T];
 
     /// Get a slice view without thread checks.
     ///
     /// # Safety
     ///
-    /// - All safety requirements of [`as_slice`](Self::as_slice) apply
-    /// - Additionally, must be called from R's main thread (no debug assertions)
+    /// Must be called from R's main thread. No debug assertions.
     unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T];
-
-    // Type checking methods (equivalent to R's type check macros)
-
-    /// Check if this SEXP is an integer vector (INTSXP).
-    fn is_integer(&self) -> bool;
-
-    /// Check if this SEXP is a real/numeric vector (REALSXP).
-    fn is_real(&self) -> bool;
-
-    /// Check if this SEXP is a logical vector (LGLSXP).
-    fn is_logical(&self) -> bool;
-
-    /// Check if this SEXP is a character/string vector (STRSXP).
-    fn is_character(&self) -> bool;
-
-    /// Check if this SEXP is a raw vector (RAWSXP).
-    fn is_raw(&self) -> bool;
-
-    /// Check if this SEXP is a complex vector (CPLXSXP).
-    fn is_complex(&self) -> bool;
-
-    /// Check if this SEXP is a list/generic vector (VECSXP).
-    fn is_list(&self) -> bool;
-
-    /// Check if this SEXP is an external pointer (EXTPTRSXP).
-    fn is_external_ptr(&self) -> bool;
-
-    /// Check if this SEXP is an environment (ENVSXP).
-    fn is_environment(&self) -> bool;
-
-    /// Check if this SEXP is a symbol (SYMSXP).
-    fn is_symbol(&self) -> bool;
-
-    /// Check if this SEXP is a language object (LANGSXP).
-    fn is_language(&self) -> bool;
-
-    /// Check if this SEXP is an ALTREP object.
-    ///
-    /// Equivalent to R's `ALTREP(x)` macro.
-    fn is_altrep(&self) -> bool;
-
-    /// Check if this `SEXP` contains any elements.
-    ///
-    fn is_empty(&self) -> bool;
 }
 
 impl SexpExt for SEXP {
@@ -275,17 +215,12 @@ impl SexpExt for SEXP {
     }
 
     #[inline]
-    fn xlength(&self) -> R_xlen_t {
-        unsafe { Rf_xlength(*self) }
-    }
-
-    #[inline]
     unsafe fn len_unchecked(&self) -> usize {
         unsafe { Rf_xlength_unchecked(*self) as usize }
     }
 
     #[inline]
-    unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T] {
+    fn as_slice<T: RNativeType>(&self) -> &'static [T] {
         debug_assert!(
             self.type_of() == T::SEXP_TYPE,
             "SEXP type mismatch: expected {:?}, got {:?}",
@@ -314,73 +249,6 @@ impl SexpExt for SEXP {
         } else {
             unsafe { std::slice::from_raw_parts(DATAPTR_RO_unchecked(*self).cast(), len) }
         }
-    }
-
-    // Type checking methods
-
-    #[inline]
-    fn is_integer(&self) -> bool {
-        self.type_of() == SEXPTYPE::INTSXP
-    }
-
-    #[inline]
-    fn is_real(&self) -> bool {
-        self.type_of() == SEXPTYPE::REALSXP
-    }
-
-    #[inline]
-    fn is_logical(&self) -> bool {
-        self.type_of() == SEXPTYPE::LGLSXP
-    }
-
-    #[inline]
-    fn is_character(&self) -> bool {
-        self.type_of() == SEXPTYPE::STRSXP
-    }
-
-    #[inline]
-    fn is_raw(&self) -> bool {
-        self.type_of() == SEXPTYPE::RAWSXP
-    }
-
-    #[inline]
-    fn is_complex(&self) -> bool {
-        self.type_of() == SEXPTYPE::CPLXSXP
-    }
-
-    #[inline]
-    fn is_list(&self) -> bool {
-        self.type_of() == SEXPTYPE::VECSXP
-    }
-
-    #[inline]
-    fn is_external_ptr(&self) -> bool {
-        self.type_of() == SEXPTYPE::EXTPTRSXP
-    }
-
-    #[inline]
-    fn is_environment(&self) -> bool {
-        self.type_of() == SEXPTYPE::ENVSXP
-    }
-
-    #[inline]
-    fn is_symbol(&self) -> bool {
-        self.type_of() == SEXPTYPE::SYMSXP
-    }
-
-    #[inline]
-    fn is_language(&self) -> bool {
-        self.type_of() == SEXPTYPE::LANGSXP
-    }
-
-    #[inline]
-    fn is_altrep(&self) -> bool {
-        unsafe { ALTREP(*self) != 0 }
-    }
-
-    #[inline]
-    fn is_empty(&self) -> bool {
-        self.len() == 0
     }
 }
 

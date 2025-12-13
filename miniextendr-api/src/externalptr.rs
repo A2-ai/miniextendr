@@ -36,8 +36,11 @@ use std::ptr::{self, NonNull};
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
-    R_MakeExternalPtr, R_NilValue, R_RegisterCFinalizerEx, Rboolean, Rf_allocVector, Rf_install,
-    Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
+    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_NilValue, R_RegisterCFinalizerEx,
+    R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
+    Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
+    Rf_unprotect_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
+    VECTOR_ELT,
 };
 
 /// A wrapper around [`SEXP`] that implements Send.
@@ -116,6 +119,16 @@ fn is_type_erased<T: 'static>() -> bool {
 #[inline]
 unsafe fn type_symbol<T: TypedExternal>() -> SEXP {
     unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) }
+}
+
+/// Unchecked version of [`type_symbol`] - no thread safety checks.
+///
+/// # Safety
+///
+/// Must be called from R's main thread. No debug assertions.
+#[inline]
+unsafe fn type_symbol_unchecked<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install_unchecked(T::TYPE_NAME_CSTR.as_ptr().cast()) }
 }
 
 /// Get the type name from a stored symbol SEXP.
@@ -302,6 +315,38 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
 
         unsafe { Rf_unprotect(2) };
+
+        sexp
+    }
+
+    /// Create an EXTPTRSXP from a raw pointer without thread safety checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions for thread safety.
+    #[inline]
+    unsafe fn create_extptr_sexp_unchecked(ptr: *mut T) -> SEXP {
+        debug_assert!(!ptr.is_null(), "create_extptr_sexp_unchecked received null pointer");
+
+        // Create the type symbol (R interns symbols, so same string = same pointer)
+        let type_sym = unsafe { type_symbol_unchecked::<T>() };
+
+        // Create the prot VECSXP: [type_symbol, user_protected]
+        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        unsafe { Rf_protect_unchecked(prot) };
+
+        // Store type symbol in slot 0 for fast pointer-based type checking
+        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_sym) };
+        // Slot 1 (user protected) starts as R_NilValue (already default)
+
+        // Create the external pointer with tag (same symbol) and prot
+        let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr.cast(), type_sym, prot) };
+        unsafe { Rf_protect_unchecked(sexp) };
+
+        // Register the C finalizer that will call drop
+        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
+
+        unsafe { Rf_unprotect_unchecked(2) };
 
         sexp
     }
