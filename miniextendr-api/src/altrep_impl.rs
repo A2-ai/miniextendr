@@ -706,10 +706,18 @@ impl_altraw_from_data!(Vec<u8>);
 // String types
 impl_altstring_from_data!(Vec<String>);
 
-// NOTE: Box<[T]> (owned slices) cannot be used directly with ALTREP because
-// slices are DSTs (dynamically sized types) and ExternalPtr requires Sized.
-// Users should use Vec<T> instead, which is semantically equivalent.
-// The data trait impls in altrep_data.rs are still available for custom wrappers.
+// =============================================================================
+// Box<[T]> implementations
+// =============================================================================
+// Box<[T]> is a fat pointer (Sized) that wraps a DST slice.
+// Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
+// Useful for fixed-size heap allocations.
+
+impl_altinteger_from_data!(Box<[i32]>, dataptr);
+impl_altreal_from_data!(Box<[f64]>, dataptr);
+impl_altlogical_from_data!(Box<[bool]>);
+impl_altraw_from_data!(Box<[u8]>);
+impl_altstring_from_data!(Box<[String]>);
 
 // =============================================================================
 // Array implementations (const generics - can't use macros)
@@ -982,8 +990,9 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
         // Note: Returns pointer to static data. This is safe for read-only access.
         // R may request writable=true but static data cannot be modified.
+        // Use (*d).as_ptr() to get the slice's data pointer, not ExternalPtr::as_ptr()
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
-            .map(|d| d.as_ptr() as *mut std::ffi::c_void)
+            .map(|d| (*d).as_ptr() as *mut std::ffi::c_void)
             .unwrap_or(std::ptr::null_mut())
     }
 
@@ -991,7 +1000,7 @@ impl crate::altrep_traits::AltVec for &'static [i32] {
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
-            .map(|d| d.as_ptr() as *const std::ffi::c_void)
+            .map(|d| (*d).as_ptr() as *const std::ffi::c_void)
             .unwrap_or(std::ptr::null())
     }
 }
@@ -1081,7 +1090,7 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
 
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
-            .map(|d| d.as_ptr() as *mut std::ffi::c_void)
+            .map(|d| (*d).as_ptr() as *mut std::ffi::c_void)
             .unwrap_or(std::ptr::null_mut())
     }
 
@@ -1089,7 +1098,7 @@ impl crate::altrep_traits::AltVec for &'static [f64] {
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
-            .map(|d| d.as_ptr() as *const std::ffi::c_void)
+            .map(|d| (*d).as_ptr() as *const std::ffi::c_void)
             .unwrap_or(std::ptr::null())
     }
 }
@@ -1220,7 +1229,7 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
 
     fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
-            .map(|d| d.as_ptr() as *mut std::ffi::c_void)
+            .map(|d| (*d).as_ptr() as *mut std::ffi::c_void)
             .unwrap_or(std::ptr::null_mut())
     }
 
@@ -1228,7 +1237,7 @@ impl crate::altrep_traits::AltVec for &'static [u8] {
 
     fn dataptr_or_null(x: crate::ffi::SEXP) -> *const std::ffi::c_void {
         unsafe { crate::altrep_data1_as::<&'static [u8]>(x) }
-            .map(|d| d.as_ptr() as *const std::ffi::c_void)
+            .map(|d| (*d).as_ptr() as *const std::ffi::c_void)
             .unwrap_or(std::ptr::null())
     }
 }

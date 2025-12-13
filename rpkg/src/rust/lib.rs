@@ -756,6 +756,67 @@ pub unsafe extern "C-unwind" fn rpkg_inferred_vec_real(x: SEXP) -> SEXP {
     unsafe { InferredVecRealClass::into_altrep(data) }
 }
 
+// -----------------------------------------------------------------------------
+// BoxedInts: Box<[i32]> wrapper (owned slice example)
+// -----------------------------------------------------------------------------
+
+/// ALTREP class wrapping a Box<[i32]> - fixed-size heap allocation
+#[miniextendr(class = "BoxedInts", pkg = "rpkg")]
+pub struct BoxedIntsClass(Box<[i32]>);
+
+/// Create an ALTREP backed by a boxed slice.
+/// More memory-efficient than Vec when size is known upfront.
+#[miniextendr]
+pub fn boxed_ints(n: i32) -> SEXP {
+    let data: Box<[i32]> = (1..=n).collect::<Vec<_>>().into_boxed_slice();
+    unsafe { BoxedIntsClass::into_altrep(data) }
+}
+
+// -----------------------------------------------------------------------------
+// StaticInts: &'static [i32] wrapper (static slice example)
+// -----------------------------------------------------------------------------
+
+/// Static data that lives for the entire program lifetime
+static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
+
+/// ALTREP class wrapping a static slice - demonstrates &'static [T] support
+#[miniextendr(class = "StaticInts", pkg = "rpkg")]
+pub struct StaticIntsClass(&'static [i32]);
+
+/// Create an ALTREP backed by static data.
+/// This data lives in the binary and never needs to be freed.
+#[miniextendr]
+pub fn static_ints() -> SEXP {
+    unsafe { StaticIntsClass::into_altrep(&STATIC_INTS[..]) }
+}
+
+/// Create an ALTREP backed by leaked heap data (intentional memory leak).
+/// Useful when you need dynamic data with 'static lifetime.
+#[miniextendr]
+pub fn leaked_ints(n: i32) -> SEXP {
+    // Create data and leak it to get 'static lifetime
+    let data: Vec<i32> = (1..=n).collect();
+    let leaked: &'static [i32] = Box::leak(data.into_boxed_slice());
+    unsafe { StaticIntsClass::into_altrep(leaked) }
+}
+
+// -----------------------------------------------------------------------------
+// StaticStrings: &'static [&'static str] wrapper
+// -----------------------------------------------------------------------------
+
+/// Static string data
+static STATIC_STRINGS: [&'static str; 4] = ["alpha", "beta", "gamma", "delta"];
+
+/// ALTREP class wrapping static string slices
+#[miniextendr(class = "StaticStrings", pkg = "rpkg")]
+pub struct StaticStringsClass(&'static [&'static str]);
+
+/// Create a string ALTREP backed by static data.
+#[miniextendr]
+pub fn static_strings() -> SEXP {
+    unsafe { StaticStringsClass::into_altrep(&STATIC_STRINGS[..]) }
+}
+
 // endregion
 
 miniextendr_module! {
@@ -952,4 +1013,15 @@ miniextendr_module! {
     // ALTREP with Vec<f64> backend - base type auto-inferred
     struct InferredVecRealClass;
     extern "C-unwind" fn rpkg_inferred_vec_real;
+
+    // Box<[T]> ALTREP example
+    struct BoxedIntsClass;
+    fn boxed_ints;
+
+    // Static slice ALTREP examples
+    struct StaticIntsClass;
+    fn static_ints;
+    fn leaked_ints;
+    struct StaticStringsClass;
+    fn static_strings;
 }

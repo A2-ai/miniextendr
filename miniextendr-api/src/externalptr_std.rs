@@ -86,6 +86,16 @@ impl_te_generic!(<T> std::collections::BTreeSet<T>, "BTreeSet");
 // =============================================================================
 
 impl_te_generic!(<T> Box<T>, "Box");
+
+// Box<[T]> is a special case - it's a fat pointer (Sized) wrapping a DST.
+// Unlike Box<T> where T: Sized, Box<[T]> can store dynamically-sized slices.
+// This is useful for ALTREP when you want fixed-size heap allocation without
+// Vec's capacity overhead.
+impl<T: 'static> TypedExternal for Box<[T]> {
+    const TYPE_NAME: &'static str = "BoxSlice";
+    const TYPE_NAME_CSTR: &'static [u8] = b"BoxSlice\0";
+}
+
 impl_te_generic!(<T> std::rc::Rc<T>, "Rc");
 impl_te_generic!(<T> std::sync::Arc<T>, "Arc");
 impl_te_generic!(<T> std::cell::Cell<T>, "Cell");

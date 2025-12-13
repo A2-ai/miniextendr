@@ -420,6 +420,16 @@ arith_seq <- function(from, to, length_out) {
     .Call(C_arith_seq, .call = match.call(), from, to, length_out)
 }
 
+#' @export
+lazy_int_seq <- function(from, to, by) {
+    .Call(C_lazy_int_seq, .call = match.call(), from, to, by)
+}
+
+#' @export
+unsafe_rpkg_lazy_int_seq_is_materialized <- function(x) {
+    .Call(rpkg_lazy_int_seq_is_materialized, x)
+}
+
 constant_logical <- function(value, n) {
     .Call(C_constant_logical, .call = match.call(), value, n)
 }
@@ -430,6 +440,11 @@ lazy_string <- function(prefix, n) {
 
 repeating_raw <- function(pattern, n) {
     .Call(C_repeating_raw, .call = match.call(), pattern, n)
+}
+
+#' @export
+unit_circle <- function(n) {
+    .Call(C_unit_circle, .call = match.call(), n)
 }
 
 extptr_counter_new <- function(initial) {
@@ -490,5 +505,25 @@ unsafe_rpkg_simple_vec_int <- function(x) {
 #' @export
 unsafe_rpkg_inferred_vec_real <- function(x) {
     .Call(rpkg_inferred_vec_real, x)
+}
+
+#' @export
+boxed_ints <- function(n) {
+    .Call(C_boxed_ints, .call = match.call(), n)
+}
+
+#' @export
+static_ints <- function() {
+    .Call(C_static_ints, .call = match.call())
+}
+
+#' @export
+leaked_ints <- function(n) {
+    .Call(C_leaked_ints, .call = match.call(), n)
+}
+
+#' @export
+static_strings <- function() {
+    .Call(C_static_strings, .call = match.call())
 }
 

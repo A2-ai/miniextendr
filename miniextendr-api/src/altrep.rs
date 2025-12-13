@@ -73,9 +73,28 @@ impl AltrepBase for Vec<crate::ffi::Rcomplex> {
     const BASE: RBase = RBase::Complex;
 }
 
-// NOTE: Box<[T]> cannot implement AltrepBase because slices are DSTs
-// (dynamically sized types) and ExternalPtr requires Sized types.
-// Use Vec<T> instead for ALTREP, which is semantically equivalent.
+// Box<[T]> implementations
+// Box<[T]> is a fat pointer (Sized) wrapping a DST slice.
+// Useful for fixed-size heap allocations without Vec's capacity overhead.
+impl AltrepBase for Box<[i32]> {
+    const BASE: RBase = RBase::Int;
+}
+
+impl AltrepBase for Box<[f64]> {
+    const BASE: RBase = RBase::Real;
+}
+
+impl AltrepBase for Box<[bool]> {
+    const BASE: RBase = RBase::Logical;
+}
+
+impl AltrepBase for Box<[u8]> {
+    const BASE: RBase = RBase::Raw;
+}
+
+impl AltrepBase for Box<[String]> {
+    const BASE: RBase = RBase::String;
+}
 
 // Range implementations
 impl AltrepBase for std::ops::Range<i32> {

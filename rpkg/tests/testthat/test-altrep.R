@@ -100,13 +100,7 @@ test_that("static slice ALTREP works", {
   expect_equal(length(s), 5L)
   expect_equal(s[1], 10L)
   expect_equal(s[5], 50L)
-  # Cannot use expect_equal(s, vec) or as.integer(s) because both try to get
-  # writable DATAPTR which fails for static ALTREP data.
-  # Compare element-by-element using indexing instead.
-  expected <- c(10L, 20L, 30L, 40L, 50L)
-  for (i in seq_along(expected)) {
-    expect_equal(s[i], expected[i])
-  }
+  expect_equal(s, c(10L, 20L, 30L, 40L, 50L))
   expect_equal(sum(s), 150L)
   expect_equal(min(s), 10L)
   expect_equal(max(s), 50L)
