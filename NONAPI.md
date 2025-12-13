@@ -13,16 +13,9 @@ Reference: <https://svn.r-project.org/R/trunk/src/library/tools/R/sotools.R>
 
 ## Feature-Gated Non-API Functions
 
-Locations intentionally omit line numbers (they drift); use search on the symbol name.
-
 | Function | Location | Feature Gate | Notes |
 |----------|----------|--------------|-------|
-| `DATAPTR` | `miniextendr-api/src/ffi.rs` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
-| `R_CStackStart` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack top address - needed for thread safety |
-| `R_CStackLimit` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack limit - set to `usize::MAX` to disable checking |
-| `R_CStackDir` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack growth direction (-1 = down, 1 = up) |
-
-Note: `miniextendr-engine` is entirely non-API (uses Rembedded.h/Rinterface.h for embedding R) and is not tracked here.
+| `DATAPTR` | `ffi.rs:409` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
 
 ## API Functions (Safe to Use)
 

@@ -8,10 +8,6 @@ default = []
 ## Enable non-API R functions. These may break with R updates and cause
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
-rayon = ["dep:rayon"]
-## Enable custom R connection framework. WARNING: R's connection API is explicitly
-## marked as unstable and may change between R versions without notice.
-connections = []
 
 [dependencies]
 miniextendr-macros = { path = "../miniextendr-macros" }
