@@ -247,15 +247,8 @@ pub use worker::*;
 
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
-
-// Stack size constants and builder (always available)
-#[cfg(windows)]
-pub use thread::WINDOWS_R_STACK_SIZE;
-pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
-
-// Stack checking control (requires nonapi feature)
 #[cfg(feature = "nonapi")]
-pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
+pub use thread::{StackCheckGuard, with_stack_checking_disabled};
 
 // Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;

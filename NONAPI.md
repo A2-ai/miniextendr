@@ -15,7 +15,10 @@ Reference: <https://svn.r-project.org/R/trunk/src/library/tools/R/sotools.R>
 
 | Function | Location | Feature Gate | Notes |
 |----------|----------|--------------|-------|
-| `DATAPTR` | `ffi.rs:409` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
+| `DATAPTR` | `ffi.rs:416` | `nonapi` | Mutable data pointer - prefer `DATAPTR_RO` or `DATAPTR_OR_NULL` |
+| `R_CStackStart` | `ffi.rs:618` | `nonapi` | Stack top address - needed for thread safety |
+| `R_CStackLimit` | `ffi.rs:624` | `nonapi` | Stack limit - set to `usize::MAX` to disable checking |
+| `R_CStackDir` | `ffi.rs:630` | `nonapi` | Stack growth direction (-1 = down, 1 = up) |
 
 ## API Functions (Safe to Use)
 
