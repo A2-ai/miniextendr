@@ -1209,29 +1209,17 @@ impl AltLogicalData for Vec<bool> {
 // =============================================================================
 // Built-in implementations for Box<[T]> (owned slices)
 // =============================================================================
-// NOTE: Box<[T]> cannot be used DIRECTLY with ALTREP because slices are DSTs
-// (dynamically sized types) and ExternalPtr requires Sized types.
+// Box<[T]> is a fat pointer (Sized) that wraps a DST slice.
+// Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
+// This makes it more memory-efficient for fixed-size data.
 //
-// However, these trait implementations are useful when you create a WRAPPER
-// struct that contains a Box<[T]>:
-//
+// Box<[T]> CAN be used directly with ALTREP via the proc-macro:
 // ```
-// #[derive(ExternalPtr)]
-// struct MyWrapper {
-//     data: Box<[i32]>,  // Fixed-size heap allocation
-//     // ... other fields
-// }
-//
-// impl AltrepLen for MyWrapper {
-//     fn len(&self) -> usize { self.data.len() }
-// }
-//
-// impl AltIntegerData for MyWrapper {
-//     fn elt(&self, i: usize) -> i32 { self.data.elt(i) }  // Delegates to Box<[i32]>
-// }
+// #[miniextendr(class = "BoxedInts", pkg = "mypkg")]
+// pub struct BoxedIntsClass(Box<[i32]>);
 // ```
 //
-// For direct ALTREP use, prefer Vec<T> which is semantically equivalent.
+// Or use these trait implementations in custom wrapper structs.
 
 impl AltrepLen for Box<[i32]> {
     fn len(&self) -> usize {
@@ -1653,6 +1641,50 @@ impl AltIntegerData for &[i32] {
         }
         actual_len
     }
+
+    fn no_na(&self) -> Option<bool> {
+        // i32 slices have NA as i32::MIN
+        Some(!self.contains(&i32::MIN))
+    }
+
+    fn sum(&self, _na_rm: bool) -> Option<i64> {
+        // Check for NA (i32::MIN)
+        if self.contains(&i32::MIN) {
+            if _na_rm {
+                Some(self.iter().filter(|&&x| x != i32::MIN).map(|&x| x as i64).sum())
+            } else {
+                None // Return NA
+            }
+        } else {
+            Some(self.iter().map(|&x| x as i64).sum())
+        }
+    }
+
+    fn min(&self, _na_rm: bool) -> Option<i32> {
+        if self.is_empty() {
+            return None;
+        }
+        if _na_rm {
+            self.iter().filter(|&&x| x != i32::MIN).copied().min()
+        } else if self.contains(&i32::MIN) {
+            None // NA present
+        } else {
+            self.iter().copied().min()
+        }
+    }
+
+    fn max(&self, _na_rm: bool) -> Option<i32> {
+        if self.is_empty() {
+            return None;
+        }
+        if _na_rm {
+            self.iter().filter(|&&x| x != i32::MIN).copied().max()
+        } else if self.contains(&i32::MIN) {
+            None // NA present
+        } else {
+            self.iter().copied().max()
+        }
+    }
 }
 
 impl AltrepLen for &[f64] {
@@ -1668,6 +1700,56 @@ impl AltRealData for &[f64] {
 
     fn as_slice(&self) -> Option<&[f64]> {
         Some(self)
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.iter().any(|x| x.is_nan()))
+    }
+
+    fn sum(&self, na_rm: bool) -> Option<f64> {
+        if na_rm {
+            Some(self.iter().filter(|x| !x.is_nan()).sum())
+        } else if self.iter().any(|x| x.is_nan()) {
+            None // Return NA
+        } else {
+            Some(self.iter().sum())
+        }
+    }
+
+    fn min(&self, na_rm: bool) -> Option<f64> {
+        if self.is_empty() {
+            return None;
+        }
+        if na_rm {
+            self.iter()
+                .filter(|x| !x.is_nan())
+                .copied()
+                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        } else if self.iter().any(|x| x.is_nan()) {
+            None
+        } else {
+            self.iter()
+                .copied()
+                .min_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        }
+    }
+
+    fn max(&self, na_rm: bool) -> Option<f64> {
+        if self.is_empty() {
+            return None;
+        }
+        if na_rm {
+            self.iter()
+                .filter(|x| !x.is_nan())
+                .copied()
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        } else if self.iter().any(|x| x.is_nan()) {
+            None
+        } else {
+            self.iter()
+                .copied()
+                .max_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        }
     }
 }
 
