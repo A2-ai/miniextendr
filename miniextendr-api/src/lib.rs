@@ -248,7 +248,10 @@ pub use worker::*;
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
 #[cfg(feature = "nonapi")]
-pub use thread::{StackCheckGuard, with_stack_checking_disabled};
+pub use thread::{
+    RThreadBuilder, StackCheckGuard, DEFAULT_R_STACK_SIZE, scope_with_r, spawn_with_r,
+    with_stack_checking_disabled,
+};
 
 // Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;

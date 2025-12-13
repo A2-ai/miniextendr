@@ -146,6 +146,186 @@ where
     f()
 }
 
+// =============================================================================
+// Thread spawning with R-compatible settings
+// =============================================================================
+
+/// Default stack size for R-compatible threads (8 MiB).
+///
+/// This matches R's typical default on Unix systems (`ulimit -s`).
+/// Rust's default is only 2 MiB, which may be insufficient for deep R call stacks.
+#[cfg(feature = "nonapi")]
+pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+/// Spawn a new thread configured for calling R APIs.
+///
+/// This function:
+/// 1. Sets a stack size appropriate for R (8 MiB by default)
+/// 2. Automatically disables R's stack checking via [`StackCheckGuard`]
+/// 3. Restores stack checking when the thread completes
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::thread::spawn_with_r;
+///
+/// let handle = spawn_with_r(|| {
+///     // Safe to call R APIs here!
+///     let result = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+///     result
+/// })?;
+///
+/// let sexp = handle.join().unwrap();
+/// ```
+///
+/// # Panics
+///
+/// Returns an error if the thread cannot be spawned (e.g., resource exhaustion).
+#[cfg(feature = "nonapi")]
+pub fn spawn_with_r<F, T>(f: F) -> std::io::Result<std::thread::JoinHandle<T>>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    RThreadBuilder::new().spawn(f)
+}
+
+/// Builder for spawning R-compatible threads with custom settings.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::thread::RThreadBuilder;
+///
+/// let handle = RThreadBuilder::new()
+///     .stack_size(16 * 1024 * 1024)  // 16 MiB
+///     .name("r-worker".to_string())
+///     .spawn(|| {
+///         // R API calls safe here
+///     })?;
+/// ```
+#[cfg(feature = "nonapi")]
+pub struct RThreadBuilder {
+    stack_size: usize,
+    name: Option<String>,
+}
+
+#[cfg(feature = "nonapi")]
+impl Default for RThreadBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+#[cfg(feature = "nonapi")]
+impl RThreadBuilder {
+    /// Create a new builder with default settings.
+    ///
+    /// Default stack size is [`DEFAULT_R_STACK_SIZE`] (8 MiB).
+    #[must_use]
+    pub fn new() -> Self {
+        Self {
+            stack_size: DEFAULT_R_STACK_SIZE,
+            name: None,
+        }
+    }
+
+    /// Set the stack size for the thread.
+    ///
+    /// R typically requires more stack space than Rust's default 2 MiB.
+    /// The default is 8 MiB to match typical R installations.
+    #[must_use]
+    pub fn stack_size(mut self, size: usize) -> Self {
+        self.stack_size = size;
+        self
+    }
+
+    /// Set the name for the thread (for debugging).
+    #[must_use]
+    pub fn name(mut self, name: String) -> Self {
+        self.name = Some(name);
+        self
+    }
+
+    /// Spawn the thread with the configured settings.
+    ///
+    /// The closure will automatically have R's stack checking disabled.
+    pub fn spawn<F, T>(self, f: F) -> std::io::Result<std::thread::JoinHandle<T>>
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        let mut builder = std::thread::Builder::new().stack_size(self.stack_size);
+
+        if let Some(name) = self.name {
+            builder = builder.name(name);
+        }
+
+        builder.spawn(move || {
+            let _guard = StackCheckGuard::disable();
+            f()
+        })
+    }
+
+    /// Spawn and immediately join, returning the result.
+    ///
+    /// Convenience method for synchronous R calls on a separate thread.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let result = RThreadBuilder::new()
+    ///     .spawn_join(|| unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) })
+    ///     .unwrap();
+    /// ```
+    pub fn spawn_join<F, T>(self, f: F) -> std::thread::Result<T>
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: Send + 'static,
+    {
+        self.spawn(f)
+            .map_err(|e| Box::new(e) as Box<dyn std::any::Any + Send>)?
+            .join()
+    }
+}
+
+/// Spawn a scoped thread configured for calling R APIs.
+///
+/// Like [`spawn_with_r`] but uses scoped threads, allowing the closure to
+/// borrow from the enclosing scope.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::thread::scope_with_r;
+///
+/// let data = vec![1, 2, 3];
+///
+/// std::thread::scope(|s| {
+///     scope_with_r(s, |_| {
+///         // Can borrow `data` here!
+///         println!("data len: {}", data.len());
+///         // R API calls also safe
+///     });
+/// });
+/// ```
+#[cfg(feature = "nonapi")]
+pub fn scope_with_r<'scope, 'env, F, T>(
+    scope: &'scope std::thread::Scope<'scope, 'env>,
+    f: F,
+) -> std::thread::ScopedJoinHandle<'scope, T>
+where
+    F: FnOnce(&'scope std::thread::Scope<'scope, 'env>) -> T + Send + 'scope,
+    T: Send + 'scope,
+{
+    // Note: scoped threads don't support custom stack sizes in std
+    // This is a known limitation. For custom stack sizes, use spawn_with_r.
+    scope.spawn(move || {
+        let _guard = StackCheckGuard::disable();
+        f(scope)
+    })
+}
+
 #[cfg(test)]
 #[cfg(feature = "nonapi")]
 mod tests {
