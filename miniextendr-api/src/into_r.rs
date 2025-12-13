@@ -1,11 +1,32 @@
+//! Conversions from Rust types to R SEXP.
+//!
+//! This module provides the [`IntoR`] trait for converting Rust values to R SEXPs.
+//!
+//! # Thread Safety
+//!
+//! The trait provides two methods:
+//! - [`IntoR::into_sexp`] - checked version with debug thread assertions
+//! - [`IntoR::into_sexp_unchecked`] - unchecked version for performance-critical paths
+//!
+//! Use `into_sexp_unchecked` when you're certain you're on the main thread:
+//! - Inside ALTREP callbacks
+//! - Inside `#[miniextendr(unsafe(main_thread))]` functions
+//! - Inside `extern "C-unwind"` functions called directly by R
+
+/// Trait for converting Rust types to R SEXP values.
 pub trait IntoR {
+    /// Convert this value to an R SEXP.
+    ///
+    /// In debug builds, asserts that we're on R's main thread.
     fn into_sexp(self) -> crate::ffi::SEXP;
 
     /// Convert to SEXP without thread safety checks.
     ///
     /// # Safety
     ///
-    /// Must be called from R's main thread. No debug assertions.
+    /// Must be called from R's main thread. In debug builds, this still
+    /// calls the checked version by default, but implementations may
+    /// skip thread assertions for performance.
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP
     where
         Self: Sized,

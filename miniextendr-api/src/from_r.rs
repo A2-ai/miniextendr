@@ -1,6 +1,6 @@
 //! Conversions from R SEXP to Rust types.
 //!
-//! This module provides `TryFromSexp` implementations for converting R values to Rust types:
+//! This module provides [`TryFromSexp`] implementations for converting R values to Rust types:
 //!
 //! | R Type | Rust Type | Access Method |
 //! |--------|-----------|---------------|
@@ -9,6 +9,17 @@
 //! | LGLSXP | `Rboolean`, `&[Rboolean]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
 //! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` |
+//!
+//! # Thread Safety
+//!
+//! The trait provides two methods:
+//! - [`TryFromSexp::try_from_sexp`] - checked version with debug thread assertions
+//! - [`TryFromSexp::try_from_sexp_unchecked`] - unchecked version for performance-critical paths
+//!
+//! Use `try_from_sexp_unchecked` when you're certain you're on the main thread:
+//! - Inside ALTREP callbacks
+//! - Inside `#[miniextendr(unsafe(main_thread))]` functions
+//! - Inside `extern "C-unwind"` functions called directly by R
 
 use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 
@@ -44,14 +55,21 @@ impl From<SexpLengthError> for SexpError {
 
 /// TryFrom-style trait for converting SEXP to Rust types.
 pub trait TryFromSexp: Sized {
+    /// The error type returned when conversion fails.
     type Error;
+
+    /// Attempt to convert an R SEXP to this Rust type.
+    ///
+    /// In debug builds, may assert that we're on R's main thread.
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error>;
 
     /// Convert from SEXP without thread safety checks.
     ///
     /// # Safety
     ///
-    /// Must be called from R's main thread. No debug assertions.
+    /// Must be called from R's main thread. In debug builds, this still
+    /// calls the checked version by default, but implementations may
+    /// skip thread assertions for performance.
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         // Default: just call the checked version
         Self::try_from_sexp(sexp)
