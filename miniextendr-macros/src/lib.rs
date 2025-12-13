@@ -1607,6 +1607,95 @@ pub fn r_ffi_checked(
     expanded.into()
 }
 
+/// Derive macro for implementing `RNative` on a newtype wrapper.
+///
+/// This allows newtype wrappers around R native types to be used with `Coerce<R>`.
+/// The inner type must implement `RNative`.
+///
+/// # Supported Struct Forms
+///
+/// Both tuple structs and single-field named structs are supported:
+///
+/// ```ignore
+/// use miniextendr_api::RNative;
+///
+/// // Tuple struct (most common)
+/// #[derive(Clone, Copy, RNative)]
+/// struct UserId(i32);
+///
+/// // Named single-field struct
+/// #[derive(Clone, Copy, RNative)]
+/// struct Temperature { celsius: f64 }
+/// ```
+///
+/// # Generated Code
+///
+/// For `struct UserId(i32)`, this generates:
+///
+/// ```ignore
+/// impl RNative for UserId {
+///     const SEXP_TYPE: SEXPTYPE = <i32 as RNative>::SEXP_TYPE;
+/// }
+/// ```
+///
+/// # Using the Newtype with Coerce
+///
+/// Once `RNative` is derived, you can implement `Coerce` to/from the newtype:
+///
+/// ```ignore
+/// impl Coerce<UserId> for i32 {
+///     fn coerce(self) -> UserId { UserId(self) }
+/// }
+///
+/// let id: UserId = 42.coerce();
+/// ```
+///
+/// # Requirements
+///
+/// - Must be a newtype struct (exactly one field, tuple or named)
+/// - The inner type must implement `RNative` (`i32`, `f64`, `Rboolean`, `u8`, `Rcomplex`, or another derived type)
+/// - Should also derive `Copy` (required by `RNative: Copy`)
+#[proc_macro_derive(RNative)]
+pub fn derive_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    // Extract inner type - must be a newtype (single field)
+    let inner_ty: syn::Type = match &input.data {
+        syn::Data::Struct(data) => match &data.fields {
+            syn::Fields::Unnamed(fields) if fields.unnamed.len() == 1 => {
+                fields.unnamed.first().unwrap().ty.clone()
+            }
+            syn::Fields::Named(fields) if fields.named.len() == 1 => {
+                fields.named.first().unwrap().ty.clone()
+            }
+            _ => {
+                return syn::Error::new_spanned(
+                    name,
+                    "#[derive(RNative)] requires a newtype struct with exactly one field",
+                )
+                .into_compile_error()
+                .into();
+            }
+        },
+        _ => {
+            return syn::Error::new_spanned(name, "#[derive(RNative)] only works on structs")
+                .into_compile_error()
+                .into();
+        }
+    };
+
+    let expanded = quote::quote! {
+        impl #impl_generics ::miniextendr_api::coerce::RNative for #name #ty_generics #where_clause {
+            const SEXP_TYPE: ::miniextendr_api::ffi::SEXPTYPE =
+                <#inner_ty as ::miniextendr_api::coerce::RNative>::SEXP_TYPE;
+        }
+    };
+
+    expanded.into()
+}
+
 /// Derive macro for implementing `TypedExternal` on a type.
 ///
 /// This makes the type compatible with `ExternalPtr<T>` for storing in R's external pointers.

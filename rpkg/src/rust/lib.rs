@@ -1419,6 +1419,15 @@ miniextendr_module! {
     // Wildcard parameter test
     fn underscore_it_all;
 
+    // Coerce trait tests
+    fn test_coerce_identity;
+    fn test_coerce_widen;
+    fn test_coerce_bool_to_int;
+    fn test_coerce_via_helper;
+    fn test_try_coerce_f64_to_i32;
+    fn test_rnative_newtype;
+    fn test_rnative_named_field;
+
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
     extern "C-unwind" fn rpkg_constant_int;
@@ -1532,6 +1541,97 @@ fn with_interrupt_check(x: i32) -> i32 {
 // Test that wildcard `_` parameters work (transformed to synthetic names internally)
 #[miniextendr]
 fn underscore_it_all(_: i32, _: f64) {}
+
+// endregion
+
+// region: Coerce trait tests
+
+use miniextendr_api::{Coerce, TryCoerce, CanCoerceToInteger, CoerceError, RNative};
+
+// Test 6: RNative derive macro - newtype wrappers (both tuple and named field)
+#[derive(Clone, Copy, RNative)]
+struct UserId(i32);  // Tuple struct
+
+#[derive(Clone, Copy, RNative)]
+struct Score(f64);  // Tuple struct
+
+#[derive(Clone, Copy, RNative)]
+struct Temperature { celsius: f64 }  // Named single-field struct
+
+// Verify the derived RNative works with Coerce
+impl Coerce<UserId> for i32 {
+    fn coerce(self) -> UserId {
+        UserId(self)
+    }
+}
+
+impl Coerce<Temperature> for f64 {
+    fn coerce(self) -> Temperature {
+        Temperature { celsius: self }
+    }
+}
+
+// Test function using the tuple newtype
+#[miniextendr]
+fn test_rnative_newtype(id: i32) -> i32 {
+    let user_id: UserId = id.coerce();
+    user_id.0  // Extract inner value
+}
+
+// Test function using the named-field newtype
+#[miniextendr]
+fn test_rnative_named_field(temp: f64) -> f64 {
+    let t: Temperature = temp.coerce();
+    t.celsius  // Extract inner value
+}
+
+// NOTE: Generic functions like `fn foo<T: Coerce<i32>>(x: T)` DON'T work with miniextendr
+// because the macro generates `TryFromSexp::try_from_sexp(x)` which needs to know the
+// concrete type T at compile time, but T can't be inferred from just the trait bound.
+//
+// What DOES work:
+// 1. Concrete functions that use Coerce internally
+// 2. Helper functions with generics that are called with concrete types
+
+// Test 1: Concrete function using Coerce internally (identity)
+#[miniextendr]
+fn test_coerce_identity(x: i32) -> i32 {
+    Coerce::<i32>::coerce(x)
+}
+
+// Test 2: Widening coercion (i32 → f64, always succeeds)
+#[miniextendr]
+fn test_coerce_widen(x: i32) -> f64 {
+    x.coerce()
+}
+
+// Test 3: bool → i32 coercion
+#[miniextendr]
+fn test_coerce_bool_to_int(x: miniextendr_api::ffi::Rboolean) -> i32 {
+    x.coerce()
+}
+
+// Test 4: Helper using trait bound - called with concrete types
+fn helper_accepts_integer<T: CanCoerceToInteger>(x: T) -> i32 {
+    x.coerce()
+}
+
+#[miniextendr]
+fn test_coerce_via_helper(x: i32) -> i32 {
+    // The generic helper works because x is concrete i32 at call site
+    helper_accepts_integer(x)
+}
+
+// Test 5: TryCoerce - narrowing with potential failure
+#[miniextendr]
+fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
+    match TryCoerce::<i32>::try_coerce(x) {
+        Ok(v) => v,
+        Err(CoerceError::Overflow) => i32::MIN,    // NA
+        Err(CoerceError::PrecisionLoss) => i32::MIN,
+        Err(CoerceError::NaN) => i32::MIN,
+    }
+}
 
 // endregion
 
