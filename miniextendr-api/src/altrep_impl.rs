@@ -672,19 +672,27 @@ macro_rules! impl_altcomplex_from_data {
 impl_altinteger_from_data!(Vec<i32>, dataptr);
 impl_altinteger_from_data!(std::ops::Range<i32>);
 impl_altinteger_from_data!(std::ops::Range<i64>);
+crate::impl_inferbase_integer!(Vec<i32>);
+crate::impl_inferbase_integer!(std::ops::Range<i32>);
+crate::impl_inferbase_integer!(std::ops::Range<i64>);
 
 // Real types - Vec<f64> supports dataptr, ranges don't
 impl_altreal_from_data!(Vec<f64>, dataptr);
 impl_altreal_from_data!(std::ops::Range<f64>);
+crate::impl_inferbase_real!(Vec<f64>);
+crate::impl_inferbase_real!(std::ops::Range<f64>);
 
 // Logical types
 impl_altlogical_from_data!(Vec<bool>);
+crate::impl_inferbase_logical!(Vec<bool>);
 
 // Raw types
 impl_altraw_from_data!(Vec<u8>);
+crate::impl_inferbase_raw!(Vec<u8>);
 
 // String types
 impl_altstring_from_data!(Vec<String>);
+crate::impl_inferbase_string!(Vec<String>);
 
 // =============================================================================
 // Array implementations (const generics - can't use macros)

@@ -229,3 +229,51 @@ Only 2 TODOs found:
 - The TODO about dots module - verify if still valid
 
 **No Major Redundancy Found**: The codebase appears well-maintained with previous clean-ups already done. Most apparent "complexity" serves legitimate purposes.
+
+---
+
+## Recent Code Review (2025-12-12)
+
+### Critical Issues Fixed
+
+1. **Missing `RBase::Complex` variant**
+   - The `RBase` enum was missing the `Complex` variant needed for ALTREP complex vectors
+   - Fixed in: `miniextendr-api/src/altrep.rs`, `miniextendr-api/src/altrep_registration.rs`, `miniextendr-macros/src/lib.rs`
+   - Added `AltrepBase` impl for `Vec<Rcomplex>`
+
+2. **SEXPTYPE import pattern**
+   - `INTSXP` cannot be imported directly; must use `SEXPTYPE::INTSXP`
+   - Fixed in `rpkg/src/rust/lib.rs`
+
+### Current State
+
+All components now compile:
+- ✅ miniextendr-api
+- ✅ miniextendr-macros
+- ✅ rpkg
+
+### Minor Clippy Warnings (Non-blocking)
+
+| File | Warning | Suggestion |
+|------|---------|------------|
+| miniextendr-macros/src/lib.rs:138 | `replace_box` | Use `*pat_type.pat = ...` instead of `Box::new()` |
+| altrep_data.rs (5 locations) | `needless_range_loop` | Use iterators with enumerate() |
+| altrep_data.rs:1062, 1068 | `needless_lifetimes` | Elide explicit `'a` lifetime |
+| altrep_data.rs:1103 | `manual_contains` | Use `contains()` instead of `iter().any()` |
+
+### ALTREP Feature Status
+
+| Feature | Status |
+|---------|--------|
+| Int, Real, Logical, Raw, String, List | ✅ Complete |
+| Complex | ✅ Complete (just fixed) |
+| Auto-inferred base types | ✅ Complete |
+| Dataptr lazy materialization | ✅ Complete |
+| Serialization support | ✅ Complete |
+| Extract_subset optimization | ✅ Complete |
+
+### Next Steps
+
+- [ ] Address Clippy warnings (optional, non-blocking)
+- [ ] Memory-mapped file ALTREP (from altrep.md "Not Yet Implemented")
+- [ ] Review `StableTypeId` simplification opportunity in externalptr.rs
