@@ -1943,3 +1943,374 @@ impl<const N: usize> AltStringData for [String; N] {
         Some(self[i].as_str())
     }
 }
+
+// =============================================================================
+// Unit tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // -------------------------------------------------------------------------
+    // Logical enum tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_logical_to_r_int() {
+        assert_eq!(Logical::False.to_r_int(), 0);
+        assert_eq!(Logical::True.to_r_int(), 1);
+        assert_eq!(Logical::Na.to_r_int(), i32::MIN);
+    }
+
+    #[test]
+    fn test_logical_from_r_int() {
+        assert_eq!(Logical::from_r_int(0), Logical::False);
+        assert_eq!(Logical::from_r_int(1), Logical::True);
+        assert_eq!(Logical::from_r_int(42), Logical::True); // Non-zero is TRUE
+        assert_eq!(Logical::from_r_int(-1), Logical::True);
+        assert_eq!(Logical::from_r_int(i32::MIN), Logical::Na);
+    }
+
+    #[test]
+    fn test_logical_from_bool() {
+        assert_eq!(Logical::from_bool(false), Logical::False);
+        assert_eq!(Logical::from_bool(true), Logical::True);
+    }
+
+    // -------------------------------------------------------------------------
+    // Sortedness enum tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_sortedness_to_r_int() {
+        assert_eq!(Sortedness::Unknown.to_r_int(), i32::MIN);
+        assert_eq!(Sortedness::None.to_r_int(), 0);
+        assert_eq!(Sortedness::Increasing.to_r_int(), 1);
+        assert_eq!(Sortedness::Decreasing.to_r_int(), -1);
+        assert_eq!(Sortedness::StrictlyIncreasing.to_r_int(), 2);
+        assert_eq!(Sortedness::StrictlyDecreasing.to_r_int(), -2);
+    }
+
+    #[test]
+    fn test_sortedness_from_r_int() {
+        assert_eq!(Sortedness::from_r_int(i32::MIN), Sortedness::Unknown);
+        assert_eq!(Sortedness::from_r_int(0), Sortedness::None);
+        assert_eq!(Sortedness::from_r_int(1), Sortedness::Increasing);
+        assert_eq!(Sortedness::from_r_int(-1), Sortedness::Decreasing);
+        assert_eq!(Sortedness::from_r_int(2), Sortedness::StrictlyIncreasing);
+        assert_eq!(Sortedness::from_r_int(-2), Sortedness::StrictlyDecreasing);
+        // Invalid values map to Unknown
+        assert_eq!(Sortedness::from_r_int(99), Sortedness::Unknown);
+    }
+
+    // -------------------------------------------------------------------------
+    // Vec<i32> AltIntegerData tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_vec_i32_len() {
+        let v: Vec<i32> = vec![1, 2, 3, 4, 5];
+        assert_eq!(AltrepLen::len(&v), 5);
+        assert!(!AltrepLen::is_empty(&v));
+
+        let empty: Vec<i32> = vec![];
+        assert_eq!(AltrepLen::len(&empty), 0);
+        assert!(AltrepLen::is_empty(&empty));
+    }
+
+    #[test]
+    fn test_vec_i32_elt() {
+        let v = vec![10, 20, 30];
+        assert_eq!(AltIntegerData::elt(&v, 0), 10);
+        assert_eq!(AltIntegerData::elt(&v, 1), 20);
+        assert_eq!(AltIntegerData::elt(&v, 2), 30);
+    }
+
+    #[test]
+    fn test_vec_i32_as_slice() {
+        let v = vec![1, 2, 3];
+        assert_eq!(AltIntegerData::as_slice(&v), Some(&[1, 2, 3][..]));
+    }
+
+    #[test]
+    fn test_vec_i32_get_region() {
+        let v = vec![10, 20, 30, 40, 50];
+        let mut buf = [0i32; 3];
+
+        // Normal region
+        let n = AltIntegerData::get_region(&v, 1, 3, &mut buf);
+        assert_eq!(n, 3);
+        assert_eq!(buf, [20, 30, 40]);
+
+        // Region at end (partial)
+        let n = AltIntegerData::get_region(&v, 3, 5, &mut buf);
+        assert_eq!(n, 2);
+        assert_eq!(buf[..2], [40, 50]);
+
+        // Start beyond length
+        let n = AltIntegerData::get_region(&v, 10, 3, &mut buf);
+        assert_eq!(n, 0);
+    }
+
+    #[test]
+    fn test_vec_i32_no_na() {
+        let v = vec![1, 2, 3];
+        assert_eq!(AltIntegerData::no_na(&v), Some(true));
+
+        let v_with_na = vec![1, i32::MIN, 3]; // i32::MIN is NA
+        assert_eq!(AltIntegerData::no_na(&v_with_na), Some(false));
+    }
+
+    #[test]
+    fn test_vec_i32_sum() {
+        let v = vec![1, 2, 3, 4, 5];
+        assert_eq!(AltIntegerData::sum(&v, false), Some(15));
+        assert_eq!(AltIntegerData::sum(&v, true), Some(15));
+
+        // With NA
+        let v_na = vec![1, 2, i32::MIN, 4, 5];
+        assert_eq!(AltIntegerData::sum(&v_na, false), None); // NA propagates
+        assert_eq!(AltIntegerData::sum(&v_na, true), Some(12)); // na.rm=TRUE
+    }
+
+    #[test]
+    fn test_vec_i32_min_max() {
+        let v = vec![5, 2, 8, 1, 9];
+        assert_eq!(AltIntegerData::min(&v, false), Some(1));
+        assert_eq!(AltIntegerData::max(&v, false), Some(9));
+
+        // With NA
+        let v_na = vec![5, 2, i32::MIN, 1, 9];
+        assert_eq!(AltIntegerData::min(&v_na, false), None);
+        assert_eq!(AltIntegerData::max(&v_na, false), None);
+        assert_eq!(AltIntegerData::min(&v_na, true), Some(1));
+        assert_eq!(AltIntegerData::max(&v_na, true), Some(9));
+    }
+
+    // -------------------------------------------------------------------------
+    // Vec<f64> AltRealData tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_vec_f64_sum() {
+        let v = vec![1.0, 2.0, 3.0];
+        assert_eq!(AltRealData::sum(&v, false), Some(6.0));
+
+        let v_nan = vec![1.0, f64::NAN, 3.0];
+        assert!(AltRealData::sum(&v_nan, false).unwrap().is_nan());
+        assert_eq!(AltRealData::sum(&v_nan, true), Some(4.0));
+    }
+
+    #[test]
+    fn test_vec_f64_min_max() {
+        let v = vec![3.0, 1.0, 4.0, 1.5];
+        assert_eq!(AltRealData::min(&v, false), Some(1.0));
+        assert_eq!(AltRealData::max(&v, false), Some(4.0));
+    }
+
+    // -------------------------------------------------------------------------
+    // Box<[T]> tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_box_slice_i32() {
+        let b: Box<[i32]> = vec![1, 2, 3, 4, 5].into_boxed_slice();
+        assert_eq!(AltrepLen::len(&b), 5);
+        assert_eq!(AltIntegerData::elt(&b, 2), 3);
+        assert_eq!(AltIntegerData::sum(&b, false), Some(15));
+        assert_eq!(AltIntegerData::min(&b, false), Some(1));
+        assert_eq!(AltIntegerData::max(&b, false), Some(5));
+    }
+
+    #[test]
+    fn test_box_slice_f64() {
+        let b: Box<[f64]> = vec![1.0, 2.0, 3.0].into_boxed_slice();
+        assert_eq!(AltrepLen::len(&b), 3);
+        assert_eq!(AltRealData::elt(&b, 1), 2.0);
+        assert_eq!(AltRealData::sum(&b, false), Some(6.0));
+    }
+
+    // -------------------------------------------------------------------------
+    // Range<i32> tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_range_i32_len() {
+        let r = 1..10;
+        assert_eq!(AltrepLen::len(&r), 9);
+
+        let empty = 10..5;
+        assert_eq!(AltrepLen::len(&empty), 0);
+    }
+
+    #[test]
+    fn test_range_i32_elt() {
+        let r = 5..10;
+        assert_eq!(AltIntegerData::elt(&r, 0), 5);
+        assert_eq!(AltIntegerData::elt(&r, 4), 9);
+    }
+
+    #[test]
+    fn test_range_i32_sum() {
+        // Sum of 1..11 (1 to 10) = 55
+        let r = 1..11;
+        assert_eq!(AltIntegerData::sum(&r, false), Some(55));
+
+        // Sum of 1..101 (1 to 100) = 5050
+        let r = 1..101;
+        assert_eq!(AltIntegerData::sum(&r, false), Some(5050));
+    }
+
+    #[test]
+    fn test_range_i32_min_max() {
+        let r = 5..15;
+        assert_eq!(AltIntegerData::min(&r, false), Some(5));
+        assert_eq!(AltIntegerData::max(&r, false), Some(14)); // end is exclusive
+    }
+
+    #[test]
+    fn test_range_i32_is_sorted() {
+        let r = 1..10;
+        assert_eq!(AltIntegerData::is_sorted(&r), Some(Sortedness::StrictlyIncreasing));
+    }
+
+    // -------------------------------------------------------------------------
+    // Static slice tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_static_slice_i32() {
+        static DATA: [i32; 5] = [10, 20, 30, 40, 50];
+        let s: &[i32] = &DATA;
+
+        assert_eq!(AltrepLen::len(&s), 5);
+        assert_eq!(AltIntegerData::elt(&s, 0), 10);
+        assert_eq!(AltIntegerData::elt(&s, 4), 50);
+        assert_eq!(AltIntegerData::sum(&s, false), Some(150));
+        assert_eq!(AltIntegerData::min(&s, false), Some(10));
+        assert_eq!(AltIntegerData::max(&s, false), Some(50));
+    }
+
+    #[test]
+    fn test_static_slice_with_na() {
+        let s: &[i32] = &[1, 2, i32::MIN, 4];
+        assert_eq!(AltIntegerData::no_na(&s), Some(false));
+        assert_eq!(AltIntegerData::sum(&s, false), None); // NA propagates
+        assert_eq!(AltIntegerData::sum(&s, true), Some(7)); // na.rm=TRUE
+    }
+
+    #[test]
+    fn test_static_slice_f64() {
+        static DATA: [f64; 4] = [1.5, 2.5, 3.5, 4.5];
+        let s: &[f64] = &DATA;
+
+        assert_eq!(AltrepLen::len(&s), 4);
+        assert_eq!(AltRealData::sum(&s, false), Some(12.0));
+        assert_eq!(AltRealData::min(&s, false), Some(1.5));
+        assert_eq!(AltRealData::max(&s, false), Some(4.5));
+    }
+
+    // -------------------------------------------------------------------------
+    // Array tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_array_i32() {
+        let arr: [i32; 3] = [100, 200, 300];
+        assert_eq!(AltrepLen::len(&arr), 3);
+        assert_eq!(AltIntegerData::elt(&arr, 1), 200);
+        assert_eq!(AltIntegerData::as_slice(&arr), Some(&[100, 200, 300][..]));
+    }
+
+    #[test]
+    fn test_array_f64() {
+        let arr: [f64; 2] = [1.1, 2.2];
+        assert_eq!(AltrepLen::len(&arr), 2);
+        assert_eq!(AltRealData::elt(&arr, 0), 1.1);
+    }
+
+    // -------------------------------------------------------------------------
+    // Vec<bool> AltLogicalData tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_vec_bool_logical() {
+        let v = vec![true, false, true, true];
+        assert_eq!(AltrepLen::len(&v), 4);
+        assert_eq!(AltLogicalData::elt(&v, 0), Logical::True);
+        assert_eq!(AltLogicalData::elt(&v, 1), Logical::False);
+        assert_eq!(AltLogicalData::no_na(&v), Some(true));
+        assert_eq!(AltLogicalData::sum(&v, false), Some(3)); // Count of TRUE
+    }
+
+    // -------------------------------------------------------------------------
+    // Vec<String> AltStringData tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_vec_string() {
+        let v = vec!["hello".to_string(), "world".to_string()];
+        assert_eq!(AltrepLen::len(&v), 2);
+        assert_eq!(AltStringData::elt(&v, 0), Some("hello"));
+        assert_eq!(AltStringData::elt(&v, 1), Some("world"));
+        assert_eq!(AltStringData::no_na(&v), Some(true));
+    }
+
+    #[test]
+    fn test_vec_option_string() {
+        let v: Vec<Option<String>> = vec![
+            Some("a".to_string()),
+            None,
+            Some("b".to_string()),
+        ];
+        assert_eq!(AltrepLen::len(&v), 3);
+        assert_eq!(AltStringData::elt(&v, 0), Some("a"));
+        assert_eq!(AltStringData::elt(&v, 1), None); // NA
+        assert_eq!(AltStringData::elt(&v, 2), Some("b"));
+        assert_eq!(AltStringData::no_na(&v), Some(false)); // Has NA
+    }
+
+    // -------------------------------------------------------------------------
+    // Vec<u8> AltRawData tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_vec_u8() {
+        let v: Vec<u8> = vec![0x01, 0x02, 0xFF];
+        assert_eq!(AltrepLen::len(&v), 3);
+        assert_eq!(AltRawData::elt(&v, 0), 0x01);
+        assert_eq!(AltRawData::elt(&v, 2), 0xFF);
+        assert_eq!(AltRawData::as_slice(&v), Some(&[0x01, 0x02, 0xFF][..]));
+    }
+
+    // -------------------------------------------------------------------------
+    // Edge cases
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_empty_vec() {
+        let v: Vec<i32> = vec![];
+        assert_eq!(AltrepLen::len(&v), 0);
+        assert!(AltrepLen::is_empty(&v));
+        assert_eq!(AltIntegerData::sum(&v, false), Some(0));
+        assert_eq!(AltIntegerData::min(&v, false), None);
+        assert_eq!(AltIntegerData::max(&v, false), None);
+    }
+
+    #[test]
+    fn test_single_element() {
+        let v = vec![42];
+        assert_eq!(AltIntegerData::sum(&v, false), Some(42));
+        assert_eq!(AltIntegerData::min(&v, false), Some(42));
+        assert_eq!(AltIntegerData::max(&v, false), Some(42));
+    }
+
+    #[test]
+    fn test_large_sum_overflow() {
+        // Sum that exceeds i32 range but fits in i64
+        let v: Vec<i32> = vec![i32::MAX, i32::MAX];
+        let sum = AltIntegerData::sum(&v, false).unwrap();
+        assert_eq!(sum, 2 * i32::MAX as i64);
+    }
+}

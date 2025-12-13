@@ -245,22 +245,39 @@ Standard types have built-in implementations:
 | `Vec<bool>` | `AltLogicalData` | `no_na` (always true), `sum` |
 | `Vec<u8>` | `AltRawData` | `dataptr`, `get_region` |
 | `Vec<String>` | `AltStringData` | `no_na` (always true) |
+| `Box<[i32]>` | `AltIntegerData` | `dataptr`, `get_region`, `sum`, `min`, `max` |
+| `Box<[f64]>` | `AltRealData` | `dataptr`, `get_region`, `sum`, `min`, `max` |
+| `Box<[bool]>` | `AltLogicalData` | `no_na` (always true), `sum` |
+| `Box<[u8]>` | `AltRawData` | `dataptr`, `get_region` |
+| `Box<[String]>` | `AltStringData` | `no_na` (always true) |
 | `Range<i32>` | `AltIntegerData` | O(1) `sum`, `min`, `max`, `is_sorted` |
 | `Range<f64>` | `AltRealData` | O(1) `sum`, `min`, `max`, `is_sorted` |
 | `[T; N]` | (same as Vec) | Fixed-size arrays |
 | `&'static [T]` | (same as Vec) | Static slices with `dataptr` |
 
-### Why Not `Box<[T]>` or `&[T]`?
+### `Box<[T]>`, `&'static [T]`, and `&[T]`
 
-**R vectors are more like `Box<[T]>` than `Vec<T>`** - fixed size, heap-allocated, no capacity overhead. However, there are limitations:
+**R vectors are more like `Box<[T]>` than `Vec<T>`** - fixed size, heap-allocated, no capacity overhead.
 
 | Type | Can use with ALTREP? | Reason |
 |------|---------------------|--------|
 | `Vec<T>` | ✅ Yes | Owned, sized, works with ExternalPtr |
 | `[T; N]` | ✅ Yes | Owned, sized (compile-time length) |
 | `&'static [T]` | ✅ Yes | Static lifetime, sized (fat pointer) |
-| `Box<[T]>` | ❌ No (directly) | DST - ExternalPtr requires `Sized` |
+| `Box<[T]>` | ✅ Yes | Owned, sized (fat pointer: ptr + len) |
 | `&[T]` | ❌ No | Borrowed - ALTREP must own its data |
+
+**`Box<[T]>` (owned slice):** Works because `Box<[T]>` is actually `Sized` - it's a fat pointer (2 words: ptr + len), same as `&[T]`. Use this when you want fixed-size data with no reallocation capability and no capacity overhead:
+
+```rust
+#[miniextendr(class = "BoxedInts", pkg = "mypkg")]
+pub struct BoxedIntsClass(Box<[i32]>);
+
+fn create_boxed(v: Vec<i32>) -> SEXP {
+    let boxed: Box<[i32]> = v.into_boxed_slice();
+    unsafe { BoxedIntsClass::into_altrep(boxed) }
+}
+```
 
 **`&'static [T]` (static slice):** Works because the fat pointer itself is `Sized` (2 words: ptr + len) and `'static` lifetime means the data lives forever - no dangling references. Use cases:
 
@@ -288,27 +305,13 @@ static NAMES: [&'static str; 3] = ["alpha", "beta", "gamma"];
 pub struct StaticNamesClass(&'static [&'static str]);
 ```
 
-**`Box<[T]>` (owned slice):** Cannot be used directly because `[T]` is a DST (dynamically sized type). The `ExternalPtr` system stores data via R's external pointer mechanism, which requires `Sized` types. However, data trait implementations (`AltIntegerData`, etc.) are provided for `Box<[T]>` - you can use them in custom wrapper structs:
-
-```rust
-#[derive(ExternalPtr)]
-struct FixedIntArray {
-    data: Box<[i32]>,  // Fixed-size, no reallocation possible
-}
-
-impl AltrepLen for FixedIntArray {
-    fn len(&self) -> usize { self.data.len() }
-}
-
-impl AltIntegerData for FixedIntArray {
-    fn elt(&self, i: usize) -> i32 { self.data[i] }  // Delegates to Box<[i32]>
-    // ... other methods also delegate
-}
-```
-
 **`&[T]` (borrowed slice):** Cannot work at all. ALTREP objects are R objects that can be stored, serialized, passed around - they must *own* their data. A borrowed slice would become invalid when the borrow ends.
 
-**Practical recommendation:** Use `Vec<T>` for most ALTREP use cases. Use `&'static [T]` for compile-time constants or leaked data. If you need tight memory layout with runtime data, wrap `Box<[T]>` in a struct.
+**Practical recommendation:**
+
+- Use `Vec<T>` when you need to build data dynamically
+- Use `Box<[T]>` when you have a fixed-size collection (saves capacity field overhead)
+- Use `&'static [T]` for compile-time constants or leaked data
 
 ### ALTREP Class Registration
 
@@ -696,9 +699,9 @@ The bridge macros handle this correctly by returning `R_NilValue` for "use defau
 
 ```rust
 pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
-pub const SORTED_NONE: i32 = -1;      // Not sorted
-pub const SORTED_INCR: i32 = 0;       // Increasing (may have ties)
-pub const SORTED_DECR: i32 = 1;       // Decreasing (may have ties)
+pub const SORTED_NONE: i32 = 0;       // Not sorted
+pub const SORTED_INCR: i32 = 1;       // Increasing (may have ties)
+pub const SORTED_DECR: i32 = -1;      // Decreasing (may have ties)
 pub const SORTED_INCR_STRICT: i32 = 2;  // Strictly increasing
 pub const SORTED_DECR_STRICT: i32 = -2; // Strictly decreasing
 ```
@@ -710,6 +713,77 @@ pub enum Sortedness {
     Unknown, None, Increasing, Decreasing,
     StrictlyIncreasing, StrictlyDecreasing
 }
+```
+
+## Testing
+
+### Rust Unit Tests
+
+The `altrep_data` module includes unit tests for pure Rust functionality. Run with:
+
+```bash
+cargo test --manifest-path miniextendr-api/Cargo.toml
+```
+
+Tests cover:
+
+- **Enum conversions**: `Logical` (to/from R's int), `Sortedness` (to/from R's int)
+- **Vec implementations**: `AltIntegerData`, `AltRealData`, `AltLogicalData`, `AltRawData`, `AltStringData`
+- **Box<[T]> implementations**: Same traits as Vec, for owned slices
+- **Range implementations**: O(1) `sum`, `min`, `max` for arithmetic sequences
+- **Static slice implementations**: `&'static [T]` with NA handling
+- **Array implementations**: `[T; N]` for fixed-size arrays
+- **Edge cases**: Empty vectors, single elements, overflow handling, NA propagation
+
+### R Integration Tests
+
+The `rpkg` package includes testthat tests that verify ALTREP behavior from R. Run with:
+
+```r
+testthat::test_file("rpkg/tests/testthat/test-altrep.R")
+```
+
+Tests cover:
+
+- **Proc-macro ALTREP**: `ConstantIntClass` - element access, sum, length
+- **Complex ALTREP**: `UnitCircle` - roots of unity computation
+- **Lazy materialization**: `LazyIntSeqClass` - deferred computation, O(1) sum, materialization trigger
+- **Static slices**: `StaticIntsClass`, `StaticStringsClass` - const array ALTREP
+- **Leaked data**: `leaked_ints()` - `Box::leak()` pattern for process-lifetime data
+- **Box<[T]>**: `BoxedIntsClass` - owned slice ALTREP with dataptr support
+
+### Testing Custom ALTREP Classes
+
+When implementing custom ALTREP:
+
+1. **Test element access**: Verify `elt(i)` returns correct values
+2. **Test length**: Verify `len()` matches expected size
+3. **Test optional methods**: If you implement `sum`, `min`, `max`, verify correctness
+4. **Test NA handling**: Verify `na_rm` parameter works correctly
+5. **Test materialization**: If using lazy materialization, verify:
+   - Operations work before materialization
+   - Dataptr triggers materialization
+   - Values are correct after materialization
+
+Example R test:
+
+```r
+test_that("my ALTREP works", {
+  x <- my_altrep_constructor(10L)
+
+  # Basic operations
+
+  expect_equal(length(x), 10L)
+  expect_equal(x[1], expected_first_element)
+  expect_equal(x[10], expected_last_element)
+
+  # Optimized methods
+  expect_equal(sum(x), expected_sum)
+
+  # Dataptr operations (triggers materialization for lazy types)
+  y <- x + 0L
+  expect_equal(y, expected_vector)
+})
 ```
 
 ## Implementation Status
@@ -731,6 +805,9 @@ pub enum Sortedness {
 - [x] `Extract_subset` optimization (`AltrepExtractSubset` trait)
 - [x] Complex number ALTREP example (`UnitCircle` - roots of unity)
 - [x] Static slice support (`&'static [T]`) for const arrays and leaked data
+- [x] Owned slice support (`Box<[T]>`) for fixed-size heap data
+- [x] Rust unit tests for ALTREP data traits
+- [x] R integration tests (testthat) for ALTREP functionality
 
 ### Not Yet Implemented
 

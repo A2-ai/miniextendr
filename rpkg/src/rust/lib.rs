@@ -548,6 +548,19 @@ impl AltIntegerData for ConstantIntData {
     fn no_na(&self) -> Option<bool> {
         Some(self.value != i32::MIN) // NA is i32::MIN
     }
+
+    fn sum(&self, _na_rm: bool) -> Option<i64> {
+        if self.value == i32::MIN {
+            // All elements are NA
+            if _na_rm {
+                Some(0) // sum of empty set after removing NAs
+            } else {
+                None // NA propagates
+            }
+        } else {
+            Some(self.value as i64 * self.len as i64)
+        }
+    }
 }
 
 // Generate low-level traits from data traits (also enables base type inference)
