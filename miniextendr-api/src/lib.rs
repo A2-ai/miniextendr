@@ -274,9 +274,6 @@ pub use from_r::{
 
 pub mod backtrace;
 
-pub mod coerce;
-pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
-
 pub mod dots;
 
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP

@@ -715,6 +715,41 @@ pub enum Sortedness {
 }
 ```
 
+## Methods Using R Defaults
+
+miniextendr has full trait infrastructure for optional ALTREP methods, but built-in types use R's defaults:
+
+| Method | Trait Support | Built-in Types | R Default Behavior |
+|--------|---------------|----------------|-------------------|
+| `Coerce` | `HAS_COERCE` + `coerce()` | Use default | Standard type conversion (e.g., int→real) |
+| `Duplicate` | `HAS_DUPLICATE` + `duplicate()` | Use default | Standard vector duplication |
+| `Set_elt` | `HAS_SET_ELT` + `set_elt()` | Use default | Standard element assignment |
+| `Serialized_state` | `AltrepSerialize` trait | Optional | Serialize as regular vector |
+
+**When to implement these in custom ALTREP:**
+
+- **Coerce**: Only if your ALTREP can produce a more efficient representation when coerced (e.g., R's compact sequences coerce int→real without expanding)
+- **Duplicate**: Only if you can duplicate more efficiently than element-by-element copy
+- **Set_elt**: Only for mutable string/list ALTREP (rare use case)
+- **Serialized_state**: When you want ALTREP to survive serialization/deserialization
+
+For most use cases, R's defaults are appropriate. The built-in implementations (`Vec<T>`, `Range<T>`, etc.) rely on defaults for these methods.
+
+### Example: Custom Coerce Implementation
+
+```rust
+impl Altrep for MyRangeClass {
+    const HAS_COERCE: bool = true;
+
+    fn coerce(x: SEXP, to_type: SEXPTYPE) -> SEXP {
+        // Return R_NilValue to use R's default coercion
+        // Or return a custom SEXP for optimized conversion
+        unsafe { R_NilValue }
+    }
+    // ... other methods
+}
+```
+
 ## Testing
 
 ### Rust Unit Tests
