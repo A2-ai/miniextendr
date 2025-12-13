@@ -24,7 +24,9 @@ pub trait IntoR {
     ///
     /// # Safety
     ///
-    /// Must be called from R's main thread. No debug assertions.
+    /// Must be called from R's main thread. In debug builds, this still
+    /// calls the checked version by default, but implementations may
+    /// skip thread assertions for performance.
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP
     where
         Self: Sized,

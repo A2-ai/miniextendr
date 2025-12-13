@@ -1,6 +1,6 @@
 //! Conversions from R SEXP to Rust types.
 //!
-//! This module provides `TryFromSexp` implementations for converting R values to Rust types:
+//! This module provides [`TryFromSexp`] implementations for converting R values to Rust types:
 //!
 //! | R Type | Rust Type | Access Method |
 //! |--------|-----------|---------------|
@@ -9,6 +9,17 @@
 //! | LGLSXP | `Rboolean`, `&[Rboolean]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
 //! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` |
+//!
+//! # Thread Safety
+//!
+//! The trait provides two methods:
+//! - [`TryFromSexp::try_from_sexp`] - checked version with debug thread assertions
+//! - [`TryFromSexp::try_from_sexp_unchecked`] - unchecked version for performance-critical paths
+//!
+//! Use `try_from_sexp_unchecked` when you're certain you're on the main thread:
+//! - Inside ALTREP callbacks
+//! - Inside `#[miniextendr(unsafe(main_thread))]` functions
+//! - Inside `extern "C-unwind"` functions called directly by R
 
 use crate::ffi::{RLogical, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
@@ -120,7 +131,9 @@ pub trait TryFromSexp: Sized {
     ///
     /// # Safety
     ///
-    /// Must be called from R's main thread. No debug assertions.
+    /// Must be called from R's main thread. In debug builds, this still
+    /// calls the checked version by default, but implementations may
+    /// skip thread assertions for performance.
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         // Default: just call the checked version
         Self::try_from_sexp(sexp)
