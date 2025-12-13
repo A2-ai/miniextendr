@@ -152,10 +152,26 @@ where
 
 /// Default stack size for R-compatible threads (8 MiB).
 ///
-/// This matches R's typical default on Unix systems (`ulimit -s`).
-/// Rust's default is only 2 MiB, which may be insufficient for deep R call stacks.
+/// R doesn't enforce a specific stack size - it uses whatever the OS provides:
+/// - **Unix**: Typically 8 MiB from `ulimit -s`
+/// - **Windows**: 64 MiB for the main thread (since R 4.2)
+///
+/// Since we disable R's stack checking via [`StackCheckGuard`], the size is about
+/// practical needs rather than R enforcement. Deep recursion in R code (especially
+/// recursive functions, `lapply` chains, or complex formulas) can use significant stack.
+///
+/// Rust's default thread stack is only 2 MiB, which may be insufficient for deep R calls.
+/// We default to 8 MiB as a reasonable balance. Increase via [`RThreadBuilder::stack_size`]
+/// if you encounter stack overflows.
 #[cfg(feature = "nonapi")]
 pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
+
+/// Stack size matching Windows R (64 MiB).
+///
+/// Use this if your code involves very deep recursion or complex R operations.
+/// Windows R uses 64 MiB for its main thread since R 4.2.
+#[cfg(all(feature = "nonapi", windows))]
+pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 /// Spawn a new thread configured for calling R APIs.
 ///
