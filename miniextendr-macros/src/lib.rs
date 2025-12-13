@@ -953,6 +953,155 @@ pub fn miniextendr(
     expanded
 }
 
+struct ExtendrModuleFunction {
+    pub _abi: Option<syn::Abi>,
+    _fn_token: syn::Token![fn],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleFunction {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let _abi = if input.peek(syn::Token![extern]) {
+            Some(input.parse()?)
+        } else {
+            None
+        };
+        Ok(Self {
+            _abi,
+            _fn_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+struct ExtendrModuleStruct {
+    _struct_token: syn::Token![struct],
+    #[allow(dead_code)]
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleStruct {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _struct_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+struct ExtendrModuleName {
+    _mod_token: syn::Token![mod],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for ExtendrModuleName {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _mod_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+struct ExtendrModuleUse {
+    _use_token: syn::Token![use],
+    pub use_name: syn::UseName,
+}
+
+impl syn::parse::Parse for ExtendrModuleUse {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::spanned::Spanned;
+        let _use_token = input.parse()?;
+        let use_name: syn::UseTree = input.parse()?;
+        // dbg!(&use_name);
+        let use_name = match use_name {
+            syn::UseTree::Name(use_name) => use_name,
+            // TODO: provide boilerplate error message here.
+            syn::UseTree::Rename(use_rename) => {
+                return Err(syn::Error::new(
+                    use_rename.span(),
+                    "it is not possible to rename wrappers in `miniextendr_module`",
+                ));
+            }
+            syn::UseTree::Path(_) | syn::UseTree::Glob(_) | syn::UseTree::Group(_) => {
+                return Err(syn::Error::new(use_name.span(), "syntax not supported"));
+            }
+        };
+        Ok(Self {
+            _use_token,
+            use_name,
+        })
+    }
+}
+
+struct ExtendrModule {
+    pub extendr_module: ExtendrModuleName,
+    pub extendr_use: Vec<ExtendrModuleUse>,
+    pub extendr_fn: Vec<ExtendrModuleFunction>,
+    pub extendr_struct: Vec<ExtendrModuleStruct>,
+    // TODO: add extendr_impl: Vec<ExtendrImpl>
+}
+
+enum ExtendrItem {
+    Module(ExtendrModuleName),
+    Use(ExtendrModuleUse),
+    Struct(ExtendrModuleStruct),
+    Func(ExtendrModuleFunction),
+}
+
+impl syn::parse::Parse for ExtendrItem {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let look_ahead = input.lookahead1();
+        if look_ahead.peek(syn::Token![mod]) {
+            Ok(Self::Module(input.parse()?))
+        } else if look_ahead.peek(syn::Token![use]) {
+            Ok(Self::Use(input.parse()?))
+        } else if look_ahead.peek(syn::Token![struct]) {
+            Ok(Self::Struct(input.parse()?))
+        } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
+            Ok(Self::Func(input.parse()?))
+        } else {
+            Err(look_ahead.error())
+        }
+    }
+}
+
+impl syn::parse::Parse for ExtendrModule {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let items: syn::punctuated::Punctuated<ExtendrItem, syn::Token![;]> =
+            syn::punctuated::Punctuated::parse_terminated_with(input, ExtendrItem::parse)?;
+
+        let mut name = None;
+        let mut uses = Vec::new();
+        let mut funs = Vec::new();
+        let mut structs = Vec::new();
+
+        for it in items {
+            match it {
+                ExtendrItem::Module(m) => {
+                    if name.is_some() {
+                        return Err(syn::Error::new(m._mod_token.span, "duplicate `mod <name>`"));
+                    }
+                    name = Some(m);
+                }
+                ExtendrItem::Use(u) => uses.push(u),
+                ExtendrItem::Struct(s) => structs.push(s),
+                ExtendrItem::Func(f) => funs.push(f),
+            }
+        }
+
+        let extendr_module =
+            name.ok_or_else(|| syn::Error::new(input.span(), "missing `mod <name>`"))?;
+
+        Ok(Self {
+            extendr_module,
+            extendr_use: uses,
+            extendr_fn: funs,
+            extendr_struct: structs,
+        })
+    }
+}
+
 /// Register functions and ALTREP types with R's dynamic symbol registration.
 ///
 /// This macro generates the `R_init_<module>_miniextendr` entrypoint that R calls
@@ -964,8 +1113,11 @@ pub fn miniextendr(
 /// miniextendr_module! {
 ///     mod mymodule;
 ///
-///     // Functions annotated with #[miniextendr]
+///     // Regular Rust functions (generates safe R wrapper)
 ///     fn my_function;
+///
+///     // Raw C ABI functions (R wrapper prefixed with `unsafe_`)
+///     extern "C-unwind" fn C_my_raw_function;
 ///
 ///     // ALTREP types (registers the class with R)
 ///     struct MyAltrepClass;
@@ -977,25 +1129,22 @@ pub fn miniextendr(
 ///
 /// # Function Registration
 ///
-/// Functions listed here must be defined with the `#[miniextendr]` attribute.
-/// The macro looks up the generated `CALL_METHOD_DEF_<name>` constant that
-/// `#[miniextendr]` creates for each function.
+/// ## Regular functions (`fn`)
 ///
-/// The distinction between Rust ABI and C ABI functions is handled by
-/// `#[miniextendr]` at the function definition site, not in this module declaration:
+/// For functions defined with `#[miniextendr]` that have a Rust signature:
+/// - C symbol: `C_<name>` (auto-generated wrapper)
+/// - R wrapper: `<name>()` (safe, with type conversion)
 ///
-/// - **Rust ABI** (`fn foo(...)`): `#[miniextendr]` generates a `C_foo` wrapper
-/// - **C ABI** (`extern "C-unwind" fn foo(...)`): `#[miniextendr]` uses the function directly
+/// ## Extern functions (`extern "C-unwind" fn`)
 ///
-/// Both are listed the same way in `miniextendr_module!`:
+/// For raw C ABI functions defined with `#[miniextendr]` and `extern "C-unwind"`:
+/// - C symbol: The function name you provided (e.g., `C_my_function`)
+/// - R wrapper: `unsafe_<name>()` (prefixed to indicate bypassed safety)
 ///
-/// ```ignore
-/// miniextendr_module! {
-///     mod mypackage;
-///     fn rust_function;    // refers to #[miniextendr] fn rust_function
-///     fn c_function;       // refers to #[miniextendr] extern "C-unwind" fn c_function
-/// }
-/// ```
+/// The `unsafe_` prefix signals to R users that these functions:
+/// 1. Run directly on R's thread (no worker thread isolation)
+/// 2. May not have proper panic handling
+/// 3. Don't perform automatic type conversion
 ///
 /// # ALTREP Registration
 ///
@@ -1009,14 +1158,17 @@ pub fn miniextendr(
 /// fn add(a: i32, b: i32) -> i32 { a + b }
 ///
 /// #[miniextendr]
-/// extern "C-unwind" fn fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
+/// #[unsafe(no_mangle)]
+/// extern "C-unwind" fn C_fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
 ///
 /// miniextendr_module! {
 ///     mod mypackage;
-///     fn add;
-///     fn fast_add;
+///     fn add;                         // R: add(a, b)
+///     extern "C-unwind" fn C_fast_add; // R: unsafe_C_fast_add()
 /// }
 /// ```
+// TODO: Currently, miniextendr_module does not distinguish between
+// `extern "C-unwind" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed_module = syn::parse_macro_input!(item as MiniextendrModule);
