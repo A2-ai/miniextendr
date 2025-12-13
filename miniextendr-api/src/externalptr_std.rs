@@ -221,3 +221,23 @@ impl<T: 'static, const N: usize> TypedExternal for [T; N] {
     const TYPE_NAME: &'static str = "Array";
     const TYPE_NAME_CSTR: &'static [u8] = b"Array\0";
 }
+
+// =============================================================================
+// Static slices
+// =============================================================================
+//
+// `&'static [T]` is Sized (it's a fat pointer: ptr + len, 2 words) and satisfies
+// 'static, so it can be stored directly in ExternalPtr.
+//
+// Use cases:
+// - Const arrays: `static DATA: [i32; 5] = [1, 2, 3, 4, 5]; altrep(&DATA)`
+// - Leaked data: `let leaked: &'static [i32] = Box::leak(vec![1, 2, 3].into_boxed_slice());`
+// - Memory-mapped files with 'static lifetime
+//
+// Note: The data must genuinely live forever. If using Box::leak, the memory
+// is never freed (intentional memory leak for the lifetime of the process).
+
+impl<T: 'static> TypedExternal for &'static [T] {
+    const TYPE_NAME: &'static str = "StaticSlice";
+    const TYPE_NAME_CSTR: &'static [u8] = b"StaticSlice\0";
+}

@@ -111,6 +111,33 @@ impl<const N: usize> AltrepBase for [String; N] {
     const BASE: RBase = RBase::String;
 }
 
+// Static slice implementations
+// `&'static [T]` is Sized (fat pointer) and satisfies 'static, so it works with ExternalPtr.
+// Use cases: const arrays, leaked data, memory-mapped files with 'static lifetime.
+impl AltrepBase for &'static [i32] {
+    const BASE: RBase = RBase::Int;
+}
+
+impl AltrepBase for &'static [f64] {
+    const BASE: RBase = RBase::Real;
+}
+
+impl AltrepBase for &'static [bool] {
+    const BASE: RBase = RBase::Logical;
+}
+
+impl AltrepBase for &'static [u8] {
+    const BASE: RBase = RBase::Raw;
+}
+
+impl AltrepBase for &'static [String] {
+    const BASE: RBase = RBase::String;
+}
+
+impl AltrepBase for &'static [&'static str] {
+    const BASE: RBase = RBase::String;
+}
+
 /// Trait implemented by ALTREP classes via `#[miniextendr]`.
 ///
 /// This trait is automatically implemented when using the proc-macro with
