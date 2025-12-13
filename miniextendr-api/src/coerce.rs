@@ -223,7 +223,11 @@ impl_widen_f64!(u32);
 impl Coerce<Rboolean> for bool {
     #[inline(always)]
     fn coerce(self) -> Rboolean {
-        if self { Rboolean::TRUE } else { Rboolean::FALSE }
+        if self {
+            Rboolean::TRUE
+        } else {
+            Rboolean::FALSE
+        }
     }
 }
 
@@ -621,20 +625,32 @@ mod tests {
     #[test]
     fn test_try_coerce() {
         assert_eq!(TryCoerce::<i32>::try_coerce(42u32), Ok(42));
-        assert_eq!(TryCoerce::<i32>::try_coerce(u32::MAX), Err(CoerceError::Overflow));
+        assert_eq!(
+            TryCoerce::<i32>::try_coerce(u32::MAX),
+            Err(CoerceError::Overflow)
+        );
     }
 
     #[test]
     fn test_f64_to_i32() {
         assert_eq!(TryCoerce::<i32>::try_coerce(42.0f64), Ok(42));
-        assert_eq!(TryCoerce::<i32>::try_coerce(42.5f64), Err(CoerceError::PrecisionLoss));
-        assert_eq!(TryCoerce::<i32>::try_coerce(f64::NAN), Err(CoerceError::NaN));
+        assert_eq!(
+            TryCoerce::<i32>::try_coerce(42.5f64),
+            Err(CoerceError::PrecisionLoss)
+        );
+        assert_eq!(
+            TryCoerce::<i32>::try_coerce(f64::NAN),
+            Err(CoerceError::NaN)
+        );
     }
 
     #[test]
     fn test_i64_to_f64() {
         assert_eq!(TryCoerce::<f64>::try_coerce(1000i64), Ok(1000.0));
-        assert_eq!(TryCoerce::<f64>::try_coerce(i64::MAX), Err(CoerceError::PrecisionLoss));
+        assert_eq!(
+            TryCoerce::<f64>::try_coerce(i64::MAX),
+            Err(CoerceError::PrecisionLoss)
+        );
     }
 
     #[test]
@@ -663,11 +679,8 @@ mod tests {
     fn test_fallible_slice_coerce_manual() {
         // For types with only TryCoerce (not Coerce), use manual iteration
         let slice: &[u32] = &[1, u32::MAX, 3];
-        let result: Result<Vec<i32>, _> = slice
-            .iter()
-            .copied()
-            .map(TryCoerce::try_coerce)
-            .collect();
+        let result: Result<Vec<i32>, _> =
+            slice.iter().copied().map(TryCoerce::try_coerce).collect();
         assert_eq!(result, Err(CoerceError::Overflow));
     }
 
@@ -676,29 +689,29 @@ mod tests {
         // Success case
         assert_eq!(TryCoerce::<u16>::try_coerce(1000i32), Ok(1000u16));
         // Overflow - negative
-        assert_eq!(TryCoerce::<u16>::try_coerce(-1i32), Err(CoerceError::Overflow));
+        assert_eq!(
+            TryCoerce::<u16>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
         // Overflow - too large
-        assert_eq!(TryCoerce::<u16>::try_coerce(70000i32), Err(CoerceError::Overflow));
+        assert_eq!(
+            TryCoerce::<u16>::try_coerce(70000i32),
+            Err(CoerceError::Overflow)
+        );
     }
 
     #[test]
     fn test_i32_slice_to_u16_vec() {
         // Using manual iteration for fallible element-wise coercion
         let slice: &[i32] = &[1, 100, 1000];
-        let result: Result<Vec<u16>, _> = slice
-            .iter()
-            .copied()
-            .map(TryCoerce::try_coerce)
-            .collect();
+        let result: Result<Vec<u16>, _> =
+            slice.iter().copied().map(TryCoerce::try_coerce).collect();
         assert_eq!(result, Ok(vec![1u16, 100, 1000]));
 
         // Failure case
         let slice2: &[i32] = &[1, -5, 1000];
-        let result2: Result<Vec<u16>, _> = slice2
-            .iter()
-            .copied()
-            .map(TryCoerce::try_coerce)
-            .collect();
+        let result2: Result<Vec<u16>, _> =
+            slice2.iter().copied().map(TryCoerce::try_coerce).collect();
         assert_eq!(result2, Err(CoerceError::Overflow));
     }
 

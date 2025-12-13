@@ -95,8 +95,8 @@ pub trait AltStringRegistrar:
     crate::altrep_traits::AltStringOpt + crate::altrep_traits::AltStringCore
 {
 }
-impl<T: crate::altrep_traits::AltStringOpt + crate::altrep_traits::AltStringCore>
-    AltStringRegistrar for T
+impl<T: crate::altrep_traits::AltStringOpt + crate::altrep_traits::AltStringCore> AltStringRegistrar
+    for T
 {
 }
 
@@ -140,4 +140,3 @@ pub unsafe fn make_class_by_base(
         }
     }
 }
-

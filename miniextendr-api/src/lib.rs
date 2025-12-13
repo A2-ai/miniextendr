@@ -278,10 +278,16 @@ pub mod backtrace;
 
 pub mod coerce;
 pub use coerce::{
-    // Traits
-    Coerce, CoerceError, RNative, TryCoerce,
     // Trait bounds (for where clauses)
-    CanCoerceToInteger, CanCoerceToLogical, CanCoerceToRaw, CanCoerceToReal,
+    CanCoerceToInteger,
+    CanCoerceToLogical,
+    CanCoerceToRaw,
+    CanCoerceToReal,
+    // Traits
+    Coerce,
+    CoerceError,
+    RNative,
+    TryCoerce,
 };
 
 pub mod dots;
