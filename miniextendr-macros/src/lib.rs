@@ -68,23 +68,6 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
-/// Check if a type is `ExternalPtr<...>` which contains SEXP and is !Send.
-/// This is used to automatically force main_thread for functions returning ExternalPtr.
-fn is_external_ptr_type(ty: &syn::Type) -> bool {
-    matches!(ty, syn::Type::Path(p) if p
-        .path
-        .segments
-        .last()
-        .map(|s| s.ident == "ExternalPtr")
-        .unwrap_or(false))
-}
-
-/// Check if visibility is exactly `pub` (not `pub(crate)`, `pub(super)`, or `pub(in path)`).
-/// Used to determine whether to add `#' @export` to R wrappers.
-fn is_pub_visibility(vis: &syn::Visibility) -> bool {
-    matches!(vis, syn::Visibility::Public(_))
-}
-
 /// Result of coercion analysis for a type.
 /// Contains the R native type to extract from SEXP and the target type to coerce to.
 enum CoercionMapping {
@@ -583,8 +566,7 @@ pub fn miniextendr(
             {
                 let seg = p.path.segments.last().unwrap();
                 let inner_ty = first_type_argument(seg);
-                let is_unit_inner = inner_ty
-                    .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                let is_unit_inner = inner_ty.is_some_and(|ty|matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
                 let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
                 if is_unit_inner {
@@ -621,8 +603,7 @@ pub fn miniextendr(
             {
                 let seg = p.path.segments.last().unwrap();
                 let ok_ty = first_type_argument(seg);
-                let ok_is_unit =
-                    ok_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                let ok_is_unit = ok_ty.is_some_and(|ty|matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
                 let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
 
                 if ok_is_unit {
@@ -663,25 +644,14 @@ pub fn miniextendr(
     // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
     let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
 
-    // Check if any input parameter is SEXP (not Send, must stay on main thread)
-    let has_sexp_inputs = inputs.iter().any(|arg| {
-        if let syn::FnArg::Typed(pat_type) = arg {
-            is_sexp_type(pat_type.ty.as_ref())
-        } else {
-            false
-        }
-    });
-
     // Use worker strategy by default for functions that don't return raw SEXP.
     // Worker thread provides proper panic catching with destructor cleanup.
-    // Functions returning raw SEXP, taking SEXP inputs, or taking Dots must stay on main thread
-    // (SEXP/Dots aren't Send).
+    // Functions returning raw SEXP or taking Dots must stay on main thread (SEXP/Dots aren't Send).
     // Use #[miniextendr(unsafe(main_thread))] to force main thread for functions that call R APIs internally.
     // check_interrupt also requires main thread since R_CheckUserInterrupt must be called there.
     // Note: ExternalPtr<T> returning functions use worker thread - if they call R APIs internally,
     // the FFI wrapper's debug check will catch it and users should add #[miniextendr(unsafe(main_thread))].
-    let use_main_thread =
-        returns_sexp || has_sexp_inputs || has_dots || force_main_thread || check_interrupt;
+    let use_main_thread = returns_sexp || has_dots || force_main_thread || check_interrupt;
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else if use_main_thread {
@@ -894,7 +864,10 @@ pub fn miniextendr(
         .collect::<Vec<_>>()
         .join(", ");
     // Add #' @export roxygen comment if function is `pub` (not pub(crate), pub(super), etc.)
-    let export_comment = if is_pub_visibility(&vis) {
+    let export_comment = if {
+        let vis: &syn::Visibility = &vis;
+        matches!(vis, syn::Visibility::Public(_))
+    } {
         "#' @export\n"
     } else {
         ""
