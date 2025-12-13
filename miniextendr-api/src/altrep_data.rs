@@ -548,6 +548,384 @@ pub trait AltrepExtractSubset {
 }
 
 // =============================================================================
+// InferBase trait - automatic base type inference from data traits
+// =============================================================================
+
+/// Trait for inferring the R base type from a data type's implemented traits.
+///
+/// This is automatically implemented via blanket impls for types that implement
+/// one of the `Alt*Data` traits. It allows the `#[miniextendr]` macro to infer
+/// the base type without requiring `base = "..."` or manual `AltrepBase` impl.
+///
+/// # Example
+///
+/// ```ignore
+/// // ConstantIntData implements AltIntegerData, so InferBase is auto-implemented
+/// impl AltIntegerData for ConstantIntData { ... }
+///
+/// // Now the macro can infer the base type:
+/// #[miniextendr(class = "ConstantInt", pkg = "rpkg")]  // No base needed!
+/// pub struct ConstantIntClass(ConstantIntData);
+/// ```
+pub trait InferBase {
+    /// The inferred R base type.
+    const BASE: crate::altrep::RBase;
+
+    /// Create the ALTREP class handle.
+    ///
+    /// # Safety
+    /// Must be called during R initialization.
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t;
+
+    /// Install ALTREP methods on the class.
+    ///
+    /// # Safety
+    /// Must be called during R initialization with a valid class handle.
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t);
+}
+
+/// Implement `InferBase` for an integer ALTREP data type.
+///
+/// This macro should be called after `impl_altinteger_from_data!` to enable
+/// automatic base type inference in the `#[miniextendr]` macro.
+#[macro_export]
+macro_rules! impl_inferbase_integer {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::Int;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altinteger_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                // ALTREP base methods
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+
+                if <$ty as Altrep>::HAS_SERIALIZED_STATE {
+                    unsafe { R_set_altrep_Serialized_state_method(cls, Some(bridge::t_serialized_state::<$ty>)) };
+                }
+
+                // AltVec methods
+                if <$ty as AltVec>::HAS_DATAPTR {
+                    unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<$ty>)) };
+                }
+                if <$ty as AltVec>::HAS_DATAPTR_OR_NULL {
+                    unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<$ty>)) };
+                }
+                if <$ty as AltVec>::HAS_EXTRACT_SUBSET {
+                    unsafe { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<$ty>)) };
+                }
+
+                // AltInteger methods
+                if <$ty as AltInteger>::HAS_ELT {
+                    unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<$ty>)) };
+                }
+                if <$ty as AltInteger>::HAS_GET_REGION {
+                    unsafe { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<$ty>)) };
+                }
+                if <$ty as AltInteger>::HAS_IS_SORTED {
+                    unsafe { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<$ty>)) };
+                }
+                if <$ty as AltInteger>::HAS_NO_NA {
+                    unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<$ty>)) };
+                }
+                if <$ty as AltInteger>::HAS_SUM {
+                    unsafe { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<$ty>)) };
+                }
+                if <$ty as AltInteger>::HAS_MIN {
+                    unsafe { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<$ty>)) };
+                }
+                if <$ty as AltInteger>::HAS_MAX {
+                    unsafe { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+/// Implement `InferBase` for a real ALTREP data type.
+#[macro_export]
+macro_rules! impl_inferbase_real {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::Real;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altreal_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+
+                if <$ty as Altrep>::HAS_SERIALIZED_STATE {
+                    unsafe { R_set_altrep_Serialized_state_method(cls, Some(bridge::t_serialized_state::<$ty>)) };
+                }
+
+                if <$ty as AltVec>::HAS_DATAPTR {
+                    unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<$ty>)) };
+                }
+                if <$ty as AltVec>::HAS_DATAPTR_OR_NULL {
+                    unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<$ty>)) };
+                }
+                if <$ty as AltVec>::HAS_EXTRACT_SUBSET {
+                    unsafe { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<$ty>)) };
+                }
+
+                if <$ty as AltReal>::HAS_ELT {
+                    unsafe { R_set_altreal_Elt_method(cls, Some(bridge::t_real_elt::<$ty>)) };
+                }
+                if <$ty as AltReal>::HAS_GET_REGION {
+                    unsafe { R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<$ty>)) };
+                }
+                if <$ty as AltReal>::HAS_IS_SORTED {
+                    unsafe { R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<$ty>)) };
+                }
+                if <$ty as AltReal>::HAS_NO_NA {
+                    unsafe { R_set_altreal_No_NA_method(cls, Some(bridge::t_real_no_na::<$ty>)) };
+                }
+                if <$ty as AltReal>::HAS_SUM {
+                    unsafe { R_set_altreal_Sum_method(cls, Some(bridge::t_real_sum::<$ty>)) };
+                }
+                if <$ty as AltReal>::HAS_MIN {
+                    unsafe { R_set_altreal_Min_method(cls, Some(bridge::t_real_min::<$ty>)) };
+                }
+                if <$ty as AltReal>::HAS_MAX {
+                    unsafe { R_set_altreal_Max_method(cls, Some(bridge::t_real_max::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+/// Implement `InferBase` for a logical ALTREP data type.
+#[macro_export]
+macro_rules! impl_inferbase_logical {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::Logical;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altlogical_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+
+                if <$ty as AltLogical>::HAS_ELT {
+                    unsafe { R_set_altlogical_Elt_method(cls, Some(bridge::t_lgl_elt::<$ty>)) };
+                }
+                if <$ty as AltLogical>::HAS_GET_REGION {
+                    unsafe { R_set_altlogical_Get_region_method(cls, Some(bridge::t_lgl_get_region::<$ty>)) };
+                }
+                if <$ty as AltLogical>::HAS_IS_SORTED {
+                    unsafe { R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<$ty>)) };
+                }
+                if <$ty as AltLogical>::HAS_NO_NA {
+                    unsafe { R_set_altlogical_No_NA_method(cls, Some(bridge::t_lgl_no_na::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+/// Implement `InferBase` for a raw ALTREP data type.
+#[macro_export]
+macro_rules! impl_inferbase_raw {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::Raw;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altraw_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+
+                if <$ty as AltRaw>::HAS_ELT {
+                    unsafe { R_set_altraw_Elt_method(cls, Some(bridge::t_raw_elt::<$ty>)) };
+                }
+                if <$ty as AltRaw>::HAS_GET_REGION {
+                    unsafe { R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+/// Implement `InferBase` for a string ALTREP data type.
+#[macro_export]
+macro_rules! impl_inferbase_string {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::String;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altstring_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+                unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<$ty>)) };
+
+                if <$ty as AltString>::HAS_IS_SORTED {
+                    unsafe { R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<$ty>)) };
+                }
+                if <$ty as AltString>::HAS_NO_NA {
+                    unsafe { R_set_altstring_No_NA_method(cls, Some(bridge::t_str_no_na::<$ty>)) };
+                }
+                if <$ty as AltString>::HAS_SET_ELT {
+                    unsafe { R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+/// Implement `InferBase` for a complex ALTREP data type.
+#[macro_export]
+macro_rules! impl_inferbase_complex {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::Complex;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altcomplex_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+
+                if <$ty as AltComplex>::HAS_ELT {
+                    unsafe { R_set_altcomplex_Elt_method(cls, Some(bridge::t_cplx_elt::<$ty>)) };
+                }
+                if <$ty as AltComplex>::HAS_GET_REGION {
+                    unsafe { R_set_altcomplex_Get_region_method(cls, Some(bridge::t_cplx_get_region::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+/// Implement `InferBase` for a list ALTREP data type.
+#[macro_export]
+macro_rules! impl_inferbase_list {
+    ($ty:ty) => {
+        impl $crate::altrep_data::InferBase for $ty {
+            const BASE: $crate::altrep::RBase = $crate::altrep::RBase::List;
+
+            unsafe fn make_class(
+                class_name: *const i8,
+                pkg_name: *const i8,
+            ) -> $crate::ffi::altrep::R_altrep_class_t {
+                unsafe {
+                    $crate::ffi::altrep::R_make_altlist_class(
+                        class_name,
+                        pkg_name,
+                        core::ptr::null_mut(),
+                    )
+                }
+            }
+
+            unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_traits::*;
+                use $crate::ffi::altrep::*;
+                use $crate::altrep_bridge as bridge;
+
+                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
+                unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<$ty>)) };
+
+                if <$ty as AltList>::HAS_SET_ELT {
+                    unsafe { R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<$ty>)) };
+                }
+            }
+        }
+    };
+}
+
+// =============================================================================
 // Built-in implementations for Vec<T>
 // =============================================================================
 

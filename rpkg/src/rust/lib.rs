@@ -552,9 +552,10 @@ impl AltIntegerData for ConstantIntData {
 
 // Generate low-level traits from data traits
 miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
+miniextendr_api::impl_inferbase_integer!(ConstantIntData);
 
 /// ALTREP wrapper for ConstantIntData
-#[miniextendr(class = "ConstantInt", pkg = "rpkg", base = "Int")]
+#[miniextendr(class = "ConstantInt", pkg = "rpkg")]
 pub struct ConstantIntClass(ConstantIntData);
 
 /// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
@@ -796,8 +797,9 @@ impl AltRealData for ConstantRealData {
 }
 
 miniextendr_api::impl_altreal_from_data!(ConstantRealData);
+miniextendr_api::impl_inferbase_real!(ConstantRealData);
 
-#[miniextendr(class = "ConstantReal", pkg = "rpkg", base = "Real")]
+#[miniextendr(class = "ConstantReal", pkg = "rpkg")]
 pub struct ConstantRealClass(ConstantRealData);
 
 #[miniextendr]
@@ -831,8 +833,9 @@ impl AltRealData for ArithSeqData {
 }
 
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
+miniextendr_api::impl_inferbase_real!(ArithSeqData);
 
-#[miniextendr(class = "ArithSeq", pkg = "rpkg", base = "Real")]
+#[miniextendr(class = "ArithSeq", pkg = "rpkg")]
 pub struct ArithSeqClass(ArithSeqData);
 
 #[miniextendr]
@@ -974,70 +977,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
 
 // Use the dataptr + serialize variant to enable both Dataptr and serialization methods
 miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
-
-// Implement AltrepBase and AltrepInstaller to enable auto-inference of base type
-impl miniextendr_api::altrep::AltrepBase for LazyIntSeqData {
-    const BASE: miniextendr_api::altrep::RBase = miniextendr_api::altrep::RBase::Int;
-}
-
-impl miniextendr_api::altrep_registration::AltrepInstaller for LazyIntSeqData {
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> miniextendr_api::ffi::altrep::R_altrep_class_t {
-        unsafe {
-            miniextendr_api::ffi::altrep::R_make_altinteger_class(
-                class_name,
-                pkg_name,
-                core::ptr::null_mut(),
-            )
-        }
-    }
-
-    unsafe fn install_methods(cls: miniextendr_api::ffi::altrep::R_altrep_class_t) {
-        use miniextendr_api::altrep_traits::*;
-        use miniextendr_api::ffi::altrep::*;
-        use miniextendr_api::altrep_bridge as bridge;
-
-        // Install integer methods
-        if <Self as AltInteger>::HAS_ELT {
-            unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<Self>)) };
-        }
-        if <Self as AltInteger>::HAS_GET_REGION {
-            unsafe { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<Self>)) };
-        }
-        if <Self as AltInteger>::HAS_IS_SORTED {
-            unsafe { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<Self>)) };
-        }
-        if <Self as AltInteger>::HAS_NO_NA {
-            unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<Self>)) };
-        }
-        if <Self as AltInteger>::HAS_SUM {
-            unsafe { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<Self>)) };
-        }
-        if <Self as AltInteger>::HAS_MIN {
-            unsafe { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<Self>)) };
-        }
-        if <Self as AltInteger>::HAS_MAX {
-            unsafe { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<Self>)) };
-        }
-
-        // Install ALTVEC methods (dataptr)
-        if <Self as AltVec>::HAS_DATAPTR {
-            unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<Self>)) };
-        }
-        if <Self as AltVec>::HAS_DATAPTR_OR_NULL {
-            unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<Self>)) };
-        }
-
-        // Install serialization methods
-        if <Self as Altrep>::HAS_SERIALIZED_STATE {
-            unsafe { R_set_altrep_Serialized_state_method(cls, Some(bridge::t_serialized_state::<Self>)) };
-        }
-        // Note: Unserialize is handled by the wrapper class (LazyIntSeqClass) since
-        // it needs to call LazyIntSeqClass::into_altrep() which we can't do from here.
-    }
-}
+miniextendr_api::impl_inferbase_integer!(LazyIntSeqData);
 
 /// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
 #[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
@@ -1106,8 +1046,9 @@ impl AltLogicalData for ConstantLogicalData {
 }
 
 miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
+miniextendr_api::impl_inferbase_logical!(ConstantLogicalData);
 
-#[miniextendr(class = "ConstantLogical", pkg = "rpkg", base = "Logical")]
+#[miniextendr(class = "ConstantLogical", pkg = "rpkg")]
 pub struct ConstantLogicalClass(ConstantLogicalData);
 
 #[miniextendr]
@@ -1146,8 +1087,9 @@ impl AltStringData for LazyStringData {
 }
 
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
+miniextendr_api::impl_inferbase_string!(LazyStringData);
 
-#[miniextendr(class = "LazyString", pkg = "rpkg", base = "String")]
+#[miniextendr(class = "LazyString", pkg = "rpkg")]
 pub struct LazyStringClass(LazyStringData);
 
 #[miniextendr]
@@ -1178,8 +1120,9 @@ impl AltRawData for RepeatingRawData {
 }
 
 miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
+miniextendr_api::impl_inferbase_raw!(RepeatingRawData);
 
-#[miniextendr(class = "RepeatingRaw", pkg = "rpkg", base = "Raw")]
+#[miniextendr(class = "RepeatingRaw", pkg = "rpkg")]
 pub struct RepeatingRawClass(RepeatingRawData);
 
 #[miniextendr]
@@ -1228,39 +1171,7 @@ impl AltComplexData for UnitCircleData {
 }
 
 miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
-
-// Implement AltrepBase for auto-inference
-impl miniextendr_api::altrep::AltrepBase for UnitCircleData {
-    const BASE: miniextendr_api::altrep::RBase = miniextendr_api::altrep::RBase::Complex;
-}
-
-impl miniextendr_api::altrep_registration::AltrepInstaller for UnitCircleData {
-    unsafe fn make_class(
-        class_name: *const i8,
-        pkg_name: *const i8,
-    ) -> miniextendr_api::ffi::altrep::R_altrep_class_t {
-        unsafe {
-            miniextendr_api::ffi::altrep::R_make_altcomplex_class(
-                class_name,
-                pkg_name,
-                core::ptr::null_mut(),
-            )
-        }
-    }
-
-    unsafe fn install_methods(cls: miniextendr_api::ffi::altrep::R_altrep_class_t) {
-        use miniextendr_api::altrep_traits::AltComplex;
-        use miniextendr_api::ffi::altrep::*;
-        use miniextendr_api::altrep_bridge as bridge;
-
-        if <Self as AltComplex>::HAS_ELT {
-            unsafe { R_set_altcomplex_Elt_method(cls, Some(bridge::t_cplx_elt::<Self>)) };
-        }
-        if <Self as AltComplex>::HAS_GET_REGION {
-            unsafe { R_set_altcomplex_Get_region_method(cls, Some(bridge::t_cplx_get_region::<Self>)) };
-        }
-    }
-}
+miniextendr_api::impl_inferbase_complex!(UnitCircleData);
 
 /// ALTREP wrapper for UnitCircleData - generates complex numbers on unit circle
 #[miniextendr(class = "UnitCircle", pkg = "rpkg")]
@@ -1278,7 +1189,7 @@ pub fn unit_circle(n: i32) -> SEXP {
 // SimpleVecInt: Vec<i32> wrapper (simplest example)
 // -----------------------------------------------------------------------------
 
-#[miniextendr(class = "SimpleVecInt", pkg = "rpkg", base = "Int")]
+#[miniextendr(class = "SimpleVecInt", pkg = "rpkg")]
 pub struct SimpleVecIntClass(Vec<i32>);
 
 #[miniextendr]

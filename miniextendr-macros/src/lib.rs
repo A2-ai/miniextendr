@@ -1170,8 +1170,8 @@ fn expand_altrep_struct(
             }
         }
     } else {
-        // Infer from AltrepBase trait
-        syn::parse_quote!(<#data_ty as ::miniextendr_api::altrep::AltrepBase>::BASE)
+        // Infer from InferBase trait (auto-implemented via impl_inferbase_* macros)
+        syn::parse_quote!(<#data_ty as ::miniextendr_api::altrep_data::InferBase>::BASE)
     };
 
     // The trampoline type is always the inner data type
@@ -1268,13 +1268,13 @@ fn expand_altrep_struct(
             };
             (setters, make)
         } else {
-            // No explicit base: use AltrepInstaller trait for compile-time dispatch
-            // This requires the data type to implement AltrepInstaller
+            // No explicit base: use InferBase trait for compile-time dispatch
+            // This is auto-implemented via impl_inferbase_* macros alongside impl_alt*_from_data!
             let setters = quote::quote! {
-                <#tramp_ty as ::miniextendr_api::altrep_registration::AltrepInstaller>::install_methods(cls);
+                <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::install_methods(cls);
             };
             let make = quote::quote! {
-                <#tramp_ty as ::miniextendr_api::altrep_registration::AltrepInstaller>::make_class(
+                <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::make_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
                 )
