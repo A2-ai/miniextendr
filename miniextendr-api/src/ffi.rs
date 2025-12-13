@@ -225,9 +225,6 @@ impl From<Rboolean> for bool {
 #[allow(non_camel_case_types)]
 pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
 
-#[allow(non_camel_case_types)]
-pub type R_CFinalizer_t_C_unwind = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
-
 #[repr(C)]
 #[derive(Copy, Clone)]
 #[allow(non_camel_case_types)]
@@ -382,11 +379,7 @@ unsafe extern "C-unwind" {
     pub fn R_SetExternalPtrProtected(s: SEXP, p: SEXP);
     #[doc = " Added in R 3.4.0"]
     pub fn R_MakeExternalPtrFn(p: DL_FUNC, tag: SEXP, prot: SEXP) -> SEXP;
-    #[link_name = "R_MakeExternalPtrFn"]
-    pub fn R_MakeExternalPtrFn_C_unwind(p: DL_FUNC_C_unwind, tag: SEXP, prot: SEXP) -> SEXP;
     pub fn R_ExternalPtrAddrFn(s: SEXP) -> DL_FUNC;
-    #[link_name = "R_ExternalPtrAddrFn"]
-    pub fn R_ExternalPtrAddrFn_C_unwind(s: SEXP) -> DL_FUNC_C_unwind;
     pub fn R_RegisterFinalizer(s: SEXP, fun: SEXP);
     pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
     pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
@@ -494,9 +487,6 @@ pub struct DllInfo(::std::os::raw::c_void);
 #[allow(non_camel_case_types)]
 pub type DL_FUNC = ::std::option::Option<unsafe extern "C-unwind" fn(...) -> SEXP>;
 
-#[allow(non_camel_case_types)]
-pub type DL_FUNC_C_unwind = ::std::option::Option<unsafe extern "C-unwind" fn(...) -> SEXP>;
-
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 #[allow(non_camel_case_types)]
@@ -504,16 +494,6 @@ pub type DL_FUNC_C_unwind = ::std::option::Option<unsafe extern "C-unwind" fn(..
 pub struct R_CallMethodDef {
     pub name: *const ::std::os::raw::c_char,
     pub fun: DL_FUNC,
-    pub numArgs: ::std::os::raw::c_int,
-}
-
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
-pub struct R_CallMethodDef_C_unwind {
-    pub name: *const ::std::os::raw::c_char,
-    pub fun: DL_FUNC_C_unwind,
     pub numArgs: ::std::os::raw::c_int,
 }
 
@@ -537,17 +517,63 @@ unsafe extern "C-unwind" {
         externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
-    #[link_name = "R_registerRoutines"]
-    pub fn R_registerRoutines_C_unwind(
-        info: *mut DllInfo,
-        croutines: *const ::std::os::raw::c_void,
-        callRoutines: *const R_CallMethodDef_C_unwind,
-        fortranRoutines: *const ::std::os::raw::c_void,
-        externalRoutines: *const ::std::os::raw::c_void,
-    ) -> ::std::os::raw::c_int;
-
     pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
     pub fn R_forceSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
 }
 
 // endregion
+
+// =============================================================================
+// Legacy `extern "C"` types (kept for compatibility testing)
+// =============================================================================
+
+/// Legacy types using `extern "C"` ABI instead of `extern "C-unwind"`.
+///
+/// These are kept for compatibility testing. The main codebase uses
+/// `extern "C-unwind"` everywhere to properly propagate Rust panics.
+#[allow(clashing_extern_declarations)]
+pub mod legacy_c {
+    use super::{Rboolean, SEXP};
+
+    #[allow(non_camel_case_types)]
+    pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
+
+    #[allow(non_camel_case_types)]
+    pub type DL_FUNC_C = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
+
+    #[repr(C)]
+    #[derive(Debug, Copy, Clone)]
+    #[allow(non_camel_case_types)]
+    #[allow(non_snake_case)]
+    pub struct R_CallMethodDef_C {
+        pub name: *const ::std::os::raw::c_char,
+        pub fun: DL_FUNC_C,
+        pub numArgs: ::std::os::raw::c_int,
+    }
+
+    // SAFETY: Same as R_CallMethodDef - contains only static pointers
+    unsafe impl Sync for R_CallMethodDef_C {}
+
+    unsafe extern "C" {
+        #[link_name = "R_RegisterCFinalizer"]
+        pub fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
+
+        #[link_name = "R_RegisterCFinalizerEx"]
+        pub fn R_RegisterCFinalizerEx_C(s: SEXP, fun: R_CFinalizer_t_C, onexit: Rboolean);
+
+        #[link_name = "R_MakeExternalPtrFn"]
+        pub fn R_MakeExternalPtrFn_C(p: DL_FUNC_C, tag: SEXP, prot: SEXP) -> SEXP;
+
+        #[link_name = "R_ExternalPtrAddrFn"]
+        pub fn R_ExternalPtrAddrFn_C(s: SEXP) -> DL_FUNC_C;
+
+        #[link_name = "R_registerRoutines"]
+        pub fn R_registerRoutines_C(
+            info: *mut super::DllInfo,
+            croutines: *const ::std::os::raw::c_void,
+            callRoutines: *const R_CallMethodDef_C,
+            fortranRoutines: *const ::std::os::raw::c_void,
+            externalRoutines: *const ::std::os::raw::c_void,
+        ) -> ::std::os::raw::c_int;
+    }
+}
