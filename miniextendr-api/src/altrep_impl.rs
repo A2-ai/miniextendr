@@ -42,26 +42,31 @@ macro_rules! impl_altinteger_from_data {
         $crate::__impl_altrep_base!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
         $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
     };
     ($ty:ty, dataptr) => {
         $crate::__impl_altrep_base!($ty);
         $crate::__impl_altvec_dataptr!($ty, i32);
         $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
     };
     ($ty:ty, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
         $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
     };
     ($ty:ty, subset) => {
         $crate::__impl_altrep_base!($ty);
         $crate::__impl_altvec_extract_subset!($ty);
         $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
     };
     ($ty:ty, dataptr, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
         $crate::__impl_altvec_dataptr!($ty, i32);
         $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altinteger_from_data!($ty, dataptr, serialize);
@@ -70,6 +75,7 @@ macro_rules! impl_altinteger_from_data {
         $crate::__impl_altrep_base_with_serialize!($ty);
         $crate::__impl_altvec_extract_subset!($ty);
         $crate::__impl_altinteger_methods!($ty);
+        $crate::impl_inferbase_integer!($ty);
     };
     ($ty:ty, serialize, subset) => {
         $crate::impl_altinteger_from_data!($ty, subset, serialize);
@@ -294,21 +300,25 @@ macro_rules! impl_altreal_from_data {
         $crate::__impl_altrep_base!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
         $crate::__impl_altreal_methods!($ty);
+        $crate::impl_inferbase_real!($ty);
     };
     ($ty:ty, dataptr) => {
         $crate::__impl_altrep_base!($ty);
         $crate::__impl_altvec_dataptr!($ty, f64);
         $crate::__impl_altreal_methods!($ty);
+        $crate::impl_inferbase_real!($ty);
     };
     ($ty:ty, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
         $crate::__impl_altreal_methods!($ty);
+        $crate::impl_inferbase_real!($ty);
     };
     ($ty:ty, dataptr, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
         $crate::__impl_altvec_dataptr!($ty, f64);
         $crate::__impl_altreal_methods!($ty);
+        $crate::impl_inferbase_real!($ty);
     };
     ($ty:ty, serialize, dataptr) => {
         $crate::impl_altreal_from_data!($ty, dataptr, serialize);
@@ -478,6 +488,8 @@ macro_rules! impl_altlogical_from_data {
                     .unwrap_or(unsafe { $crate::ffi::R_NilValue })
             }
         }
+
+        $crate::impl_inferbase_logical!($ty);
     };
 }
 
@@ -527,6 +539,8 @@ macro_rules! impl_altraw_from_data {
                     .unwrap_or(0)
             }
         }
+
+        $crate::impl_inferbase_raw!($ty);
     };
 }
 
@@ -584,6 +598,8 @@ macro_rules! impl_altstring_from_data {
                     .unwrap_or(0)
             }
         }
+
+        $crate::impl_inferbase_string!($ty);
     };
 }
 
@@ -610,6 +626,8 @@ macro_rules! impl_altlist_from_data {
                     .unwrap_or(unsafe { $crate::ffi::R_NilValue })
             }
         }
+
+        $crate::impl_inferbase_list!($ty);
     };
 }
 
@@ -659,6 +677,8 @@ macro_rules! impl_altcomplex_from_data {
                     .unwrap_or(0)
             }
         }
+
+        $crate::impl_inferbase_complex!($ty);
     };
 }
 
@@ -672,27 +692,19 @@ macro_rules! impl_altcomplex_from_data {
 impl_altinteger_from_data!(Vec<i32>, dataptr);
 impl_altinteger_from_data!(std::ops::Range<i32>);
 impl_altinteger_from_data!(std::ops::Range<i64>);
-crate::impl_inferbase_integer!(Vec<i32>);
-crate::impl_inferbase_integer!(std::ops::Range<i32>);
-crate::impl_inferbase_integer!(std::ops::Range<i64>);
 
 // Real types - Vec<f64> supports dataptr, ranges don't
 impl_altreal_from_data!(Vec<f64>, dataptr);
 impl_altreal_from_data!(std::ops::Range<f64>);
-crate::impl_inferbase_real!(Vec<f64>);
-crate::impl_inferbase_real!(std::ops::Range<f64>);
 
 // Logical types
 impl_altlogical_from_data!(Vec<bool>);
-crate::impl_inferbase_logical!(Vec<bool>);
 
 // Raw types
 impl_altraw_from_data!(Vec<u8>);
-crate::impl_inferbase_raw!(Vec<u8>);
 
 // String types
 impl_altstring_from_data!(Vec<String>);
-crate::impl_inferbase_string!(Vec<String>);
 
 // =============================================================================
 // Array implementations (const generics - can't use macros)

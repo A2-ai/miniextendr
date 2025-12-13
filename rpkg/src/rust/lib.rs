@@ -78,9 +78,8 @@ impl AltIntegerData for ConstantIntData {
     }
 }
 
-// Generate low-level traits from data traits
+// Generate low-level traits from data traits (also enables base type inference)
 miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
-miniextendr_api::impl_inferbase_integer!(ConstantIntData);
 
 /// ALTREP wrapper for ConstantIntData
 #[miniextendr(class = "ConstantInt", pkg = "rpkg")]
@@ -333,7 +332,6 @@ impl AltRealData for ConstantRealData {
 }
 
 miniextendr_api::impl_altreal_from_data!(ConstantRealData);
-miniextendr_api::impl_inferbase_real!(ConstantRealData);
 
 #[miniextendr(class = "ConstantReal", pkg = "rpkg")]
 pub struct ConstantRealClass(ConstantRealData);
@@ -369,7 +367,6 @@ impl AltRealData for ArithSeqData {
 }
 
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
-miniextendr_api::impl_inferbase_real!(ArithSeqData);
 
 #[miniextendr(class = "ArithSeq", pkg = "rpkg")]
 pub struct ArithSeqClass(ArithSeqData);
@@ -513,7 +510,6 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
 
 // Use the dataptr + serialize variant to enable both Dataptr and serialization methods
 miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
-miniextendr_api::impl_inferbase_integer!(LazyIntSeqData);
 
 /// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
 #[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
@@ -582,7 +578,6 @@ impl AltLogicalData for ConstantLogicalData {
 }
 
 miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
-miniextendr_api::impl_inferbase_logical!(ConstantLogicalData);
 
 #[miniextendr(class = "ConstantLogical", pkg = "rpkg")]
 pub struct ConstantLogicalClass(ConstantLogicalData);
@@ -623,7 +618,6 @@ impl AltStringData for LazyStringData {
 }
 
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
-miniextendr_api::impl_inferbase_string!(LazyStringData);
 
 #[miniextendr(class = "LazyString", pkg = "rpkg")]
 pub struct LazyStringClass(LazyStringData);
@@ -656,7 +650,6 @@ impl AltRawData for RepeatingRawData {
 }
 
 miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
-miniextendr_api::impl_inferbase_raw!(RepeatingRawData);
 
 #[miniextendr(class = "RepeatingRaw", pkg = "rpkg")]
 pub struct RepeatingRawClass(RepeatingRawData);
@@ -707,7 +700,6 @@ impl AltComplexData for UnitCircleData {
 }
 
 miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
-miniextendr_api::impl_inferbase_complex!(UnitCircleData);
 
 /// ALTREP wrapper for UnitCircleData - generates complex numbers on unit circle
 #[miniextendr(class = "UnitCircle", pkg = "rpkg")]
