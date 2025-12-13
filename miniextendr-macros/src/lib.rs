@@ -83,6 +83,21 @@ enum CoercionMapping {
     },
 }
 
+/// Check if a function argument has a `#[miniextendr(coerce)]` attribute.
+fn has_miniextendr_coerce_attr(attrs: &[syn::Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if attr.path().is_ident("miniextendr") {
+            // Parse the attribute arguments to check for "coerce"
+            if let syn::Meta::List(list) = &attr.meta {
+                if let Ok(nested) = list.parse_args::<syn::Ident>() {
+                    return nested == "coerce";
+                }
+            }
+        }
+        false
+    })
+}
+
 /// Get the coercion mapping for a type, if it needs coercion.
 /// Returns None if the type is R-native (no coercion needed) or unknown.
 fn get_coercion_mapping(ty: &syn::Type) -> Option<CoercionMapping> {
@@ -157,11 +172,12 @@ pub fn miniextendr(
     // - #[miniextendr(unsafe(main_thread))] - forces main thread execution (unsafe context)
     // - #[miniextendr(invisible)] / #[miniextendr(visible)] - visibility control
     // - #[miniextendr(check_interrupt)] - check for Ctrl+C before execution
-    // - #[miniextendr(coerce)] - enable type coercion for non-R-native parameter types
+    // - #[miniextendr(coerce)] - enable type coercion for ALL non-R-native parameter types
+    // - #[miniextendr(coerce)] on individual params - enable type coercion for specific parameters
     let mut force_main_thread = false;
     let mut force_invisible: Option<bool> = None;
     let mut check_interrupt = false;
-    let mut enable_coerce = false;
+    let mut coerce_all = false;
     if !attr.is_empty() {
         let attr_metas = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
         for meta in attr_metas {
@@ -179,11 +195,11 @@ pub fn miniextendr(
                             // Legacy support - but warn/error in future?
                             force_main_thread = true;
                         } else if ident == "coerce" {
-                            enable_coerce = true;
+                            coerce_all = true;
                         }
                     }
                 }
-                // Nested: unsafe(main_thread)
+                // Nested: unsafe(main_thread), coerce(x, y)
                 syn::Meta::List(list) => {
                     if list.path.is_ident("unsafe") {
                         let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> = list
@@ -203,13 +219,45 @@ pub fn miniextendr(
 
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
+    // Collect which parameters have #[miniextendr(coerce)] attribute BEFORE stripping
+    let per_param_coerce: std::collections::HashSet<String> = item
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                if has_miniextendr_coerce_attr(&pat_type.attrs) {
+                    if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+                        return Some(pat_ident.ident.to_string());
+                    }
+                }
+            }
+            None
+        })
+        .collect();
+
     // Transform `_` wildcard patterns to synthetic identifiers `__unused0`, `__unused1`, etc.
     // This is needed because `_` doesn't bind to a variable, but we need parameter names
     // for the C wrapper and R wrapper.
+    // Also strip `#[miniextendr(coerce)]` attributes from arguments (we consume them).
     let mut unused_counter = 0usize;
     for arg in &mut item.sig.inputs {
         #[allow(clippy::collapsible_if)]
         if let syn::FnArg::Typed(pat_type) = arg {
+            // Strip #[miniextendr(coerce)] attribute - we consume it, don't pass through
+            pat_type.attrs.retain(|attr| {
+                if attr.path().is_ident("miniextendr") {
+                    if let syn::Meta::List(list) = &attr.meta {
+                        if let Ok(nested) = list.parse_args::<syn::Ident>() {
+                            if nested == "coerce" {
+                                return false; // Remove this attribute
+                            }
+                        }
+                    }
+                }
+                true // Keep other attributes
+            });
+
             if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
                 let synthetic_name = format!("__unused{}", unused_counter);
                 unused_counter += 1;
@@ -440,8 +488,12 @@ pub fn miniextendr(
                 }
             }
             _ => {
-                // Check if coercion is enabled and type needs it
-                let coercion_mapping = if enable_coerce {
+                // Check if coercion is enabled for this parameter:
+                // - coerce_all: #[miniextendr(coerce)] on function applies to all params
+                // - per_param_coerce: #[miniextendr(coerce)] on individual param
+                let param_name = ident.to_string();
+                let should_coerce = coerce_all || per_param_coerce.contains(&param_name);
+                let coercion_mapping = if should_coerce {
                     get_coercion_mapping(pat_type.ty.as_ref())
                 } else {
                     None

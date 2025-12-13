@@ -206,6 +206,42 @@ fn process_silently(x: u16) -> i32 {
 }
 ```
 
+### Per-Parameter Coercion with `#[miniextendr(coerce)]`
+
+For selective coercion, add `#[miniextendr(coerce)]` to individual parameters:
+
+```rust
+// Only coerce the first parameter
+#[miniextendr]
+fn process_mixed(#[miniextendr(coerce)] x: u16, y: i32) -> i32 {
+    x as i32 + y  // x is coerced from R integer, y is used directly
+}
+
+// Coerce multiple specific parameters
+#[miniextendr]
+fn process_both(#[miniextendr(coerce)] x: u16, #[miniextendr(coerce)] y: i16, z: i32) -> i32 {
+    x as i32 + y as i32 + z  // x and y coerced, z is direct R integer
+}
+
+// Coerce Vec parameter
+#[miniextendr]
+fn sum_u16(#[miniextendr(coerce)] values: Vec<u16>, offset: i32) -> i32 {
+    values.iter().map(|&v| v as i32).sum::<i32>() + offset
+}
+```
+
+**Example in R:**
+
+```r
+# x is coerced to u16, y is used as-is
+process_mixed(100L, 5L)  # Returns 105
+
+# Overflow only affects coerced parameter
+process_mixed(-1L, 5L)   # Error: coercion to u16 failed
+```
+
+This is useful when you have a mix of R-native types and types that need coercion.
+
 ### Manual Coercion (Alternative)
 
 For more control, accept R native types and coerce manually:

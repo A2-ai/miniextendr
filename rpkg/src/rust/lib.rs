@@ -1435,6 +1435,12 @@ miniextendr_module! {
     fn test_coerce_attr_f32;
     fn test_coerce_attr_with_invisible;
 
+    // Per-argument coerce tests
+    fn test_per_arg_coerce_first;
+    fn test_per_arg_coerce_second;
+    fn test_per_arg_coerce_both;
+    fn test_per_arg_coerce_vec;
+
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;
     extern "C-unwind" fn rpkg_constant_int;
@@ -1674,6 +1680,34 @@ pub fn test_coerce_attr_f32(x: f32) -> f64 {
 #[miniextendr(coerce, invisible)]
 pub fn test_coerce_attr_with_invisible(x: u16) -> i32 {
     x as i32
+}
+
+// =============================================================================
+// Per-argument #[miniextendr(coerce)] attribute tests
+// =============================================================================
+
+// Test 11: Per-argument coerce - only first argument is coerced
+#[miniextendr]
+pub fn test_per_arg_coerce_first(#[miniextendr(coerce)] x: u16, y: i32) -> i32 {
+    x as i32 + y
+}
+
+// Test 12: Per-argument coerce - only second argument is coerced
+#[miniextendr]
+pub fn test_per_arg_coerce_second(x: i32, #[miniextendr(coerce)] y: u16) -> i32 {
+    x + y as i32
+}
+
+// Test 13: Per-argument coerce - both arguments coerced
+#[miniextendr]
+pub fn test_per_arg_coerce_both(#[miniextendr(coerce)] x: u16, #[miniextendr(coerce)] y: i16) -> i32 {
+    x as i32 + y as i32
+}
+
+// Test 14: Per-argument coerce - Vec coercion
+#[miniextendr]
+pub fn test_per_arg_coerce_vec(#[miniextendr(coerce)] x: Vec<u16>, y: i32) -> i32 {
+    x.iter().map(|&v| v as i32).sum::<i32>() + y
 }
 
 // endregion
