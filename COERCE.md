@@ -40,8 +40,14 @@ pub trait Coerce<R> {
 |------|----|-------|
 | `i32` | `i32` | Identity |
 | `f64` | `f64` | Identity |
-| `i8`, `i16`, `u8`, `u16` | `i32` | Widening |
-| `f32`, `i8`..`u32` | `f64` | Widening |
+| `Rboolean` | `Rboolean` | Identity |
+| `u8` | `u8` | Identity |
+| `Rcomplex` | `Rcomplex` | Identity |
+| `i8`, `i16`, `u8`, `u16` | `i32` | Widening to R integer |
+| `f32`, `i8`..`u32` | `f64` | Widening to R real |
+| `u8` | `u16`, `i16`, `u32` | Widening |
+| `i8` | `i16` | Widening |
+| `u16` | `u32` | Widening |
 | `bool` | `Rboolean` | `true` → `TRUE`, `false` → `FALSE` |
 | `bool` | `i32` | `true` → `1`, `false` → `0` |
 | `bool` | `f64` | `true` → `1.0`, `false` → `0.0` |
@@ -83,24 +89,37 @@ pub enum CoerceError {
 
 | From | To | Failure Condition |
 |------|----|-------------------|
-| `u32`, `u64`, `i64`, `usize`, `isize` | `i32` | Value > `i32::MAX` or < `i32::MIN` |
+| `u32`, `u64`, `i64`, `usize`, `isize` | `i32` | Value outside `i32` range |
 | `f64`, `f32` | `i32` | NaN, out of range, or has fractional part |
 | `i64`, `u64`, `isize`, `usize` | `f64` | Value outside ±2^53 (precision loss) |
-| Any integer | `u8` | Value outside 0..255 |
+| All integers except `u8` | `u8` | Value outside 0..255 |
+| `i8`, `i16`, `i32`, `i64`, `u32`, `u64`, `usize`, `isize` | `u16` | Value outside 0..65535 |
+| `i32`, `i64`, `u16`, `u32`, `u64`, `usize`, `isize` | `i16` | Value outside `i16` range |
+| `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `usize`, `isize` | `i8` | Value outside `i8` range |
+| `f64` | `u16`, `i16`, `i8` | NaN, out of range, or has fractional part |
 
 **Blanket impl:** `Coerce<R>` automatically implements `TryCoerce<R>` with `Error = Infallible`.
 
 **Slice coercion:** Slices/Vecs get `TryCoerce` automatically via the blanket impl when elements have `Coerce`. For fallible element-wise coercion, use manual iteration:
 
 ```rust
-// Fallible slice coercion (elements only have TryCoerce)
-let slice: &[u32] = &[1, 100, u32::MAX];
-let result: Result<Vec<i32>, _> = slice
+// R integer slice → Rust u16 vec (common use case)
+let r_ints: &[i32] = &[1, 100, 1000];
+let result: Result<Vec<u16>, _> = r_ints
     .iter()
     .copied()
     .map(TryCoerce::try_coerce)
     .collect();
-// Err(CoerceError::Overflow) - fails on u32::MAX
+assert_eq!(result, Ok(vec![1u16, 100, 1000]));
+
+// Failure case - negative values can't become u16
+let bad: &[i32] = &[1, -5, 1000];
+let result: Result<Vec<u16>, _> = bad
+    .iter()
+    .copied()
+    .map(TryCoerce::try_coerce)
+    .collect();
+// Err(CoerceError::Overflow) - fails on -5
 ```
 
 ## Trait Bounds
@@ -342,6 +361,7 @@ fn r_style_to_int(x: f64) -> i32 {
 | Generic helper functions | Trait bounds (`CanCoerceToInteger`, etc.) |
 | R → Rust at boundary | Explicit types, no auto-coercion |
 | Rust → R return values | `Coerce<R>` works fine |
+| R `i32` slice → Rust `u16` vec | `slice.iter().copied().map(TryCoerce::try_coerce).collect()` |
 | Mutable slice parameters | **Never auto-coerce** - breaks semantics |
 | Match R's truncation | Use `as` cast after bounds check |
 
