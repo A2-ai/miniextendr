@@ -580,3 +580,53 @@ pub mod legacy_c {
         ) -> ::std::os::raw::c_int;
     }
 }
+
+// =============================================================================
+// Non-API: Stack checking variables (Rinterface.h)
+// =============================================================================
+
+/// Non-API stack checking variables from `Rinterface.h`.
+///
+/// R uses these to detect stack overflow. When calling R from a thread other
+/// than the main R thread, stack checking will fail because these values are
+/// set for the main thread's stack.
+///
+/// # Usage
+///
+/// To safely call R from a worker thread, disable stack checking:
+/// ```ignore
+/// #[cfg(feature = "nonapi")]
+/// unsafe {
+///     use miniextendr_api::ffi::nonapi_stack::*;
+///     let saved = R_CStackLimit;
+///     R_CStackLimit = usize::MAX; // disable checking
+///     // ... call R APIs ...
+///     R_CStackLimit = saved; // restore
+/// }
+/// ```
+///
+/// Setting `R_CStackLimit` to `usize::MAX` (i.e., `-1` as `uintptr_t`) disables
+/// stack checking entirely.
+#[cfg(feature = "nonapi")]
+pub mod nonapi_stack {
+    unsafe extern "C" {
+        /// Top of the stack (set during `Rf_initialize_R` for main thread).
+        ///
+        /// On Unix, determined via `__libc_stack_end`, `KERN_USRSTACK`, or
+        /// `thr_stksegment`. On Windows, via `VirtualQuery`.
+        #[allow(non_upper_case_globals)]
+        pub static mut R_CStackStart: usize;
+
+        /// Stack size limit. Set to `usize::MAX` to disable stack checking.
+        ///
+        /// From R source: `if(R_CStackStart == -1) R_CStackLimit = -1; /* never set */`
+        #[allow(non_upper_case_globals)]
+        pub static mut R_CStackLimit: usize;
+
+        /// Stack growth direction: 1 = grows up, -1 = grows down.
+        ///
+        /// Most systems (x86, ARM) grow down (-1).
+        #[allow(non_upper_case_globals)]
+        pub static mut R_CStackDir: ::std::os::raw::c_int;
+    }
+}
