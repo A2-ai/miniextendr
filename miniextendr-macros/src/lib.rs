@@ -135,13 +135,13 @@ pub fn miniextendr(
                 let synthetic_name = format!("__unused{}", unused_counter);
                 unused_counter += 1;
                 let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
-                pat_type.pat = Box::new(syn::Pat::Ident(syn::PatIdent {
+                *pat_type.pat = syn::Pat::Ident(syn::PatIdent {
                     attrs: vec![],
                     by_ref: None,
                     mutability: None,
                     ident: synthetic_ident,
                     subpat: None,
-                }));
+                });
             }
         }
     }

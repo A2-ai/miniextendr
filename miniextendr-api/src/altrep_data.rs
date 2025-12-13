@@ -68,8 +68,8 @@ pub trait AltIntegerData: AltrepLen {
     /// Default uses `elt()` in a loop.
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
+            *slot = self.elt(start + i);
         }
         actual_len
     }
@@ -117,8 +117,8 @@ pub trait AltRealData: AltrepLen {
     /// Optional: bulk read into buffer.
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
+            *slot = self.elt(start + i);
         }
         actual_len
     }
@@ -203,8 +203,8 @@ pub trait AltLogicalData: AltrepLen {
     /// Optional: bulk read into buffer.
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i).to_r_int();
+        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
+            *slot = self.elt(start + i).to_r_int();
         }
         actual_len
     }
@@ -242,8 +242,8 @@ pub trait AltRawData: AltrepLen {
     /// Optional: bulk read into buffer.
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
+            *slot = self.elt(start + i);
         }
         actual_len
     }
@@ -266,8 +266,8 @@ pub trait AltComplexData: AltrepLen {
     /// Optional: bulk read into buffer.
     fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
+            *slot = self.elt(start + i);
         }
         actual_len
     }
@@ -1437,13 +1437,13 @@ impl AltStringData for &[String] {
     }
 }
 
-impl<'a> AltrepLen for &[&'a str] {
+impl AltrepLen for &[&str] {
     fn len(&self) -> usize {
         <[&str]>::len(self)
     }
 }
 
-impl<'a> AltStringData for &[&'a str] {
+impl AltStringData for &[&str] {
     fn elt(&self, i: usize) -> Option<&str> {
         Some(self[i])
     }
@@ -1478,7 +1478,7 @@ impl<const N: usize> AltIntegerData for [i32; N] {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(!self.iter().any(|&x| x == i32::MIN))
+        Some(!self.contains(&i32::MIN))
     }
 }
 

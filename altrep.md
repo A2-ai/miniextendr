@@ -310,7 +310,7 @@ fn create_vec_int(data: Vec<i32>) -> SEXP {
 
 ### Auto-Inferred Base Type
 
-For standard types, the `base` attribute is **optional**. The base type is automatically inferred from the inner data type via the `AltrepBase` trait:
+The `base` attribute is **optional**. The base type and method installation are automatically inferred from the inner data type via the `InferBase` trait:
 
 ```rust
 // Base type "Real" is automatically inferred from Vec<f64>
@@ -334,9 +334,26 @@ Supported auto-inference mappings:
 | `Range<f64>` | `Real` |
 | `[i32; N]`, `[f64; N]`, etc. | Corresponding type |
 
-For custom data types, you must either:
-1. Implement `AltrepBase` for your type, OR
-2. Explicitly specify `base = "..."` in the attribute
+For custom data types, use the `impl_inferbase_*` macros to enable auto-inference:
+
+```rust
+// After defining your data traits and calling impl_altinteger_from_data!
+miniextendr_api::impl_inferbase_integer!(MyCustomData);
+
+// Now you can omit base:
+#[miniextendr(class = "MyCustom", pkg = "mypkg")]  // No base needed!
+pub struct MyCustomClass(MyCustomData);
+```
+
+Available macros:
+
+- `impl_inferbase_integer!(T)` - for integer ALTREP types
+- `impl_inferbase_real!(T)` - for real/double ALTREP types
+- `impl_inferbase_logical!(T)` - for logical ALTREP types
+- `impl_inferbase_raw!(T)` - for raw byte ALTREP types
+- `impl_inferbase_string!(T)` - for string ALTREP types
+- `impl_inferbase_complex!(T)` - for complex number ALTREP types
+- `impl_inferbase_list!(T)` - for list ALTREP types
 
 ## Complete Example
 
@@ -394,11 +411,12 @@ impl AltIntegerData for ArithSeq {
     }
 }
 
-// Generate low-level traits
+// Generate low-level traits and enable base type inference
 miniextendr_api::impl_altinteger_from_data!(ArithSeq);
+miniextendr_api::impl_inferbase_integer!(ArithSeq);
 
-// Register class
-#[miniextendr(class = "ArithSeq", pkg = "mypkg", base = "Int")]
+// Register class - no `base` attribute needed!
+#[miniextendr(class = "ArithSeq", pkg = "mypkg")]
 pub struct ArithSeqClass(ArithSeq);
 
 // R-callable constructor
@@ -469,43 +487,10 @@ impl AltrepDataptr<i32> for LazySequence {
 // Use the `dataptr` variant to enable Dataptr methods
 miniextendr_api::impl_altinteger_from_data!(LazySequence, dataptr);
 
-// Implement AltrepBase and AltrepInstaller for base type auto-inference
-impl miniextendr_api::altrep::AltrepBase for LazySequence {
-    const BASE: miniextendr_api::altrep::RBase = miniextendr_api::altrep::RBase::Int;
-}
+// Enable base type auto-inference
+miniextendr_api::impl_inferbase_integer!(LazySequence);
 
-impl miniextendr_api::altrep_registration::AltrepInstaller for LazySequence {
-    unsafe fn make_class(class_name: *const i8, pkg_name: *const i8)
-        -> miniextendr_api::ffi::altrep::R_altrep_class_t
-    {
-        unsafe {
-            miniextendr_api::ffi::altrep::R_make_altinteger_class(
-                class_name, pkg_name, core::ptr::null_mut())
-        }
-    }
-
-    unsafe fn install_methods(cls: miniextendr_api::ffi::altrep::R_altrep_class_t) {
-        use miniextendr_api::altrep_traits::*;
-        use miniextendr_api::ffi::altrep::*;
-        use miniextendr_api::altrep_bridge as bridge;
-
-        // Install integer methods based on HAS_* flags
-        if <Self as AltInteger>::HAS_ELT {
-            unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<Self>)) };
-        }
-        // ... install other methods similarly
-
-        // Install ALTVEC methods (dataptr)
-        if <Self as AltVec>::HAS_DATAPTR {
-            unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<Self>)) };
-        }
-        if <Self as AltVec>::HAS_DATAPTR_OR_NULL {
-            unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<Self>)) };
-        }
-    }
-}
-
-// Register ALTREP class - NO base attribute needed!
+// Register ALTREP class - no `base` attribute needed!
 #[miniextendr(class = "LazySequence", pkg = "mypkg")]
 pub struct LazySequenceClass(LazySequence);
 ```
@@ -516,7 +501,7 @@ pub struct LazySequenceClass(LazySequence);
 2. **`Dataptr` triggers materialization**: Full buffer is allocated and populated
 3. **`Dataptr_or_null` returns `None` until materialized**: R will use `Elt` if available
 4. **Use `dataptr` variant**: Pass `, dataptr` to `impl_alt*_from_data!` macro to enable these methods
-5. **Implement `AltrepBase` + `AltrepInstaller`**: Enables auto-inference so you don't need `base = "..."`
+5. **Use `impl_inferbase_*` macro**: Enables auto-inference so you don't need `base = "..."`
 
 ### When to Use Lazy Materialization
 
