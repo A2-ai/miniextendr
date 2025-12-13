@@ -17,7 +17,6 @@ int R_CStackDir;          // Stack growth direction (-1 = down, 1 = up)
 ```
 
 During initialization (`Rf_initialize_R`), R sets these based on the main thread's stack:
-
 - **Unix**: Uses `getrlimit(RLIMIT_STACK)`, `__libc_stack_end`, or `KERN_USRSTACK`
 - **Windows**: Uses `VirtualQuery` to determine stack bounds
 
@@ -34,7 +33,6 @@ void R_CheckStack(void) {
 ```
 
 When called from a **different thread**, `&dummy` points to a completely different stack, causing:
-
 - `usage` to be a huge negative or positive number
 - False stack overflow detection
 - Segfault or abort
@@ -44,13 +42,11 @@ When called from a **different thread**, `&dummy` points to a completely differe
 Setting `R_CStackLimit` to `(uintptr_t)-1` (i.e., `usize::MAX`) **disables stack checking entirely**.
 
 From R source (`src/include/Defn.h`):
-
 ```c
 if(R_CStackLimit != (uintptr_t)(-1) && usage > ((intptr_t) R_CStackLimit))
 ```
 
 This is safe because:
-
 1. The OS still enforces real stack limits
 2. R functions correctly, just without its own overflow detection
 
@@ -63,15 +59,6 @@ All thread utilities require the `nonapi` feature since they access non-API R in
 miniextendr-api = { version = "...", features = ["nonapi"] }
 ```
 
-### Checked vs Unchecked R FFI
-
-Most `miniextendr_api::ffi::*` functions are **thread-checked** (via `#[r_ffi_checked]`) when
-`cfg(debug_assertions)` is enabled. Note: this repo’s workspace sets `debug-assertions = true`
-for the release profile, so don’t rely on `--release` to disable these checks.
-
-When you intentionally call R from a non-main thread using this module, use the `*_unchecked`
-variants.
-
 ### Simple Spawning: `spawn_with_r`
 
 ```rust
@@ -79,14 +66,13 @@ use miniextendr_api::spawn_with_r;
 
 let handle = spawn_with_r(|| {
     // Safe to call R APIs here!
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) }
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }
 })?;
 
 let result = handle.join().unwrap();
 ```
 
 This function:
-
 1. Sets stack size to 8 MiB (configurable)
 2. Automatically disables R's stack checking
 3. Restores stack checking when the thread completes
@@ -135,7 +121,7 @@ std::thread::spawn(|| {
     let _guard = StackCheckGuard::disable();
 
     // R API calls safe while guard is alive
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) };
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
 
     // Original limit restored when _guard drops
 });
@@ -147,7 +133,7 @@ std::thread::spawn(|| {
 use miniextendr_api::with_stack_checking_disabled;
 
 let result = with_stack_checking_disabled(|| {
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) }
+    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }
 });
 ```
 
@@ -182,7 +168,6 @@ R doesn't enforce a specific stack size - it uses whatever the OS provides:
 | Windows | **64 MiB** | Linker flag (since R 4.2) |
 
 Rust's default thread stack is only **2 MiB**, which may be insufficient for:
-
 - Deep recursion (`lapply` chains, recursive functions)
 - Complex formulas
 - Large `tryCatch` stacks
