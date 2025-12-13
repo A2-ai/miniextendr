@@ -40,14 +40,8 @@ pub trait Coerce<R> {
 |------|----|-------|
 | `i32` | `i32` | Identity |
 | `f64` | `f64` | Identity |
-| `Rboolean` | `Rboolean` | Identity |
-| `u8` | `u8` | Identity |
-| `Rcomplex` | `Rcomplex` | Identity |
-| `i8`, `i16`, `u8`, `u16` | `i32` | Widening to R integer |
-| `f32`, `i8`..`u32` | `f64` | Widening to R real |
-| `u8` | `u16`, `i16`, `u32` | Widening |
-| `i8` | `i16` | Widening |
-| `u16` | `u32` | Widening |
+| `i8`, `i16`, `u8`, `u16` | `i32` | Widening |
+| `f32`, `i8`..`u32` | `f64` | Widening |
 | `bool` | `Rboolean` | `true` → `TRUE`, `false` → `FALSE` |
 | `bool` | `i32` | `true` → `1`, `false` → `0` |
 | `bool` | `f64` | `true` → `1.0`, `false` → `0.0` |
@@ -89,37 +83,24 @@ pub enum CoerceError {
 
 | From | To | Failure Condition |
 |------|----|-------------------|
-| `u32`, `u64`, `i64`, `usize`, `isize` | `i32` | Value outside `i32` range |
+| `u32`, `u64`, `i64`, `usize`, `isize` | `i32` | Value > `i32::MAX` or < `i32::MIN` |
 | `f64`, `f32` | `i32` | NaN, out of range, or has fractional part |
 | `i64`, `u64`, `isize`, `usize` | `f64` | Value outside ±2^53 (precision loss) |
-| All integers except `u8` | `u8` | Value outside 0..255 |
-| `i8`, `i16`, `i32`, `i64`, `u32`, `u64`, `usize`, `isize` | `u16` | Value outside 0..65535 |
-| `i32`, `i64`, `u16`, `u32`, `u64`, `usize`, `isize` | `i16` | Value outside `i16` range |
-| `i16`, `i32`, `i64`, `u8`, `u16`, `u32`, `u64`, `usize`, `isize` | `i8` | Value outside `i8` range |
-| `f64` | `u16`, `i16`, `i8` | NaN, out of range, or has fractional part |
+| Any integer | `u8` | Value outside 0..255 |
 
 **Blanket impl:** `Coerce<R>` automatically implements `TryCoerce<R>` with `Error = Infallible`.
 
 **Slice coercion:** Slices/Vecs get `TryCoerce` automatically via the blanket impl when elements have `Coerce`. For fallible element-wise coercion, use manual iteration:
 
 ```rust
-// R integer slice → Rust u16 vec (common use case)
-let r_ints: &[i32] = &[1, 100, 1000];
-let result: Result<Vec<u16>, _> = r_ints
+// Fallible slice coercion (elements only have TryCoerce)
+let slice: &[u32] = &[1, 100, u32::MAX];
+let result: Result<Vec<i32>, _> = slice
     .iter()
     .copied()
     .map(TryCoerce::try_coerce)
     .collect();
-assert_eq!(result, Ok(vec![1u16, 100, 1000]));
-
-// Failure case - negative values can't become u16
-let bad: &[i32] = &[1, -5, 1000];
-let result: Result<Vec<u16>, _> = bad
-    .iter()
-    .copied()
-    .map(TryCoerce::try_coerce)
-    .collect();
-// Err(CoerceError::Overflow) - fails on -5
+// Err(CoerceError::Overflow) - fails on u32::MAX
 ```
 
 ## Trait Bounds
@@ -148,103 +129,9 @@ process_as_integer(100u16); // u16 → i32
 
 ## Usage with `#[miniextendr]`
 
-### The `coerce` Attribute (Recommended)
+### What Works
 
-Use `#[miniextendr(coerce)]` to enable automatic type coercion for non-R-native parameter types:
-
-```rust
-// Scalar coercion: R integer (i32) → u16
-#[miniextendr(coerce)]
-fn process_u16(x: u16) -> i32 {
-    x as i32
-}
-
-// Vec coercion: R integer vector (&[i32]) → Vec<u16>
-#[miniextendr(coerce)]
-fn sum_u16_vec(x: Vec<u16>) -> i32 {
-    x.iter().map(|&v| v as i32).sum()
-}
-
-// Float narrowing: R double (f64) → f32
-#[miniextendr(coerce)]
-fn process_f32(x: f32) -> f64 {
-    x as f64
-}
-```
-
-**Supported coercions:**
-
-| Parameter Type | R Type | Coercion |
-|----------------|--------|----------|
-| `u16`, `i16`, `i8` | integer | `TryCoerce` (overflow → panic) |
-| `u32`, `u64`, `i64` | integer | `TryCoerce` (overflow → panic) |
-| `f32` | numeric | `Coerce` (may lose precision) |
-| `Vec<u16>`, `Vec<i16>`, etc. | integer vector | element-wise `TryCoerce` |
-| `Vec<f32>` | numeric vector | element-wise `Coerce` |
-
-**Example in R:**
-
-```r
-# Works - value fits in u16
-process_u16(100L)  # Returns 100
-
-# Errors - value doesn't fit in u16
-process_u16(-1L)   # Error: coercion to u16 failed: Overflow
-process_u16(70000L)  # Error: coercion to u16 failed: Overflow
-
-# Vec coercion
-sum_u16_vec(c(1L, 2L, 3L))  # Returns 6
-sum_u16_vec(c(1L, -1L, 3L)) # Error: coercion to Vec<u16> failed: Overflow
-```
-
-**Combining with other attributes:**
-
-```rust
-#[miniextendr(coerce, invisible)]
-fn process_silently(x: u16) -> i32 {
-    x as i32  // Returns invisibly
-}
-```
-
-### Per-Parameter Coercion with `#[miniextendr(coerce)]`
-
-For selective coercion, add `#[miniextendr(coerce)]` to individual parameters:
-
-```rust
-// Only coerce the first parameter
-#[miniextendr]
-fn process_mixed(#[miniextendr(coerce)] x: u16, y: i32) -> i32 {
-    x as i32 + y  // x is coerced from R integer, y is used directly
-}
-
-// Coerce multiple specific parameters
-#[miniextendr]
-fn process_both(#[miniextendr(coerce)] x: u16, #[miniextendr(coerce)] y: i16, z: i32) -> i32 {
-    x as i32 + y as i32 + z  // x and y coerced, z is direct R integer
-}
-
-// Coerce Vec parameter
-#[miniextendr]
-fn sum_u16(#[miniextendr(coerce)] values: Vec<u16>, offset: i32) -> i32 {
-    values.iter().map(|&v| v as i32).sum::<i32>() + offset
-}
-```
-
-**Example in R:**
-
-```r
-# x is coerced to u16, y is used as-is
-process_mixed(100L, 5L)  # Returns 105
-
-# Overflow only affects coerced parameter
-process_mixed(-1L, 5L)   # Error: coercion to u16 failed
-```
-
-This is useful when you have a mix of R-native types and types that need coercion.
-
-### Manual Coercion (Alternative)
-
-For more control, accept R native types and coerce manually:
+**Concrete functions using Coerce internally:**
 
 ```rust
 #[miniextendr]
@@ -455,7 +342,6 @@ fn r_style_to_int(x: f64) -> i32 {
 | Generic helper functions | Trait bounds (`CanCoerceToInteger`, etc.) |
 | R → Rust at boundary | Explicit types, no auto-coercion |
 | Rust → R return values | `Coerce<R>` works fine |
-| R `i32` slice → Rust `u16` vec | `slice.iter().copied().map(TryCoerce::try_coerce).collect()` |
 | Mutable slice parameters | **Never auto-coerce** - breaks semantics |
 | Match R's truncation | Use `as` cast after bounds check |
 

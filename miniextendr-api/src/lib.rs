@@ -8,20 +8,20 @@
 /// Derive macro for implementing `TypedExternal` on a type.
 /// This enables the type to be stored in an `ExternalPtr<T>`.
 pub use miniextendr_macros::ExternalPtr;
-/// Derive macro for implementing `RNativeType` on newtype wrappers.
-/// This enables the newtype to work with `Vec<T>` conversions.
+/// Derive macro for implementing `RNative` on newtype wrappers.
+/// This enables the newtype to be used with `Coerce<R>` traits.
 ///
 /// Supports both tuple structs and single-field named structs:
 ///
 /// ```ignore
-/// #[derive(Clone, Copy, miniextendr_api::RNativeType)]
+/// #[derive(Clone, Copy, miniextendr_api::RNative)]
 /// struct UserId(i32);  // tuple struct
 ///
-/// #[derive(Clone, Copy, miniextendr_api::RNativeType)]
+/// #[derive(Clone, Copy, miniextendr_api::RNative)]
 /// struct Temperature { celsius: f64 }  // named field
 /// ```
 ///
-pub use miniextendr_macros::RNativeType;
+pub use miniextendr_macros::RNative;
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -275,7 +275,12 @@ pub use from_r::{
 pub mod backtrace;
 
 pub mod coerce;
-pub use coerce::{Coerce, CoerceError, RNative, TryCoerce};
+pub use coerce::{
+    // Traits
+    Coerce, CoerceError, RNative, TryCoerce,
+    // Trait bounds (for where clauses)
+    CanCoerceToInteger, CanCoerceToLogical, CanCoerceToRaw, CanCoerceToReal,
+};
 
 pub mod dots;
 

@@ -1740,25 +1740,24 @@ pub fn r_ffi_checked(
     expanded.into()
 }
 
-/// Derive macro for implementing `RNativeType` on a newtype wrapper.
+/// Derive macro for implementing `RNative` on a newtype wrapper.
 ///
-/// This allows newtype wrappers around R native types to work with `Vec<T>`,
-/// `&[T]` conversions and the `Coerce<R>` traits.
-/// The inner type must implement `RNativeType`.
+/// This allows newtype wrappers around R native types to be used with `Coerce<R>`.
+/// The inner type must implement `RNative`.
 ///
 /// # Supported Struct Forms
 ///
 /// Both tuple structs and single-field named structs are supported:
 ///
 /// ```ignore
-/// use miniextendr_api::RNativeType;
+/// use miniextendr_api::RNative;
 ///
 /// // Tuple struct (most common)
-/// #[derive(Clone, Copy, RNativeType)]
+/// #[derive(Clone, Copy, RNative)]
 /// struct UserId(i32);
 ///
 /// // Named single-field struct
-/// #[derive(Clone, Copy, RNativeType)]
+/// #[derive(Clone, Copy, RNative)]
 /// struct Temperature { celsius: f64 }
 /// ```
 ///
@@ -1767,18 +1766,14 @@ pub fn r_ffi_checked(
 /// For `struct UserId(i32)`, this generates:
 ///
 /// ```ignore
-/// impl RNativeType for UserId {
-///     const SEXP_TYPE: SEXPTYPE = <i32 as RNativeType>::SEXP_TYPE;
-///
-///     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-///         <i32 as RNativeType>::dataptr_mut(sexp).cast()
-///     }
+/// impl RNative for UserId {
+///     const SEXP_TYPE: SEXPTYPE = <i32 as RNative>::SEXP_TYPE;
 /// }
 /// ```
 ///
 /// # Using the Newtype with Coerce
 ///
-/// Once `RNativeType` is derived, you can implement `Coerce` to/from the newtype:
+/// Once `RNative` is derived, you can implement `Coerce` to/from the newtype:
 ///
 /// ```ignore
 /// impl Coerce<UserId> for i32 {
@@ -1791,10 +1786,10 @@ pub fn r_ffi_checked(
 /// # Requirements
 ///
 /// - Must be a newtype struct (exactly one field, tuple or named)
-/// - The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`)
-/// - Should also derive `Copy` (required by `RNativeType: Copy`)
-#[proc_macro_derive(RNativeType)]
-pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// - The inner type must implement `RNative` (`i32`, `f64`, `Rboolean`, `u8`, `Rcomplex`, or another derived type)
+/// - Should also derive `Copy` (required by `RNative: Copy`)
+#[proc_macro_derive(RNative)]
+pub fn derive_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -1811,31 +1806,23 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
             _ => {
                 return syn::Error::new_spanned(
                     name,
-                    "#[derive(RNativeType)] requires a newtype struct with exactly one field",
+                    "#[derive(RNative)] requires a newtype struct with exactly one field",
                 )
                 .into_compile_error()
                 .into();
             }
         },
         _ => {
-            return syn::Error::new_spanned(name, "#[derive(RNativeType)] only works on structs")
+            return syn::Error::new_spanned(name, "#[derive(RNative)] only works on structs")
                 .into_compile_error()
                 .into();
         }
     };
 
     let expanded = quote::quote! {
-        impl #impl_generics ::miniextendr_api::ffi::RNativeType for #name #ty_generics #where_clause {
+        impl #impl_generics ::miniextendr_api::coerce::RNative for #name #ty_generics #where_clause {
             const SEXP_TYPE: ::miniextendr_api::ffi::SEXPTYPE =
-                <#inner_ty as ::miniextendr_api::ffi::RNativeType>::SEXP_TYPE;
-
-            #[inline]
-            unsafe fn dataptr_mut(sexp: ::miniextendr_api::ffi::SEXP) -> *mut Self {
-                // Newtype is repr(transparent), so we can cast the pointer
-                unsafe {
-                    <#inner_ty as ::miniextendr_api::ffi::RNativeType>::dataptr_mut(sexp).cast()
-                }
-            }
+                <#inner_ty as ::miniextendr_api::coerce::RNative>::SEXP_TYPE;
         }
     };
 

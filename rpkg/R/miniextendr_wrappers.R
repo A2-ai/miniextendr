@@ -406,6 +406,26 @@ underscore_it_all <- function(private__unused0, private__unused1) {
     invisible(.Call(C_underscore_it_all, .call = match.call(), private__unused0, private__unused1))
 }
 
+test_coerce_identity <- function(x) {
+    .Call(C_test_coerce_identity, .call = match.call(), x)
+}
+
+test_coerce_widen <- function(x) {
+    .Call(C_test_coerce_widen, .call = match.call(), x)
+}
+
+test_coerce_bool_to_int <- function(x) {
+    .Call(C_test_coerce_bool_to_int, .call = match.call(), x)
+}
+
+test_coerce_via_helper <- function(x) {
+    .Call(C_test_coerce_via_helper, .call = match.call(), x)
+}
+
+test_try_coerce_f64_to_i32 <- function(x) {
+    .Call(C_test_try_coerce_f64_to_i32, .call = match.call(), x)
+}
+
 #' @export
 unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)
