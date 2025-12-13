@@ -1,155 +1,24 @@
 # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
-# This bundles miniextendr dependencies to inst/vendor for self-contained builds
+# Simply runs configure to sync vendor and generate build files
 
 message("Running bootstrap.R...")
 
 pkg_root <- getwd()
-rust_dir <- file.path(pkg_root, "src", "rust")
-inst_vendor <- file.path(pkg_root, "inst", "vendor")
 configure_script <- file.path(pkg_root, "configure")
 
-# Source locations in monorepo
-miniextendr_api_src <- file.path(pkg_root, "..", "miniextendr-api")
-miniextendr_macros_src <- file.path(pkg_root, "..", "miniextendr-macros")
-
-# Destination in inst/vendor
-miniextendr_api_dst <- file.path(inst_vendor, "miniextendr-api")
-miniextendr_macros_dst <- file.path(inst_vendor, "miniextendr-macros")
-
-# Workspace Cargo.toml (to extract version/edition)
-workspace_cargo_toml <- file.path(pkg_root, "..", "Cargo.toml")
-
-# Ensure inst/vendor directory exists
-dir.create(inst_vendor, recursive = TRUE, showWarnings = FALSE)
-
-# Extract workspace package values from root Cargo.toml
-get_workspace_values <- function() {
-  version <- "0.1.0" # fallback
-
-  edition <- "2024" # fallback
-
-  if (file.exists(workspace_cargo_toml)) {
-    lines <- readLines(workspace_cargo_toml)
-    for (line in lines) {
-      if (grepl('^\\s*version\\s*=\\s*"([^"]+)"', line)) {
-        version <- sub('.*version\\s*=\\s*"([^"]+)".*', '\\1', line)
-      }
-      if (grepl('^\\s*edition\\s*=\\s*"([^"]+)"', line)) {
-        edition <- sub('.*edition\\s*=\\s*"([^"]+)".*', '\\1', line)
-      }
-    }
-  }
-
-  list(version = version, edition = edition)
-}
-
-workspace_values <- get_workspace_values()
-
-# Helper to copy directory recursively (excluding target dirs)
-copy_rust_pkg <- function(src, dst) {
-  if (!dir.exists(src)) {
-    stop("Source directory does not exist: ", src)
-  }
-
-  # Remove destination if exists
-  if (dir.exists(dst)) {
-    message("  Removing existing: ", basename(dst))
-    unlink(dst, recursive = TRUE)
-  }
-
-  # Create destination
-  dir.create(dst, recursive = TRUE, showWarnings = FALSE)
-
-  # Copy files (excluding target/, .git, etc.)
-  files <- list.files(src, all.files = TRUE, no.. = TRUE)
-  exclude <- c("target", ".git", ".gitignore")
-  files <- files[!files %in% exclude]
-
-  for (f in files) {
-    src_path <- file.path(src, f)
-    dst_path <- file.path(dst, f)
-    if (dir.exists(src_path)) {
-      dir.create(dst_path, recursive = TRUE, showWarnings = FALSE)
-      file.copy(src_path, dst, recursive = TRUE, overwrite = TRUE)
-    } else {
-      file.copy(src_path, dst_path, overwrite = TRUE)
-    }
-  }
-}
-
-# Patch Cargo.toml to remove workspace inheritance
-patch_cargo_toml <- function(path) {
-  if (!file.exists(path)) {
-    stop("Cargo.toml not found: ", path)
-  }
-
-  lines <- readLines(path)
-
-  # Replace workspace inheritance with actual values from workspace Cargo.toml
-  version_replacement <- sprintf('version = "%s"', workspace_values$version)
-  edition_replacement <- sprintf('edition = "%s"', workspace_values$edition)
-  lines <- gsub('version\\.workspace\\s*=\\s*true', version_replacement, lines)
-  lines <- gsub('edition\\.workspace\\s*=\\s*true', edition_replacement, lines)
-
-  writeLines(lines, path)
-}
-
-# Step 1: Copy miniextendr-macros to inst/vendor
-message("Copying miniextendr-macros to inst/vendor...")
-if (dir.exists(miniextendr_macros_src)) {
-  copy_rust_pkg(miniextendr_macros_src, miniextendr_macros_dst)
-  patch_cargo_toml(file.path(miniextendr_macros_dst, "Cargo.toml"))
-  message("  Done")
+if (file.exists(configure_script)) {
+  message("Running ./configure...")
+  result <- system2(configure_script, stdout = TRUE, stderr = TRUE)
+  cat(result, sep = "\n")
+  message("bootstrap.R completed successfully")
 } else {
-  message("  Source not found, skipping (may already be bundled)")
-}
-
-# Step 2: Copy miniextendr-api to inst/vendor
-message("Copying miniextendr-api to inst/vendor...")
-if (dir.exists(miniextendr_api_src)) {
-  copy_rust_pkg(miniextendr_api_src, miniextendr_api_dst)
-  patch_cargo_toml(file.path(miniextendr_api_dst, "Cargo.toml"))
-  # Update path reference to sibling miniextendr-macros
-  api_cargo <- file.path(miniextendr_api_dst, "Cargo.toml")
-  lines <- readLines(api_cargo)
-  lines <- gsub(
-    'path\\s*=\\s*"[^"]*miniextendr-macros"',
-    'path = "../miniextendr-macros"',
-    lines
-  )
-  writeLines(lines, api_cargo)
-  message("  Done")
-} else {
-  message("  Source not found, skipping (may already be bundled)")
-}
-
-# Step 3: Clean up CRAN-unfriendly hidden files
-# Note: configure is run by R CMD INSTALL, not here
-message("Cleaning up hidden files...")
-
-# Clean inst/vendor
-if (dir.exists(inst_vendor)) {
-  # Remove all hidden directories (.github, .vscode, .cargo, etc.)
-  all_dirs <- list.dirs(inst_vendor, recursive = TRUE, full.names = TRUE)
-  hidden_dirs <- all_dirs[grepl("^\\.", basename(all_dirs))]
-  for (d in hidden_dirs) {
-    unlink(d, recursive = TRUE)
+  message("configure script not found - running autoconf first")
+  system2("autoconf", stdout = TRUE, stderr = TRUE)
+  if (file.exists(configure_script)) {
+    result <- system2(configure_script, stdout = TRUE, stderr = TRUE)
+    cat(result, sep = "\n")
+    message("bootstrap.R completed successfully")
+  } else {
+    stop("Failed to generate configure script")
   }
-
-  # Remove ALL hidden files (starting with .)
-  hidden_files <- list.files(inst_vendor, pattern = "^\\.",
-                             recursive = TRUE, full.names = TRUE, all.files = TRUE)
-  if (length(hidden_files) > 0) file.remove(hidden_files)
-
-  message("  Cleaned inst/vendor")
 }
-
-# Remove src/rust/.cargo directory if it exists (generated by configure)
-# The template is now at src/rust/cargo-config.toml.in (not hidden)
-cargo_dir <- file.path(pkg_root, "src", "rust", ".cargo")
-if (dir.exists(cargo_dir)) {
-  unlink(cargo_dir, recursive = TRUE)
-  message("  Cleaned src/rust/.cargo")
-}
-
-message("bootstrap.R completed successfully")

@@ -31,51 +31,19 @@ CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 ## ----------------------------------------------------------------------
 
-.PHONY: all copy_crates vendor_deps cargo_build clean_hidden
+.PHONY: all vendor_deps
 
 all: $(SHLIB)
-	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-	  touch $(CARGO_TOML); \
-	else \
-	  rm -rf $(VENDOR_OUT) $(ABS_RPKG_SRCDIR)/rust/.cargo; \
+	@# Post-build cleanup: On CRAN builds, remove vendor and target to save space
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	  rm -rf $(VENDOR_OUT) $(CARGO_TARGET_DIR) $(ABS_RPKG_SRCDIR)/rust/.cargo; \
 	fi
 
-# Clean up CRAN-unfriendly hidden files from inst/vendor after build
-# This runs regardless of NOT_CRAN to ensure clean installs
-clean_hidden:
-	@if [ -d "$(VENDOR_OUT)" ]; then \
-	  find $(VENDOR_OUT) -name '.*' -type f -delete 2>/dev/null || true; \
-	  find $(VENDOR_OUT) -name '.*' -type d -exec rm -rf {} + 2>/dev/null || true; \
-	fi
+$(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
-$(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT) clean_hidden
-
-# Step 1: Sync miniextendr crates from repo root to vendor (dev mode only)
-# Excludes Cargo.toml from rsync to avoid patching on every build
-copy_crates:
-	@if [ "$(NOT_CRAN_FLAG)" = "true" ] && [ -d "$(ROOT_MINIEXTENDR_REPO)/miniextendr-api" ]; then \
-	  rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
-	    $(ROOT_MINIEXTENDR_REPO)/miniextendr-api/ $(VENDOR_OUT)/miniextendr-api/; \
-	  rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
-	    $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros/ $(VENDOR_OUT)/miniextendr-macros/; \
-	  if [ ! -f $(VENDOR_OUT)/miniextendr-api/Cargo.toml ]; then \
-	    sed \
-	      -e 's/edition\.workspace = true/edition = "2024"/' \
-	      -e 's/version\.workspace = true/version = "0.1.0"/' \
-	      $(ROOT_MINIEXTENDR_REPO)/miniextendr-api/Cargo.toml \
-	      > $(VENDOR_OUT)/miniextendr-api/Cargo.toml; \
-	  fi; \
-	  if [ ! -f $(VENDOR_OUT)/miniextendr-macros/Cargo.toml ]; then \
-	    sed \
-	      -e 's/edition\.workspace = true/edition = "2024"/' \
-	      -e 's/version\.workspace = true/version = "0.1.0"/' \
-	      $(ROOT_MINIEXTENDR_REPO)/miniextendr-macros/Cargo.toml \
-	      > $(VENDOR_OUT)/miniextendr-macros/Cargo.toml; \
-	  fi; \
-	fi
-
-# Step 2: Run cargo vendor when lockfile doesn't exist or needs regeneration
-vendor_deps: copy_crates
+# Run cargo vendor when lockfile doesn't exist (dev mode only)
+# Note: miniextendr crates are synced by configure, not here
+vendor_deps:
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
 	  if [ ! -f "$(CARGO_LOCK)" ]; then \
 	    echo "Generating Cargo.lock and vendoring dependencies..."; \
@@ -85,7 +53,7 @@ vendor_deps: copy_crates
 	  fi; \
 	fi
 
-# Step 3: Always run cargo build
+# Build the Rust static library
 $(CARGO_AR): vendor_deps $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
 	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) --lib --profile $(CARGO_PROFILE) \
@@ -102,4 +70,7 @@ $(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)
 	@cp $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT)
 
 clean:
-	if [ "$(NOT_CRAN_FLAG)" != "true" ]; then rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); fi
+	@# Only clean generated files on CRAN (preserve for dev)
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	  rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); \
+	fi

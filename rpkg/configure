@@ -2097,8 +2097,48 @@ do
 done
 
 
-VENDOR_OUT="$abs_top_srcdir/inst/vendor"
+VENDOR_OUT="$abs_rpkg_src/vendor"
 
+
+MINIEXTENDR_API_SRC="$abs_top_srcdir/../miniextendr-api"
+MINIEXTENDR_MACROS_SRC="$abs_top_srcdir/../miniextendr-macros"
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for miniextendr source crates" >&5
+printf %s "checking for miniextendr source crates... " >&6; }
+if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found, syncing to vendor" >&5
+printf "%s\n" "found, syncing to vendor" >&6; }
+
+    mkdir -p "$VENDOR_OUT/miniextendr-api"
+  mkdir -p "$VENDOR_OUT/miniextendr-macros"
+
+    rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
+
+    rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+    find "$VENDOR_OUT" -name ".*" -type f -delete 2>/dev/null || true
+  find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
+
+    sed -e 's/edition\.workspace = true/edition = "2024"/' \
+      -e 's/version\.workspace = true/version = "0.1.0"/' \
+      "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+
+  sed -e 's/edition\.workspace = true/edition = "2024"/' \
+      -e 's/version\.workspace = true/version = "0.1.0"/' \
+      "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: miniextendr crates synced to $VENDOR_OUT" >&5
+printf "%s\n" "$as_me: miniextendr crates synced to $VENDOR_OUT" >&6;}
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: not found, using existing vendor" >&5
+printf "%s\n" "not found, using existing vendor" >&6; }
+    if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: vendor/miniextendr-api not found - build may fail" >&5
+printf "%s\n" "$as_me: WARNING: vendor/miniextendr-api not found - build may fail" >&2;}
+  fi
+fi
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_SOURCE_REPLACE=""
