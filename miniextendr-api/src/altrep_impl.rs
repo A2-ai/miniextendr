@@ -706,6 +706,11 @@ impl_altraw_from_data!(Vec<u8>);
 // String types
 impl_altstring_from_data!(Vec<String>);
 
+// NOTE: Box<[T]> (owned slices) cannot be used directly with ALTREP because
+// slices are DSTs (dynamically sized types) and ExternalPtr requires Sized.
+// Users should use Vec<T> instead, which is semantically equivalent.
+// The data trait impls in altrep_data.rs are still available for custom wrappers.
+
 // =============================================================================
 // Array implementations (const generics - can't use macros)
 // =============================================================================

@@ -73,6 +73,10 @@ impl AltrepBase for Vec<crate::ffi::Rcomplex> {
     const BASE: RBase = RBase::Complex;
 }
 
+// NOTE: Box<[T]> cannot implement AltrepBase because slices are DSTs
+// (dynamically sized types) and ExternalPtr requires Sized types.
+// Use Vec<T> instead for ALTREP, which is semantically equivalent.
+
 // Range implementations
 impl AltrepBase for std::ops::Range<i32> {
     const BASE: RBase = RBase::Int;

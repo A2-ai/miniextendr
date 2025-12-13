@@ -1207,6 +1207,268 @@ impl AltLogicalData for Vec<bool> {
 }
 
 // =============================================================================
+// Built-in implementations for Box<[T]> (owned slices)
+// =============================================================================
+// NOTE: Box<[T]> cannot be used DIRECTLY with ALTREP because slices are DSTs
+// (dynamically sized types) and ExternalPtr requires Sized types.
+//
+// However, these trait implementations are useful when you create a WRAPPER
+// struct that contains a Box<[T]>:
+//
+// ```
+// #[derive(ExternalPtr)]
+// struct MyWrapper {
+//     data: Box<[i32]>,  // Fixed-size heap allocation
+//     // ... other fields
+// }
+//
+// impl AltrepLen for MyWrapper {
+//     fn len(&self) -> usize { self.data.len() }
+// }
+//
+// impl AltIntegerData for MyWrapper {
+//     fn elt(&self, i: usize) -> i32 { self.data.elt(i) }  // Delegates to Box<[i32]>
+// }
+// ```
+//
+// For direct ALTREP use, prefer Vec<T> which is semantically equivalent.
+
+impl AltrepLen for Box<[i32]> {
+    fn len(&self) -> usize {
+        <[i32]>::len(self)
+    }
+}
+
+impl AltIntegerData for Box<[i32]> {
+    fn elt(&self, i: usize) -> i32 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        Some(self)
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let end = (start + len).min(<[i32]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.contains(&i32::MIN))
+    }
+
+    fn sum(&self, na_rm: bool) -> Option<i64> {
+        let mut sum: i64 = 0;
+        for &x in self.iter() {
+            if x == i32::MIN {
+                if !na_rm {
+                    return None;
+                }
+            } else {
+                sum += x as i64;
+            }
+        }
+        Some(sum)
+    }
+
+    fn min(&self, na_rm: bool) -> Option<i32> {
+        let mut min = i32::MAX;
+        let mut found = false;
+        for &x in self.iter() {
+            if x == i32::MIN {
+                if !na_rm {
+                    return None;
+                }
+            } else {
+                found = true;
+                min = min.min(x);
+            }
+        }
+        if found { Some(min) } else { None }
+    }
+
+    fn max(&self, na_rm: bool) -> Option<i32> {
+        let mut max = i32::MIN + 1; // i32::MIN is NA
+        let mut found = false;
+        for &x in self.iter() {
+            if x == i32::MIN {
+                if !na_rm {
+                    return None;
+                }
+            } else {
+                found = true;
+                max = max.max(x);
+            }
+        }
+        if found { Some(max) } else { None }
+    }
+}
+
+impl AltrepDataptr<i32> for Box<[i32]> {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        Some(self.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.as_ptr())
+    }
+}
+
+impl AltrepLen for Box<[f64]> {
+    fn len(&self) -> usize {
+        <[f64]>::len(self)
+    }
+}
+
+impl AltRealData for Box<[f64]> {
+    fn elt(&self, i: usize) -> f64 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        Some(self)
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        let end = (start + len).min(<[f64]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.iter().any(|x| x.is_nan()))
+    }
+
+    fn sum(&self, na_rm: bool) -> Option<f64> {
+        let mut sum = 0.0;
+        for &x in self.iter() {
+            if x.is_nan() {
+                if !na_rm { return Some(f64::NAN); }
+            } else {
+                sum += x;
+            }
+        }
+        Some(sum)
+    }
+
+    fn min(&self, na_rm: bool) -> Option<f64> {
+        let mut min = f64::INFINITY;
+        let mut found = false;
+        for &x in self.iter() {
+            if x.is_nan() {
+                if !na_rm { return Some(f64::NAN); }
+            } else {
+                found = true;
+                min = min.min(x);
+            }
+        }
+        if found { Some(min) } else { None }
+    }
+
+    fn max(&self, na_rm: bool) -> Option<f64> {
+        let mut max = f64::NEG_INFINITY;
+        let mut found = false;
+        for &x in self.iter() {
+            if x.is_nan() {
+                if !na_rm { return Some(f64::NAN); }
+            } else {
+                found = true;
+                max = max.max(x);
+            }
+        }
+        if found { Some(max) } else { None }
+    }
+}
+
+impl AltrepDataptr<f64> for Box<[f64]> {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
+        Some(self.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const f64> {
+        Some(self.as_ptr())
+    }
+}
+
+impl AltrepLen for Box<[u8]> {
+    fn len(&self) -> usize {
+        <[u8]>::len(self)
+    }
+}
+
+impl AltRawData for Box<[u8]> {
+    fn elt(&self, i: usize) -> u8 {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        Some(self)
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
+        let end = (start + len).min(<[u8]>::len(self));
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+impl AltrepDataptr<u8> for Box<[u8]> {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
+        Some(self.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const u8> {
+        Some(self.as_ptr())
+    }
+}
+
+impl AltrepLen for Box<[bool]> {
+    fn len(&self) -> usize {
+        <[bool]>::len(self)
+    }
+}
+
+impl AltLogicalData for Box<[bool]> {
+    fn elt(&self, i: usize) -> Logical {
+        if self[i] { Logical::True } else { Logical::False }
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // bool can't be NA
+    }
+
+    fn sum(&self, _na_rm: bool) -> Option<i64> {
+        Some(self.iter().filter(|&&x| x).count() as i64)
+    }
+}
+
+impl AltrepLen for Box<[String]> {
+    fn len(&self) -> usize {
+        <[String]>::len(self)
+    }
+}
+
+impl AltStringData for Box<[String]> {
+    fn elt(&self, i: usize) -> Option<&str> {
+        Some(self[i].as_str())
+    }
+
+    fn no_na(&self) -> Option<bool> {
+        Some(true) // String can't be NA
+    }
+}
+
+// =============================================================================
 // Built-in implementations for Range types
 // =============================================================================
 
