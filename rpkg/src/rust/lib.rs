@@ -787,7 +787,9 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
 // For custom behavior that can't be expressed through the data traits,
 // manually implement the low-level traits on the data type.
 
-use miniextendr_api::altrep_data::{AltRealData, AltLogicalData, AltRawData, AltStringData, Logical};
+use miniextendr_api::altrep_data::{
+    AltLogicalData, AltRawData, AltRealData, AltStringData, Logical,
+};
 
 // -----------------------------------------------------------------------------
 // ConstantReal: All elements are PI
@@ -800,12 +802,18 @@ pub struct ConstantRealData {
 }
 
 impl AltrepLen for ConstantRealData {
-    fn len(&self) -> usize { self.len }
+    fn len(&self) -> usize {
+        self.len
+    }
 }
 
 impl AltRealData for ConstantRealData {
-    fn elt(&self, _i: usize) -> f64 { self.value }
-    fn no_na(&self) -> Option<bool> { Some(!self.value.is_nan()) }
+    fn elt(&self, _i: usize) -> f64 {
+        self.value
+    }
+    fn no_na(&self) -> Option<bool> {
+        Some(!self.value.is_nan())
+    }
 }
 
 miniextendr_api::impl_altreal_from_data!(ConstantRealData);
@@ -817,7 +825,10 @@ pub struct ConstantRealClass(ConstantRealData);
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_constant_real() -> SEXP {
-    let data = ConstantRealData { value: std::f64::consts::PI, len: 10 };
+    let data = ConstantRealData {
+        value: std::f64::consts::PI,
+        len: 10,
+    };
     unsafe { ConstantRealClass::into_altrep(data) }
 }
 
@@ -833,14 +844,18 @@ pub struct ArithSeqData {
 }
 
 impl AltrepLen for ArithSeqData {
-    fn len(&self) -> usize { self.len }
+    fn len(&self) -> usize {
+        self.len
+    }
 }
 
 impl AltRealData for ArithSeqData {
     fn elt(&self, i: usize) -> f64 {
         self.start + (i as f64) * self.step
     }
-    fn no_na(&self) -> Option<bool> { Some(true) }
+    fn no_na(&self) -> Option<bool> {
+        Some(true)
+    }
 }
 
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
@@ -851,8 +866,16 @@ pub struct ArithSeqClass(ArithSeqData);
 #[miniextendr]
 fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
     let len = length_out as usize;
-    let step = if len > 1 { (to - from) / (len - 1) as f64 } else { 0.0 };
-    let data = ArithSeqData { start: from, step, len };
+    let step = if len > 1 {
+        (to - from) / (len - 1) as f64
+    } else {
+        0.0
+    };
+    let data = ArithSeqData {
+        start: from,
+        step,
+        len,
+    };
     unsafe { ArithSeqClass::into_altrep(data) }
 }
 
@@ -883,7 +906,8 @@ impl AltrepLen for LazyIntSeqData {
 impl AltIntegerData for LazyIntSeqData {
     fn elt(&self, i: usize) -> i32 {
         // Compute element on-the-fly (no materialization needed)
-        self.start.saturating_add((i as i32).saturating_mul(self.step))
+        self.start
+            .saturating_add((i as i32).saturating_mul(self.step))
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -939,7 +963,10 @@ impl miniextendr_api::altrep_data::AltrepDataptr<i32> for LazyIntSeqData {
         if self.materialized.is_none() {
             eprintln!("[Rust] LazyIntSeq: Materializing {} elements...", self.len);
             let data: Vec<i32> = (0..self.len)
-                .map(|i| self.start.saturating_add((i as i32).saturating_mul(self.step)))
+                .map(|i| {
+                    self.start
+                        .saturating_add((i as i32).saturating_mul(self.step))
+                })
                 .collect();
             self.materialized = Some(data);
             eprintln!("[Rust] LazyIntSeq: Materialization complete!");
@@ -1015,8 +1042,8 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{ALTREP, Rf_ScalarLogical};
     use miniextendr_api::altrep_data1_as;
+    use miniextendr_api::ffi::{ALTREP, Rf_ScalarLogical};
 
     // Check if it's an ALTREP object
     if unsafe { ALTREP(x) } == 0 {
@@ -1044,11 +1071,15 @@ pub struct ConstantLogicalData {
 }
 
 impl AltrepLen for ConstantLogicalData {
-    fn len(&self) -> usize { self.len }
+    fn len(&self) -> usize {
+        self.len
+    }
 }
 
 impl AltLogicalData for ConstantLogicalData {
-    fn elt(&self, _i: usize) -> Logical { self.value }
+    fn elt(&self, _i: usize) -> Logical {
+        self.value
+    }
     fn no_na(&self) -> Option<bool> {
         Some(!matches!(self.value, Logical::Na))
     }
@@ -1066,7 +1097,10 @@ fn constant_logical(value: i32, n: i32) -> SEXP {
         i if i == i32::MIN => Logical::Na,
         _ => Logical::True,
     };
-    let data = ConstantLogicalData { value: logical_value, len: n as usize };
+    let data = ConstantLogicalData {
+        value: logical_value,
+        len: n as usize,
+    };
     unsafe { ConstantLogicalClass::into_altrep(data) }
 }
 
@@ -1081,7 +1115,9 @@ pub struct LazyStringData {
 }
 
 impl AltrepLen for LazyStringData {
-    fn len(&self) -> usize { self.len }
+    fn len(&self) -> usize {
+        self.len
+    }
 }
 
 impl AltStringData for LazyStringData {
@@ -1091,7 +1127,9 @@ impl AltStringData for LazyStringData {
         // which triggers R's default behavior (NA)
         None
     }
-    fn no_na(&self) -> Option<bool> { Some(false) } // We return None which is like NA
+    fn no_na(&self) -> Option<bool> {
+        Some(false)
+    } // We return None which is like NA
 }
 
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
@@ -1101,7 +1139,10 @@ pub struct LazyStringClass(LazyStringData);
 
 #[miniextendr]
 fn lazy_string(prefix: &str, n: i32) -> SEXP {
-    let data = LazyStringData { prefix: prefix.to_string(), len: n as usize };
+    let data = LazyStringData {
+        prefix: prefix.to_string(),
+        len: n as usize,
+    };
     unsafe { LazyStringClass::into_altrep(data) }
 }
 
@@ -1116,13 +1157,18 @@ pub struct RepeatingRawData {
 }
 
 impl AltrepLen for RepeatingRawData {
-    fn len(&self) -> usize { self.total_len }
+    fn len(&self) -> usize {
+        self.total_len
+    }
 }
 
 impl AltRawData for RepeatingRawData {
     fn elt(&self, i: usize) -> u8 {
-        if self.pattern.is_empty() { 0 }
-        else { self.pattern[i % self.pattern.len()] }
+        if self.pattern.is_empty() {
+            0
+        } else {
+            self.pattern[i % self.pattern.len()]
+        }
     }
 }
 
@@ -1133,7 +1179,10 @@ pub struct RepeatingRawClass(RepeatingRawData);
 
 #[miniextendr]
 fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
-    let data = RepeatingRawData { pattern: pattern.to_vec(), total_len: n as usize };
+    let data = RepeatingRawData {
+        pattern: pattern.to_vec(),
+        total_len: n as usize,
+    };
     unsafe { RepeatingRawClass::into_altrep(data) }
 }
 
@@ -1559,17 +1608,19 @@ fn underscore_it_all(_: i32, _: f64) {}
 
 // region: Coerce trait tests
 
-use miniextendr_api::{Coerce, TryCoerce, CanCoerceToInteger, CoerceError, RNative};
+use miniextendr_api::{CanCoerceToInteger, Coerce, CoerceError, RNative, TryCoerce};
 
 // Test 6: RNative derive macro - newtype wrappers (both tuple and named field)
 #[derive(Clone, Copy, RNative)]
-struct UserId(i32);  // Tuple struct
+struct UserId(i32); // Tuple struct
 
 #[derive(Clone, Copy, RNative)]
-struct Score(f64);  // Tuple struct
+struct Score(f64); // Tuple struct
 
 #[derive(Clone, Copy, RNative)]
-struct Temperature { celsius: f64 }  // Named single-field struct
+struct Temperature {
+    celsius: f64,
+} // Named single-field struct
 
 // Verify the derived RNative works with Coerce
 impl Coerce<UserId> for i32 {
@@ -1588,14 +1639,14 @@ impl Coerce<Temperature> for f64 {
 #[miniextendr]
 fn test_rnative_newtype(id: i32) -> i32 {
     let user_id: UserId = id.coerce();
-    user_id.0  // Extract inner value
+    user_id.0 // Extract inner value
 }
 
 // Test function using the named-field newtype
 #[miniextendr]
 fn test_rnative_named_field(temp: f64) -> f64 {
     let t: Temperature = temp.coerce();
-    t.celsius  // Extract inner value
+    t.celsius // Extract inner value
 }
 
 // NOTE: Generic functions like `fn foo<T: Coerce<i32>>(x: T)` DON'T work with miniextendr
@@ -1640,7 +1691,7 @@ fn test_coerce_via_helper(x: i32) -> i32 {
 fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
     match TryCoerce::<i32>::try_coerce(x) {
         Ok(v) => v,
-        Err(CoerceError::Overflow) => i32::MIN,    // NA
+        Err(CoerceError::Overflow) => i32::MIN, // NA
         Err(CoerceError::PrecisionLoss) => i32::MIN,
         Err(CoerceError::NaN) => i32::MIN,
     }
@@ -1655,7 +1706,7 @@ fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
 // R: test_coerce_attr_u16(-1L) should error (overflow)
 #[miniextendr(coerce)]
 pub fn test_coerce_attr_u16(x: u16) -> i32 {
-    x as i32  // Return as R integer
+    x as i32 // Return as R integer
 }
 
 // Test 7: Coerce attribute - scalar i32 → i16
@@ -1700,7 +1751,10 @@ pub fn test_per_arg_coerce_second(x: i32, #[miniextendr(coerce)] y: u16) -> i32 
 
 // Test 13: Per-argument coerce - both arguments coerced
 #[miniextendr]
-pub fn test_per_arg_coerce_both(#[miniextendr(coerce)] x: u16, #[miniextendr(coerce)] y: i16) -> i32 {
+pub fn test_per_arg_coerce_both(
+    #[miniextendr(coerce)] x: u16,
+    #[miniextendr(coerce)] y: i16,
+) -> i32 {
     x as i32 + y as i32
 }
 

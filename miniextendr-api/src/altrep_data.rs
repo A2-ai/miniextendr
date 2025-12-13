@@ -182,11 +182,7 @@ impl Logical {
 
     /// Convert from Rust bool (no NA representation).
     pub fn from_bool(b: bool) -> Self {
-        if b {
-            Logical::True
-        } else {
-            Logical::False
-        }
+        if b { Logical::True } else { Logical::False }
     }
 }
 
@@ -611,15 +607,20 @@ macro_rules! impl_inferbase_integer {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 // ALTREP base methods
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
 
                 if <$ty as Altrep>::HAS_SERIALIZED_STATE {
-                    unsafe { R_set_altrep_Serialized_state_method(cls, Some(bridge::t_serialized_state::<$ty>)) };
+                    unsafe {
+                        R_set_altrep_Serialized_state_method(
+                            cls,
+                            Some(bridge::t_serialized_state::<$ty>),
+                        )
+                    };
                 }
 
                 // AltVec methods
@@ -627,10 +628,20 @@ macro_rules! impl_inferbase_integer {
                     unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<$ty>)) };
                 }
                 if <$ty as AltVec>::HAS_DATAPTR_OR_NULL {
-                    unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<$ty>)) };
+                    unsafe {
+                        R_set_altvec_Dataptr_or_null_method(
+                            cls,
+                            Some(bridge::t_dataptr_or_null::<$ty>),
+                        )
+                    };
                 }
                 if <$ty as AltVec>::HAS_EXTRACT_SUBSET {
-                    unsafe { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<$ty>)) };
+                    unsafe {
+                        R_set_altvec_Extract_subset_method(
+                            cls,
+                            Some(bridge::t_extract_subset::<$ty>),
+                        )
+                    };
                 }
 
                 // AltInteger methods
@@ -638,10 +649,17 @@ macro_rules! impl_inferbase_integer {
                     unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<$ty>)) };
                 }
                 if <$ty as AltInteger>::HAS_GET_REGION {
-                    unsafe { R_set_altinteger_Get_region_method(cls, Some(bridge::t_int_get_region::<$ty>)) };
+                    unsafe {
+                        R_set_altinteger_Get_region_method(
+                            cls,
+                            Some(bridge::t_int_get_region::<$ty>),
+                        )
+                    };
                 }
                 if <$ty as AltInteger>::HAS_IS_SORTED {
-                    unsafe { R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<$ty>)) };
+                    unsafe {
+                        R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<$ty>))
+                    };
                 }
                 if <$ty as AltInteger>::HAS_NO_NA {
                     unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<$ty>)) };
@@ -681,34 +699,53 @@ macro_rules! impl_inferbase_real {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
 
                 if <$ty as Altrep>::HAS_SERIALIZED_STATE {
-                    unsafe { R_set_altrep_Serialized_state_method(cls, Some(bridge::t_serialized_state::<$ty>)) };
+                    unsafe {
+                        R_set_altrep_Serialized_state_method(
+                            cls,
+                            Some(bridge::t_serialized_state::<$ty>),
+                        )
+                    };
                 }
 
                 if <$ty as AltVec>::HAS_DATAPTR {
                     unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<$ty>)) };
                 }
                 if <$ty as AltVec>::HAS_DATAPTR_OR_NULL {
-                    unsafe { R_set_altvec_Dataptr_or_null_method(cls, Some(bridge::t_dataptr_or_null::<$ty>)) };
+                    unsafe {
+                        R_set_altvec_Dataptr_or_null_method(
+                            cls,
+                            Some(bridge::t_dataptr_or_null::<$ty>),
+                        )
+                    };
                 }
                 if <$ty as AltVec>::HAS_EXTRACT_SUBSET {
-                    unsafe { R_set_altvec_Extract_subset_method(cls, Some(bridge::t_extract_subset::<$ty>)) };
+                    unsafe {
+                        R_set_altvec_Extract_subset_method(
+                            cls,
+                            Some(bridge::t_extract_subset::<$ty>),
+                        )
+                    };
                 }
 
                 if <$ty as AltReal>::HAS_ELT {
                     unsafe { R_set_altreal_Elt_method(cls, Some(bridge::t_real_elt::<$ty>)) };
                 }
                 if <$ty as AltReal>::HAS_GET_REGION {
-                    unsafe { R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<$ty>)) };
+                    unsafe {
+                        R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<$ty>))
+                    };
                 }
                 if <$ty as AltReal>::HAS_IS_SORTED {
-                    unsafe { R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<$ty>)) };
+                    unsafe {
+                        R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<$ty>))
+                    };
                 }
                 if <$ty as AltReal>::HAS_NO_NA {
                     unsafe { R_set_altreal_No_NA_method(cls, Some(bridge::t_real_no_na::<$ty>)) };
@@ -748,9 +785,9 @@ macro_rules! impl_inferbase_logical {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
 
@@ -758,10 +795,17 @@ macro_rules! impl_inferbase_logical {
                     unsafe { R_set_altlogical_Elt_method(cls, Some(bridge::t_lgl_elt::<$ty>)) };
                 }
                 if <$ty as AltLogical>::HAS_GET_REGION {
-                    unsafe { R_set_altlogical_Get_region_method(cls, Some(bridge::t_lgl_get_region::<$ty>)) };
+                    unsafe {
+                        R_set_altlogical_Get_region_method(
+                            cls,
+                            Some(bridge::t_lgl_get_region::<$ty>),
+                        )
+                    };
                 }
                 if <$ty as AltLogical>::HAS_IS_SORTED {
-                    unsafe { R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<$ty>)) };
+                    unsafe {
+                        R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<$ty>))
+                    };
                 }
                 if <$ty as AltLogical>::HAS_NO_NA {
                     unsafe { R_set_altlogical_No_NA_method(cls, Some(bridge::t_lgl_no_na::<$ty>)) };
@@ -792,9 +836,9 @@ macro_rules! impl_inferbase_raw {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
 
@@ -802,7 +846,9 @@ macro_rules! impl_inferbase_raw {
                     unsafe { R_set_altraw_Elt_method(cls, Some(bridge::t_raw_elt::<$ty>)) };
                 }
                 if <$ty as AltRaw>::HAS_GET_REGION {
-                    unsafe { R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<$ty>)) };
+                    unsafe {
+                        R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<$ty>))
+                    };
                 }
             }
         }
@@ -830,21 +876,25 @@ macro_rules! impl_inferbase_string {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
                 unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<$ty>)) };
 
                 if <$ty as AltString>::HAS_IS_SORTED {
-                    unsafe { R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<$ty>)) };
+                    unsafe {
+                        R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<$ty>))
+                    };
                 }
                 if <$ty as AltString>::HAS_NO_NA {
                     unsafe { R_set_altstring_No_NA_method(cls, Some(bridge::t_str_no_na::<$ty>)) };
                 }
                 if <$ty as AltString>::HAS_SET_ELT {
-                    unsafe { R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<$ty>)) };
+                    unsafe {
+                        R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<$ty>))
+                    };
                 }
             }
         }
@@ -872,9 +922,9 @@ macro_rules! impl_inferbase_complex {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
 
@@ -882,7 +932,12 @@ macro_rules! impl_inferbase_complex {
                     unsafe { R_set_altcomplex_Elt_method(cls, Some(bridge::t_cplx_elt::<$ty>)) };
                 }
                 if <$ty as AltComplex>::HAS_GET_REGION {
-                    unsafe { R_set_altcomplex_Get_region_method(cls, Some(bridge::t_cplx_get_region::<$ty>)) };
+                    unsafe {
+                        R_set_altcomplex_Get_region_method(
+                            cls,
+                            Some(bridge::t_cplx_get_region::<$ty>),
+                        )
+                    };
                 }
             }
         }
@@ -910,15 +965,17 @@ macro_rules! impl_inferbase_list {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
+                use $crate::altrep_bridge as bridge;
                 use $crate::altrep_traits::*;
                 use $crate::ffi::altrep::*;
-                use $crate::altrep_bridge as bridge;
 
                 unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
                 unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<$ty>)) };
 
                 if <$ty as AltList>::HAS_SET_ELT {
-                    unsafe { R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<$ty>)) };
+                    unsafe {
+                        R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<$ty>))
+                    };
                 }
             }
         }
@@ -984,11 +1041,7 @@ impl AltIntegerData for Vec<i32> {
                 min = min.min(x);
             }
         }
-        if found {
-            Some(min)
-        } else {
-            None
-        }
+        if found { Some(min) } else { None }
     }
 
     fn max(&self, na_rm: bool) -> Option<i32> {
@@ -1004,11 +1057,7 @@ impl AltIntegerData for Vec<i32> {
                 max = max.max(x);
             }
         }
-        if found {
-            Some(max)
-        } else {
-            None
-        }
+        if found { Some(max) } else { None }
     }
 }
 
@@ -1077,11 +1126,7 @@ impl AltRealData for Vec<f64> {
                 min = min.min(x);
             }
         }
-        if found {
-            Some(min)
-        } else {
-            None
-        }
+        if found { Some(min) } else { None }
     }
 
     fn max(&self, na_rm: bool) -> Option<f64> {
@@ -1097,11 +1142,7 @@ impl AltRealData for Vec<f64> {
                 max = max.max(x);
             }
         }
-        if found {
-            Some(max)
-        } else {
-            None
-        }
+        if found { Some(max) } else { None }
     }
 }
 
@@ -1338,7 +1379,9 @@ impl AltRealData for Box<[f64]> {
         let mut sum = 0.0;
         for &x in self.iter() {
             if x.is_nan() {
-                if !na_rm { return Some(f64::NAN); }
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
             } else {
                 sum += x;
             }
@@ -1351,7 +1394,9 @@ impl AltRealData for Box<[f64]> {
         let mut found = false;
         for &x in self.iter() {
             if x.is_nan() {
-                if !na_rm { return Some(f64::NAN); }
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
             } else {
                 found = true;
                 min = min.min(x);
@@ -1365,7 +1410,9 @@ impl AltRealData for Box<[f64]> {
         let mut found = false;
         for &x in self.iter() {
             if x.is_nan() {
-                if !na_rm { return Some(f64::NAN); }
+                if !na_rm {
+                    return Some(f64::NAN);
+                }
             } else {
                 found = true;
                 max = max.max(x);
@@ -1428,7 +1475,11 @@ impl AltrepLen for Box<[bool]> {
 
 impl AltLogicalData for Box<[bool]> {
     fn elt(&self, i: usize) -> Logical {
-        if self[i] { Logical::True } else { Logical::False }
+        if self[i] {
+            Logical::True
+        } else {
+            Logical::False
+        }
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -1651,7 +1702,12 @@ impl AltIntegerData for &[i32] {
         // Check for NA (i32::MIN)
         if self.contains(&i32::MIN) {
             if _na_rm {
-                Some(self.iter().filter(|&&x| x != i32::MIN).map(|&x| x as i64).sum())
+                Some(
+                    self.iter()
+                        .filter(|&&x| x != i32::MIN)
+                        .map(|&x| x as i64)
+                        .sum(),
+                )
             } else {
                 None // Return NA
             }
@@ -2173,7 +2229,10 @@ mod tests {
     #[test]
     fn test_range_i32_is_sorted() {
         let r = 1..10;
-        assert_eq!(AltIntegerData::is_sorted(&r), Some(Sortedness::StrictlyIncreasing));
+        assert_eq!(
+            AltIntegerData::is_sorted(&r),
+            Some(Sortedness::StrictlyIncreasing)
+        );
     }
 
     // -------------------------------------------------------------------------
@@ -2260,11 +2319,7 @@ mod tests {
 
     #[test]
     fn test_vec_option_string() {
-        let v: Vec<Option<String>> = vec![
-            Some("a".to_string()),
-            None,
-            Some("b".to_string()),
-        ];
+        let v: Vec<Option<String>> = vec![Some("a".to_string()), None, Some("b".to_string())];
         assert_eq!(AltrepLen::len(&v), 3);
         assert_eq!(AltStringData::elt(&v, 0), Some("a"));
         assert_eq!(AltStringData::elt(&v, 1), None); // NA

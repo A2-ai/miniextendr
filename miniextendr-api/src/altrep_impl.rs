@@ -91,7 +91,9 @@ macro_rules! __impl_altrep_base {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
         }
@@ -111,7 +113,9 @@ macro_rules! __impl_altrep_base_with_serialize {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
 
@@ -141,7 +145,9 @@ macro_rules! __impl_altvec_dataptr {
 
             fn dataptr(x: $crate::ffi::SEXP, writable: bool) -> *mut core::ffi::c_void {
                 unsafe { $crate::altrep_data1_mut::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, writable))
+                    .and_then(|d| {
+                        <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, writable)
+                    })
                     .map(|p| p as *mut core::ffi::c_void)
                     .unwrap_or(core::ptr::null_mut())
             }
@@ -150,7 +156,9 @@ macro_rules! __impl_altvec_dataptr {
 
             fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d))
+                    .and_then(|d| {
+                        <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr_or_null(&*d)
+                    })
                     .map(|p| p as *const core::ffi::c_void)
                     .unwrap_or(core::ptr::null())
             }
@@ -174,12 +182,15 @@ macro_rules! __impl_altvec_extract_subset {
             ) -> $crate::ffi::SEXP {
                 // Convert indx SEXP to slice
                 let len = unsafe { $crate::ffi::Rf_xlength(indx) } as usize;
-                let indices = unsafe {
-                    std::slice::from_raw_parts($crate::ffi::INTEGER(indx), len)
-                };
+                let indices =
+                    unsafe { std::slice::from_raw_parts($crate::ffi::INTEGER(indx), len) };
 
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .and_then(|d| <$ty as $crate::altrep_data::AltrepExtractSubset>::extract_subset(&*d, indices))
+                    .and_then(|d| {
+                        <$ty as $crate::altrep_data::AltrepExtractSubset>::extract_subset(
+                            &*d, indices,
+                        )
+                    })
                     .unwrap_or(unsafe { $crate::ffi::R_NilValue })
             }
         }
@@ -191,7 +202,6 @@ macro_rules! __impl_altvec_extract_subset {
 #[doc(hidden)]
 macro_rules! __impl_altinteger_methods {
     ($ty:ty) => {
-
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltInteger for $ty {
             const HAS_ELT: bool = true;
@@ -417,7 +427,9 @@ macro_rules! impl_altlogical_from_data {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
         }
@@ -430,7 +442,10 @@ macro_rules! impl_altlogical_from_data {
 
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> i32 {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltLogicalData>::elt(&*d, i as usize).to_r_int())
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltLogicalData>::elt(&*d, i as usize)
+                            .to_r_int()
+                    })
                     .unwrap_or(i32::MIN)
             }
 
@@ -501,7 +516,9 @@ macro_rules! impl_altraw_from_data {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
         }
@@ -552,7 +569,9 @@ macro_rules! impl_altstring_from_data {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
         }
@@ -611,7 +630,9 @@ macro_rules! impl_altlist_from_data {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
         }
@@ -639,7 +660,9 @@ macro_rules! impl_altcomplex_from_data {
         impl $crate::altrep_traits::Altrep for $ty {
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t)
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
+                    })
                     .unwrap_or(0)
             }
         }
@@ -653,7 +676,10 @@ macro_rules! impl_altcomplex_from_data {
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::Rcomplex {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltComplexData>::elt(&*d, i as usize))
-                    .unwrap_or($crate::ffi::Rcomplex { r: f64::NAN, i: f64::NAN })
+                    .unwrap_or($crate::ffi::Rcomplex {
+                        r: f64::NAN,
+                        i: f64::NAN,
+                    })
             }
 
             const HAS_GET_REGION: bool = true;
@@ -1034,8 +1060,12 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .map(|d| {
                 let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
-                crate::altrep_data::AltIntegerData::get_region(&*d, start as usize, len as usize, slice)
-                    as crate::ffi::R_xlen_t
+                crate::altrep_data::AltIntegerData::get_region(
+                    &*d,
+                    start as usize,
+                    len as usize,
+                    slice,
+                ) as crate::ffi::R_xlen_t
             })
             .unwrap_or(0)
     }
@@ -1140,8 +1170,12 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .map(|d| {
                 let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
-                crate::altrep_data::AltRealData::get_region(&*d, start as usize, len as usize, slice)
-                    as crate::ffi::R_xlen_t
+                crate::altrep_data::AltRealData::get_region(
+                    &*d,
+                    start as usize,
+                    len as usize,
+                    slice,
+                ) as crate::ffi::R_xlen_t
             })
             .unwrap_or(0)
     }
@@ -1310,18 +1344,16 @@ impl crate::altrep_traits::AltVec for &'static [String] {}
 impl crate::altrep_traits::AltString for &'static [String] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         match unsafe { crate::altrep_data1_as::<&'static [String]>(x) } {
-            Some(d) => {
-                match crate::altrep_data::AltStringData::elt(&*d, i as usize) {
-                    Some(s) => unsafe {
-                        crate::ffi::Rf_mkCharLenCE(
-                            s.as_ptr().cast(),
-                            s.len() as i32,
-                            crate::ffi::cetype_t::CE_UTF8,
-                        )
-                    },
-                    None => unsafe { crate::ffi::R_NaString },
-                }
-            }
+            Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i as usize) {
+                Some(s) => unsafe {
+                    crate::ffi::Rf_mkCharLenCE(
+                        s.as_ptr().cast(),
+                        s.len() as i32,
+                        crate::ffi::cetype_t::CE_UTF8,
+                    )
+                },
+                None => unsafe { crate::ffi::R_NaString },
+            },
             None => unsafe { crate::ffi::R_NaString },
         }
     }
@@ -1352,18 +1384,16 @@ impl crate::altrep_traits::AltVec for &'static [&'static str] {}
 impl crate::altrep_traits::AltString for &'static [&'static str] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         match unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) } {
-            Some(d) => {
-                match crate::altrep_data::AltStringData::elt(&*d, i as usize) {
-                    Some(s) => unsafe {
-                        crate::ffi::Rf_mkCharLenCE(
-                            s.as_ptr().cast(),
-                            s.len() as i32,
-                            crate::ffi::cetype_t::CE_UTF8,
-                        )
-                    },
-                    None => unsafe { crate::ffi::R_NaString },
-                }
-            }
+            Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i as usize) {
+                Some(s) => unsafe {
+                    crate::ffi::Rf_mkCharLenCE(
+                        s.as_ptr().cast(),
+                        s.len() as i32,
+                        crate::ffi::cetype_t::CE_UTF8,
+                    )
+                },
+                None => unsafe { crate::ffi::R_NaString },
+            },
             None => unsafe { crate::ffi::R_NaString },
         }
     }
