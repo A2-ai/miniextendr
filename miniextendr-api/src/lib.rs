@@ -249,9 +249,11 @@ pub use worker::*;
 pub mod thread;
 #[cfg(feature = "nonapi")]
 pub use thread::{
-    RThreadBuilder, StackCheckGuard, DEFAULT_R_STACK_SIZE, scope_with_r, spawn_with_r,
+    DEFAULT_R_STACK_SIZE, RThreadBuilder, StackCheckGuard, scope_with_r, spawn_with_r,
     with_stack_checking_disabled,
 };
+#[cfg(all(feature = "nonapi", windows))]
+pub use thread::WINDOWS_R_STACK_SIZE;
 
 // Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;
