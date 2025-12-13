@@ -208,10 +208,12 @@ Commit history shows previous clean-ups:
 
 ### Remaining TODOs in Code
 
-Only 2 TODOs found:
+~~Only 2 TODOs found:~~
 
-1. `externalptr.rs:122` - StableTypeId name storage question
-2. `lib.rs:108` - "finish the dots module" (may be outdated)
+1. ~~`externalptr.rs:122` - StableTypeId name storage question~~ → Resolved: Now uses R symbol interning (`Rf_install`)
+2. ~~`lib.rs:108` - "finish the dots module"~~ → Resolved: Module is complete, TODO removed
+
+**No TODOs remain in the codebase.**
 
 ### Summary
 
@@ -223,10 +225,10 @@ Only 2 TODOs found:
 - dots.rs (minimal by design)
 - backtrace.rs (useful utility)
 
-**Worth Reviewing**:
+**All Review Items Completed**:
 
-- `StableTypeId` in externalptr.rs - could potentially be simplified
-- The TODO about dots module - verify if still valid
+- ✅ `StableTypeId` simplified → now uses R symbol interning
+- ✅ Dots TODO removed → module was complete
 
 **No Major Redundancy Found**: The codebase appears well-maintained with previous clean-ups already done. Most apparent "complexity" serves legitimate purposes.
 
@@ -274,6 +276,41 @@ All components now compile:
 
 ### Next Steps
 
-- [ ] Address Clippy warnings (optional, non-blocking)
+- [x] Address Clippy warnings (fixed c-string literals and allowed intentional empty range in test)
 - [ ] Memory-mapped file ALTREP (from altrep.md "Not Yet Implemented")
-- [ ] Review `StableTypeId` simplification opportunity in externalptr.rs
+- [x] Review `StableTypeId` simplification - already done (now uses R's symbol interning via `Rf_install`)
+
+---
+
+## R Source ALTREP Review (2025-12-13)
+
+Compared miniextendr implementation against R 4.5.2 source (`src/main/altrep.c`, `src/main/altclasses.c`).
+
+### Verified Correct
+
+| Aspect | R Source | miniextendr | Status |
+|--------|----------|-------------|--------|
+| Sortedness values | UNKNOWN=i32::MIN, NONE=0, INCR=1, DECR=-1, STRICT_INCR=2, STRICT_DECR=-2 | Same | ✅ Fixed |
+| Method hierarchy | ALTREP → ALTVEC → ALT{INTEGER,REAL,...} | Same | ✅ |
+| NULL = "use default" | Sum/Min/Max return NULL for default | Returns R_NilValue for None | ✅ |
+| Method tables | 8 type-specific tables | Same structure | ✅ |
+
+### Potential Improvements
+
+| Issue | R Source Behavior | miniextendr Current | Priority |
+|-------|-------------------|---------------------|----------|
+| Range sum overflow | Returns ScalarReal for large sums | Already correct | ✅ Done |
+| Static dataptr writability | mmap returns error for read-only | Errors on writable=true | ✅ Done |
+| Coerce method | int→real conversion | Trait ready (`HAS_COERCE`) | N/A* |
+| Duplicate method | Custom duplication | Trait ready (`HAS_DUPLICATE`) | N/A* |
+| Set_elt method | String/List mutation | Trait ready (`HAS_SET_ELT`) | N/A* |
+
+*These methods have full trait infrastructure - users can implement them for custom ALTREP classes.
+Built-in types (`Vec<T>`, `Range<T>`, etc.) use R defaults which are appropriate.
+
+### Action Items
+
+- [x] Fix Sortedness constants in altrep.md (done 2025-12-13)
+- [x] Add writable check for static slice dataptr (errors on writable=true)
+- [x] Document that Coerce/Duplicate/Set_elt use R defaults (added "Methods Using R Defaults" section)
+- [x] Range sum overflow handling - already correct (returns ScalarReal when > i32 range)

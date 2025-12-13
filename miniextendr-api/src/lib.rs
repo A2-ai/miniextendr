@@ -114,7 +114,6 @@ pub use from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 
 pub mod backtrace;
 
-// TODO: finish the dots module...
 pub mod dots;
 
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP

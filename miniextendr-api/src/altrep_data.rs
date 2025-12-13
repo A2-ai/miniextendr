@@ -2136,6 +2136,7 @@ mod tests {
     // -------------------------------------------------------------------------
 
     #[test]
+    #[allow(clippy::reversed_empty_ranges)] // Intentionally testing empty range handling
     fn test_range_i32_len() {
         let r = 1..10;
         assert_eq!(AltrepLen::len(&r), 9);
