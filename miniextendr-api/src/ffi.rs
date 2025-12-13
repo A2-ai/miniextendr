@@ -438,7 +438,7 @@ impl From<Rboolean> for bool {
 }
 
 #[allow(non_camel_case_types)]
-pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(s: SEXP)>;
+pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -1057,38 +1057,6 @@ pub struct DllInfo(::std::os::raw::c_void);
 pub type DL_FUNC =
     ::std::option::Option<unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void>;
 
-/// Type descriptor for native primitive arguments in .C/.Fortran calls.
-///
-/// This is used in `R_CMethodDef` and `R_FortranMethodDef` to specify
-/// argument types for type checking.
-#[allow(non_camel_case_types)]
-pub type R_NativePrimitiveArgType = ::std::os::raw::c_uint;
-
-/// Method definition for .C interface routines.
-///
-/// Used to register C functions callable via `.C()` from R.
-#[repr(C)]
-#[derive(Debug, Copy, Clone)]
-#[allow(non_camel_case_types)]
-#[allow(non_snake_case)]
-pub struct R_CMethodDef {
-    pub name: *const ::std::os::raw::c_char,
-    pub fun: DL_FUNC,
-    pub numArgs: ::std::os::raw::c_int,
-    /// Optional array of argument types for type checking. May be null.
-    pub types: *const R_NativePrimitiveArgType,
-}
-
-/// Method definition for .Fortran interface routines.
-///
-/// Structurally identical to `R_CMethodDef`.
-#[allow(non_camel_case_types)]
-pub type R_FortranMethodDef = R_CMethodDef;
-
-/// Method definition for .Call interface routines.
-///
-/// Used to register C functions callable via `.Call()` from R.
-/// Unlike `.C()` routines, `.Call()` functions receive and return SEXP values directly.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 #[allow(non_camel_case_types)]
@@ -1099,11 +1067,13 @@ pub struct R_CallMethodDef {
     pub numArgs: ::std::os::raw::c_int,
 }
 
-/// Method definition for .External interface routines.
-///
-/// Structurally identical to `R_CallMethodDef`.
-#[allow(non_camel_case_types)]
-pub type R_ExternalMethodDef = R_CallMethodDef;
+// SAFETY: R_CallMethodDef contains raw pointers which don't impl Sync by default.
+// However, Sync is required to store these in static arrays for R's method registration.
+// This is safe because:
+// 1. The name pointer points to static C string literals (&'static CStr)
+// 2. The fun pointer is a static function pointer
+// 3. These are read-only after initialization during R_init_*
+unsafe impl Sync for R_CallMethodDef {}
 
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
@@ -1113,8 +1083,8 @@ unsafe extern "C-unwind" {
         info: *mut DllInfo,
         croutines: *const R_CMethodDef,
         callRoutines: *const R_CallMethodDef,
-        fortranRoutines: *const R_FortranMethodDef,
-        externalRoutines: *const R_ExternalMethodDef,
+        fortranRoutines: *const ::std::os::raw::c_void,
+        externalRoutines: *const ::std::os::raw::c_void,
     ) -> ::std::os::raw::c_int;
 
     pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
@@ -1123,7 +1093,9 @@ unsafe extern "C-unwind" {
 
 // endregion
 
-// region: Legacy `extern "C"` types (kept for compatibility testing)
+// =============================================================================
+// Legacy `extern "C"` types (kept for compatibility testing)
+// =============================================================================
 
 /// Legacy types using `extern "C"` ABI instead of `extern "C-unwind"`.
 ///
@@ -1131,14 +1103,13 @@ unsafe extern "C-unwind" {
 /// `extern "C-unwind"` everywhere to properly propagate Rust panics.
 #[allow(clashing_extern_declarations)]
 pub mod legacy_c {
-    use super::{r_ffi_checked, Rboolean, SEXP};
+    use super::{Rboolean, SEXP};
 
     #[allow(non_camel_case_types)]
-    pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;
+    pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
 
     #[allow(non_camel_case_types)]
-    pub type DL_FUNC_C =
-        ::std::option::Option<unsafe extern "C" fn() -> *mut ::std::os::raw::c_void>;
+    pub type DL_FUNC_C = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
 
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
@@ -1150,7 +1121,9 @@ pub mod legacy_c {
         pub numArgs: ::std::os::raw::c_int,
     }
 
-    #[r_ffi_checked]
+    // SAFETY: Same as R_CallMethodDef - contains only static pointers
+    unsafe impl Sync for R_CallMethodDef_C {}
+
     unsafe extern "C" {
         #[link_name = "R_RegisterCFinalizer"]
         pub fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
@@ -1174,406 +1147,3 @@ pub mod legacy_c {
         ) -> ::std::os::raw::c_int;
     }
 }
-
-// endregion
-
-// region: Non-API encoding/locale state (Defn.h)
-
-/// Non-API encoding / locale helpers from R's `Defn.h`.
-///
-/// These are not part of the stable R API and may break across R versions.
-#[cfg(feature = "nonapi")]
-pub mod nonapi_encoding {
-    use super::r_ffi_checked;
-
-    #[r_ffi_checked]
-    #[allow(clashing_extern_declarations)]
-    #[allow(non_snake_case)]
-    unsafe extern "C-unwind" {
-        pub fn R_nativeEncoding() -> *const ::std::os::raw::c_char;
-
-        // Locale flags
-        pub static utf8locale: super::Rboolean;
-        pub static latin1locale: super::Rboolean;
-
-        // Set when R "knows" it is running in UTF-8.
-        pub static known_to_be_utf8: super::Rboolean;
-    }
-}
-
-// endregion
-
-// region: Non-API stack checking variables (Rinterface.h)
-
-/// Non-API stack checking variables from `Rinterface.h`.
-///
-/// R uses these to detect stack overflow. When calling R from a thread other
-/// than the main R thread, stack checking will fail because these values are
-/// set for the main thread's stack.
-///
-/// # Usage
-///
-/// To safely call R from a worker thread, disable stack checking:
-/// ```ignore
-/// #[cfg(feature = "nonapi")]
-/// unsafe {
-///     use miniextendr_api::ffi::nonapi_stack::*;
-///     let saved = get_r_cstack_limit();
-///     set_r_cstack_limit(usize::MAX); // disable checking
-///     // ... call R APIs ...
-///     set_r_cstack_limit(saved); // restore
-/// }
-/// ```
-///
-/// Or use the higher-level [`StackCheckGuard`](crate::thread::StackCheckGuard) which handles this automatically.
-///
-/// Setting `R_CStackLimit` to `usize::MAX` (i.e., `-1` as `uintptr_t`) disables
-/// stack checking entirely.
-#[cfg(feature = "nonapi")]
-pub mod nonapi_stack {
-    unsafe extern "C" {
-        /// Top of the stack (set during `Rf_initialize_R` for main thread).
-        ///
-        /// On Unix, determined via `__libc_stack_end`, `KERN_USRSTACK`, or
-        /// `thr_stksegment`. On Windows, via `VirtualQuery`.
-        #[allow(non_upper_case_globals)]
-        pub static R_CStackStart: usize;
-
-        /// Stack size limit. Set to `usize::MAX` to disable stack checking.
-        ///
-        /// From R source: `if(R_CStackStart == -1) R_CStackLimit = -1; /* never set */`
-        #[allow(non_upper_case_globals)]
-        pub static R_CStackLimit: usize;
-
-        /// Stack growth direction: 1 = grows up, -1 = grows down.
-        ///
-        /// Most systems (x86, ARM) grow down (-1).
-        #[allow(non_upper_case_globals)]
-        pub static R_CStackDir: ::std::os::raw::c_int;
-    }
-
-    /// Write to `R_CStackLimit`.
-    ///
-    /// # Safety
-    /// Must be called from R's main thread.
-    #[inline]
-    pub unsafe fn set_r_cstack_limit(value: usize) {
-        unsafe {
-            let ptr = &raw const R_CStackLimit as *mut usize;
-            ptr.write(value);
-        }
-    }
-
-    /// Read `R_CStackLimit`.
-    #[inline]
-    pub fn get_r_cstack_limit() -> usize {
-        unsafe { R_CStackLimit }
-    }
-
-    /// Read `R_CStackStart`.
-    #[inline]
-    pub fn get_r_cstack_start() -> usize {
-        unsafe { R_CStackStart }
-    }
-
-    /// Read `R_CStackDir`.
-    #[inline]
-    pub fn get_r_cstack_dir() -> ::std::os::raw::c_int {
-        unsafe { R_CStackDir }
-    }
-}
-
-// endregion
-
-// region: Inline Helper Functions (Rust implementations of R's inline functions)
-
-/// Create a length-1 string vector from a C string.
-///
-/// Rust equivalent of R's inline `Rf_mkString(s)`, which is
-/// shorthand for `ScalarString(mkChar(s))`.
-///
-/// # Safety
-///
-/// - `s` must be a valid null-terminated C string
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "mkString")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_mkString(s: *const ::std::os::raw::c_char) -> SEXP {
-    unsafe {
-        let charsxp = Rf_mkChar(s);
-        let protected = Rf_protect(charsxp);
-        let result = Rf_ScalarString(protected);
-        Rf_unprotect(1);
-        result
-    }
-}
-
-/// Build a pairlist with 1 element.
-///
-/// Rust equivalent of R's inline `Rf_list1(s)`.
-///
-/// # Safety
-///
-/// - `s` must be a valid SEXP
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "list1")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_list1(s: SEXP) -> SEXP {
-    unsafe { Rf_cons(s, R_NilValue) }
-}
-
-/// Build a pairlist with 2 elements.
-///
-/// Rust equivalent of R's inline `Rf_list2(s, t)`.
-///
-/// # Safety
-///
-/// - Both SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "list2")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_list2(s: SEXP, t: SEXP) -> SEXP {
-    unsafe { Rf_cons(s, Rf_cons(t, R_NilValue)) }
-}
-
-/// Build a pairlist with 3 elements.
-///
-/// Rust equivalent of R's inline `Rf_list3(s, t, u)`.
-///
-/// # Safety
-///
-/// - All SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "list3")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_list3(s: SEXP, t: SEXP, u: SEXP) -> SEXP {
-    unsafe { Rf_cons(s, Rf_cons(t, Rf_cons(u, R_NilValue))) }
-}
-
-/// Build a pairlist with 4 elements.
-///
-/// Rust equivalent of R's inline `Rf_list4(s, t, u, v)`.
-///
-/// # Safety
-///
-/// - All SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "list4")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_list4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
-    unsafe { Rf_cons(s, Rf_cons(t, Rf_cons(u, Rf_cons(v, R_NilValue)))) }
-}
-
-/// Check if a SEXP is a numeric type (integer, logical, or real, excluding factors).
-///
-/// Rust equivalent of R's inline `Rf_isNumeric()`.
-///
-/// # Safety
-///
-/// - `x` must be a valid SEXP
-/// - Must be called from R's main thread
-#[doc(alias = "isNumeric")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_isNumeric(x: SEXP) -> bool {
-    unsafe {
-        let typ = TYPEOF(x);
-        (typ == SEXPTYPE::INTSXP || typ == SEXPTYPE::LGLSXP || typ == SEXPTYPE::REALSXP)
-            && Rf_inherits(x, c"factor".as_ptr()) == Rboolean::FALSE
-    }
-}
-
-/// Check if a SEXP is a number type (numeric or complex).
-///
-/// Rust equivalent of R's inline `Rf_isNumber()`.
-///
-/// # Safety
-///
-/// - `x` must be a valid SEXP
-/// - Must be called from R's main thread
-#[doc(alias = "isNumber")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_isNumber(x: SEXP) -> bool {
-    unsafe { Rf_isNumeric(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP }
-}
-
-/// Check if a SEXP is an atomic vector.
-///
-/// Rust equivalent of R's inline `Rf_isVectorAtomic()`.
-/// Returns true for logical, integer, real, complex, character, and raw vectors.
-///
-/// # Safety
-///
-/// - `x` must be a valid SEXP
-/// - Must be called from R's main thread
-#[doc(alias = "isVectorAtomic")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_isVectorAtomic(x: SEXP) -> bool {
-    unsafe {
-        let typ = TYPEOF(x);
-        matches!(
-            typ,
-            SEXPTYPE::LGLSXP
-                | SEXPTYPE::INTSXP
-                | SEXPTYPE::REALSXP
-                | SEXPTYPE::CPLXSXP
-                | SEXPTYPE::STRSXP
-                | SEXPTYPE::RAWSXP
-        )
-    }
-}
-
-/// Check if a SEXP is a vector list (VECSXP or EXPRSXP).
-///
-/// Rust equivalent of R's inline `Rf_isVectorList()`.
-///
-/// # Safety
-///
-/// - `x` must be a valid SEXP
-/// - Must be called from R's main thread
-#[doc(alias = "isVectorList")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_isVectorList(x: SEXP) -> bool {
-    unsafe {
-        let typ = TYPEOF(x);
-        typ == SEXPTYPE::VECSXP || typ == SEXPTYPE::EXPRSXP
-    }
-}
-
-/// Check if a SEXP is a vector (atomic vector or list).
-///
-/// Rust equivalent of R's inline `Rf_isVector()`.
-///
-/// # Safety
-///
-/// - `x` must be a valid SEXP
-/// - Must be called from R's main thread
-#[doc(alias = "isVector")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_isVector(x: SEXP) -> bool {
-    unsafe { Rf_isVectorAtomic(x) || Rf_isVectorList(x) }
-}
-
-/// Build a language object (call) with 1 element (the function).
-///
-/// Rust equivalent of R's inline `Rf_lang1(s)`.
-/// Creates a call like `f()` where `s` is the function.
-///
-/// # Safety
-///
-/// - `s` must be a valid SEXP (typically a symbol or closure)
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "lang1")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_lang1(s: SEXP) -> SEXP {
-    unsafe { Rf_lcons(s, R_NilValue) }
-}
-
-/// Build a language object (call) with function and 1 argument.
-///
-/// Rust equivalent of R's inline `Rf_lang2(s, t)`.
-/// Creates a call like `f(arg)` where `s` is the function and `t` is the argument.
-///
-/// # Safety
-///
-/// - Both SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "lang2")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_lang2(s: SEXP, t: SEXP) -> SEXP {
-    unsafe { Rf_lcons(s, Rf_list1(t)) }
-}
-
-/// Build a language object (call) with function and 2 arguments.
-///
-/// Rust equivalent of R's inline `Rf_lang3(s, t, u)`.
-/// Creates a call like `f(arg1, arg2)`.
-///
-/// # Safety
-///
-/// - All SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "lang3")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_lang3(s: SEXP, t: SEXP, u: SEXP) -> SEXP {
-    unsafe { Rf_lcons(s, Rf_list2(t, u)) }
-}
-
-/// Build a language object (call) with function and 3 arguments.
-///
-/// Rust equivalent of R's inline `Rf_lang4(s, t, u, v)`.
-/// Creates a call like `f(arg1, arg2, arg3)`.
-///
-/// # Safety
-///
-/// - All SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "lang4")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_lang4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
-    unsafe { Rf_lcons(s, Rf_list3(t, u, v)) }
-}
-
-/// Build a language object (call) with function and 4 arguments.
-///
-/// Rust equivalent of R's inline `Rf_lang5(s, t, u, v, w)`.
-/// Creates a call like `f(arg1, arg2, arg3, arg4)`.
-///
-/// # Safety
-///
-/// - All SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "lang5")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_lang5(s: SEXP, t: SEXP, u: SEXP, v: SEXP, w: SEXP) -> SEXP {
-    unsafe { Rf_lcons(s, Rf_list4(t, u, v, w)) }
-}
-
-/// Build a language object (call) with function and 5 arguments.
-///
-/// Rust equivalent of R's inline `Rf_lang6(s, t, u, v, w, x)`.
-/// Creates a call like `f(arg1, arg2, arg3, arg4, arg5)`.
-///
-/// # Safety
-///
-/// - All SEXPs must be valid
-/// - Must be called from R's main thread
-/// - Result must be protected from GC
-#[doc(alias = "lang6")]
-#[allow(non_snake_case)]
-#[inline]
-pub unsafe fn Rf_lang6(s: SEXP, t: SEXP, u: SEXP, v: SEXP, w: SEXP, x: SEXP) -> SEXP {
-    unsafe {
-        let protected = Rf_protect(s);
-        let list = Rf_cons(t, Rf_list4(u, v, w, x));
-        let result = Rf_lcons(protected, list);
-        Rf_unprotect(1);
-        result
-    }
-}
-
-// endregion
