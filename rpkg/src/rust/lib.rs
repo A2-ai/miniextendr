@@ -457,9 +457,9 @@ impl AltIntegerData for LazyIntSeqData {
         if self.step == 0 {
             Some(Sortedness::Increasing) // All same value
         } else if self.step > 0 {
-            Some(Sortedness::StrictlyIncreasing)
+            Some(Sortedness::Increasing)
         } else {
-            Some(Sortedness::StrictlyDecreasing)
+            Some(Sortedness::Decreasing)
         }
     }
 

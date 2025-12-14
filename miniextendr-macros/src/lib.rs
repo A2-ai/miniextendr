@@ -2120,6 +2120,31 @@ fn expand_altrep_struct(
     let method_registrar_doc = format!("Method installer for [`{}`] ALTREP class.", ident);
     let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
 
+    let method_registrar_install_body: proc_macro2::TokenStream = if base_name.is_some() {
+        quote::quote! {
+            // Base: length is ALWAYS required (no HAS_LENGTH check)
+            unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)); }
+
+            // Base optional methods
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_SERIALIZED_STATE, R_set_altrep_Serialized_state_method, bridge::t_serialized_state::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_UNSERIALIZE, R_set_altrep_Unserialize_method, bridge::t_unserialize::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_DUPLICATE, R_set_altrep_Duplicate_method, bridge::t_duplicate::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_COERCE, R_set_altrep_Coerce_method, bridge::t_coerce::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::HAS_INSPECT, R_set_altrep_Inspect_method, bridge::t_inspect::<#tramp_ty>);
+
+            // Vec-level setters
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<#tramp_ty>);
+            set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<#tramp_ty>);
+
+            // Family-specific
+            #family_setters
+        }
+    } else {
+        // Inferred base: the InferBase installer wires up base + vec + family methods.
+        quote::quote! { #family_setters }
+    };
+
     let expanded = quote::quote! {
         #input
 
@@ -2141,18 +2166,14 @@ fn expand_altrep_struct(
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
             unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
+                #[allow(unused_imports)]
                 use ::miniextendr_api::altrep_bridge as bridge;
+                #[allow(unused_imports)]
                 use ::miniextendr_api::ffi::altrep::*;
                 // Local helper to reduce boilerplate
+                #[allow(unused_macros)]
                 macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
-                // Base: length is ALWAYS required (no HAS_LENGTH check)
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<#tramp_ty>)); }
-                // Vec-level setters
-                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR, R_set_altvec_Dataptr_method, bridge::t_dataptr::<#tramp_ty>);
-                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_DATAPTR_OR_NULL, R_set_altvec_Dataptr_or_null_method, bridge::t_dataptr_or_null::<#tramp_ty>);
-                set_if!(<#tramp_ty as ::miniextendr_api::altrep_traits::AltVec>::HAS_EXTRACT_SUBSET, R_set_altvec_Extract_subset_method, bridge::t_extract_subset::<#tramp_ty>);
-                // Family-specific
-                #family_setters
+                #method_registrar_install_body
             }
         }
 

@@ -43,7 +43,7 @@ ALTREP (base)
 
 - `Elt(SEXP, i) -> i32` - element access
 - `Get_region(SEXP, i, n, buf) -> R_xlen_t` - bulk read
-- `Is_sorted(SEXP) -> i32` - sortedness hint (UNKNOWN=INT_MIN, no=-1, increasing=0, decreasing=1, etc.)
+- `Is_sorted(SEXP) -> i32` - sortedness hint (UNKNOWN=INT_MIN, unsorted=0, increasing=1, decreasing=-1, NA-first=±2)
 - `No_NA(SEXP) -> i32` - NA-free hint (0=unknown, 1=no NAs)
 - `Sum(SEXP, narm) -> SEXP` - optimized sum
 - `Min(SEXP, narm) -> SEXP` - optimized min
@@ -438,9 +438,9 @@ impl AltIntegerData for ArithSeq {
 
     fn is_sorted(&self) -> Option<Sortedness> {
         Some(if self.step > 0 {
-            Sortedness::StrictlyIncreasing
+            Sortedness::Increasing
         } else if self.step < 0 {
-            Sortedness::StrictlyDecreasing
+            Sortedness::Decreasing
         } else {
             Sortedness::Increasing  // All equal
         })
@@ -703,19 +703,23 @@ The bridge macros use `NULL` when they need to signal “fall back to R”.
 
 ```rust
 pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
-pub const SORTED_NONE: i32 = 0;       // Not sorted
-pub const SORTED_INCR: i32 = 1;       // Increasing (may have ties)
-pub const SORTED_DECR: i32 = -1;      // Decreasing (may have ties)
-pub const SORTED_INCR_STRICT: i32 = 2;  // Strictly increasing
-pub const SORTED_DECR_STRICT: i32 = -2; // Strictly decreasing
+pub const KNOWN_UNSORTED: i32 = 0;
+pub const SORTED_INCR: i32 = 1;          // Increasing (may have ties)
+pub const SORTED_DECR: i32 = -1;         // Decreasing (may have ties)
+pub const SORTED_INCR_NA_1ST: i32 = 2;   // Increasing, NAs first
+pub const SORTED_DECR_NA_1ST: i32 = -2;  // Decreasing, NAs first
 ```
 
 Use the `Sortedness` enum in high-level code:
 
 ```rust
 pub enum Sortedness {
-    Unknown, None, Increasing, Decreasing,
-    StrictlyIncreasing, StrictlyDecreasing
+    Unknown,
+    KnownUnsorted,
+    Increasing,
+    Decreasing,
+    IncreasingNaFirst,
+    DecreasingNaFirst,
 }
 ```
 

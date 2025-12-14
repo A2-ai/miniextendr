@@ -411,16 +411,33 @@ impl<T: AltList> AltListOpt for T {}
 
 /// Unknown sortedness value (INT_MIN in R).
 pub const UNKNOWN_SORTEDNESS: i32 = i32::MIN;
-/// Not sorted.
-pub const SORTED_NONE: i32 = -1;
-/// Sorted in increasing order.
-pub const SORTED_INCR: i32 = 0;
-/// Sorted in decreasing order.
-pub const SORTED_DECR: i32 = 1;
-/// Sorted in increasing order (strictly, no ties).
-pub const SORTED_INCR_STRICT: i32 = 2;
-/// Sorted in decreasing order (strictly, no ties).
-pub const SORTED_DECR_STRICT: i32 = -2;
+
+/// Known to be unsorted (`KNOWN_UNSORTED` in R).
+pub const KNOWN_UNSORTED: i32 = 0;
+
+/// Sorted in increasing order, possibly with ties (`SORTED_INCR` in R).
+pub const SORTED_INCR: i32 = 1;
+
+/// Sorted in decreasing order, possibly with ties (`SORTED_DECR` in R).
+pub const SORTED_DECR: i32 = -1;
+
+/// Sorted in increasing order, with NAs first (`SORTED_INCR_NA_1ST` in R).
+pub const SORTED_INCR_NA_1ST: i32 = 2;
+
+/// Sorted in decreasing order, with NAs first (`SORTED_DECR_NA_1ST` in R).
+pub const SORTED_DECR_NA_1ST: i32 = -2;
+
+/// Deprecated alias for [`KNOWN_UNSORTED`].
+#[deprecated(note = "Use KNOWN_UNSORTED (matches R's KNOWN_UNSORTED = 0).")]
+pub const SORTED_NONE: i32 = KNOWN_UNSORTED;
+
+/// Deprecated alias for [`SORTED_INCR_NA_1ST`].
+#[deprecated(note = "Use SORTED_INCR_NA_1ST (R uses this code for NA-first, not strictness).")]
+pub const SORTED_INCR_STRICT: i32 = SORTED_INCR_NA_1ST;
+
+/// Deprecated alias for [`SORTED_DECR_NA_1ST`].
+#[deprecated(note = "Use SORTED_DECR_NA_1ST (R uses this code for NA-first, not strictness).")]
+pub const SORTED_DECR_STRICT: i32 = SORTED_DECR_NA_1ST;
 
 /// NA value for integers.
 pub const NA_INTEGER: i32 = i32::MIN;

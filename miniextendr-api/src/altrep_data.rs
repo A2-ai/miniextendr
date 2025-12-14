@@ -316,28 +316,49 @@ pub trait AltListData: AltrepLen {
 pub enum Sortedness {
     /// Unknown sortedness.
     Unknown,
-    /// Not sorted.
-    None,
+    /// Known to be unsorted.
+    ///
+    /// This corresponds to `KNOWN_UNSORTED` in R.
+    KnownUnsorted,
     /// Sorted in increasing order (may have ties).
     Increasing,
     /// Sorted in decreasing order (may have ties).
     Decreasing,
-    /// Strictly increasing (no ties).
-    StrictlyIncreasing,
-    /// Strictly decreasing (no ties).
-    StrictlyDecreasing,
+    /// Sorted in increasing order, with NAs first.
+    ///
+    /// This corresponds to `SORTED_INCR_NA_1ST` in R.
+    IncreasingNaFirst,
+    /// Sorted in decreasing order, with NAs first.
+    ///
+    /// This corresponds to `SORTED_DECR_NA_1ST` in R.
+    DecreasingNaFirst,
 }
 
 impl Sortedness {
+    /// Deprecated alias for [`Sortedness::KnownUnsorted`].
+    #[deprecated(note = "Use Sortedness::KnownUnsorted (matches R's KNOWN_UNSORTED = 0).")]
+    #[allow(non_upper_case_globals)]
+    pub const None: Sortedness = Sortedness::KnownUnsorted;
+
+    /// Deprecated alias for [`Sortedness::IncreasingNaFirst`].
+    #[deprecated(note = "Use Sortedness::IncreasingNaFirst (R uses this code for NA-first, not strictness).")]
+    #[allow(non_upper_case_globals)]
+    pub const StrictlyIncreasing: Sortedness = Sortedness::IncreasingNaFirst;
+
+    /// Deprecated alias for [`Sortedness::DecreasingNaFirst`].
+    #[deprecated(note = "Use Sortedness::DecreasingNaFirst (R uses this code for NA-first, not strictness).")]
+    #[allow(non_upper_case_globals)]
+    pub const StrictlyDecreasing: Sortedness = Sortedness::DecreasingNaFirst;
+
     /// Convert to R's integer representation.
     pub fn to_r_int(self) -> i32 {
         match self {
             Sortedness::Unknown => i32::MIN,
-            Sortedness::None => 0,
+            Sortedness::KnownUnsorted => 0,
             Sortedness::Increasing => 1,
             Sortedness::Decreasing => -1,
-            Sortedness::StrictlyIncreasing => 2,
-            Sortedness::StrictlyDecreasing => -2,
+            Sortedness::IncreasingNaFirst => 2,
+            Sortedness::DecreasingNaFirst => -2,
         }
     }
 
@@ -345,11 +366,11 @@ impl Sortedness {
     pub fn from_r_int(i: i32) -> Self {
         match i {
             i32::MIN => Sortedness::Unknown,
-            0 => Sortedness::None,
+            0 => Sortedness::KnownUnsorted,
             1 => Sortedness::Increasing,
             -1 => Sortedness::Decreasing,
-            2 => Sortedness::StrictlyIncreasing,
-            -2 => Sortedness::StrictlyDecreasing,
+            2 => Sortedness::IncreasingNaFirst,
+            -2 => Sortedness::DecreasingNaFirst,
             _ => Sortedness::Unknown,
         }
     }
@@ -486,13 +507,18 @@ pub trait AltrepSerialize: Sized {
     fn unserialize(state: SEXP) -> Option<Self>;
 }
 
-/// Trait for creating an ALTREP SEXP from serialized state.
+/// Deprecated: legacy hook for creating an ALTREP SEXP from serialized state.
 ///
-/// This is used by the `unserialize` callback to reconstruct the ALTREP object.
-/// It combines data unserialization with ALTREP instance creation.
+/// miniextendr now implements `Altrep::unserialize(class, state)` directly for data types
+/// that use the `serialize` variants of `impl_alt*_from_data!`, so no wrapper-side
+/// `from_serialized_state` hook is needed.
 ///
-/// This trait is automatically implemented by the `#[miniextendr]` macro
-/// for wrapper classes when the inner data type implements `AltrepSerialize`.
+/// If you need custom class-specific reconstruction, implement the low-level
+/// `altrep_traits::Altrep::unserialize` method manually instead of using the
+/// `serialize` variants.
+#[deprecated(
+    note = "No longer used by miniextendr; use AltrepSerialize (+ serialize variants) or implement Altrep::unserialize manually."
+)]
 pub trait AltrepUnserialize {
     /// Create an ALTREP SEXP from serialized state.
     ///
@@ -607,72 +633,9 @@ macro_rules! impl_inferbase_integer {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                // ALTREP base methods
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-
-                if <$ty as Altrep>::HAS_SERIALIZED_STATE {
-                    unsafe {
-                        R_set_altrep_Serialized_state_method(
-                            cls,
-                            Some(bridge::t_serialized_state::<$ty>),
-                        )
-                    };
-                }
-
-                // AltVec methods
-                if <$ty as AltVec>::HAS_DATAPTR {
-                    unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<$ty>)) };
-                }
-                if <$ty as AltVec>::HAS_DATAPTR_OR_NULL {
-                    unsafe {
-                        R_set_altvec_Dataptr_or_null_method(
-                            cls,
-                            Some(bridge::t_dataptr_or_null::<$ty>),
-                        )
-                    };
-                }
-                if <$ty as AltVec>::HAS_EXTRACT_SUBSET {
-                    unsafe {
-                        R_set_altvec_Extract_subset_method(
-                            cls,
-                            Some(bridge::t_extract_subset::<$ty>),
-                        )
-                    };
-                }
-
-                // AltInteger methods
-                if <$ty as AltInteger>::HAS_ELT {
-                    unsafe { R_set_altinteger_Elt_method(cls, Some(bridge::t_int_elt::<$ty>)) };
-                }
-                if <$ty as AltInteger>::HAS_GET_REGION {
-                    unsafe {
-                        R_set_altinteger_Get_region_method(
-                            cls,
-                            Some(bridge::t_int_get_region::<$ty>),
-                        )
-                    };
-                }
-                if <$ty as AltInteger>::HAS_IS_SORTED {
-                    unsafe {
-                        R_set_altinteger_Is_sorted_method(cls, Some(bridge::t_int_is_sorted::<$ty>))
-                    };
-                }
-                if <$ty as AltInteger>::HAS_NO_NA {
-                    unsafe { R_set_altinteger_No_NA_method(cls, Some(bridge::t_int_no_na::<$ty>)) };
-                }
-                if <$ty as AltInteger>::HAS_SUM {
-                    unsafe { R_set_altinteger_Sum_method(cls, Some(bridge::t_int_sum::<$ty>)) };
-                }
-                if <$ty as AltInteger>::HAS_MIN {
-                    unsafe { R_set_altinteger_Min_method(cls, Some(bridge::t_int_min::<$ty>)) };
-                }
-                if <$ty as AltInteger>::HAS_MAX {
-                    unsafe { R_set_altinteger_Max_method(cls, Some(bridge::t_int_max::<$ty>)) };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_int::<$ty>(cls) };
             }
         }
     };
@@ -699,66 +662,9 @@ macro_rules! impl_inferbase_real {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-
-                if <$ty as Altrep>::HAS_SERIALIZED_STATE {
-                    unsafe {
-                        R_set_altrep_Serialized_state_method(
-                            cls,
-                            Some(bridge::t_serialized_state::<$ty>),
-                        )
-                    };
-                }
-
-                if <$ty as AltVec>::HAS_DATAPTR {
-                    unsafe { R_set_altvec_Dataptr_method(cls, Some(bridge::t_dataptr::<$ty>)) };
-                }
-                if <$ty as AltVec>::HAS_DATAPTR_OR_NULL {
-                    unsafe {
-                        R_set_altvec_Dataptr_or_null_method(
-                            cls,
-                            Some(bridge::t_dataptr_or_null::<$ty>),
-                        )
-                    };
-                }
-                if <$ty as AltVec>::HAS_EXTRACT_SUBSET {
-                    unsafe {
-                        R_set_altvec_Extract_subset_method(
-                            cls,
-                            Some(bridge::t_extract_subset::<$ty>),
-                        )
-                    };
-                }
-
-                if <$ty as AltReal>::HAS_ELT {
-                    unsafe { R_set_altreal_Elt_method(cls, Some(bridge::t_real_elt::<$ty>)) };
-                }
-                if <$ty as AltReal>::HAS_GET_REGION {
-                    unsafe {
-                        R_set_altreal_Get_region_method(cls, Some(bridge::t_real_get_region::<$ty>))
-                    };
-                }
-                if <$ty as AltReal>::HAS_IS_SORTED {
-                    unsafe {
-                        R_set_altreal_Is_sorted_method(cls, Some(bridge::t_real_is_sorted::<$ty>))
-                    };
-                }
-                if <$ty as AltReal>::HAS_NO_NA {
-                    unsafe { R_set_altreal_No_NA_method(cls, Some(bridge::t_real_no_na::<$ty>)) };
-                }
-                if <$ty as AltReal>::HAS_SUM {
-                    unsafe { R_set_altreal_Sum_method(cls, Some(bridge::t_real_sum::<$ty>)) };
-                }
-                if <$ty as AltReal>::HAS_MIN {
-                    unsafe { R_set_altreal_Min_method(cls, Some(bridge::t_real_min::<$ty>)) };
-                }
-                if <$ty as AltReal>::HAS_MAX {
-                    unsafe { R_set_altreal_Max_method(cls, Some(bridge::t_real_max::<$ty>)) };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_real::<$ty>(cls) };
             }
         }
     };
@@ -785,31 +691,9 @@ macro_rules! impl_inferbase_logical {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-
-                if <$ty as AltLogical>::HAS_ELT {
-                    unsafe { R_set_altlogical_Elt_method(cls, Some(bridge::t_lgl_elt::<$ty>)) };
-                }
-                if <$ty as AltLogical>::HAS_GET_REGION {
-                    unsafe {
-                        R_set_altlogical_Get_region_method(
-                            cls,
-                            Some(bridge::t_lgl_get_region::<$ty>),
-                        )
-                    };
-                }
-                if <$ty as AltLogical>::HAS_IS_SORTED {
-                    unsafe {
-                        R_set_altlogical_Is_sorted_method(cls, Some(bridge::t_lgl_is_sorted::<$ty>))
-                    };
-                }
-                if <$ty as AltLogical>::HAS_NO_NA {
-                    unsafe { R_set_altlogical_No_NA_method(cls, Some(bridge::t_lgl_no_na::<$ty>)) };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_lgl::<$ty>(cls) };
             }
         }
     };
@@ -836,20 +720,9 @@ macro_rules! impl_inferbase_raw {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-
-                if <$ty as AltRaw>::HAS_ELT {
-                    unsafe { R_set_altraw_Elt_method(cls, Some(bridge::t_raw_elt::<$ty>)) };
-                }
-                if <$ty as AltRaw>::HAS_GET_REGION {
-                    unsafe {
-                        R_set_altraw_Get_region_method(cls, Some(bridge::t_raw_get_region::<$ty>))
-                    };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_raw::<$ty>(cls) };
             }
         }
     };
@@ -876,26 +749,9 @@ macro_rules! impl_inferbase_string {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-                unsafe { R_set_altstring_Elt_method(cls, Some(bridge::t_str_elt::<$ty>)) };
-
-                if <$ty as AltString>::HAS_IS_SORTED {
-                    unsafe {
-                        R_set_altstring_Is_sorted_method(cls, Some(bridge::t_str_is_sorted::<$ty>))
-                    };
-                }
-                if <$ty as AltString>::HAS_NO_NA {
-                    unsafe { R_set_altstring_No_NA_method(cls, Some(bridge::t_str_no_na::<$ty>)) };
-                }
-                if <$ty as AltString>::HAS_SET_ELT {
-                    unsafe {
-                        R_set_altstring_Set_elt_method(cls, Some(bridge::t_str_set_elt::<$ty>))
-                    };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_str::<$ty>(cls) };
             }
         }
     };
@@ -922,23 +778,9 @@ macro_rules! impl_inferbase_complex {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-
-                if <$ty as AltComplex>::HAS_ELT {
-                    unsafe { R_set_altcomplex_Elt_method(cls, Some(bridge::t_cplx_elt::<$ty>)) };
-                }
-                if <$ty as AltComplex>::HAS_GET_REGION {
-                    unsafe {
-                        R_set_altcomplex_Get_region_method(
-                            cls,
-                            Some(bridge::t_cplx_get_region::<$ty>),
-                        )
-                    };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_cplx::<$ty>(cls) };
             }
         }
     };
@@ -965,18 +807,9 @@ macro_rules! impl_inferbase_list {
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
-                use $crate::altrep_bridge as bridge;
-                use $crate::altrep_traits::*;
-                use $crate::ffi::altrep::*;
-
-                unsafe { R_set_altrep_Length_method(cls, Some(bridge::t_length::<$ty>)) };
-                unsafe { R_set_altlist_Elt_method(cls, Some(bridge::t_list_elt::<$ty>)) };
-
-                if <$ty as AltList>::HAS_SET_ELT {
-                    unsafe {
-                        R_set_altlist_Set_elt_method(cls, Some(bridge::t_list_set_elt::<$ty>))
-                    };
-                }
+                unsafe { $crate::altrep_bridge::install_base::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_vec::<$ty>(cls) };
+                unsafe { $crate::altrep_bridge::install_list::<$ty>(cls) };
             }
         }
     };
@@ -1529,7 +1362,7 @@ impl AltIntegerData for Range<i32> {
     }
 
     fn is_sorted(&self) -> Option<Sortedness> {
-        Some(Sortedness::StrictlyIncreasing)
+        Some(Sortedness::Increasing)
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -1580,7 +1413,7 @@ impl AltIntegerData for Range<i64> {
     }
 
     fn is_sorted(&self) -> Option<Sortedness> {
-        Some(Sortedness::StrictlyIncreasing)
+        Some(Sortedness::Increasing)
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -1631,7 +1464,7 @@ impl AltRealData for Range<f64> {
     }
 
     fn is_sorted(&self) -> Option<Sortedness> {
-        Some(Sortedness::StrictlyIncreasing)
+        Some(Sortedness::Increasing)
     }
 
     fn no_na(&self) -> Option<bool> {
@@ -2041,21 +1874,21 @@ mod tests {
     #[test]
     fn test_sortedness_to_r_int() {
         assert_eq!(Sortedness::Unknown.to_r_int(), i32::MIN);
-        assert_eq!(Sortedness::None.to_r_int(), 0);
+        assert_eq!(Sortedness::KnownUnsorted.to_r_int(), 0);
         assert_eq!(Sortedness::Increasing.to_r_int(), 1);
         assert_eq!(Sortedness::Decreasing.to_r_int(), -1);
-        assert_eq!(Sortedness::StrictlyIncreasing.to_r_int(), 2);
-        assert_eq!(Sortedness::StrictlyDecreasing.to_r_int(), -2);
+        assert_eq!(Sortedness::IncreasingNaFirst.to_r_int(), 2);
+        assert_eq!(Sortedness::DecreasingNaFirst.to_r_int(), -2);
     }
 
     #[test]
     fn test_sortedness_from_r_int() {
         assert_eq!(Sortedness::from_r_int(i32::MIN), Sortedness::Unknown);
-        assert_eq!(Sortedness::from_r_int(0), Sortedness::None);
+        assert_eq!(Sortedness::from_r_int(0), Sortedness::KnownUnsorted);
         assert_eq!(Sortedness::from_r_int(1), Sortedness::Increasing);
         assert_eq!(Sortedness::from_r_int(-1), Sortedness::Decreasing);
-        assert_eq!(Sortedness::from_r_int(2), Sortedness::StrictlyIncreasing);
-        assert_eq!(Sortedness::from_r_int(-2), Sortedness::StrictlyDecreasing);
+        assert_eq!(Sortedness::from_r_int(2), Sortedness::IncreasingNaFirst);
+        assert_eq!(Sortedness::from_r_int(-2), Sortedness::DecreasingNaFirst);
         // Invalid values map to Unknown
         assert_eq!(Sortedness::from_r_int(99), Sortedness::Unknown);
     }
@@ -2231,7 +2064,7 @@ mod tests {
         let r = 1..10;
         assert_eq!(
             AltIntegerData::is_sorted(&r),
-            Some(Sortedness::StrictlyIncreasing)
+            Some(Sortedness::Increasing)
         );
     }
 
