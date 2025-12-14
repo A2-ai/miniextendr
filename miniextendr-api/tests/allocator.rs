@@ -94,6 +94,7 @@ fn test_allocator_zero_size() {
     unsafe {
         let layout = Layout::from_size_align(0, 1).unwrap();
         let ptr = RAllocator.alloc(layout);
+        // ZST allocations return null (can't track with header since no storage)
         assert!(ptr.is_null(), "zero-size alloc should return null");
 
         // Dealloc of null should be safe
@@ -349,7 +350,12 @@ fn test_allocator_default_stack_threads() {
                 let ptr = RAllocator.alloc(layout);
 
                 assert!(!ptr.is_null(), "Thread {} alloc failed", thread_id);
-                assert_eq!(ptr.align_offset(8), 0, "Thread {} alignment failed", thread_id);
+                assert_eq!(
+                    ptr.align_offset(8),
+                    0,
+                    "Thread {} alignment failed",
+                    thread_id
+                );
 
                 // Write and verify pattern
                 for i in 0..128 {
@@ -358,12 +364,7 @@ fn test_allocator_default_stack_threads() {
 
                 for i in 0..128 {
                     let expected = ((thread_id * 50 + i) % 256) as u8;
-                    assert_eq!(
-                        *ptr.add(i),
-                        expected,
-                        "Thread {} data corrupted",
-                        thread_id
-                    );
+                    assert_eq!(*ptr.add(i), expected, "Thread {} data corrupted", thread_id);
                 }
 
                 RAllocator.dealloc(ptr, layout);
