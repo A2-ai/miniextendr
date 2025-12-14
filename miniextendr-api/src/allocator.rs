@@ -1,53 +1,31 @@
 //! R-backed global allocator for Rust.
 //!
-//! This module provides a `GlobalAlloc` implementation that uses R's memory
-//! management system to allocate memory. All allocations are backed by R RAWSXP
-//! objects and protected from garbage collection.
+//! Allocations are backed by R RAWSXP objects and protected from GC via the
+//! crate's preserve mechanism.
 //!
-//! ## How it works
+//! Layout inside the RAWSXP (bytes):
+//!   [optional leading pad][Header][user bytes...]
 //!
-//! 1. When `alloc()` is called, we allocate a RAWSXP large enough for:
-//!    - A header (preserve cell + offset)
-//!    - Alignment padding
-//!    - The requested user data
-//!
-//! 2. The RAWSXP is protected using our preserve mechanism
-//!
-//! 3. We return an aligned pointer into the RAWSXP's data, with the header
-//!    stored immediately before it
-//!
-//! 4. On `dealloc()`, we recover the header and release the preserve cell
-//!
-//! ## Memory layout
-//!
-//! Each allocation is wrapped in an `RBox<T>` structure that contains:
-//! - The preserve cell (for GC protection)
-//! - The actual data (properly aligned via `repr(C)`)
-//!
-//! The RAWSXP is large enough to hold the entire `RBox<T>`.
-//!
-//! ## Safety
-//!
-//! This allocator must only be used from the R main thread. Using it from
-//! other threads will cause undefined behavior.
+//! We always return a pointer aligned to at least:
+//!   max(requested_align, align_of::<Header>())
+//! so the `Header` placed immediately before the user pointer is always aligned.
 
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
-use std::alloc;
-use std::ptr;
+use core::{
+    alloc::{GlobalAlloc, Layout},
+    mem, ptr,
+};
 
-/// Header stored before user data in each allocation.
-///
-/// The header contains the protection tag and the offset from the RAWSXP
-/// base to the user data pointer. We need the offset because RAW(sexp)
-/// is not guaranteed to be aligned, so we can't reliably recalculate it.
+/// Metadata stored immediately before the returned user pointer.
 #[repr(C)]
-struct AllocationHeader {
-    tag: SEXP,
-    offset: u16, // Offset from RAW(sexp) to user data pointer
+#[derive(Copy, Clone)]
+struct Header {
+    preserve_tag: SEXP,
 }
 
-const HEADER_SIZE: usize = std::mem::size_of::<AllocationHeader>();
+const HEADER_SIZE: usize = mem::size_of::<Header>();
+const HEADER_ALIGN: usize = mem::align_of::<Header>();
 
 /// R-backed global allocator.
 ///
@@ -69,121 +47,150 @@ const HEADER_SIZE: usize = std::mem::size_of::<AllocationHeader>();
 #[derive(Debug)]
 pub struct RAllocator;
 
-unsafe impl alloc::GlobalAlloc for RAllocator {
-    unsafe fn alloc(&self, layout: alloc::Layout) -> *mut u8 {
+unsafe impl GlobalAlloc for RAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         unsafe {
+            // ZST allocations: return null since we can't meaningfully track them
+            // (dangling pointer would crash in dealloc when we try to read the header)
             if layout.size() == 0 {
                 return ptr::null_mut();
             }
 
-            let align = layout.align();
-            let size = layout.size();
+            let align = layout.align().max(HEADER_ALIGN);
 
-            // We need space for: header + padding + data
-            // Worst case: HEADER_SIZE + (align - 1) + size
-            let total_size = HEADER_SIZE + align - 1 + size;
+            // Calculate total size needed with overflow checking
+            let total = {
+                let Some(align_minus_1) = align.checked_sub(1) else {
+                    return ptr::null_mut();
+                };
+                let Some(temp) = HEADER_SIZE.checked_add(align_minus_1) else {
+                    return ptr::null_mut();
+                };
+                let Some(total) = temp.checked_add(layout.size()) else {
+                    return ptr::null_mut();
+                };
+                total
+            };
 
-            // Allocate RAWSXP
-            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_size as isize);
+            let total_isize: isize = match total.try_into() {
+                Ok(n) => n,
+                Err(_) => return ptr::null_mut(),
+            };
+
+            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_isize);
             if sexp.is_null() {
                 return ptr::null_mut();
             }
 
-            // Protect from GC
-            let protection_tag = insert(sexp);
+            // Protect from GC (must stay valid until dealloc()).
+            let preserve_tag = insert(sexp);
 
-            // Get raw base pointer
-            let raw_base = RAW(sexp);
+            let raw_base = RAW(sexp).cast::<u8>();
+            let (header, data) = match unsafe {
+                    let align = layout.align().max(HEADER_ALIGN);
 
-            // Find where header should go: immediately before aligned data
-            // We want data at an address aligned to `align`
-            let header_end = raw_base.add(HEADER_SIZE);
+                    // Reserve header bytes, then align the next pointer up to `align`.
+                    let after_header = raw_base.add(HEADER_SIZE);
+                    let pad = after_header.align_offset(align);
+                    if pad == usize::MAX {
+                        return None;
+                    }
 
-            // Align header_end up to the requested alignment
-            let data_ptr = header_end.map_addr(|addr| (addr + align - 1) & !(align - 1));
+                    let data = after_header.add(pad);
+                    let header = data.sub(HEADER_SIZE).cast::<Header>();
 
-            // Header goes immediately before data
-            let header_ptr = data_ptr.sub(HEADER_SIZE).cast::<AllocationHeader>();
+                    Some((header, data))
+                } {
+                Some(v) => v,
+                None => {
+                    // Extremely unlikely, but don't leak the preserve cell.
+                    release(preserve_tag);
+                    return ptr::null_mut();
+                }
+            };
 
-            // Write header
-            ptr::write(
-                header_ptr,
-                AllocationHeader {
-                    tag: protection_tag,
-                    offset: data_ptr.offset_from(raw_base) as u16,
-                },
-            );
+            header.write(Header { preserve_tag });
 
-            // Verify alignment (without usize cast)
-            debug_assert_eq!(data_ptr.align_offset(align), 0);
-
-            data_ptr
+            debug_assert_eq!(data.align_offset(layout.align()), 0);
+            data
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, _layout: alloc::Layout) {
+    unsafe fn dealloc(&self, data: *mut u8, _layout: Layout) {
         unsafe {
-            if ptr.is_null() {
+            if data.is_null() {
                 return;
             }
 
-            // Header is immediately before data
-            let header_ptr = ptr.sub(HEADER_SIZE) as *const AllocationHeader;
-            let header = ptr::read(header_ptr);
+            let header = data.sub(HEADER_SIZE).cast::<Header>();
+            let preserve_tag = (*header).preserve_tag;
 
-            // Release from preserve list
-            release(header.tag);
+            release(preserve_tag);
         }
     }
 
-    unsafe fn realloc(&self, ptr: *mut u8, layout: alloc::Layout, new_size: usize) -> *mut u8 {
+    unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
         unsafe {
-            if ptr.is_null() {
-                return self.alloc(alloc::Layout::from_size_align_unchecked(
-                    new_size,
-                    layout.align(),
-                ));
+            if old.is_null() {
+                let Ok(new_layout) = Layout::from_size_align(new_size, layout.align()) else {
+                    return ptr::null_mut();
+                };
+                return self.alloc(new_layout);
             }
 
             if new_size == 0 {
-                self.dealloc(ptr, layout);
+                self.dealloc(old, layout);
                 return ptr::null_mut();
             }
 
-            // Read header to get RAWSXP
-            let header_ptr = ptr.sub(HEADER_SIZE) as *const AllocationHeader;
-            let header = ptr::read(header_ptr);
-            let sexp = crate::ffi::TAG(header.tag);
+            // Recover RAWSXP via preserve tag.
+            let header = old.sub(HEADER_SIZE).cast::<Header>();
+            let preserve_tag = (*header).preserve_tag;
+            let sexp = crate::ffi::TAG(preserve_tag);
 
-            // Check if new size fits in existing RAWSXP
-            let old_rawsxp_size = crate::ffi::Rf_xlength(sexp);
-            let align = layout.align();
-            let new_total_needed = HEADER_SIZE + align - 1 + new_size;
+            // Exact available capacity from `old` to end of the RAWSXP.
+            let raw_base = RAW(sexp).cast::<u8>();
+            let cap: usize = match crate::ffi::Rf_xlength(sexp).try_into() {
+                Ok(n) => n,
+                Err(_) => return ptr::null_mut(),
+            };
 
-            if new_total_needed as isize <= old_rawsxp_size {
-                // Fits! Return same pointer
-                return ptr;
+            let used = (old as *const u8).offset_from(raw_base as *const u8);
+            if used < 0 {
+                // Should be impossible if `old` came from this allocator, but don't UB.
+                return ptr::null_mut();
+            }
+            let available = cap.saturating_sub(used as usize);
+
+            if new_size <= available {
+                return old;
             }
 
-            // Need new allocation
-            let new_layout = alloc::Layout::from_size_align_unchecked(new_size, align);
+            let Ok(new_layout) = Layout::from_size_align(new_size, layout.align()) else {
+                return ptr::null_mut();
+            };
+
             let new_ptr = self.alloc(new_layout);
-
             if new_ptr.is_null() {
+                // On realloc failure, the old allocation must remain valid.
                 return ptr::null_mut();
             }
 
-            // Copy data
-            let copy_size = layout.size().min(new_size);
-            ptr::copy_nonoverlapping(ptr, new_ptr, copy_size);
-
-            // Free old
-            self.dealloc(ptr, layout);
+            ptr::copy_nonoverlapping(old, new_ptr, layout.size().min(new_size));
+            self.dealloc(old, layout);
 
             new_ptr
         }
     }
-}
 
-// Tests for this module require R runtime and should be run via R CMD check.
-// They are located in rpkg/tests/ as integration tests.
+    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+        unsafe {
+            // Don't rely on RAWSXP being zeroed; make it explicit.
+            let p = self.alloc(layout);
+            if !p.is_null() {
+                ptr::write_bytes(p, 0, layout.size());
+            }
+            p
+        }
+    }
+}
