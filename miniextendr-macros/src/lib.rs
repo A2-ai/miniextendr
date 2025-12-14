@@ -84,19 +84,39 @@ impl syn::parse::Parse for ExtendrFunction {
     }
 }
 
+fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+    quote::format_ident!("call_method_def_{rust_ident}")
+}
+
+fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+    let rust_ident_upper = rust_ident.to_string().to_uppercase();
+    quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+}
+
 impl ExtendrFunction {
+    fn from_item_fn(itemfn: &syn::ItemFn) -> Self {
+        let signature = &itemfn.sig;
+        Self {
+            attrs: itemfn.attrs.clone(),
+            vis: itemfn.vis.clone(),
+            abi: signature.abi.clone(),
+            ident: signature.ident.clone(),
+            generics: signature.generics.clone(),
+            inputs: signature.inputs.clone(),
+            output: signature.output.clone(),
+        }
+    }
+
     fn uses_internal_c_wrapper(&self) -> bool {
         self.abi.is_none()
     }
 
     fn call_method_def_ident(&self) -> syn::Ident {
-        let rust_ident = &self.ident;
-        quote::format_ident!("call_method_def_{rust_ident}")
+        call_method_def_ident_for(&self.ident)
     }
 
     fn r_wrapper_const_ident(&self) -> syn::Ident {
-        let rust_ident_upper = self.ident.to_string().to_uppercase();
-        quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+        r_wrapper_const_ident_for(&self.ident)
     }
 
     fn c_wrapper_ident(&self) -> syn::Ident {
@@ -149,6 +169,121 @@ enum CoercionMapping {
 fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
     attr.path().is_ident("miniextendr")
         && matches!(&attr.meta, syn::Meta::List(list) if list.parse_args::<syn::Ident>().is_ok_and(|id| id == "coerce"))
+}
+
+/// Parsed + normalized Rust function for `#[miniextendr]`.
+///
+/// This performs signature normalization that the wrapper generator depends on:
+/// - `...` → a final `&miniextendr_api::dots::Dots` argument
+/// - `_` wildcard patterns → synthetic identifiers (`__unused0`, `__unused1`, ...)
+/// - consumes `#[miniextendr(coerce)]` parameter attributes and records which params had it
+struct ExtendrFunctionParsed {
+    original_item: syn::ItemFn,
+    has_dots: bool,
+    named_dots: Option<syn::Ident>,
+    per_param_coerce: std::collections::HashSet<String>,
+}
+
+impl syn::parse::Parse for ExtendrFunctionParsed {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::spanned::Spanned;
+
+        let mut item: syn::ItemFn = input.parse()?;
+
+        // dots support: parse variadic name (if any) and replace `...` with `&Dots`.
+        let has_dots = item.sig.variadic.is_some();
+        let named_dots = if has_dots {
+            let dots = item.sig.variadic.as_ref().unwrap();
+            if let Some(named_dots) = dots.pat.as_ref() {
+                if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
+                    Some(named_dots_ident.ident.clone())
+                } else {
+                    return Err(syn::Error::new(
+                        named_dots.0.span(),
+                        "variadic pattern must be a simple identifier (e.g. `dots: ...`) or unnamed `...`",
+                    ));
+                }
+            } else {
+                None
+            }
+        } else {
+            None
+        };
+
+        // Transform `_` wildcard patterns to synthetic identifiers, and consume
+        // per-parameter `#[miniextendr(coerce)]` attributes.
+        let mut per_param_coerce: std::collections::HashSet<String> =
+            std::collections::HashSet::new();
+        let mut unused_counter = 0usize;
+        for arg in &mut item.sig.inputs {
+            let syn::FnArg::Typed(pat_type) = arg else {
+                // TODO: no support for self!
+                continue;
+            };
+
+            let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
+            pat_type
+                .attrs
+                .retain(|attr| !is_miniextendr_coerce_attr(attr));
+
+            match pat_type.pat.as_ref() {
+                syn::Pat::Ident(pat_ident) => {
+                    if had_coerce_attr {
+                        per_param_coerce.insert(pat_ident.ident.to_string());
+                    }
+                }
+                syn::Pat::Wild(_) => {
+                    let synthetic_name = format!("__unused{}", unused_counter);
+                    unused_counter += 1;
+                    let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
+                    *pat_type.pat = syn::Pat::Ident(syn::PatIdent {
+                        attrs: vec![],
+                        by_ref: None,
+                        mutability: None,
+                        ident: synthetic_ident,
+                        subpat: None,
+                    });
+                    if had_coerce_attr {
+                        per_param_coerce.insert(synthetic_name);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if has_dots {
+            item.sig.variadic = None;
+            item.sig
+                .inputs
+                .push(if let Some(named_dots) = named_dots.as_ref() {
+                    syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
+                } else {
+                    // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
+                    // Check that no existing parameter is named `_dots`
+                    for arg in &item.sig.inputs {
+                        let syn::FnArg::Typed(pat_type) = arg else {
+                            continue;
+                        };
+                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
+                            if pat_ident.ident == "_dots" {
+                                return Err(syn::Error::new(
+                                    pat_ident.ident.span(),
+                                    "parameter named `_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
+                                ));
+                            }
+                        }
+                    }
+                    syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
+                });
+        }
+
+        Ok(Self {
+            original_item: item,
+            has_dots,
+            named_dots,
+            per_param_coerce,
+        })
+    }
 }
 
 /// Get the coercion mapping for a type, if it needs coercion.
@@ -226,103 +361,14 @@ pub fn miniextendr(
         coerce_all,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
-    let mut item = syn::parse_macro_input!(item as syn::ItemFn);
+    let ExtendrFunctionParsed {
+        original_item,
+        has_dots,
+        mut named_dots,
+        per_param_coerce,
+    } = syn::parse_macro_input!(item as ExtendrFunctionParsed);
 
-    // Collect which parameters have #[miniextendr(coerce)] attribute BEFORE stripping
-    let per_param_coerce: std::collections::HashSet<String> = item
-        .sig
-        .inputs
-        .iter()
-        .filter_map(|arg| {
-            if let syn::FnArg::Typed(pat_type) = arg
-                && pat_type.attrs.iter().any(is_miniextendr_coerce_attr)
-                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
-            {
-                return Some(pat_ident.ident.to_string());
-            }
-            None
-        })
-        .collect();
-
-    // Transform `_` wildcard patterns to synthetic identifiers `__unused0`, `__unused1`, etc.
-    // This is needed because `_` doesn't bind to a variable, but we need parameter names
-    // for the C wrapper and R wrapper.
-    // Also strip `#[miniextendr(coerce)]` attributes from arguments (we consume them).
-    let mut unused_counter = 0usize;
-    for arg in &mut item.sig.inputs {
-        #[allow(clippy::collapsible_if)]
-        if let syn::FnArg::Typed(pat_type) = arg {
-            // Strip #[miniextendr(coerce)] attribute - we consume it, don't pass through
-            pat_type
-                .attrs
-                .retain(|attr| !is_miniextendr_coerce_attr(attr));
-
-            if matches!(pat_type.pat.as_ref(), syn::Pat::Wild(_)) {
-                let synthetic_name = format!("__unused{}", unused_counter);
-                unused_counter += 1;
-                let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
-                *pat_type.pat = syn::Pat::Ident(syn::PatIdent {
-                    attrs: vec![],
-                    by_ref: None,
-                    mutability: None,
-                    ident: synthetic_ident,
-                    subpat: None,
-                });
-            }
-        }
-    }
-
-    // dots support here
-    //TODO: move to ExtendrFunction?
-    let has_dots = item.sig.variadic.is_some();
-    let mut named_dots: Option<syn::Ident> = if has_dots {
-        let dots = item.sig.variadic.as_ref().unwrap();
-        if let Some(named_dots) = dots.pat.as_ref() {
-            if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
-                Some(named_dots_ident.ident.clone())
-            } else {
-                // Pattern match on dots that isn't a simple ident (e.g., `(a, b): ...`)
-                // This is not supported in R's ... semantics
-                panic!(
-                    "variadic pattern must be a simple identifier, got: {:?}",
-                    named_dots.0
-                );
-            }
-        } else {
-            // unnamed dots
-            None
-        }
-    } else {
-        None
-    };
-    item.sig.variadic = None;
-    // instead of ... replace with Dots type!
-    //TODO: investigate why this needs to be &Dots.
-    if has_dots {
-        item.sig
-            .inputs
-            .push(if let Some(named_dots) = named_dots.as_ref() {
-                syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
-            } else {
-                // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
-                // Check that no existing parameter is named `_dots`
-                for arg in &item.sig.inputs {
-                    #[allow(clippy::collapsible_if)]
-                    if let syn::FnArg::Typed(pat_type) = arg {
-                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
-                            if pat_ident.ident == "_dots" {
-                                panic!("parameter named `_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead");
-                            }
-                        }
-                    }
-                }
-                syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
-            });
-    }
-    let original_item = item.clone();
-    use quote::ToTokens;
-    let item = item.into_token_stream();
-    let extendr_function: ExtendrFunction = syn::parse2(item).unwrap();
+    let extendr_function: ExtendrFunction = ExtendrFunction::from_item_fn(&original_item);
     let uses_internal_c_wrapper = extendr_function.uses_internal_c_wrapper();
     let call_method_def = extendr_function.call_method_def_ident();
     let c_ident = extendr_function.c_wrapper_ident();
@@ -337,6 +383,7 @@ pub fn miniextendr(
         output,
     } = extendr_function;
     use syn::spanned::Spanned;
+    use quote::ToTokens;
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
         rust_arg_count + 1
@@ -987,13 +1034,11 @@ impl syn::parse::Parse for ExtendrModuleFunction {
 
 impl ExtendrModuleFunction {
     fn call_method_def_ident(&self) -> syn::Ident {
-        let rust_ident = &self.ident;
-        quote::format_ident!("call_method_def_{rust_ident}")
+        call_method_def_ident_for(&self.ident)
     }
 
     fn r_wrapper_const_ident(&self) -> syn::Ident {
-        let rust_ident_upper = self.ident.to_string().to_uppercase();
-        quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+        r_wrapper_const_ident_for(&self.ident)
     }
 }
 
@@ -1987,4 +2032,115 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
     };
 
     expanded.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn wrapper_idents_match_between_attribute_and_module_macros() {
+        let item_fn: syn::ItemFn = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
+        let f = ExtendrFunction::from_item_fn(&item_fn);
+
+        let m: ExtendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
+
+        assert_eq!(f.call_method_def_ident(), m.call_method_def_ident());
+        assert_eq!(f.r_wrapper_const_ident(), m.r_wrapper_const_ident());
+    }
+
+    #[test]
+    fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
+        let parsed: ExtendrFunctionParsed =
+            syn::parse2(quote::quote! { fn f(a: i32, ...) -> i32 { a } }).unwrap();
+
+        assert!(parsed.has_dots);
+        assert!(parsed.named_dots.is_none());
+        assert!(parsed.original_item.sig.variadic.is_none());
+
+        let last = parsed.original_item.sig.inputs.last().unwrap();
+        let syn::FnArg::Typed(pat_type) = last else {
+            panic!("expected a typed arg");
+        };
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            panic!("expected ident pattern");
+        };
+        assert_eq!(pat_ident.ident, "_dots");
+
+        let syn::Type::Reference(r) = pat_type.ty.as_ref() else {
+            panic!("expected reference type");
+        };
+        let syn::Type::Path(tp) = r.elem.as_ref() else {
+            panic!("expected path type");
+        };
+        assert_eq!(
+            tp.path
+                .segments
+                .iter()
+                .map(|s| s.ident.to_string())
+                .collect::<Vec<_>>(),
+            vec!["miniextendr_api", "dots", "Dots"]
+        );
+    }
+
+    #[test]
+    fn parsed_fn_rewrites_named_dots_to_named_dots_arg() {
+        let parsed: ExtendrFunctionParsed =
+            syn::parse2(quote::quote! { fn f(a: i32, dots: ...) -> i32 { a } }).unwrap();
+
+        assert!(parsed.has_dots);
+        assert_eq!(parsed.named_dots.as_ref().unwrap(), "dots");
+
+        let last = parsed.original_item.sig.inputs.last().unwrap();
+        let syn::FnArg::Typed(pat_type) = last else {
+            panic!("expected a typed arg");
+        };
+        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
+            panic!("expected ident pattern");
+        };
+        assert_eq!(pat_ident.ident, "dots");
+    }
+
+    #[test]
+    fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
+        let parsed: ExtendrFunctionParsed = syn::parse2(quote::quote! {
+            fn f(#[miniextendr(coerce)] _: u16, _: i32) {}
+        })
+        .unwrap();
+
+        assert!(parsed.per_param_coerce.contains("__unused0"));
+        assert!(!parsed.per_param_coerce.contains("__unused1"));
+
+        let args: Vec<&syn::FnArg> = parsed.original_item.sig.inputs.iter().collect();
+        let syn::FnArg::Typed(first) = args[0] else {
+            panic!("expected typed arg");
+        };
+        let syn::Pat::Ident(first_ident) = first.pat.as_ref() else {
+            panic!("expected ident pattern");
+        };
+        assert_eq!(first_ident.ident, "__unused0");
+        assert!(!first.attrs.iter().any(is_miniextendr_coerce_attr));
+    }
+
+    #[test]
+    fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
+        let err = syn::parse2::<ExtendrFunctionParsed>(quote::quote! {
+            fn f(_dots: i32, ...) {}
+        })
+        .err()
+        .unwrap();
+
+        assert!(err.to_string().contains("conflicts with implicit dots parameter"));
+    }
+
+    #[test]
+    fn parsed_fn_errors_on_non_ident_dots_pattern() {
+        let err = syn::parse2::<ExtendrFunctionParsed>(quote::quote! {
+            fn f((a, b): ...) {}
+        })
+        .err()
+        .unwrap();
+
+        assert!(err.to_string().contains("variadic pattern must be a simple identifier"));
+    }
 }
