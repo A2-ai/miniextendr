@@ -327,7 +327,10 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// Must be called from R's main thread. No debug assertions for thread safety.
     #[inline]
     unsafe fn create_extptr_sexp_unchecked(ptr: *mut T) -> SEXP {
-        debug_assert!(!ptr.is_null(), "create_extptr_sexp_unchecked received null pointer");
+        debug_assert!(
+            !ptr.is_null(),
+            "create_extptr_sexp_unchecked received null pointer"
+        );
 
         // Create the type symbol (R interns symbols, so same string = same pointer)
         let type_sym = unsafe { type_symbol_unchecked::<T>() };

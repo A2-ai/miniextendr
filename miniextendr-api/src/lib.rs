@@ -144,13 +144,13 @@ pub use worker::*;
 
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
+#[cfg(all(feature = "nonapi", windows))]
+pub use thread::WINDOWS_R_STACK_SIZE;
 #[cfg(feature = "nonapi")]
 pub use thread::{
     DEFAULT_R_STACK_SIZE, RThreadBuilder, StackCheckGuard, scope_with_r, spawn_with_r,
     with_stack_checking_disabled,
 };
-#[cfg(all(feature = "nonapi", windows))]
-pub use thread::WINDOWS_R_STACK_SIZE;
 
 // Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
 pub mod error;

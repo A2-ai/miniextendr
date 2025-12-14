@@ -341,12 +341,16 @@ impl Sortedness {
     pub const None: Sortedness = Sortedness::KnownUnsorted;
 
     /// Deprecated alias for [`Sortedness::IncreasingNaFirst`].
-    #[deprecated(note = "Use Sortedness::IncreasingNaFirst (R uses this code for NA-first, not strictness).")]
+    #[deprecated(
+        note = "Use Sortedness::IncreasingNaFirst (R uses this code for NA-first, not strictness)."
+    )]
     #[allow(non_upper_case_globals)]
     pub const StrictlyIncreasing: Sortedness = Sortedness::IncreasingNaFirst;
 
     /// Deprecated alias for [`Sortedness::DecreasingNaFirst`].
-    #[deprecated(note = "Use Sortedness::DecreasingNaFirst (R uses this code for NA-first, not strictness).")]
+    #[deprecated(
+        note = "Use Sortedness::DecreasingNaFirst (R uses this code for NA-first, not strictness)."
+    )]
     #[allow(non_upper_case_globals)]
     pub const StrictlyDecreasing: Sortedness = Sortedness::DecreasingNaFirst;
 
@@ -2062,10 +2066,7 @@ mod tests {
     #[test]
     fn test_range_i32_is_sorted() {
         let r = 1..10;
-        assert_eq!(
-            AltIntegerData::is_sorted(&r),
-            Some(Sortedness::Increasing)
-        );
+        assert_eq!(AltIntegerData::is_sorted(&r), Some(Sortedness::Increasing));
     }
 
     // -------------------------------------------------------------------------

@@ -1572,7 +1572,7 @@ miniextendr_module! {
 
 #[cfg(feature = "nonapi")]
 use miniextendr_api::thread::{
-    spawn_with_r, with_stack_checking_disabled, RThreadBuilder, StackCheckGuard,
+    RThreadBuilder, StackCheckGuard, spawn_with_r, with_stack_checking_disabled,
 };
 
 /// Test spawn_with_r: spawn a thread and call R API from it.
@@ -1722,7 +1722,9 @@ pub unsafe extern "C-unwind" fn C_test_spawn_multiple_r_calls() -> SEXP {
 pub unsafe extern "C-unwind" fn C_test_spawn_create_vector() -> SEXP {
     let handle = spawn_with_r(|| {
         unsafe {
-            use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+            use miniextendr_api::ffi::{
+                INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE,
+            };
 
             // Create an integer vector
             let vec = Rf_allocVector(SEXPTYPE::INTSXP, 5);
