@@ -532,6 +532,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
         }
     }
 
+    #[allow(clippy::not_unsafe_ptr_arg_deref)]
     fn unserialize(state: SEXP) -> Option<Self> {
         unsafe {
             use miniextendr_api::ffi::INTEGER_ELT;
@@ -867,7 +868,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 /// Static string data
-static STATIC_STRINGS: [&'static str; 4] = ["alpha", "beta", "gamma", "delta"];
+static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
 /// ALTREP class wrapping static string slices
 #[miniextendr(class = "StaticStrings", pkg = "rpkg")]
