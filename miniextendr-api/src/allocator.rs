@@ -88,10 +88,10 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
             // Protect the RAWSXP from GC
             let protection_tag = insert(sexp);
 
-            // Cast RAWSXP payload to our wrapper type
-            let wrapper = RAW(sexp) as *mut WithProtectionTag<[u8; 0]>;
+            // Cast RAWSXP payload to our wrapper type (using () as ZST placeholder)
+            let wrapper = RAW(sexp) as *mut WithProtectionTag<()>;
 
-            // Write the tag field
+            // Write the tag field using safe field access
             ptr::addr_of_mut!((*wrapper).tag).write(protection_tag);
 
             // Return pointer to the data field
@@ -113,9 +113,9 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
             let tag_size = mem::size_of::<SEXP>();
             let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
 
-            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<[u8; 0]>;
+            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<()>;
 
-            // Read the tag field
+            // Read the tag field using safe field access
             let protection_tag = ptr::addr_of!((*wrapper).tag).read();
 
             // Release from preserve list
@@ -127,7 +127,10 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
         unsafe {
             if ptr.is_null() {
                 // Equivalent to alloc
-                return self.alloc(alloc::Layout::from_size_align_unchecked(new_size, layout.align()));
+                return self.alloc(alloc::Layout::from_size_align_unchecked(
+                    new_size,
+                    layout.align(),
+                ));
             }
 
             if new_size == 0 {
@@ -139,7 +142,7 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
             // Calculate where the wrapper starts
             let tag_size = mem::size_of::<SEXP>();
             let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
-            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<[u8; 0]>;
+            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<()>;
 
             // Read the protection tag to get the RAWSXP
             let protection_tag = ptr::addr_of!((*wrapper).tag).read();

@@ -1,0 +1,19 @@
+[package]
+name = "miniextendr-bench"
+version = "0.0.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+miniextendr-api = { path = "../miniextendr-api" }
+miniextendr-engine = { path = "../miniextendr-engine" }
+
+[dev-dependencies]
+divan = "0.1.21"
+
+[[bench]]
+name = "translate"
+harness = false
+
+[profile.release]
+debug = true

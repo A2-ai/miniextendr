@@ -190,17 +190,23 @@ impl TryFromSexp for bool {
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-        raw.to_option_bool().ok_or_else(|| SexpNaError {
-            sexp_type: SEXPTYPE::LGLSXP,
-        }.into())
+        raw.to_option_bool().ok_or_else(|| {
+            SexpNaError {
+                sexp_type: SEXPTYPE::LGLSXP,
+            }
+            .into()
+        })
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        raw.to_option_bool().ok_or_else(|| SexpNaError {
-            sexp_type: SEXPTYPE::LGLSXP,
-        }.into())
+        raw.to_option_bool().ok_or_else(|| {
+            SexpNaError {
+                sexp_type: SEXPTYPE::LGLSXP,
+            }
+            .into()
+        })
     }
 }
 
@@ -405,16 +411,13 @@ impl TryFromSexp for String {
         }
 
         let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str
-            .to_str()
-            .map(|s| s.to_owned())
-            .map_err(|_| {
-                SexpTypeError {
-                    expected: SEXPTYPE::STRSXP,
-                    actual: SEXPTYPE::STRSXP,
-                }
-                .into()
-            })
+        rust_str.to_str().map(|s| s.to_owned()).map_err(|_| {
+            SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual: SEXPTYPE::STRSXP,
+            }
+            .into()
+        })
     }
 
     #[inline]
@@ -454,15 +457,12 @@ impl TryFromSexp for String {
         }
 
         let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str
-            .to_str()
-            .map(|s| s.to_owned())
-            .map_err(|_| {
-                SexpTypeError {
-                    expected: SEXPTYPE::STRSXP,
-                    actual: SEXPTYPE::STRSXP,
-                }
-                .into()
-            })
+        rust_str.to_str().map(|s| s.to_owned()).map_err(|_| {
+            SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual: SEXPTYPE::STRSXP,
+            }
+            .into()
+        })
     }
 }
