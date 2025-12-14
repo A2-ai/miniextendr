@@ -18,6 +18,16 @@ fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([NOT_CRAN])
 
+dnl Set cargo features flag
+dnl Use --all-features to enable all features (including nonapi for thread utilities)
+CARGO_FEATURES_FLAG="--all-features"
+AC_SUBST([CARGO_FEATURES_FLAG])
+
+dnl Set C preprocessor flags to match Cargo features
+dnl When using --all-features, define all feature macros for C code
+CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI"
+AC_SUBST([CARGO_FEATURE_CPPFLAGS])
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
@@ -130,6 +140,8 @@ VENDOR_OUT="$abs_rpkg_src/vendor"
 AC_SUBST([VENDOR_OUT])
 
 dnl Source locations for miniextendr crates (relative to rpkg root)
+dnl Note: miniextendr-engine is NOT vendored - it's only for standalone binaries
+dnl that embed R, not for R packages.
 MINIEXTENDR_API_SRC="$abs_top_srcdir/../miniextendr-api"
 MINIEXTENDR_MACROS_SRC="$abs_top_srcdir/../miniextendr-macros"
 

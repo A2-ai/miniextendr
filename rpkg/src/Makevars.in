@@ -24,11 +24,17 @@ VENDOR_OUT = @VENDOR_OUT@
 CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
 NOT_CRAN_FLAG = @NOT_CRAN@
 
+# Features to enable - use --all-features to enable everything including nonapi
+CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+
 RUST_SOURCES = @RUST_SOURCES@
 OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 
 CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+
+# Pass Cargo feature flags to C compiler so entrypoint.c knows which modules exist
+PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 ## ----------------------------------------------------------------------
 
 .PHONY: all vendor_deps
@@ -56,13 +62,15 @@ vendor_deps:
 # Build the Rust static library
 $(CARGO_AR): vendor_deps $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
 	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) --lib --profile $(CARGO_PROFILE) \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
+	@# Touch Cargo.toml to force document binary rebuild with current features
+	@touch $(CARGO_TOML)
 	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) --bin document --profile $(CARGO_PROFILE) \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --bin document --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR)
 

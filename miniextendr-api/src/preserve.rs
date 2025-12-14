@@ -241,57 +241,5 @@ impl Drop for Protected {
 // Safety: Protected is only used on the R main thread
 unsafe impl Send for Protected {}
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_preserve_nil() {
-        unsafe {
-            // Preserving NIL should return NIL
-            let cell = insert(R_NilValue);
-            assert_eq!(cell, R_NilValue);
-            release(cell); // Should be a no-op
-        }
-    }
-
-    #[test]
-    fn test_protected_wrapper() {
-        unsafe {
-            let initial_count = count();
-            {
-                let sexp = Rf_cons(R_NilValue, R_NilValue);
-                let _protected = Protected::new(sexp);
-                // Count should increase by 1
-                assert_eq!(count(), initial_count + 1);
-            }
-            // After drop, count should return to initial
-            assert_eq!(count(), initial_count);
-        }
-    }
-
-    #[test]
-    fn test_multiple_protections() {
-        unsafe {
-            let initial_count = count();
-
-            let sexp1 = Rf_cons(R_NilValue, R_NilValue);
-            let sexp2 = Rf_cons(R_NilValue, R_NilValue);
-            let sexp3 = Rf_cons(R_NilValue, R_NilValue);
-
-            let cell1 = insert(sexp1);
-            let cell2 = insert(sexp2);
-            let cell3 = insert(sexp3);
-
-            assert_eq!(count(), initial_count + 3);
-
-            // Release in different order
-            release(cell2);
-            assert_eq!(count(), initial_count + 2);
-            release(cell1);
-            assert_eq!(count(), initial_count + 1);
-            release(cell3);
-            assert_eq!(count(), initial_count);
-        }
-    }
-}
+// Tests for this module require R runtime and should be run via R CMD check.
+// They are located in rpkg/tests/ as integration tests.

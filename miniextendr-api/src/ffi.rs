@@ -247,6 +247,8 @@ unsafe extern "C-unwind" {
     pub fn Rf_warning_unchecked(arg1: *const ::std::os::raw::c_char, ...);
     #[link_name = "Rprintf"]
     pub fn Rprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+    #[link_name = "REprintf"]
+    pub fn REprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
 }
 
 /// Checked wrapper for `Rf_error` - panics if called from non-main thread.

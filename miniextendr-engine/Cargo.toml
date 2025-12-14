@@ -1,0 +1,15 @@
+[package]
+name = "miniextendr-engine"
+edition.workspace = true
+version.workspace = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+# No dependencies on miniextendr-api - this is standalone
+
+[build-dependencies]
+
+[features]
+default = []
