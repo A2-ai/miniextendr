@@ -81,8 +81,9 @@ pub use miniextendr_macros::RNative;
 ///
 /// The macro supports the following attributes:
 ///
-/// - `#[miniextendr(main_thread)]` - Force the function to run on the main R thread.
-///   Use this for functions that call R APIs internally.
+/// - `#[miniextendr(unsafe(main_thread))]` - Force the function to run on the main R thread.
+///   Use this for functions that call R APIs internally. This is marked `unsafe(...)` because
+///   bypassing the worker-thread pattern can allow R errors (longjmp) to skip Rust destructors.
 ///
 /// - `#[miniextendr(invisible)]` - Force the R wrapper to return invisibly.
 ///   Normally, functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly.
@@ -91,7 +92,7 @@ pub use miniextendr_macros::RNative;
 ///   Overrides the default invisible behavior for unit-returning functions.
 ///
 /// - `#[miniextendr(check_interrupt)]` - Check for user interrupts (Ctrl+C) before executing.
-///   Calls `R_CheckUserInterrupt()` at the start of the function. Implies `main_thread`.
+///   Calls `R_CheckUserInterrupt()` at the start of the function. Implies `unsafe(main_thread)`.
 ///
 /// - `#[miniextendr(coerce)]` - Enable type coercion for ALL non-R-native parameter types.
 ///   Allows using types like `u16`, `i16`, `i8`, `f32`, `Vec<u16>`, etc. as parameters.
