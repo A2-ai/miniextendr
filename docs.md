@@ -136,7 +136,7 @@ trait SexpExt {
 trait RNativeType {
     const SEXP_TYPE: SEXPTYPE;
 }
-// Implemented for: i32, f64, u8, Rboolean
+// Implemented for: i32, f64, u8, RLogical
 ```
 
 ---
@@ -440,10 +440,14 @@ pub trait TryFromSexp: Sized {
 impl TryFromSexp for i32 { ... }   // From INTSXP length-1
 impl TryFromSexp for f64 { ... }   // From REALSXP length-1
 impl TryFromSexp for u8  { ... }   // From RAWSXP length-1
+impl TryFromSexp for RLogical { ... } // From LGLSXP length-1 (0/1/NA_LOGICAL/other)
+impl TryFromSexp for bool { ... }  // From LGLSXP length-1 (NA -> error)
+impl TryFromSexp for Option<bool> { ... } // From LGLSXP length-1 (NA -> None)
 
 // Implemented for slices
 impl TryFromSexp for &'static [i32] { ... }
 impl TryFromSexp for &'static [f64] { ... }
+impl TryFromSexp for &'static [RLogical] { ... } // From LGLSXP (no UB on NA)
 ```
 
 #### Errors
@@ -452,6 +456,7 @@ impl TryFromSexp for &'static [f64] { ... }
 pub enum SexpError {
     Type(SexpTypeError),    // Wrong SEXPTYPE
     Length(SexpLengthError), // Wrong length (expected 1)
+    Na(SexpNaError),        // NA where not representable (e.g. bool)
 }
 ```
 
@@ -471,6 +476,8 @@ impl IntoR for i32  { ... }  // Rf_ScalarInteger
 impl IntoR for f64  { ... }  // Rf_ScalarReal
 impl IntoR for u8   { ... }  // Rf_ScalarRaw
 impl IntoR for bool { ... }  // Rf_ScalarLogical
+impl IntoR for Option<bool> { ... } // Some(TRUE/FALSE), None -> NA_LOGICAL
+impl IntoR for RLogical { ... } // Rf_ScalarLogical(raw i32, incl. NA)
 impl IntoR for &str { ... }  // Rf_ScalarString(Rf_mkCharLenCE)
 impl IntoR for String { ... }
 impl IntoR for SEXP { ... }  // identity

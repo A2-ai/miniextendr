@@ -478,16 +478,16 @@ pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
 
 // Slice tests - logical
 #[miniextendr]
-pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::Rboolean]) -> i32 {
+pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::RLogical]) -> i32 {
     x.len() as i32
 }
 
 #[miniextendr]
 pub fn test_logical_slice_any_true(
-    x: &'static [miniextendr_api::ffi::Rboolean],
+    x: &'static [miniextendr_api::ffi::RLogical],
 ) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.contains(&Rboolean::TRUE) {
+    if x.iter().any(|v| v.to_option_bool() == Some(true)) {
         Rboolean::TRUE
     } else {
         Rboolean::FALSE
@@ -496,10 +496,10 @@ pub fn test_logical_slice_any_true(
 
 #[miniextendr]
 pub fn test_logical_slice_all_true(
-    x: &'static [miniextendr_api::ffi::Rboolean],
+    x: &'static [miniextendr_api::ffi::RLogical],
 ) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
-    if x.iter().all(|&b| b == Rboolean::TRUE) {
+    if x.iter().all(|v| v.to_option_bool() == Some(true)) {
         Rboolean::TRUE
     } else {
         Rboolean::FALSE

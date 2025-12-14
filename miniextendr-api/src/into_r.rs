@@ -117,6 +117,36 @@ impl IntoR for crate::ffi::Rboolean {
     }
 }
 
+impl IntoR for crate::ffi::RLogical {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarLogical(self.to_i32()) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::ffi::Rf_ScalarLogical_unchecked(self.to_i32()) }
+    }
+}
+
+impl IntoR for Option<bool> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::Rf_ScalarLogical(i32::MIN) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(i32::MIN) },
+        }
+    }
+}
+
 impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {

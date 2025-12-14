@@ -4,6 +4,7 @@
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 extern void miniextendr_altrep_init(void);
+extern void miniextendr_encoding_init(void);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 
@@ -16,6 +17,7 @@ void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_altrep_init();
     miniextendr_worker_init();
+    miniextendr_encoding_init();
     
     REprintf("[DEBUG] About to call R_init_@PACKAGE_TARNAME_RS@_miniextendr\n");
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
