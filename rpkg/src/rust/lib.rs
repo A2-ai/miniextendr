@@ -1372,26 +1372,64 @@ pub fn static_strings() -> SEXP {
 
 // endregion
 
+// region: Nonapi module for lean-stack thread tests
+
+#[cfg(feature = "nonapi")]
+mod nonapi {
+    use miniextendr_api::ffi::SEXP;
+    use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
+    use miniextendr_api::{miniextendr, miniextendr_module};
+
+    /// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
+    #[miniextendr]
+    #[unsafe(no_mangle)]
+    #[allow(non_snake_case)]
+    pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
+        let handle = spawn_with_r(|| {
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(999) };
+            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        })
+        .expect("failed to spawn");
+
+        let result = handle.join().expect("thread panicked");
+        unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    }
+
+    /// Test StackCheckGuard with Rust's default 2 MiB stack.
+    #[miniextendr]
+    #[unsafe(no_mangle)]
+    #[allow(non_snake_case)]
+    pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
+        let handle = std::thread::spawn(|| {
+            let _guard = StackCheckGuard::disable();
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(777) };
+            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
+        });
+
+        let result = handle.join().expect("thread panicked");
+        unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
+    }
+
+    miniextendr_module! {
+        mod nonapi;
+        extern "C-unwind" fn C_test_spawn_with_r_lean_stack;
+        extern "C-unwind" fn C_test_stack_check_guard_lean;
+    }
+}
+
+#[cfg(not(feature = "nonapi"))]
+mod nonapi {
+    use miniextendr_api::miniextendr_module;
+
+    miniextendr_module! {
+        mod nonapi;
+    }
+}
+
+// endregion
+
 miniextendr_module! {
     mod rpkg;
-
-    // Aggregate all test modules
-    use panic_tests;
-    use unwind_protect_tests;
-    use dots_tests;
-    use interrupt_tests;
-    use conversion_tests;
-    use externalptr_tests;
-    use receiver_tests;
-    use r6_tests;
-    use s3_tests;
-    use s7_tests;
-    use s4_tests;
-    use worker_tests;
-    use coerce_tests;
-    use visibility_tests;
-    use thread_tests;
-    use misc_tests;
     use nonapi;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
@@ -1605,14 +1643,6 @@ miniextendr_module! {
     extern "C-unwind" fn C_test_r_thread_builder_spawn_join;
 }
 
-// Separate module for nonapi-only thread tests (lean stacks)
-#[cfg(feature = "nonapi")]
-miniextendr_module! {
-    mod rpkg_nonapi;
-    extern "C-unwind" fn C_test_spawn_with_r_lean_stack;
-    extern "C-unwind" fn C_test_stack_check_guard_lean;
-}
-
 // endregion
 
 // region: Thread safety tests
@@ -1655,42 +1685,6 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
         })
         .expect("thread failed");
 
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-// Lean stack tests - require nonapi feature for StackCheckGuard
-
-/// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
-/// Requires nonapi feature.
-#[miniextendr]
-#[cfg(feature = "nonapi")]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
-    let handle = spawn_with_r(|| {
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(999) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
-    })
-    .expect("failed to spawn");
-
-    let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-/// Test StackCheckGuard with Rust's default 2 MiB stack.
-/// Demonstrates that nonapi enables truly lean threads.
-#[miniextendr]
-#[cfg(feature = "nonapi")]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
-    let handle = std::thread::spawn(|| {
-        let _guard = StackCheckGuard::disable();
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(777) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
-    });
-
-    let result = handle.join().expect("thread panicked");
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 

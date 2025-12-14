@@ -676,3 +676,13 @@ unsafe_C_test_r_thread_builder_spawn_join <- function() {
     .Call(C_test_r_thread_builder_spawn_join)
 }
 
+#' @export
+unsafe_C_test_spawn_with_r_lean_stack <- function() {
+    .Call(C_test_spawn_with_r_lean_stack)
+}
+
+#' @export
+unsafe_C_test_stack_check_guard_lean <- function() {
+    .Call(C_test_stack_check_guard_lean)
+}
+

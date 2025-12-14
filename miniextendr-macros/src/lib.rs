@@ -1778,23 +1778,12 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             // Register ALTREP classes from this module
             #altrep_reg_fn_ident();
 
-            // Debug: print registration info
-            unsafe {
-                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] R_init called for module, registering %d methods\n".as_ptr(), CALL_ENTRIES.len() as i32);
-                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] dll pointer: %p\n".as_ptr(), dll as *const ::std::os::raw::c_void);
-                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] CALL_ENTRIES pointer: %p\n".as_ptr(), CALL_ENTRIES.as_ptr() as *const ::std::os::raw::c_void);
-                if !CALL_ENTRIES.is_empty() && !CALL_ENTRIES[0].name.is_null() {
-                    ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] First entry name: %s\n".as_ptr(), CALL_ENTRIES[0].name);
-                }
-            }
-
             #(#use_other_modules;)*
 
             // Register any ALTREP classes declared as struct items in this module
             #(#altrep_regs;)*
 
             unsafe {
-                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] About to call R_registerRoutines_unchecked\n".as_ptr());
                 ::miniextendr_api::ffi::R_registerRoutines_unchecked(
                     dll,
                     std::ptr::null(),
@@ -1802,10 +1791,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
                     std::ptr::null(),
                     std::ptr::null()
                 );
-                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] R_registerRoutines_unchecked completed\n".as_ptr());
-                // these are already present in entrypoint.c!
-                // R_useDynamicSymbols(dll, Rboolean::FALSE);
-                // R_forceSymbols(dll, Rboolean::TRUE);
+                // R_useDynamicSymbols and R_forceSymbols are called in entrypoint.c
             }
         }
     }
