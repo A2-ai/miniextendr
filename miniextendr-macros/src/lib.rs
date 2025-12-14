@@ -17,8 +17,7 @@
 ///
 /// # Note
 ///
-/// Unknown flags are currently ignored (to keep the macro forgiving / forward-compatible),
-/// but this also means typos won't error.
+/// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
 struct MiniextendrFnAttrs {
     force_main_thread: bool,
     force_invisible: Option<bool>,
@@ -33,42 +32,73 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             return Ok(out);
         }
 
-        let metas =
-            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
+        let tokens: proc_macro2::TokenStream = input.parse()?;
+        {
+            use syn::parse::Parser;
 
-        for meta in metas {
-            match meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce, main_thread
-                syn::Meta::Path(path) => {
-                    if let Some(ident) = path.get_ident() {
-                        if ident == "invisible" {
-                            out.force_invisible = Some(true);
-                        } else if ident == "visible" {
-                            out.force_invisible = Some(false);
-                        } else if ident == "check_interrupt" {
-                            out.check_interrupt = true;
-                        } else if ident == "main_thread" {
-                            out.force_main_thread = true;
-                        } else if ident == "coerce" {
-                            out.coerce_all = true;
+            let parser = syn::meta::parser(|meta| {
+                let mut set_flag =
+                    |meta: syn::meta::ParseNestedMeta,
+                     f: &mut dyn FnMut(&mut MiniextendrFnAttrs)| {
+                        if !meta.input.is_empty() {
+                            return Err(meta.error("this option does not take any arguments"));
                         }
-                    }
+                        f(&mut out);
+                        Ok(())
+                    };
+
+                if meta.path.is_ident("invisible") {
+                    return set_flag(meta, &mut |o| o.force_invisible = Some(true));
                 }
-                // Nested: unsafe(main_thread)
-                syn::Meta::List(list) => {
-                    if list.path.is_ident("unsafe") {
-                        let nested = list.parse_args_with(
-                            syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
-                        )?;
-                        for ident in nested {
-                            if ident == "main_thread" {
-                                out.force_main_thread = true;
+                if meta.path.is_ident("visible") {
+                    return set_flag(meta, &mut |o| o.force_invisible = Some(false));
+                }
+                if meta.path.is_ident("check_interrupt") {
+                    return set_flag(meta, &mut |o| o.check_interrupt = true);
+                }
+                if meta.path.is_ident("main_thread") {
+                    return set_flag(meta, &mut |o| o.force_main_thread = true);
+                }
+                if meta.path.is_ident("coerce") {
+                    return set_flag(meta, &mut |o| o.coerce_all = true);
+                }
+
+                if meta.path.is_ident("unsafe") {
+                    if meta.input.is_empty() {
+                        return Err(meta.error(
+                            "`unsafe(...)` must specify at least one option (e.g. `unsafe(main_thread)`); prefer `main_thread`",
+                        ));
+                    }
+
+                    let mut saw_any = false;
+                    meta.parse_nested_meta(|nested| {
+                        saw_any = true;
+                        if nested.path.is_ident("main_thread") {
+                            if !nested.input.is_empty() {
+                                return Err(
+                                    nested.error("`main_thread` does not take any arguments")
+                                );
                             }
+                            out.force_main_thread = true;
+                            return Ok(());
                         }
+                        Err(nested.error("unknown `unsafe(...)` option; expected `main_thread`"))
+                    })?;
+
+                    if !saw_any {
+                        return Err(meta.error(
+                            "`unsafe(...)` must specify at least one option (e.g. `unsafe(main_thread)`)",
+                        ));
                     }
+                    return Ok(());
                 }
-                _ => {}
-            }
+
+                Err(meta.error(
+                    "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, main_thread (or `unsafe(main_thread)`), coerce",
+                ))
+            });
+
+            parser.parse2(tokens)?;
         }
 
         Ok(out)
@@ -131,6 +161,21 @@ fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
 fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+}
+
+/// Normalize a Rust parameter identifier into an R argument identifier.
+///
+/// The generated R wrapper uses this to avoid exporting leading underscore names.
+/// - `__foo` → `private__foo`
+/// - `_foo` → `unused_foo`
+fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
+    let mut arg_name = rust_ident.to_string();
+    if arg_name.starts_with("__") {
+        arg_name.insert_str(0, "private");
+    } else if arg_name.starts_with('_') {
+        arg_name.insert_str(0, "unused");
+    }
+    syn::Ident::new(&arg_name, rust_ident.span())
 }
 
 impl ExtendrFunction {
@@ -432,8 +477,8 @@ pub fn miniextendr(
         inputs,
         output,
     } = extendr_function;
-    use syn::spanned::Spanned;
     use quote::ToTokens;
+    use syn::spanned::Spanned;
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
         rust_arg_count + 1
@@ -695,7 +740,8 @@ pub fn miniextendr(
             {
                 let seg = p.path.segments.last().unwrap();
                 let inner_ty = first_type_argument(seg);
-                let is_unit_inner = inner_ty.is_some_and(|ty|matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                let is_unit_inner = inner_ty
+                    .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
                 let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
                 if is_unit_inner {
@@ -732,7 +778,8 @@ pub fn miniextendr(
             {
                 let seg = p.path.segments.last().unwrap();
                 let ok_ty = first_type_argument(seg);
-                let ok_is_unit = ok_ty.is_some_and(|ty|matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+                let ok_is_unit =
+                    ok_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
                 let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
 
                 if ok_is_unit {
@@ -954,10 +1001,9 @@ pub fn miniextendr(
     }
 
     // region: R wrappers generation in `fn`
-    // Build R formal parameters and call arguments using shared builder
-    let mut arg_builder = RArgumentBuilder::new(inputs);
-    if has_dots {
-        arg_builder = arg_builder.with_dots(named_dots.map(|id| id.to_string()));
+    // normalize `named_dots` for R (no leading underscore)
+    if has_dots && let Some(named) = &mut named_dots {
+        *named = normalize_r_arg_ident(named);
     }
 
     let r_formals = arg_builder.build_formals_tokens();
@@ -965,7 +1011,55 @@ pub fn miniextendr(
 
     // Prepend .call parameter if using internal C wrapper
     if uses_internal_c_wrapper {
-        r_call_args_strs.insert(0, ".call = match.call()".to_string());
+        r_call_args_strs.push(".call = match.call()".to_string());
+    }
+    let mut r_formals: Vec<proc_macro2::TokenStream> = Vec::new();
+    for (idx, x) in inputs.iter().enumerate() {
+        let syn::FnArg::Typed(pat_type) = x else {
+            unreachable!()
+        };
+        let syn::PatType {
+            attrs: _,
+            pat,
+            colon_token: _,
+            ty,
+        } = pat_type;
+
+        // derive R argument name, applying leading-underscore rename
+        let arg_ident = match pat.as_ref() {
+            syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
+            _ => unreachable!(),
+        };
+
+        // call-site argument
+        if has_dots && idx == last_idx {
+            if let Some(named_dots) = &named_dots {
+                r_call_args_strs.push(format!("list({})", named_dots));
+            } else {
+                r_call_args_strs.push("list(...)".to_string());
+            }
+        } else {
+            r_call_args_strs.push(arg_ident.to_string());
+        }
+
+        // formal parameter (with defaults for unit types)
+        if has_dots && idx == last_idx {
+            if let Some(named_dots) = &named_dots {
+                let named = syn::Ident::new(&named_dots.to_string(), named_dots.span());
+                r_formals.push(syn::parse_quote!(#named = ...));
+            } else {
+                r_formals.push(syn::parse_quote!(...));
+            }
+        } else {
+            match ty.as_ref() {
+                syn::Type::Tuple(t) if t.elems.is_empty() => {
+                    r_formals.push(syn::parse_quote!(#arg_ident = NULL));
+                }
+                _ => {
+                    r_formals.push(arg_ident.into_token_stream());
+                }
+            }
+        }
     }
 
     // Build the R body string consistently
@@ -2441,7 +2535,10 @@ mod tests {
         .err()
         .unwrap();
 
-        assert!(err.to_string().contains("conflicts with implicit dots parameter"));
+        assert!(
+            err.to_string()
+                .contains("conflicts with implicit dots parameter")
+        );
     }
 
     #[test]
@@ -2452,6 +2549,33 @@ mod tests {
         .err()
         .unwrap();
 
-        assert!(err.to_string().contains("variadic pattern must be a simple identifier"));
+        assert!(
+            err.to_string()
+                .contains("variadic pattern must be a simple identifier")
+        );
+    }
+
+    #[test]
+    fn miniextendr_attr_rejects_unknown_options() {
+        let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(typo))
+            .err()
+            .unwrap();
+        assert!(err.to_string().contains("unknown `#[miniextendr]` option"));
+    }
+
+    #[test]
+    fn miniextendr_attr_rejects_option_arguments() {
+        let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(invisible(true)))
+            .err()
+            .unwrap();
+        assert!(err.to_string().contains("does not take any arguments"));
+    }
+
+    #[test]
+    fn miniextendr_attr_rejects_unknown_unsafe_options() {
+        let err = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unsafe(oops)))
+            .err()
+            .unwrap();
+        assert!(err.to_string().contains("unknown `unsafe(...)` option"));
     }
 }
