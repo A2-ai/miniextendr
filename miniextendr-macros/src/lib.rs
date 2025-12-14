@@ -11,8 +11,7 @@
 ///
 /// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
-/// - `main_thread`: force execution on R's main thread (avoid worker-thread pattern)
-/// - `unsafe(main_thread)`: deprecated spelling for `main_thread` (kept for compatibility)
+/// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
 /// - `coerce`: enable automatic coercion for supported parameter types
 ///
 /// # Note
@@ -37,7 +36,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         for meta in metas {
             match meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce, main_thread
+                // Simple identifiers: invisible, visible, check_interrupt, coerce
                 syn::Meta::Path(path) => {
                     if let Some(ident) = path.get_ident() {
                         if ident == "invisible" {
@@ -46,14 +45,12 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.force_invisible = Some(false);
                         } else if ident == "check_interrupt" {
                             out.check_interrupt = true;
-                        } else if ident == "main_thread" {
-                            out.force_main_thread = true;
                         } else if ident == "coerce" {
                             out.coerce_all = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, main_thread (or `unsafe(main_thread)`), coerce",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce",
                             ));
                         }
                     }
@@ -74,7 +71,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         if nested.is_empty() {
                             return Err(syn::Error::new_spanned(
                                 list,
-                                "`unsafe(...)` must specify at least one option (e.g. `unsafe(main_thread)`); prefer `main_thread`",
+                                "`unsafe(...)` must specify an option: currently only `unsafe(main_thread)` is supported",
                             ));
                         }
                         for ident in nested {
@@ -83,7 +80,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     ident,
-                                    "unknown `unsafe(...)` option; expected `main_thread`",
+                                    "unknown `unsafe(...)` option; only `main_thread` is supported",
                                 ));
                             }
                         }

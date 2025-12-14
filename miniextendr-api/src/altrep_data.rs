@@ -335,25 +335,6 @@ pub enum Sortedness {
 }
 
 impl Sortedness {
-    /// Deprecated alias for [`Sortedness::KnownUnsorted`].
-    #[deprecated(note = "Use Sortedness::KnownUnsorted (matches R's KNOWN_UNSORTED = 0).")]
-    #[allow(non_upper_case_globals)]
-    pub const None: Sortedness = Sortedness::KnownUnsorted;
-
-    /// Deprecated alias for [`Sortedness::IncreasingNaFirst`].
-    #[deprecated(
-        note = "Use Sortedness::IncreasingNaFirst (R uses this code for NA-first, not strictness)."
-    )]
-    #[allow(non_upper_case_globals)]
-    pub const StrictlyIncreasing: Sortedness = Sortedness::IncreasingNaFirst;
-
-    /// Deprecated alias for [`Sortedness::DecreasingNaFirst`].
-    #[deprecated(
-        note = "Use Sortedness::DecreasingNaFirst (R uses this code for NA-first, not strictness)."
-    )]
-    #[allow(non_upper_case_globals)]
-    pub const StrictlyDecreasing: Sortedness = Sortedness::DecreasingNaFirst;
-
     /// Convert to R's integer representation.
     pub fn to_r_int(self) -> i32 {
         match self {
@@ -509,29 +490,6 @@ pub trait AltrepSerialize: Sized {
     ///
     /// Return `None` if the state is invalid or cannot be deserialized.
     fn unserialize(state: SEXP) -> Option<Self>;
-}
-
-/// Deprecated: legacy hook for creating an ALTREP SEXP from serialized state.
-///
-/// miniextendr now implements `Altrep::unserialize(class, state)` directly for data types
-/// that use the `serialize` variants of `impl_alt*_from_data!`, so no wrapper-side
-/// `from_serialized_state` hook is needed.
-///
-/// If you need custom class-specific reconstruction, implement the low-level
-/// `altrep_traits::Altrep::unserialize` method manually instead of using the
-/// `serialize` variants.
-#[deprecated(
-    note = "No longer used by miniextendr; use AltrepSerialize (+ serialize variants) or implement Altrep::unserialize manually."
-)]
-pub trait AltrepUnserialize {
-    /// Create an ALTREP SEXP from serialized state.
-    ///
-    /// # Safety
-    /// Must be called from the R main thread during unserialization.
-    unsafe fn from_serialized_state(
-        class: crate::ffi::altrep::R_altrep_class_t,
-        state: SEXP,
-    ) -> SEXP;
 }
 
 // =============================================================================

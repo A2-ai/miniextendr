@@ -426,19 +426,6 @@ pub const SORTED_INCR_NA_1ST: i32 = 2;
 
 /// Sorted in decreasing order, with NAs first (`SORTED_DECR_NA_1ST` in R).
 pub const SORTED_DECR_NA_1ST: i32 = -2;
-
-/// Deprecated alias for [`KNOWN_UNSORTED`].
-#[deprecated(note = "Use KNOWN_UNSORTED (matches R's KNOWN_UNSORTED = 0).")]
-pub const SORTED_NONE: i32 = KNOWN_UNSORTED;
-
-/// Deprecated alias for [`SORTED_INCR_NA_1ST`].
-#[deprecated(note = "Use SORTED_INCR_NA_1ST (R uses this code for NA-first, not strictness).")]
-pub const SORTED_INCR_STRICT: i32 = SORTED_INCR_NA_1ST;
-
-/// Deprecated alias for [`SORTED_DECR_NA_1ST`].
-#[deprecated(note = "Use SORTED_DECR_NA_1ST (R uses this code for NA-first, not strictness).")]
-pub const SORTED_DECR_STRICT: i32 = SORTED_DECR_NA_1ST;
-
 /// NA value for integers.
 pub const NA_INTEGER: i32 = i32::MIN;
 /// NA value for logical (same as integer in R).
