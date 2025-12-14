@@ -32,73 +32,70 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             return Ok(out);
         }
 
-        let tokens: proc_macro2::TokenStream = input.parse()?;
-        {
-            use syn::parse::Parser;
+        let metas =
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
 
-            let parser = syn::meta::parser(|meta| {
-                let mut set_flag =
-                    |meta: syn::meta::ParseNestedMeta,
-                     f: &mut dyn FnMut(&mut MiniextendrFnAttrs)| {
-                        if !meta.input.is_empty() {
-                            return Err(meta.error("this option does not take any arguments"));
-                        }
-                        f(&mut out);
-                        Ok(())
-                    };
-
-                if meta.path.is_ident("invisible") {
-                    return set_flag(meta, &mut |o| o.force_invisible = Some(true));
-                }
-                if meta.path.is_ident("visible") {
-                    return set_flag(meta, &mut |o| o.force_invisible = Some(false));
-                }
-                if meta.path.is_ident("check_interrupt") {
-                    return set_flag(meta, &mut |o| o.check_interrupt = true);
-                }
-                if meta.path.is_ident("main_thread") {
-                    return set_flag(meta, &mut |o| o.force_main_thread = true);
-                }
-                if meta.path.is_ident("coerce") {
-                    return set_flag(meta, &mut |o| o.coerce_all = true);
-                }
-
-                if meta.path.is_ident("unsafe") {
-                    if meta.input.is_empty() {
-                        return Err(meta.error(
-                            "`unsafe(...)` must specify at least one option (e.g. `unsafe(main_thread)`); prefer `main_thread`",
-                        ));
-                    }
-
-                    let mut saw_any = false;
-                    meta.parse_nested_meta(|nested| {
-                        saw_any = true;
-                        if nested.path.is_ident("main_thread") {
-                            if !nested.input.is_empty() {
-                                return Err(
-                                    nested.error("`main_thread` does not take any arguments")
-                                );
-                            }
+        for meta in metas {
+            match meta {
+                // Simple identifiers: invisible, visible, check_interrupt, coerce, main_thread
+                syn::Meta::Path(path) => {
+                    if let Some(ident) = path.get_ident() {
+                        if ident == "invisible" {
+                            out.force_invisible = Some(true);
+                        } else if ident == "visible" {
+                            out.force_invisible = Some(false);
+                        } else if ident == "check_interrupt" {
+                            out.check_interrupt = true;
+                        } else if ident == "main_thread" {
                             out.force_main_thread = true;
-                            return Ok(());
+                        } else if ident == "coerce" {
+                            out.coerce_all = true;
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                ident,
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, main_thread (or `unsafe(main_thread)`), coerce",
+                            ));
                         }
-                        Err(nested.error("unknown `unsafe(...)` option; expected `main_thread`"))
-                    })?;
-
-                    if !saw_any {
-                        return Err(meta.error(
-                            "`unsafe(...)` must specify at least one option (e.g. `unsafe(main_thread)`)",
+                    }
+                }
+                // Handle invisible(true) - should be rejected
+                syn::Meta::NameValue(nv) => {
+                    return Err(syn::Error::new_spanned(
+                        nv,
+                        "this option does not take any arguments",
+                    ));
+                }
+                // Nested: unsafe(main_thread)
+                syn::Meta::List(list) => {
+                    if list.path.is_ident("unsafe") {
+                        let nested = list.parse_args_with(
+                            syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
+                        )?;
+                        if nested.is_empty() {
+                            return Err(syn::Error::new_spanned(
+                                list,
+                                "`unsafe(...)` must specify at least one option (e.g. `unsafe(main_thread)`); prefer `main_thread`",
+                            ));
+                        }
+                        for ident in nested {
+                            if ident == "main_thread" {
+                                out.force_main_thread = true;
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    ident,
+                                    "unknown `unsafe(...)` option; expected `main_thread`",
+                                ));
+                            }
+                        }
+                    } else {
+                        // invisible(something) etc
+                        return Err(syn::Error::new_spanned(
+                            list,
+                            "this option does not take any arguments",
                         ));
                     }
-                    return Ok(());
                 }
-
-                Err(meta.error(
-                    "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, main_thread (or `unsafe(main_thread)`), coerce",
-                ))
-            });
-
-            parser.parse2(tokens)?;
+            }
         }
 
         Ok(out)
@@ -353,14 +350,13 @@ impl syn::parse::Parse for ExtendrFunctionParsed {
                         let syn::FnArg::Typed(pat_type) = arg else {
                             continue;
                         };
-                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
-                            if pat_ident.ident == "_dots" {
+                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                            && pat_ident.ident == "_dots" {
                                 return Err(syn::Error::new(
                                     pat_ident.ident.span(),
                                     "parameter named `_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
                                 ));
                             }
-                        }
                     }
                     syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
                 });
@@ -2311,5 +2307,13 @@ mod tests {
             .err()
             .unwrap();
         assert!(err.to_string().contains("unknown `unsafe(...)` option"));
+    }
+
+    #[test]
+    fn miniextendr_attr_accepts_multiple_flags() {
+        let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(coerce, invisible))
+            .expect("should parse multiple flags");
+        assert!(attrs.coerce_all);
+        assert_eq!(attrs.force_invisible, Some(true));
     }
 }
