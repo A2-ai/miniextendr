@@ -335,3 +335,45 @@ fn test_allocator_multiple_threads() {
         assert_eq!(result, i, "Thread {} returned wrong value", i);
     }
 }
+
+#[test]
+fn test_allocator_default_stack_threads() {
+    initialize_r();
+
+    // Use std::thread::spawn with default 2 MiB stack (no RThreadBuilder)
+    // This tests if the allocator works with minimal stack sizes
+    let handles: Vec<_> = (0..4)
+        .map(|thread_id| {
+            std::thread::spawn(move || unsafe {
+                let layout = Layout::from_size_align(128, 8).unwrap();
+                let ptr = RAllocator.alloc(layout);
+
+                assert!(!ptr.is_null(), "Thread {} alloc failed", thread_id);
+                assert_eq!(ptr.align_offset(8), 0, "Thread {} alignment failed", thread_id);
+
+                // Write and verify pattern
+                for i in 0..128 {
+                    *ptr.add(i) = ((thread_id * 50 + i) % 256) as u8;
+                }
+
+                for i in 0..128 {
+                    let expected = ((thread_id * 50 + i) % 256) as u8;
+                    assert_eq!(
+                        *ptr.add(i),
+                        expected,
+                        "Thread {} data corrupted",
+                        thread_id
+                    );
+                }
+
+                RAllocator.dealloc(ptr, layout);
+                thread_id
+            })
+        })
+        .collect();
+
+    for (i, handle) in handles.into_iter().enumerate() {
+        let result = handle.join().expect("Thread panicked");
+        assert_eq!(result, i, "Thread {} returned wrong value", i);
+    }
+}
