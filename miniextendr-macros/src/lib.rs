@@ -1,6 +1,24 @@
 // miniextendr-macros procedural macros
 
 #[derive(Default)]
+/// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
+///
+/// This is intentionally a small, “data-only” struct that:
+/// - Owns the parsing rules for the attribute
+/// - Produces a normalized, easy-to-consume representation for codegen
+///
+/// # Accepted flags
+///
+/// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
+/// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
+/// - `main_thread`: force execution on R's main thread (avoid worker-thread pattern)
+/// - `unsafe(main_thread)`: deprecated spelling for `main_thread` (kept for compatibility)
+/// - `coerce`: enable automatic coercion for supported parameter types
+///
+/// # Note
+///
+/// Unknown flags are currently ignored (to keep the macro forgiving / forward-compatible),
+/// but this also means typos won't error.
 struct MiniextendrFnAttrs {
     force_main_thread: bool,
     force_invisible: Option<bool>,
@@ -57,6 +75,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
     }
 }
 
+/// A lightweight view of a function signature used by wrapper generation.
+///
+/// `ExtendrFunction` is the shared “naming and signature” layer used by both:
+/// - `#[miniextendr]` (attribute macro)
+/// - `miniextendr_module!` (registration macro)
+///
+/// It intentionally excludes the function body to keep cloning cheap and to make it explicit
+/// that wrapper generation depends on signature shape + identifier naming.
 struct ExtendrFunction {
     pub attrs: Vec<syn::Attribute>,
     pub vis: syn::Visibility,
@@ -90,10 +116,18 @@ fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
         .collect()
 }
 
+/// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
+///
+/// This must remain consistent between the attribute macro (which defines the symbol)
+/// and the module macro (which references it).
 fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("call_method_def_{rust_ident}")
 }
 
+/// Identifier for the generated `const &str` holding the R wrapper source code.
+///
+/// This must remain consistent between the attribute macro (which defines the symbol)
+/// and the module macro (which references it).
 fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
@@ -177,12 +211,17 @@ fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
         && matches!(&attr.meta, syn::Meta::List(list) if list.parse_args::<syn::Ident>().is_ok_and(|id| id == "coerce"))
 }
 
-/// Parsed + normalized Rust function for `#[miniextendr]`.
+/// Parsed + normalized Rust function item for `#[miniextendr]`.
 ///
 /// This performs signature normalization that the wrapper generator depends on:
 /// - `...` → a final `&miniextendr_api::dots::Dots` argument
 /// - `_` wildcard patterns → synthetic identifiers (`__unused0`, `__unused1`, ...)
 /// - consumes `#[miniextendr(coerce)]` parameter attributes and records which params had it
+///
+/// Any non-identifier parameter patterns (e.g. `(a, b): (i32, i32)`) are rejected, because the
+/// wrapper generator needs a stable parameter name for both:
+/// - the generated C wrapper signature
+/// - the generated R wrapper argument names
 struct ExtendrFunctionParsed {
     original_item: syn::ItemFn,
     has_dots: bool,
@@ -253,7 +292,12 @@ impl syn::parse::Parse for ExtendrFunctionParsed {
                         per_param_coerce.insert(synthetic_name);
                     }
                 }
-                _ => {}
+                _ => {
+                    return Err(syn::Error::new(
+                        pat_type.pat.span(),
+                        "miniextendr parameters must be simple identifiers (patterns are not supported)",
+                    ));
+                }
             }
         }
 
@@ -1038,6 +1082,18 @@ pub fn miniextendr(
     expanded
 }
 
+/// A single `fn ...;` line inside `miniextendr_module! { ... }`.
+///
+/// Supported syntaxes:
+///
+/// ```text
+/// fn my_rust_function;
+/// extern "C-unwind" fn C_raw_symbol;
+/// ```
+///
+/// The `extern ...` ABI is parsed and stored for potential future distinctions, but the
+/// current implementation treats both forms the same and relies on `#[miniextendr]` to
+/// generate the correct wrappers/constants.
 struct ExtendrModuleFunction {
     pub _abi: Option<syn::Abi>,
     _fn_token: syn::Token![fn],
@@ -1069,6 +1125,15 @@ impl ExtendrModuleFunction {
     }
 }
 
+/// A single `struct ...;` line inside `miniextendr_module! { ... }`.
+///
+/// This is used to request ALTREP class registration at `R_init_*` time:
+///
+/// ```text
+/// struct MyAltrepClass;
+/// ```
+///
+/// The struct must implement `miniextendr_api::altrep_registration::RegisterAltrep`.
 struct ExtendrModuleStruct {
     _struct_token: syn::Token![struct],
     #[allow(dead_code)]
@@ -1084,6 +1149,9 @@ impl syn::parse::Parse for ExtendrModuleStruct {
     }
 }
 
+/// The required `mod <name>;` header inside `miniextendr_module! { ... }`.
+///
+/// This determines the generated init symbol: `R_init_<name>_miniextendr`.
 struct ExtendrModuleName {
     _mod_token: syn::Token![mod],
     pub ident: syn::Ident,
@@ -1098,6 +1166,12 @@ impl syn::parse::Parse for ExtendrModuleName {
     }
 }
 
+/// A `use <module>;` line inside `miniextendr_module! { ... }`.
+///
+/// Only the simple `use name;` form is supported. This is intentionally restrictive so the
+/// generated init/wrapper symbol names are predictable:
+/// - `name::R_init_<name>_miniextendr(dll)`
+/// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
 struct ExtendrModuleUse {
     _use_token: syn::Token![use],
     pub use_name: syn::UseName,
@@ -1129,6 +1203,17 @@ impl syn::parse::Parse for ExtendrModuleUse {
     }
 }
 
+/// Parsed body of a `miniextendr_module! { ... }` invocation.
+///
+/// The body is a semicolon-terminated list of items in any order, with exactly one
+/// `mod <name>;` header:
+///
+/// ```text
+/// mod mypkg;
+/// use submodule;
+/// fn exported_fn;
+/// struct MyAltrep;
+/// ```
 struct ExtendrModule {
     pub extendr_module: ExtendrModuleName,
     pub extendr_use: Vec<ExtendrModuleUse>,
@@ -1137,6 +1222,7 @@ struct ExtendrModule {
     // TODO: add extendr_impl: Vec<ExtendrImpl>
 }
 
+/// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
 enum ExtendrItem {
     Module(ExtendrModuleName),
     Use(ExtendrModuleUse),
