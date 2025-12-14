@@ -21,22 +21,22 @@ pub struct Fixtures {
 impl Fixtures {
     #[inline(always)]
     pub fn utf8_charsxp(self) -> SEXP {
-        SEXP::from_ptr((self.utf8_charsxp as *const ()).cast_mut().cast())
+        self.utf8_charsxp as SEXP
     }
 
     #[inline(always)]
     pub fn latin1_charsxp(self) -> SEXP {
-        SEXP::from_ptr((self.latin1_charsxp as *const ()).cast_mut().cast())
+        self.latin1_charsxp as SEXP
     }
 
     #[inline(always)]
     pub fn utf8_strsxp(self) -> SEXP {
-        SEXP::from_ptr((self.utf8_strsxp as *const ()).cast_mut().cast())
+        self.utf8_strsxp as SEXP
     }
 
     #[inline(always)]
     pub fn latin1_strsxp(self) -> SEXP {
-        SEXP::from_ptr((self.latin1_strsxp as *const ()).cast_mut().cast())
+        self.latin1_strsxp as SEXP
     }
 }
 
@@ -57,9 +57,7 @@ pub fn init() {
 
 #[inline(always)]
 pub fn assert_on_init_thread() {
-    let init = INIT_THREAD
-        .get()
-        .expect("miniextendr_bench::init not called");
+    let init = INIT_THREAD.get().expect("miniextendr_bench::init not called");
     assert_eq!(
         *init,
         std::thread::current().id(),
@@ -80,7 +78,7 @@ unsafe fn init_r_once() {
 
         // Initialize embedded R via `miniextendr-engine` (kept alive for the
         // lifetime of the benchmark process).
-        let engine = miniextendr_engine::REngine::build()
+        let engine = miniextendr_engine::REngine::new()
             .with_args(&["R", "--quiet", "--vanilla"])
             .interactive(false)
             .signal_handlers(false)
@@ -119,10 +117,10 @@ unsafe fn init_fixtures_once() {
         SET_STRING_ELT(latin1_strsxp, 0, latin1_charsxp);
 
         Fixtures {
-            utf8_charsxp: utf8_charsxp.as_ptr() as SexpAddr,
-            latin1_charsxp: latin1_charsxp.as_ptr() as SexpAddr,
-            utf8_strsxp: utf8_strsxp.as_ptr() as SexpAddr,
-            latin1_strsxp: latin1_strsxp.as_ptr() as SexpAddr,
+            utf8_charsxp: utf8_charsxp as SexpAddr,
+            latin1_charsxp: latin1_charsxp as SexpAddr,
+            utf8_strsxp: utf8_strsxp as SexpAddr,
+            latin1_strsxp: latin1_strsxp as SexpAddr,
         }
     });
 }

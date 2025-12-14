@@ -1620,7 +1620,7 @@ miniextendr_module! {
 use miniextendr_api::thread::RThreadBuilder;
 
 #[cfg(feature = "nonapi")]
-use miniextendr_api::thread::{spawn_with_r, StackCheckGuard};
+use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
 
 /// Test RThreadBuilder: spawn with large stack (16 MiB) and call _unchecked R APIs.
 /// Works WITHOUT nonapi feature by using large stacks to satisfy R's stack checking.
