@@ -32,7 +32,7 @@
 //!     let _guard = StackCheckGuard::disable();
 //!
 //!     // Now safe to call R APIs
-//!     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+//!     unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) };
 //!
 //!     // Guard restores original limit on drop
 //! });
@@ -134,7 +134,7 @@ pub fn disable_stack_checking_permanently() {
 ///
 /// ```ignore
 /// let result = with_stack_checking_disabled(|| {
-///     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }
+///     unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) }
 /// });
 /// ```
 #[cfg(feature = "nonapi")]
@@ -187,7 +187,7 @@ pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 ///
 /// let handle = spawn_with_r(|| {
 ///     // Safe to call R APIs here!
-///     let result = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
+///     let result = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) };
 ///     result
 /// })?;
 ///
@@ -291,7 +291,7 @@ impl RThreadBuilder {
     ///
     /// ```ignore
     /// let result = RThreadBuilder::new()
-    ///     .spawn_join(|| unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) })
+    ///     .spawn_join(|| unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42) })
     ///     .unwrap();
     /// ```
     pub fn spawn_join<F, T>(self, f: F) -> std::thread::Result<T>

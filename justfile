@@ -162,5 +162,11 @@ r-cmd-check *args:
 # REVIEW THIS SLOP:
 # Build R package tarball
 test-r-build:
-    R CMD build --compression=none rpkg
-    tar -xvzf rpkg_0.0.0.9000.tar -C "$(mkdir -p rpkg_build && echo rpkg_build)"
+    pkg="$$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Package"]])')" \
+    && ver="$$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Version"]])')" \
+    && R CMD build --compression=none rpkg \
+    && tarball="$${pkg}_$${ver}.tar" \
+    && [ -f "$$tarball" ] || tarball="$${tarball}.gz" \
+    && out_dir="rpkg_build/$${pkg}_$${ver}" \
+    && mkdir -p "$$out_dir" \
+    && Rscript -e 'args <- commandArgs(trailingOnly = TRUE); utils::untar(args[[1]], exdir = args[[2]])' "$$tarball" "$$out_dir"

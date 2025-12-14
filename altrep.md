@@ -683,17 +683,21 @@ miniextendr_api::impl_altinteger_from_data!(ArithSeqData, subset);
 
 ## C NULL vs R_NilValue Return Semantics
 
-**Critical distinction**: ALTREP methods use C `NULL` and R's `R_NilValue` for different purposes.
+**Critical distinction**: for many ALTREP callbacks, C `NULL` (a null `SEXP` pointer) is a sentinel
+that means “not implemented / fall back to R’s default behavior”. `R_NilValue` is a real R object
+(the `NULL` object) and is **not** the same thing.
 
 | Method | Return `NULL` | Return `R_NilValue` |
 |--------|---------------|---------------------|
-| `Serialized_state` | Use default serialization | Serialize with nil state |
-| `Duplicate` | Use default duplication | Return nil object |
-| `Sum/Min/Max` | Use default implementation | Return NA |
+| `Serialized_state` | Fall back to standard serialization | Serialize with `state = NULL` (rare; only if your class supports it) |
+| `Coerce` | Fall back to standard coercion | Coercion result is the `NULL` object (almost never what you want) |
+| `Duplicate` | Fall back to standard duplication | Duplication result is the `NULL` object (almost never what you want) |
+| `Extract_subset` | Fall back to standard subsetting | Subset result is the `NULL` object (almost never what you want) |
+| `Sum/Min/Max` | Fall back to standard summary | Summary result is the `NULL` object (use scalar `NA_*` to return NA) |
 | `Dataptr_or_null` | No pointer (use Elt) | — |
-| `Elt` (list/string) | — | Element is NULL |
+| `Elt` (list) | — (must return a valid `SEXP`) | Element is `NULL` (valid list element) |
 
-The bridge macros handle this correctly by returning `R_NilValue` for "use default" cases from optional methods.
+The bridge macros use `NULL` when they need to signal “fall back to R”.
 
 ## Sortedness Values
 
@@ -742,9 +746,9 @@ impl Altrep for MyRangeClass {
     const HAS_COERCE: bool = true;
 
     fn coerce(x: SEXP, to_type: SEXPTYPE) -> SEXP {
-        // Return R_NilValue to use R's default coercion
+        // Return C NULL to use R's default coercion
         // Or return a custom SEXP for optimized conversion
-        unsafe { R_NilValue }
+        core::ptr::null_mut()
     }
     // ... other methods
 }

@@ -1,5 +1,62 @@
 // miniextendr-macros procedural macros
 
+#[derive(Default)]
+struct MiniextendrFnAttrs {
+    force_main_thread: bool,
+    force_invisible: Option<bool>,
+    check_interrupt: bool,
+    coerce_all: bool,
+}
+
+impl syn::parse::Parse for MiniextendrFnAttrs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let mut out = Self::default();
+        if input.is_empty() {
+            return Ok(out);
+        }
+
+        let metas =
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
+
+        for meta in metas {
+            match meta {
+                // Simple identifiers: invisible, visible, check_interrupt, coerce, main_thread
+                syn::Meta::Path(path) => {
+                    if let Some(ident) = path.get_ident() {
+                        if ident == "invisible" {
+                            out.force_invisible = Some(true);
+                        } else if ident == "visible" {
+                            out.force_invisible = Some(false);
+                        } else if ident == "check_interrupt" {
+                            out.check_interrupt = true;
+                        } else if ident == "main_thread" {
+                            out.force_main_thread = true;
+                        } else if ident == "coerce" {
+                            out.coerce_all = true;
+                        }
+                    }
+                }
+                // Nested: unsafe(main_thread)
+                syn::Meta::List(list) => {
+                    if list.path.is_ident("unsafe") {
+                        let nested = list.parse_args_with(
+                            syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
+                        )?;
+                        for ident in nested {
+                            if ident == "main_thread" {
+                                out.force_main_thread = true;
+                            }
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        Ok(out)
+    }
+}
+
 struct ExtendrFunction {
     pub attrs: Vec<syn::Attribute>,
     pub vis: syn::Visibility,
@@ -24,6 +81,31 @@ impl syn::parse::Parse for ExtendrFunction {
             inputs: signature.inputs,
             output: signature.output,
         })
+    }
+}
+
+impl ExtendrFunction {
+    fn uses_internal_c_wrapper(&self) -> bool {
+        self.abi.is_none()
+    }
+
+    fn call_method_def_ident(&self) -> syn::Ident {
+        let rust_ident = &self.ident;
+        quote::format_ident!("call_method_def_{rust_ident}")
+    }
+
+    fn r_wrapper_const_ident(&self) -> syn::Ident {
+        let rust_ident_upper = self.ident.to_string().to_uppercase();
+        quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+    }
+
+    fn c_wrapper_ident(&self) -> syn::Ident {
+        if self.uses_internal_c_wrapper() {
+            let rust_ident = &self.ident;
+            quote::format_ident!("C_{rust_ident}")
+        } else {
+            self.ident.clone()
+        }
     }
 }
 
@@ -137,54 +219,12 @@ pub fn miniextendr(
         return expand_altrep_struct(attr, item);
     }
 
-    // Parse function-level attributes:
-    // - #[miniextendr(unsafe(main_thread))] - forces main thread execution (unsafe context)
-    // - #[miniextendr(invisible)] / #[miniextendr(visible)] - visibility control
-    // - #[miniextendr(check_interrupt)] - check for Ctrl+C before execution
-    // - #[miniextendr(coerce)] - enable type coercion for ALL non-R-native parameter types
-    // - #[miniextendr(coerce)] on individual params - enable type coercion for specific parameters
-    let mut force_main_thread = false;
-    let mut force_invisible: Option<bool> = None;
-    let mut check_interrupt = false;
-    let mut coerce_all = false;
-    if !attr.is_empty() {
-        let attr_metas = syn::parse_macro_input!(attr with syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated);
-        for meta in attr_metas {
-            match &meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce
-                syn::Meta::Path(path) => {
-                    if let Some(ident) = path.get_ident() {
-                        if ident == "invisible" {
-                            force_invisible = Some(true);
-                        } else if ident == "visible" {
-                            force_invisible = Some(false);
-                        } else if ident == "check_interrupt" {
-                            check_interrupt = true;
-                        } else if ident == "main_thread" {
-                            // Legacy support - but warn/error in future?
-                            force_main_thread = true;
-                        } else if ident == "coerce" {
-                            coerce_all = true;
-                        }
-                    }
-                }
-                // Nested: unsafe(main_thread)
-                syn::Meta::List(list) => {
-                    if list.path.is_ident("unsafe") {
-                        let nested: syn::punctuated::Punctuated<syn::Ident, syn::Token![,]> = list
-                            .parse_args_with(syn::punctuated::Punctuated::parse_terminated)
-                            .expect("expected identifier in unsafe(...)");
-                        for ident in nested {
-                            if ident == "main_thread" {
-                                force_main_thread = true;
-                            }
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
+    let MiniextendrFnAttrs {
+        force_main_thread,
+        force_invisible,
+        check_interrupt,
+        coerce_all,
+    } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut item = syn::parse_macro_input!(item as syn::ItemFn);
 
@@ -282,7 +322,11 @@ pub fn miniextendr(
     let original_item = item.clone();
     use quote::ToTokens;
     let item = item.into_token_stream();
-    let extendr_function = syn::parse2(item).unwrap();
+    let extendr_function: ExtendrFunction = syn::parse2(item).unwrap();
+    let uses_internal_c_wrapper = extendr_function.uses_internal_c_wrapper();
+    let call_method_def = extendr_function.call_method_def_ident();
+    let c_ident = extendr_function.c_wrapper_ident();
+    let r_wrapper_generator = extendr_function.r_wrapper_const_ident();
     let ExtendrFunction {
         attrs,
         vis,
@@ -293,7 +337,6 @@ pub fn miniextendr(
         output,
     } = extendr_function;
     use syn::spanned::Spanned;
-    let uses_internal_c_wrapper = abi.is_none();
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
         rust_arg_count + 1
@@ -303,12 +346,6 @@ pub fn miniextendr(
     let num_args = syn::LitInt::new(&registered_arg_count.to_string(), inputs.span());
 
     let rust_ident = &ident;
-    let call_method_def = quote::format_ident!("call_method_def_{rust_ident}");
-    let c_ident = if uses_internal_c_wrapper {
-        &quote::format_ident!("C_{rust_ident}")
-    } else {
-        rust_ident
-    };
 
     // name of the C-wrapper
     let c_ident_name = syn::LitCStr::new(
@@ -880,9 +917,6 @@ pub fn miniextendr(
         proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
     };
 
-    let rust_ident_upper = rust_ident.to_string().to_uppercase();
-    let r_wrapper_generator = quote::format_ident!("R_WRAPPER_{rust_ident_upper}");
-
     // endregion
 
     let abi = abi.unwrap_or(syn::parse_quote!(extern "C-unwind"));
@@ -948,6 +982,18 @@ impl syn::parse::Parse for ExtendrModuleFunction {
             _fn_token: input.parse()?,
             ident: input.parse()?,
         })
+    }
+}
+
+impl ExtendrModuleFunction {
+    fn call_method_def_ident(&self) -> syn::Ident {
+        let rust_ident = &self.ident;
+        quote::format_ident!("call_method_def_{rust_ident}")
+    }
+
+    fn r_wrapper_const_ident(&self) -> syn::Ident {
+        let rust_ident_upper = self.ident.to_string().to_uppercase();
+        quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
     }
 }
 
@@ -1156,9 +1202,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .extendr_fn
         .iter()
         .map(|miniextendr_fn| {
-            //TODO: put this in ExtendrFunction impl
-            let rust_ident = &miniextendr_fn.ident;
-            let call_method_def = quote::format_ident!("call_method_def_{rust_ident}");
+            let call_method_def = miniextendr_fn.call_method_def_ident();
             syn::parse_quote!(#call_method_def())
         })
         .collect();
@@ -1191,11 +1235,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .extendr_fn
         .iter()
         .map(|x| {
-            //TODO: put this in ExtendrFunction impl
-            let rust_ident = &x.ident;
-            let rust_ident_upper = rust_ident.to_string().to_uppercase();
-            let r_wrapper_generator = quote::format_ident!("R_WRAPPER_{rust_ident_upper}");
-            syn::parse_quote!(#r_wrapper_generator)
+            let r_wrapper_const = x.r_wrapper_const_ident();
+            syn::parse_quote!(#r_wrapper_const)
         })
         .collect();
     let r_wrappers_use_other_modules = miniextendr_module
