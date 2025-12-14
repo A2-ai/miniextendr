@@ -392,6 +392,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_protect(arg1: SEXP) -> SEXP;
     pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
     pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
+    pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
@@ -413,6 +414,9 @@ unsafe extern "C-unwind" {
     // Cons cell accessors
     pub fn CAR(e: SEXP) -> SEXP;
     pub fn CDR(e: SEXP) -> SEXP;
+    pub fn TAG(e: SEXP) -> SEXP;
+    pub fn SET_TAG(x: SEXP, y: SEXP);
+    pub fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
     pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
     pub fn LOGICAL_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;
     pub fn INTEGER_OR_NULL(x: SEXP) -> *const ::std::os::raw::c_int;

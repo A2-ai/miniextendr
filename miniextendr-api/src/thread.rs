@@ -163,14 +163,13 @@ where
 /// Rust's default thread stack is only 2 MiB, which may be insufficient for deep R calls.
 /// We default to 8 MiB as a reasonable balance. Increase via [`RThreadBuilder::stack_size`]
 /// if you encounter stack overflows.
-#[cfg(feature = "nonapi")]
 pub const DEFAULT_R_STACK_SIZE: usize = 8 * 1024 * 1024;
 
 /// Stack size matching Windows R (64 MiB).
 ///
 /// Use this if your code involves very deep recursion or complex R operations.
 /// Windows R uses 64 MiB for its main thread since R 4.2.
-#[cfg(all(feature = "nonapi", windows))]
+#[cfg(windows)]
 pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 
 /// Spawn a new thread configured for calling R APIs.
@@ -206,7 +205,14 @@ where
     RThreadBuilder::new().spawn(f)
 }
 
-/// Builder for spawning R-compatible threads with custom settings.
+/// Builder for spawning threads with R-appropriate stack sizes.
+///
+/// This builder is always available and configures threads with stack sizes
+/// suitable for R workloads (8 MiB default, vs Rust's 2 MiB default).
+///
+/// When the `nonapi` feature is enabled, spawned threads also automatically
+/// disable R's stack checking via [`StackCheckGuard`], allowing R API calls
+/// from the thread.
 ///
 /// # Example
 ///
@@ -217,23 +223,21 @@ where
 ///     .stack_size(16 * 1024 * 1024)  // 16 MiB
 ///     .name("r-worker".to_string())
 ///     .spawn(|| {
-///         // R API calls safe here
+///         // With `nonapi`: R API calls safe here
+///         // Without `nonapi`: Just a thread with correct stack size
 ///     })?;
 /// ```
-#[cfg(feature = "nonapi")]
 pub struct RThreadBuilder {
     stack_size: usize,
     name: Option<String>,
 }
 
-#[cfg(feature = "nonapi")]
 impl Default for RThreadBuilder {
     fn default() -> Self {
         Self::new()
     }
 }
 
-#[cfg(feature = "nonapi")]
 impl RThreadBuilder {
     /// Create a new builder with default settings.
     ///
@@ -265,7 +269,8 @@ impl RThreadBuilder {
 
     /// Spawn the thread with the configured settings.
     ///
-    /// The closure will automatically have R's stack checking disabled.
+    /// With `nonapi` feature: automatically disables R's stack checking.
+    /// Without `nonapi` feature: just spawns with the configured stack size.
     pub fn spawn<F, T>(self, f: F) -> std::io::Result<std::thread::JoinHandle<T>>
     where
         F: FnOnce() -> T + Send + 'static,
@@ -277,10 +282,18 @@ impl RThreadBuilder {
             builder = builder.name(name);
         }
 
-        builder.spawn(move || {
-            let _guard = StackCheckGuard::disable();
-            f()
-        })
+        #[cfg(feature = "nonapi")]
+        {
+            builder.spawn(move || {
+                let _guard = StackCheckGuard::disable();
+                f()
+            })
+        }
+
+        #[cfg(not(feature = "nonapi"))]
+        {
+            builder.spawn(f)
+        }
     }
 
     /// Spawn and immediately join, returning the result.
