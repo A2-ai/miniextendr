@@ -136,8 +136,12 @@ macro_rules! __impl_altrep_base_with_serialize {
 
             const HAS_UNSERIALIZE: bool = true;
 
-            fn unserialize(class: $crate::ffi::SEXP, state: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
-                let Some(data) = <$ty as $crate::altrep_data::AltrepSerialize>::unserialize(state) else {
+            fn unserialize(
+                class: $crate::ffi::SEXP,
+                state: $crate::ffi::SEXP,
+            ) -> $crate::ffi::SEXP {
+                let Some(data) = <$ty as $crate::altrep_data::AltrepSerialize>::unserialize(state)
+                else {
                     $crate::r_error!(
                         "ALTREP unserialize failed for {}",
                         core::any::type_name::<$ty>()
@@ -148,13 +152,14 @@ macro_rules! __impl_altrep_base_with_serialize {
                 unsafe {
                     use $crate::externalptr::ExternalPtr;
                     use $crate::ffi::altrep::{R_altrep_class_t, R_new_altrep};
-                    use $crate::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked, R_NilValue};
+                    use $crate::ffi::{R_NilValue, Rf_protect_unchecked, Rf_unprotect_unchecked};
 
                     let ext_ptr = ExternalPtr::new_unchecked(data);
                     let data1 = ext_ptr.as_sexp();
                     // Protect across the allocation in R_new_altrep.
                     unsafe { Rf_protect_unchecked(data1) };
-                    let out = unsafe { R_new_altrep(R_altrep_class_t { ptr: class }, data1, R_NilValue) };
+                    let out =
+                        unsafe { R_new_altrep(R_altrep_class_t { ptr: class }, data1, R_NilValue) };
                     unsafe { Rf_unprotect_unchecked(1) };
                     out
                 }

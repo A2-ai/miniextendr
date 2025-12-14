@@ -156,7 +156,11 @@ unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
         if s.is_empty() {
             crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), 0, crate::ffi::CE_UTF8)
         } else {
-            crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8)
+            crate::ffi::Rf_mkCharLenCE_unchecked(
+                s.as_ptr().cast(),
+                s.len() as i32,
+                crate::ffi::CE_UTF8,
+            )
         }
     }
 }
