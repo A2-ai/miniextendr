@@ -86,28 +86,18 @@ unsafe impl GlobalAlloc for RAllocator {
             let preserve_tag = insert(sexp);
 
             let raw_base = RAW(sexp).cast::<u8>();
-            let (header, data) = match unsafe {
-                    let align = layout.align().max(HEADER_ALIGN);
 
-                    // Reserve header bytes, then align the next pointer up to `align`.
-                    let after_header = raw_base.add(HEADER_SIZE);
-                    let pad = after_header.align_offset(align);
-                    if pad == usize::MAX {
-                        return None;
-                    }
+            // Calculate header and data pointers with alignment
+            let after_header = raw_base.add(HEADER_SIZE);
+            let pad = after_header.align_offset(align);
+            if pad == usize::MAX {
+                // Alignment failed (extremely unlikely)
+                release(preserve_tag);
+                return ptr::null_mut();
+            }
 
-                    let data = after_header.add(pad);
-                    let header = data.sub(HEADER_SIZE).cast::<Header>();
-
-                    Some((header, data))
-                } {
-                Some(v) => v,
-                None => {
-                    // Extremely unlikely, but don't leak the preserve cell.
-                    release(preserve_tag);
-                    return ptr::null_mut();
-                }
-            };
+            let data = after_header.add(pad);
+            let header = data.sub(HEADER_SIZE).cast::<Header>();
 
             header.write(Header { preserve_tag });
 
