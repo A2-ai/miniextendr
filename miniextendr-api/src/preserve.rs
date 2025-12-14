@@ -20,6 +20,7 @@
 //! ## Safety
 //!
 //! All functions in this module are unsafe and must be called from the R main thread.
+//! Use the safe [`Protected`] wrapper for RAII-style protection.
 
 use crate::ffi::{
     CAR, CDR, R_NilValue, R_PreserveObject, R_xlen_t, Rf_cons, Rf_protect, Rf_unprotect,
@@ -52,25 +53,6 @@ unsafe fn init() -> SEXP {
     }
 }
 
-/// Initialize the preservation list (unchecked version).
-///
-/// Skips thread safety checks for performance-critical paths.
-///
-/// # Safety
-///
-/// Must be called from the R main thread. Only use in contexts where
-/// you're certain you're on the main thread.
-#[inline]
-unsafe fn init_unchecked() -> SEXP {
-    use crate::ffi::{R_PreserveObject_unchecked, Rf_cons_unchecked};
-
-    unsafe {
-        let out = Rf_cons_unchecked(R_NilValue, Rf_cons_unchecked(R_NilValue, R_NilValue));
-        R_PreserveObject_unchecked(out);
-        out
-    }
-}
-
 /// Get the current thread's preservation list, initializing if needed.
 ///
 /// # Safety
@@ -80,20 +62,6 @@ unsafe fn init_unchecked() -> SEXP {
 pub(crate) unsafe fn get() -> SEXP {
     // One global preserve list per thread.
     PRESERVE_LIST.with(|x| *x.get_or_init(|| unsafe { init() }))
-}
-
-/// Get the current thread's preservation list (unchecked version).
-///
-/// Skips thread safety checks for performance-critical paths.
-///
-/// # Safety
-///
-/// Must be called from the R main thread. Only use in contexts where
-/// you're certain you're on the main thread (ALTREP callbacks, extern "C-unwind" functions).
-#[inline]
-pub(crate) unsafe fn get_unchecked() -> SEXP {
-    // Use unchecked init for full consistency
-    PRESERVE_LIST.with(|x| *x.get_or_init(|| unsafe { init_unchecked() }))
 }
 
 /// Count the number of currently protected objects.
@@ -112,27 +80,6 @@ pub unsafe fn count() -> R_xlen_t {
         let tail: R_xlen_t = 1;
         let list = get();
         Rf_xlength(list) - head - tail
-    }
-}
-
-/// Count the number of currently protected objects (unchecked version).
-///
-/// Skips thread safety checks for performance-critical paths.
-///
-/// # Safety
-///
-/// Must be called from the R main thread. Only use in contexts where
-/// you're certain you're on the main thread.
-#[allow(dead_code)]
-#[inline]
-pub unsafe fn count_unchecked() -> R_xlen_t {
-    use crate::ffi::Rf_xlength_unchecked;
-
-    unsafe {
-        let head: R_xlen_t = 1;
-        let tail: R_xlen_t = 1;
-        let list = get_unchecked();
-        Rf_xlength_unchecked(list) - head - tail
     }
 }
 
@@ -177,50 +124,6 @@ pub unsafe fn insert(x: SEXP) -> SEXP {
     }
 }
 
-/// Insert a SEXP into the preservation list (unchecked version).
-///
-/// Skips thread safety checks for performance-critical paths.
-/// Otherwise identical to [`insert`].
-///
-/// # Safety
-///
-/// Must be called from the R main thread. Only use in contexts where
-/// you're certain you're on the main thread (ALTREP callbacks, extern "C-unwind" functions).
-/// The returned cell must eventually be passed to [`release_unchecked`].
-#[inline]
-pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
-    use crate::ffi::{
-        CDR_unchecked, Rf_cons_unchecked, Rf_protect_unchecked, Rf_unprotect_unchecked,
-        SET_TAG_unchecked, SETCAR_unchecked, SETCDR_unchecked,
-    };
-
-    unsafe {
-        if x == R_NilValue {
-            return R_NilValue;
-        }
-
-        Rf_protect_unchecked(x);
-
-        let list = get_unchecked();
-
-        // head is the list itself; next is the node after head
-        let head = list;
-        let next = CDR_unchecked(list);
-
-        // New cell points to current head and next
-        let cell = Rf_protect_unchecked(Rf_cons_unchecked(head, next));
-        SET_TAG_unchecked(cell, x);
-
-        // Splice cell between head and next
-        SETCDR_unchecked(head, cell);
-        SETCAR_unchecked(next, cell);
-
-        Rf_unprotect_unchecked(2);
-
-        cell
-    }
-}
-
 /// Release a previously protected SEXP from the preservation list.
 ///
 /// The `cell` parameter should be a value returned from [`insert`].
@@ -253,31 +156,142 @@ pub unsafe fn release(cell: SEXP) {
     }
 }
 
-/// Release a previously protected SEXP (unchecked version).
+/// RAII wrapper for a protected R object.
 ///
-/// Skips thread safety checks for performance-critical paths.
-/// Otherwise identical to [`release`].
+/// Automatically protects the SEXP on creation and releases it on drop.
+/// This ensures that the object won't be garbage collected while the
+/// `Protected` value is in scope.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::preserve::Protected;
+///
+/// unsafe {
+///     let protected = Protected::new(Rf_allocVector(INTSXP, 10));
+///     // The vector is now protected from GC
+///     // ... use the SEXP ...
+///     // Automatically released when `protected` goes out of scope
+/// }
+/// ```
 ///
 /// # Safety
 ///
-/// Must be called from the R main thread. Only use in contexts where
-/// you're certain you're on the main thread. The `cell` must be a valid
-/// cell returned from [`insert_unchecked`] and must not have been released already.
-#[inline]
-pub unsafe fn release_unchecked(cell: SEXP) {
-    use crate::ffi::{CAR_unchecked, CDR_unchecked, SETCAR_unchecked, SETCDR_unchecked};
+/// Must only be used from the R main thread. The inner SEXP should not
+/// be used after the `Protected` is dropped.
+pub struct Protected {
+    cell: SEXP,
+}
 
-    unsafe {
-        if cell == R_NilValue {
-            return;
+impl Protected {
+    /// Protect a SEXP from garbage collection.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn new(sexp: SEXP) -> Self {
+        unsafe {
+            let cell = insert(sexp);
+            Self { cell }
         }
+    }
 
-        // Neighbors around the cell
-        let lhs = CAR_unchecked(cell);
-        let rhs = CDR_unchecked(cell);
+    /// Get the protected SEXP.
+    ///
+    /// The returned SEXP is valid as long as this `Protected` value
+    /// hasn't been dropped.
+    #[inline]
+    pub fn get(&self) -> SEXP {
+        unsafe {
+            if self.cell == R_NilValue {
+                R_NilValue
+            } else {
+                crate::ffi::TAG(self.cell)
+            }
+        }
+    }
 
-        // Bypass cell
-        SETCDR_unchecked(lhs, rhs);
-        SETCAR_unchecked(rhs, lhs);
+    /// Consume this protection and return the inner SEXP.
+    ///
+    /// After calling this, the SEXP is no longer protected.
+    ///
+    /// # Safety
+    ///
+    /// The caller must ensure the returned SEXP is either:
+    /// - Immediately protected by other means, or
+    /// - Stored in a location that R knows about (e.g., returned to R)
+    #[inline]
+    pub unsafe fn into_inner(self) -> SEXP {
+        let sexp = self.get();
+        // Prevent drop from releasing
+        std::mem::forget(self);
+        sexp
+    }
+}
+
+impl Drop for Protected {
+    fn drop(&mut self) {
+        unsafe {
+            release(self.cell);
+        }
+    }
+}
+
+// Safety: Protected is only used on the R main thread
+unsafe impl Send for Protected {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_preserve_nil() {
+        unsafe {
+            // Preserving NIL should return NIL
+            let cell = insert(R_NilValue);
+            assert_eq!(cell, R_NilValue);
+            release(cell); // Should be a no-op
+        }
+    }
+
+    #[test]
+    fn test_protected_wrapper() {
+        unsafe {
+            let initial_count = count();
+            {
+                let sexp = Rf_cons(R_NilValue, R_NilValue);
+                let _protected = Protected::new(sexp);
+                // Count should increase by 1
+                assert_eq!(count(), initial_count + 1);
+            }
+            // After drop, count should return to initial
+            assert_eq!(count(), initial_count);
+        }
+    }
+
+    #[test]
+    fn test_multiple_protections() {
+        unsafe {
+            let initial_count = count();
+
+            let sexp1 = Rf_cons(R_NilValue, R_NilValue);
+            let sexp2 = Rf_cons(R_NilValue, R_NilValue);
+            let sexp3 = Rf_cons(R_NilValue, R_NilValue);
+
+            let cell1 = insert(sexp1);
+            let cell2 = insert(sexp2);
+            let cell3 = insert(sexp3);
+
+            assert_eq!(count(), initial_count + 3);
+
+            // Release in different order
+            release(cell2);
+            assert_eq!(count(), initial_count + 2);
+            release(cell1);
+            assert_eq!(count(), initial_count + 1);
+            release(cell3);
+            assert_eq!(count(), initial_count);
+        }
     }
 }

@@ -1,127 +1,40 @@
 //! R-backed global allocator for Rust.
 //!
-//! Allocations are backed by R RAWSXP objects and protected from GC via the
-//! crate's preserve mechanism.
+//! This module provides a `GlobalAlloc` implementation that uses R's memory
+//! management system to allocate memory. All allocations are backed by R RAWSXP
+//! objects and protected from garbage collection.
 //!
-//! Layout inside the RAWSXP (bytes):
-//!   \[optional leading pad\]\[Header\]\[user bytes...\]
+//! ## How it works
 //!
-//! We always return a pointer aligned to at least:
-//!   `max(requested_align, align_of::<Header>())`
-//! so the `Header` placed immediately before the user pointer is always aligned.
+//! 1. When `alloc()` is called, we allocate a RAWSXP large enough for:
+//!    - A header (preserve cell + offset)
+//!    - Alignment padding
+//!    - The requested user data
 //!
-//! # ⚠️ Warning: longjmp Risk
+//! 2. The RAWSXP is protected using our preserve mechanism
 //!
-//! R's `Rf_allocVector` can longjmp on allocation failure instead of returning
-//! NULL. If this happens, Rust destructors will NOT run, potentially causing:
-//! - Resource leaks (files, locks, etc.)
-//! - Corrupted state if allocation happens mid-operation
+//! 3. We return an aligned pointer into the RAWSXP's data, with the header
+//!    stored immediately before it
 //!
-//! This allocator is best suited for:
-//! - Short-lived operations within a single R API call
-//! - Contexts where `R_UnwindProtect` is active (e.g., inside `run_on_worker`)
+//! 4. On `dealloc()`, we recover the header and release the preserve cell
 //!
-//! For long-lived allocations or critical cleanup requirements, consider using
-//! Rust's standard allocator instead.
+//! ## Memory layout
+//!
+//! Each allocation is wrapped in an `RBox<T>` structure that contains:
+//! - The preserve cell (for GC protection)
+//! - The actual data (properly aligned via `repr(C)`)
+//!
+//! The RAWSXP is large enough to hold the entire `RBox<T>`.
+//!
+//! ## Safety
+//!
+//! This allocator must only be used from the R main thread. Using it from
+//! other threads will cause undefined behavior.
 
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
-use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
-use core::{
-    alloc::{GlobalAlloc, Layout},
-    mem, ptr,
-};
-
-// ============================================================================
-// SendableDataPtr - Thread-safe wrapper for allocator pointers
-// ============================================================================
-
-/// Wrapper to make `*mut u8` pointers `Send` for cross-thread routing.
-///
-/// Unlike `SendablePtr<T>` in externalptr, this allows null pointers
-/// since allocator operations can fail and return null.
-///
-/// # Safety
-///
-/// Same safety model as `SendableSexp` and `SendablePtr`:
-/// - The pointer value (memory address) is safely transmitted between threads
-/// - The pointer is only dereferenced on R's main thread
-/// - This is guaranteed by the `with_r_thread_or_inline` routing mechanism
-#[repr(transparent)]
-#[derive(Clone, Copy)]
-struct SendableDataPtr(*mut u8);
-
-// SAFETY: We only transmit the address between threads.
-// The actual memory is only accessed on the R main thread.
-unsafe impl Send for SendableDataPtr {}
-
-impl SendableDataPtr {
-    #[inline]
-    const fn new(ptr: *mut u8) -> Self {
-        Self(ptr)
-    }
-
-    #[inline]
-    const fn get(self) -> *mut u8 {
-        self.0
-    }
-
-    #[inline]
-    const fn is_null(self) -> bool {
-        self.0.is_null()
-    }
-
-    #[inline]
-    const fn null() -> Self {
-        Self(ptr::null_mut())
-    }
-}
-
-// ============================================================================
-// Thread routing helper
-// ============================================================================
-
-/// Routes a closure to the R main thread if not already there.
-///
-/// - If on main thread: executes directly
-/// - If in worker context: routes via `with_r_thread`
-/// - Otherwise: panics (R API calls from arbitrary threads are unsafe)
-///
-/// # Panics
-///
-/// Panics if called from a non-main thread without worker context.
-/// This prevents unsafe R API calls from arbitrary threads (e.g., Rayon).
-#[inline]
-fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>(f: F) -> R {
-    if is_r_main_thread() {
-        f()
-    } else if has_worker_context() {
-        with_r_thread(f)
-    } else {
-        panic!(
-            "RAllocator: cannot allocate from non-main thread without worker context. \
-             Ensure miniextendr_worker_init() was called and you're within run_on_worker()."
-        )
-    }
-}
-
-// ============================================================================
-// Header and constants
-// ============================================================================
-
-/// Metadata stored immediately before the returned user pointer.
-#[repr(C)]
-#[derive(Copy, Clone)]
-struct Header {
-    preserve_tag: SEXP,
-}
-
-const HEADER_SIZE: usize = mem::size_of::<Header>();
-const HEADER_ALIGN: usize = mem::align_of::<Header>();
-
-// ============================================================================
-// RAllocator
-// ============================================================================
+use std::alloc;
+use std::ptr;
 
 /// R-backed global allocator.
 ///
@@ -129,198 +42,164 @@ const HEADER_ALIGN: usize = mem::align_of::<Header>();
 /// garbage collection. The allocator stores metadata before the returned
 /// pointer to enable proper deallocation.
 ///
-/// **Note:** This should NOT be used as `#[global_allocator]` in R package
-/// library crates, as it would be invoked during compilation/build time when
-/// R isn't available. Instead, use it explicitly in standalone binaries that
-/// embed R, or use arena-style allocation APIs.
+/// # Example
 ///
-/// # Thread Safety
+/// ```ignore
+/// #[global_allocator]
+/// static R_ALLOCATOR: RAllocator = RAllocator;
+/// ```
 ///
-/// This allocator is safe to use from any thread. R API calls are automatically
-/// routed to the main thread via `with_r_thread_or_inline`.
+/// # Safety
+///
+/// This allocator is ONLY safe to use from the R main thread. Using it
+/// from other threads will cause undefined behavior because:
+/// - `Rf_allocVector` must be called from the main thread
+/// - The preserve mechanism is thread-local
+///
+/// If you need allocations from worker threads, use the standard system
+/// allocator on those threads.
 #[derive(Debug)]
 pub struct RAllocator;
 
-unsafe impl GlobalAlloc for RAllocator {
-    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        with_r_thread_or_inline(move || unsafe { alloc_main_thread(layout) }).get()
-    }
+unsafe impl alloc::GlobalAlloc for RAllocator {
+    unsafe fn alloc(&self, layout: alloc::Layout) -> *mut u8 {
+        unsafe {
+            let size = layout.size();
+            let align = layout.align();
 
-    unsafe fn dealloc(&self, data: *mut u8, _layout: Layout) {
-        if data.is_null() {
-            return;
-        }
-        let ptr = SendableDataPtr::new(data);
-        with_r_thread_or_inline(move || unsafe {
-            dealloc_main_thread(ptr);
-        });
-    }
-
-    unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        // Handle null input (acts like alloc)
-        if old.is_null() {
-            let Ok(new_layout) = Layout::from_size_align(new_size, layout.align()) else {
+            // Zero-sized allocations return null (per GlobalAlloc contract)
+            if size == 0 {
                 return ptr::null_mut();
-            };
-            return unsafe { self.alloc(new_layout) };
+            }
+
+            // Calculate layout for RBox header + user data
+            // The RBox struct has:
+            // - cell: SEXP (8 bytes on 64-bit, 4 bytes on 32-bit)
+            // - data: [u8; size] with alignment `align`
+            let cell_size = std::mem::size_of::<SEXP>();
+
+            // Calculate padding needed after cell to achieve user alignment
+            let padding = (align - (cell_size % align)) % align;
+            let total_size = cell_size + padding + size;
+
+            // Allocate RAWSXP
+            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_size as isize);
+            if sexp.is_null() {
+                return ptr::null_mut();
+            }
+
+            // Protect from GC
+            let cell = insert(sexp);
+
+            // Get pointer to RAWSXP payload
+            let raw_ptr = RAW(sexp);
+
+            // Write the cell at the start
+            ptr::write(raw_ptr as *mut SEXP, cell);
+
+            // Return pointer to data (after cell + padding)
+            let data_offset = cell_size + padding;
+            let data_ptr = raw_ptr.add(data_offset);
+
+            // Verify alignment
+            debug_assert_eq!(
+                data_ptr as usize % align,
+                0,
+                "data pointer not properly aligned"
+            );
+
+            data_ptr
         }
-
-        // Handle zero size (acts like dealloc)
-        if new_size == 0 {
-            unsafe { self.dealloc(old, layout) };
-            return ptr::null_mut();
-        }
-
-        let old_ptr = SendableDataPtr::new(old);
-        let old_size = layout.size();
-        let align = layout.align();
-
-        with_r_thread_or_inline(move || unsafe {
-            realloc_main_thread(old_ptr, old_size, align, new_size)
-        })
-        .get()
     }
 
-    unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        let p = unsafe { self.alloc(layout) };
-        if !p.is_null() {
-            unsafe { ptr::write_bytes(p, 0, layout.size()) };
+    unsafe fn dealloc(&self, ptr: *mut u8, layout: alloc::Layout) {
+        unsafe {
+            if ptr.is_null() {
+                return;
+            }
+
+            let align = layout.align();
+            let cell_size = std::mem::size_of::<SEXP>();
+
+            // Calculate padding (same as in alloc)
+            let padding = (align - (cell_size % align)) % align;
+            let data_offset = cell_size + padding;
+
+            // Recover the cell pointer
+            let raw_ptr = ptr.sub(data_offset);
+            let cell = ptr::read(raw_ptr as *const SEXP);
+
+            // Release from preserve list
+            release(cell);
         }
-        p
     }
 }
 
-// ============================================================================
-// Main-thread helpers
-// ============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::alloc::{GlobalAlloc, Layout};
 
-/// Allocate memory on the R main thread.
-///
-/// # Safety
-///
-/// Must be called from R's main thread (or routed via `with_r_thread`).
-unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
-    // ZST allocations: return null since we can't meaningfully track them
-    // (dangling pointer would crash in dealloc when we try to read the header)
-    if layout.size() == 0 {
-        return SendableDataPtr::null();
+    #[test]
+    fn test_alloc_dealloc() {
+        unsafe {
+            // Allocate 64 bytes with 8-byte alignment
+            let layout = Layout::from_size_align(64, 8).unwrap();
+            let ptr = RAllocator.alloc(layout);
+            assert!(!ptr.is_null());
+            assert_eq!(ptr as usize % 8, 0, "pointer should be 8-byte aligned");
+
+            // Write some data
+            std::ptr::write_bytes(ptr, 0x42, 64);
+
+            // Deallocate
+            RAllocator.dealloc(ptr, layout);
+        }
     }
 
-    let align = layout.align().max(HEADER_ALIGN);
-
-    // Calculate total size needed with overflow checking
-    let total = {
-        let Some(align_minus_1) = align.checked_sub(1) else {
-            return SendableDataPtr::null();
-        };
-        let Some(temp) = HEADER_SIZE.checked_add(align_minus_1) else {
-            return SendableDataPtr::null();
-        };
-        let Some(total) = temp.checked_add(layout.size()) else {
-            return SendableDataPtr::null();
-        };
-        total
-    };
-
-    let total_isize: isize = match total.try_into() {
-        Ok(n) => n,
-        Err(_) => return SendableDataPtr::null(),
-    };
-
-    // NOTE: Rf_allocVector can longjmp on failure instead of returning NULL.
-    // If this happens inside run_on_worker, R_UnwindProtect will catch it.
-    // Outside of that context, Rust destructors may be skipped.
-    let sexp = unsafe { Rf_allocVector(SEXPTYPE::RAWSXP, total_isize) };
-    if sexp.is_null() {
-        return SendableDataPtr::null();
+    #[test]
+    fn test_zero_size_alloc() {
+        unsafe {
+            let layout = Layout::from_size_align(0, 1).unwrap();
+            let ptr = RAllocator.alloc(layout);
+            assert!(ptr.is_null(), "zero-size alloc should return null");
+        }
     }
 
-    // Protect from GC (must stay valid until dealloc()).
-    let preserve_tag = unsafe { insert(sexp) };
-
-    let raw_base = unsafe { RAW(sexp) }.cast::<u8>();
-
-    // Calculate header and data pointers with alignment
-    let after_header = unsafe { raw_base.add(HEADER_SIZE) };
-    let pad = after_header.align_offset(align);
-    if pad == usize::MAX {
-        // Alignment failed (extremely unlikely)
-        unsafe { release(preserve_tag) };
-        return SendableDataPtr::null();
+    #[test]
+    fn test_various_alignments() {
+        unsafe {
+            for align in [1, 2, 4, 8, 16, 32, 64] {
+                let layout = Layout::from_size_align(32, align).unwrap();
+                let ptr = RAllocator.alloc(layout);
+                assert!(!ptr.is_null());
+                assert_eq!(
+                    ptr as usize % align,
+                    0,
+                    "pointer should be {}-byte aligned",
+                    align
+                );
+                RAllocator.dealloc(ptr, layout);
+            }
+        }
     }
 
-    let data = unsafe { after_header.add(pad) };
-    let header = unsafe { data.sub(HEADER_SIZE) }.cast::<Header>();
+    #[test]
+    fn test_multiple_allocations() {
+        unsafe {
+            let layout = Layout::from_size_align(16, 8).unwrap();
 
-    unsafe { header.write(Header { preserve_tag }) };
+            let mut ptrs = Vec::new();
+            for _ in 0..10 {
+                let ptr = RAllocator.alloc(layout);
+                assert!(!ptr.is_null());
+                ptrs.push(ptr);
+            }
 
-    debug_assert_eq!(data.align_offset(layout.align()), 0);
-    SendableDataPtr::new(data)
-}
-
-/// Deallocate memory on the R main thread.
-///
-/// # Safety
-///
-/// Must be called from R's main thread (or routed via `with_r_thread`).
-/// The pointer must have been allocated by this allocator.
-unsafe fn dealloc_main_thread(ptr: SendableDataPtr) {
-    let data = ptr.get();
-    let header = unsafe { data.sub(HEADER_SIZE) }.cast::<Header>();
-    let preserve_tag = unsafe { (*header).preserve_tag };
-    unsafe { release(preserve_tag) };
-}
-
-/// Reallocate memory on the R main thread.
-///
-/// # Safety
-///
-/// Must be called from R's main thread (or routed via `with_r_thread`).
-/// The old pointer must have been allocated by this allocator.
-unsafe fn realloc_main_thread(
-    old_ptr: SendableDataPtr,
-    old_size: usize,
-    align: usize,
-    new_size: usize,
-) -> SendableDataPtr {
-    let old = old_ptr.get();
-
-    // Recover RAWSXP via preserve tag
-    let header = unsafe { old.sub(HEADER_SIZE) }.cast::<Header>();
-    let preserve_tag = unsafe { (*header).preserve_tag };
-    let sexp = unsafe { crate::ffi::TAG(preserve_tag) };
-
-    // Check if existing allocation has capacity
-    let raw_base = unsafe { RAW(sexp) }.cast::<u8>();
-    let cap: usize = match unsafe { crate::ffi::Rf_xlength(sexp) }.try_into() {
-        Ok(n) => n,
-        Err(_) => return SendableDataPtr::null(),
-    };
-
-    let used = unsafe { (old as *const u8).offset_from(raw_base as *const u8) };
-    if used < 0 {
-        // Should be impossible if `old` came from this allocator, but don't UB.
-        return SendableDataPtr::null();
+            // Deallocate in reverse order
+            for ptr in ptrs.into_iter().rev() {
+                RAllocator.dealloc(ptr, layout);
+            }
+        }
     }
-    let available = cap.saturating_sub(used as usize);
-
-    if new_size <= available {
-        return old_ptr; // Reuse existing allocation
-    }
-
-    // Need new allocation
-    let Ok(new_layout) = Layout::from_size_align(new_size, align) else {
-        return SendableDataPtr::null();
-    };
-
-    let new_ptr = unsafe { alloc_main_thread(new_layout) };
-    if new_ptr.is_null() {
-        // On realloc failure, the old allocation must remain valid.
-        return SendableDataPtr::null();
-    }
-
-    unsafe { ptr::copy_nonoverlapping(old, new_ptr.get(), old_size.min(new_size)) };
-    unsafe { release(preserve_tag) }; // Free old allocation
-
-    new_ptr
 }

@@ -660,6 +660,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_protect(arg1: SEXP) -> SEXP;
     pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
     pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
+    pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
@@ -724,95 +725,9 @@ unsafe extern "C-unwind" {
     ///
     /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
     pub fn CDR(e: SEXP) -> SEXP;
-
-    /// Get the CAR of the CAR (value of the first element's value).
-    ///
-    /// Equivalent to `CAR(CAR(e))`. Useful for nested lists.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid nested pairlist
-    pub fn CAAR(e: SEXP) -> SEXP;
-
-    /// Get the CDR of the CAR (tail of the first element).
-    ///
-    /// Equivalent to `CDR(CAR(e))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid nested pairlist
-    pub fn CDAR(e: SEXP) -> SEXP;
-
-    /// Get the CAR of the CDR (second element's value).
-    ///
-    /// Equivalent to `CAR(CDR(e))`. This gets the value of the 2nd list element.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 2 elements
-    pub fn CADR(e: SEXP) -> SEXP;
-
-    /// Get the CDR of the CDR (list starting from 3rd element).
-    ///
-    /// Equivalent to `CDR(CDR(e))`. Skips first two elements.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 2 elements
-    pub fn CDDR(e: SEXP) -> SEXP;
-
-    /// Get the value of the third element.
-    ///
-    /// Equivalent to `CAR(CDR(CDR(e)))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 3 elements
-    pub fn CADDR(e: SEXP) -> SEXP;
-
-    /// Get the value of the fourth element.
-    ///
-    /// Equivalent to `CAR(CDR(CDR(CDR(e))))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 4 elements
-    pub fn CADDDR(e: SEXP) -> SEXP;
-
-    /// Get the value of the fifth element.
-    ///
-    /// Equivalent to `CAR(CDR(CDR(CDR(CDR(e)))))`.
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a pairlist with at least 5 elements
-    pub fn CAD4R(e: SEXP) -> SEXP;
-
-    /// Get the TAG (name) of a pairlist node.
-    ///
-    /// Returns the symbol associated with this element, or R_NilValue if unnamed.
-    /// For named arguments like `f(x = 5)`, TAG is the symbol "x".
-    ///
-    /// # Safety
-    ///
-    /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
     pub fn TAG(e: SEXP) -> SEXP;
-
-    /// Set the TAG (name) of a pairlist node.
-    ///
-    /// # Safety
-    ///
-    /// - `x` must be a valid mutable pairlist node
-    /// - `y` must be a symbol (SYMSXP) or R_NilValue
     pub fn SET_TAG(x: SEXP, y: SEXP);
-
-    /// Set the CAR (value) of a pairlist node.
-    ///
-    /// # Safety
-    ///
-    /// - `x` must be a valid mutable pairlist node
-    /// - `y` must be a valid SEXP
-    /// - Returns `y` for convenience
+    pub fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
     pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the CDR (tail) of a pairlist node.
