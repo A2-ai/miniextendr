@@ -34,16 +34,11 @@
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
-
-// Minimal FFI declarations - just what we need for R runtime control
-#[allow(non_camel_case_types)]
-type SEXP = *mut std::os::raw::c_void;
+use std::process::Command;
 
 unsafe extern "C" {
     // R initialization (from Rembedded.h)
     fn Rf_initialize_R(argc: c_int, argv: *mut *mut c_char) -> c_int;
-    fn Rf_initEmbeddedR(argc: c_int, argv: *mut *mut c_char) -> c_int;
-    fn R_RunExitFinalizers();
     fn Rf_endEmbeddedR(fatal: c_int);
 
     // R event loop
@@ -52,7 +47,6 @@ unsafe extern "C" {
 
     // Setup functions
     fn setup_Rmainloop();
-    fn R_ReplDLLinit();
 
     // Global state
     static mut R_Interactive: c_int;
@@ -86,7 +80,13 @@ impl REngineBuilder {
     /// Create a new R engine builder with default settings.
     pub fn new() -> Self {
         Self {
-            args: vec!["R".to_string(), "--quiet".to_string()],
+            // Default to a non-interactive-safe setup: R requires an explicit
+            // save/no-save choice when not running interactively.
+            args: vec![
+                "R".to_string(),
+                "--quiet".to_string(),
+                "--vanilla".to_string(),
+            ],
             interactive: false,
             signal_handlers: false,
         }
@@ -128,6 +128,8 @@ impl REngineBuilder {
     ///
     /// Returns an error if R initialization fails.
     pub unsafe fn init(self) -> Result<REngine, REngineError> {
+        ensure_r_home_env()?;
+
         // Convert args to C strings
         let c_args: Vec<CString> = self
             .args
@@ -141,21 +143,21 @@ impl REngineBuilder {
         let argc = c_ptrs.len() as c_int;
         let argv = c_ptrs.as_mut_ptr();
 
-        // Set global flags before initialization
-        unsafe {
-            R_Interactive = if self.interactive { 1 } else { 0 };
-            R_SignalHandlers = if self.signal_handlers { 1 } else { 0 };
-        }
-
-        // Initialize R
-        let result = unsafe { Rf_initEmbeddedR(argc, argv) };
-
-        if result != 1 {
+        // Initialize R.
+        //
+        // Note: `Rf_initEmbeddedR()` already calls `setup_Rmainloop()`.
+        // We want tighter control (and to avoid double-calling the setup),
+        // so we call `Rf_initialize_R()` directly and then `setup_Rmainloop()`.
+        let result = unsafe { Rf_initialize_R(argc, argv) };
+        if result != 0 {
             return Err(REngineError::InitializationFailed);
         }
 
-        // Setup main loop
         unsafe {
+            // Set global flags *after* initialization, mirroring R's own
+            // `Rf_initEmbeddedR()` order (but respecting our builder flags).
+            R_Interactive = if self.interactive { 1 } else { 0 };
+            R_SignalHandlers = if self.signal_handlers { 1 } else { 0 };
             setup_Rmainloop();
         }
 
@@ -214,7 +216,6 @@ impl REngine {
     pub unsafe fn shutdown(mut self) {
         if self.initialized {
             unsafe {
-                R_RunExitFinalizers();
                 Rf_endEmbeddedR(0);
             }
             self.initialized = false;
@@ -226,7 +227,6 @@ impl Drop for REngine {
     fn drop(&mut self) {
         if self.initialized {
             unsafe {
-                R_RunExitFinalizers();
                 Rf_endEmbeddedR(0);
             }
         }
@@ -236,6 +236,8 @@ impl Drop for REngine {
 /// Errors that can occur during R engine initialization.
 #[derive(Debug)]
 pub enum REngineError {
+    /// Could not determine / set `R_HOME` for embedding.
+    RHomeNotFound,
     /// R initialization failed.
     InitializationFailed,
 }
@@ -243,9 +245,40 @@ pub enum REngineError {
 impl std::fmt::Display for REngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
+            REngineError::RHomeNotFound => {
+                write!(f, "R_HOME is not set and `R RHOME` could not be resolved")
+            }
             REngineError::InitializationFailed => write!(f, "R initialization failed"),
         }
     }
 }
 
 impl std::error::Error for REngineError {}
+
+fn ensure_r_home_env() -> Result<(), REngineError> {
+    if std::env::var_os("R_HOME").is_some() {
+        return Ok(());
+    }
+
+    let output = Command::new("R")
+        .args(["RHOME"])
+        .output()
+        .map_err(|_| REngineError::RHomeNotFound)?;
+
+    if !output.status.success() {
+        return Err(REngineError::RHomeNotFound);
+    }
+
+    let r_home = String::from_utf8(output.stdout).map_err(|_| REngineError::RHomeNotFound)?;
+    let r_home = r_home.trim();
+    if r_home.is_empty() {
+        return Err(REngineError::RHomeNotFound);
+    }
+
+    // SAFETY: We call this during single-threaded startup (before initializing
+    // R and before spawning any worker threads).
+    unsafe {
+        std::env::set_var("R_HOME", r_home);
+    }
+    Ok(())
+}
