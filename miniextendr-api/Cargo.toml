@@ -11,3 +11,6 @@ nonapi = []
 
 [dependencies]
 miniextendr-macros = { path = "../miniextendr-macros" }
+
+[dev-dependencies]
+miniextendr-engine = { path = "../miniextendr-engine" }

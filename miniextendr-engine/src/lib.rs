@@ -161,9 +161,7 @@ impl REngineBuilder {
             setup_Rmainloop();
         }
 
-        Ok(REngine {
-            initialized: true,
-        })
+        Ok(REngine { initialized: true })
     }
 }
 
