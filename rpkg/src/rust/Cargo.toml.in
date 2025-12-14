@@ -19,7 +19,7 @@ path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
 [features]
-default = ["nonapi"]
+default = []
 nonapi = ["miniextendr-api/nonapi"]
 
 [dependencies]
