@@ -5,17 +5,8 @@
 //! - per-CHARSXP encoding tags (UTF-8 / Latin-1 / bytes / native)
 //! - global/locale-level settings (native encoding, UTF-8 locale flags)
 //!
-//! # Availability
-//!
-//! The global signals are **non-API** (from `Defn.h`) and require the `nonapi` feature.
-//! Additionally, these symbols are **not exported from R's shared library**, so
-//! `miniextendr_encoding_init()` only works when:
-//! - Embedding R via `miniextendr-engine` (which links directly to R internals)
-//! - Running on platforms where these symbols happen to be exported
-//!
-//! For R packages (loaded via `.Call`), these symbols are typically unavailable,
-//! so `miniextendr_encoding_init()` is **disabled by default** in the entrypoint.
-//! The module is still useful for standalone Rust applications embedding R.
+//! Some of the global signals are **non-API** (from `Defn.h`) and are therefore
+//! only available with the `nonapi` feature.
 
 use std::sync::OnceLock;
 

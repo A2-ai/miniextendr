@@ -618,11 +618,26 @@ pub fn miniextendr(
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
                         let #ident = &#storage_ident;
                     });
-                } else if is_slice || is_str {
-                    // Slice references and &str use TryFromSexp
-                    // Strings must use STRING_ELT + R_CHAR, not DATAPTR_RO
+                } else if is_slice {
+                    // Slice references use TryFromSexp (backed by DATAPTR_RO).
                     closure_statements.push(quote::quote! {
                         let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                    });
+                } else if is_str {
+                    // `&str` parameters are decoded to an owned `String` first (via TryFromSexp),
+                    // then borrowed as `&str` for the Rust call. This avoids returning a `'static`
+                    // borrow into R memory and also allows UTF-8 translation when needed.
+                    let storage_ident = quote::format_ident!("__miniextendr_{}_string", ident);
+                    let mutability = if pat_ident.mutability.is_some() {
+                        quote::quote!(mut)
+                    } else {
+                        quote::quote!()
+                    };
+                    closure_statements.push(quote::quote! {
+                        let #storage_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
+                    });
+                    closure_statements.push(quote::quote! {
+                        let #mutability #ident: &str = #storage_ident.as_str();
                     });
                 } else if pat_ident.mutability.is_some() {
                     closure_statements.push(quote::quote! {

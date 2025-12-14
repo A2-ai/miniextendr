@@ -6,9 +6,9 @@
 //! |--------|-----------|---------------|
 //! | INTSXP | `i32`, `&[i32]` | `INTEGER()` / `DATAPTR_RO` |
 //! | REALSXP | `f64`, `&[f64]` | `REAL()` / `DATAPTR_RO` |
-//! | LGLSXP | `Rboolean`, `&[Rboolean]` | `LOGICAL()` / `DATAPTR_RO` |
+//! | LGLSXP | `RLogical`, `&[RLogical]` | `LOGICAL()` / `DATAPTR_RO` |
 //! | RAWSXP | `u8`, `&[u8]` | `RAW()` / `DATAPTR_RO` |
-//! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` |
+//! | STRSXP | `&str`, `String` | `STRING_ELT()` + `R_CHAR()` / `Rf_translateCharUTF8()` |
 //!
 //! # Thread Safety
 //!
@@ -73,30 +73,15 @@ impl std::fmt::Display for SexpNaError {
 impl std::error::Error for SexpNaError {}
 
 #[derive(Debug, Clone, Copy)]
+pub struct SexpNaError {
+    pub sexp_type: SEXPTYPE,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub enum SexpError {
     Type(SexpTypeError),
     Length(SexpLengthError),
     Na(SexpNaError),
-}
-
-impl std::fmt::Display for SexpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            SexpError::Type(e) => write!(f, "{}", e),
-            SexpError::Length(e) => write!(f, "{}", e),
-            SexpError::Na(e) => write!(f, "{}", e),
-        }
-    }
-}
-
-impl std::error::Error for SexpError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            SexpError::Type(e) => Some(e),
-            SexpError::Length(e) => Some(e),
-            SexpError::Na(e) => Some(e),
-        }
-    }
 }
 
 impl From<SexpTypeError> for SexpError {
@@ -282,6 +267,76 @@ impl TryFromSexp for bool {
                 }
                 .into()
             })
+    }
+}
+
+// =============================================================================
+// Logical conversions
+// =============================================================================
+
+impl TryFromSexp for Rboolean {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+        match raw.to_option_bool() {
+            Some(false) => Ok(Rboolean::FALSE),
+            Some(true) => Ok(Rboolean::TRUE),
+            None => Err(SexpNaError {
+                sexp_type: SEXPTYPE::LGLSXP,
+            }
+            .into()),
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        match raw.to_option_bool() {
+            Some(false) => Ok(Rboolean::FALSE),
+            Some(true) => Ok(Rboolean::TRUE),
+            None => Err(SexpNaError {
+                sexp_type: SEXPTYPE::LGLSXP,
+            }
+            .into()),
+        }
+    }
+}
+
+impl TryFromSexp for bool {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+        raw.to_option_bool().ok_or_else(|| SexpNaError {
+            sexp_type: SEXPTYPE::LGLSXP,
+        }.into())
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        raw.to_option_bool().ok_or_else(|| SexpNaError {
+            sexp_type: SEXPTYPE::LGLSXP,
+        }.into())
+    }
+}
+
+impl TryFromSexp for Option<bool> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(raw.to_option_bool())
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(raw.to_option_bool())
     }
 }
 
@@ -1083,13 +1138,99 @@ impl TryFromSexp for String {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: &str = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(s.to_owned())
+        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        // Get the CHARSXP at index 0
+        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+
+        // Check for NA_STRING
+        if charsxp == unsafe { crate::ffi::R_NaString } {
+            return Ok(String::new());
+        }
+
+        // Translate to UTF-8 in an R-managed buffer, then copy to an owned Rust String.
+        let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
+        if c_str.is_null() {
+            return Ok(String::new());
+        }
+
+        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        rust_str
+            .to_str()
+            .map(|s| s.to_owned())
+            .map_err(|_| {
+                SexpTypeError {
+                    expected: SEXPTYPE::STRSXP,
+                    actual: SEXPTYPE::STRSXP,
+                }
+                .into()
+            })
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let s: &str = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(s.to_owned())
+        use crate::ffi::{Rf_translateCharUTF8_unchecked, STRING_ELT_unchecked};
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        // Get the CHARSXP at index 0
+        let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
+
+        // Check for NA_STRING
+        if charsxp == unsafe { crate::ffi::R_NaString } {
+            return Ok(String::new());
+        }
+
+        // Translate to UTF-8 in an R-managed buffer, then copy to an owned Rust String.
+        let c_str = unsafe { Rf_translateCharUTF8_unchecked(charsxp) };
+        if c_str.is_null() {
+            return Ok(String::new());
+        }
+
+        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        rust_str
+            .to_str()
+            .map(|s| s.to_owned())
+            .map_err(|_| {
+                SexpTypeError {
+                    expected: SEXPTYPE::STRSXP,
+                    actual: SEXPTYPE::STRSXP,
+                }
+                .into()
+            })
     }
 }

@@ -325,6 +325,59 @@ impl From<bool> for RLogical {
     }
 }
 
+/// R's logical element type (the contents of a `LGLSXP` vector).
+///
+/// In R, logical vectors are stored as `int` with possible values:
+/// - `0` for FALSE
+/// - `1` for TRUE
+/// - `NA_LOGICAL` (typically `INT_MIN`) for NA
+///
+/// **Important:** R may also contain other non-zero values in logical vectors
+/// (e.g., from low-level code). Those should be interpreted as TRUE.
+///
+/// This type is `repr(transparent)` over `i32` so *any* raw value is valid,
+/// avoiding UB when viewing `LGLSXP` data as a slice.
+#[repr(transparent)]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+pub struct RLogical(i32);
+
+impl RLogical {
+    pub const FALSE: Self = Self(0);
+    pub const TRUE: Self = Self(1);
+    pub const NA: Self = Self(i32::MIN);
+
+    #[inline]
+    pub const fn from_i32(raw: i32) -> Self {
+        Self(raw)
+    }
+
+    #[inline]
+    pub const fn to_i32(self) -> i32 {
+        self.0
+    }
+
+    #[inline]
+    pub const fn is_na(self) -> bool {
+        self.0 == i32::MIN
+    }
+
+    #[inline]
+    pub const fn to_option_bool(self) -> Option<bool> {
+        match self.0 {
+            0 => Some(false),
+            i32::MIN => None,
+            _ => Some(true),
+        }
+    }
+}
+
+impl From<bool> for RLogical {
+    #[inline]
+    fn from(value: bool) -> Self {
+        if value { Self::TRUE } else { Self::FALSE }
+    }
+}
+
 impl RNativeType for i32 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::INTSXP;
 
@@ -598,13 +651,9 @@ unsafe extern "C-unwind" {
     #[doc(alias = "XLENGTH")]
     pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
-    #[doc(alias = "getCharCE")]
     pub fn Rf_getCharCE(x: SEXP) -> cetype_t;
-    #[doc(alias = "charIsASCII")]
     pub fn Rf_charIsASCII(x: SEXP) -> Rboolean;
-    #[doc(alias = "charIsUTF8")]
     pub fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
-    #[doc(alias = "charIsLatin1")]
     pub fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
     pub fn R_MakeUnwindCont() -> SEXP;
@@ -1060,6 +1109,32 @@ pub mod legacy_c {
             fortranRoutines: *const ::std::os::raw::c_void,
             externalRoutines: *const ::std::os::raw::c_void,
         ) -> ::std::os::raw::c_int;
+    }
+}
+
+// =============================================================================
+// Non-API: Encoding / locale state (Defn.h)
+// =============================================================================
+
+/// Non-API encoding / locale helpers from R's `Defn.h`.
+///
+/// These are not part of the stable R API and may break across R versions.
+#[cfg(feature = "nonapi")]
+pub mod nonapi_encoding {
+    use super::r_ffi_checked;
+
+    #[r_ffi_checked]
+    #[allow(clashing_extern_declarations)]
+    #[allow(non_snake_case)]
+    unsafe extern "C-unwind" {
+        pub fn R_nativeEncoding() -> *const ::std::os::raw::c_char;
+
+        // Locale flags
+        pub static utf8locale: super::Rboolean;
+        pub static latin1locale: super::Rboolean;
+
+        // Set when R "knows" it is running in UTF-8.
+        pub static known_to_be_utf8: super::Rboolean;
     }
 }
 
