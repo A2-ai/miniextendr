@@ -34,7 +34,18 @@
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
 use std::alloc;
+use std::mem;
 use std::ptr;
+
+/// Wrapper that stores the protection tag alongside user data.
+///
+/// Using `repr(C)` ensures stable layout where `tag` is at offset 0
+/// and `data` follows with proper padding for its alignment.
+#[repr(C)]
+struct WithProtectionTag<T: ?Sized> {
+    tag: SEXP,
+    data: T,
+}
 
 /// R-backed global allocator.
 ///
@@ -42,12 +53,10 @@ use std::ptr;
 /// garbage collection. The allocator stores metadata before the returned
 /// pointer to enable proper deallocation.
 ///
-/// # Example
-///
-/// ```ignore
-/// #[global_allocator]
-/// static R_ALLOCATOR: RAllocator = RAllocator;
-/// ```
+/// **Note:** This should NOT be used as `#[global_allocator]` in R package
+/// library crates, as it would be invoked during compilation/build time when
+/// R isn't available. Instead, use it explicitly in standalone binaries that
+/// embed R, or use arena-style allocation APIs.
 ///
 /// # Safety
 ///
@@ -55,58 +64,40 @@ use std::ptr;
 /// from other threads will cause undefined behavior because:
 /// - `Rf_allocVector` must be called from the main thread
 /// - The preserve mechanism is thread-local
-///
-/// If you need allocations from worker threads, use the standard system
-/// allocator on those threads.
 #[derive(Debug)]
 pub struct RAllocator;
 
 unsafe impl alloc::GlobalAlloc for RAllocator {
     unsafe fn alloc(&self, layout: alloc::Layout) -> *mut u8 {
         unsafe {
-            let size = layout.size();
-            let align = layout.align();
-
-            // Zero-sized allocations return null (per GlobalAlloc contract)
-            if size == 0 {
+            if layout.size() == 0 {
                 return ptr::null_mut();
             }
 
-            // Calculate layout for RBox header + user data
-            // The RBox struct has:
-            // - cell: SEXP (8 bytes on 64-bit, 4 bytes on 32-bit)
-            // - data: [u8; size] with alignment `align`
-            let cell_size = std::mem::size_of::<SEXP>();
+            // For repr(C), data field offset = (sizeof(tag) + align(data) - 1) & ~(align(data) - 1)
+            let tag_size = mem::size_of::<SEXP>();
+            let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
+            let total_size = data_offset + layout.size();
 
-            // Calculate padding needed after cell to achieve user alignment
-            let padding = (align - (cell_size % align)) % align;
-            let total_size = cell_size + padding + size;
-
-            // Allocate RAWSXP
+            // Allocate RAWSXP to hold the whole thing
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_size as isize);
             if sexp.is_null() {
                 return ptr::null_mut();
             }
 
-            // Protect from GC
-            let cell = insert(sexp);
+            // Protect the RAWSXP from GC
+            let protection_tag = insert(sexp);
 
-            // Get pointer to RAWSXP payload
-            let raw_ptr = RAW(sexp);
+            // Cast RAWSXP payload to our wrapper type
+            let wrapper = RAW(sexp) as *mut WithProtectionTag<[u8; 0]>;
 
-            // Write the cell at the start
-            ptr::write(raw_ptr as *mut SEXP, cell);
+            // Write the tag field
+            ptr::addr_of_mut!((*wrapper).tag).write(protection_tag);
 
-            // Return pointer to data (after cell + padding)
-            let data_offset = cell_size + padding;
-            let data_ptr = raw_ptr.add(data_offset);
+            // Return pointer to the data field
+            let data_ptr = (wrapper as *mut u8).add(data_offset);
 
-            // Verify alignment
-            debug_assert_eq!(
-                data_ptr as usize % align,
-                0,
-                "data pointer not properly aligned"
-            );
+            debug_assert_eq!(data_ptr as usize % layout.align(), 0);
 
             data_ptr
         }
@@ -118,88 +109,20 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
                 return;
             }
 
-            let align = layout.align();
-            let cell_size = std::mem::size_of::<SEXP>();
+            // Calculate where wrapper starts (same math as alloc)
+            let tag_size = mem::size_of::<SEXP>();
+            let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
 
-            // Calculate padding (same as in alloc)
-            let padding = (align - (cell_size % align)) % align;
-            let data_offset = cell_size + padding;
+            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<[u8; 0]>;
 
-            // Recover the cell pointer
-            let raw_ptr = ptr.sub(data_offset);
-            let cell = ptr::read(raw_ptr as *const SEXP);
+            // Read the tag field
+            let protection_tag = ptr::addr_of!((*wrapper).tag).read();
 
             // Release from preserve list
-            release(cell);
+            release(protection_tag);
         }
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::alloc::{GlobalAlloc, Layout};
-
-    #[test]
-    fn test_alloc_dealloc() {
-        unsafe {
-            // Allocate 64 bytes with 8-byte alignment
-            let layout = Layout::from_size_align(64, 8).unwrap();
-            let ptr = RAllocator.alloc(layout);
-            assert!(!ptr.is_null());
-            assert_eq!(ptr as usize % 8, 0, "pointer should be 8-byte aligned");
-
-            // Write some data
-            std::ptr::write_bytes(ptr, 0x42, 64);
-
-            // Deallocate
-            RAllocator.dealloc(ptr, layout);
-        }
-    }
-
-    #[test]
-    fn test_zero_size_alloc() {
-        unsafe {
-            let layout = Layout::from_size_align(0, 1).unwrap();
-            let ptr = RAllocator.alloc(layout);
-            assert!(ptr.is_null(), "zero-size alloc should return null");
-        }
-    }
-
-    #[test]
-    fn test_various_alignments() {
-        unsafe {
-            for align in [1, 2, 4, 8, 16, 32, 64] {
-                let layout = Layout::from_size_align(32, align).unwrap();
-                let ptr = RAllocator.alloc(layout);
-                assert!(!ptr.is_null());
-                assert_eq!(
-                    ptr as usize % align,
-                    0,
-                    "pointer should be {}-byte aligned",
-                    align
-                );
-                RAllocator.dealloc(ptr, layout);
-            }
-        }
-    }
-
-    #[test]
-    fn test_multiple_allocations() {
-        unsafe {
-            let layout = Layout::from_size_align(16, 8).unwrap();
-
-            let mut ptrs = Vec::new();
-            for _ in 0..10 {
-                let ptr = RAllocator.alloc(layout);
-                assert!(!ptr.is_null());
-                ptrs.push(ptr);
-            }
-
-            // Deallocate in reverse order
-            for ptr in ptrs.into_iter().rev() {
-                RAllocator.dealloc(ptr, layout);
-            }
-        }
-    }
-}
+// Tests for this module require R runtime and should be run via R CMD check.
+// They are located in rpkg/tests/ as integration tests.

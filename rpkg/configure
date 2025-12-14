@@ -1775,6 +1775,12 @@ fi
 
 
 
+CARGO_FEATURES_FLAG="--all-features"
+
+
+CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI"
+
+
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 

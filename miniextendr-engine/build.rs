@@ -1,55 +1,80 @@
-// Build script: link against R for `miniextendr-engine`.
-//
-// This crate is used by benchmarks / embedding binaries, so we resolve `R_HOME`
-// and emit the appropriate `-L` / `-lR` flags.
+// Build script to link against R and set appropriate stack size
 use std::env;
 use std::process::Command;
 
 fn main() {
     link_to_r();
+    set_stack_size_flags();
 }
 
 fn link_to_r() {
-    // Resolve R home directory.
+    // Get R home
     let r_home = if let Ok(val) = env::var("R_HOME") {
         val
     } else {
+        // Try to get from R itself
         let output = Command::new("R")
             .args(["RHOME"])
             .output()
-            .expect("Failed to run `R RHOME` (set R_HOME or put `R` on PATH)");
+            .expect("Failed to run R RHOME");
 
-        if !output.status.success() {
-            let stderr = String::from_utf8_lossy(&output.stderr);
-            panic!(
-                "`R RHOME` failed with exit code {:?}.\n\
-                 Ensure R is installed and on PATH, or set R_HOME.\n\
-                 stderr: {}",
-                output.status.code(),
-                stderr
-            );
-        }
-
-        let r_home = String::from_utf8(output.stdout)
-            .expect("`R RHOME` output not UTF-8")
+        String::from_utf8(output.stdout)
+            .expect("R RHOME output not UTF-8")
             .trim()
-            .to_string();
-
-        if r_home.is_empty() {
-            panic!("`R RHOME` returned empty output. Set R_HOME explicitly.");
-        }
-
-        r_home
+            .to_string()
     };
-
-    // Verify R_HOME directory exists
-    if !std::path::Path::new(&r_home).is_dir() {
-        panic!("R_HOME directory does not exist: {}", r_home);
-    }
 
     println!("cargo:rerun-if-env-changed=R_HOME");
 
-    // Link to libR.
-    println!("cargo:rustc-link-search=native={}/lib", r_home);
-    println!("cargo:rustc-link-lib=R");
+    // Link to R
+    #[cfg(target_os = "macos")]
+    {
+        println!("cargo:rustc-link-search={}/lib", r_home);
+        println!("cargo:rustc-link-lib=dylib=R");
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        println!("cargo:rustc-link-search={}/lib", r_home);
+        println!("cargo:rustc-link-lib=dylib=R");
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        println!("cargo:rustc-link-search={}/bin/x64", r_home);
+        println!("cargo:rustc-link-lib=dylib=R");
+    }
+}
+
+fn set_stack_size_flags() {
+    // R requires larger stacks than Rust's default 2 MiB:
+    // - Unix: typically 8 MiB
+    // - Windows: 64 MiB since R 4.2
+    //
+    // We set 8 MiB as a reasonable default that works on all platforms.
+    const STACK_SIZE: usize = 8 * 1024 * 1024; // 8 MiB
+
+    let target_os = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let target_env = std::env::var("CARGO_CFG_TARGET_ENV").unwrap_or_default();
+
+    match (target_os.as_str(), target_env.as_str()) {
+        // Windows MSVC: /STACK:size
+        ("windows", "msvc") => {
+            println!("cargo:rustc-link-arg=/STACK:{STACK_SIZE}");
+        }
+        // Windows GNU (MinGW): --stack,size
+        ("windows", "gnu") => {
+            println!("cargo:rustc-link-arg=-Wl,--stack,{STACK_SIZE}");
+        }
+        // macOS: -stack_size (requires hex value)
+        ("macos", _) => {
+            println!("cargo:rustc-link-arg=-Wl,-stack_size,{STACK_SIZE:x}");
+        }
+        // Linux and other Unix: -z stack-size
+        ("linux", _) | ("freebsd", _) | ("netbsd", _) | ("openbsd", _) => {
+            println!("cargo:rustc-link-arg=-Wl,-z,stack-size={STACK_SIZE}");
+        }
+        // Unknown platform - skip
+        _ => {}
+    }
 }

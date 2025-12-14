@@ -2,7 +2,6 @@
 name = "miniextendr-engine"
 edition.workspace = true
 version.workspace = true
-links = "R"
 
 [lib]
 crate-type = ["lib"]
@@ -14,5 +13,3 @@ crate-type = ["lib"]
 
 [features]
 default = []
-# Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
-# for embedding R. It is not intended for use in R packages.

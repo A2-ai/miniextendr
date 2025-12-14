@@ -19,25 +19,515 @@ use miniextendr_api::ffi::SEXP;
 use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-// Test modules
-mod coerce_tests;
-mod conversion_tests;
-mod dots_tests;
-mod externalptr_tests;
-mod interrupt_tests;
-mod misc_tests;
-mod panic_tests;
-mod r6_tests;
-mod receiver_tests;
-mod s3_tests;
-mod s4_tests;
-mod s7_tests;
-mod thread_tests;
-mod unwind_protect_tests;
-mod visibility_tests;
-mod worker_tests;
+use miniextendr_api::unwind_protect::with_r_unwind_protect;
 
-// Stub for ALTREP re-exports (actual ALTREP code is below)
+// region
+
+#[derive(Debug)]
+struct MsgOnDrop;
+
+impl Drop for MsgOnDrop {
+    fn drop(&mut self) {
+        use std::io::Write;
+        let mut stdout = std::io::stdout().lock();
+        writeln!(stdout, "[Rust] Dropped `MsgOnDrop`!").unwrap();
+        stdout.flush().unwrap();
+    }
+}
+
+#[miniextendr]
+pub fn drop_message_on_success() -> i32 {
+    let _a = MsgOnDrop;
+    42
+}
+
+#[miniextendr]
+pub fn drop_on_panic() {
+    let _a = MsgOnDrop;
+    panic!()
+}
+
+#[miniextendr]
+pub fn drop_on_panic_with_move() {
+    let _a = MsgOnDrop;
+    unsafe {
+        Rf_error(c"%s".as_ptr(), c"an r error occurred".as_ptr());
+    }
+}
+
+// endregion
+
+// region: panics, (), and Result
+#[miniextendr]
+#[allow(clippy::unused_unit)]
+fn take_and_return_nothing() -> () {}
+
+#[miniextendr]
+pub fn add(left: i32, right: i32) -> i32 {
+    left + right
+}
+
+#[miniextendr]
+pub fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
+    left + right
+}
+
+#[miniextendr]
+pub fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
+    left.checked_add(right).ok_or(())
+}
+
+#[miniextendr]
+pub fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
+    left.checked_div(right).ok_or("don't divide by zero dude")
+}
+
+#[miniextendr]
+pub fn add_panic(_left: i32, _right: i32) -> i32 {
+    let _a = MsgOnDrop;
+    panic!("we cannot add right now! ");
+    #[allow(unreachable_code)]
+    {
+        _left + _right
+    }
+}
+
+#[miniextendr]
+pub fn add_r_error(_left: i32, _right: i32) -> i32 {
+    let _a = MsgOnDrop;
+    unsafe {
+        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+    };
+    #[allow(unreachable_code)]
+    {
+        _left + _right
+    }
+}
+
+#[miniextendr]
+pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
+    let _a = Box::new(MsgOnDrop);
+    panic!("we cannot add right now! ")
+}
+
+#[miniextendr]
+pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
+    let _a = Box::new(MsgOnDrop);
+    unsafe {
+        ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"r error in `add_r_error`".as_ptr())
+    }
+}
+
+// endregion
+
+// region: with_r_unwind_protect tests
+
+/// Simple RAII type that prints when dropped (without using with_r to avoid deadlocks)
+struct SimpleDropMsg(&'static str);
+impl Drop for SimpleDropMsg {
+    fn drop(&mut self) {
+        eprintln!("[Rust] Dropped: {}", self.0);
+    }
+}
+
+/// Test that with_r_unwind_protect works for normal (non-error) path.
+/// Destructors should run normally when the closure completes successfully.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
+    with_r_unwind_protect(
+        || {
+            let _a = SimpleDropMsg("stack resource");
+            let _b = Box::new(SimpleDropMsg("heap resource"));
+            unsafe { ::miniextendr_api::ffi::Rf_ScalarInteger(42) }
+        },
+        None,
+    )
+}
+
+/// Test that with_r_unwind_protect cleans up on R error.
+/// Resources captured by the closure ARE dropped when an R error occurs.
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
+    // Create resources BEFORE the protected region
+    let a = SimpleDropMsg("captured resource 1");
+    let b = Box::new(SimpleDropMsg("captured resource 2 (boxed)"));
+
+    with_r_unwind_protect(
+        move || {
+            // Access resources without moving them out of closure's captured state
+            eprintln!("[Rust] Inside closure, using captured resources");
+            eprintln!("[Rust] a.0 = {}", a.0);
+            eprintln!("[Rust] b.0 = {}", b.0);
+
+            // Now trigger R error - cleanup should drop a and b
+            unsafe {
+                ::miniextendr_api::ffi::Rf_error(
+                    c"%s".as_ptr(),
+                    c"intentional R error for testing".as_ptr(),
+                )
+            };
+            #[allow(unreachable_code)]
+            unsafe {
+                // This is never reached, but we need to "use" a and b
+                // to prevent the compiler from moving them earlier
+                drop(a);
+                drop(b);
+                ::miniextendr_api::ffi::R_NilValue
+            }
+        },
+        None,
+    )
+}
+
+/// Minimal test using low-level with_unwind_protect
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C-unwind" fn C_unwind_protect_lowlevel_test() -> SEXP {
+    eprintln!("[Rust] Starting low-level unwind protect test");
+    unsafe {
+        with_r_unwind_protect(
+            || {
+                eprintln!("[Rust] Inside protected function, about to trigger R error");
+                ::miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"test R error".as_ptr());
+                #[allow(unreachable_code)]
+                ::miniextendr_api::ffi::R_NilValue
+            },
+            None,
+        )
+    }
+}
+
+// endregion
+
+// region: `mut` checks
+
+#[miniextendr]
+pub fn add_left_mut(mut left: i32, right: i32) -> i32 {
+    let left = &mut left;
+    *left + right
+}
+
+#[miniextendr]
+pub fn add_right_mut(left: i32, right: i32) -> i32 {
+    left + right
+}
+
+#[miniextendr]
+pub fn add_left_right_mut(left: i32, right: i32) -> i32 {
+    left + right
+}
+
+// endregion
+
+// region: panic printing
+
+#[unsafe(no_mangle)]
+#[miniextendr]
+extern "C-unwind" fn C_just_panic() -> ::miniextendr_api::ffi::SEXP {
+    panic!("just panic, no capture");
+}
+
+/// If you call a miniextendr function that panics, and then `C_panic_catch`,
+/// you'll see that the panic hook was not reset.
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C-unwind" fn C_panic_and_catch() -> ::miniextendr_api::ffi::SEXP {
+    let result = std::panic::catch_unwind(|| panic!("just panic, no capture"));
+    let _ = dbg!(result);
+    unsafe { ::miniextendr_api::ffi::R_NilValue }
+}
+
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C-unwind" fn C_r_error() -> ::miniextendr_api::ffi::SEXP {
+    // Use unchecked - this is testing raw R error behavior
+    unsafe { miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr()) }
+}
+
+#[miniextendr]
+#[allow(non_snake_case)]
+#[allow(clippy::diverging_sub_expression)]
+#[unsafe(no_mangle)]
+extern "C-unwind" fn C_r_error_in_catch() -> ::miniextendr_api::ffi::SEXP {
+    unsafe {
+        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            // Use unchecked - this is testing raw R error behavior
+            miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr())
+        }))
+        .unwrap();
+        miniextendr_api::ffi::R_NilValue
+    }
+}
+
+/// This crashes immediately. R is simply not present on the spawned thread, hence the present segfault.
+/// With the checked `Rf_error`, this would panic instead (which is the correct behavior).
+#[miniextendr]
+#[allow(non_snake_case)]
+#[allow(clippy::diverging_sub_expression)]
+#[unsafe(no_mangle)]
+extern "C-unwind" fn C_r_error_in_thread() -> ::miniextendr_api::ffi::SEXP {
+    // Use checked Rf_error - will panic with clear message about wrong thread
+    std::thread::spawn(|| unsafe {
+        miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr())
+    })
+    .join()
+    .unwrap();
+    unsafe { miniextendr_api::ffi::R_NilValue }
+}
+
+/// This will segfault, as R is not present on the spawned thread.
+#[miniextendr]
+#[allow(non_snake_case)]
+#[unsafe(no_mangle)]
+extern "C-unwind" fn C_r_print_in_thread() -> ::miniextendr_api::ffi::SEXP {
+    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf_unchecked(c"arg1".as_ptr()) })
+        .join()
+        .unwrap();
+    unsafe { miniextendr_api::ffi::R_NilValue }
+}
+
+// endregion
+
+// region: dots
+
+#[miniextendr]
+pub fn greetings_with_named_dots(dots: ...) {
+    let _ = dots;
+}
+
+#[miniextendr]
+pub fn greetings_with_named_and_unused_dots(_dots: ...) {}
+
+#[miniextendr]
+pub fn greetings_with_nameless_dots(...) {}
+
+// LIMITATION: Good!
+// #[miniextendr]
+// fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
+
+#[miniextendr]
+pub fn greetings_last_as_named_and_unused_dots(_exclamations: i32, _dots: ...) {}
+
+#[miniextendr]
+pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
+    let _ = dots;
+}
+
+#[miniextendr]
+pub fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
+
+// endregion
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C-unwind" fn C_check_interupt_after() -> SEXP {
+    use miniextendr_api::ffi::R_CheckUserInterrupt;
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    unsafe {
+        R_CheckUserInterrupt();
+        R_NilValue
+    }
+}
+
+#[miniextendr]
+#[unsafe(no_mangle)]
+#[allow(non_snake_case)]
+extern "C-unwind" fn C_check_interupt_unwind() -> SEXP {
+    use miniextendr_api::ffi::R_CheckUserInterrupt;
+
+    std::thread::sleep(std::time::Duration::from_secs(2));
+
+    unsafe {
+        with_r_unwind_protect(
+            || {
+                R_CheckUserInterrupt();
+                R_NilValue
+            },
+            None,
+        );
+        R_NilValue
+    }
+}
+
+// region: scalar conversion tests
+
+// i32 tests
+#[miniextendr]
+pub fn test_i32_identity(x: i32) -> i32 {
+    x
+}
+
+#[miniextendr]
+pub fn test_i32_add_one(x: i32) -> i32 {
+    x + 1
+}
+
+#[miniextendr]
+pub fn test_i32_sum(a: i32, b: i32, c: i32) -> i32 {
+    a + b + c
+}
+
+// f64 tests
+#[miniextendr]
+pub fn test_f64_identity(x: f64) -> f64 {
+    x
+}
+
+#[miniextendr]
+pub fn test_f64_add_one(x: f64) -> f64 {
+    x + 1.0
+}
+
+#[miniextendr]
+pub fn test_f64_multiply(a: f64, b: f64) -> f64 {
+    a * b
+}
+
+// u8 (raw) tests
+#[miniextendr]
+pub fn test_u8_identity(x: u8) -> u8 {
+    x
+}
+
+#[miniextendr]
+pub fn test_u8_add_one(x: u8) -> u8 {
+    x.wrapping_add(1)
+}
+
+// Rboolean tests
+#[miniextendr]
+pub fn test_logical_identity(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+    x
+}
+
+#[miniextendr]
+pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    match x {
+        Rboolean::TRUE => Rboolean::FALSE,
+        _ => Rboolean::TRUE,
+    }
+}
+
+#[miniextendr]
+pub fn test_logical_and(
+    a: miniextendr_api::ffi::Rboolean,
+    b: miniextendr_api::ffi::Rboolean,
+) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    match (a, b) {
+        (Rboolean::TRUE, Rboolean::TRUE) => Rboolean::TRUE,
+        _ => Rboolean::FALSE,
+    }
+}
+
+// Mixed type tests
+#[miniextendr]
+pub fn test_i32_to_f64(x: i32) -> f64 {
+    x as f64
+}
+
+#[miniextendr]
+pub fn test_f64_to_i32(x: f64) -> i32 {
+    x as i32
+}
+
+// Slice tests - i32
+#[miniextendr]
+pub fn test_i32_slice_len(x: &'static [i32]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+pub fn test_i32_slice_sum(x: &'static [i32]) -> i32 {
+    x.iter().sum()
+}
+
+#[miniextendr]
+pub fn test_i32_slice_first(x: &'static [i32]) -> i32 {
+    x.first().copied().unwrap_or(0)
+}
+
+#[miniextendr]
+pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
+    x.last().copied().unwrap_or(0)
+}
+
+// Slice tests - f64
+#[miniextendr]
+pub fn test_f64_slice_len(x: &'static [f64]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+pub fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
+    x.iter().sum()
+}
+
+#[miniextendr]
+pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
+    if x.is_empty() {
+        0.0
+    } else {
+        x.iter().sum::<f64>() / x.len() as f64
+    }
+}
+
+// Slice tests - u8 (raw)
+#[miniextendr]
+pub fn test_u8_slice_len(x: &'static [u8]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
+    x.iter().map(|&b| b as i32).sum()
+}
+
+// Slice tests - logical
+#[miniextendr]
+pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::Rboolean]) -> i32 {
+    x.len() as i32
+}
+
+#[miniextendr]
+pub fn test_logical_slice_any_true(
+    x: &'static [miniextendr_api::ffi::Rboolean],
+) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    if x.contains(&Rboolean::TRUE) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
+}
+
+#[miniextendr]
+pub fn test_logical_slice_all_true(
+    x: &'static [miniextendr_api::ffi::Rboolean],
+) -> miniextendr_api::ffi::Rboolean {
+    use miniextendr_api::ffi::Rboolean;
+    if x.iter().all(|&b| b == Rboolean::TRUE) {
+        Rboolean::TRUE
+    } else {
+        Rboolean::FALSE
+    }
+}
+
+// endregion
+
+// region: miniextendr_module! tests
+
 mod altrep;
 
 // region: proc-macro ALTREP test
@@ -1110,70 +1600,30 @@ miniextendr_module! {
     struct StaticStringsClass;
     fn static_strings;
 
-    // Thread safety tests (nonapi feature)
-    extern "C-unwind" fn C_test_spawn_with_r_simple;
-    extern "C-unwind" fn C_test_spawn_with_r_computation;
+    // Thread safety tests - RThreadBuilder (always available, large stacks)
     extern "C-unwind" fn C_test_r_thread_builder;
     extern "C-unwind" fn C_test_r_thread_builder_spawn_join;
-    extern "C-unwind" fn C_test_stack_check_guard;
-    extern "C-unwind" fn C_test_with_stack_checking_disabled;
-    extern "C-unwind" fn C_test_spawn_multiple_r_calls;
-    extern "C-unwind" fn C_test_spawn_create_vector;
-    extern "C-unwind" fn C_test_stack_check_status;
+}
+
+// Separate module for nonapi-only thread tests (lean stacks)
+#[cfg(feature = "nonapi")]
+miniextendr_module! {
+    mod rpkg_nonapi;
+    extern "C-unwind" fn C_test_spawn_with_r_lean_stack;
+    extern "C-unwind" fn C_test_stack_check_guard_lean;
 }
 
 // endregion
 
-// region: Thread safety tests (nonapi feature)
+// region: Thread safety tests
+
+use miniextendr_api::thread::RThreadBuilder;
 
 #[cfg(feature = "nonapi")]
-use miniextendr_api::thread::{
-    RThreadBuilder, StackCheckGuard, spawn_with_r, with_stack_checking_disabled,
-};
+use miniextendr_api::thread::{spawn_with_r, StackCheckGuard};
 
-/// Test spawn_with_r: spawn a thread and call R API from it.
-/// Returns the computed value to verify R API worked correctly.
-#[cfg(feature = "nonapi")]
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_spawn_with_r_simple() -> SEXP {
-    let handle = spawn_with_r(|| {
-        // Call R API from spawned thread - this would segfault without the guard!
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
-    })
-    .expect("failed to spawn thread");
-
-    let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-/// Test spawn_with_r with computation: do actual work on the thread.
-#[cfg(feature = "nonapi")]
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_spawn_with_r_computation() -> SEXP {
-    let handle = spawn_with_r(|| {
-        // Do some computation
-        let mut sum = 0i32;
-        for i in 1..=100 {
-            sum += i;
-        }
-
-        // Call R API to create result
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(sum) };
-        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
-    })
-    .expect("failed to spawn thread");
-
-    let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-/// Test RThreadBuilder with custom stack size.
-#[cfg(feature = "nonapi")]
+/// Test RThreadBuilder: spawn with large stack (16 MiB) and call _unchecked R APIs.
+/// Works WITHOUT nonapi feature by using large stacks to satisfy R's stack checking.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -1182,8 +1632,8 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
         .stack_size(16 * 1024 * 1024) // 16 MiB
         .name("test-r-worker".to_string())
         .spawn(|| {
-            // Verify we can call R API
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(123) };
+            // Use _unchecked APIs (no stack check)
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(123) };
             unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
         })
         .expect("failed to spawn thread");
@@ -1193,14 +1643,14 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
 }
 
 /// Test RThreadBuilder::spawn_join convenience method.
-#[cfg(feature = "nonapi")]
+/// Works WITHOUT nonapi by using large stacks.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
     let result = RThreadBuilder::new()
         .spawn_join(|| {
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(456) };
+            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(456) };
             unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
         })
         .expect("thread failed");
@@ -1208,125 +1658,37 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder_spawn_join() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Test StackCheckGuard directly with std::thread::spawn.
-#[cfg(feature = "nonapi")]
+// Lean stack tests - require nonapi feature for StackCheckGuard
+
+/// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
+/// Requires nonapi feature.
 #[miniextendr]
+#[cfg(feature = "nonapi")]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_stack_check_guard() -> SEXP {
-    let handle = std::thread::spawn(|| {
-        // Manually disable stack checking
-        let _guard = StackCheckGuard::disable();
-
-        // Now safe to call R API
-        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(789) };
+pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
+    let handle = spawn_with_r(|| {
+        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(999) };
         unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
-
-        // Guard restores original limit on drop
-    });
+    })
+    .expect("failed to spawn");
 
     let result = handle.join().expect("thread panicked");
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Test with_stack_checking_disabled closure wrapper.
-#[cfg(feature = "nonapi")]
+/// Test StackCheckGuard with Rust's default 2 MiB stack.
+/// Demonstrates that nonapi enables truly lean threads.
 #[miniextendr]
+#[cfg(feature = "nonapi")]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_with_stack_checking_disabled() -> SEXP {
+pub unsafe extern "C-unwind" fn C_test_stack_check_guard_lean() -> SEXP {
     let handle = std::thread::spawn(|| {
-        with_stack_checking_disabled(|| {
-            let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(999) };
-            unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
-        })
+        let _guard = StackCheckGuard::disable();
+        let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(777) };
+        unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
     });
-
-    let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-/// Test multiple R API calls from spawned thread.
-#[cfg(feature = "nonapi")]
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_spawn_multiple_r_calls() -> SEXP {
-    let handle = spawn_with_r(|| {
-        // Multiple R API calls
-        let s1 = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(10) };
-        let s2 = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(20) };
-        let s3 = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(30) };
-
-        let v1 = unsafe { *miniextendr_api::ffi::INTEGER(s1) };
-        let v2 = unsafe { *miniextendr_api::ffi::INTEGER(s2) };
-        let v3 = unsafe { *miniextendr_api::ffi::INTEGER(s3) };
-
-        v1 + v2 + v3
-    })
-    .expect("failed to spawn thread");
-
-    let result = handle.join().expect("thread panicked");
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-/// Test creating R vectors from spawned thread.
-#[cfg(feature = "nonapi")]
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_spawn_create_vector() -> SEXP {
-    let handle = spawn_with_r(|| {
-        unsafe {
-            use miniextendr_api::ffi::{
-                INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE,
-            };
-
-            // Create an integer vector
-            let vec = Rf_allocVector(SEXPTYPE::INTSXP, 5);
-            Rf_protect(vec);
-
-            // Fill it
-            let ptr = INTEGER(vec);
-            for i in 0..5 {
-                *ptr.add(i) = (i + 1) as i32 * 10;
-            }
-
-            // Sum the values
-            let mut sum = 0;
-            for i in 0..5 {
-                sum += *ptr.add(i);
-            }
-
-            Rf_unprotect(1);
-            sum
-        }
-    })
-    .expect("failed to spawn thread");
-
-    let result = handle.join().expect("thread panicked");
-    // Should be 10 + 20 + 30 + 40 + 50 = 150
-    unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
-}
-
-/// Test that stack checking status can be queried.
-#[cfg(feature = "nonapi")]
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn C_test_stack_check_status() -> SEXP {
-    use miniextendr_api::thread::{get_stack_config, is_stack_checking_disabled};
-
-    let handle = spawn_with_r(|| {
-        // Inside spawn_with_r, stack checking should be disabled
-        let is_disabled = is_stack_checking_disabled();
-
-        // Get config for debugging
-        let (_start, _limit, _dir) = get_stack_config();
-
-        if is_disabled { 1 } else { 0 }
-    })
-    .expect("failed to spawn thread");
 
     let result = handle.join().expect("thread panicked");
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
@@ -1337,40 +1699,40 @@ pub unsafe extern "C-unwind" fn C_test_stack_check_status() -> SEXP {
 // region: r-wrappers return invisibly
 
 #[miniextendr]
-fn invisibly_return_no_arrow() {}
+pub fn invisibly_return_no_arrow() {}
 
 #[miniextendr]
 #[allow(clippy::unused_unit)]
-fn invisibly_return_arrow() -> () {}
+pub fn invisibly_return_arrow() -> () {}
 
 #[miniextendr]
-fn invisibly_option_return_none() -> Option<()> {
+pub fn invisibly_option_return_none() -> Option<()> {
     None // expectation: error!
 }
 
 #[miniextendr]
-fn invisibly_option_return_some() -> Option<()> {
+pub fn invisibly_option_return_some() -> Option<()> {
     Some(())
 }
 
 #[miniextendr]
-fn invisibly_result_return_ok() -> Result<(), ()> {
+pub fn invisibly_result_return_ok() -> Result<(), ()> {
     Ok(())
 }
 
 // Test explicit invisible attribute (force i32 return to be invisible)
 #[miniextendr(invisible)]
-fn force_invisible_i32() -> i32 {
+pub fn force_invisible_i32() -> i32 {
     42
 }
 
 // Test explicit visible attribute (force () return to be visible)
 #[miniextendr(visible)]
-fn force_visible_unit() {}
+pub fn force_visible_unit() {}
 
 // Test check_interrupt attribute - checks for Ctrl+C before executing
 #[miniextendr(check_interrupt)]
-fn with_interrupt_check(x: i32) -> i32 {
+pub fn with_interrupt_check(x: i32) -> i32 {
     x * 2
 }
 
@@ -1415,14 +1777,14 @@ impl Coerce<Temperature> for f64 {
 
 // Test function using the tuple newtype
 #[miniextendr]
-fn test_rnative_newtype(id: i32) -> i32 {
+pub fn test_rnative_newtype(id: i32) -> i32 {
     let user_id: UserId = id.coerce();
     user_id.0 // Extract inner value
 }
 
 // Test function using the named-field newtype
 #[miniextendr]
-fn test_rnative_named_field(temp: f64) -> f64 {
+pub fn test_rnative_named_field(temp: f64) -> f64 {
     let t: Temperature = temp.coerce();
     t.celsius // Extract inner value
 }
@@ -1437,19 +1799,19 @@ fn test_rnative_named_field(temp: f64) -> f64 {
 
 // Test 1: Concrete function using Coerce internally (identity)
 #[miniextendr]
-fn test_coerce_identity(x: i32) -> i32 {
+pub fn test_coerce_identity(x: i32) -> i32 {
     Coerce::<i32>::coerce(x)
 }
 
 // Test 2: Widening coercion (i32 → f64, always succeeds)
 #[miniextendr]
-fn test_coerce_widen(x: i32) -> f64 {
+pub fn test_coerce_widen(x: i32) -> f64 {
     x.coerce()
 }
 
 // Test 3: bool → i32 coercion
 #[miniextendr]
-fn test_coerce_bool_to_int(x: miniextendr_api::ffi::Rboolean) -> i32 {
+pub fn test_coerce_bool_to_int(x: miniextendr_api::ffi::Rboolean) -> i32 {
     x.coerce()
 }
 
@@ -1459,14 +1821,14 @@ fn helper_accepts_integer<T: CanCoerceToInteger>(x: T) -> i32 {
 }
 
 #[miniextendr]
-fn test_coerce_via_helper(x: i32) -> i32 {
+pub fn test_coerce_via_helper(x: i32) -> i32 {
     // The generic helper works because x is concrete i32 at call site
     helper_accepts_integer(x)
 }
 
 // Test 5: TryCoerce - narrowing with potential failure
 #[miniextendr]
-fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
+pub fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
     match TryCoerce::<i32>::try_coerce(x) {
         Ok(v) => v,
         Err(CoerceError::Overflow) => i32::MIN, // NA
@@ -1834,7 +2196,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 
 /// Test that i32 return from worker works.
 #[miniextendr]
-fn test_worker_return_i32() -> i32 {
+pub fn test_worker_return_i32() -> i32 {
     // This uses worker strategy automatically (returns non-SEXP)
     let x = 21;
     x * 2
@@ -1842,14 +2204,14 @@ fn test_worker_return_i32() -> i32 {
 
 /// Test that String return from worker works.
 #[miniextendr]
-fn test_worker_return_string() -> String {
+pub fn test_worker_return_string() -> String {
     // Uses worker strategy
     format!("hello from {}", "worker")
 }
 
 /// Test that f64 return from worker works.
 #[miniextendr]
-fn test_worker_return_f64() -> f64 {
+pub fn test_worker_return_f64() -> f64 {
     std::f64::consts::PI * 2.0
 }
 
@@ -1860,7 +2222,7 @@ fn test_worker_return_f64() -> f64 {
 /// Test ExternalPtr creation and usage on main thread.
 /// Note: ExternalPtr is !Send, so it can only be used on main thread.
 #[miniextendr(unsafe(main_thread))]
-fn test_extptr_on_main_thread() -> i32 {
+pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;
     let ptr = ExternalPtr::new(Counter { value: 99 });
     ptr.value
@@ -1932,7 +2294,7 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 
 /// Function that must run on main thread (uses R API directly).
 #[miniextendr(unsafe(main_thread))]
-fn test_main_thread_r_api() -> i32 {
+pub fn test_main_thread_r_api() -> i32 {
     // This runs on main thread, can call R API directly
     let sexp = unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) };
     unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
@@ -1940,7 +2302,7 @@ fn test_main_thread_r_api() -> i32 {
 
 /// Main thread function that triggers R error.
 #[miniextendr(unsafe(main_thread))]
-fn test_main_thread_r_error() -> i32 {
+pub fn test_main_thread_r_error() -> i32 {
     unsafe {
         miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"R error from main_thread fn".as_ptr())
     }
@@ -1948,7 +2310,7 @@ fn test_main_thread_r_error() -> i32 {
 
 /// Main thread function with RAII drops that triggers R error.
 #[miniextendr(unsafe(main_thread))]
-fn test_main_thread_r_error_with_drops() -> i32 {
+pub fn test_main_thread_r_error_with_drops() -> i32 {
     let _resource = SimpleDropMsg("main_thread_r_error: resource");
     unsafe {
         miniextendr_api::ffi::Rf_error(

@@ -172,6 +172,18 @@ fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
     syn::Ident::new(&arg_name, rust_ident.span())
 }
 
+/// Extract `#[cfg(...)]` attributes from a list of attributes.
+///
+/// These should be propagated to generated items so they are conditionally
+/// compiled along with the original function.
+fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
+    attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("cfg"))
+        .cloned()
+        .collect()
+}
+
 impl ExtendrFunction {
     fn from_item_fn(itemfn: &syn::ItemFn) -> Self {
         let signature = &itemfn.sig;
@@ -1110,6 +1122,9 @@ pub fn miniextendr(
     // Extract cfg attributes to apply to generated items
     let cfg_attrs = extract_cfg_attrs(parsed.attrs());
 
+    // Extract cfg attributes to apply to generated items
+    let cfg_attrs = extract_cfg_attrs(&original_item.attrs);
+
     // Generate doc strings with links
     let r_wrapper_doc = format!(
         "R wrapper code for [`{}`], calls [`{}`].",
@@ -1178,9 +1193,8 @@ pub fn miniextendr(
 /// extern "C-unwind" fn C_raw_symbol;
 /// ```
 ///
-/// The `extern ...` ABI is parsed and stored for potential future distinctions, but the
-/// current implementation treats both forms the same and relies on `#[miniextendr]` to
-/// generate the correct wrappers/constants.
+/// Note: To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
+/// on the function definition itself, not in this module declaration.
 struct ExtendrModuleFunction {
     pub _abi: Option<syn::Abi>,
     _fn_token: syn::Token![fn],
@@ -1319,7 +1333,12 @@ enum ExtendrItem {
 
 impl syn::parse::Parse for ExtendrItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let look_ahead = input.lookahead1();
+        // Skip past attributes to peek at the actual item keyword
+        let fork = input.fork();
+        let _ = fork.call(syn::Attribute::parse_outer)?;
+
+        let look_ahead = fork.lookahead1();
+
         if look_ahead.peek(syn::Token![mod]) {
             Ok(Self::Module(input.parse()?))
         } else if look_ahead.peek(syn::Token![use]) {
@@ -1744,18 +1763,34 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             // Register ALTREP classes from this module
             #altrep_reg_fn_ident();
 
-            // Register ALTREP classes from child modules
-            #(#use_module_altrep_regs;)*
+            // Debug: print registration info
+            unsafe {
+                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] R_init called for module, registering %d methods\n".as_ptr(), CALL_ENTRIES.len() as i32);
+                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] dll pointer: %p\n".as_ptr(), dll as *const ::std::os::raw::c_void);
+                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] CALL_ENTRIES pointer: %p\n".as_ptr(), CALL_ENTRIES.as_ptr() as *const ::std::os::raw::c_void);
+                if !CALL_ENTRIES.is_empty() && !CALL_ENTRIES[0].name.is_null() {
+                    ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] First entry name: %s\n".as_ptr(), CALL_ENTRIES[0].name);
+                }
+            }
+
+            #(#use_other_modules;)*
+
+            // Register any ALTREP classes declared as struct items in this module
+            #(#altrep_regs;)*
 
             unsafe {
+                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] About to call R_registerRoutines_unchecked\n".as_ptr());
                 ::miniextendr_api::ffi::R_registerRoutines_unchecked(
                     dll,
                     std::ptr::null(),
-                    #all_call_entries_const_ident.as_ptr(),
+                    CALL_ENTRIES.as_ptr(),
                     std::ptr::null(),
                     std::ptr::null()
                 );
-                // R_useDynamicSymbols and R_forceSymbols are called in entrypoint.c
+                ::miniextendr_api::ffi::REprintf_unchecked(c"[DEBUG] R_registerRoutines_unchecked completed\n".as_ptr());
+                // these are already present in entrypoint.c!
+                // R_useDynamicSymbols(dll, Rboolean::FALSE);
+                // R_forceSymbols(dll, Rboolean::TRUE);
             }
         }
     }

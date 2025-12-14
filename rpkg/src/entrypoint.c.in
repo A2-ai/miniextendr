@@ -11,14 +11,28 @@ extern void miniextendr_altrep_init(void);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 
+#ifdef CARGO_FEATURE_NONAPI
+extern void R_init_@PACKAGE_TARNAME_RS@_nonapi_miniextendr(DllInfo *dll);
+#endif
+
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    REprintf("[DEBUG] R_init_@PACKAGE_TARNAME_RS@ called\n");
     miniextendr_panic_hook();
     miniextendr_altrep_init();
     miniextendr_worker_init();
-
-    // Main module's R_init calls nonapi's R_init via "use nonapi;" statement
+    
+    REprintf("[DEBUG] About to call R_init_@PACKAGE_TARNAME_RS@_miniextendr\n");
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
+    REprintf("[DEBUG] R_init_@PACKAGE_TARNAME_RS@_miniextendr returned\n");
 
+#ifdef CARGO_FEATURE_NONAPI
+    REprintf("[DEBUG] About to call R_init_@PACKAGE_TARNAME_RS@_nonapi_miniextendr\n");
+    R_init_@PACKAGE_TARNAME_RS@_nonapi_miniextendr(dll);
+    REprintf("[DEBUG] R_init_@PACKAGE_TARNAME_RS@_nonapi_miniextendr returned\n");
+#endif
+
+    REprintf("[DEBUG] Setting symbol flags\n");
     R_useDynamicSymbols(dll, FALSE);
     R_forceSymbols(dll, TRUE);
+    REprintf("[DEBUG] R_init_@PACKAGE_TARNAME_RS@ complete\n");
 }

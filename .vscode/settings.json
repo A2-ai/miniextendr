@@ -1,4 +1,8 @@
 {
+  "rust-analyzer.linkedProjects": [
+    "Cargo.toml",
+    "rpkg/src/rust/Cargo.toml"
+  ],
   "rust-analyzer.cargo.extraArgs": [
     "--release", "--tests", "--benches", "--examples"
   ],
@@ -16,5 +20,4 @@
     "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
   }
   // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpful to ai tools
-
 }
