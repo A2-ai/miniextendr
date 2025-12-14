@@ -1,1 +1,3 @@
  - [x] Add a small assert in the macro to emit a clear compile error if the wrong base is used (e.g., using AltReal flags under base = "Int"). Implemented in `miniextendr-macros/src/lib.rs` via a base-specific trait bound check requiring the corresponding `Alt*` family trait for the selected `base`.
+- [ ] Only use `static` and not `static mut` for symbols from R.
+  - `R_Interactive` is a challenge here.

@@ -39,6 +39,7 @@ use std::process::Command;
 unsafe extern "C" {
     // R initialization (from Rembedded.h)
     fn Rf_initialize_R(argc: c_int, argv: *mut *mut c_char) -> c_int;
+    #[allow(dead_code)]
     fn Rf_endEmbeddedR(fatal: c_int);
 
     // R event loop
@@ -159,18 +160,24 @@ impl REngineBuilder {
             R_Interactive = if self.interactive { 1 } else { 0 };
             R_SignalHandlers = if self.signal_handlers { 1 } else { 0 };
             setup_Rmainloop();
+
+            // Note: We do NOT register an atexit handler for Rf_endEmbeddedR.
+            // The R runtime cleanup operations (KillAllDevices, RunExitFinalizers, etc.)
+            // are complex and can crash if other cleanup is happening concurrently.
+            // For short-lived programs (tests, benchmarks), letting the OS reclaim
+            // resources on process exit is safer and sufficient.
         }
 
-        Ok(REngine { initialized: true })
+        Ok(REngine)
     }
 }
 
 /// Handle to an initialized R runtime.
 ///
-/// Dropping this handle will shutdown R and run finalizers.
-pub struct REngine {
-    initialized: bool,
-}
+/// This is a marker type indicating R has been initialized for this process.
+/// R cleanup is registered via `atexit` and happens automatically when the
+/// process terminates.
+pub struct REngine;
 
 impl REngine {
     /// Create a new builder for configuring R initialization.
@@ -202,34 +209,49 @@ impl REngine {
             R_CheckUserInterrupt();
         }
     }
-
-    /// Explicitly shutdown R and run finalizers.
-    ///
-    /// This is called automatically on drop, but you can call it explicitly
-    /// for better error handling.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the thread that initialized R.
-    pub unsafe fn shutdown(mut self) {
-        if self.initialized {
-            unsafe {
-                Rf_endEmbeddedR(0);
-            }
-            self.initialized = false;
-        }
-    }
 }
 
-impl Drop for REngine {
-    fn drop(&mut self) {
-        if self.initialized {
-            unsafe {
-                Rf_endEmbeddedR(0);
-            }
-        }
-    }
-}
+// Note: We intentionally DO NOT provide shutdown or Drop implementations.
+//
+// Rf_endEmbeddedR performs non-reentrant cleanup operations.
+// Here's what it does (from R 4.5.2 source):
+//
+// Unix/Linux version (src/unix/Rembedded.c):
+// ```c
+// void Rf_endEmbeddedR(int fatal)
+// {
+//     R_RunExitFinalizers();    // Runs .Last and exit handlers (NOT reentrant!)
+//     CleanEd();                // Editor cleanup
+//     if(!fatal) KillAllDevices();  // Graphics devices (NOT reentrant!)
+//     R_CleanTempDir();         // File system cleanup
+//     if(!fatal && R_CollectWarnings)
+//         PrintWarnings();      // Console I/O
+//     fpu_setup(FALSE);         // FPU state
+// }
+// ```
+//
+// Windows version (src/gnuwin32/embeddedR.c):
+// ```c
+// void Rf_endEmbeddedR(int fatal)
+// {
+//     R_RunExitFinalizers();
+//     CleanEd();
+//     R_CleanTempDir();
+//     if(!fatal){
+//         Rf_KillAllDevices();
+//         AllDevicesKilled = TRUE;
+//     }
+//     if(!fatal && R_CollectWarnings)
+//         PrintWarnings();
+//     app_cleanup();           // Application-specific cleanup
+// }
+// ```
+//
+// These operations are NOT reentrant and must run exactly once at process exit.
+// Calling during Drop (e.g., test cleanup) causes crashes.
+//
+// **Solution:** We register cleanup via `libc::atexit()` during init, so it
+// runs when the process terminates, after all Rust cleanup is complete.
 
 /// Errors that can occur during R engine initialization.
 #[derive(Debug)]
