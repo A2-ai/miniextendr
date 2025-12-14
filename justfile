@@ -79,9 +79,10 @@ expand *cargo_flags:
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-# Vendor rpkg deps and run ./configure
-configure: vendor-rpkg
+# Run ./configure and vendor rpkg deps
+configure:
     cd rpkg && autoconf && ./configure
+    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Vendor dependencies (workspace-level)
 alias cargo-vendor := vendor
