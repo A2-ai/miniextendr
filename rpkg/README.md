@@ -34,7 +34,7 @@ When you modify Rust code that changes the R API (add/remove/rename exported
 functions), regenerate the wrappers:
 
 ```shell
-just load  # or devtools::load_all("rpkg")
+just devtools-load  # or devtools::load_all("rpkg")
 ```
 
 This runs cargo build and the document binary, then copies the generated
