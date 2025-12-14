@@ -122,6 +122,60 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
             release(protection_tag);
         }
     }
+
+    unsafe fn realloc(&self, ptr: *mut u8, layout: alloc::Layout, new_size: usize) -> *mut u8 {
+        unsafe {
+            if ptr.is_null() {
+                // Equivalent to alloc
+                return self.alloc(alloc::Layout::from_size_align_unchecked(new_size, layout.align()));
+            }
+
+            if new_size == 0 {
+                // Equivalent to dealloc + return null
+                self.dealloc(ptr, layout);
+                return ptr::null_mut();
+            }
+
+            // Calculate where the wrapper starts
+            let tag_size = mem::size_of::<SEXP>();
+            let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
+            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<[u8; 0]>;
+
+            // Read the protection tag to get the RAWSXP
+            let protection_tag = ptr::addr_of!((*wrapper).tag).read();
+
+            // Get the SEXP from the protection tag
+            // The tag is a cons cell, the actual RAWSXP is stored in its TAG
+            let sexp = crate::ffi::TAG(protection_tag);
+
+            // Calculate old RAWSXP capacity
+            let old_rawsxp_size = crate::ffi::Rf_xlength(sexp) as usize;
+            let new_data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
+            let new_total_needed = new_data_offset + new_size;
+
+            // Optimization: if new size fits in old RAWSXP, just return same pointer
+            if new_total_needed <= old_rawsxp_size {
+                return ptr;
+            }
+
+            // Need to allocate new RAWSXP
+            let new_layout = alloc::Layout::from_size_align_unchecked(new_size, layout.align());
+            let new_ptr = self.alloc(new_layout);
+
+            if new_ptr.is_null() {
+                return ptr::null_mut();
+            }
+
+            // Copy data from old to new (min of old and new sizes)
+            let copy_size = layout.size().min(new_size);
+            ptr::copy_nonoverlapping(ptr, new_ptr, copy_size);
+
+            // Deallocate old
+            self.dealloc(ptr, layout);
+
+            new_ptr
+        }
+    }
 }
 
 // Tests for this module require R runtime and should be run via R CMD check.

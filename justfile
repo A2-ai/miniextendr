@@ -90,6 +90,7 @@ vendor:
     cargo vendor \
         --sync=Cargo.toml \
         --sync=miniextendr-api/Cargo.toml \
+        --sync=miniextendr-bench/Cargo.toml \
         --sync=miniextendr-macros/Cargo.toml \
         --sync=rpkg/src/rust/Cargo.toml \
         vendor
