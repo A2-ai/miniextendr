@@ -31,4 +31,3 @@ fn link_to_r() {
     println!("cargo:rustc-link-search=native={}/lib", r_home);
     println!("cargo:rustc-link-lib=R");
 }
-

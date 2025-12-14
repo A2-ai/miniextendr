@@ -34,18 +34,20 @@
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
 use std::alloc;
-use std::mem;
 use std::ptr;
 
-/// Wrapper that stores the protection tag alongside user data.
+/// Header stored before user data in each allocation.
 ///
-/// Using `repr(C)` ensures stable layout where `tag` is at offset 0
-/// and `data` follows with proper padding for its alignment.
+/// The header contains the protection tag and the offset from the RAWSXP
+/// base to the user data pointer. We need the offset because RAW(sexp)
+/// is not guaranteed to be aligned, so we can't reliably recalculate it.
 #[repr(C)]
-struct WithProtectionTag<T: ?Sized> {
+struct AllocationHeader {
     tag: SEXP,
-    data: T,
+    offset: u16, // Offset from RAW(sexp) to user data pointer
 }
+
+const HEADER_SIZE: usize = std::mem::size_of::<AllocationHeader>();
 
 /// R-backed global allocator.
 ///
@@ -74,59 +76,69 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
                 return ptr::null_mut();
             }
 
-            // For repr(C), data field offset = (sizeof(tag) + align(data) - 1) & ~(align(data) - 1)
-            let tag_size = mem::size_of::<SEXP>();
-            let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
-            let total_size = data_offset + layout.size();
+            let align = layout.align();
+            let size = layout.size();
 
-            // Allocate RAWSXP to hold the whole thing
+            // We need space for: header + padding + data
+            // Worst case: HEADER_SIZE + (align - 1) + size
+            let total_size = HEADER_SIZE + align - 1 + size;
+
+            // Allocate RAWSXP
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_size as isize);
             if sexp.is_null() {
                 return ptr::null_mut();
             }
 
-            // Protect the RAWSXP from GC
+            // Protect from GC
             let protection_tag = insert(sexp);
 
-            // Cast RAWSXP payload to our wrapper type (using () as ZST placeholder)
-            let wrapper = RAW(sexp) as *mut WithProtectionTag<()>;
+            // Get raw base pointer
+            let raw_base = RAW(sexp);
 
-            // Write the tag field using safe field access
-            ptr::addr_of_mut!((*wrapper).tag).write(protection_tag);
+            // Find where header should go: immediately before aligned data
+            // We want data at an address aligned to `align`
+            let header_end = raw_base.add(HEADER_SIZE);
 
-            // Return pointer to the data field
-            let data_ptr = (wrapper as *mut u8).add(data_offset);
+            // Align header_end up to the requested alignment
+            let data_ptr = header_end.map_addr(|addr| (addr + align - 1) & !(align - 1));
 
-            debug_assert_eq!(data_ptr as usize % layout.align(), 0);
+            // Header goes immediately before data
+            let header_ptr = data_ptr.sub(HEADER_SIZE).cast::<AllocationHeader>();
+
+            // Write header
+            ptr::write(
+                header_ptr,
+                AllocationHeader {
+                    tag: protection_tag,
+                    offset: data_ptr.offset_from(raw_base) as u16,
+                },
+            );
+
+            // Verify alignment (without usize cast)
+            debug_assert_eq!(data_ptr.align_offset(align), 0);
 
             data_ptr
         }
     }
 
-    unsafe fn dealloc(&self, ptr: *mut u8, layout: alloc::Layout) {
+    unsafe fn dealloc(&self, ptr: *mut u8, _layout: alloc::Layout) {
         unsafe {
             if ptr.is_null() {
                 return;
             }
 
-            // Calculate where wrapper starts (same math as alloc)
-            let tag_size = mem::size_of::<SEXP>();
-            let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
-
-            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<()>;
-
-            // Read the tag field using safe field access
-            let protection_tag = ptr::addr_of!((*wrapper).tag).read();
+            // Header is immediately before data
+            let header_ptr = ptr.sub(HEADER_SIZE) as *const AllocationHeader;
+            let header = ptr::read(header_ptr);
 
             // Release from preserve list
-            release(protection_tag);
+            release(header.tag);
         }
     }
 
     unsafe fn realloc(&self, ptr: *mut u8, layout: alloc::Layout, new_size: usize) -> *mut u8 {
         unsafe {
             if ptr.is_null() {
-                // Equivalent to alloc
                 return self.alloc(alloc::Layout::from_size_align_unchecked(
                     new_size,
                     layout.align(),
@@ -134,46 +146,38 @@ unsafe impl alloc::GlobalAlloc for RAllocator {
             }
 
             if new_size == 0 {
-                // Equivalent to dealloc + return null
                 self.dealloc(ptr, layout);
                 return ptr::null_mut();
             }
 
-            // Calculate where the wrapper starts
-            let tag_size = mem::size_of::<SEXP>();
-            let data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
-            let wrapper = ptr.sub(data_offset) as *mut WithProtectionTag<()>;
+            // Read header to get RAWSXP
+            let header_ptr = ptr.sub(HEADER_SIZE) as *const AllocationHeader;
+            let header = ptr::read(header_ptr);
+            let sexp = crate::ffi::TAG(header.tag);
 
-            // Read the protection tag to get the RAWSXP
-            let protection_tag = ptr::addr_of!((*wrapper).tag).read();
+            // Check if new size fits in existing RAWSXP
+            let old_rawsxp_size = crate::ffi::Rf_xlength(sexp);
+            let align = layout.align();
+            let new_total_needed = HEADER_SIZE + align - 1 + new_size;
 
-            // Get the SEXP from the protection tag
-            // The tag is a cons cell, the actual RAWSXP is stored in its TAG
-            let sexp = crate::ffi::TAG(protection_tag);
-
-            // Calculate old RAWSXP capacity
-            let old_rawsxp_size = crate::ffi::Rf_xlength(sexp) as usize;
-            let new_data_offset = (tag_size + layout.align() - 1) & !(layout.align() - 1);
-            let new_total_needed = new_data_offset + new_size;
-
-            // Optimization: if new size fits in old RAWSXP, just return same pointer
-            if new_total_needed <= old_rawsxp_size {
+            if new_total_needed as isize <= old_rawsxp_size {
+                // Fits! Return same pointer
                 return ptr;
             }
 
-            // Need to allocate new RAWSXP
-            let new_layout = alloc::Layout::from_size_align_unchecked(new_size, layout.align());
+            // Need new allocation
+            let new_layout = alloc::Layout::from_size_align_unchecked(new_size, align);
             let new_ptr = self.alloc(new_layout);
 
             if new_ptr.is_null() {
                 return ptr::null_mut();
             }
 
-            // Copy data from old to new (min of old and new sizes)
+            // Copy data
             let copy_size = layout.size().min(new_size);
             ptr::copy_nonoverlapping(ptr, new_ptr, copy_size);
 
-            // Deallocate old
+            // Free old
             self.dealloc(ptr, layout);
 
             new_ptr

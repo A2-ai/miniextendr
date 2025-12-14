@@ -181,15 +181,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "miniextendr-bench"
-version = "0.1.0"
-dependencies = [
- "divan",
- "miniextendr-api",
- "miniextendr-engine",
-]
-
-[[package]]
 name = "miniextendr-engine"
 version = "0.1.0"
 
