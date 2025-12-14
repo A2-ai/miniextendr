@@ -27,8 +27,9 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 ┌─────────────────────────────────────────────────────────────────────┐
 │                         R Package (rpkg)                            │
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐  │
-│  │ R/wrappers.R    │  │ src/entrypoint.c│  │ src/rust/lib.rs     │  │
-│  │ (auto-generated)│  │ (R_init_*)      │  │ (#[miniextendr] fns)│  │
+│  │ R/miniextendr_  │  │ src/entrypoint.c│  │ src/rust/lib.rs     │  │
+│  │ wrappers.R      │  │ (R_init_*)      │  │ (#[miniextendr] fns)│  │
+│  │ (auto-generated)│  │ (init glue)     │  │ (exports + tests)   │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -37,20 +38,23 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 │                      miniextendr-macros                             │
 │  • #[miniextendr] - generates C wrappers + R wrappers               │
 │  • miniextendr_module! - registers functions with R                 │
-│  • #[r_ffi_checked] - thread-safe R FFI wrappers                    │
+│  • #[r_ffi_checked] - thread-checked R FFI wrappers                 │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │                       miniextendr-api                               │
-│  ┌──────────┐ ┌──────────┐ ┌─────────────┐ ┌────────────────────┐   │
-│  │ ffi.rs   │ │worker.rs │ │externalptr.rs│ │ altrep*.rs (4)    │   │
-│  │ (R FFI)  │ │(threading)│ │(Box for R)  │ │ (lazy vectors)    │   │
-│  └──────────┘ └──────────┘ └─────────────┘ └────────────────────┘   │
+│  ┌──────────┐ ┌──────────┐ ┌─────────────┐ ┌──────────────────────┐ │
+│  │ ffi.rs   │ │ worker.rs│ │ externalptr │ │ altrep_* (data/impl) │ │
+│  │ (R FFI)  │ │ (worker) │ │ (EXTPTRSXP) │ │ (ALTREP system)      │ │
+│  └──────────┘ └──────────┘ └─────────────┘ └──────────────────────┘ │
 │  ┌──────────────┐ ┌──────────────┐ ┌─────────────┐ ┌─────────────┐  │
-│  │unwind_protect│ │ from_r.rs    │ │ into_r.rs   │ │ error.rs    │  │
-│  │(R error safe)│ │ (SEXP→Rust)  │ │ (Rust→SEXP) │ │ (r_error!)  │  │
+│  │ unwind_protect│ │ from_r.rs    │ │ into_r.rs   │ │ error.rs    │  │
+│  │ (longjmp-safe)│ │ (SEXP→Rust)  │ │ (Rust→SEXP) │ │ (r_error!)  │  │
 │  └──────────────┘ └──────────────┘ └─────────────┘ └─────────────┘  │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐                            │
+│  │ thread.rs│ │ coerce.rs│ │ dots.rs  │                            │
+│  └──────────┘ └──────────┘ └──────────┘                            │
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -58,7 +62,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 
 ## Module Documentation
 
-### 1. ffi.rs - R FFI Definitions (510 LOC)
+### 1. ffi.rs - R FFI Definitions
 
 Raw FFI bindings to R's C API.
 
@@ -106,7 +110,8 @@ R_UnwindProtect(...)       // Catch R errors with cleanup
 
 #### Thread Safety
 
-All R FFI functions have checked wrappers that panic if called from non-main thread:
+Most R FFI functions have checked wrappers that panic if called from a non-main thread when
+`cfg(debug_assertions)` is enabled (this repo keeps `debug-assertions = true` in the release profile):
 
 ```rust
 // Checked (panics if wrong thread)
@@ -136,7 +141,7 @@ trait RNativeType {
 
 ---
 
-### 2. worker.rs - Worker Thread Pattern (352 LOC)
+### 2. worker.rs - Worker Thread Pattern
 
 Execute Rust code on a separate thread with proper panic handling.
 
@@ -209,7 +214,7 @@ Main thread: convert to SEXP or R error
 
 ---
 
-### 3. unwind_protect.rs - R Error Protection (162 LOC)
+### 3. unwind_protect.rs - R Error Protection
 
 Safe wrapper for `R_UnwindProtect` to run Rust destructors on R errors.
 
@@ -250,7 +255,7 @@ extern "C-unwind" fn C_risky_operation() -> SEXP {
 
 ---
 
-### 4. externalptr.rs - Box-like Owned Pointer (1,244 LOC)
+### 4. externalptr.rs - Box-like Owned Pointer
 
 Store Rust objects in R's external pointer SEXP.
 
@@ -344,11 +349,19 @@ fn counter_increment(ptr: ExternalPtr<Counter>) -> i32 {
 
 ---
 
-### 5. ALTREP Modules (~700 LOC total)
+### 5. ALTREP (altrep_*.rs)
 
 Alternative Representations for lazy/compact R vectors.
 
-Files: `altrep.rs` (46 LOC), `altrep_traits.rs`, `altrep_bridge.rs`, `altrep_registration.rs`
+Core modules:
+
+- `altrep.rs` / `altrep_registration.rs` - proc-macro-facing types, base inference, registration
+- `altrep_traits.rs` - low-level method-trait hierarchy (mirrors R method tables)
+- `altrep_data.rs` - high-level data traits (more ergonomic APIs)
+- `altrep_bridge.rs` - trampolines + adapters between data traits and R callbacks
+- `altrep_impl.rs` - built-in implementations for common Rust types
+
+See `altrep.md` for the full design doc and examples.
 
 #### Proc-Macro Approach
 
@@ -360,12 +373,11 @@ Define custom ALTREP classes with full method control using the `#[miniextendr]`
 struct ConstantIntClass;
 
 impl Altrep for ConstantIntClass {
-    const HAS_LENGTH: bool = true;
-    fn length(x: SEXP) -> R_xlen_t { 10 }  // Always length 10
+    fn length(_x: SEXP) -> R_xlen_t { 10 }  // Always length 10
 }
 
 impl AltVec for ConstantIntClass {
-    const HAS_DATAPTR: bool = false;  // No materialization
+    // Defaults are fine (no dataptr, no subset optimization).
 }
 
 impl AltInteger for ConstantIntClass {
@@ -414,7 +426,7 @@ impl RegisterAltrep for ConstantIntClass {
 
 ---
 
-### 6. from_r.rs - SEXP to Rust (88 LOC)
+### 6. from_r.rs - SEXP to Rust
 
 Convert R objects to Rust types.
 
@@ -445,7 +457,7 @@ pub enum SexpError {
 
 ---
 
-### 7. into_r.rs - Rust to SEXP (97 LOC)
+### 7. into_r.rs - Rust to SEXP
 
 Convert Rust types to R objects.
 
@@ -467,7 +479,7 @@ impl<T: TypedExternal> IntoR for ExternalPtr<T> { ... }
 
 ---
 
-### 8. error.rs - Error Helpers (96 LOC)
+### 8. error.rs - Error Helpers
 
 Convenient R error/warning/print functions.
 
@@ -503,7 +515,7 @@ fn validate(x: i32) -> i32 {
 
 ---
 
-### 9. dots.rs - Variadic Arguments (12 LOC)
+### 9. dots.rs - Variadic Arguments
 
 Support for R's `...` arguments.
 
@@ -531,7 +543,7 @@ fn my_func(x: i32, ...) {
 
 ---
 
-### 10. backtrace.rs - Panic Hook (25 LOC)
+### 10. backtrace.rs - Panic Hook
 
 Configurable panic backtrace via environment variable.
 
@@ -544,7 +556,7 @@ Set `MINIEXTENDR_BACKTRACE=1` or `MINIEXTENDR_BACKTRACE=true` to see full backtr
 
 ---
 
-### 11. macro_coverage.rs - Test Infrastructure (168 LOC)
+### 11. macro_coverage.rs - Test Infrastructure
 
 Internal module that instantiates every macro variation for testing. Contains example functions covering:
 
@@ -630,7 +642,7 @@ unsafe extern "C-unwind" {
     pub fn Rf_allocVector(t: SEXPTYPE, n: R_xlen_t) -> SEXP;
 }
 
-// Generates (in debug builds):
+// Generates (when cfg(debug_assertions) is enabled):
 pub unsafe fn Rf_allocVector(t: SEXPTYPE, n: R_xlen_t) -> SEXP {
     debug_assert!(is_r_main_thread(), "...");
     Rf_allocVector_unchecked(t, n)
@@ -661,7 +673,7 @@ Demonstrates all features with test functions:
 
 1. **ExternalPtr type identification** - Replaced `StableTypeId` (hash + len + ptr stored in RAWSXP) with R's interned symbols via `Rf_install()`. Type checking is now a simple pointer comparison. Removed ~143 LOC including `const_hash_str` FNV-1a hashing and serialization code.
 
-2. **ALTREP backend traits removed** - Deleted `altrep.rs` (1,702 LOC) and `altrep_std_impls.rs` (855 LOC). The proc-macro approach in `altrep_traits.rs`/`altrep_bridge.rs`/`altrep_registration.rs` provides full flexibility. Total: ~2,557 LOC removed.
+2. **Legacy ALTREP code removed** - Replaced older, parallel ALTREP experiments with the current `altrep_*` module set (data traits + method traits + proc-macro registration). See `altrep.md`.
 
 3. **`ErasedExternalPtr` simplified** - Converted to type alias (commit `87c9f7c`)
 
@@ -671,4 +683,4 @@ Demonstrates all features with test functions:
 
 1. **SendableSexp/SendablePtr** - Required for worker thread communication
 2. **macro_coverage.rs** - Intentional test infrastructure
-3. **`// TODO: finish the dots module`** - Module appears complete despite TODO
+3. **dots.rs** - Intentionally minimal; `...` handling is macro-driven
