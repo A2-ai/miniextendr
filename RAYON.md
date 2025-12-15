@@ -21,31 +21,16 @@ Miniextendr provides seamless integration with [Rayon](https://docs.rs/rayon) fo
 miniextendr-api = { path = "../miniextendr-api", features = ["rayon"] }
 ```
 
-### Simplest Example (Automatic Type & Size Inference)
+### Basic Example
 
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::rayon_bridge::ParallelIteratorExt;
-use rayon::prelude::*;
-
-#[miniextendr]
-fn parallel_sqrt(x: &[f64]) -> SEXP {
-    // Type and size automatically inferred!
-    x.par_iter()
-        .map(|&val| val.sqrt())
-        .collect_r()  // Automatically knows: REALSXP, length = x.len()
-}
-```
-
-### Zero-Copy Example (Maximum Performance)
-
-```rust
 use miniextendr_api::rayon_bridge::*;
 use rayon::prelude::*;
 
 #[miniextendr]
-fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
-    // Pre-allocate and write directly (zero-copy)
+fn parallel_sqrt(x: &[f64]) -> SEXP {
+    // Zero-copy: write directly into pre-allocated R vector
     with_r_real_vec(x.len(), |output| {
         output.par_iter_mut()
             .zip(x.par_iter())
@@ -109,7 +94,6 @@ where F: FnOnce() -> SEXP + Send + 'static
 Routes R API calls from Rayon threads to the main thread.
 
 **Example:**
-
 ```rust
 let sexp = run_r(|| unsafe {
     ffi::Rf_ScalarInteger(42)
@@ -126,7 +110,6 @@ where F: FnOnce(&mut [f64])
 ```
 
 **Example:**
-
 ```rust
 let r_vec = with_r_real_vec(1000, |output| {
     output.par_iter_mut()
@@ -149,34 +132,6 @@ pub fn with_r_logical_vec<F>(len: usize, f: F) -> SEXP
 where F: FnOnce(&mut [i32])
 ```
 
-### Automatic Type & Size Inference ✨ NEW
-
-#### `.collect_r()` - Smart Collection
-
-```rust
-use miniextendr_api::rayon_bridge::ParallelIteratorExt;
-
-// Type automatically inferred from iterator!
-let r_real = (0..1000)
-    .into_par_iter()
-    .map(|i| (i as f64).sqrt())  // f64 → REALSXP
-    .collect_r();
-
-let r_int = (0..1000)
-    .into_par_iter()
-    .map(|i| i * 2)  // i32 → INTSXP
-    .collect_r();
-```
-
-#### `par_smart_map` - Automatic Everything
-
-```rust
-let data: &[f64] = ...; // From R
-
-// Automatically infers: input type, output type, size!
-let r_result = par_smart_map(data, |&x| x.powi(2));
-```
-
 ### Builder API
 
 #### `RVecBuilder` - Fluent Interface
@@ -190,7 +145,6 @@ let r_vec = RVecBuilder::integer(data.len())
 ```
 
 Methods:
-
 - `.real(len)` - Create real vector builder
 - `.integer(len)` - Create integer vector builder
 - `.logical(len)` - Create logical vector builder
@@ -242,36 +196,7 @@ let r_vec = par_chunks_to_r(&data, 1000, |chunk| {
 
 ## Patterns
 
-### Pattern 0: Automatic Inference ✨ (Simplest)
-
-**Use when:** Type and size can be inferred from the iterator
-
-**Performance:** Best - zero-copy with automatic type selection
-
-```rust
-use miniextendr_api::rayon_bridge::ParallelIteratorExt;
-use rayon::prelude::*;
-
-#[miniextendr]
-fn auto_sqrt(x: &[f64]) -> SEXP {
-    // Compiler infers everything!
-    x.par_iter().map(|&v| v.sqrt()).collect_r()
-}
-
-#[miniextendr]
-fn auto_sequence(n: i32) -> SEXP {
-    // Type from output (i32 → INTSXP), size from range
-    (0..n).into_par_iter().map(|i| i * 2).collect_r()
-}
-
-#[miniextendr]
-fn auto_smart_map(x: &[f64]) -> SEXP {
-    // Even simpler!
-    par_smart_map(x, |&v| v.powi(2))
-}
-```
-
-### Pattern 1: Zero-Copy Parallel Fill ⚡ (Maximum Performance)
+### Pattern 1: Zero-Copy Parallel Fill ⚡ (Recommended)
 
 **Use when:** Transforming R vector element-wise
 
@@ -371,7 +296,6 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 ### When to Use Rayon
 
 ✅ **Good Use Cases:**
-
 - CPU-intensive transformations (sqrt, log, trig functions)
 - Large datasets (>10,000 elements)
 - Embarrassingly parallel problems
@@ -379,13 +303,11 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 - Operations with minimal R API interaction
 
 ⚠️ **Be Careful:**
-
 - Frequent R API calls (each call has ~10µs overhead)
 - Small datasets (<1,000 elements - overhead > gains)
 - Operations R can vectorize efficiently
 
 ❌ **Avoid:**
-
 - Calling R for every element in a tight loop
 - Parallel evaluation of R code (R is single-threaded!)
 - Simple operations R handles well (addition, multiplication)
@@ -412,7 +334,6 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 ### Thread Safety Invariants
 
 **✅ Safe Patterns:**
-
 ```rust
 // Compute in parallel, create R object once
 let result: Vec<f64> = data.par_iter().map(|x| x.sqrt()).collect();
@@ -425,7 +346,6 @@ with_r_real_vec(n, |output| {
 ```
 
 **❌ Unsafe Patterns:**
-
 ```rust
 // WRONG: Direct R call from Rayon thread
 data.par_iter().map(|x| unsafe {
@@ -758,7 +678,6 @@ let results: Vec<Vec<f64>> = chunks.par_iter()
 ### Slow Performance
 
 **Check:**
-
 1. Dataset size (< 10K elements might not benefit)
 2. Chunk size (adjust with `.par_chunks`)
 3. R call frequency (minimize calls to `run_r`)
