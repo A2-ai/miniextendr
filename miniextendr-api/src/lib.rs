@@ -194,8 +194,8 @@ pub mod dots;
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
 pub mod externalptr;
 pub use externalptr::{
-    ErasedExternalPtr, ExternalPtr, ExternalSlice, SendableSexp, TypedExternal,
-    altrep_data1_as, altrep_data1_mut, altrep_data2_as,
+    ErasedExternalPtr, ExternalPtr, ExternalSlice, SendableSexp, TypedExternal, altrep_data1_as,
+    altrep_data1_mut, altrep_data2_as,
 };
 
 // TypedExternal implementations for std types
