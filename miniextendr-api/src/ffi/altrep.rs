@@ -268,7 +268,9 @@ unsafe extern "C-unwind" {
     pub fn R_set_altlist_Set_elt_method(cls: R_altrep_class_t, fun: R_altlist_Set_elt_method_t);
 }
 
-// region: ALTREP Helper Functions (Rust equivalents of R's ALTREP macros)
+// =============================================================================
+// ALTREP Helper Functions (Rust equivalents of R's ALTREP macros)
+// =============================================================================
 
 /// Extracts the `ptr` field from `R_altrep_class_t`.
 ///
@@ -286,9 +288,9 @@ pub const fn r_subtype_init(ptr: SEXP) -> R_altrep_class_t {
     R_altrep_class_t { ptr }
 }
 
-// endregion
-
-// region: ALTREP Class Registration Builder
+// =============================================================================
+// ALTREP Class Registration Builder
+// =============================================================================
 
 /// Builder for registering ALTREP classes with type-safe method setters.
 ///
@@ -718,5 +720,3 @@ impl AltrepClassBuilder {
         self.class
     }
 }
-
-// endregion

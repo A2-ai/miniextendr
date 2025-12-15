@@ -83,74 +83,6 @@ impl SEXPTYPE {
 #[derive(Debug)]
 pub struct SEXPREC(::std::os::raw::c_void);
 
-/// R's pointer type for S-expressions.
-///
-/// This is a newtype wrapper around `*mut SEXPREC` that implements Send and Sync.
-/// SEXP is just a handle (pointer) - the actual data it points to is managed by R's
-/// garbage collector and should only be accessed on R's main thread.
-///
-/// # Safety
-///
-/// While SEXP is Send+Sync (allowing it to be passed between threads), the data
-/// it points to must only be accessed on R's main thread. The miniextendr runtime
-/// enforces this through the worker thread pattern.
-#[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct SEXP(pub *mut SEXPREC);
-
-// SAFETY: SEXP is just a pointer (memory address). Passing the address between
-// threads is safe. The actual data access is protected by miniextendr's runtime
-// which ensures R API calls happen on the main thread.
-unsafe impl Send for SEXP {}
-unsafe impl Sync for SEXP {}
-
-impl SEXP {
-    /// Create a null SEXP.
-    #[inline]
-    pub const fn null() -> Self {
-        Self(std::ptr::null_mut())
-    }
-
-    /// Check if this SEXP is null.
-    #[inline]
-    pub const fn is_null(self) -> bool {
-        self.0.is_null()
-    }
-
-    /// Get the raw pointer.
-    #[inline]
-    pub const fn as_ptr(self) -> *mut SEXPREC {
-        self.0
-    }
-
-    /// Create from a raw pointer.
-    #[inline]
-    pub const fn from_ptr(ptr: *mut SEXPREC) -> Self {
-        Self(ptr)
-    }
-}
-
-impl Default for SEXP {
-    #[inline]
-    fn default() -> Self {
-        Self::null()
-    }
-}
-
-impl From<*mut SEXPREC> for SEXP {
-    #[inline]
-    fn from(ptr: *mut SEXPREC) -> Self {
-        Self(ptr)
-    }
-}
-
-impl From<SEXP> for *mut SEXPREC {
-    #[inline]
-    fn from(sexp: SEXP) -> Self {
-        sexp.0
-    }
-}
-
 /// Extension trait for SEXP providing safe(r) accessors and type checking.
 ///
 /// This trait provides idiomatic Rust methods for working with SEXPs,
@@ -175,6 +107,13 @@ pub trait SexpExt {
     /// The SEXP must be valid.
     fn len(&self) -> usize;
 
+    /// Get the length as `R_xlen_t`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    fn xlength(&self) -> R_xlen_t;
+
     /// Get the length without thread checks.
     ///
     /// # Safety
@@ -196,6 +135,46 @@ pub trait SexpExt {
     ///
     /// Must be called from R's main thread. No debug assertions.
     unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T];
+
+    // Type checking methods (equivalent to R's type check macros)
+
+    /// Check if this SEXP is an integer vector (INTSXP).
+    fn is_integer(&self) -> bool;
+
+    /// Check if this SEXP is a real/numeric vector (REALSXP).
+    fn is_real(&self) -> bool;
+
+    /// Check if this SEXP is a logical vector (LGLSXP).
+    fn is_logical(&self) -> bool;
+
+    /// Check if this SEXP is a character/string vector (STRSXP).
+    fn is_character(&self) -> bool;
+
+    /// Check if this SEXP is a raw vector (RAWSXP).
+    fn is_raw(&self) -> bool;
+
+    /// Check if this SEXP is a complex vector (CPLXSXP).
+    fn is_complex(&self) -> bool;
+
+    /// Check if this SEXP is a list/generic vector (VECSXP).
+    fn is_list(&self) -> bool;
+
+    /// Check if this SEXP is an external pointer (EXTPTRSXP).
+    fn is_external_ptr(&self) -> bool;
+
+    /// Check if this SEXP is an environment (ENVSXP).
+    fn is_environment(&self) -> bool;
+
+    /// Check if this SEXP is a symbol (SYMSXP).
+    fn is_symbol(&self) -> bool;
+
+    /// Check if this SEXP is a language object (LANGSXP).
+    fn is_language(&self) -> bool;
+
+    /// Check if this SEXP is an ALTREP object.
+    ///
+    /// Equivalent to R's `ALTREP(x)` macro.
+    fn is_altrep(&self) -> bool;
 }
 
 impl SexpExt for SEXP {
@@ -212,6 +191,11 @@ impl SexpExt for SEXP {
     #[inline]
     fn len(&self) -> usize {
         unsafe { Rf_xlength(*self) as usize }
+    }
+
+    #[inline]
+    fn xlength(&self) -> R_xlen_t {
+        unsafe { Rf_xlength(*self) }
     }
 
     #[inline]
@@ -249,6 +233,68 @@ impl SexpExt for SEXP {
         } else {
             unsafe { std::slice::from_raw_parts(DATAPTR_RO_unchecked(*self).cast(), len) }
         }
+    }
+
+    // Type checking methods
+
+    #[inline]
+    fn is_integer(&self) -> bool {
+        self.type_of() == SEXPTYPE::INTSXP
+    }
+
+    #[inline]
+    fn is_real(&self) -> bool {
+        self.type_of() == SEXPTYPE::REALSXP
+    }
+
+    #[inline]
+    fn is_logical(&self) -> bool {
+        self.type_of() == SEXPTYPE::LGLSXP
+    }
+
+    #[inline]
+    fn is_character(&self) -> bool {
+        self.type_of() == SEXPTYPE::STRSXP
+    }
+
+    #[inline]
+    fn is_raw(&self) -> bool {
+        self.type_of() == SEXPTYPE::RAWSXP
+    }
+
+    #[inline]
+    fn is_complex(&self) -> bool {
+        self.type_of() == SEXPTYPE::CPLXSXP
+    }
+
+    #[inline]
+    fn is_list(&self) -> bool {
+        self.type_of() == SEXPTYPE::VECSXP
+    }
+
+    #[inline]
+    fn is_external_ptr(&self) -> bool {
+        self.type_of() == SEXPTYPE::EXTPTRSXP
+    }
+
+    #[inline]
+    fn is_environment(&self) -> bool {
+        self.type_of() == SEXPTYPE::ENVSXP
+    }
+
+    #[inline]
+    fn is_symbol(&self) -> bool {
+        self.type_of() == SEXPTYPE::SYMSXP
+    }
+
+    #[inline]
+    fn is_language(&self) -> bool {
+        self.type_of() == SEXPTYPE::LANGSXP
+    }
+
+    #[inline]
+    fn is_altrep(&self) -> bool {
+        unsafe { ALTREP(*self) != 0 }
     }
 }
 
@@ -1187,3 +1233,78 @@ pub mod nonapi_stack {
         pub static mut R_CStackDir: ::std::os::raw::c_int;
     }
 }
+
+// =============================================================================
+// R Helper Functions (Rust equivalents of common R macros and inline functions)
+// =============================================================================
+
+/// Convenience wrapper for `Rf_cons` (equivalent to `CONS(a, b)` macro).
+///
+/// Creates a cons cell (pairlist node) with `car` and `cdr`.
+///
+/// # Safety
+///
+/// - Both `car` and `cdr` must be valid SEXP values or R_NilValue
+/// - Must be called from R's main thread
+/// - The result must be protected from garbage collection
+#[inline(always)]
+pub unsafe fn cons(car: SEXP, cdr: SEXP) -> SEXP {
+    unsafe { Rf_cons(car, cdr) }
+}
+
+/// Convenience wrapper for `Rf_protect` (equivalent to `PROTECT(s)` macro).
+///
+/// # Safety
+///
+/// - `s` must be a valid SEXP value
+/// - Must be called from R's main thread
+/// - Each PROTECT must be paired with an UNPROTECT
+#[inline(always)]
+pub unsafe fn protect(s: SEXP) -> SEXP {
+    unsafe { Rf_protect(s) }
+}
+
+/// Convenience wrapper for `Rf_unprotect` (equivalent to `UNPROTECT(n)` macro).
+///
+/// # Safety
+///
+/// - Must be called from R's main thread
+/// - Must match with previous PROTECT calls
+/// - `n` must not exceed the number of currently protected objects
+#[inline(always)]
+pub unsafe fn unprotect(n: ::std::os::raw::c_int) {
+    unsafe { Rf_unprotect(n) }
+}
+
+/// Get the length of a SEXP as `R_xlen_t`.
+///
+/// # Safety
+///
+/// - `x` must be a valid SEXP
+/// - Must be called from R's main thread
+#[inline(always)]
+pub unsafe fn xlength(x: SEXP) -> R_xlen_t {
+    unsafe { Rf_xlength(x) }
+}
+
+/// Get the length of a SEXP as `usize`.
+///
+/// # Safety
+///
+/// - `x` must be a valid SEXP
+/// - Must be called from R's main thread
+#[inline(always)]
+pub unsafe fn length(x: SEXP) -> usize {
+    unsafe { Rf_xlength(x) as usize }
+}
+
+/// Check if a SEXP is NULL or R_NilValue.
+///
+/// # Safety
+///
+/// - `x` must be a valid SEXP or null
+#[inline(always)]
+pub unsafe fn is_null(x: SEXP) -> bool {
+    x.is_null() || std::ptr::addr_eq(x, unsafe { R_NilValue })
+}
+
