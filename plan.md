@@ -48,4 +48,3 @@ As of 2025-12-14:
 
 There are TODOs in `miniextendr-macros/src/lib.rs` (refactors + error messages + dots ergonomics).
 Keep these as TODOs if they reflect deliberate roadmap; otherwise convert to issues or delete.
-

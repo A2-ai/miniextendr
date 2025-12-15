@@ -109,6 +109,7 @@ where F: FnOnce() -> SEXP + Send + 'static
 Routes R API calls from Rayon threads to the main thread.
 
 **Example:**
+
 ```rust
 let sexp = run_r(|| unsafe {
     ffi::Rf_ScalarInteger(42)
@@ -125,6 +126,7 @@ where F: FnOnce(&mut [f64])
 ```
 
 **Example:**
+
 ```rust
 let r_vec = with_r_real_vec(1000, |output| {
     output.par_iter_mut()
@@ -147,7 +149,7 @@ pub fn with_r_logical_vec<F>(len: usize, f: F) -> SEXP
 where F: FnOnce(&mut [i32])
 ```
 
-### Automatic Type & Size Inference ✨ NEW!
+### Automatic Type & Size Inference ✨ NEW
 
 #### `.collect_r()` - Smart Collection
 
@@ -188,6 +190,7 @@ let r_vec = RVecBuilder::integer(data.len())
 ```
 
 Methods:
+
 - `.real(len)` - Create real vector builder
 - `.integer(len)` - Create integer vector builder
 - `.logical(len)` - Create logical vector builder
@@ -368,6 +371,7 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 ### When to Use Rayon
 
 ✅ **Good Use Cases:**
+
 - CPU-intensive transformations (sqrt, log, trig functions)
 - Large datasets (>10,000 elements)
 - Embarrassingly parallel problems
@@ -375,11 +379,13 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 - Operations with minimal R API interaction
 
 ⚠️ **Be Careful:**
+
 - Frequent R API calls (each call has ~10µs overhead)
 - Small datasets (<1,000 elements - overhead > gains)
 - Operations R can vectorize efficiently
 
 ❌ **Avoid:**
+
 - Calling R for every element in a tight loop
 - Parallel evaluation of R code (R is single-threaded!)
 - Simple operations R handles well (addition, multiplication)
@@ -406,6 +412,7 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 ### Thread Safety Invariants
 
 **✅ Safe Patterns:**
+
 ```rust
 // Compute in parallel, create R object once
 let result: Vec<f64> = data.par_iter().map(|x| x.sqrt()).collect();
@@ -418,6 +425,7 @@ with_r_real_vec(n, |output| {
 ```
 
 **❌ Unsafe Patterns:**
+
 ```rust
 // WRONG: Direct R call from Rayon thread
 data.par_iter().map(|x| unsafe {
@@ -750,6 +758,7 @@ let results: Vec<Vec<f64>> = chunks.par_iter()
 ### Slow Performance
 
 **Check:**
+
 1. Dataset size (< 10K elements might not benefit)
 2. Chunk size (adjust with `.par_chunks`)
 3. R call frequency (minimize calls to `run_r`)

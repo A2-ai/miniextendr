@@ -5,6 +5,7 @@ Comprehensive review of `coerce.rs` and `into_r.rs` modules for completeness and
 ## Current State
 
 ### File Statistics
+
 - **coerce.rs:** 723 lines, 14 tests (all passing)
 - **into_r.rs:** 296 lines
 - **Total trait impls:** 38+
@@ -28,6 +29,7 @@ pub trait TryCoerce<R> { fn try_coerce(self) -> Result<R, Self::Error>; }
 ### RNative Implementations ✅
 
 All R native types covered:
+
 - `i32` → INTSXP
 - `f64` → REALSXP
 - `Rboolean` → LGLSXP
@@ -37,6 +39,7 @@ All R native types covered:
 ### Trait Bounds ✅
 
 Convenient bounds for generic functions:
+
 - `CanCoerceToInteger` (= `Coerce<i32>`)
 - `CanCoerceToReal` (= `Coerce<f64>`)
 - `CanCoerceToLogical` (= `Coerce<Rboolean>`)
@@ -45,29 +48,36 @@ Convenient bounds for generic functions:
 ### Coercion Matrix ✅
 
 **Identity:**
+
 - i32 → i32, f64 → f64, u8 → u8, Rboolean → Rboolean, Rcomplex → Rcomplex
 
 **Widening to i32 (infallible):**
+
 - i8, i16, u8, u16 → i32
 
 **Widening to f64 (infallible):**
+
 - f32, i8, i16, i32, u8, u16, u32 → f64
 
 **bool conversions (infallible):**
+
 - bool → Rboolean, i32, f64
 - Rboolean → i32
 
 **Narrowing conversions (fallible):**
+
 - u32, u64, usize, i64, isize → i32 (TryCoerce)
 - f64 → i32 (TryCoerce, checks NaN, overflow, precision loss)
 - f32 → i32 (TryCoerce)
 - Many types → u8, u16, i16, i8 (TryCoerce)
 
 **Float conversions:**
+
 - f64 → f32 (infallible but may lose precision/become inf)
 - i64, u64, isize, usize → f64 (fallible, checks 53-bit precision limit)
 
 **Slice coercions ✅:**
+
 - `&[T]: Coerce<Vec<R>>` where `T: Coerce<R>` (element-wise)
 - `Vec<T>: Coerce<Vec<R>>` where `T: Coerce<R>` (element-wise)
 
@@ -107,6 +117,7 @@ Convenient bounds for generic functions:
 ### Both Checked and Unchecked Versions ✅
 
 All implementations provide:
+
 - `.into_sexp()` - with thread assertions
 - `.into_sexp_unchecked()` - for ALTREP callbacks
 
@@ -119,6 +130,7 @@ All implementations provide:
 **Currently:** Only `Option<bool>` supported
 
 **Missing:**
+
 ```rust
 // Would enable NA support for numeric types
 impl IntoR for Option<i32> { ... }  // → ScalarInteger with NA
@@ -127,6 +139,7 @@ impl IntoR for Option<u8> { ... }   // → ScalarRaw (no NA in raw?)
 ```
 
 **Decision:** ⚠️ **Discuss before adding**
+
 - R uses `NA_INTEGER` and `NA_REAL` (specific bit patterns)
 - `Option<i32>` with None → `NA_INTEGER` is reasonable
 - `Option<f64>` with None → `NA_REAL` (NaN with specific payload)
@@ -137,6 +150,7 @@ impl IntoR for Option<u8> { ... }   // → ScalarRaw (no NA in raw?)
 **Currently:** Only scalar strings supported
 
 **Missing:**
+
 ```rust
 impl IntoR for Vec<String> { ... }  // → STRSXP
 impl IntoR for Vec<&str> { ... }    // → STRSXP
@@ -149,6 +163,7 @@ impl IntoR for &[&str] { ... }      // → STRSXP
 ### 3. Vec<Option<T>> → R Vector with NAs
 
 **Missing:**
+
 ```rust
 impl IntoR for Vec<Option<i32>> { ... }  // → INTSXP with NAs
 impl IntoR for Vec<Option<f64>> { ... }  // → REALSXP with NAs
@@ -160,6 +175,7 @@ impl IntoR for Vec<Option<bool>> { ... } // → LGLSXP with NAs
 ### 4. Fixed-Size Arrays
 
 **Missing:**
+
 ```rust
 impl<T: RNative, const N: usize> IntoR for [T; N] { ... }
 impl<T: RNative, const N: usize> IntoR for &[T; N] { ... }
@@ -170,6 +186,7 @@ impl<T: RNative, const N: usize> IntoR for &[T; N] { ... }
 ### 5. Tuples → R Lists
 
 **Missing:**
+
 ```rust
 impl IntoR for (SEXP, SEXP) { ... }           // → list of length 2
 impl IntoR for (SEXP, SEXP, SEXP) { ... }     // → list of length 3
@@ -181,6 +198,7 @@ impl IntoR for (SEXP, SEXP, SEXP) { ... }     // → list of length 3
 ### 6. Result<T, E> Conversions
 
 **Missing:**
+
 ```rust
 impl<T: IntoR, E: std::fmt::Display> IntoR for Result<T, E> {
     // Ok(v) → v.into_sexp()
@@ -193,6 +211,7 @@ impl<T: IntoR, E: std::fmt::Display> IntoR for Result<T, E> {
 ### 7. Rcomplex Support
 
 **Missing:**
+
 ```rust
 impl IntoR for Rcomplex { ... }  // → ScalarComplex
 impl Coerce<Rcomplex> for (f64, f64) { ... }  // → Rcomplex
@@ -203,6 +222,7 @@ impl Coerce<Rcomplex> for (f64, f64) { ... }  // → Rcomplex
 ### 8. More Coercion Paths
 
 **Currently missing:**
+
 - `i32 → u8` (fallible)
 - `i32 → u16` (fallible)
 - `f32 → i32` (fallible)
@@ -367,6 +387,7 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 ### coerce.rs: Production Ready ✅
 
 **Strengths:**
+
 - Complete coercion lattice for all R native types
 - Both infallible (Coerce) and fallible (TryCoerce) variants
 - Element-wise slice coercions
@@ -374,6 +395,7 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 - Zero dependencies beyond std
 
 **Coverage:**
+
 - ✅ All widening conversions
 - ✅ All narrowing conversions (with proper error handling)
 - ✅ bool ↔ numeric conversions
@@ -381,12 +403,14 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 - ✅ Precision-aware i64/u64 → f64
 
 **Missing (low priority):**
+
 - ⚠️ Some less-common narrowing paths (can add if needed)
 - ⚠️ Complex number coercions
 
 ### into_r.rs: Production Ready ✅
 
 **Strengths:**
+
 - All R scalar types covered
 - String handling with UTF-8
 - Vector support via RNative (NEW!)
@@ -395,6 +419,7 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 - Clean integration with existing type system
 
 **Coverage:**
+
 - ✅ All R scalars (i32, f64, u8, bool, Rboolean, RLogical)
 - ✅ Unit type ()
 - ✅ Option<bool> with NA support
@@ -404,6 +429,7 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 - ✅ RVec<T> for Rayon (NEW!)
 
 **Missing (would be useful):**
+
 - ⚠️ Vec<String> → STRSXP (character vector)
 - ⚠️ Option<i32>, Option<f64> → scalars with NA
 - ⚠️ Vec<Option<T>> → vectors with NAs
@@ -417,6 +443,7 @@ The refactoring to use existing infrastructure was excellent:
 
 **Before:** Duplicate type system in rayon_bridge
 **After:** Clean integration via:
+
 ```rust
 // in into_r.rs
 impl<T: RNative + Send> IntoR for RVec<T> { ... }
@@ -426,6 +453,7 @@ data.par_iter().map(f).collect::<RVec<f64>>().into_sexp()
 ```
 
 **Impact:**
+
 - Removed 800+ lines of duplicate code
 - Leverages existing RNative trait
 - Consistent behavior across codebase
@@ -509,6 +537,7 @@ impl IntoR for Vec<Option<i32>> {
 ### coerce.rs Tests: Excellent ✅
 
 14 tests covering:
+
 - ✅ Identity coercions
 - ✅ Widening conversions
 - ✅ bool coercions
@@ -523,6 +552,7 @@ impl IntoR for Vec<Option<i32>> {
 ### into_r.rs Tests: Missing
 
 **Needs:**
+
 - Unit tests for Vec<T> → R vector conversion
 - Tests for string conversions
 - Tests for RVec<T> integration
@@ -541,6 +571,7 @@ impl IntoR for Vec<Option<i32>> {
 - All public items documented
 
 **Could add:**
+
 - More examples of slice coercions
 - Performance notes (all inline, zero-cost)
 
@@ -559,6 +590,7 @@ impl IntoR for Vec<Option<i32>> {
 ### Overall Assessment: Excellent Foundation ✅
 
 Both modules are well-designed with:
+
 - ✅ Comprehensive type coverage
 - ✅ Safe abstractions (Coerce vs TryCoerce)
 - ✅ Performance (inline, unchecked variants)
@@ -572,6 +604,7 @@ The current state is production-ready. The additions I made (Vec/slice support, 
 ### Future Work (Not Blocking)
 
 If you want to expand later:
+
 1. **NA support:** Option<i32>, Option<f64>, Vec<Option<T>>
 2. **String vectors:** Vec<String> → STRSXP
 3. **More tests:** Unit tests for into_r.rs

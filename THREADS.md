@@ -17,6 +17,7 @@ int R_CStackDir;          // Stack growth direction (-1 = down, 1 = up)
 ```
 
 During initialization (`Rf_initialize_R`), R sets these based on the main thread's stack:
+
 - **Unix**: Uses `getrlimit(RLIMIT_STACK)`, `__libc_stack_end`, or `KERN_USRSTACK`
 - **Windows**: Uses `VirtualQuery` to determine stack bounds
 
@@ -33,6 +34,7 @@ void R_CheckStack(void) {
 ```
 
 When called from a **different thread**, `&dummy` points to a completely different stack, causing:
+
 - `usage` to be a huge negative or positive number
 - False stack overflow detection
 - Segfault or abort
@@ -42,11 +44,13 @@ When called from a **different thread**, `&dummy` points to a completely differe
 Setting `R_CStackLimit` to `(uintptr_t)-1` (i.e., `usize::MAX`) **disables stack checking entirely**.
 
 From R source (`src/include/Defn.h`):
+
 ```c
 if(R_CStackLimit != (uintptr_t)(-1) && usage > ((intptr_t) R_CStackLimit))
 ```
 
 This is safe because:
+
 1. The OS still enforces real stack limits
 2. R functions correctly, just without its own overflow detection
 
@@ -82,6 +86,7 @@ let result = handle.join().unwrap();
 ```
 
 This function:
+
 1. Sets stack size to 8 MiB (configurable)
 2. Automatically disables R's stack checking
 3. Restores stack checking when the thread completes
@@ -177,6 +182,7 @@ R doesn't enforce a specific stack size - it uses whatever the OS provides:
 | Windows | **64 MiB** | Linker flag (since R 4.2) |
 
 Rust's default thread stack is only **2 MiB**, which may be insufficient for:
+
 - Deep recursion (`lapply` chains, recursive functions)
 - Complex formulas
 - Large `tryCatch` stacks
