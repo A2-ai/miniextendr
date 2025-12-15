@@ -141,6 +141,10 @@ pub mod into_r;
 pub use into_r::IntoR;
 pub mod unwind_protect;
 pub mod worker;
+
+// Rayon integration (parallel computation with R interop)
+#[cfg(feature = "rayon")]
+pub mod rayon_bridge;
 pub use worker::*;
 
 // Thread safety utilities for calling R from non-main threads
@@ -190,8 +194,8 @@ pub mod dots;
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
 pub mod externalptr;
 pub use externalptr::{
-    ErasedExternalPtr, ExternalPtr, ExternalSlice, TypedExternal, altrep_data1_as,
-    altrep_data1_mut, altrep_data2_as,
+    ErasedExternalPtr, ExternalPtr, ExternalSlice, SendableSexp, TypedExternal,
+    altrep_data1_as, altrep_data1_mut, altrep_data2_as,
 };
 
 // TypedExternal implementations for std types

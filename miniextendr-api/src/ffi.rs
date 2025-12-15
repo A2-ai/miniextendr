@@ -294,7 +294,7 @@ impl SexpExt for SEXP {
 /// Marker trait for types that correspond to R's native vector element types.
 ///
 /// This enables blanket implementations for `TryFromSexp` and safe conversions.
-pub(crate) trait RNativeType: Sized + Copy + 'static {
+pub trait RNativeType: Sized + Copy + 'static {
     /// The SEXPTYPE for vectors containing this element type.
     const SEXP_TYPE: SEXPTYPE;
 }

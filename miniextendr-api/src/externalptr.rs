@@ -56,13 +56,38 @@ use crate::ffi::{
 ///
 /// [`with_r_thread`]: crate::worker::with_r_thread
 #[repr(transparent)]
-struct SendableSexp(SEXP);
+pub struct SendableSexp(SEXP);
 
 // SAFETY: This is safe because:
 // 1. SEXP is just a pointer (memory address)
 // 2. We only send it from main thread to worker after R API work is done
 // 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
+// 4. Miniextendr enforces that all R API calls happen on the main thread
 unsafe impl Send for SendableSexp {}
+
+impl SendableSexp {
+    /// Create a new SendableSexp wrapper.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must only be dereferenced on R's main thread.
+    #[inline]
+    pub const fn new(sexp: SEXP) -> Self {
+        Self(sexp)
+    }
+
+    /// Unwrap to get the inner SEXP.
+    #[inline]
+    pub const fn into_inner(self) -> SEXP {
+        self.0
+    }
+
+    /// Get the inner SEXP by reference.
+    #[inline]
+    pub const fn as_sexp(&self) -> SEXP {
+        self.0
+    }
+}
 
 /// A wrapper around a raw pointer that implements [`Send`].
 ///
