@@ -778,11 +778,44 @@ unsafe extern "C-unwind" {
     #[doc(alias = "UNPROTECT")]
     #[doc(alias = "unprotect")]
     pub fn Rf_unprotect(l: ::std::os::raw::c_int);
+    // Vector allocation functions
     #[doc(alias = "allocVector")]
     pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;
+    #[doc(alias = "allocMatrix")]
+    pub fn Rf_allocMatrix(
+        sexptype: SEXPTYPE,
+        nrow: ::std::os::raw::c_int,
+        ncol: ::std::os::raw::c_int,
+    ) -> SEXP;
+    #[doc(alias = "allocArray")]
+    pub fn Rf_allocArray(sexptype: SEXPTYPE, dims: SEXP) -> SEXP;
+    #[doc(alias = "alloc3DArray")]
+    pub fn Rf_alloc3DArray(
+        sexptype: SEXPTYPE,
+        nrow: ::std::os::raw::c_int,
+        ncol: ::std::os::raw::c_int,
+        nface: ::std::os::raw::c_int,
+    ) -> SEXP;
+
+    // Pairlist allocation
+    #[doc(alias = "allocList")]
+    pub fn Rf_allocList(n: ::std::os::raw::c_int) -> SEXP;
+    #[doc(alias = "allocLang")]
+    pub fn Rf_allocLang(n: ::std::os::raw::c_int) -> SEXP;
+    #[doc(alias = "allocS4Object")]
+    pub fn Rf_allocS4Object() -> SEXP;
+    #[doc(alias = "allocSExp")]
+    pub fn Rf_allocSExp(sexptype: SEXPTYPE) -> SEXP;
+
+    // Pairlist construction
     #[doc(alias = "CONS")]
     #[doc(alias = "cons")]
     pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
+    #[doc(alias = "LCONS")]
+    #[doc(alias = "lcons")]
+    pub fn Rf_lcons(car: SEXP, cdr: SEXP) -> SEXP;
+
+    // Attribute manipulation
     #[doc(alias = "setAttrib")]
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
@@ -1011,18 +1044,64 @@ unsafe extern "C-unwind" {
     pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
     pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
 
+    // endregion
+
+    // region: SEXP metadata accessors
+
+    /// Get the length of a SEXP as `int` (for short vectors < 2^31).
+    ///
+    /// For long vectors, use `Rf_xlength()` instead.
+    /// Returns 0 for R_NilValue.
+    pub fn LENGTH(x: SEXP) -> ::std::os::raw::c_int;
+
+    /// Get the length of a SEXP as `R_xlen_t` (supports long vectors).
+    ///
+    /// ALTREP-aware: will call ALTREP Length method if needed.
+    pub fn XLENGTH(x: SEXP) -> R_xlen_t;
+
+    /// Get the true length (allocated capacity) of a vector.
+    ///
+    /// May be larger than LENGTH for vectors with reserved space.
+    /// ALTREP-aware.
+    pub fn TRUELENGTH(x: SEXP) -> R_xlen_t;
+
+    /// Get the attributes pairlist of a SEXP.
+    ///
+    /// Returns R_NilValue if no attributes.
+    pub fn ATTRIB(x: SEXP) -> SEXP;
+
+    /// Set the attributes pairlist of a SEXP.
+    ///
+    /// # Safety
+    ///
+    /// `v` must be a pairlist or R_NilValue
+    pub fn SET_ATTRIB(x: SEXP, v: SEXP);
+
+    /// Check if SEXP has the "object" bit set (has a class).
+    ///
+    /// Returns non-zero if object has a class attribute.
+    pub fn OBJECT(x: SEXP) -> ::std::os::raw::c_int;
+
+    /// Set the "object" bit.
+    pub fn SET_OBJECT(x: SEXP, v: ::std::os::raw::c_int);
+
+    /// Get the LEVELS field (for factors).
+    pub fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
+
+    /// Set the LEVELS field (for factors).
+    pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int);
+
+    // endregion
+
+    // region: ALTREP support
+
     pub fn ALTREP_CLASS(x: SEXP) -> SEXP;
     pub fn R_altrep_data1(x: SEXP) -> SEXP;
     pub fn R_altrep_data2(x: SEXP) -> SEXP;
     pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
 
-    // Vector data accessors (mutable pointers)
-    pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
-    pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
-    pub fn REAL(x: SEXP) -> *mut f64;
-    pub fn COMPLEX(x: SEXP) -> *mut Rcomplex;
-    pub fn RAW(x: SEXP) -> *mut Rbyte;
+    /// Check if a SEXP is an ALTREP object (returns non-zero if true).
     pub fn ALTREP(x: SEXP) -> ::std::os::raw::c_int;
 
     // endregion
@@ -1063,9 +1142,88 @@ unsafe extern "C-unwind" {
 
     // endregion
 
+    // region: Connections API (R_ext/Connections.h)
+    //
+    // WARNING: The connections API is explicitly marked as UNSTABLE in R.
+    // From R_ext/Connections.h:
+    //   "IMPORTANT: we do not expect future connection APIs to be
+    //    backward-compatible so if you use this, you *must* check the
+    //    version and proceed only if it matches what you expect.
+    //
+    //    We explicitly reserve the right to change the connection
+    //    implementation without a compatibility layer."
+    //
+    // Use with caution and always check R_CONNECTIONS_VERSION.
+
+    /// Create a new custom connection.
+    ///
+    /// # WARNING
+    ///
+    /// This API is UNSTABLE. Check `R_CONNECTIONS_VERSION` before use.
+    /// The connection implementation may change without notice.
+    ///
+    /// # Safety
+    ///
+    /// - `description`, `mode`, and `class_name` must be valid C strings
+    /// - `ptr` must be a valid pointer to store the connection
+    pub fn R_new_custom_connection(
+        description: *const ::std::os::raw::c_char,
+        mode: *const ::std::os::raw::c_char,
+        class_name: *const ::std::os::raw::c_char,
+        ptr: *mut *mut ::std::os::raw::c_void,
+    ) -> SEXP;
+
+    /// Read from a connection.
+    ///
+    /// # WARNING
+    ///
+    /// This API is UNSTABLE and may change.
+    ///
+    /// # Safety
+    ///
+    /// - `con` must be a valid Rconnection pointer
+    /// - `buf` must be a valid buffer with at least `n` bytes
+    pub fn R_ReadConnection(
+        con: *mut ::std::os::raw::c_void,
+        buf: *mut ::std::os::raw::c_void,
+        n: usize,
+    ) -> usize;
+
+    /// Write to a connection.
+    ///
+    /// # WARNING
+    ///
+    /// This API is UNSTABLE and may change.
+    ///
+    /// # Safety
+    ///
+    /// - `con` must be a valid Rconnection pointer
+    /// - `buf` must contain at least `n` valid bytes
+    pub fn R_WriteConnection(
+        con: *mut ::std::os::raw::c_void,
+        buf: *mut ::std::os::raw::c_void,
+        n: usize,
+    ) -> usize;
+
+    /// Get a connection from a SEXP.
+    ///
+    /// # WARNING
+    ///
+    /// This API is UNSTABLE and may change.
+    /// Added in R 3.3.0.
+    ///
+    /// # Safety
+    ///
+    /// - `sConn` must be a valid connection SEXP
+    pub fn R_GetConnection(sConn: SEXP) -> *mut ::std::os::raw::c_void;
+
+    // endregion
+
     // region: Type checking
 
     pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
+
+    // endregion
 
     // Symbol creation and access
     #[doc(alias = "install")]
@@ -1129,6 +1287,101 @@ unsafe extern "C-unwind" {
     pub fn Rf_isEnvironment(s: SEXP) -> Rboolean;
     #[doc(alias = "isString")]
     pub fn Rf_isString(s: SEXP) -> Rboolean;
+
+    // Composite type checking (from inline functions)
+    #[doc(alias = "isArray")]
+    pub fn Rf_isArray(s: SEXP) -> Rboolean;
+    #[doc(alias = "isMatrix")]
+    pub fn Rf_isMatrix(s: SEXP) -> Rboolean;
+    #[doc(alias = "isList")]
+    pub fn Rf_isList(s: SEXP) -> Rboolean;
+    #[doc(alias = "isNewList")]
+    pub fn Rf_isNewList(s: SEXP) -> Rboolean;
+    #[doc(alias = "isPairList")]
+    pub fn Rf_isPairList(s: SEXP) -> Rboolean;
+    #[doc(alias = "isFunction")]
+    pub fn Rf_isFunction(s: SEXP) -> Rboolean;
+    #[doc(alias = "isPrimitive")]
+    pub fn Rf_isPrimitive(s: SEXP) -> Rboolean;
+    #[doc(alias = "isLanguage")]
+    pub fn Rf_isLanguage(s: SEXP) -> Rboolean;
+    #[doc(alias = "isDataFrame")]
+    pub fn Rf_isDataFrame(s: SEXP) -> Rboolean;
+    #[doc(alias = "isFactor")]
+    pub fn Rf_isFactor(s: SEXP) -> Rboolean;
+    #[doc(alias = "isInteger")]
+    pub fn Rf_isInteger(s: SEXP) -> Rboolean;
+    #[doc(alias = "isObject")]
+    pub fn Rf_isObject(s: SEXP) -> Rboolean;
+
+    // Pairlist utilities
+    #[doc(alias = "elt")]
+    pub fn Rf_elt(list: SEXP, i: ::std::os::raw::c_int) -> SEXP;
+    #[doc(alias = "lastElt")]
+    pub fn Rf_lastElt(list: SEXP) -> SEXP;
+    #[doc(alias = "nthcdr")]
+    pub fn Rf_nthcdr(list: SEXP, n: ::std::os::raw::c_int) -> SEXP;
+    #[doc(alias = "listAppend")]
+    pub fn Rf_listAppend(s: SEXP, t: SEXP) -> SEXP;
+
+    // More attribute setters (using R's "gets" suffix convention)
+    //
+    // See "Attribute access" section above for explanation of the "gets" suffix.
+    // These are setter functions equivalent to R's `attr(x) <- value` syntax.
+
+    /// Set the class attribute of a vector.
+    ///
+    /// Equivalent to R's `class(vec) <- klass` syntax.
+    /// The "gets" suffix indicates this is a setter function.
+    ///
+    /// # Returns
+    ///
+    /// Returns the modified vector (like all "*gets" functions).
+    #[doc(alias = "classgets")]
+    pub fn Rf_classgets(vec: SEXP, klass: SEXP) -> SEXP;
+
+    /// Set the dimnames attribute of an array/matrix.
+    ///
+    /// Equivalent to R's `dimnames(vec) <- val` syntax.
+    /// The "gets" suffix indicates this is a setter function.
+    ///
+    /// # Returns
+    ///
+    /// Returns the modified vector.
+    #[doc(alias = "dimnamesgets")]
+    pub fn Rf_dimnamesgets(vec: SEXP, val: SEXP) -> SEXP;
+    #[doc(alias = "GetRowNames")]
+    pub fn Rf_GetRowNames(dimnames: SEXP) -> SEXP;
+    #[doc(alias = "GetColNames")]
+    pub fn Rf_GetColNames(dimnames: SEXP) -> SEXP;
+
+    // Environment operations
+    #[doc(alias = "findVar")]
+    pub fn Rf_findVar(symbol: SEXP, rho: SEXP) -> SEXP;
+    #[doc(alias = "findVarInFrame")]
+    pub fn Rf_findVarInFrame(rho: SEXP, symbol: SEXP) -> SEXP;
+    #[doc(alias = "findVarInFrame3")]
+    pub fn Rf_findVarInFrame3(rho: SEXP, symbol: SEXP, doget: Rboolean) -> SEXP;
+    #[doc(alias = "defineVar")]
+    pub fn Rf_defineVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    #[doc(alias = "setVar")]
+    pub fn Rf_setVar(symbol: SEXP, value: SEXP, rho: SEXP);
+    #[doc(alias = "findFun")]
+    pub fn Rf_findFun(symbol: SEXP, rho: SEXP) -> SEXP;
+
+    // Evaluation
+    #[doc(alias = "eval")]
+    pub fn Rf_eval(expr: SEXP, rho: SEXP) -> SEXP;
+    #[doc(alias = "applyClosure")]
+    pub fn Rf_applyClosure(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, suppliedvars: SEXP)
+    -> SEXP;
+    pub fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
+    pub fn R_tryEvalSilent(
+        expr: SEXP,
+        env: SEXP,
+        error_occurred: *mut ::std::os::raw::c_int,
+    ) -> SEXP;
+    pub fn R_forceAndCall(e: SEXP, n: ::std::os::raw::c_int, rho: SEXP) -> SEXP;
 }
 
 // region: Connections API (R_ext/Connections.h)
@@ -1534,9 +1787,7 @@ pub unsafe fn Rf_isNumeric(x: SEXP) -> bool {
 #[allow(non_snake_case)]
 #[inline]
 pub unsafe fn Rf_isNumber(x: SEXP) -> bool {
-    unsafe {
-        Rf_isNumeric(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP
-    }
+    unsafe { Rf_isNumeric(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP }
 }
 
 /// Check if a SEXP is an atomic vector.
@@ -1599,5 +1850,112 @@ pub unsafe fn Rf_isVector(x: SEXP) -> bool {
     unsafe { Rf_isVectorAtomic(x) || Rf_isVectorList(x) }
 }
 
-// endregion
+/// Build a language object (call) with 1 element (the function).
+///
+/// Rust equivalent of R's inline `Rf_lang1(s)`.
+/// Creates a call like `f()` where `s` is the function.
+///
+/// # Safety
+///
+/// - `s` must be a valid SEXP (typically a symbol or closure)
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "lang1")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_lang1(s: SEXP) -> SEXP {
+    unsafe { Rf_lcons(s, R_NilValue) }
+}
 
+/// Build a language object (call) with function and 1 argument.
+///
+/// Rust equivalent of R's inline `Rf_lang2(s, t)`.
+/// Creates a call like `f(arg)` where `s` is the function and `t` is the argument.
+///
+/// # Safety
+///
+/// - Both SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "lang2")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_lang2(s: SEXP, t: SEXP) -> SEXP {
+    unsafe { Rf_lcons(s, Rf_list1(t)) }
+}
+
+/// Build a language object (call) with function and 2 arguments.
+///
+/// Rust equivalent of R's inline `Rf_lang3(s, t, u)`.
+/// Creates a call like `f(arg1, arg2)`.
+///
+/// # Safety
+///
+/// - All SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "lang3")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_lang3(s: SEXP, t: SEXP, u: SEXP) -> SEXP {
+    unsafe { Rf_lcons(s, Rf_list2(t, u)) }
+}
+
+/// Build a language object (call) with function and 3 arguments.
+///
+/// Rust equivalent of R's inline `Rf_lang4(s, t, u, v)`.
+/// Creates a call like `f(arg1, arg2, arg3)`.
+///
+/// # Safety
+///
+/// - All SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "lang4")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_lang4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
+    unsafe { Rf_lcons(s, Rf_list3(t, u, v)) }
+}
+
+/// Build a language object (call) with function and 4 arguments.
+///
+/// Rust equivalent of R's inline `Rf_lang5(s, t, u, v, w)`.
+/// Creates a call like `f(arg1, arg2, arg3, arg4)`.
+///
+/// # Safety
+///
+/// - All SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "lang5")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_lang5(s: SEXP, t: SEXP, u: SEXP, v: SEXP, w: SEXP) -> SEXP {
+    unsafe { Rf_lcons(s, Rf_list4(t, u, v, w)) }
+}
+
+/// Build a language object (call) with function and 5 arguments.
+///
+/// Rust equivalent of R's inline `Rf_lang6(s, t, u, v, w, x)`.
+/// Creates a call like `f(arg1, arg2, arg3, arg4, arg5)`.
+///
+/// # Safety
+///
+/// - All SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "lang6")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_lang6(s: SEXP, t: SEXP, u: SEXP, v: SEXP, w: SEXP, x: SEXP) -> SEXP {
+    unsafe {
+        let protected = Rf_protect(s);
+        let list = Rf_cons(t, Rf_list4(u, v, w, x));
+        let result = Rf_lcons(protected, list);
+        Rf_unprotect(1);
+        result
+    }
+}
+
+// endregion
