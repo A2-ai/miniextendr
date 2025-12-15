@@ -30,10 +30,11 @@ just vendor  # Syncs all workspace + bench Cargo.toml files
 
 **Created by:**
 ```sh
-just configure  # Runs configure.ac which:
-                # 1. rsync miniextendr-api/ -> rpkg/src/vendor/miniextendr-api/
-                # 2. rsync miniextendr-macros/ -> rpkg/src/vendor/miniextendr-macros/
-                # 3. cargo vendor crates.io deps -> rpkg/src/vendor/
+just configure  
+# Runs configure.ac which:
+# 1. rsync miniextendr-api/ -> rpkg/src/vendor/miniextendr-api/
+# 2. rsync miniextendr-macros/ -> rpkg/src/vendor/miniextendr-macros/
+# 3. cargo vendor crates.io deps -> rpkg/src/vendor/
 ```
 
 **Used by:**

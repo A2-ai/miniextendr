@@ -276,7 +276,7 @@ impl From<Rboolean> for bool {
 }
 
 #[allow(non_camel_case_types)]
-pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(arg1: SEXP)>;
+pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(s: SEXP)>;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -449,22 +449,22 @@ unsafe extern "C-unwind" {
     pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
     // Rinternals.h
-    pub fn R_PreserveObject(arg1: SEXP);
-    pub fn R_ReleaseObject(arg1: SEXP);
+    pub fn R_PreserveObject(object: SEXP);
+    pub fn R_ReleaseObject(object: SEXP);
 
-    pub fn Rf_protect(arg1: SEXP) -> SEXP;
-    pub fn Rf_unprotect(arg1: ::std::os::raw::c_int);
-    pub fn Rf_allocVector(arg1: SEXPTYPE, arg2: R_xlen_t) -> SEXP;
+    pub fn Rf_protect(s: SEXP) -> SEXP;
+    pub fn Rf_unprotect(l: ::std::os::raw::c_int);
+    pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;
     pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
-    pub fn Rf_ScalarComplex(arg1: Rcomplex) -> SEXP;
-    pub fn Rf_ScalarInteger(arg1: ::std::os::raw::c_int) -> SEXP;
-    pub fn Rf_ScalarLogical(arg1: ::std::os::raw::c_int) -> SEXP;
-    pub fn Rf_ScalarRaw(arg1: Rbyte) -> SEXP;
-    pub fn Rf_ScalarReal(arg1: f64) -> SEXP;
-    pub fn Rf_ScalarString(arg1: SEXP) -> SEXP;
+    pub fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
+    pub fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
+    pub fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
+    pub fn Rf_ScalarReal(x: f64) -> SEXP;
+    pub fn Rf_ScalarString(x: SEXP) -> SEXP;
 
     // Rinternals.h
     /// Non-API function - use DATAPTR_RO or DATAPTR_OR_NULL instead.
@@ -606,7 +606,7 @@ pub mod legacy_c {
     use super::{Rboolean, SEXP};
 
     #[allow(non_camel_case_types)]
-    pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(arg1: SEXP)>;
+    pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;
 
     #[allow(non_camel_case_types)]
     pub type DL_FUNC_C = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
