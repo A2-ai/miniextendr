@@ -83,6 +83,10 @@ impl SEXPTYPE {
 #[derive(Debug)]
 pub struct SEXPREC(::std::os::raw::c_void);
 
+// NOTE: SEXP is a raw pointer type alias, so we cannot implement Send/Sync for it.
+// Instead, use SendableSexp wrapper from externalptr module for thread-safe SEXP passing.
+// See externalptr::SendableSexp documentation for details.
+
 /// Extension trait for SEXP providing safe(r) accessors and type checking.
 ///
 /// This trait provides idiomatic Rust methods for working with SEXPs,

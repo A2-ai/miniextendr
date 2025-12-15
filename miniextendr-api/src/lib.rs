@@ -296,8 +296,8 @@ pub mod externalptr;
 #[cfg(feature = "connections")]
 pub mod connection;
 pub use externalptr::{
-    ErasedExternalPtr, ExternalPtr, ExternalSlice, SendableSexp, TypedExternal,
-    altrep_data1_as, altrep_data1_mut, altrep_data2_as,
+    ErasedExternalPtr, ExternalPtr, ExternalSlice, SendableSexp, TypedExternal, altrep_data1_as,
+    altrep_data1_mut, altrep_data2_as,
 };
 
 // TypedExternal implementations for std types

@@ -56,14 +56,27 @@ use crate::ffi::{
 ///
 /// [`with_r_thread`]: crate::worker::with_r_thread
 #[repr(transparent)]
+#[derive(Copy, Clone)]
 pub struct SendableSexp(SEXP);
 
-// SAFETY: This is safe because:
+// SAFETY for Send: This is safe because:
 // 1. SEXP is just a pointer (memory address)
 // 2. We only send it from main thread to worker after R API work is done
 // 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
 // 4. Miniextendr enforces that all R API calls happen on the main thread
 unsafe impl Send for SendableSexp {}
+
+// SAFETY for Sync: This is safe because:
+// 1. Multiple threads can read the same SEXP pointer value concurrently
+// 2. The SEXP is never dereferenced except on the main thread via run_r/with_r_thread
+// 3. When writing to R vector data in parallel (e.g., REAL(sexp)[i] = value),
+//    each thread writes to a different index - no data races on the data array
+// 4. The R SEXP structure itself is never mutated from Rayon threads, only its
+//    data array elements at disjoint memory locations
+//
+// This enables Rayon patterns where multiple threads share a SEXP handle and
+// write to different indices of its data array in parallel.
+unsafe impl Sync for SendableSexp {}
 
 impl SendableSexp {
     /// Create a new SendableSexp wrapper.

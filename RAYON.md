@@ -21,16 +21,31 @@ Miniextendr provides seamless integration with [Rayon](https://docs.rs/rayon) fo
 miniextendr-api = { path = "../miniextendr-api", features = ["rayon"] }
 ```
 
-### Basic Example
+### Simplest Example (Automatic Type & Size Inference)
 
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::rayon_bridge::*;
+use miniextendr_api::rayon_bridge::ParallelIteratorExt;
 use rayon::prelude::*;
 
 #[miniextendr]
 fn parallel_sqrt(x: &[f64]) -> SEXP {
-    // Zero-copy: write directly into pre-allocated R vector
+    // Type and size automatically inferred!
+    x.par_iter()
+        .map(|&val| val.sqrt())
+        .collect_r()  // Automatically knows: REALSXP, length = x.len()
+}
+```
+
+### Zero-Copy Example (Maximum Performance)
+
+```rust
+use miniextendr_api::rayon_bridge::*;
+use rayon::prelude::*;
+
+#[miniextendr]
+fn parallel_sqrt_fast(x: &[f64]) -> SEXP {
+    // Pre-allocate and write directly (zero-copy)
     with_r_real_vec(x.len(), |output| {
         output.par_iter_mut()
             .zip(x.par_iter())
@@ -132,6 +147,34 @@ pub fn with_r_logical_vec<F>(len: usize, f: F) -> SEXP
 where F: FnOnce(&mut [i32])
 ```
 
+### Automatic Type & Size Inference ✨ NEW!
+
+#### `.collect_r()` - Smart Collection
+
+```rust
+use miniextendr_api::rayon_bridge::ParallelIteratorExt;
+
+// Type automatically inferred from iterator!
+let r_real = (0..1000)
+    .into_par_iter()
+    .map(|i| (i as f64).sqrt())  // f64 → REALSXP
+    .collect_r();
+
+let r_int = (0..1000)
+    .into_par_iter()
+    .map(|i| i * 2)  // i32 → INTSXP
+    .collect_r();
+```
+
+#### `par_smart_map` - Automatic Everything
+
+```rust
+let data: &[f64] = ...; // From R
+
+// Automatically infers: input type, output type, size!
+let r_result = par_smart_map(data, |&x| x.powi(2));
+```
+
 ### Builder API
 
 #### `RVecBuilder` - Fluent Interface
@@ -196,7 +239,36 @@ let r_vec = par_chunks_to_r(&data, 1000, |chunk| {
 
 ## Patterns
 
-### Pattern 1: Zero-Copy Parallel Fill ⚡ (Recommended)
+### Pattern 0: Automatic Inference ✨ (Simplest)
+
+**Use when:** Type and size can be inferred from the iterator
+
+**Performance:** Best - zero-copy with automatic type selection
+
+```rust
+use miniextendr_api::rayon_bridge::ParallelIteratorExt;
+use rayon::prelude::*;
+
+#[miniextendr]
+fn auto_sqrt(x: &[f64]) -> SEXP {
+    // Compiler infers everything!
+    x.par_iter().map(|&v| v.sqrt()).collect_r()
+}
+
+#[miniextendr]
+fn auto_sequence(n: i32) -> SEXP {
+    // Type from output (i32 → INTSXP), size from range
+    (0..n).into_par_iter().map(|i| i * 2).collect_r()
+}
+
+#[miniextendr]
+fn auto_smart_map(x: &[f64]) -> SEXP {
+    // Even simpler!
+    par_smart_map(x, |&v| v.powi(2))
+}
+```
+
+### Pattern 1: Zero-Copy Parallel Fill ⚡ (Maximum Performance)
 
 **Use when:** Transforming R vector element-wise
 

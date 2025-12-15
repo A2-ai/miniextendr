@@ -224,3 +224,84 @@ impl IntoR for &str {
         }
     }
 }
+
+// =============================================================================
+// Vector conversions
+// =============================================================================
+
+impl<T> IntoR for Vec<T>
+where
+    T: crate::coerce::RNative,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp(&self) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp_unchecked(&self) }
+    }
+}
+
+impl<T> IntoR for &[T]
+where
+    T: crate::coerce::RNative,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp(self) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp_unchecked(self) }
+    }
+}
+
+/// Convert a slice to an R vector (checked).
+#[inline]
+unsafe fn vec_to_sexp<T: crate::coerce::RNative>(slice: &[T]) -> crate::ffi::SEXP {
+    unsafe {
+        let n = slice.len();
+        let vec = crate::ffi::Rf_allocVector(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
+        let ptr = crate::ffi::DATAPTR_RO(vec) as *mut T;
+        std::ptr::copy_nonoverlapping(slice.as_ptr(), ptr, n);
+        vec
+    }
+}
+
+/// Convert a slice to an R vector (unchecked).
+#[inline]
+unsafe fn vec_to_sexp_unchecked<T: crate::coerce::RNative>(slice: &[T]) -> crate::ffi::SEXP {
+    unsafe {
+        let n = slice.len();
+        let vec = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
+        let ptr = crate::ffi::DATAPTR_RO_unchecked(vec) as *mut T;
+        std::ptr::copy_nonoverlapping(slice.as_ptr(), ptr, n);
+        vec
+    }
+}
+
+// =============================================================================
+// Rayon RVec conversion
+// =============================================================================
+
+#[cfg(feature = "rayon")]
+impl<T> IntoR for crate::rayon_bridge::RVec<T>
+where
+    T: crate::coerce::RNative + Send,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        // RVec was collected on Rayon threads, convert to R on main thread
+        let vec = self.into_inner();
+        crate::rayon_bridge::run_r(move || vec.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        // Still need to go through run_r since we might be on a Rayon thread
+        self.into_sexp()
+    }
+}
