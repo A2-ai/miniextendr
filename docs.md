@@ -148,6 +148,7 @@ Execute Rust code on a separate thread with proper panic handling.
 #### Problem Solved
 
 R uses `longjmp` for error handling, which skips Rust destructors. The worker thread pattern:
+
 1. Runs Rust code on a worker thread where `catch_unwind` works
 2. Catches panics and converts them to R errors
 3. Allows calling R APIs from worker via message passing
@@ -585,6 +586,7 @@ Internal module that instantiates every macro variation for testing. Contains ex
 ### #[miniextendr] on Functions
 
 Generates:
+
 1. The original Rust function
 2. A C wrapper (`C_<name>`)
 3. An R wrapper string (`R_WRAPPER_<NAME>`)
@@ -614,7 +616,7 @@ Generates:
 
 For ALTREP class registration. Generates registration code for method trait implementations.
 
-### miniextendr_module!
+### miniextendr_module
 
 Registers functions and structs with R's dynamic loading.
 
@@ -634,6 +636,7 @@ miniextendr_module! {
 ```
 
 Generates:
+
 - `R_init_<module>` entry point
 - Call method registration array
 - R wrapper file content

@@ -24,12 +24,14 @@ This document reviews all the improvements made to miniextendr's FFI layer and t
 ### 1.1 Parameter Names Match R Source (150+ functions)
 
 **Before:**
+
 ```rust
 pub fn Rf_cons(arg1: SEXP, arg2: SEXP) -> SEXP;
 pub fn INTEGER_GET_REGION(arg1: SEXP, arg2: R_xlen_t, arg3: R_xlen_t, arg4: *mut i32);
 ```
 
 **After:**
+
 ```rust
 pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
 pub fn INTEGER_GET_REGION(sx: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32);
@@ -43,6 +45,7 @@ pub fn INTEGER_GET_REGION(sx: SEXP, i: R_xlen_t, n: R_xlen_t, buf: *mut i32);
 **After:** `#[doc(alias = "PROTECT")]` on `Rf_protect` - fully searchable
 
 **Examples:**
+
 ```rust
 #[doc(alias = "PROTECT")]
 #[doc(alias = "protect")]
@@ -71,6 +74,7 @@ Added comprehensive documentation explaining R's setter naming:
 #### CAR/CDR (Lisp Etymology)
 
 Added 200+ lines explaining pairlists:
+
 - What they are (cons cells)
 - When they're used (function arguments, language objects)
 - Etymology from Lisp assembly mnemonics
@@ -81,11 +85,13 @@ Added 200+ lines explaining pairlists:
 Idiomatic Rust methods for SEXP operations:
 
 **Before:**
+
 ```rust
 pub(crate) trait SexpExt { ... }  // Private, limited methods
 ```
 
 **After:**
+
 ```rust
 pub trait SexpExt {
     // Type checking
@@ -98,6 +104,7 @@ pub trait SexpExt {
 ```
 
 **Usage:**
+
 ```rust
 use miniextendr_api::ffi::SexpExt;
 
@@ -111,6 +118,7 @@ if x.is_integer() && x.len() > 0 {  // Clean method syntax!
 #### Builder Pattern
 
 **Before:** Manual method registration
+
 ```rust
 unsafe {
     R_set_altrep_Length_method(cls, my_length);
@@ -120,6 +128,7 @@ unsafe {
 ```
 
 **After:** Fluent builder API
+
 ```rust
 let class = AltrepClassBuilder::new_integer(cname, pname, info)
     .length(my_length)
@@ -137,15 +146,18 @@ let class = AltrepClassBuilder::new_integer(cname, pname, info)
 ### 1.6 Comprehensive Function Coverage (90+ functions added)
 
 #### Memory Management
+
 - **Protection:** `Rf_protect`, `Rf_unprotect`, `R_PreserveObject`, `R_ReleaseObject`
 - **Allocation:** `Rf_allocVector`, `Rf_allocMatrix`, `Rf_allocArray`, `Rf_alloc3DArray`
 - **Specialized:** `Rf_allocList`, `Rf_allocLang`, `Rf_allocS4Object`, `Rf_allocSExp`
 
 #### Vector Construction
+
 - **Scalars:** `Rf_ScalarInteger`, `Rf_ScalarReal`, `Rf_ScalarLogical`, `Rf_ScalarString`, `Rf_ScalarComplex`, `Rf_ScalarRaw`
 - **Strings:** `Rf_mkChar`, `Rf_mkCharLen`, `Rf_mkCharLenCE`, `Rf_mkString`
 
 #### Data Access
+
 - **Direct pointers:** `INTEGER`, `REAL`, `LOGICAL`, `COMPLEX`, `RAW`
 - **OR_NULL variants:** `INTEGER_OR_NULL`, `REAL_OR_NULL`, etc.
 - **Element access:** `INTEGER_ELT`, `REAL_ELT`, `STRING_ELT`, `VECTOR_ELT` (ALTREP-aware)
@@ -153,6 +165,7 @@ let class = AltrepClassBuilder::new_integer(cname, pname, info)
 - **Generic:** `DATAPTR_RO`, `DATAPTR_OR_NULL`, `DATAPTR` (nonapi)
 
 #### Pairlists (Cons Cells)
+
 - **Constructors:** `Rf_cons`, `Rf_lcons`, `Rf_list1-4`, `Rf_lang1-6`
 - **Accessors:** `CAR`, `CDR`, `TAG`, `CADR`, `CADDR`, `CADDDR`, `CAD4R`
 - **Nested:** `CAAR`, `CDAR`
@@ -160,44 +173,55 @@ let class = AltrepClassBuilder::new_integer(cname, pname, info)
 - **Utilities:** `Rf_elt`, `Rf_lastElt`, `Rf_nthcdr`, `Rf_listAppend`
 
 #### Attributes
+
 - **Get:** `Rf_getAttrib`, `Rf_GetRowNames`, `Rf_GetColNames`, `ATTRIB`
 - **Set:** `Rf_setAttrib`, `Rf_namesgets`, `Rf_dimgets`, `Rf_classgets`, `Rf_dimnamesgets`, `SET_ATTRIB`
 
 #### Type Checking
+
 - **Basic:** `TYPEOF`, `Rf_isNull`, `Rf_isSymbol`, `Rf_isLogical`, `Rf_isReal`, `Rf_isComplex`, `Rf_isExpression`, `Rf_isEnvironment`, `Rf_isString`
 - **Composite:** `Rf_isArray`, `Rf_isMatrix`, `Rf_isList`, `Rf_isDataFrame`, `Rf_isFactor`, `Rf_isFunction`, `Rf_isPrimitive`, `Rf_isPairList`
 - **Inline:** `Rf_isNumeric`, `Rf_isNumber`, `Rf_isVector`, `Rf_isVectorAtomic`, `Rf_isVectorList`
 - **Trait:** All available as methods via `SexpExt`
 
 #### Metadata
+
 - **Length:** `LENGTH`, `XLENGTH`, `TRUELENGTH`
 - **Properties:** `OBJECT`, `SET_OBJECT`, `LEVELS`, `SETLEVELS`
 
 #### Coercion & Duplication
+
 - `Rf_asLogical`, `Rf_asInteger`, `Rf_asReal`, `Rf_asChar`, `Rf_coerceVector`
 - `Rf_duplicate`, `Rf_shallow_duplicate`
 
 #### Matrix Utilities
+
 - `Rf_nrows`, `Rf_ncols`
 
 #### Environments
+
 - **Lookup:** `Rf_findVar`, `Rf_findVarInFrame`, `Rf_findVarInFrame3`, `Rf_findFun`
 - **Assignment:** `Rf_defineVar`, `Rf_setVar`
 
 #### Evaluation
+
 - `Rf_eval`, `Rf_applyClosure`, `R_tryEval`, `R_tryEvalSilent`, `R_forceAndCall`
 
 #### Symbols
+
 - `Rf_install`, `PRINTNAME`, `R_CHAR`
 
 #### Inheritance
+
 - `Rf_inherits`, `Rf_isObject`
 
 #### Connections (UNSTABLE API)
+
 - `R_new_custom_connection`, `R_ReadConnection`, `R_WriteConnection`, `R_GetConnection`
 - All marked with explicit warnings about API instability
 
 #### Global Constants
+
 - `R_NilValue`, `R_NaString`
 - `R_GlobalEnv`, `R_BaseEnv`, `R_EmptyEnv`
 - `R_NamesSymbol`, `R_DimSymbol`, `R_ClassSymbol`, `R_RowNamesSymbol`, `R_DimNamesSymbol`
@@ -234,6 +258,7 @@ Replaced `// ===` separators with collapsible `// region:` markers:
 #### `SendableSexp` - Thread-Safe SEXP Wrapper
 
 Made public and added `Sync`:
+
 ```rust
 pub struct SendableSexp(SEXP);
 unsafe impl Send for SendableSexp {}  // Pass between threads
@@ -265,11 +290,13 @@ let r_vec = data.par_iter()
 ```
 
 **Features:**
+
 - `.collect_r()` - Automatic type & size inference for `IndexedParallelIterator`
 - `.collect_r_unindexed()` - For iterators without known size
 - `par_smart_map(slice, fn)` - Convenience function
 
 **Implementation:**
+
 - `IntoRVector` trait with impls for `i32`, `f64`
 - `ParallelIteratorExt` trait for all `ParallelIterator` types
 - Uses `IndexedParallelIterator::len()` for size hint
@@ -285,6 +312,7 @@ let r_vec = with_r_real_vec(1000, |output| {
 ```
 
 **Functions:**
+
 - `with_r_real_vec(len, fn)` - Real vectors
 - `with_r_int_vec(len, fn)` - Integer vectors
 - `with_r_logical_vec(len, fn)` - Logical vectors
@@ -302,6 +330,7 @@ let r_vec = RVecBuilder::integer(data.len())
 ```
 
 **Methods:**
+
 - `.real(len)`, `.integer(len)`, `.logical(len)`
 - `.par_fill_with(|index| -> value)` - Index-based generation
 - `.par_fill_from_slice(&input, |item| -> value)` - Transform input
@@ -318,6 +347,7 @@ let r_vec = computed.into_r();  // Convert to R
 ```
 
 **Features:**
+
 - `RVec<T>` implements `FromParallelIterator<T>`
 - `.into_r()` for `RVec<i32>` and `RVec<f64>`
 
@@ -382,11 +412,13 @@ pool.install(|| {
 ### 3.1 Thread Safety Model
 
 **SEXP as Opaque Handle:**
+
 - SEXP is a raw pointer, but used as an opaque handle (like file descriptors)
 - `SendableSexp` wrapper enables safe passing between threads
 - Implements both `Send` and `Sync` with extensive safety documentation
 
 **Safety Invariants:**
+
 1. **SEXPs only dereferenced on R's main thread** (enforced by API design)
 2. **Parallel writes to disjoint indices** (no data races)
 3. **R structure never mutated** from Rayon threads (only data arrays)
@@ -523,6 +555,7 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 ```
 
 **Implementation:**
+
 - `IntoRVector` trait with `const R_TYPE: SEXPTYPE`
 - `IndexedParallelIterator::len()` for size
 - Zero-copy writes using `SendableSexp`
@@ -532,11 +565,13 @@ fn parallel_chunked(x: &[f64]) -> SEXP {
 **Innovation:** Use normal stacks, route R calls to main thread
 
 **Traditional approach** (what most R packages do):
+
 - ❌ Configure large stacks for worker threads (8-64MB)
 - ❌ Disable R's stack checking
 - ❌ Complex setup and maintenance
 
 **Miniextendr approach:**
+
 - ✅ Use Rayon's default 2MB stacks
 - ✅ Keep R's stack checking enabled
 - ✅ Route R calls through `run_r` to main thread
@@ -728,6 +763,7 @@ This work has transformed miniextendr's FFI layer from a basic binding layer int
 4. **Seamless Rayon integration** for high-performance parallel computing
 
 The Rayon integration is particularly innovative:
+
 - **No stack configuration needed** (routes to main thread instead)
 - **Automatic type inference** (compiler determines R vector types)
 - **Multiple API layers** (from simple to zero-copy)
