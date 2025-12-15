@@ -683,9 +683,24 @@ unsafe extern "C-unwind" {
     #[doc(alias = "NA_STRING")]
     pub static R_NaString: SEXP;
     pub static R_NamesSymbol: SEXP;
+    pub static R_DimSymbol: SEXP;
+    pub static R_DimNamesSymbol: SEXP;
+    pub static R_ClassSymbol: SEXP;
+    pub static R_RowNamesSymbol: SEXP;
+
+    pub static R_GlobalEnv: SEXP;
+    pub static R_BaseEnv: SEXP;
+    pub static R_EmptyEnv: SEXP;
+
+    // Special logical values
+    pub static R_TrueValue: SEXP;
+    pub static R_FalseValue: SEXP;
+    pub static R_LogicalNAValue: SEXP;
 
     // Rinternals.h
+    #[doc(alias = "mkChar")]
     pub fn Rf_mkChar(s: *const ::std::os::raw::c_char) -> SEXP;
+    #[doc(alias = "mkCharLen")]
     pub fn Rf_mkCharLen(s: *const ::std::os::raw::c_char, len: i32) -> SEXP;
     #[doc(alias = "mkCharLenCE")]
     pub fn Rf_mkCharLenCE(
@@ -696,10 +711,15 @@ unsafe extern "C-unwind" {
     #[doc(alias = "xlength")]
     #[doc(alias = "XLENGTH")]
     pub fn Rf_xlength(x: SEXP) -> R_xlen_t;
+    #[doc(alias = "translateCharUTF8")]
     pub fn Rf_translateCharUTF8(x: SEXP) -> *const ::std::os::raw::c_char;
+    #[doc(alias = "getCharCE")]
     pub fn Rf_getCharCE(x: SEXP) -> cetype_t;
+    #[doc(alias = "charIsASCII")]
     pub fn Rf_charIsASCII(x: SEXP) -> Rboolean;
+    #[doc(alias = "charIsUTF8")]
     pub fn Rf_charIsUTF8(x: SEXP) -> Rboolean;
+    #[doc(alias = "charIsLatin1")]
     pub fn Rf_charIsLatin1(x: SEXP) -> Rboolean;
 
     pub fn R_MakeUnwindCont() -> SEXP;
@@ -752,18 +772,32 @@ unsafe extern "C-unwind" {
     pub fn R_PreserveObject(object: SEXP);
     pub fn R_ReleaseObject(object: SEXP);
 
+    #[doc(alias = "PROTECT")]
+    #[doc(alias = "protect")]
     pub fn Rf_protect(s: SEXP) -> SEXP;
+    #[doc(alias = "UNPROTECT")]
+    #[doc(alias = "unprotect")]
     pub fn Rf_unprotect(l: ::std::os::raw::c_int);
+    #[doc(alias = "allocVector")]
     pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;
+    #[doc(alias = "CONS")]
+    #[doc(alias = "cons")]
     pub fn Rf_cons(car: SEXP, cdr: SEXP) -> SEXP;
+    #[doc(alias = "setAttrib")]
     pub fn Rf_setAttrib(vec: SEXP, name: SEXP, val: SEXP) -> SEXP;
 
     // Rinternals.h
+    #[doc(alias = "ScalarComplex")]
     pub fn Rf_ScalarComplex(x: Rcomplex) -> SEXP;
+    #[doc(alias = "ScalarInteger")]
     pub fn Rf_ScalarInteger(x: ::std::os::raw::c_int) -> SEXP;
+    #[doc(alias = "ScalarLogical")]
     pub fn Rf_ScalarLogical(x: ::std::os::raw::c_int) -> SEXP;
+    #[doc(alias = "ScalarRaw")]
     pub fn Rf_ScalarRaw(x: Rbyte) -> SEXP;
+    #[doc(alias = "ScalarReal")]
     pub fn Rf_ScalarReal(x: f64) -> SEXP;
+    #[doc(alias = "ScalarString")]
     pub fn Rf_ScalarString(x: SEXP) -> SEXP;
 
     // Rinternals.h
@@ -820,9 +854,95 @@ unsafe extern "C-unwind" {
     ///
     /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
     pub fn CDR(e: SEXP) -> SEXP;
+
+    /// Get the CAR of the CAR (value of the first element's value).
+    ///
+    /// Equivalent to `CAR(CAR(e))`. Useful for nested lists.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a valid nested pairlist
+    pub fn CAAR(e: SEXP) -> SEXP;
+
+    /// Get the CDR of the CAR (tail of the first element).
+    ///
+    /// Equivalent to `CDR(CAR(e))`.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a valid nested pairlist
+    pub fn CDAR(e: SEXP) -> SEXP;
+
+    /// Get the CAR of the CDR (second element's value).
+    ///
+    /// Equivalent to `CAR(CDR(e))`. This gets the value of the 2nd list element.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a pairlist with at least 2 elements
+    pub fn CADR(e: SEXP) -> SEXP;
+
+    /// Get the CDR of the CDR (list starting from 3rd element).
+    ///
+    /// Equivalent to `CDR(CDR(e))`. Skips first two elements.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a pairlist with at least 2 elements
+    pub fn CDDR(e: SEXP) -> SEXP;
+
+    /// Get the value of the third element.
+    ///
+    /// Equivalent to `CAR(CDR(CDR(e)))`.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a pairlist with at least 3 elements
+    pub fn CADDR(e: SEXP) -> SEXP;
+
+    /// Get the value of the fourth element.
+    ///
+    /// Equivalent to `CAR(CDR(CDR(CDR(e))))`.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a pairlist with at least 4 elements
+    pub fn CADDDR(e: SEXP) -> SEXP;
+
+    /// Get the value of the fifth element.
+    ///
+    /// Equivalent to `CAR(CDR(CDR(CDR(CDR(e)))))`.
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a pairlist with at least 5 elements
+    pub fn CAD4R(e: SEXP) -> SEXP;
+
+    /// Get the TAG (name) of a pairlist node.
+    ///
+    /// Returns the symbol associated with this element, or R_NilValue if unnamed.
+    /// For named arguments like `f(x = 5)`, TAG is the symbol "x".
+    ///
+    /// # Safety
+    ///
+    /// `e` must be a valid pairlist (LISTSXP, LANGSXP) or R_NilValue
     pub fn TAG(e: SEXP) -> SEXP;
+
+    /// Set the TAG (name) of a pairlist node.
+    ///
+    /// # Safety
+    ///
+    /// - `x` must be a valid mutable pairlist node
+    /// - `y` must be a symbol (SYMSXP) or R_NilValue
     pub fn SET_TAG(x: SEXP, y: SEXP);
-    pub fn SETCDR(x: SEXP, y: SEXP) -> SEXP;
+
+    /// Set the CAR (value) of a pairlist node.
+    ///
+    /// # Safety
+    ///
+    /// - `x` must be a valid mutable pairlist node
+    /// - `y` must be a valid SEXP
+    /// - Returns `y` for convenience
     pub fn SETCAR(x: SEXP, y: SEXP) -> SEXP;
 
     /// Set the CDR (tail) of a pairlist node.
@@ -874,6 +994,8 @@ unsafe extern "C-unwind" {
     pub fn REAL_OR_NULL(x: SEXP) -> *const f64;
     pub fn COMPLEX_OR_NULL(x: SEXP) -> *const Rcomplex;
     pub fn RAW_OR_NULL(x: SEXP) -> *const Rbyte;
+
+    // Element-wise accessors (ALTREP-aware)
     pub fn INTEGER_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
     pub fn REAL_ELT(x: SEXP, i: R_xlen_t) -> f64;
     pub fn LOGICAL_ELT(x: SEXP, i: R_xlen_t) -> ::std::os::raw::c_int;
@@ -894,6 +1016,8 @@ unsafe extern "C-unwind" {
     pub fn R_altrep_data2(x: SEXP) -> SEXP;
     pub fn R_set_altrep_data1(x: SEXP, v: SEXP);
     pub fn R_set_altrep_data2(x: SEXP, v: SEXP);
+
+    // Vector data accessors (mutable pointers)
     pub fn LOGICAL(x: SEXP) -> *mut ::std::os::raw::c_int;
     pub fn INTEGER(x: SEXP) -> *mut ::std::os::raw::c_int;
     pub fn REAL(x: SEXP) -> *mut f64;
@@ -944,11 +1068,67 @@ unsafe extern "C-unwind" {
     pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
 
     // Symbol creation and access
+    #[doc(alias = "install")]
     pub fn Rf_install(name: *const ::std::os::raw::c_char) -> SEXP;
     /// Get the print name (CHARSXP) of a symbol (SYMSXP)
     pub fn PRINTNAME(x: SEXP) -> SEXP;
     /// Get the C string pointer from a CHARSXP
+    #[doc(alias = "CHAR")]
     pub fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
+
+    // Attribute access
+    #[doc(alias = "getAttrib")]
+    pub fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
+    #[doc(alias = "namesgets")]
+    pub fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
+    #[doc(alias = "dimgets")]
+    pub fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
+
+    // Duplication
+    #[doc(alias = "duplicate")]
+    pub fn Rf_duplicate(s: SEXP) -> SEXP;
+    #[doc(alias = "shallow_duplicate")]
+    pub fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
+
+    // Type coercion
+    #[doc(alias = "asLogical")]
+    pub fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
+    #[doc(alias = "asInteger")]
+    pub fn Rf_asInteger(x: SEXP) -> ::std::os::raw::c_int;
+    #[doc(alias = "asReal")]
+    pub fn Rf_asReal(x: SEXP) -> f64;
+    #[doc(alias = "asChar")]
+    pub fn Rf_asChar(x: SEXP) -> SEXP;
+    #[doc(alias = "coerceVector")]
+    pub fn Rf_coerceVector(v: SEXP, sexptype: SEXPTYPE) -> SEXP;
+
+    // Matrix utilities
+    #[doc(alias = "nrows")]
+    pub fn Rf_nrows(x: SEXP) -> ::std::os::raw::c_int;
+    #[doc(alias = "ncols")]
+    pub fn Rf_ncols(x: SEXP) -> ::std::os::raw::c_int;
+
+    // Inheritance checking
+    #[doc(alias = "inherits")]
+    pub fn Rf_inherits(x: SEXP, klass: *const ::std::os::raw::c_char) -> Rboolean;
+
+    // Type checking predicates
+    #[doc(alias = "isNull")]
+    pub fn Rf_isNull(s: SEXP) -> Rboolean;
+    #[doc(alias = "isSymbol")]
+    pub fn Rf_isSymbol(s: SEXP) -> Rboolean;
+    #[doc(alias = "isLogical")]
+    pub fn Rf_isLogical(s: SEXP) -> Rboolean;
+    #[doc(alias = "isReal")]
+    pub fn Rf_isReal(s: SEXP) -> Rboolean;
+    #[doc(alias = "isComplex")]
+    pub fn Rf_isComplex(s: SEXP) -> Rboolean;
+    #[doc(alias = "isExpression")]
+    pub fn Rf_isExpression(s: SEXP) -> Rboolean;
+    #[doc(alias = "isEnvironment")]
+    pub fn Rf_isEnvironment(s: SEXP) -> Rboolean;
+    #[doc(alias = "isString")]
+    pub fn Rf_isString(s: SEXP) -> Rboolean;
 }
 
 // region: Connections API (R_ext/Connections.h)
@@ -1103,9 +1283,7 @@ unsafe extern "C-unwind" {
 
 // endregion
 
-// =============================================================================
-// Legacy `extern "C"` types (kept for compatibility testing)
-// =============================================================================
+// region: Legacy `extern "C"` types (kept for compatibility testing)
 
 /// Legacy types using `extern "C"` ABI instead of `extern "C-unwind"`.
 ///
@@ -1158,9 +1336,9 @@ pub mod legacy_c {
     }
 }
 
-// =============================================================================
-// Non-API: Encoding / locale state (Defn.h)
-// =============================================================================
+// endregion
+
+// region: Non-API encoding/locale state (Defn.h)
 
 /// Non-API encoding / locale helpers from R's `Defn.h`.
 ///
@@ -1184,9 +1362,9 @@ pub mod nonapi_encoding {
     }
 }
 
-// =============================================================================
-// Non-API: Stack checking variables (Rinterface.h)
-// =============================================================================
+// endregion
+
+// region: Non-API stack checking variables (Rinterface.h)
 
 /// Non-API stack checking variables from `Rinterface.h`.
 ///
@@ -1234,77 +1412,192 @@ pub mod nonapi_stack {
     }
 }
 
-// =============================================================================
-// R Helper Functions (Rust equivalents of common R macros and inline functions)
-// =============================================================================
+// endregion
 
-/// Convenience wrapper for `Rf_cons` (equivalent to `CONS(a, b)` macro).
+// region: Inline Helper Functions (Rust implementations of R's inline functions)
+
+/// Create a length-1 string vector from a C string.
 ///
-/// Creates a cons cell (pairlist node) with `car` and `cdr`.
+/// Rust equivalent of R's inline `Rf_mkString(s)`, which is
+/// shorthand for `ScalarString(mkChar(s))`.
 ///
 /// # Safety
 ///
-/// - Both `car` and `cdr` must be valid SEXP values or R_NilValue
+/// - `s` must be a valid null-terminated C string
 /// - Must be called from R's main thread
-/// - The result must be protected from garbage collection
-#[inline(always)]
-pub unsafe fn cons(car: SEXP, cdr: SEXP) -> SEXP {
-    unsafe { Rf_cons(car, cdr) }
+/// - Result must be protected from GC
+#[doc(alias = "mkString")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_mkString(s: *const ::std::os::raw::c_char) -> SEXP {
+    unsafe {
+        let charsxp = Rf_mkChar(s);
+        let protected = Rf_protect(charsxp);
+        let result = Rf_ScalarString(protected);
+        Rf_unprotect(1);
+        result
+    }
 }
 
-/// Convenience wrapper for `Rf_protect` (equivalent to `PROTECT(s)` macro).
+/// Build a pairlist with 1 element.
+///
+/// Rust equivalent of R's inline `Rf_list1(s)`.
 ///
 /// # Safety
 ///
-/// - `s` must be a valid SEXP value
+/// - `s` must be a valid SEXP
 /// - Must be called from R's main thread
-/// - Each PROTECT must be paired with an UNPROTECT
-#[inline(always)]
-pub unsafe fn protect(s: SEXP) -> SEXP {
-    unsafe { Rf_protect(s) }
+/// - Result must be protected from GC
+#[doc(alias = "list1")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_list1(s: SEXP) -> SEXP {
+    unsafe { Rf_cons(s, R_NilValue) }
 }
 
-/// Convenience wrapper for `Rf_unprotect` (equivalent to `UNPROTECT(n)` macro).
+/// Build a pairlist with 2 elements.
+///
+/// Rust equivalent of R's inline `Rf_list2(s, t)`.
 ///
 /// # Safety
 ///
+/// - Both SEXPs must be valid
 /// - Must be called from R's main thread
-/// - Must match with previous PROTECT calls
-/// - `n` must not exceed the number of currently protected objects
-#[inline(always)]
-pub unsafe fn unprotect(n: ::std::os::raw::c_int) {
-    unsafe { Rf_unprotect(n) }
+/// - Result must be protected from GC
+#[doc(alias = "list2")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_list2(s: SEXP, t: SEXP) -> SEXP {
+    unsafe { Rf_cons(s, Rf_cons(t, R_NilValue)) }
 }
 
-/// Get the length of a SEXP as `R_xlen_t`.
+/// Build a pairlist with 3 elements.
+///
+/// Rust equivalent of R's inline `Rf_list3(s, t, u)`.
+///
+/// # Safety
+///
+/// - All SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "list3")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_list3(s: SEXP, t: SEXP, u: SEXP) -> SEXP {
+    unsafe { Rf_cons(s, Rf_cons(t, Rf_cons(u, R_NilValue))) }
+}
+
+/// Build a pairlist with 4 elements.
+///
+/// Rust equivalent of R's inline `Rf_list4(s, t, u, v)`.
+///
+/// # Safety
+///
+/// - All SEXPs must be valid
+/// - Must be called from R's main thread
+/// - Result must be protected from GC
+#[doc(alias = "list4")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_list4(s: SEXP, t: SEXP, u: SEXP, v: SEXP) -> SEXP {
+    unsafe { Rf_cons(s, Rf_cons(t, Rf_cons(u, Rf_cons(v, R_NilValue)))) }
+}
+
+/// Check if a SEXP is a numeric type (integer, logical, or real, excluding factors).
+///
+/// Rust equivalent of R's inline `Rf_isNumeric()`.
 ///
 /// # Safety
 ///
 /// - `x` must be a valid SEXP
 /// - Must be called from R's main thread
-#[inline(always)]
-pub unsafe fn xlength(x: SEXP) -> R_xlen_t {
-    unsafe { Rf_xlength(x) }
+#[doc(alias = "isNumeric")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_isNumeric(x: SEXP) -> bool {
+    unsafe {
+        let typ = TYPEOF(x);
+        (typ == SEXPTYPE::INTSXP || typ == SEXPTYPE::LGLSXP || typ == SEXPTYPE::REALSXP)
+            && Rf_inherits(x, c"factor".as_ptr()) == Rboolean::FALSE
+    }
 }
 
-/// Get the length of a SEXP as `usize`.
+/// Check if a SEXP is a number type (numeric or complex).
+///
+/// Rust equivalent of R's inline `Rf_isNumber()`.
 ///
 /// # Safety
 ///
 /// - `x` must be a valid SEXP
 /// - Must be called from R's main thread
-#[inline(always)]
-pub unsafe fn length(x: SEXP) -> usize {
-    unsafe { Rf_xlength(x) as usize }
+#[doc(alias = "isNumber")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_isNumber(x: SEXP) -> bool {
+    unsafe {
+        Rf_isNumeric(x) || TYPEOF(x) == SEXPTYPE::CPLXSXP
+    }
 }
 
-/// Check if a SEXP is NULL or R_NilValue.
+/// Check if a SEXP is an atomic vector.
+///
+/// Rust equivalent of R's inline `Rf_isVectorAtomic()`.
+/// Returns true for logical, integer, real, complex, character, and raw vectors.
 ///
 /// # Safety
 ///
-/// - `x` must be a valid SEXP or null
-#[inline(always)]
-pub unsafe fn is_null(x: SEXP) -> bool {
-    x.is_null() || std::ptr::addr_eq(x, unsafe { R_NilValue })
+/// - `x` must be a valid SEXP
+/// - Must be called from R's main thread
+#[doc(alias = "isVectorAtomic")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_isVectorAtomic(x: SEXP) -> bool {
+    unsafe {
+        let typ = TYPEOF(x);
+        matches!(
+            typ,
+            SEXPTYPE::LGLSXP
+                | SEXPTYPE::INTSXP
+                | SEXPTYPE::REALSXP
+                | SEXPTYPE::CPLXSXP
+                | SEXPTYPE::STRSXP
+                | SEXPTYPE::RAWSXP
+        )
+    }
 }
+
+/// Check if a SEXP is a vector list (VECSXP or EXPRSXP).
+///
+/// Rust equivalent of R's inline `Rf_isVectorList()`.
+///
+/// # Safety
+///
+/// - `x` must be a valid SEXP
+/// - Must be called from R's main thread
+#[doc(alias = "isVectorList")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_isVectorList(x: SEXP) -> bool {
+    unsafe {
+        let typ = TYPEOF(x);
+        typ == SEXPTYPE::VECSXP || typ == SEXPTYPE::EXPRSXP
+    }
+}
+
+/// Check if a SEXP is a vector (atomic vector or list).
+///
+/// Rust equivalent of R's inline `Rf_isVector()`.
+///
+/// # Safety
+///
+/// - `x` must be a valid SEXP
+/// - Must be called from R's main thread
+#[doc(alias = "isVector")]
+#[allow(non_snake_case)]
+#[inline]
+pub unsafe fn Rf_isVector(x: SEXP) -> bool {
+    unsafe { Rf_isVectorAtomic(x) || Rf_isVectorList(x) }
+}
+
+// endregion
 
