@@ -179,9 +179,15 @@ impl REngineBuilder {
 /// process terminates.
 pub struct REngine;
 
+impl Drop for REngine {
+    /// Implements drop such that `std::mem::forget` leaks `REngine` rather than
+    /// dropping it, when `Drop` is absent.
+    fn drop(&mut self) {}
+}
+
 impl REngine {
     /// Create a new builder for configuring R initialization.
-    pub fn new() -> REngineBuilder {
+    pub fn build() -> REngineBuilder {
         REngineBuilder::new()
     }
 

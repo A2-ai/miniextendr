@@ -4,7 +4,7 @@
 //! crate's preserve mechanism.
 //!
 //! Layout inside the RAWSXP (bytes):
-//!   [optional leading pad][Header][user bytes...]
+//!   \[optional leading pad\]\[Header\]\[user bytes...\]
 //!
 //! We always return a pointer aligned to at least:
 //!   max(requested_align, align_of::<Header>())

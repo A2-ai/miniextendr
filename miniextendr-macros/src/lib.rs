@@ -249,7 +249,7 @@ enum CoercionMapping {
         r_native: proc_macro2::TokenStream,
         target: proc_macro2::TokenStream,
     },
-    /// Vec coercion: extract R native slice, coerce element-wise to Vec<target>
+    /// Vec coercion: extract R native slice, coerce element-wise to `Vec<target>`
     Vec {
         r_native_elem: proc_macro2::TokenStream,
         target_elem: proc_macro2::TokenStream,

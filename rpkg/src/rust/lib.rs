@@ -72,9 +72,18 @@ pub fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
     left + right
 }
 
+#[derive(Debug)]
+pub struct RustError;
+
+impl From<()> for RustError {
+    fn from(_value: ()) -> Self {
+        Self 
+    }
+}
+
 #[miniextendr]
-pub fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, ()> {
-    left.checked_add(right).ok_or(())
+pub fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, RustError> {
+    left.checked_add(right).ok_or(().into())
 }
 
 #[miniextendr]
@@ -1271,7 +1280,7 @@ pub fn unit_circle(n: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 #[miniextendr(class = "SimpleVecInt", pkg = "rpkg")]
-pub struct SimpleVecIntClass(Vec<i32>);
+pub struct SimpleVecIntClass(pub Vec<i32>);
 
 #[miniextendr]
 #[unsafe(no_mangle)]
@@ -1293,8 +1302,13 @@ pub unsafe extern "C-unwind" fn rpkg_simple_vec_int(x: SEXP) -> SEXP {
 
 /// Test case for auto-inferred base type (no explicit `base = "..."` attribute)
 #[miniextendr(class = "InferredVecReal", pkg = "rpkg")]
-pub struct InferredVecRealClass(Vec<f64>);
+pub struct InferredVecRealClass(pub Vec<f64>);
 
+/// .
+///
+/// # Safety
+///
+/// .
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -1315,7 +1329,7 @@ pub unsafe extern "C-unwind" fn rpkg_inferred_vec_real(x: SEXP) -> SEXP {
 
 /// ALTREP class wrapping a Box<[i32]> - fixed-size heap allocation
 #[miniextendr(class = "BoxedInts", pkg = "rpkg")]
-pub struct BoxedIntsClass(Box<[i32]>);
+pub struct BoxedIntsClass(pub Box<[i32]>);
 
 /// Create an ALTREP backed by a boxed slice.
 /// More memory-efficient than Vec when size is known upfront.
@@ -1325,16 +1339,14 @@ pub fn boxed_ints(n: i32) -> SEXP {
     unsafe { BoxedIntsClass::into_altrep(data) }
 }
 
-// -----------------------------------------------------------------------------
-// StaticInts: &'static [i32] wrapper (static slice example)
-// -----------------------------------------------------------------------------
+// region: StaticInts: &'static [i32] wrapper (static slice example)
 
 /// Static data that lives for the entire program lifetime
 static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
 
-/// ALTREP class wrapping a static slice - demonstrates &'static [T] support
+/// ALTREP class wrapping a static slice - demonstrates `&'static [T]` support
 #[miniextendr(class = "StaticInts", pkg = "rpkg")]
-pub struct StaticIntsClass(&'static [i32]);
+pub struct StaticIntsClass(pub &'static [i32]);
 
 /// Create an ALTREP backed by static data.
 /// This data lives in the binary and never needs to be freed.
@@ -1353,6 +1365,8 @@ pub fn leaked_ints(n: i32) -> SEXP {
     unsafe { StaticIntsClass::into_altrep(leaked) }
 }
 
+// endregion
+
 // -----------------------------------------------------------------------------
 // StaticStrings: &'static [&'static str] wrapper
 // -----------------------------------------------------------------------------
@@ -1362,7 +1376,7 @@ static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
 /// ALTREP class wrapping static string slices
 #[miniextendr(class = "StaticStrings", pkg = "rpkg")]
-pub struct StaticStringsClass(&'static [&'static str]);
+pub struct StaticStringsClass(pub &'static [&'static str]);
 
 /// Create a string ALTREP backed by static data.
 #[miniextendr]
@@ -1749,7 +1763,7 @@ use miniextendr_api::{CanCoerceToInteger, Coerce, CoerceError, RNative, TryCoerc
 struct UserId(i32); // Tuple struct
 
 #[derive(Clone, Copy, RNative)]
-struct Score(f64); // Tuple struct
+pub struct Score(pub f64); // Tuple struct
 
 #[derive(Clone, Copy, RNative)]
 struct Temperature {

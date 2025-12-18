@@ -10,7 +10,7 @@ static INIT: Once = Once::new();
 
 fn initialize_r() {
     INIT.call_once(|| unsafe {
-        let engine = miniextendr_engine::REngine::new()
+        let engine = miniextendr_engine::REngine::build()
             .with_args(&["R", "--quiet", "--vanilla"])
             .init()
             .expect("Failed to initialize R");
