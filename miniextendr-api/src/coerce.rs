@@ -593,7 +593,10 @@ mod tests {
     #[test]
     fn test_identity() {
         assert_eq!(Coerce::<i32>::coerce(42i32), 42i32);
-        assert_eq!(Coerce::<f64>::coerce(3.14f64), 3.14f64);
+        assert_eq!(
+            Coerce::<f64>::coerce(std::f64::consts::PI),
+            std::f64::consts::PI
+        );
     }
 
     #[test]

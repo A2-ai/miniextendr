@@ -104,8 +104,6 @@ pub use miniextendr_macros::RNative;
 ///   fn foo(#[miniextendr(coerce)] x: u16, y: i32) { ... }
 ///   ```
 ///
-/// See [`COERCE.md`] in the repository for details on supported coercions.
-///
 /// Multiple attributes can be combined: `#[miniextendr(coerce, invisible)]`
 ///
 /// ## R wrappers

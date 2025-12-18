@@ -20,7 +20,6 @@
 //! ## Safety
 //!
 //! All functions in this module are unsafe and must be called from the R main thread.
-//! Use the safe [`Protected`] wrapper for RAII-style protection.
 
 use crate::ffi::{
     CAR, CDR, R_NilValue, R_PreserveObject, R_xlen_t, Rf_cons, Rf_protect, Rf_unprotect,
@@ -155,91 +154,3 @@ pub unsafe fn release(cell: SEXP) {
         // SETCDR(cell, R_NilValue);
     }
 }
-
-/// RAII wrapper for a protected R object.
-///
-/// Automatically protects the SEXP on creation and releases it on drop.
-/// This ensures that the object won't be garbage collected while the
-/// `Protected` value is in scope.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::preserve::Protected;
-///
-/// unsafe {
-///     let protected = Protected::new(Rf_allocVector(INTSXP, 10));
-///     // The vector is now protected from GC
-///     // ... use the SEXP ...
-///     // Automatically released when `protected` goes out of scope
-/// }
-/// ```
-///
-/// # Safety
-///
-/// Must only be used from the R main thread. The inner SEXP should not
-/// be used after the `Protected` is dropped.
-pub struct Protected {
-    cell: SEXP,
-}
-
-impl Protected {
-    /// Protect a SEXP from garbage collection.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn new(sexp: SEXP) -> Self {
-        unsafe {
-            let cell = insert(sexp);
-            Self { cell }
-        }
-    }
-
-    /// Get the protected SEXP.
-    ///
-    /// The returned SEXP is valid as long as this `Protected` value
-    /// hasn't been dropped.
-    #[inline]
-    pub fn get(&self) -> SEXP {
-        unsafe {
-            if self.cell == R_NilValue {
-                R_NilValue
-            } else {
-                crate::ffi::TAG(self.cell)
-            }
-        }
-    }
-
-    /// Consume this protection and return the inner SEXP.
-    ///
-    /// After calling this, the SEXP is no longer protected.
-    ///
-    /// # Safety
-    ///
-    /// The caller must ensure the returned SEXP is either:
-    /// - Immediately protected by other means, or
-    /// - Stored in a location that R knows about (e.g., returned to R)
-    #[inline]
-    pub unsafe fn into_inner(self) -> SEXP {
-        let sexp = self.get();
-        // Prevent drop from releasing
-        std::mem::forget(self);
-        sexp
-    }
-}
-
-impl Drop for Protected {
-    fn drop(&mut self) {
-        unsafe {
-            release(self.cell);
-        }
-    }
-}
-
-// Safety: Protected is only used on the R main thread
-unsafe impl Send for Protected {}
-
-// Tests for this module require R runtime and should be run via R CMD check.
-// They are located in rpkg/tests/ as integration tests.

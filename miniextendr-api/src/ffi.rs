@@ -172,6 +172,10 @@ pub trait SexpExt {
     ///
     /// Equivalent to R's `ALTREP(x)` macro.
     fn is_altrep(&self) -> bool;
+
+    /// Check if this `SEXP` contains any elements.
+    /// 
+    fn is_empty(&self) -> bool;
 }
 
 impl SexpExt for SEXP {
@@ -292,6 +296,11 @@ impl SexpExt for SEXP {
     #[inline]
     fn is_altrep(&self) -> bool {
         unsafe { ALTREP(*self) != 0 }
+    }
+    
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 

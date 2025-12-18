@@ -1,4 +1,4 @@
-//! ExternalPtr<T> - A Box-like owned pointer that wraps R's EXTPTRSXP
+//! `ExternalPtr<T>` - A Box-like owned pointer that wraps R's EXTPTRSXP
 //!
 //! This provides ownership semantics similar to Box<T>, with the key difference
 //! that cleanup is deferred to R's garbage collector via finalizers.
