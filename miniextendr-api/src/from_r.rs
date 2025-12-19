@@ -466,3 +466,244 @@ impl TryFromSexp for String {
         })
     }
 }
+
+// =============================================================================
+// Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
+// =============================================================================
+
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
+
+/// Convert R named list (VECSXP) to HashMap<String, V>.
+impl<V: TryFromSexp> TryFromSexp for HashMap<String, V>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        named_list_to_map(sexp, HashMap::with_capacity)
+    }
+}
+
+/// Convert R named list (VECSXP) to BTreeMap<String, V>.
+impl<V: TryFromSexp> TryFromSexp for BTreeMap<String, V>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        named_list_to_map(sexp, |_| BTreeMap::new())
+    }
+}
+
+/// Helper to convert R named list to a map type.
+fn named_list_to_map<V, M, F>(sexp: SEXP, create_map: F) -> Result<M, SexpError>
+where
+    V: TryFromSexp,
+    V::Error: Into<SexpError>,
+    M: Extend<(String, V)>,
+    F: FnOnce(usize) -> M,
+{
+    use crate::ffi::{Rf_getAttrib, Rf_translateCharUTF8, STRING_ELT, VECTOR_ELT};
+
+    let actual = sexp.type_of();
+    if actual != SEXPTYPE::VECSXP {
+        return Err(SexpTypeError {
+            expected: SEXPTYPE::VECSXP,
+            actual,
+        }
+        .into());
+    }
+
+    let len = sexp.len();
+    let mut map = create_map(len);
+
+    // Get names attribute
+    let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
+    let has_names = names.type_of() == SEXPTYPE::STRSXP && names.len() == len;
+
+    for i in 0..len {
+        let key = if has_names {
+            let charsxp = unsafe { STRING_ELT(names, i as crate::ffi::R_xlen_t) };
+            if charsxp == unsafe { crate::ffi::R_NaString } {
+                String::new()
+            } else {
+                let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
+                if c_str.is_null() {
+                    String::new()
+                } else {
+                    unsafe { std::ffi::CStr::from_ptr(c_str) }
+                        .to_str()
+                        .unwrap_or("")
+                        .to_owned()
+                }
+            }
+        } else {
+            // Use index as key if no names
+            i.to_string()
+        };
+
+        let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+        let value = V::try_from_sexp(elem).map_err(|e| e.into())?;
+        map.extend(std::iter::once((key, value)));
+    }
+
+    Ok(map)
+}
+
+/// Convert R vector to HashSet<T>.
+impl<T> TryFromSexp for HashSet<T>
+where
+    T: RNativeType + Eq + Hash,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(slice.iter().copied().collect())
+    }
+}
+
+/// Convert R vector to BTreeSet<T>.
+impl<T> TryFromSexp for BTreeSet<T>
+where
+    T: RNativeType + Ord,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(slice.iter().copied().collect())
+    }
+}
+
+/// Convert R character vector to Vec<String>.
+impl TryFromSexp for Vec<String> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let s = if charsxp == unsafe { crate::ffi::R_NaString } {
+                String::new()
+            } else {
+                let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
+                if c_str.is_null() {
+                    String::new()
+                } else {
+                    unsafe { std::ffi::CStr::from_ptr(c_str) }
+                        .to_str()
+                        .unwrap_or("")
+                        .to_owned()
+                }
+            };
+            result.push(s);
+        }
+
+        Ok(result)
+    }
+}
+
+/// Convert R character vector to HashSet<String>.
+impl TryFromSexp for HashSet<String> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().collect())
+    }
+}
+
+/// Convert R character vector to BTreeSet<String>.
+impl TryFromSexp for BTreeSet<String> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().collect())
+    }
+}
+
+// =============================================================================
+// Coerced wrapper - bridge between TryFromSexp and TryCoerce
+// =============================================================================
+
+use crate::coerce::{Coerced, TryCoerce};
+
+/// Error type for coerced SEXP conversions.
+#[derive(Debug, Clone)]
+pub enum CoercedSexpError {
+    /// Error from the underlying SEXP conversion
+    Sexp(SexpError),
+    /// Error from the coercion step
+    Coerce(String),
+}
+
+impl From<SexpError> for CoercedSexpError {
+    fn from(e: SexpError) -> Self {
+        CoercedSexpError::Sexp(e)
+    }
+}
+
+impl From<SexpTypeError> for CoercedSexpError {
+    fn from(e: SexpTypeError) -> Self {
+        CoercedSexpError::Sexp(e.into())
+    }
+}
+
+/// Convert R value to `Coerced<T, R>` by reading `R` and coercing to `T`.
+///
+/// This enables reading non-native Rust types from R with coercion:
+///
+/// ```ignore
+/// // Read i64 from R integer (i32)
+/// let val: Coerced<i64, i32> = TryFromSexp::try_from_sexp(sexp)?;
+/// let i64_val: i64 = val.into_inner();
+///
+/// // Works with collections too:
+/// let vec: Vec<Coerced<i64, i32>> = ...;
+/// let set: HashSet<Coerced<NonZeroU32, i32>> = ...;
+/// ```
+impl<T, R> TryFromSexp for Coerced<T, R>
+where
+    R: TryFromSexp,
+    R: TryCoerce<T>,
+    <R as TryFromSexp>::Error: Into<CoercedSexpError>,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    type Error = CoercedSexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let r_val: R = R::try_from_sexp(sexp).map_err(Into::into)?;
+        let value: T = r_val
+            .try_coerce()
+            .map_err(|e| CoercedSexpError::Coerce(format!("{e:?}")))?;
+        Ok(Coerced::new(value))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let r_val: R = unsafe { R::try_from_sexp_unchecked(sexp).map_err(Into::into)? };
+        let value: T = r_val
+            .try_coerce()
+            .map_err(|e| CoercedSexpError::Coerce(format!("{e:?}")))?;
+        Ok(Coerced::new(value))
+    }
+}

@@ -8,20 +8,20 @@
 /// Derive macro for implementing `TypedExternal` on a type.
 /// This enables the type to be stored in an `ExternalPtr<T>`.
 pub use miniextendr_macros::ExternalPtr;
-/// Derive macro for implementing `RNative` on newtype wrappers.
-/// This enables the newtype to be used with `Coerce<R>` traits.
+/// Derive macro for implementing `RNativeType` on newtype wrappers.
+/// This enables the newtype to work with `Vec<T>` conversions.
 ///
 /// Supports both tuple structs and single-field named structs:
 ///
 /// ```ignore
-/// #[derive(Clone, Copy, miniextendr_api::RNative)]
+/// #[derive(Clone, Copy, miniextendr_api::RNativeType)]
 /// struct UserId(i32);  // tuple struct
 ///
-/// #[derive(Clone, Copy, miniextendr_api::RNative)]
+/// #[derive(Clone, Copy, miniextendr_api::RNativeType)]
 /// struct Temperature { celsius: f64 }  // named field
 /// ```
 ///
-pub use miniextendr_macros::RNative;
+pub use miniextendr_macros::RNativeType;
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -131,8 +131,8 @@ pub use altrep_data::{
     AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
     AltStringData, AltrepDataptr, AltrepLen, Logical, Sortedness,
 };
-// Re-export AltrepBase for base type inference
-pub use altrep::{AltrepBase, RBase};
+// Re-export RBase enum
+pub use altrep::RBase;
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
@@ -162,7 +162,7 @@ pub mod error;
 pub use error::{r_print, r_println, r_stop, r_warning};
 
 // Re-export from_r
-pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
+pub use from_r::{CoercedSexpError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
 // NOTE: Disabled because it references non-exported symbols from R's Defn.h
@@ -176,15 +176,9 @@ pub mod backtrace;
 
 pub mod coerce;
 pub use coerce::{
-    // Trait bounds (for where clauses)
-    CanCoerceToInteger,
-    CanCoerceToLogical,
-    CanCoerceToRaw,
-    CanCoerceToReal,
-    // Traits
     Coerce,
     CoerceError,
-    RNative,
+    Coerced,
     TryCoerce,
 };
 

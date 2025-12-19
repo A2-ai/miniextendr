@@ -539,7 +539,7 @@ pub trait AltrepExtractSubset {
 ///
 /// This is automatically implemented via blanket impls for types that implement
 /// one of the `Alt*Data` traits. It allows the `#[miniextendr]` macro to infer
-/// the base type without requiring `base = "..."` or manual `AltrepBase` impl.
+/// the base type without requiring an explicit `base = "..."` attribute.
 ///
 /// # Example
 ///
