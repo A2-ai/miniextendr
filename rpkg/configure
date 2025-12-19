@@ -2284,6 +2284,9 @@ mkdir -p src/rust/.cargo
 ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c"
 
 
+ac_config_commands="$ac_config_commands patch-staticlib-name"
+
+
 
 cat >confcache <<\_ACEOF
 # This file is a shell script that caches the results of configure
@@ -2985,7 +2988,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-CARGO="$CARGO" NOT_CRAN="$NOT_CRAN"
+CARGO="$CARGO"
 
 _ACEOF
 
@@ -3420,12 +3423,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
   case $ac_file$ac_mode in
     "patch-staticlib-name":C)
-          if test "$NOT_CRAN" = "true"; then
-    _pkgid_flags="--color=never"
-  else
-    _pkgid_flags="--offline --color=never"
-  fi
-  _pkgid_output=`$CARGO pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
+      _pkgid_output=`$CARGO pkgid --offline --color=never --manifest-path src/rust/Cargo.toml`
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
