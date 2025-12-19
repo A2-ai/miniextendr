@@ -231,7 +231,7 @@ impl IntoR for &str {
 
 impl<T> IntoR for Vec<T>
 where
-    T: crate::coerce::RNative,
+    T: crate::ffi::RNativeType,
 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -246,7 +246,7 @@ where
 
 impl<T> IntoR for &[T]
 where
-    T: crate::coerce::RNative,
+    T: crate::ffi::RNativeType,
 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -261,7 +261,7 @@ where
 
 /// Convert a slice to an R vector (checked).
 #[inline]
-unsafe fn vec_to_sexp<T: crate::coerce::RNative>(slice: &[T]) -> crate::ffi::SEXP {
+unsafe fn vec_to_sexp<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SEXP {
     unsafe {
         let n = slice.len();
         let vec = crate::ffi::Rf_allocVector(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
@@ -273,7 +273,7 @@ unsafe fn vec_to_sexp<T: crate::coerce::RNative>(slice: &[T]) -> crate::ffi::SEX
 
 /// Convert a slice to an R vector (unchecked).
 #[inline]
-unsafe fn vec_to_sexp_unchecked<T: crate::coerce::RNative>(slice: &[T]) -> crate::ffi::SEXP {
+unsafe fn vec_to_sexp_unchecked<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SEXP {
     unsafe {
         let n = slice.len();
         let vec = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
@@ -284,13 +284,150 @@ unsafe fn vec_to_sexp_unchecked<T: crate::coerce::RNative>(slice: &[T]) -> crate
 }
 
 // =============================================================================
+// Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
+// =============================================================================
+
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
+
+/// Convert HashMap<String, V> to R named list (VECSXP).
+impl<V: IntoR> IntoR for HashMap<String, V> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        map_to_named_list(self.into_iter())
+    }
+}
+
+/// Convert BTreeMap<String, V> to R named list (VECSXP).
+impl<V: IntoR> IntoR for BTreeMap<String, V> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        map_to_named_list(self.into_iter())
+    }
+}
+
+/// Helper to convert an iterator of (String, V) pairs to a named R list.
+fn map_to_named_list<V: IntoR>(iter: impl ExactSizeIterator<Item = (String, V)>) -> crate::ffi::SEXP {
+    unsafe {
+        let n = iter.len();
+        let list = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(list);
+
+        // Allocate names vector
+        let names = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(names);
+
+        for (i, (key, value)) in iter.enumerate() {
+            // Set list element
+            crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, value.into_sexp());
+
+            // Set name
+            let charsxp = crate::ffi::Rf_mkCharLenCE(
+                key.as_ptr().cast(),
+                key.len() as i32,
+                crate::ffi::CE_UTF8,
+            );
+            crate::ffi::SET_STRING_ELT(names, i as crate::ffi::R_xlen_t, charsxp);
+        }
+
+        // Attach names attribute
+        crate::ffi::Rf_setAttrib(list, crate::ffi::R_NamesSymbol, names);
+
+        crate::ffi::Rf_unprotect(2);
+        list
+    }
+}
+
+/// Convert HashSet<T> to R vector.
+impl<T> IntoR for HashSet<T>
+where
+    T: crate::ffi::RNativeType + Eq + Hash,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<T> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert BTreeSet<T> to R vector.
+impl<T> IntoR for BTreeSet<T>
+where
+    T: crate::ffi::RNativeType + Ord,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<T> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert HashSet<String> to R character vector.
+impl IntoR for HashSet<String> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<String> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert BTreeSet<String> to R character vector.
+impl IntoR for BTreeSet<String> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<String> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert Vec<String> to R character vector (STRSXP).
+impl IntoR for Vec<String> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, s) in self.into_iter().enumerate() {
+                let charsxp = crate::ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    crate::ffi::CE_UTF8,
+                );
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert &[&str] to R character vector (STRSXP).
+impl IntoR for &[&str] {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, s) in self.iter().enumerate() {
+                let charsxp = crate::ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    crate::ffi::CE_UTF8,
+                );
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+// =============================================================================
 // Rayon RVec conversion
 // =============================================================================
 
 #[cfg(feature = "rayon")]
 impl<T> IntoR for crate::rayon_bridge::RVec<T>
 where
-    T: crate::coerce::RNative + Send,
+    T: crate::ffi::RNativeType + Send,
 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {

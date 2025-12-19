@@ -523,6 +523,10 @@ impl RNativeType for Rcomplex {
     }
 }
 
+impl RNativeType for Rcomplex {
+    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::CPLXSXP;
+}
+
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]

@@ -1,7 +1,7 @@
 //! Rayon integration for parallel computation with R interop.
 //!
 //! This module provides seamless Rayon integration by leveraging miniextendr's
-//! existing type system (`IntoR`, `RNative`, `TryCoerce`).
+//! existing type system (`IntoR`, `RNativeType`, `TryCoerce`).
 //!
 //! # Design Philosophy
 //!
@@ -10,7 +10,7 @@
 //!
 //! Uses existing infrastructure:
 //! - `IntoR` trait for R conversion
-//! - `RNative` trait for type → SEXPTYPE mapping
+//! - `RNativeType` trait for type → SEXPTYPE mapping
 //! - `with_r_thread` for main thread dispatch
 //!
 //! # Quick Start

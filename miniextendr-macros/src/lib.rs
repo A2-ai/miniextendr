@@ -103,13 +103,13 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
 /// A lightweight view of a function signature used by wrapper generation.
 ///
-/// `ExtendrFunction` is the shared “naming and signature” layer used by both:
+/// `MiniextendrFunction` is the shared “naming and signature” layer used by both:
 /// - `#[miniextendr]` (attribute macro)
 /// - `miniextendr_module!` (registration macro)
 ///
 /// It intentionally excludes the function body to keep cloning cheap and to make it explicit
 /// that wrapper generation depends on signature shape + identifier naming.
-struct ExtendrFunction {
+struct MiniextendrFunction {
     pub attrs: Vec<syn::Attribute>,
     pub vis: syn::Visibility,
     pub abi: Option<syn::Abi>,
@@ -119,14 +119,10 @@ struct ExtendrFunction {
     pub output: syn::ReturnType,
 }
 
-/// Identifier for the generated `const &str` holding the R wrapper source code.
-///
-/// This must remain consistent between the attribute macro (which defines the symbol)
-/// and the module macro (which references it).
-pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    let rust_ident_upper = rust_ident.to_string().to_uppercase();
-    quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
-}
+impl syn::parse::Parse for MiniextendrFunction {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let itemfn: syn::ItemFn = input.parse()?;
+        let signature: syn::Signature = itemfn.sig;
 
 // normalize_r_arg_ident is now provided by r_wrapper_builder module
 
@@ -186,7 +182,7 @@ fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
         .collect()
 }
 
-impl ExtendrFunction {
+impl MiniextendrFunction {
     fn from_item_fn(itemfn: &syn::ItemFn) -> Self {
         let signature = &itemfn.sig;
         Self {
@@ -493,12 +489,12 @@ pub fn miniextendr(
             .push(syn::parse_quote!(#[track_caller]));
     }
 
-    let extendr_function: ExtendrFunction = ExtendrFunction::from_item_fn(&original_item);
+    let extendr_function: MiniextendrFunction = MiniextendrFunction::from_item_fn(&original_item);
     let uses_internal_c_wrapper = extendr_function.uses_internal_c_wrapper();
     let call_method_def = extendr_function.call_method_def_ident();
     let c_ident = extendr_function.c_wrapper_ident();
     let r_wrapper_generator = extendr_function.r_wrapper_const_ident();
-    let ExtendrFunction {
+    let MiniextendrFunction {
         attrs,
         vis,
         abi,
@@ -1950,24 +1946,25 @@ pub fn r_ffi_checked(
     expanded.into()
 }
 
-/// Derive macro for implementing `RNative` on a newtype wrapper.
+/// Derive macro for implementing `RNativeType` on a newtype wrapper.
 ///
-/// This allows newtype wrappers around R native types to be used with `Coerce<R>`.
-/// The inner type must implement `RNative`.
+/// This allows newtype wrappers around R native types to work with `Vec<T>`,
+/// `&[T]` conversions and the `Coerce<R>` traits.
+/// The inner type must implement `RNativeType`.
 ///
 /// # Supported Struct Forms
 ///
 /// Both tuple structs and single-field named structs are supported:
 ///
 /// ```ignore
-/// use miniextendr_api::RNative;
+/// use miniextendr_api::RNativeType;
 ///
 /// // Tuple struct (most common)
-/// #[derive(Clone, Copy, RNative)]
+/// #[derive(Clone, Copy, RNativeType)]
 /// struct UserId(i32);
 ///
 /// // Named single-field struct
-/// #[derive(Clone, Copy, RNative)]
+/// #[derive(Clone, Copy, RNativeType)]
 /// struct Temperature { celsius: f64 }
 /// ```
 ///
@@ -1976,14 +1973,14 @@ pub fn r_ffi_checked(
 /// For `struct UserId(i32)`, this generates:
 ///
 /// ```ignore
-/// impl RNative for UserId {
-///     const SEXP_TYPE: SEXPTYPE = <i32 as RNative>::SEXP_TYPE;
+/// impl RNativeType for UserId {
+///     const SEXP_TYPE: SEXPTYPE = <i32 as RNativeType>::SEXP_TYPE;
 /// }
 /// ```
 ///
 /// # Using the Newtype with Coerce
 ///
-/// Once `RNative` is derived, you can implement `Coerce` to/from the newtype:
+/// Once `RNativeType` is derived, you can implement `Coerce` to/from the newtype:
 ///
 /// ```ignore
 /// impl Coerce<UserId> for i32 {
@@ -1996,10 +1993,10 @@ pub fn r_ffi_checked(
 /// # Requirements
 ///
 /// - Must be a newtype struct (exactly one field, tuple or named)
-/// - The inner type must implement `RNative` (`i32`, `f64`, `Rboolean`, `u8`, `Rcomplex`, or another derived type)
-/// - Should also derive `Copy` (required by `RNative: Copy`)
-#[proc_macro_derive(RNative)]
-pub fn derive_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+/// - The inner type must implement `RNativeType` (`i32`, `f64`, `RLogical`, `u8`, `Rcomplex`)
+/// - Should also derive `Copy` (required by `RNativeType: Copy`)
+#[proc_macro_derive(RNativeType)]
+pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
@@ -2016,23 +2013,23 @@ pub fn derive_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream
             _ => {
                 return syn::Error::new_spanned(
                     name,
-                    "#[derive(RNative)] requires a newtype struct with exactly one field",
+                    "#[derive(RNativeType)] requires a newtype struct with exactly one field",
                 )
                 .into_compile_error()
                 .into();
             }
         },
         _ => {
-            return syn::Error::new_spanned(name, "#[derive(RNative)] only works on structs")
+            return syn::Error::new_spanned(name, "#[derive(RNativeType)] only works on structs")
                 .into_compile_error()
                 .into();
         }
     };
 
     let expanded = quote::quote! {
-        impl #impl_generics ::miniextendr_api::coerce::RNative for #name #ty_generics #where_clause {
+        impl #impl_generics ::miniextendr_api::ffi::RNativeType for #name #ty_generics #where_clause {
             const SEXP_TYPE: ::miniextendr_api::ffi::SEXPTYPE =
-                <#inner_ty as ::miniextendr_api::coerce::RNative>::SEXP_TYPE;
+                <#inner_ty as ::miniextendr_api::ffi::RNativeType>::SEXP_TYPE;
         }
     };
 

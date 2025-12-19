@@ -35,7 +35,7 @@ pub fn expand_altrep_struct(
     };
 
     // Parse attr list: class = "...", pkg = "..."
-    // base is optional - inferred from AltrepBase if not provided
+    // base is optional - inferred from InferBase if not provided
     use syn::parse::Parser;
     let parser =
         syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
@@ -68,9 +68,9 @@ pub fn expand_altrep_struct(
 
     let class_name = class_name.expect("#[miniextendr] missing class = \"...\"");
     let pkg_name = pkg_name.expect("#[miniextendr] missing pkg = \"...\"");
-    // base is now OPTIONAL - inferred from AltrepBase if not provided
+    // base is now OPTIONAL - inferred from InferBase if not provided
 
-    // Validate base if provided, otherwise use AltrepBase inference
+    // Validate base if provided, otherwise use InferBase inference
     let base_variant: syn::Expr = if let Some(ref base_name) = base_name {
         match base_name.as_str() {
             "Int" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Int),

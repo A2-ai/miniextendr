@@ -3,7 +3,7 @@
 //! R has a fixed set of native scalar types:
 //! - `i32` (INTSXP) - 32-bit signed integer
 //! - `f64` (REALSXP) - 64-bit floating point
-//! - `Rboolean` (LGLSXP) - logical (TRUE/FALSE/NA)
+//! - `RLogical` (LGLSXP) - logical (TRUE/FALSE/NA)
 //! - `u8` (RAWSXP) - raw bytes
 //! - `Rcomplex` (CPLXSXP) - complex numbers
 //!
@@ -12,17 +12,10 @@
 //! - [`Coerce<R>`] - infallible coercion (identity, widening)
 //! - [`TryCoerce<R>`] - fallible coercion (narrowing, overflow-possible)
 //!
-//! # Trait Bounds
-//!
-//! - [`CanCoerceToInteger`] - types that implement `Coerce<i32>`
-//! - [`CanCoerceToReal`] - types that implement `Coerce<f64>`
-//! - [`CanCoerceToLogical`] - types that implement `Coerce<Rboolean>`
-//! - [`CanCoerceToRaw`] - types that implement `Coerce<u8>`
-//!
 //! # Examples
 //!
 //! ```ignore
-//! use miniextendr_api::coerce::{Coerce, CanCoerceToInteger};
+//! use miniextendr_api::coerce::Coerce;
 //!
 //! // Scalar coercion
 //! let x: i32 = 42i8.coerce();
@@ -30,43 +23,9 @@
 //! // Element-wise slice coercion
 //! let slice: &[i8] = &[1, 2, 3];
 //! let vec: Vec<i32> = slice.coerce();
-//!
-//! // Trait bounds
-//! fn accepts_integer<T: CanCoerceToInteger>(x: T) -> i32 {
-//!     x.coerce()
-//! }
 //! ```
 
-use crate::ffi::{Rboolean, Rcomplex, SEXPTYPE};
-
-// =============================================================================
-// Core traits
-// =============================================================================
-
-/// Marker trait for R's native scalar types.
-pub trait RNative: Copy + 'static {
-    const SEXP_TYPE: SEXPTYPE;
-}
-
-impl RNative for i32 {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::INTSXP;
-}
-
-impl RNative for f64 {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
-}
-
-impl RNative for Rboolean {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::LGLSXP;
-}
-
-impl RNative for u8 {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::RAWSXP;
-}
-
-impl RNative for Rcomplex {
-    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::CPLXSXP;
-}
+use crate::ffi::{Rboolean, Rcomplex};
 
 /// Infallible coercion from `Self` to type `R`.
 ///
@@ -102,6 +61,7 @@ pub enum CoerceError {
     Overflow,
     PrecisionLoss,
     NaN,
+    Zero,
 }
 
 impl std::fmt::Display for CoerceError {
@@ -110,31 +70,12 @@ impl std::fmt::Display for CoerceError {
             CoerceError::Overflow => write!(f, "value out of range"),
             CoerceError::PrecisionLoss => write!(f, "precision loss"),
             CoerceError::NaN => write!(f, "NaN cannot be converted"),
+            CoerceError::Zero => write!(f, "zero not allowed"),
         }
     }
 }
 
 impl std::error::Error for CoerceError {}
-
-// =============================================================================
-// Trait bounds - for use in where clauses
-// =============================================================================
-
-/// Trait bound: `Coerce<i32>`.
-pub trait CanCoerceToInteger: Coerce<i32> {}
-impl<T: Coerce<i32>> CanCoerceToInteger for T {}
-
-/// Trait bound: `Coerce<f64>`.
-pub trait CanCoerceToReal: Coerce<f64> {}
-impl<T: Coerce<f64>> CanCoerceToReal for T {}
-
-/// Trait bound: `Coerce<Rboolean>`.
-pub trait CanCoerceToLogical: Coerce<Rboolean> {}
-impl<T: Coerce<Rboolean>> CanCoerceToLogical for T {}
-
-/// Trait bound: `Coerce<u8>`.
-pub trait CanCoerceToRaw: Coerce<u8> {}
-impl<T: Coerce<u8>> CanCoerceToRaw for T {}
 
 // =============================================================================
 // Blanket: Coerce implies TryCoerce
@@ -253,14 +194,42 @@ impl Coerce<i32> for Rboolean {
 }
 
 // =============================================================================
-// i32 to isize/usize (for argument coercion from R integers)
+// i32 to larger/unsigned types (for argument coercion from R integers)
 // =============================================================================
+
+/// i32 -> i64: widening, always safe
+impl Coerce<i64> for i32 {
+    #[inline(always)]
+    fn coerce(self) -> i64 {
+        self.into()
+    }
+}
 
 /// i32 -> isize: always safe (isize is at least 32 bits)
 impl Coerce<isize> for i32 {
     #[inline(always)]
     fn coerce(self) -> isize {
         self as isize
+    }
+}
+
+/// i32 -> u32: can fail if negative
+impl TryCoerce<u32> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u32, CoerceError> {
+        self.try_into().map_err(|_| CoerceError::Overflow)
+    }
+}
+
+/// i32 -> u64: can fail if negative
+impl TryCoerce<u64> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u64, CoerceError> {
+        self.try_into().map_err(|_| CoerceError::Overflow)
     }
 }
 
@@ -271,6 +240,137 @@ impl TryCoerce<usize> for i32 {
     #[inline]
     fn try_coerce(self) -> Result<usize, CoerceError> {
         self.try_into().map_err(|_| CoerceError::Overflow)
+    }
+}
+
+// =============================================================================
+// NonZero conversions (fallible - zero check)
+// =============================================================================
+
+use core::num::{
+    NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroIsize,
+    NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroUsize,
+};
+
+macro_rules! impl_nonzero_from_self {
+    ($base:ty, $nz:ty) => {
+        impl TryCoerce<$nz> for $base {
+            type Error = CoerceError;
+
+            #[inline]
+            fn try_coerce(self) -> Result<$nz, CoerceError> {
+                <$nz>::new(self).ok_or(CoerceError::Zero)
+            }
+        }
+    };
+}
+
+// Direct NonZero conversions (same base type)
+impl_nonzero_from_self!(i8, NonZeroI8);
+impl_nonzero_from_self!(i16, NonZeroI16);
+impl_nonzero_from_self!(i32, NonZeroI32);
+impl_nonzero_from_self!(i64, NonZeroI64);
+impl_nonzero_from_self!(isize, NonZeroIsize);
+impl_nonzero_from_self!(u8, NonZeroU8);
+impl_nonzero_from_self!(u16, NonZeroU16);
+impl_nonzero_from_self!(u32, NonZeroU32);
+impl_nonzero_from_self!(u64, NonZeroU64);
+impl_nonzero_from_self!(usize, NonZeroUsize);
+
+/// i32 -> NonZeroI64: widen then check zero
+impl TryCoerce<NonZeroI64> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroI64, CoerceError> {
+        NonZeroI64::new(self.into()).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroIsize: widen then check zero
+impl TryCoerce<NonZeroIsize> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroIsize, CoerceError> {
+        NonZeroIsize::new(self as isize).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroU32: check non-negative and non-zero
+impl TryCoerce<NonZeroU32> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroU32, CoerceError> {
+        let u: u32 = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroU32::new(u).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroU64: check non-negative and non-zero
+impl TryCoerce<NonZeroU64> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroU64, CoerceError> {
+        let u: u64 = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroU64::new(u).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroUsize: check non-negative and non-zero
+impl TryCoerce<NonZeroUsize> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroUsize, CoerceError> {
+        let u: usize = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroUsize::new(u).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroI8: narrow then check zero
+impl TryCoerce<NonZeroI8> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroI8, CoerceError> {
+        let n: i8 = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroI8::new(n).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroI16: narrow then check zero
+impl TryCoerce<NonZeroI16> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroI16, CoerceError> {
+        let n: i16 = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroI16::new(n).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroU8: check non-negative, narrow, then check zero
+impl TryCoerce<NonZeroU8> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroU8, CoerceError> {
+        let u: u8 = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroU8::new(u).ok_or(CoerceError::Zero)
+    }
+}
+
+/// i32 -> NonZeroU16: check non-negative, narrow, then check zero
+impl TryCoerce<NonZeroU16> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<NonZeroU16, CoerceError> {
+        let u: u16 = self.try_into().map_err(|_| CoerceError::Overflow)?;
+        NonZeroU16::new(u).ok_or(CoerceError::Zero)
     }
 }
 
@@ -582,6 +682,100 @@ impl Coerce<f32> for f64 {
 }
 
 // =============================================================================
+// Float to u8 (fallible) - for RAWSXP
+// =============================================================================
+
+impl TryCoerce<u8> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u8, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self < 0.0 || self > u8::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(self as u8)
+    }
+}
+
+impl TryCoerce<u8> for f32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u8, CoerceError> {
+        (self as f64).try_coerce()
+    }
+}
+
+// =============================================================================
+// Float to u32 (fallible)
+// =============================================================================
+
+impl TryCoerce<u32> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u32, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self < 0.0 || self > u32::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(self as u32)
+    }
+}
+
+// =============================================================================
+// Float to i64/u64 (fallible)
+// =============================================================================
+
+impl TryCoerce<i64> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i64, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        // i64::MIN/MAX can't be exactly represented in f64, so use safe bounds
+        if self < i64::MIN as f64 || self >= i64::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(self as i64)
+    }
+}
+
+impl TryCoerce<u64> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u64, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self < 0.0 || self >= u64::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(self as u64)
+    }
+}
+
+// =============================================================================
 // Large int to f64 (fallible - precision)
 // =============================================================================
 
@@ -625,6 +819,79 @@ impl TryCoerce<f64> for usize {
     #[inline]
     fn try_coerce(self) -> Result<f64, CoerceError> {
         (self as u64).try_coerce()
+    }
+}
+
+// =============================================================================
+// Coerced wrapper type
+// =============================================================================
+
+use std::marker::PhantomData;
+
+/// Wrapper for values coerced from an R native type during conversion.
+///
+/// This enables using non-native Rust types in collections read from R:
+///
+/// ```ignore
+/// // Read a Vec of i64 from R integers (i32)
+/// let vec: Vec<Coerced<i64, i32>> = TryFromSexp::try_from_sexp(sexp)?;
+///
+/// // Extract the values
+/// let i64_vec: Vec<i64> = vec.into_iter().map(Coerced::into_inner).collect();
+/// ```
+///
+/// The type parameters are:
+/// - `T`: The target Rust type you want
+/// - `R`: The R-native type to read and coerce from
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct Coerced<T, R> {
+    value: T,
+    _marker: PhantomData<R>,
+}
+
+impl<T, R> Coerced<T, R> {
+    /// Create a new Coerced wrapper.
+    #[inline]
+    pub const fn new(value: T) -> Self {
+        Self {
+            value,
+            _marker: PhantomData,
+        }
+    }
+
+    /// Extract the inner value.
+    #[inline]
+    pub fn into_inner(self) -> T {
+        self.value
+    }
+
+    /// Get a reference to the inner value.
+    #[inline]
+    pub const fn as_inner(&self) -> &T {
+        &self.value
+    }
+
+    /// Get a mutable reference to the inner value.
+    #[inline]
+    pub fn as_inner_mut(&mut self) -> &mut T {
+        &mut self.value
+    }
+}
+
+impl<T, R> std::ops::Deref for Coerced<T, R> {
+    type Target = T;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.value
+    }
+}
+
+impl<T, R> std::ops::DerefMut for Coerced<T, R> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.value
     }
 }
 
@@ -685,14 +952,14 @@ mod tests {
         assert_eq!(Coerce::<f64>::coerce(false), 0.0);
     }
 
-    fn takes_can_coerce<T: CanCoerceToInteger>(x: T) -> i32 {
+    fn takes_coercible<T: Coerce<i32>>(x: T) -> i32 {
         x.coerce()
     }
 
     #[test]
     fn test_trait_bound() {
-        assert_eq!(takes_can_coerce(42i8), 42);
-        assert_eq!(takes_can_coerce(true), 1);
+        assert_eq!(takes_coercible(42i8), 42);
+        assert_eq!(takes_coercible(true), 1);
     }
 
     #[test]
@@ -813,6 +1080,23 @@ mod tests {
     }
 
     #[test]
+    fn test_i32_to_i64() {
+        // Coerce (infallible widening)
+        let x: i64 = 42i32.coerce();
+        assert_eq!(x, 42i64);
+
+        let y: i64 = (-100i32).coerce();
+        assert_eq!(y, -100i64);
+
+        // Edge cases
+        let max: i64 = i32::MAX.coerce();
+        assert_eq!(max, i32::MAX as i64);
+
+        let min: i64 = i32::MIN.coerce();
+        assert_eq!(min, i32::MIN as i64);
+    }
+
+    #[test]
     fn test_i32_to_isize() {
         // Coerce (infallible)
         let x: isize = 42i32.coerce();
@@ -820,6 +1104,37 @@ mod tests {
 
         let y: isize = (-100i32).coerce();
         assert_eq!(y, -100isize);
+    }
+
+    #[test]
+    fn test_i32_to_u32() {
+        // Success
+        assert_eq!(TryCoerce::<u32>::try_coerce(42i32), Ok(42u32));
+        assert_eq!(TryCoerce::<u32>::try_coerce(0i32), Ok(0u32));
+        assert_eq!(
+            TryCoerce::<u32>::try_coerce(i32::MAX),
+            Ok(i32::MAX as u32)
+        );
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<u32>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
+    }
+
+    #[test]
+    fn test_i32_to_u64() {
+        // Success
+        assert_eq!(TryCoerce::<u64>::try_coerce(42i32), Ok(42u64));
+        assert_eq!(
+            TryCoerce::<u64>::try_coerce(i32::MAX),
+            Ok(i32::MAX as u64)
+        );
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<u64>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
     }
 
     #[test]
@@ -845,5 +1160,239 @@ mod tests {
         let result_na: Result<Vec<bool>, LogicalCoerceError> =
             slice_na.iter().copied().map(TryCoerce::try_coerce).collect();
         assert_eq!(result_na, Err(LogicalCoerceError::NAValue));
+    }
+
+    #[test]
+    fn test_nonzero_i32() {
+        use core::num::NonZeroI32;
+
+        // Success
+        assert_eq!(
+            TryCoerce::<NonZeroI32>::try_coerce(42i32),
+            Ok(NonZeroI32::new(42).unwrap())
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroI32>::try_coerce(-5i32),
+            Ok(NonZeroI32::new(-5).unwrap())
+        );
+
+        // Failure - zero
+        assert_eq!(
+            TryCoerce::<NonZeroI32>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+    }
+
+    #[test]
+    fn test_nonzero_u32_from_i32() {
+        use core::num::NonZeroU32;
+
+        // Success
+        assert_eq!(
+            TryCoerce::<NonZeroU32>::try_coerce(42i32),
+            Ok(NonZeroU32::new(42).unwrap())
+        );
+
+        // Failure - zero
+        assert_eq!(
+            TryCoerce::<NonZeroU32>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+
+        // Failure - negative (overflow before zero check)
+        assert_eq!(
+            TryCoerce::<NonZeroU32>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
+    }
+
+    #[test]
+    fn test_nonzero_i64_from_i32() {
+        use core::num::NonZeroI64;
+
+        // Success - widening
+        assert_eq!(
+            TryCoerce::<NonZeroI64>::try_coerce(42i32),
+            Ok(NonZeroI64::new(42).unwrap())
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroI64>::try_coerce(-100i32),
+            Ok(NonZeroI64::new(-100).unwrap())
+        );
+
+        // Failure - zero
+        assert_eq!(
+            TryCoerce::<NonZeroI64>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+    }
+
+    #[test]
+    fn test_nonzero_usize_from_i32() {
+        use core::num::NonZeroUsize;
+
+        // Success
+        assert_eq!(
+            TryCoerce::<NonZeroUsize>::try_coerce(42i32),
+            Ok(NonZeroUsize::new(42).unwrap())
+        );
+
+        // Failure - zero
+        assert_eq!(
+            TryCoerce::<NonZeroUsize>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<NonZeroUsize>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
+    }
+
+    #[test]
+    fn test_f64_to_u8() {
+        // Success
+        assert_eq!(TryCoerce::<u8>::try_coerce(42.0f64), Ok(42u8));
+        assert_eq!(TryCoerce::<u8>::try_coerce(0.0f64), Ok(0u8));
+        assert_eq!(TryCoerce::<u8>::try_coerce(255.0f64), Ok(255u8));
+
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<u8>::try_coerce(-1.0f64),
+            Err(CoerceError::Overflow)
+        );
+        // Failure - too large
+        assert_eq!(
+            TryCoerce::<u8>::try_coerce(256.0f64),
+            Err(CoerceError::Overflow)
+        );
+        // Failure - fractional
+        assert_eq!(
+            TryCoerce::<u8>::try_coerce(1.5f64),
+            Err(CoerceError::PrecisionLoss)
+        );
+        // Failure - NaN
+        assert_eq!(TryCoerce::<u8>::try_coerce(f64::NAN), Err(CoerceError::NaN));
+    }
+
+    #[test]
+    fn test_f64_to_u32() {
+        // Success
+        assert_eq!(TryCoerce::<u32>::try_coerce(42.0f64), Ok(42u32));
+        assert_eq!(TryCoerce::<u32>::try_coerce(0.0f64), Ok(0u32));
+
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<u32>::try_coerce(-1.0f64),
+            Err(CoerceError::Overflow)
+        );
+        // Failure - fractional
+        assert_eq!(
+            TryCoerce::<u32>::try_coerce(1.5f64),
+            Err(CoerceError::PrecisionLoss)
+        );
+    }
+
+    #[test]
+    fn test_f64_to_i64() {
+        // Success
+        assert_eq!(TryCoerce::<i64>::try_coerce(42.0f64), Ok(42i64));
+        assert_eq!(TryCoerce::<i64>::try_coerce(-100.0f64), Ok(-100i64));
+        assert_eq!(TryCoerce::<i64>::try_coerce(0.0f64), Ok(0i64));
+
+        // Failure - fractional
+        assert_eq!(
+            TryCoerce::<i64>::try_coerce(1.5f64),
+            Err(CoerceError::PrecisionLoss)
+        );
+        // Failure - NaN
+        assert_eq!(
+            TryCoerce::<i64>::try_coerce(f64::NAN),
+            Err(CoerceError::NaN)
+        );
+    }
+
+    #[test]
+    fn test_f64_to_u64() {
+        // Success
+        assert_eq!(TryCoerce::<u64>::try_coerce(42.0f64), Ok(42u64));
+        assert_eq!(TryCoerce::<u64>::try_coerce(0.0f64), Ok(0u64));
+
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<u64>::try_coerce(-1.0f64),
+            Err(CoerceError::Overflow)
+        );
+        // Failure - fractional
+        assert_eq!(
+            TryCoerce::<u64>::try_coerce(1.5f64),
+            Err(CoerceError::PrecisionLoss)
+        );
+    }
+
+    #[test]
+    fn test_nonzero_smaller_from_i32() {
+        use core::num::{NonZeroI8, NonZeroI16, NonZeroU8, NonZeroU16};
+
+        // NonZeroI8
+        assert_eq!(
+            TryCoerce::<NonZeroI8>::try_coerce(42i32),
+            Ok(NonZeroI8::new(42).unwrap())
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroI8>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroI8>::try_coerce(200i32),
+            Err(CoerceError::Overflow)
+        );
+
+        // NonZeroI16
+        assert_eq!(
+            TryCoerce::<NonZeroI16>::try_coerce(1000i32),
+            Ok(NonZeroI16::new(1000).unwrap())
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroI16>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroI16>::try_coerce(40000i32),
+            Err(CoerceError::Overflow)
+        );
+
+        // NonZeroU8
+        assert_eq!(
+            TryCoerce::<NonZeroU8>::try_coerce(42i32),
+            Ok(NonZeroU8::new(42).unwrap())
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroU8>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroU8>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroU8>::try_coerce(300i32),
+            Err(CoerceError::Overflow)
+        );
+
+        // NonZeroU16
+        assert_eq!(
+            TryCoerce::<NonZeroU16>::try_coerce(1000i32),
+            Ok(NonZeroU16::new(1000).unwrap())
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroU16>::try_coerce(0i32),
+            Err(CoerceError::Zero)
+        );
+        assert_eq!(
+            TryCoerce::<NonZeroU16>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
     }
 }

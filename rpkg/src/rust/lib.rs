@@ -1678,9 +1678,6 @@ miniextendr_module! {
 
 use miniextendr_api::thread::RThreadBuilder;
 
-#[cfg(feature = "nonapi")]
-use miniextendr_api::thread::{StackCheckGuard, spawn_with_r};
-
 /// Test RThreadBuilder: spawn with large stack (16 MiB) and call _unchecked R APIs.
 /// Works WITHOUT nonapi feature by using large stacks to satisfy R's stack checking.
 #[miniextendr]
@@ -1771,21 +1768,21 @@ fn underscore_it_all(_: i32, _: f64) {}
 
 // region: Coerce trait tests
 
-use miniextendr_api::{CanCoerceToInteger, Coerce, CoerceError, RNative, TryCoerce};
+use miniextendr_api::{Coerce, CoerceError, RNativeType, TryCoerce};
 
-// Test 6: RNative derive macro - newtype wrappers (both tuple and named field)
-#[derive(Clone, Copy, RNative)]
+// Test 6: RNativeType derive macro - newtype wrappers (both tuple and named field)
+#[derive(Clone, Copy, RNativeType)]
 struct UserId(i32); // Tuple struct
 
-#[derive(Clone, Copy, RNative)]
+#[derive(Clone, Copy, RNativeType)]
 pub struct Score(pub f64); // Tuple struct
 
-#[derive(Clone, Copy, RNative)]
+#[derive(Clone, Copy, RNativeType)]
 struct Temperature {
     celsius: f64,
 } // Named single-field struct
 
-// Verify the derived RNative works with Coerce
+// Verify the derived RNativeType works with Coerce
 impl Coerce<UserId> for i32 {
     fn coerce(self) -> UserId {
         UserId(self)
@@ -1839,7 +1836,7 @@ pub fn test_coerce_bool_to_int(x: miniextendr_api::ffi::Rboolean) -> i32 {
 }
 
 // Test 4: Helper using trait bound - called with concrete types
-fn helper_accepts_integer<T: CanCoerceToInteger>(x: T) -> i32 {
+fn helper_accepts_integer<T: Coerce<i32>>(x: T) -> i32 {
     x.coerce()
 }
 
@@ -1857,6 +1854,7 @@ pub fn test_try_coerce_f64_to_i32(x: f64) -> i32 {
         Err(CoerceError::Overflow) => i32::MIN, // NA
         Err(CoerceError::PrecisionLoss) => i32::MIN,
         Err(CoerceError::NaN) => i32::MIN,
+        Err(CoerceError::Zero) => i32::MIN,
     }
 }
 
