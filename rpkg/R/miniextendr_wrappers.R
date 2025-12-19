@@ -19,6 +19,11 @@ add4 <- function(left, right) {
 }
 
 #' @export
+nested_panic <- function() {
+    invisible(.Call(C_nested_panic, .call = match.call()))
+}
+
+#' @export
 add_panic <- function(unused_left, unused_right) {
     .Call(C_add_panic, .call = match.call(), unused_left, unused_right)
 }

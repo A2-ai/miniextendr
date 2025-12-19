@@ -1,4 +1,14 @@
 {
+  "files.associations": {
+    "Makefile.in": "makefile",
+    "Makefile.win": "makefile",
+    "Makevars.in": "makefile",
+    "Makeconf.in": "makefile",
+    "configure.ac": "m4",
+    "*.ac": "m4",
+    "NAMESPACE": "r",
+    "DESCRIPTION": "yaml"
+  },
   "rust-analyzer.linkedProjects": [
     "Cargo.toml",
     "rpkg/src/rust/Cargo.toml"
@@ -6,7 +16,6 @@
   "rust-analyzer.cargo.extraArgs": [
     "--release", "--tests", "--benches", "--examples"
   ],
-  "rust-analyzer.cargo.features": ["connections"],
   // "rust-analyzer.check.command": "check",
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",
@@ -20,4 +29,5 @@
     "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
   }
   // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpful to ai tools
+
 }
