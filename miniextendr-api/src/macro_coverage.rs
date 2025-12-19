@@ -317,6 +317,24 @@ pub(crate) fn coverage_wildcard_with_coerce(#[miniextendr(coerce)] _: u16) -> i3
     3
 }
 
+// =============================================================================
+// Inline attribute coverage
+// =============================================================================
+
+/// Coverage: explicit `#[inline(always)]` is preserved (not overwritten with never)
+#[miniextendr]
+#[inline(always)]
+pub fn coverage_explicit_inline_always() -> i32 {
+    42
+}
+
+/// Coverage: explicit `#[inline]` is preserved
+#[miniextendr]
+#[inline]
+pub fn coverage_explicit_inline() -> i32 {
+    43
+}
+
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub(crate) extern "C-unwind" fn C_coverage_direct() -> ffi::SEXP {
@@ -399,6 +417,10 @@ miniextendr_module! {
     fn coverage_wildcard_single;
     fn coverage_wildcard_multiple;
     fn coverage_wildcard_with_coerce;
+
+    // Inline attribute handling
+    fn coverage_explicit_inline_always;
+    fn coverage_explicit_inline;
 
     // Extern C functions
     extern "C-unwind" fn C_coverage_direct;

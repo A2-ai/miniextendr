@@ -90,6 +90,7 @@ pub fn miniextendr(
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
     parsed.add_track_caller_if_needed();
+    parsed.add_inline_never_if_needed();
 
     // Extract commonly used values
     let uses_internal_c_wrapper = parsed.uses_internal_c_wrapper();

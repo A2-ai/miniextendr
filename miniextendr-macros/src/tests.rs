@@ -147,3 +147,47 @@ fn miniextendr_attr_accepts_multiple_flags() {
     assert!(attrs.coerce_all);
     assert_eq!(attrs.force_invisible, Some(true));
 }
+
+#[test]
+fn parsed_fn_adds_inline_never_for_rust_abi() {
+    let mut parsed: MiniextendrFunctionParsed =
+        syn::parse2(quote::quote! { fn f() {} }).unwrap();
+    parsed.add_inline_never_if_needed();
+
+    let has_inline_never = parsed.item().attrs.iter().any(|attr| {
+        attr.path().is_ident("inline")
+            && matches!(&attr.meta, syn::Meta::List(list)
+                if list.tokens.to_string() == "never")
+    });
+    assert!(has_inline_never, "should add #[inline(never)] to Rust ABI functions");
+}
+
+#[test]
+fn parsed_fn_preserves_explicit_inline() {
+    let mut parsed: MiniextendrFunctionParsed =
+        syn::parse2(quote::quote! { #[inline(always)] fn f() {} }).unwrap();
+    parsed.add_inline_never_if_needed();
+
+    // Should not add inline(never) since inline(always) is already present
+    let inline_count = parsed
+        .item()
+        .attrs
+        .iter()
+        .filter(|attr| attr.path().is_ident("inline"))
+        .count();
+    assert_eq!(inline_count, 1, "should preserve existing #[inline] attribute");
+}
+
+#[test]
+fn parsed_fn_no_inline_for_extern_c() {
+    let mut parsed: MiniextendrFunctionParsed =
+        syn::parse2(quote::quote! { extern "C-unwind" fn f() {} }).unwrap();
+    parsed.add_inline_never_if_needed();
+
+    let has_inline = parsed
+        .item()
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("inline"));
+    assert!(!has_inline, "should not add #[inline] to extern C functions");
+}
