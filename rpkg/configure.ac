@@ -240,7 +240,14 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
   dnl cargo pkgid outputs: path+file:///path/to/project#name@version
   dnl Extract package name between # and @, convert hyphens to underscores for Rust
-  _pkgid_output=`$CARGO pkgid --offline --color=never --manifest-path src/rust/Cargo.toml`
+  dnl Use --offline only for CRAN builds (NOT_CRAN != true) to avoid network access
+  dnl Dev builds (NOT_CRAN=true) may not have cache populated yet
+  if test "$NOT_CRAN" = "true"; then
+    _pkgid_flags="--color=never"
+  else
+    _pkgid_flags="--offline --color=never"
+  fi
+  _pkgid_output=`$CARGO pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
@@ -262,7 +269,7 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
     fi
   done
 ],
-[CARGO="$CARGO"])
+[CARGO="$CARGO" NOT_CRAN="$NOT_CRAN"])
 
 dnl Also install a copy at top-level .cargo for dev ergonomics
 dnl this is specific to miniextendr repository

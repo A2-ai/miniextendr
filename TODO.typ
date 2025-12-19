@@ -4,3 +4,126 @@
 - [x] ensure all ffi'd function have the r_ffi macro that provide safe equivalents
 - [ ] implement proper rayon feature...
 - [ ] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
+
+== Codex Review Findings (2024) ==
+
+=== CRITICAL: Safety Issues ===
+- [x] `SexpExt::as_slice` returns `'static` slices from R memory (unsound)
+  - `miniextendr-api/src/ffi.rs:208-220`
+  - Fix: Made `as_slice` unsafe with comprehensive safety docs
+- [ ] Rayon `run_r` panics on Rayon threads (thread-local routing missing)
+  - `miniextendr-api/src/rayon_bridge.rs:81-86`, `worker.rs:119-155`
+  - Fix: Add `MainThreadDispatcher` or global routing channel
+- [ ] Unprotected R vectors in `with_r_*_vec` can be GC'd mid-parallel write
+  - `miniextendr-api/src/rayon_bridge.rs:166-209`
+  - Fix: Use `R_PreserveObject`/`R_ReleaseObject` around parallel region
+
+=== HIGH: Thread Safety ===
+- [x] `is_r_main_thread` defaults to true before init
+  - `miniextendr-api/src/worker.rs:69-74`
+  - Fix: Now returns false when uninitialized (safe default)
+- [x] Allocator fallback can call R API on non-main thread
+  - `miniextendr-api/src/allocator.rs:70-84`
+  - Fix: Removed fallback, now panics with clear error message
+- [x] `StackCheckGuard` is not concurrency-safe
+  - `miniextendr-api/src/thread.rs:75-94`
+  - Fix: Implemented global refcount with atomic operations
+- [ ] `SendableSexp` is marked `Sync` despite cross-thread mutation risks
+  - `miniextendr-api/src/externalptr.rs:69-79`
+  - Fix: Remove `Sync` or gate behind unsafe/feature
+- [ ] Allocator can longjmp across Rust frames
+  - `miniextendr-api/src/allocator.rs:209`
+  - Fix: Document precondition or route through R-safe error boundary
+- [ ] Worker init can be called from non-main thread without guard
+  - `miniextendr-api/src/worker.rs:332-356`
+  - Fix: Verify caller is actually on R main thread
+
+=== MEDIUM: Memory/Leaks ===
+- [ ] R continuation tokens are preserved forever (leak)
+  - `miniextendr-api/src/worker.rs:44-51`, `unwind_protect.rs:17-24`
+  - Fix: Keep single global token or register release on exit
+
+=== API/Ergonomics ===
+- [ ] `REngine::new()` and `shutdown()` shown in docs but not implemented
+  - `miniextendr-engine/src/lib.rs:20-33`
+- [ ] `with_args` default in docs is incorrect
+  - `miniextendr-engine/src/lib.rs:96-99`
+- [ ] Doc claims atexit cleanup is registered, but code does not
+  - `miniextendr-engine/src/lib.rs:259-260`
+- [ ] Encoding init is documented but disabled in R entrypoint
+  - `rpkg/src/entrypoint.c.in:7-10`, `encoding.rs:29-73`
+- [ ] `#[miniextendr]` has no support for methods (`self`)
+  - `miniextendr-macros/src/lib.rs:203-206`
+- [ ] `miniextendr_module!` treats `extern "C-unwind" fn` and `fn` the same
+  - `miniextendr-macros/src/lib.rs:815-816`
+- [ ] String NA handling is lossy (`NA_character_` → `""`)
+  - `miniextendr-api/src/from_r.rs:298-302`
+  - Fix: Return `Option<&str>` / `Option<String>`
+- [ ] Missing `IntoR`/`TryFromSexp` conveniences
+  - `Vec<String>`, `Vec<&str>` → STRSXP
+  - `Vec<Option<T>>`, `Option<T>` → NA-aware vectors
+  - Tuple-to-list for small tuples
+
+=== Build/Packaging ===
+- [ ] `miniextendr-engine` build script doesn't validate `R RHOME` exit status
+  - `miniextendr-engine/build.rs:17-25`
+- [ ] Generated build artifacts tracked in git (target/, config.log, etc.)
+  - Fix: Update `.gitignore`, remove tracked artifacts
+- [ ] Template/generated files can drift (.in vs generated)
+  - Fix: CI check to ensure generated files up-to-date
+- [ ] Vendored set incomplete for `--all-features` (missing rayon crate)
+  - `rpkg/src/vendor/`
+- [ ] `Cargo.lock` doesn't reflect feature-enabled dependency graph
+- [ ] Vendored `miniextendr-api` dev-dep points outside vendor
+- [ ] Generated `.cargo/config.toml` contains absolute local paths
+- [ ] `R RHOME` not error-checked in configure.ac
+  - `rpkg/configure.ac:3-5`
+- [ ] `bootstrap.R` doesn't check exit status of configure/autoconf
+  - `rpkg/bootstrap.R:8-27`
+- [ ] `rsync` and `sed` required but not validated in configure
+- [x] `cargo pkgid --offline` can fail on fresh dev machines
+  - Fix: Made `--offline` conditional on NOT_CRAN in configure.ac
+- [ ] `--all-features` always enabled (CRAN policy risk)
+  - Fix: Separate CRAN-safe vs dev feature sets
+- [ ] C preprocessor flags hard-coded to NONAPI
+  - Fix: Derive C feature macros from Cargo feature selection
+- [x] No `.Rbuildignore` present
+  - Fix: Added comprehensive `.Rbuildignore` to rpkg
+- [ ] Rust edition 2024 with no minimum rustc check
+- [x] `cleanup` script removes wrong config path
+  - Fix: Changed `.cargo/config.toml` to `src/rust/.cargo`
+
+=== Testing ===
+- [ ] Rayon integration tests too narrow (missing `run_r`, `with_r_*_vec`)
+- [ ] No automated regression test for registration bug
+- [ ] Macro compile-fail tests missing (no trybuild/UI tests)
+- [ ] Thread-safety assertions not covered by tests
+- [ ] Known TODOs not tracked as GitHub issues
+
+
+checking available recipes (`just --list`)
+- [x] build \*cargo_flags           // # [alias: cargo-build]
+- [x] check \*cargo_flags           // # [alias: cargo-check]
+- [x] clean \*cargo_flags           // # [alias: cargo-clean]
+- [x] clippy \*cargo_flags          // # [alias: cargo-clippy]
+- [ ] configure                    // # Run ./configure and vendor rpkg deps
+- [ ] default 
+- [ ] devtools-build               // # Build rpkg with devtools::build
+- [ ] devtools-check               // # Check rpkg with devtools::check
+- [ ] devtools-document            // # Document rpkg with devtools::document
+- [ ] devtools-install             // # Install rpkg with devtools::install
+- [ ] devtools-load                // # [alias: devtools-load_all]
+- [ ] devtools-test FILTER=""      // # Load and test rpkg with devtools
+- [ ] doc \*cargo_flags             // # [alias: cargo-doc]
+- [ ] doc-check \*cargo_flags       // # [alias: cargo-doc-check]
+- [ ] expand \*cargo_flags          // # [alias: cargo-expand]
+- [ ] fmt \*cargo_flags             // # [alias: cargo-fmt]
+- [ ] fmt-check \*cargo_flags       // # [alias: cargo-fmt-check]
+- [ ] r-cmd-build \*args            // # [alias: rcmdbuild]
+- [ ] r-cmd-check \*args            // # [alias: rcmdcheck]
+- [ ] r-cmd-install \*args          // # [alias: rcmdinstall]
+- [ ] test \*args                   // # [alias: cargo-test]
+- [ ] test-r-build                 // # Build R package tarball
+- [ ] tree \*cargo_flags            // # [alias: cargo-tree]
+- [ ] vendor                       // # [alias: cargo-vendor]
+- [ ] vendor-rpkg                  // # - bootstrap.R (CRAN tarball builds)
