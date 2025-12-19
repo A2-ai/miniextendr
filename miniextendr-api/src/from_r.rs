@@ -1321,7 +1321,7 @@ where
     Ok(map)
 }
 
-/// Convert R vector to HashSet<T>.
+/// Convert R vector to `HashSet<T>`.
 impl<T> TryFromSexp for HashSet<T>
 where
     T: RNativeType + Eq + Hash,
@@ -1334,7 +1334,7 @@ where
     }
 }
 
-/// Convert R vector to BTreeSet<T>.
+/// Convert R vector to `BTreeSet<T>`.
 impl<T> TryFromSexp for BTreeSet<T>
 where
     T: RNativeType + Ord,
@@ -1347,7 +1347,7 @@ where
     }
 }
 
-/// Convert R character vector to Vec<String>.
+/// Convert R character vector to `Vec<String>`.
 impl TryFromSexp for Vec<String> {
     type Error = SexpError;
 
@@ -1388,7 +1388,7 @@ impl TryFromSexp for Vec<String> {
     }
 }
 
-/// Convert R character vector to HashSet<String>.
+/// Convert R character vector to `HashSet<String>`.
 impl TryFromSexp for HashSet<String> {
     type Error = SexpError;
 
@@ -1398,7 +1398,7 @@ impl TryFromSexp for HashSet<String> {
     }
 }
 
-/// Convert R character vector to BTreeSet<String>.
+/// Convert R character vector to `BTreeSet<String>`.
 impl TryFromSexp for BTreeSet<String> {
     type Error = SexpError;
 

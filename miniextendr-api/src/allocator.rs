@@ -7,7 +7,7 @@
 //!   \[optional leading pad\]\[Header\]\[user bytes...\]
 //!
 //! We always return a pointer aligned to at least:
-//!   max(requested_align, align_of::<Header>())
+//!   `max(requested_align, align_of::<Header>())`
 //! so the `Header` placed immediately before the user pointer is always aligned.
 
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};

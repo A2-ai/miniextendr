@@ -340,7 +340,7 @@ fn map_to_named_list<V: IntoR>(
     }
 }
 
-/// Convert HashSet<T> to R vector.
+/// Convert `HashSet<T>` to R vector.
 impl<T> IntoR for HashSet<T>
 where
     T: crate::ffi::RNativeType + Eq + Hash,
@@ -351,7 +351,7 @@ where
     }
 }
 
-/// Convert BTreeSet<T> to R vector.
+/// Convert `BTreeSet<T>` to R vector.
 impl<T> IntoR for BTreeSet<T>
 where
     T: crate::ffi::RNativeType + Ord,
@@ -362,7 +362,7 @@ where
     }
 }
 
-/// Convert HashSet<String> to R character vector.
+/// Convert `HashSet<String>` to R character vector.
 impl IntoR for HashSet<String> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         let vec: Vec<String> = self.into_iter().collect();
@@ -370,7 +370,7 @@ impl IntoR for HashSet<String> {
     }
 }
 
-/// Convert BTreeSet<String> to R character vector.
+/// Convert `BTreeSet<String>` to R character vector.
 impl IntoR for BTreeSet<String> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         let vec: Vec<String> = self.into_iter().collect();
@@ -378,7 +378,7 @@ impl IntoR for BTreeSet<String> {
     }
 }
 
-/// Convert Vec<String> to R character vector (STRSXP).
+/// Convert `Vec<String>` to R character vector (STRSXP).
 impl IntoR for Vec<String> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {

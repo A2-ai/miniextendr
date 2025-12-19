@@ -215,61 +215,61 @@ pub(crate) fn coverage_coerce_scalar_f32(x: f32) -> f64 {
 // Coercion coverage - Vec types
 // =============================================================================
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<u16> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<u16>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_u16(x: Vec<u16>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<i16> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<i16>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_i16(x: Vec<i16>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<i8> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<i8>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_i8(x: Vec<i8>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<u32> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<u32>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_u32(x: Vec<u32>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<u64> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<u64>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_u64(x: Vec<u64>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<i64> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<i64>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_i64(x: Vec<i64>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<isize> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<isize>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_isize(x: Vec<isize>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<usize> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<usize>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_usize(x: Vec<usize>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<bool> from &[i32]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<bool>` from `&[i32]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_bool(x: Vec<bool>) -> i32 {
     x.len() as i32
 }
 
-/// Coverage: `#[miniextendr(coerce)]` global - Vec<f32> from &[f64]
+/// Coverage: `#[miniextendr(coerce)]` global - `Vec<f32>` from `&[f64]`
 #[miniextendr(coerce)]
 pub(crate) fn coverage_coerce_vec_f32(x: Vec<f32>) -> i32 {
     x.len() as i32
