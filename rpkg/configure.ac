@@ -68,10 +68,9 @@ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
 : ${CARGO_PROFILE="release"}
 AC_SUBST([CARGO_PROFILE])
 
-dnl TODO: read this from Cargo.toml manually.. or somewhere else
-AC_ARG_VAR([CARGO_STATICLIB_NAME], [Name of Rust static library])
-dnl TODO: use cargo metadata to figure out what the library or libraries ought to be named!
-: ${CARGO_STATICLIB_NAME="juice"}
+dnl CARGO_STATICLIB_NAME will be extracted after Cargo.toml generation
+dnl Use placeholder for now - AC_CONFIG_COMMANDS will substitute the real value
+CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 AC_SUBST([CARGO_STATICLIB_NAME])
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
@@ -208,6 +207,36 @@ AC_CONFIG_FILES([
   src/Makevars
   src/entrypoint.c
 ])
+
+dnl Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
+dnl This runs after AC_CONFIG_FILES generates the files
+AC_CONFIG_COMMANDS([patch-staticlib-name],
+[
+  dnl cargo pkgid outputs: path+file:///path/to/project#name@version
+  dnl Extract package name between # and @, convert hyphens to underscores for Rust
+  _pkgid_output=`$CARGO pkgid --offline --color=never --manifest-path src/rust/Cargo.toml`
+  _pkgid_status=$?
+  if test $_pkgid_status -ne 0; then
+    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
+    echo "configure: cargo pkgid output: $_pkgid_output" >&2
+    exit 1
+  fi
+  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | sed 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_'`
+  if test -z "$REAL_STATICLIB_NAME"; then
+    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
+    exit 1
+  fi
+  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
+
+  dnl Patch generated files to replace placeholder
+  for f in src/Makevars src/rust/document.rs; do
+    if test -f "$f"; then
+      sed -i.bak "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f"
+      rm -f "$f.bak"
+    fi
+  done
+],
+[CARGO="$CARGO"])
 
 dnl Also install a copy at top-level .cargo for dev ergonomics
 dnl this is specific to miniextendr repository

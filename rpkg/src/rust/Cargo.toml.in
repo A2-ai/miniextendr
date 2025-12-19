@@ -14,7 +14,6 @@ path = "document.rs"
 bench = false
 
 [lib]
-name = "@CARGO_STATICLIB_NAME@"
 path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
