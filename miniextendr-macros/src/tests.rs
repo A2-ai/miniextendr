@@ -3,7 +3,7 @@ use super::*;
 #[test]
 fn wrapper_idents_match_between_attribute_and_module_macros() {
     let item_fn: syn::ItemFn = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
-    let f = ExtendrFunction::from_item_fn(&item_fn);
+    let f = MiniextendrFunction::from_item_fn(&item_fn);
 
     let m: ExtendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
 
