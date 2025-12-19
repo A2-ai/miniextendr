@@ -162,7 +162,9 @@ pub mod error;
 pub use error::{r_print, r_println, r_stop, r_warning};
 
 // Re-export from_r
-pub use from_r::{CoercedSexpError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
+pub use from_r::{
+    CoercedSexpError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+};
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
 // NOTE: Disabled because it references non-exported symbols from R's Defn.h
@@ -175,12 +177,7 @@ pub use from_r::{CoercedSexpError, SexpError, SexpLengthError, SexpNaError, Sexp
 pub mod backtrace;
 
 pub mod coerce;
-pub use coerce::{
-    Coerce,
-    CoerceError,
-    Coerced,
-    TryCoerce,
-};
+pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 
 pub mod dots;
 

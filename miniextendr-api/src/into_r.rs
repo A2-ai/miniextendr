@@ -294,14 +294,18 @@ impl<V: IntoR> IntoR for BTreeMap<String, V> {
 }
 
 /// Helper to convert an iterator of (String, V) pairs to a named R list.
-fn map_to_named_list<V: IntoR>(iter: impl ExactSizeIterator<Item = (String, V)>) -> crate::ffi::SEXP {
+fn map_to_named_list<V: IntoR>(
+    iter: impl ExactSizeIterator<Item = (String, V)>,
+) -> crate::ffi::SEXP {
     unsafe {
         let n = iter.len();
-        let list = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+        let list =
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(list);
 
         // Allocate names vector
-        let names = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+        let names =
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(names);
 
         for (i, (key, value)) in iter.enumerate() {
@@ -368,7 +372,8 @@ impl IntoR for Vec<String> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
             let n = self.len();
-            let vec = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
             crate::ffi::Rf_protect(vec);
 
             for (i, s) in self.into_iter().enumerate() {
@@ -391,7 +396,8 @@ impl IntoR for &[&str] {
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
             let n = self.len();
-            let vec = crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
             crate::ffi::Rf_protect(vec);
 
             for (i, s) in self.iter().enumerate() {

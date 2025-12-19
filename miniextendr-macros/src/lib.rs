@@ -1,146 +1,16 @@
 // miniextendr-macros procedural macros
 
 mod altrep;
-
-#[derive(Default)]
-/// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
-///
-/// This is intentionally a small, “data-only” struct that:
-/// - Owns the parsing rules for the attribute
-/// - Produces a normalized, easy-to-consume representation for codegen
-///
-/// # Accepted flags
-///
-/// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
-/// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
-/// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
-/// - `coerce`: enable automatic coercion for supported parameter types
-///
-/// # Note
-///
-/// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
-struct MiniextendrFnAttrs {
-    force_main_thread: bool,
-    force_invisible: Option<bool>,
-    check_interrupt: bool,
-    coerce_all: bool,
-}
-
-impl syn::parse::Parse for MiniextendrFnAttrs {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut out = Self::default();
-        if input.is_empty() {
-            return Ok(out);
-        }
-
-        let metas =
-            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated(input)?;
-
-        for meta in metas {
-            match meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce
-                syn::Meta::Path(path) => {
-                    if let Some(ident) = path.get_ident() {
-                        if ident == "invisible" {
-                            out.force_invisible = Some(true);
-                        } else if ident == "visible" {
-                            out.force_invisible = Some(false);
-                        } else if ident == "check_interrupt" {
-                            out.check_interrupt = true;
-                        } else if ident == "coerce" {
-                            out.coerce_all = true;
-                        } else {
-                            return Err(syn::Error::new_spanned(
-                                ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce",
-                            ));
-                        }
-                    }
-                }
-                // Handle invisible(true) - should be rejected
-                syn::Meta::NameValue(nv) => {
-                    return Err(syn::Error::new_spanned(
-                        nv,
-                        "this option does not take any arguments",
-                    ));
-                }
-                // Nested: unsafe(main_thread)
-                syn::Meta::List(list) => {
-                    if list.path.is_ident("unsafe") {
-                        let nested = list.parse_args_with(
-                            syn::punctuated::Punctuated::<syn::Ident, syn::Token![,]>::parse_terminated,
-                        )?;
-                        if nested.is_empty() {
-                            return Err(syn::Error::new_spanned(
-                                list,
-                                "`unsafe(...)` must specify an option: currently only `unsafe(main_thread)` is supported",
-                            ));
-                        }
-                        for ident in nested {
-                            if ident == "main_thread" {
-                                out.force_main_thread = true;
-                            } else {
-                                return Err(syn::Error::new_spanned(
-                                    ident,
-                                    "unknown `unsafe(...)` option; only `main_thread` is supported",
-                                ));
-                            }
-                        }
-                    } else {
-                        // invisible(something) etc
-                        return Err(syn::Error::new_spanned(
-                            list,
-                            "this option does not take any arguments",
-                        ));
-                    }
-                }
-            }
-        }
-
-        Ok(out)
-    }
-}
-
-/// A lightweight view of a function signature used by wrapper generation.
-///
-/// `MiniextendrFunction` is the shared “naming and signature” layer used by both:
-/// - `#[miniextendr]` (attribute macro)
-/// - `miniextendr_module!` (registration macro)
-///
-/// It intentionally excludes the function body to keep cloning cheap and to make it explicit
-/// that wrapper generation depends on signature shape + identifier naming.
-struct MiniextendrFunction {
-    pub attrs: Vec<syn::Attribute>,
-    pub vis: syn::Visibility,
-    pub abi: Option<syn::Abi>,
-    pub ident: syn::Ident,
-    pub generics: syn::Generics,
-    pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    pub output: syn::ReturnType,
-}
-
-impl syn::parse::Parse for MiniextendrFunction {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let itemfn: syn::ItemFn = input.parse()?;
-        let signature: syn::Signature = itemfn.sig;
-
-        Ok(Self {
-            attrs: itemfn.attrs,
-            vis: itemfn.vis,
-            abi: signature.abi,
-            ident: signature.ident,
-            generics: signature.generics,
-            inputs: signature.inputs,
-            output: signature.output,
-        })
-    }
-}
+mod miniextendr_fn;
+use crate::miniextendr_fn::{CoercionMapping, MiniextendrFnAttrs, MiniextendrFunctionParsed};
+mod miniextendr_module;
+use crate::miniextendr_module::MiniextendrModule;
 
 /// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
 /// and the module macro (which references it).
-fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+pub(crate) fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("call_method_def_{rust_ident}")
 }
 
@@ -148,7 +18,7 @@ fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
 /// and the module macro (which references it).
-fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
 }
@@ -180,42 +50,6 @@ fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
         .collect()
 }
 
-impl MiniextendrFunction {
-    fn from_item_fn(itemfn: &syn::ItemFn) -> Self {
-        let signature = &itemfn.sig;
-        Self {
-            attrs: itemfn.attrs.clone(),
-            vis: itemfn.vis.clone(),
-            abi: signature.abi.clone(),
-            ident: signature.ident.clone(),
-            generics: signature.generics.clone(),
-            inputs: signature.inputs.clone(),
-            output: signature.output.clone(),
-        }
-    }
-
-    fn uses_internal_c_wrapper(&self) -> bool {
-        self.abi.is_none()
-    }
-
-    fn call_method_def_ident(&self) -> syn::Ident {
-        call_method_def_ident_for(&self.ident)
-    }
-
-    fn r_wrapper_const_ident(&self) -> syn::Ident {
-        r_wrapper_const_ident_for(&self.ident)
-    }
-
-    fn c_wrapper_ident(&self) -> syn::Ident {
-        if self.uses_internal_c_wrapper() {
-            let rust_ident = &self.ident;
-            quote::format_ident!("C_{rust_ident}")
-        } else {
-            self.ident.clone()
-        }
-    }
-}
-
 fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
         for arg in ab.args.iter() {
@@ -237,219 +71,6 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
-/// Result of coercion analysis for a type.
-/// Contains the R native type to extract from SEXP and the target type to coerce to.
-enum CoercionMapping {
-    /// Scalar coercion: extract R native type, coerce to target
-    Scalar {
-        r_native: proc_macro2::TokenStream,
-        target: proc_macro2::TokenStream,
-    },
-    /// Vec coercion: extract R native slice, coerce element-wise to `Vec<target>`
-    Vec {
-        r_native_elem: proc_macro2::TokenStream,
-        target_elem: proc_macro2::TokenStream,
-    },
-}
-
-/// Check if an attribute is `#[miniextendr(coerce)]`.
-fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
-    attr.path().is_ident("miniextendr")
-        && matches!(&attr.meta, syn::Meta::List(list) if list.parse_args::<syn::Ident>().is_ok_and(|id| id == "coerce"))
-}
-
-/// Parsed + normalized Rust function item for `#[miniextendr]`.
-///
-/// This performs signature normalization that the wrapper generator depends on:
-/// - `...` → a final `&miniextendr_api::dots::Dots` argument
-/// - `_` wildcard patterns → synthetic identifiers (`__unused0`, `__unused1`, ...)
-/// - consumes `#[miniextendr(coerce)]` parameter attributes and records which params had it
-///
-/// Any non-identifier parameter patterns (e.g. `(a, b): (i32, i32)`) are rejected, because the
-/// wrapper generator needs a stable parameter name for both:
-/// - the generated C wrapper signature
-/// - the generated R wrapper argument names
-struct ExtendrFunctionParsed {
-    original_item: syn::ItemFn,
-    has_dots: bool,
-    named_dots: Option<syn::Ident>,
-    per_param_coerce: std::collections::HashSet<String>,
-}
-
-impl syn::parse::Parse for ExtendrFunctionParsed {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        use syn::spanned::Spanned;
-
-        let mut item: syn::ItemFn = input.parse()?;
-
-        // dots support: parse variadic name (if any) and replace `...` with `&Dots`.
-        let has_dots = item.sig.variadic.is_some();
-        let named_dots = if has_dots {
-            let dots = item.sig.variadic.as_ref().unwrap();
-            if let Some(named_dots) = dots.pat.as_ref() {
-                if let syn::Pat::Ident(named_dots_ident) = named_dots.0.as_ref() {
-                    Some(named_dots_ident.ident.clone())
-                } else {
-                    return Err(syn::Error::new(
-                        named_dots.0.span(),
-                        "variadic pattern must be a simple identifier (e.g. `dots: ...`) or unnamed `...`",
-                    ));
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        // Transform `_` wildcard patterns to synthetic identifiers, and consume
-        // per-parameter `#[miniextendr(coerce)]` attributes.
-        let mut per_param_coerce: std::collections::HashSet<String> =
-            std::collections::HashSet::new();
-        let mut unused_counter = 0usize;
-        for arg in &mut item.sig.inputs {
-            let syn::FnArg::Typed(pat_type) = arg else {
-                // TODO: no support for self!
-                continue;
-            };
-
-            let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
-            pat_type
-                .attrs
-                .retain(|attr| !is_miniextendr_coerce_attr(attr));
-
-            match pat_type.pat.as_ref() {
-                syn::Pat::Ident(pat_ident) => {
-                    if had_coerce_attr {
-                        per_param_coerce.insert(pat_ident.ident.to_string());
-                    }
-                }
-                syn::Pat::Wild(_) => {
-                    let synthetic_name = format!("__unused{}", unused_counter);
-                    unused_counter += 1;
-                    let synthetic_ident = syn::Ident::new(&synthetic_name, pat_type.pat.span());
-                    *pat_type.pat = syn::Pat::Ident(syn::PatIdent {
-                        attrs: vec![],
-                        by_ref: None,
-                        mutability: None,
-                        ident: synthetic_ident,
-                        subpat: None,
-                    });
-                    if had_coerce_attr {
-                        per_param_coerce.insert(synthetic_name);
-                    }
-                }
-                _ => {
-                    return Err(syn::Error::new(
-                        pat_type.pat.span(),
-                        "miniextendr parameters must be simple identifiers (patterns are not supported)",
-                    ));
-                }
-            }
-        }
-
-        if has_dots {
-            item.sig.variadic = None;
-            item.sig
-                .inputs
-                .push(if let Some(named_dots) = named_dots.as_ref() {
-                    syn::parse_quote!(#named_dots: &::miniextendr_api::dots::Dots)
-                } else {
-                    // cannot use `_` as variable name, thus cannot use it as a placeholder for `...`
-                    // Check that no existing parameter is named `_dots`
-                    for arg in &item.sig.inputs {
-                        let syn::FnArg::Typed(pat_type) = arg else {
-                            continue;
-                        };
-                        if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
-                            && pat_ident.ident == "_dots" {
-                                return Err(syn::Error::new(
-                                    pat_ident.ident.span(),
-                                    "parameter named `_dots` conflicts with implicit dots parameter; use named dots like `my_dots: ...` instead",
-                                ));
-                            }
-                    }
-                    syn::parse_quote!(_dots: &::miniextendr_api::dots::Dots)
-                });
-        }
-
-        Ok(Self {
-            original_item: item,
-            has_dots,
-            named_dots,
-            per_param_coerce,
-        })
-    }
-}
-
-/// Get the coercion mapping for a type, if it needs coercion.
-/// Returns None if the type is R-native (no coercion needed) or unknown.
-fn get_coercion_mapping(ty: &syn::Type) -> Option<CoercionMapping> {
-    match ty {
-        syn::Type::Path(type_path) => {
-            let seg = type_path.path.segments.last()?;
-            let type_name = seg.ident.to_string();
-
-            // Check for Vec<T> types
-            if type_name == "Vec" {
-                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
-                    && let Some(syn::GenericArgument::Type(syn::Type::Path(inner_path))) =
-                        args.args.first()
-                {
-                    let inner_name = inner_path.path.segments.last()?.ident.to_string();
-                    return match inner_name.as_str() {
-                        // Vec<integer-like> from &[i32]
-                        "u16" | "i16" | "i8" | "u32" | "u64" | "i64" | "isize" | "usize" => {
-                            let target_elem: proc_macro2::TokenStream = inner_name.parse().ok()?;
-                            Some(CoercionMapping::Vec {
-                                r_native_elem: quote::quote!(i32),
-                                target_elem,
-                            })
-                        }
-                        // Vec<bool> from &[i32] (R logical vectors use i32)
-                        "bool" => Some(CoercionMapping::Vec {
-                            r_native_elem: quote::quote!(i32),
-                            target_elem: quote::quote!(bool),
-                        }),
-                        // Vec<f32> from &[f64]
-                        "f32" => Some(CoercionMapping::Vec {
-                            r_native_elem: quote::quote!(f64),
-                            target_elem: quote::quote!(f32),
-                        }),
-                        _ => None,
-                    };
-                }
-                return None;
-            }
-
-            // Check for scalar types
-            match type_name.as_str() {
-                // Integer-like types from i32
-                "u16" | "i16" | "i8" | "u32" | "u64" | "i64" | "isize" | "usize" => {
-                    let target: proc_macro2::TokenStream = type_name.parse().ok()?;
-                    Some(CoercionMapping::Scalar {
-                        r_native: quote::quote!(i32),
-                        target,
-                    })
-                }
-                // bool from i32 (R logical vectors use i32 internally)
-                "bool" => Some(CoercionMapping::Scalar {
-                    r_native: quote::quote!(i32),
-                    target: quote::quote!(bool),
-                }),
-                // f32 from f64
-                "f32" => Some(CoercionMapping::Scalar {
-                    r_native: quote::quote!(f64),
-                    target: quote::quote!(f32),
-                }),
-                // R-native types or unknown - no coercion
-                _ => None,
-            }
-        }
-        _ => None,
-    }
-}
-
 #[proc_macro_attribute]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
@@ -467,42 +88,29 @@ pub fn miniextendr(
         coerce_all,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
-    let ExtendrFunctionParsed {
-        mut original_item,
-        has_dots,
-        mut named_dots,
-        per_param_coerce,
-    } = syn::parse_macro_input!(item as ExtendrFunctionParsed);
+    let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
+    parsed.add_track_caller_if_needed();
 
-    // Add #[track_caller] if not already present, for better panic location reporting.
-    // Only for Rust ABI functions - extern "C-unwind" functions don't support track_caller.
-    let has_explicit_abi = original_item.sig.abi.is_some();
-    let has_track_caller = original_item
-        .attrs
-        .iter()
-        .any(|attr| attr.path().is_ident("track_caller"));
-    if !has_track_caller && !has_explicit_abi {
-        original_item
-            .attrs
-            .push(syn::parse_quote!(#[track_caller]));
-    }
+    // Extract commonly used values
+    let uses_internal_c_wrapper = parsed.uses_internal_c_wrapper();
+    let call_method_def = parsed.call_method_def_ident();
+    let c_ident = parsed.c_wrapper_ident();
+    let r_wrapper_generator = parsed.r_wrapper_const_ident();
 
-    let extendr_function: MiniextendrFunction = MiniextendrFunction::from_item_fn(&original_item);
-    let uses_internal_c_wrapper = extendr_function.uses_internal_c_wrapper();
-    let call_method_def = extendr_function.call_method_def_ident();
-    let c_ident = extendr_function.c_wrapper_ident();
-    let r_wrapper_generator = extendr_function.r_wrapper_const_ident();
-    let MiniextendrFunction {
-        attrs,
-        vis,
-        abi,
-        ident,
-        generics,
-        inputs,
-        output,
-    } = extendr_function;
     use quote::ToTokens;
     use syn::spanned::Spanned;
+
+    // Extract references to parsed components
+    let rust_ident = parsed.ident();
+    let inputs = parsed.inputs();
+    let output = parsed.output();
+    let abi = parsed.abi();
+    let attrs = parsed.attrs();
+    let vis = parsed.vis();
+    let generics = parsed.generics();
+    let has_dots = parsed.has_dots();
+    let mut named_dots = parsed.named_dots().cloned();
+
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
         rust_arg_count + 1
@@ -511,18 +119,16 @@ pub fn miniextendr(
     };
     let num_args = syn::LitInt::new(&registered_arg_count.to_string(), inputs.span());
 
-    let rust_ident = &ident;
-
     // name of the C-wrapper
     let c_ident_name = syn::LitCStr::new(
         std::ffi::CString::new(c_ident.to_string())
-            .expect("couldn't crate a C-string for the C wrapper name")
+            .expect("couldn't create a C-string for the C wrapper name")
             .as_c_str(),
-        ident.span(),
+        rust_ident.span(),
     );
     // registration of the C-wrapper
     // these are needed to transmute fn-item to fn-pointer correctly.
-    let mut func_ptr_def: Vec<syn::Pat> = Vec::new();
+    let mut func_ptr_def: Vec<syn::Type> = Vec::new();
     if uses_internal_c_wrapper {
         func_ptr_def.push(syn::parse_quote!(::miniextendr_api::ffi::SEXP));
     }
@@ -667,11 +273,11 @@ pub fn miniextendr(
             _ => {
                 // Check if coercion is enabled for this parameter:
                 // - coerce_all: #[miniextendr(coerce)] on function applies to all params
-                // - per_param_coerce: #[miniextendr(coerce)] on individual param
+                // - has_coerce_attr: #[miniextendr(coerce)] on individual param
                 let param_name = ident.to_string();
-                let should_coerce = coerce_all || per_param_coerce.contains(&param_name);
+                let should_coerce = coerce_all || parsed.has_coerce_attr(&param_name);
                 let coercion_mapping = if should_coerce {
-                    get_coercion_mapping(pat_type.ty.as_ref())
+                    CoercionMapping::from_type(pat_type.ty.as_ref())
                 } else {
                     None
                 };
@@ -1064,10 +670,7 @@ pub fn miniextendr(
         .collect::<Vec<_>>()
         .join(", ");
     // Add #' @export roxygen comment if function is `pub` (not pub(crate), pub(super), etc.)
-    let export_comment = if {
-        let vis: &syn::Visibility = &vis;
-        matches!(vis, syn::Visibility::Public(_))
-    } {
+    let export_comment = if matches!(vis, syn::Visibility::Public(_)) {
         "#' @export\n"
     } else {
         ""
@@ -1087,10 +690,12 @@ pub fn miniextendr(
 
     // endregion
 
-    let abi = abi.unwrap_or(syn::parse_quote!(extern "C-unwind"));
+    let abi = abi
+        .cloned()
+        .unwrap_or_else(|| syn::parse_quote!(extern "C-unwind"));
 
     // Extract cfg attributes to apply to generated items
-    let cfg_attrs = extract_cfg_attrs(&original_item.attrs);
+    let cfg_attrs = extract_cfg_attrs(parsed.attrs());
 
     // Generate doc strings with links
     let r_wrapper_doc = format!(
@@ -1101,6 +706,9 @@ pub fn miniextendr(
         "R call method definition for [`{}`] (C wrapper: [`{}`]).",
         rust_ident, c_ident
     );
+
+    // Get the normalized item for output
+    let original_item = parsed.item();
 
     let expanded: proc_macro::TokenStream = quote::quote! {
         // rust function!
@@ -1136,211 +744,6 @@ pub fn miniextendr(
     .into();
 
     expanded
-}
-
-/// A single `fn ...;` line inside `miniextendr_module! { ... }`.
-///
-/// Supported syntaxes:
-///
-/// ```text
-/// fn my_rust_function;
-/// extern "C-unwind" fn C_raw_symbol;
-/// ```
-///
-/// Note: To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
-/// on the function definition itself, not in this module declaration.
-struct ExtendrModuleFunction {
-    pub _abi: Option<syn::Abi>,
-    _fn_token: syn::Token![fn],
-    pub ident: syn::Ident,
-}
-
-impl syn::parse::Parse for ExtendrModuleFunction {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let _abi = if input.peek(syn::Token![extern]) {
-            Some(input.parse()?)
-        } else {
-            None
-        };
-        Ok(Self {
-            _abi,
-            _fn_token: input.parse()?,
-            ident: input.parse()?,
-        })
-    }
-}
-
-impl ExtendrModuleFunction {
-    fn call_method_def_ident(&self) -> syn::Ident {
-        call_method_def_ident_for(&self.ident)
-    }
-
-    fn r_wrapper_const_ident(&self) -> syn::Ident {
-        r_wrapper_const_ident_for(&self.ident)
-    }
-}
-
-/// A single `struct ...;` line inside `miniextendr_module! { ... }`.
-///
-/// This is used to request ALTREP class registration at `R_init_*` time:
-///
-/// ```text
-/// struct MyAltrepClass;
-/// ```
-///
-/// The struct must implement `miniextendr_api::altrep_registration::RegisterAltrep`.
-struct ExtendrModuleStruct {
-    _struct_token: syn::Token![struct],
-    #[allow(dead_code)]
-    pub ident: syn::Ident,
-}
-
-impl syn::parse::Parse for ExtendrModuleStruct {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(Self {
-            _struct_token: input.parse()?,
-            ident: input.parse()?,
-        })
-    }
-}
-
-/// The required `mod <name>;` header inside `miniextendr_module! { ... }`.
-///
-/// This determines the generated init symbol: `R_init_<name>_miniextendr`.
-struct ExtendrModuleName {
-    _mod_token: syn::Token![mod],
-    pub ident: syn::Ident,
-}
-
-impl syn::parse::Parse for ExtendrModuleName {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        Ok(Self {
-            _mod_token: input.parse()?,
-            ident: input.parse()?,
-        })
-    }
-}
-
-/// A `use <module>;` line inside `miniextendr_module! { ... }`.
-///
-/// Only the simple `use name;` form is supported. This is intentionally restrictive so the
-/// generated init/wrapper symbol names are predictable:
-/// - `name::R_init_<name>_miniextendr(dll)`
-/// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
-struct ExtendrModuleUse {
-    _use_token: syn::Token![use],
-    pub use_name: syn::UseName,
-}
-
-impl syn::parse::Parse for ExtendrModuleUse {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        use syn::spanned::Spanned;
-        let _use_token = input.parse()?;
-        let use_name: syn::UseTree = input.parse()?;
-        // dbg!(&use_name);
-        let use_name = match use_name {
-            syn::UseTree::Name(use_name) => use_name,
-            // TODO: provide boilerplate error message here.
-            syn::UseTree::Rename(use_rename) => {
-                return Err(syn::Error::new(
-                    use_rename.span(),
-                    "it is not possible to rename wrappers in `miniextendr_module`",
-                ));
-            }
-            syn::UseTree::Path(_) | syn::UseTree::Glob(_) | syn::UseTree::Group(_) => {
-                return Err(syn::Error::new(use_name.span(), "syntax not supported"));
-            }
-        };
-        Ok(Self {
-            _use_token,
-            use_name,
-        })
-    }
-}
-
-/// Parsed body of a `miniextendr_module! { ... }` invocation.
-///
-/// The body is a semicolon-terminated list of items in any order, with exactly one
-/// `mod <name>;` header:
-///
-/// ```text
-/// mod mypkg;
-/// use submodule;
-/// fn exported_fn;
-/// struct MyAltrep;
-/// ```
-struct ExtendrModule {
-    pub extendr_module: ExtendrModuleName,
-    pub extendr_use: Vec<ExtendrModuleUse>,
-    pub extendr_fn: Vec<ExtendrModuleFunction>,
-    pub extendr_struct: Vec<ExtendrModuleStruct>,
-    // TODO: add extendr_impl: Vec<ExtendrImpl>
-}
-
-/// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
-enum ExtendrItem {
-    Module(ExtendrModuleName),
-    Use(ExtendrModuleUse),
-    Struct(ExtendrModuleStruct),
-    Func(ExtendrModuleFunction),
-}
-
-impl syn::parse::Parse for ExtendrItem {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        // Skip past attributes to peek at the actual item keyword
-        let fork = input.fork();
-        let _ = fork.call(syn::Attribute::parse_outer)?;
-
-        let look_ahead = fork.lookahead1();
-
-        if look_ahead.peek(syn::Token![mod]) {
-            Ok(Self::Module(input.parse()?))
-        } else if look_ahead.peek(syn::Token![use]) {
-            Ok(Self::Use(input.parse()?))
-        } else if look_ahead.peek(syn::Token![struct]) {
-            Ok(Self::Struct(input.parse()?))
-        } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
-            Ok(Self::Func(input.parse()?))
-        } else {
-            Err(look_ahead.error())
-        }
-    }
-}
-
-impl syn::parse::Parse for ExtendrModule {
-    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let items: syn::punctuated::Punctuated<ExtendrItem, syn::Token![;]> =
-            syn::punctuated::Punctuated::parse_terminated_with(input, ExtendrItem::parse)?;
-
-        let mut name = None;
-        let mut uses = Vec::new();
-        let mut funs = Vec::new();
-        let mut structs = Vec::new();
-
-        for it in items {
-            match it {
-                ExtendrItem::Module(m) => {
-                    if name.is_some() {
-                        return Err(syn::Error::new(m._mod_token.span, "duplicate `mod <name>`"));
-                    }
-                    name = Some(m);
-                }
-                ExtendrItem::Use(u) => uses.push(u),
-                ExtendrItem::Struct(s) => structs.push(s),
-                ExtendrItem::Func(f) => funs.push(f),
-            }
-        }
-
-        let extendr_module =
-            name.ok_or_else(|| syn::Error::new(input.span(), "missing `mod <name>`"))?;
-
-        Ok(Self {
-            extendr_module,
-            extendr_use: uses,
-            extendr_fn: funs,
-            extendr_struct: structs,
-        })
-    }
 }
 
 /// Register functions and ALTREP types with R's dynamic symbol registration.
@@ -1412,23 +815,23 @@ impl syn::parse::Parse for ExtendrModule {
 // `extern "C-unwind" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
-    let miniextendr_module = syn::parse_macro_input!(item as ExtendrModule);
+    let parsed_module = syn::parse_macro_input!(item as MiniextendrModule);
 
-    let module = miniextendr_module.extendr_module.ident;
+    let module = &parsed_module.module_name.ident;
     let module_entrypoint_ident = quote::format_ident!("R_init_{module}_miniextendr");
-    let call_entries: Vec<syn::Expr> = miniextendr_module
-        .extendr_fn
+    let call_entries: Vec<syn::Expr> = parsed_module
+        .functions
         .iter()
-        .map(|miniextendr_fn| {
-            let call_method_def = miniextendr_fn.call_method_def_ident();
+        .map(|f| {
+            let call_method_def = f.call_method_def_ident();
             syn::parse_quote!(#call_method_def())
         })
         .collect();
     let call_entries_len = call_entries.len();
 
     // Generate ALTREP registrations for struct items (if they implement RegisterAltrep)
-    let altrep_regs: Vec<syn::Expr> = miniextendr_module
-        .extendr_struct
+    let altrep_regs: Vec<syn::Expr> = parsed_module
+        .structs
         .iter()
         .map(|s| {
             let ty = &s.ident;
@@ -1437,8 +840,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect();
 
     // call the R_init from all the submodules (given by `use`)
-    let use_other_modules = miniextendr_module
-        .extendr_use
+    let use_other_modules = parsed_module
+        .uses
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
@@ -1449,16 +852,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     // region: r wrapper generation in `mod`
 
-    let r_wrapper_generators: Vec<syn::Expr> = miniextendr_module
-        .extendr_fn
+    let r_wrapper_generators: Vec<syn::Expr> = parsed_module
+        .functions
         .iter()
         .map(|x| {
             let r_wrapper_const = x.r_wrapper_const_ident();
             syn::parse_quote!(#r_wrapper_const)
         })
         .collect();
-    let r_wrappers_use_other_modules = miniextendr_module
-        .extendr_use
+    let r_wrappers_use_other_modules = parsed_module
+        .uses
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
@@ -1474,13 +877,13 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module_upper}");
 
     // Generate doc string listing all registered functions
-    let fn_links: Vec<String> = miniextendr_module
-        .extendr_fn
+    let fn_links: Vec<String> = parsed_module
+        .functions
         .iter()
         .map(|f| format!("[`{}`]", f.ident))
         .collect();
-    let struct_links: Vec<String> = miniextendr_module
-        .extendr_struct
+    let struct_links: Vec<String> = parsed_module
+        .structs
         .iter()
         .map(|s| format!("[`{}`]", s.ident))
         .collect();
