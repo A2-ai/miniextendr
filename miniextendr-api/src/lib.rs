@@ -165,8 +165,10 @@ pub use error::{r_print, r_println, r_stop, r_warning};
 pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
-#[cfg(feature = "nonapi")]
-pub mod encoding;
+// NOTE: Disabled because it references non-exported symbols from R's Defn.h
+// (e.g., known_to_be_utf8, utf8locale) that cause dlopen failures at runtime.
+// #[cfg(feature = "nonapi")]
+// pub mod encoding;
 
 // Note: RNativeType is pub(crate), imported directly in modules that need it
 

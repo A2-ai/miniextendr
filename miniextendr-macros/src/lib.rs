@@ -456,11 +456,24 @@ pub fn miniextendr(
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let ExtendrFunctionParsed {
-        original_item,
+        mut original_item,
         has_dots,
         mut named_dots,
         per_param_coerce,
     } = syn::parse_macro_input!(item as ExtendrFunctionParsed);
+
+    // Add #[track_caller] if not already present, for better panic location reporting.
+    // Only for Rust ABI functions - extern "C-unwind" functions don't support track_caller.
+    let has_explicit_abi = original_item.sig.abi.is_some();
+    let has_track_caller = original_item
+        .attrs
+        .iter()
+        .any(|attr| attr.path().is_ident("track_caller"));
+    if !has_track_caller && !has_explicit_abi {
+        original_item
+            .attrs
+            .push(syn::parse_quote!(#[track_caller]));
+    }
 
     let extendr_function: ExtendrFunction = ExtendrFunction::from_item_fn(&original_item);
     let uses_internal_c_wrapper = extendr_function.uses_internal_c_wrapper();

@@ -6,8 +6,6 @@ src/Makevars.win
 src/miniextendr_wrappers.R
 src/rust/Cargo.toml
 src/rust/document.rs
-src/rust/Cargo.toml
-src/rust/document.rs
 src/entrypoint.c
 
 # rust

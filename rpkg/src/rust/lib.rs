@@ -73,6 +73,20 @@ pub fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
     left.checked_div(right).ok_or("don't divide by zero dude")
 }
 
+fn inner_panicking_function() {
+    let x: Option<i32> = None;
+    x.unwrap();
+}
+
+fn middle_function() {
+    inner_panicking_function();
+}
+
+#[miniextendr]
+pub fn nested_panic() {
+    middle_function();
+}
+
 #[miniextendr]
 pub fn add_panic(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
@@ -1426,6 +1440,7 @@ miniextendr_module! {
     fn add2;
     fn add3;
     fn add4;
+    fn nested_panic;
     fn add_panic;
     fn add_r_error;
 
