@@ -253,6 +253,76 @@ impl Coerce<i32> for Rboolean {
 }
 
 // =============================================================================
+// i32 to isize/usize (for argument coercion from R integers)
+// =============================================================================
+
+/// i32 -> isize: always safe (isize is at least 32 bits)
+impl Coerce<isize> for i32 {
+    #[inline(always)]
+    fn coerce(self) -> isize {
+        self as isize
+    }
+}
+
+/// i32 -> usize: can fail if negative
+impl TryCoerce<usize> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<usize, CoerceError> {
+        self.try_into().map_err(|_| CoerceError::Overflow)
+    }
+}
+
+// =============================================================================
+// i32/Rboolean to bool (fallible - NA handling)
+// =============================================================================
+
+/// Error type for logical coercion failures.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LogicalCoerceError {
+    /// R's NA_LOGICAL cannot be represented as Rust bool
+    NAValue,
+    /// Value is not 0 or 1
+    InvalidValue(i32),
+}
+
+impl std::fmt::Display for LogicalCoerceError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            LogicalCoerceError::NAValue => write!(f, "NA cannot be converted to bool"),
+            LogicalCoerceError::InvalidValue(v) => write!(f, "invalid logical value: {}", v),
+        }
+    }
+}
+
+impl std::error::Error for LogicalCoerceError {}
+
+impl TryCoerce<bool> for i32 {
+    type Error = LogicalCoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<bool, LogicalCoerceError> {
+        match self {
+            0 => Ok(false),
+            1 => Ok(true),
+            // NA_LOGICAL is i32::MIN in R
+            i32::MIN => Err(LogicalCoerceError::NAValue),
+            other => Err(LogicalCoerceError::InvalidValue(other)),
+        }
+    }
+}
+
+impl TryCoerce<bool> for Rboolean {
+    type Error = LogicalCoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<bool, LogicalCoerceError> {
+        (self as i32).try_coerce()
+    }
+}
+
+// =============================================================================
 // Narrowing to i32 (fallible)
 // =============================================================================
 
@@ -722,5 +792,58 @@ mod tests {
     fn test_widening_to_u16() {
         let x: u16 = 42u8.coerce();
         assert_eq!(x, 42u16);
+    }
+
+    #[test]
+    fn test_i32_to_bool() {
+        // TRUE (1)
+        assert_eq!(TryCoerce::<bool>::try_coerce(1i32), Ok(true));
+        // FALSE (0)
+        assert_eq!(TryCoerce::<bool>::try_coerce(0i32), Ok(false));
+        // NA (i32::MIN)
+        assert_eq!(
+            TryCoerce::<bool>::try_coerce(i32::MIN),
+            Err(LogicalCoerceError::NAValue)
+        );
+        // Invalid value
+        assert_eq!(
+            TryCoerce::<bool>::try_coerce(42i32),
+            Err(LogicalCoerceError::InvalidValue(42))
+        );
+    }
+
+    #[test]
+    fn test_i32_to_isize() {
+        // Coerce (infallible)
+        let x: isize = 42i32.coerce();
+        assert_eq!(x, 42isize);
+
+        let y: isize = (-100i32).coerce();
+        assert_eq!(y, -100isize);
+    }
+
+    #[test]
+    fn test_i32_to_usize() {
+        // Success
+        assert_eq!(TryCoerce::<usize>::try_coerce(42i32), Ok(42usize));
+        // Failure - negative
+        assert_eq!(
+            TryCoerce::<usize>::try_coerce(-1i32),
+            Err(CoerceError::Overflow)
+        );
+    }
+
+    #[test]
+    fn test_i32_slice_to_bool_vec() {
+        let slice: &[i32] = &[1, 0, 1, 0];
+        let result: Result<Vec<bool>, _> =
+            slice.iter().copied().map(TryCoerce::try_coerce).collect();
+        assert_eq!(result, Ok(vec![true, false, true, false]));
+
+        // With NA
+        let slice_na: &[i32] = &[1, i32::MIN, 0];
+        let result_na: Result<Vec<bool>, LogicalCoerceError> =
+            slice_na.iter().copied().map(TryCoerce::try_coerce).collect();
+        assert_eq!(result_na, Err(LogicalCoerceError::NAValue));
     }
 }

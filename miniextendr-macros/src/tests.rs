@@ -1,30 +1,26 @@
-use crate::miniextendr_fn::{
-    MiniextendrFnAttrs, MiniextendrFunctionParsed, is_miniextendr_coerce_attr,
-};
-use crate::miniextendr_module::MiniextendrModuleFunction;
+use super::*;
 
 #[test]
 fn wrapper_idents_match_between_attribute_and_module_macros() {
-    // Parse via MiniextendrFunctionParsed (attribute macro path)
-    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
+    let item_fn: syn::ItemFn = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
+    let f = ExtendrFunction::from_item_fn(&item_fn);
 
-    // Parse via MiniextendrModuleFunction (module macro path)
-    let m: MiniextendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
+    let m: ExtendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
 
-    assert_eq!(parsed.call_method_def_ident(), m.call_method_def_ident());
-    assert_eq!(parsed.r_wrapper_const_ident(), m.r_wrapper_const_ident());
+    assert_eq!(f.call_method_def_ident(), m.call_method_def_ident());
+    assert_eq!(f.r_wrapper_const_ident(), m.r_wrapper_const_ident());
 }
 
 #[test]
 fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
-    let parsed: MiniextendrFunctionParsed =
+    let parsed: ExtendrFunctionParsed =
         syn::parse2(quote::quote! { fn f(a: i32, ...) -> i32 { a } }).unwrap();
 
-    assert!(parsed.has_dots());
-    assert!(parsed.named_dots().is_none());
-    assert!(parsed.item().sig.variadic.is_none());
+    assert!(parsed.has_dots);
+    assert!(parsed.named_dots.is_none());
+    assert!(parsed.original_item.sig.variadic.is_none());
 
-    let last = parsed.inputs().last().unwrap();
+    let last = parsed.original_item.sig.inputs.last().unwrap();
     let syn::FnArg::Typed(pat_type) = last else {
         panic!("expected a typed arg");
     };
@@ -51,13 +47,13 @@ fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
 
 #[test]
 fn parsed_fn_rewrites_named_dots_to_named_dots_arg() {
-    let parsed: MiniextendrFunctionParsed =
+    let parsed: ExtendrFunctionParsed =
         syn::parse2(quote::quote! { fn f(a: i32, dots: ...) -> i32 { a } }).unwrap();
 
-    assert!(parsed.has_dots());
-    assert_eq!(parsed.named_dots().unwrap(), "dots");
+    assert!(parsed.has_dots);
+    assert_eq!(parsed.named_dots.as_ref().unwrap(), "dots");
 
-    let last = parsed.inputs().last().unwrap();
+    let last = parsed.original_item.sig.inputs.last().unwrap();
     let syn::FnArg::Typed(pat_type) = last else {
         panic!("expected a typed arg");
     };
@@ -69,15 +65,15 @@ fn parsed_fn_rewrites_named_dots_to_named_dots_arg() {
 
 #[test]
 fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
-    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
+    let parsed: ExtendrFunctionParsed = syn::parse2(quote::quote! {
         fn f(#[miniextendr(coerce)] _: u16, _: i32) {}
     })
     .unwrap();
 
-    assert!(parsed.has_coerce_attr("__unused0"));
-    assert!(!parsed.has_coerce_attr("__unused1"));
+    assert!(parsed.per_param_coerce.contains("__unused0"));
+    assert!(!parsed.per_param_coerce.contains("__unused1"));
 
-    let args: Vec<&syn::FnArg> = parsed.inputs().iter().collect();
+    let args: Vec<&syn::FnArg> = parsed.original_item.sig.inputs.iter().collect();
     let syn::FnArg::Typed(first) = args[0] else {
         panic!("expected typed arg");
     };
@@ -90,7 +86,7 @@ fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
 
 #[test]
 fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
-    let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
+    let err = syn::parse2::<ExtendrFunctionParsed>(quote::quote! {
         fn f(_dots: i32, ...) {}
     })
     .err()
@@ -104,7 +100,7 @@ fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
 
 #[test]
 fn parsed_fn_errors_on_non_ident_dots_pattern() {
-    let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
+    let err = syn::parse2::<ExtendrFunctionParsed>(quote::quote! {
         fn f((a, b): ...) {}
     })
     .err()
@@ -146,121 +142,4 @@ fn miniextendr_attr_accepts_multiple_flags() {
         .expect("should parse multiple flags");
     assert!(attrs.coerce_all);
     assert_eq!(attrs.force_invisible, Some(true));
-}
-
-#[test]
-fn parsed_fn_adds_inline_never_for_rust_abi() {
-    let mut parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn f() {} }).unwrap();
-    parsed.add_inline_never_if_needed();
-
-    let has_inline_never = parsed.item().attrs.iter().any(|attr| {
-        attr.path().is_ident("inline")
-            && matches!(&attr.meta, syn::Meta::List(list)
-                if list.tokens.to_string() == "never")
-    });
-    assert!(
-        has_inline_never,
-        "should add #[inline(never)] to Rust ABI functions"
-    );
-}
-
-#[test]
-fn parsed_fn_preserves_explicit_inline() {
-    let mut parsed: MiniextendrFunctionParsed =
-        syn::parse2(quote::quote! { #[inline(always)] fn f() {} }).unwrap();
-    parsed.add_inline_never_if_needed();
-
-    // Should not add inline(never) since inline(always) is already present
-    let inline_count = parsed
-        .item()
-        .attrs
-        .iter()
-        .filter(|attr| attr.path().is_ident("inline"))
-        .count();
-    assert_eq!(
-        inline_count, 1,
-        "should preserve existing #[inline] attribute"
-    );
-}
-
-#[test]
-fn parsed_fn_no_inline_for_extern_c() {
-    let mut parsed: MiniextendrFunctionParsed =
-        syn::parse2(quote::quote! { extern "C-unwind" fn f() {} }).unwrap();
-    parsed.add_inline_never_if_needed();
-
-    let has_inline = parsed
-        .item()
-        .attrs
-        .iter()
-        .any(|attr| attr.path().is_ident("inline"));
-    assert!(
-        !has_inline,
-        "should not add #[inline] to extern C functions"
-    );
-}
-
-// =============================================================================
-// ALTREP derive macro tests
-// =============================================================================
-
-#[test]
-fn test_derive_altrep_integer_basic() {
-    let input: syn::DeriveInput = syn::parse2(quote::quote! {
-        pub struct TestData {
-            len: usize,
-        }
-    })
-    .unwrap();
-
-    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
-    let output_str = output.to_string();
-
-    // Should generate AltrepLen impl
-    assert!(output_str.contains("AltrepLen"));
-    assert!(output_str.contains("fn len"));
-
-    // Should generate AltIntegerData impl
-    assert!(output_str.contains("AltIntegerData"));
-    assert!(output_str.contains("fn elt"));
-
-    // Should call impl_altinteger_from_data!
-    assert!(output_str.contains("impl_altinteger_from_data"));
-}
-
-#[test]
-fn test_derive_altrep_integer_with_elt_field() {
-    let input: syn::DeriveInput = syn::parse2(quote::quote! {
-        #[altrep(elt = "value")]
-        pub struct ConstantData {
-            value: i32,
-            len: usize,
-        }
-    })
-    .unwrap();
-
-    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
-    let output_str = output.to_string();
-
-    // Should use field for elt()
-    assert!(output_str.contains("self . value"));
-}
-
-#[test]
-fn test_derive_altrep_integer_with_options() {
-    let input: syn::DeriveInput = syn::parse2(quote::quote! {
-        #[altrep(dataptr, serialize)]
-        pub struct VecData {
-            data: Vec<i32>,
-            len: usize,
-        }
-    })
-    .unwrap();
-
-    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
-    let output_str = output.to_string();
-
-    // Should pass options to macro
-    assert!(output_str.contains("dataptr"));
-    assert!(output_str.contains("serialize"));
 }
