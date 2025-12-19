@@ -338,6 +338,25 @@ impl MiniextendrFunctionParsed {
             self.item.attrs.push(syn::parse_quote!(#[track_caller]));
         }
     }
+
+    /// Add `#[inline(never)]` if no `#[inline(...)]` attribute is present.
+    /// Only for Rust ABI functions - extern "C-unwind" functions are passed through as-is.
+    ///
+    /// Preventing inlining ensures:
+    /// - The worker thread pattern works correctly (function runs in separate context)
+    /// - Panic handling and unwinding work as expected
+    /// - Stack traces show the actual function name
+    pub(crate) fn add_inline_never_if_needed(&mut self) {
+        let has_explicit_abi = self.item.sig.abi.is_some();
+        let has_inline = self
+            .item
+            .attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("inline"));
+        if !has_inline && !has_explicit_abi {
+            self.item.attrs.push(syn::parse_quote!(#[inline(never)]));
+        }
+    }
 }
 
 // =============================================================================
