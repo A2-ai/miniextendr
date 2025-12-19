@@ -1,26 +1,30 @@
-use super::*;
+use crate::miniextendr_fn::{
+    is_miniextendr_coerce_attr, MiniextendrFnAttrs, MiniextendrFunctionParsed,
+};
+use crate::miniextendr_module::MiniextendrModuleFunction;
 
 #[test]
 fn wrapper_idents_match_between_attribute_and_module_macros() {
-    let item_fn: syn::ItemFn = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
-    let f = MiniextendrFunction::from_item_fn(&item_fn);
+    // Parse via MiniextendrFunctionParsed (attribute macro path)
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn my_fn() {} }).unwrap();
 
-    let m: ExtendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
+    // Parse via MiniextendrModuleFunction (module macro path)
+    let m: MiniextendrModuleFunction = syn::parse2(quote::quote! { fn my_fn }).unwrap();
 
-    assert_eq!(f.call_method_def_ident(), m.call_method_def_ident());
-    assert_eq!(f.r_wrapper_const_ident(), m.r_wrapper_const_ident());
+    assert_eq!(parsed.call_method_def_ident(), m.call_method_def_ident());
+    assert_eq!(parsed.r_wrapper_const_ident(), m.r_wrapper_const_ident());
 }
 
 #[test]
 fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
-    let parsed: ExtendrFunctionParsed =
+    let parsed: MiniextendrFunctionParsed =
         syn::parse2(quote::quote! { fn f(a: i32, ...) -> i32 { a } }).unwrap();
 
-    assert!(parsed.has_dots);
-    assert!(parsed.named_dots.is_none());
-    assert!(parsed.original_item.sig.variadic.is_none());
+    assert!(parsed.has_dots());
+    assert!(parsed.named_dots().is_none());
+    assert!(parsed.item().sig.variadic.is_none());
 
-    let last = parsed.original_item.sig.inputs.last().unwrap();
+    let last = parsed.inputs().last().unwrap();
     let syn::FnArg::Typed(pat_type) = last else {
         panic!("expected a typed arg");
     };
@@ -47,13 +51,13 @@ fn parsed_fn_rewrites_unnamed_dots_to_dots_arg() {
 
 #[test]
 fn parsed_fn_rewrites_named_dots_to_named_dots_arg() {
-    let parsed: ExtendrFunctionParsed =
+    let parsed: MiniextendrFunctionParsed =
         syn::parse2(quote::quote! { fn f(a: i32, dots: ...) -> i32 { a } }).unwrap();
 
-    assert!(parsed.has_dots);
-    assert_eq!(parsed.named_dots.as_ref().unwrap(), "dots");
+    assert!(parsed.has_dots());
+    assert_eq!(parsed.named_dots().unwrap(), "dots");
 
-    let last = parsed.original_item.sig.inputs.last().unwrap();
+    let last = parsed.inputs().last().unwrap();
     let syn::FnArg::Typed(pat_type) = last else {
         panic!("expected a typed arg");
     };
@@ -65,15 +69,15 @@ fn parsed_fn_rewrites_named_dots_to_named_dots_arg() {
 
 #[test]
 fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
-    let parsed: ExtendrFunctionParsed = syn::parse2(quote::quote! {
+    let parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! {
         fn f(#[miniextendr(coerce)] _: u16, _: i32) {}
     })
     .unwrap();
 
-    assert!(parsed.per_param_coerce.contains("__unused0"));
-    assert!(!parsed.per_param_coerce.contains("__unused1"));
+    assert!(parsed.has_coerce_attr("__unused0"));
+    assert!(!parsed.has_coerce_attr("__unused1"));
 
-    let args: Vec<&syn::FnArg> = parsed.original_item.sig.inputs.iter().collect();
+    let args: Vec<&syn::FnArg> = parsed.inputs().iter().collect();
     let syn::FnArg::Typed(first) = args[0] else {
         panic!("expected typed arg");
     };
@@ -86,7 +90,7 @@ fn parsed_fn_rewrites_wildcards_and_tracks_per_param_coerce() {
 
 #[test]
 fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
-    let err = syn::parse2::<ExtendrFunctionParsed>(quote::quote! {
+    let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
         fn f(_dots: i32, ...) {}
     })
     .err()
@@ -100,7 +104,7 @@ fn parsed_fn_errors_on_unnamed_dots_conflicting_with_dots_arg_name() {
 
 #[test]
 fn parsed_fn_errors_on_non_ident_dots_pattern() {
-    let err = syn::parse2::<ExtendrFunctionParsed>(quote::quote! {
+    let err = syn::parse2::<MiniextendrFunctionParsed>(quote::quote! {
         fn f((a, b): ...) {}
     })
     .err()

@@ -157,22 +157,6 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             None
         };
 
-        // Reject #[export_name] for regular functions (not extern "C-unwind").
-        // For extern functions, #[export_name] can be used as an alternative to #[no_mangle].
-        let is_extern = item.sig.abi.is_some();
-        if !is_extern {
-            for attr in &item.attrs {
-                if attr.path().is_ident("export_name") {
-                    return Err(syn::Error::new_spanned(
-                        attr,
-                        "#[export_name] is not supported with #[miniextendr] on regular functions; \
-                         the macro generates its own C symbol names. \
-                         For extern \"C-unwind\" functions, #[export_name] is allowed.",
-                    ));
-                }
-            }
-        }
-
         // Transform `_` wildcard patterns to synthetic identifiers, and consume
         // per-parameter `#[miniextendr(coerce)]` attributes.
         let mut per_param_coerce: std::collections::HashSet<String> =
@@ -180,9 +164,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         let mut unused_counter = 0usize;
         for arg in &mut item.sig.inputs {
             let syn::FnArg::Typed(pat_type) = arg else {
-                // Self parameters are not allowed in standalone functions.
-                // Users should use #[miniextendr(receiver|r6|s3|s4|s7)] on impl blocks instead.
-                // The error is raised in lib.rs c_wrapper_inputs generation.
+                // TODO: no support for self!
                 continue;
             };
 
@@ -307,19 +289,9 @@ impl MiniextendrFunctionParsed {
         &self.item.sig.output
     }
 
-    /// The normalized function item (with original doc comments).
+    /// The normalized function item, for emitting in the output.
     pub(crate) fn item(&self) -> &syn::ItemFn {
         &self.item
-    }
-
-    /// The normalized function item with roxygen tags stripped from doc comments.
-    ///
-    /// This is used for emitting the Rust function without R-specific documentation
-    /// tags (e.g., `@param`, `@examples`) that don't belong in rustdoc.
-    pub(crate) fn item_without_roxygen(&self) -> syn::ItemFn {
-        let mut item = self.item.clone();
-        item.attrs = crate::roxygen::strip_roxygen_from_attrs(&item.attrs);
-        item
     }
 
     // -------------------------------------------------------------------------
@@ -344,31 +316,13 @@ impl MiniextendrFunctionParsed {
 
     /// Identifier for the C wrapper function.
     /// - Rust ABI: `C_<name>`
-    /// - Extern "C-unwind": same as the function name (or export_name if specified)
+    /// - Extern "C-unwind": same as the function name
     pub(crate) fn c_wrapper_ident(&self) -> syn::Ident {
         if self.uses_internal_c_wrapper() {
             quote::format_ident!("C_{}", self.ident())
         } else {
-            // For extern functions, check for #[export_name = "..."]
-            self.export_name_ident()
-                .unwrap_or_else(|| self.ident().clone())
+            self.ident().clone()
         }
-    }
-
-    /// Extract the export name from `#[export_name = "..."]` attribute, if present.
-    pub(crate) fn export_name_ident(&self) -> Option<syn::Ident> {
-        for attr in &self.item.attrs {
-            if attr.path().is_ident("export_name")
-                && let syn::Meta::NameValue(meta) = &attr.meta
-                && let syn::Expr::Lit(syn::ExprLit {
-                    lit: syn::Lit::Str(lit_str),
-                    ..
-                }) = &meta.value
-            {
-                return Some(syn::Ident::new(&lit_str.value(), lit_str.span()));
-            }
-        }
-        None
     }
 
     /// Add `#[track_caller]` if not already present (for better panic locations).
@@ -382,25 +336,6 @@ impl MiniextendrFunctionParsed {
             .any(|attr| attr.path().is_ident("track_caller"));
         if !has_track_caller && !has_explicit_abi {
             self.item.attrs.push(syn::parse_quote!(#[track_caller]));
-        }
-    }
-
-    /// Add `#[inline(never)]` if no `#[inline(...)]` attribute is present.
-    /// Only for Rust ABI functions - extern "C-unwind" functions are passed through as-is.
-    ///
-    /// Preventing inlining ensures:
-    /// - The worker thread pattern works correctly (function runs in separate context)
-    /// - Panic handling and unwinding work as expected
-    /// - Stack traces show the actual function name
-    pub(crate) fn add_inline_never_if_needed(&mut self) {
-        let has_explicit_abi = self.item.sig.abi.is_some();
-        let has_inline = self
-            .item
-            .attrs
-            .iter()
-            .any(|attr| attr.path().is_ident("inline"));
-        if !has_inline && !has_explicit_abi {
-            self.item.attrs.push(syn::parse_quote!(#[inline(never)]));
         }
     }
 }

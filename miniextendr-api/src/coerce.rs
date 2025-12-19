@@ -248,8 +248,8 @@ impl TryCoerce<usize> for i32 {
 // =============================================================================
 
 use core::num::{
-    NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroIsize,
-    NonZeroU8, NonZeroU16, NonZeroU32, NonZeroU64, NonZeroUsize,
+    NonZeroI8, NonZeroI16, NonZeroI32, NonZeroI64, NonZeroIsize, NonZeroU8, NonZeroU16, NonZeroU32,
+    NonZeroU64, NonZeroUsize,
 };
 
 macro_rules! impl_nonzero_from_self {
@@ -1111,10 +1111,7 @@ mod tests {
         // Success
         assert_eq!(TryCoerce::<u32>::try_coerce(42i32), Ok(42u32));
         assert_eq!(TryCoerce::<u32>::try_coerce(0i32), Ok(0u32));
-        assert_eq!(
-            TryCoerce::<u32>::try_coerce(i32::MAX),
-            Ok(i32::MAX as u32)
-        );
+        assert_eq!(TryCoerce::<u32>::try_coerce(i32::MAX), Ok(i32::MAX as u32));
         // Failure - negative
         assert_eq!(
             TryCoerce::<u32>::try_coerce(-1i32),
@@ -1126,10 +1123,7 @@ mod tests {
     fn test_i32_to_u64() {
         // Success
         assert_eq!(TryCoerce::<u64>::try_coerce(42i32), Ok(42u64));
-        assert_eq!(
-            TryCoerce::<u64>::try_coerce(i32::MAX),
-            Ok(i32::MAX as u64)
-        );
+        assert_eq!(TryCoerce::<u64>::try_coerce(i32::MAX), Ok(i32::MAX as u64));
         // Failure - negative
         assert_eq!(
             TryCoerce::<u64>::try_coerce(-1i32),
@@ -1157,8 +1151,11 @@ mod tests {
 
         // With NA
         let slice_na: &[i32] = &[1, i32::MIN, 0];
-        let result_na: Result<Vec<bool>, LogicalCoerceError> =
-            slice_na.iter().copied().map(TryCoerce::try_coerce).collect();
+        let result_na: Result<Vec<bool>, LogicalCoerceError> = slice_na
+            .iter()
+            .copied()
+            .map(TryCoerce::try_coerce)
+            .collect();
         assert_eq!(result_na, Err(LogicalCoerceError::NAValue));
     }
 

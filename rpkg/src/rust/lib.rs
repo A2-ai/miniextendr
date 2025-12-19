@@ -77,7 +77,7 @@ pub struct RustError;
 
 impl From<()> for RustError {
     fn from(_value: ()) -> Self {
-        Self 
+        Self
     }
 }
 
@@ -93,6 +93,7 @@ pub fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
 
 fn inner_panicking_function() {
     let x: Option<i32> = None;
+    #[allow(clippy::unnecessary_literal_unwrap)]
     x.unwrap();
 }
 

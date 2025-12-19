@@ -181,7 +181,7 @@ pub trait SexpExt {
     fn is_altrep(&self) -> bool;
 
     /// Check if this `SEXP` contains any elements.
-    /// 
+    ///
     fn is_empty(&self) -> bool;
 }
 
@@ -304,7 +304,7 @@ impl SexpExt for SEXP {
     fn is_altrep(&self) -> bool {
         unsafe { ALTREP(*self) != 0 }
     }
-    
+
     #[inline]
     fn is_empty(&self) -> bool {
         self.len() == 0

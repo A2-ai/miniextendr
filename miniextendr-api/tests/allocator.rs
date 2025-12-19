@@ -52,7 +52,12 @@ unsafe fn test_various_sizes() {
             let layout = Layout::from_size_align(size, 8).unwrap();
             let ptr = RAllocator.alloc(layout);
             assert!(!ptr.is_null(), "alloc failed for size {}", size);
-            assert_eq!(ptr.align_offset(8), 0, "alignment violated for size {}", size);
+            assert_eq!(
+                ptr.align_offset(8),
+                0,
+                "alignment violated for size {}",
+                size
+            );
 
             for i in 0..size {
                 *ptr.add(i) = (i % 256) as u8;
@@ -73,7 +78,12 @@ unsafe fn test_various_alignments() {
             let layout = Layout::from_size_align(size, align).unwrap();
             let ptr = RAllocator.alloc(layout);
             assert!(!ptr.is_null(), "alloc failed for align {}", align);
-            assert_eq!(ptr as usize % align, 0, "pointer {} not aligned", ptr as usize);
+            assert_eq!(
+                ptr as usize % align,
+                0,
+                "pointer {} not aligned",
+                ptr as usize
+            );
             std::ptr::write_bytes(ptr, 0xAA, size);
             for i in 0..size {
                 assert_eq!(*ptr.add(i), 0xAA, "data mismatch at {}", i);
