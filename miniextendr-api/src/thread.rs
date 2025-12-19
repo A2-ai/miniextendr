@@ -46,9 +46,25 @@
 #[cfg(feature = "nonapi")]
 use crate::ffi::nonapi_stack::{R_CStackDir, R_CStackLimit, R_CStackStart};
 
+#[cfg(feature = "nonapi")]
+use std::sync::atomic::{AtomicUsize, Ordering};
+
+/// Global refcount for active stack check guards.
+/// When count > 0, stack checking is disabled.
+#[cfg(feature = "nonapi")]
+static STACK_GUARD_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Original R_CStackLimit value before any guards were created.
+/// Only valid when STACK_GUARD_COUNT > 0.
+#[cfg(feature = "nonapi")]
+static ORIGINAL_STACK_LIMIT: AtomicUsize = AtomicUsize::new(0);
+
 /// RAII guard that disables R's stack checking and restores it on drop.
 ///
 /// Use this when calling R APIs from a thread other than the main R thread.
+///
+/// Multiple guards can be active concurrently. Stack checking is only restored
+/// when the last guard is dropped.
 ///
 /// # Example
 ///
@@ -59,38 +75,59 @@ use crate::ffi::nonapi_stack::{R_CStackDir, R_CStackLimit, R_CStackStart};
 /// ```
 #[cfg(feature = "nonapi")]
 pub struct StackCheckGuard {
-    saved_limit: usize,
+    // Unit struct - state is in global atomics
+    _private: (),
 }
 
 #[cfg(feature = "nonapi")]
 impl StackCheckGuard {
     /// Disable R's stack checking and return a guard that restores it on drop.
     ///
+    /// Multiple guards can be created concurrently (even from different threads).
+    /// Stack checking is only restored when the last guard is dropped.
+    ///
     /// # Safety
     ///
-    /// This is safe to call, but the caller must ensure that:
-    /// 1. R has been initialized (the variables exist)
-    /// 2. No other code is concurrently modifying these variables
+    /// This is safe to call, but the caller must ensure that R has been
+    /// initialized (the R_CStackLimit variable exists).
     #[must_use]
     pub fn disable() -> Self {
-        let saved_limit = unsafe { R_CStackLimit };
-        unsafe {
-            R_CStackLimit = usize::MAX;
+        // Atomically increment guard count and save original limit if we're the first
+        let prev_count = STACK_GUARD_COUNT.fetch_add(1, Ordering::SeqCst);
+        if prev_count == 0 {
+            // We're the first guard - save the original limit
+            let original = unsafe { R_CStackLimit };
+            ORIGINAL_STACK_LIMIT.store(original, Ordering::SeqCst);
+            // Disable stack checking
+            unsafe {
+                R_CStackLimit = usize::MAX;
+            }
         }
-        Self { saved_limit }
+        Self { _private: () }
     }
 
-    /// Get the saved limit value (for debugging).
-    pub fn saved_limit(&self) -> usize {
-        self.saved_limit
+    /// Get the original limit value that will be restored (for debugging).
+    pub fn original_limit() -> usize {
+        ORIGINAL_STACK_LIMIT.load(Ordering::SeqCst)
+    }
+
+    /// Get the current number of active guards (for debugging).
+    pub fn active_count() -> usize {
+        STACK_GUARD_COUNT.load(Ordering::SeqCst)
     }
 }
 
 #[cfg(feature = "nonapi")]
 impl Drop for StackCheckGuard {
     fn drop(&mut self) {
-        unsafe {
-            R_CStackLimit = self.saved_limit;
+        // Atomically decrement guard count and restore limit if we're the last
+        let prev_count = STACK_GUARD_COUNT.fetch_sub(1, Ordering::SeqCst);
+        if prev_count == 1 {
+            // We were the last guard - restore the original limit
+            let original = ORIGINAL_STACK_LIMIT.load(Ordering::SeqCst);
+            unsafe {
+                R_CStackLimit = original;
+            }
         }
     }
 }

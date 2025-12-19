@@ -2864,7 +2864,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-CARGO="$CARGO"
+CARGO="$CARGO" NOT_CRAN="$NOT_CRAN"
 
 _ACEOF
 
@@ -3299,7 +3299,12 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
   case $ac_file$ac_mode in
     "patch-staticlib-name":C)
-      _pkgid_output=`$CARGO pkgid --offline --color=never --manifest-path src/rust/Cargo.toml`
+          if test "$NOT_CRAN" = "true"; then
+    _pkgid_flags="--color=never"
+  else
+    _pkgid_flags="--offline --color=never"
+  fi
+  _pkgid_output=`$CARGO pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2

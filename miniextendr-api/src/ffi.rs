@@ -122,15 +122,24 @@ pub trait SexpExt {
     ///
     /// # Safety
     ///
-    /// - The SEXP must be valid and of the correct type for T
-    /// - The returned slice borrows from R's memory; the SEXP must remain protected
-    fn as_slice<T: RNativeType>(&self) -> &'static [T];
+    /// - The SEXP must be valid and of the correct type for `T`
+    /// - The SEXP must be protected from R's garbage collector for the entire
+    ///   duration the returned slice is used. This typically means the SEXP must
+    ///   be either:
+    ///   - An argument to a `.Call` function (protected by R's calling convention)
+    ///   - Explicitly protected via `PROTECT`/`UNPROTECT` or `R_PreserveObject`
+    ///   - Part of a protected container (e.g., element of a protected list)
+    /// - The returned slice has `'static` lifetime for API convenience, but this
+    ///   is a lie - the actual lifetime is tied to the SEXP's protection status.
+    ///   Holding the slice after the SEXP is unprotected is undefined behavior.
+    unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T];
 
     /// Get a slice view without thread checks.
     ///
     /// # Safety
     ///
-    /// Must be called from R's main thread. No debug assertions.
+    /// - All safety requirements of [`as_slice`](Self::as_slice) apply
+    /// - Additionally, must be called from R's main thread (no debug assertions)
     unsafe fn as_slice_unchecked<T: RNativeType>(&self) -> &'static [T];
 
     // Type checking methods (equivalent to R's type check macros)
@@ -205,7 +214,7 @@ impl SexpExt for SEXP {
     }
 
     #[inline]
-    fn as_slice<T: RNativeType>(&self) -> &'static [T] {
+    unsafe fn as_slice<T: RNativeType>(&self) -> &'static [T] {
         debug_assert!(
             self.type_of() == T::SEXP_TYPE,
             "SEXP type mismatch: expected {:?}, got {:?}",

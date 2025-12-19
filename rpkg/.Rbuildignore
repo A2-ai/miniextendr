@@ -1,4 +1,22 @@
 ^LICENSE\.md$
-^src/rust/ra_target$
-^src/rust/target$
 ^dev$
+
+# Build artifacts and generated files
+^src/rust/target$
+^src/rust/ra_target$
+^src/rust/\.cargo$
+^config\.log$
+^config\.status$
+^configure~$
+^autom4te\.cache$
+
+# Generated R wrapper (kept in src/, copied to R/)
+^src/miniextendr_wrappers\.R$
+
+# Development files
+^bootstrap\.R$
+^\.gitignore$
+^\.DS_Store$
+
+# R CMD check output
+\.Rcheck$

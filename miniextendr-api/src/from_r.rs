@@ -110,7 +110,8 @@ impl<T: RNativeType> TryFromSexp for T {
             }
             .into());
         }
-        sexp.as_slice::<T>().first().cloned().ok_or_else(|| {
+        // SAFETY: sexp is a .Call argument, protected by R's calling convention
+        unsafe { sexp.as_slice::<T>() }.first().cloned().ok_or_else(|| {
             SexpLengthError {
                 expected: 1,
                 actual: 0,
@@ -239,7 +240,8 @@ impl<T: RNativeType> TryFromSexp for &'static [T] {
                 actual,
             });
         }
-        Ok(sexp.as_slice::<T>())
+        // SAFETY: sexp is a .Call argument, protected by R's calling convention
+        Ok(unsafe { sexp.as_slice::<T>() })
     }
 
     #[inline]

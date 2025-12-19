@@ -10,7 +10,7 @@ if [ "$NOT_CRAN" != "true" ]; then
   # rm -rf src/target
   rm -rf src/rust/target
   rm -rf src/rust/ra_target
-  rm     .cargo/config.toml
+  rm -rf src/rust/.cargo
   rm     src/rust/Cargo.toml
   rm -rf src/rust/document.rs # we now produce this in configure.ac
   rm -rf src/entrypoint.c # we now produce this in configure.ac

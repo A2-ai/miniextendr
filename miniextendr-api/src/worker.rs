@@ -65,13 +65,20 @@ pub fn has_worker_context() -> bool {
 /// Check if the current thread is R's main thread.
 ///
 /// Returns `true` if called from the main R thread, `false` otherwise.
-/// If the worker hasn't been initialized yet, returns `true` (assumes main thread).
+/// If the worker hasn't been initialized yet, returns `false` (safe default).
+///
+/// # Note
+///
+/// Before `miniextendr_worker_init()` is called, this always returns `false`.
+/// This is intentional - it prevents R API calls from arbitrary threads before
+/// the worker is properly set up. Ensure `miniextendr_worker_init()` is called
+/// during R package initialization (typically in `R_init_<pkgname>`).
 #[inline(always)]
 pub fn is_r_main_thread() -> bool {
     R_MAIN_THREAD_ID
         .get()
         .map(|&id| id == std::thread::current().id())
-        .unwrap_or(true) // If not initialized, assume we're on main thread
+        .unwrap_or(false) // Safe default: assume NOT main thread until initialized
 }
 
 /// Extract a message from a panic payload.

@@ -71,7 +71,12 @@ impl SendableDataPtr {
 ///
 /// - If on main thread: executes directly
 /// - If in worker context: routes via `with_r_thread`
-/// - Fallback: executes directly (for tests without worker context)
+/// - Otherwise: panics (R API calls from arbitrary threads are unsafe)
+///
+/// # Panics
+///
+/// Panics if called from a non-main thread without worker context.
+/// This prevents unsafe R API calls from arbitrary threads (e.g., Rayon).
 #[inline]
 fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>(f: F) -> R {
     if is_r_main_thread() {
@@ -79,8 +84,10 @@ fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>
     } else if has_worker_context() {
         with_r_thread(f)
     } else {
-        // Last resort fallback (e.g., tests running on non-main harness threads).
-        f()
+        panic!(
+            "RAllocator: cannot allocate from non-main thread without worker context. \
+             Ensure miniextendr_worker_init() was called and you're within run_on_worker()."
+        )
     }
 }
 
