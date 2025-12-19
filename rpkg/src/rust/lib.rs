@@ -577,7 +577,7 @@ miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
 
 /// ALTREP wrapper for ConstantIntData
 #[miniextendr(class = "ConstantInt", pkg = "rpkg")]
-pub struct ConstantIntClass(ConstantIntData);
+pub struct ConstantIntClass(pub ConstantIntData);
 
 /// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
 ///
@@ -828,7 +828,7 @@ impl AltRealData for ConstantRealData {
 miniextendr_api::impl_altreal_from_data!(ConstantRealData);
 
 #[miniextendr(class = "ConstantReal", pkg = "rpkg")]
-pub struct ConstantRealClass(ConstantRealData);
+pub struct ConstantRealClass(pub ConstantRealData);
 
 #[miniextendr]
 #[unsafe(no_mangle)]
@@ -870,7 +870,7 @@ impl AltRealData for ArithSeqData {
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 
 #[miniextendr(class = "ArithSeq", pkg = "rpkg")]
-pub struct ArithSeqClass(ArithSeqData);
+pub struct ArithSeqClass(pub ArithSeqData);
 
 #[miniextendr]
 fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
@@ -1027,7 +1027,7 @@ miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
 
 /// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
 #[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
-pub struct LazyIntSeqClass(LazyIntSeqData);
+pub struct LazyIntSeqClass(pub LazyIntSeqData);
 
 /// Create a lazy integer sequence (similar to R's seq())
 /// Elements are computed on-demand; full buffer only allocated on DATAPTR access.
@@ -1098,7 +1098,7 @@ impl AltLogicalData for ConstantLogicalData {
 miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
 
 #[miniextendr(class = "ConstantLogical", pkg = "rpkg")]
-pub struct ConstantLogicalClass(ConstantLogicalData);
+pub struct ConstantLogicalClass(pub ConstantLogicalData);
 
 #[miniextendr]
 fn constant_logical(value: i32, n: i32) -> SEXP {
@@ -1120,8 +1120,8 @@ fn constant_logical(value: i32, n: i32) -> SEXP {
 
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct LazyStringData {
-    prefix: String,
-    len: usize,
+    pub prefix: String,
+    pub len: usize,
 }
 
 impl AltrepLen for LazyStringData {
@@ -1145,7 +1145,7 @@ impl AltStringData for LazyStringData {
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
 
 #[miniextendr(class = "LazyString", pkg = "rpkg")]
-pub struct LazyStringClass(LazyStringData);
+pub struct LazyStringClass(pub LazyStringData);
 
 #[miniextendr]
 fn lazy_string(prefix: &str, n: i32) -> SEXP {
@@ -1185,7 +1185,7 @@ impl AltRawData for RepeatingRawData {
 miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 
 #[miniextendr(class = "RepeatingRaw", pkg = "rpkg")]
-pub struct RepeatingRawClass(RepeatingRawData);
+pub struct RepeatingRawClass(pub RepeatingRawData);
 
 #[miniextendr]
 fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
@@ -1239,7 +1239,7 @@ miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
 
 /// ALTREP wrapper for UnitCircleData - generates complex numbers on unit circle
 #[miniextendr(class = "UnitCircle", pkg = "rpkg")]
-pub struct UnitCircleClass(UnitCircleData);
+pub struct UnitCircleClass(pub UnitCircleData);
 
 /// Create complex numbers on the unit circle: e^(i * 2π * k/n) for k = 0, 1, ..., n-1
 /// These are the n-th roots of unity, evenly spaced around the unit circle.
