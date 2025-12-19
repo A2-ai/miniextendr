@@ -60,6 +60,12 @@ pub fn has_worker_context() -> bool {
     WORKER_TO_MAIN_TX.with(|tx_cell| tx_cell.borrow().is_some())
 }
 
+/// Check whether the current thread is running inside a `run_on_worker` context
+/// (i.e., `with_r_thread` has routing channels available).
+pub fn has_worker_context() -> bool {
+    WORKER_TO_MAIN_TX.with(|tx_cell| tx_cell.borrow().is_some())
+}
+
 /// Check if the current thread is R's main thread.
 ///
 /// Returns `true` if called from the main R thread, `false` otherwise.

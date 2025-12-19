@@ -12,10 +12,81 @@
 
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
+use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
 use core::{
     alloc::{GlobalAlloc, Layout},
     mem, ptr,
 };
+
+// ============================================================================
+// SendableDataPtr - Thread-safe wrapper for allocator pointers
+// ============================================================================
+
+/// Wrapper to make `*mut u8` pointers `Send` for cross-thread routing.
+///
+/// Unlike `SendablePtr<T>` in externalptr, this allows null pointers
+/// since allocator operations can fail and return null.
+///
+/// # Safety
+///
+/// Same safety model as `SendableSexp` and `SendablePtr`:
+/// - The pointer value (memory address) is safely transmitted between threads
+/// - The pointer is only dereferenced on R's main thread
+/// - This is guaranteed by the `with_r_thread_or_inline` routing mechanism
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+struct SendableDataPtr(*mut u8);
+
+// SAFETY: We only transmit the address between threads.
+// The actual memory is only accessed on the R main thread.
+unsafe impl Send for SendableDataPtr {}
+
+impl SendableDataPtr {
+    #[inline]
+    const fn new(ptr: *mut u8) -> Self {
+        Self(ptr)
+    }
+
+    #[inline]
+    const fn get(self) -> *mut u8 {
+        self.0
+    }
+
+    #[inline]
+    const fn is_null(self) -> bool {
+        self.0.is_null()
+    }
+
+    #[inline]
+    const fn null() -> Self {
+        Self(ptr::null_mut())
+    }
+}
+
+// ============================================================================
+// Thread routing helper
+// ============================================================================
+
+/// Routes a closure to the R main thread if not already there.
+///
+/// - If on main thread: executes directly
+/// - If in worker context: routes via `with_r_thread`
+/// - Fallback: executes directly (for tests without worker context)
+#[inline]
+fn with_r_thread_or_inline<R: Send + 'static, F: FnOnce() -> R + Send + 'static>(f: F) -> R {
+    if is_r_main_thread() {
+        f()
+    } else if has_worker_context() {
+        with_r_thread(f)
+    } else {
+        // Last resort fallback (e.g., tests running on non-main harness threads).
+        f()
+    }
+}
+
+// ============================================================================
+// Header and constants
+// ============================================================================
 
 /// Metadata stored immediately before the returned user pointer.
 #[repr(C)]
@@ -26,6 +97,10 @@ struct Header {
 
 const HEADER_SIZE: usize = mem::size_of::<Header>();
 const HEADER_ALIGN: usize = mem::align_of::<Header>();
+
+// ============================================================================
+// RAllocator
+// ============================================================================
 
 /// R-backed global allocator.
 ///
@@ -38,149 +113,190 @@ const HEADER_ALIGN: usize = mem::align_of::<Header>();
 /// R isn't available. Instead, use it explicitly in standalone binaries that
 /// embed R, or use arena-style allocation APIs.
 ///
-/// # Safety
+/// # Thread Safety
 ///
-/// This allocator is ONLY safe to use from the R main thread. Using it
-/// from other threads will cause undefined behavior because:
-/// - `Rf_allocVector` must be called from the main thread
-/// - The preserve mechanism is thread-local
+/// This allocator is safe to use from any thread. R API calls are automatically
+/// routed to the main thread via `with_r_thread_or_inline`.
 #[derive(Debug)]
 pub struct RAllocator;
 
 unsafe impl GlobalAlloc for RAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        unsafe {
-            // ZST allocations: return null since we can't meaningfully track them
-            // (dangling pointer would crash in dealloc when we try to read the header)
-            if layout.size() == 0 {
-                return ptr::null_mut();
-            }
-
-            let align = layout.align().max(HEADER_ALIGN);
-
-            // Calculate total size needed with overflow checking
-            let total = {
-                let Some(align_minus_1) = align.checked_sub(1) else {
-                    return ptr::null_mut();
-                };
-                let Some(temp) = HEADER_SIZE.checked_add(align_minus_1) else {
-                    return ptr::null_mut();
-                };
-                let Some(total) = temp.checked_add(layout.size()) else {
-                    return ptr::null_mut();
-                };
-                total
-            };
-
-            let total_isize: isize = match total.try_into() {
-                Ok(n) => n,
-                Err(_) => return ptr::null_mut(),
-            };
-
-            let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_isize);
-            if sexp.is_null() {
-                return ptr::null_mut();
-            }
-
-            // Protect from GC (must stay valid until dealloc()).
-            let preserve_tag = insert(sexp);
-
-            let raw_base = RAW(sexp).cast::<u8>();
-
-            // Calculate header and data pointers with alignment
-            let after_header = raw_base.add(HEADER_SIZE);
-            let pad = after_header.align_offset(align);
-            if pad == usize::MAX {
-                // Alignment failed (extremely unlikely)
-                release(preserve_tag);
-                return ptr::null_mut();
-            }
-
-            let data = after_header.add(pad);
-            let header = data.sub(HEADER_SIZE).cast::<Header>();
-
-            header.write(Header { preserve_tag });
-
-            debug_assert_eq!(data.align_offset(layout.align()), 0);
-            data
-        }
+        with_r_thread_or_inline(move || unsafe { alloc_main_thread(layout) }).get()
     }
 
     unsafe fn dealloc(&self, data: *mut u8, _layout: Layout) {
-        unsafe {
-            if data.is_null() {
-                return;
-            }
-
-            let header = data.sub(HEADER_SIZE).cast::<Header>();
-            let preserve_tag = (*header).preserve_tag;
-
-            release(preserve_tag);
+        if data.is_null() {
+            return;
         }
+        let ptr = SendableDataPtr::new(data);
+        with_r_thread_or_inline(move || unsafe {
+            dealloc_main_thread(ptr);
+        });
     }
 
     unsafe fn realloc(&self, old: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
-        unsafe {
-            if old.is_null() {
-                let Ok(new_layout) = Layout::from_size_align(new_size, layout.align()) else {
-                    return ptr::null_mut();
-                };
-                return self.alloc(new_layout);
-            }
-
-            if new_size == 0 {
-                self.dealloc(old, layout);
-                return ptr::null_mut();
-            }
-
-            // Recover RAWSXP via preserve tag.
-            let header = old.sub(HEADER_SIZE).cast::<Header>();
-            let preserve_tag = (*header).preserve_tag;
-            let sexp = crate::ffi::TAG(preserve_tag);
-
-            // Exact available capacity from `old` to end of the RAWSXP.
-            let raw_base = RAW(sexp).cast::<u8>();
-            let cap: usize = match crate::ffi::Rf_xlength(sexp).try_into() {
-                Ok(n) => n,
-                Err(_) => return ptr::null_mut(),
-            };
-
-            let used = (old as *const u8).offset_from(raw_base as *const u8);
-            if used < 0 {
-                // Should be impossible if `old` came from this allocator, but don't UB.
-                return ptr::null_mut();
-            }
-            let available = cap.saturating_sub(used as usize);
-
-            if new_size <= available {
-                return old;
-            }
-
+        // Handle null input (acts like alloc)
+        if old.is_null() {
             let Ok(new_layout) = Layout::from_size_align(new_size, layout.align()) else {
                 return ptr::null_mut();
             };
-
-            let new_ptr = self.alloc(new_layout);
-            if new_ptr.is_null() {
-                // On realloc failure, the old allocation must remain valid.
-                return ptr::null_mut();
-            }
-
-            ptr::copy_nonoverlapping(old, new_ptr, layout.size().min(new_size));
-            self.dealloc(old, layout);
-
-            new_ptr
+            return unsafe { self.alloc(new_layout) };
         }
+
+        // Handle zero size (acts like dealloc)
+        if new_size == 0 {
+            unsafe { self.dealloc(old, layout) };
+            return ptr::null_mut();
+        }
+
+        let old_ptr = SendableDataPtr::new(old);
+        let old_size = layout.size();
+        let align = layout.align();
+
+        with_r_thread_or_inline(move || unsafe {
+            realloc_main_thread(old_ptr, old_size, align, new_size)
+        })
+        .get()
     }
 
     unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
-        unsafe {
-            // Don't rely on RAWSXP being zeroed; make it explicit.
-            let p = self.alloc(layout);
-            if !p.is_null() {
-                ptr::write_bytes(p, 0, layout.size());
-            }
-            p
+        let p = unsafe { self.alloc(layout) };
+        if !p.is_null() {
+            unsafe { ptr::write_bytes(p, 0, layout.size()) };
         }
+        p
     }
+}
+
+// ============================================================================
+// Main-thread helpers
+// ============================================================================
+
+/// Allocate memory on the R main thread.
+///
+/// # Safety
+///
+/// Must be called from R's main thread (or routed via `with_r_thread`).
+unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
+    // ZST allocations: return null since we can't meaningfully track them
+    // (dangling pointer would crash in dealloc when we try to read the header)
+    if layout.size() == 0 {
+        return SendableDataPtr::null();
+    }
+
+    let align = layout.align().max(HEADER_ALIGN);
+
+    // Calculate total size needed with overflow checking
+    let total = {
+        let Some(align_minus_1) = align.checked_sub(1) else {
+            return SendableDataPtr::null();
+        };
+        let Some(temp) = HEADER_SIZE.checked_add(align_minus_1) else {
+            return SendableDataPtr::null();
+        };
+        let Some(total) = temp.checked_add(layout.size()) else {
+            return SendableDataPtr::null();
+        };
+        total
+    };
+
+    let total_isize: isize = match total.try_into() {
+        Ok(n) => n,
+        Err(_) => return SendableDataPtr::null(),
+    };
+
+    let sexp = unsafe { Rf_allocVector(SEXPTYPE::RAWSXP, total_isize) };
+    if sexp.is_null() {
+        return SendableDataPtr::null();
+    }
+
+    // Protect from GC (must stay valid until dealloc()).
+    let preserve_tag = unsafe { insert(sexp) };
+
+    let raw_base = unsafe { RAW(sexp) }.cast::<u8>();
+
+    // Calculate header and data pointers with alignment
+    let after_header = unsafe { raw_base.add(HEADER_SIZE) };
+    let pad = after_header.align_offset(align);
+    if pad == usize::MAX {
+        // Alignment failed (extremely unlikely)
+        unsafe { release(preserve_tag) };
+        return SendableDataPtr::null();
+    }
+
+    let data = unsafe { after_header.add(pad) };
+    let header = unsafe { data.sub(HEADER_SIZE) }.cast::<Header>();
+
+    unsafe { header.write(Header { preserve_tag }) };
+
+    debug_assert_eq!(data.align_offset(layout.align()), 0);
+    SendableDataPtr::new(data)
+}
+
+/// Deallocate memory on the R main thread.
+///
+/// # Safety
+///
+/// Must be called from R's main thread (or routed via `with_r_thread`).
+/// The pointer must have been allocated by this allocator.
+unsafe fn dealloc_main_thread(ptr: SendableDataPtr) {
+    let data = ptr.get();
+    let header = unsafe { data.sub(HEADER_SIZE) }.cast::<Header>();
+    let preserve_tag = unsafe { (*header).preserve_tag };
+    unsafe { release(preserve_tag) };
+}
+
+/// Reallocate memory on the R main thread.
+///
+/// # Safety
+///
+/// Must be called from R's main thread (or routed via `with_r_thread`).
+/// The old pointer must have been allocated by this allocator.
+unsafe fn realloc_main_thread(
+    old_ptr: SendableDataPtr,
+    old_size: usize,
+    align: usize,
+    new_size: usize,
+) -> SendableDataPtr {
+    let old = old_ptr.get();
+
+    // Recover RAWSXP via preserve tag
+    let header = unsafe { old.sub(HEADER_SIZE) }.cast::<Header>();
+    let preserve_tag = unsafe { (*header).preserve_tag };
+    let sexp = unsafe { crate::ffi::TAG(preserve_tag) };
+
+    // Check if existing allocation has capacity
+    let raw_base = unsafe { RAW(sexp) }.cast::<u8>();
+    let cap: usize = match unsafe { crate::ffi::Rf_xlength(sexp) }.try_into() {
+        Ok(n) => n,
+        Err(_) => return SendableDataPtr::null(),
+    };
+
+    let used = unsafe { (old as *const u8).offset_from(raw_base as *const u8) };
+    if used < 0 {
+        // Should be impossible if `old` came from this allocator, but don't UB.
+        return SendableDataPtr::null();
+    }
+    let available = cap.saturating_sub(used as usize);
+
+    if new_size <= available {
+        return old_ptr; // Reuse existing allocation
+    }
+
+    // Need new allocation
+    let Ok(new_layout) = Layout::from_size_align(new_size, align) else {
+        return SendableDataPtr::null();
+    };
+
+    let new_ptr = unsafe { alloc_main_thread(new_layout) };
+    if new_ptr.is_null() {
+        // On realloc failure, the old allocation must remain valid.
+        return SendableDataPtr::null();
+    }
+
+    unsafe { ptr::copy_nonoverlapping(old, new_ptr.get(), old_size.min(new_size)) };
+    unsafe { release(preserve_tag) }; // Free old allocation
+
+    new_ptr
 }
