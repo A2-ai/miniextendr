@@ -105,7 +105,13 @@ impl_te_generic!(<T> std::sync::Mutex<T>, "Mutex");
 impl_te_generic!(<T> std::sync::RwLock<T>, "RwLock");
 impl_te_generic!(<T> std::sync::OnceLock<T>, "OnceLock");
 impl_te_generic!(<T> std::pin::Pin<T>, "Pin");
-impl_te_generic!(<T> std::mem::ManuallyDrop<T>, "ManuallyDrop");
+// ManuallyDrop<T> shares T's type symbol, allowing ExternalPtr<ManuallyDrop<T>>
+// to interoperate with ExternalPtr<T>. This is safe because ManuallyDrop<T> is
+// #[repr(transparent)] and has identical memory layout to T.
+impl<T: TypedExternal> TypedExternal for std::mem::ManuallyDrop<T> {
+    const TYPE_NAME: &'static str = T::TYPE_NAME;
+    const TYPE_NAME_CSTR: &'static [u8] = T::TYPE_NAME_CSTR;
+}
 impl_te_generic!(<T> std::mem::MaybeUninit<T>, "MaybeUninit");
 impl_te_generic!(<T> std::marker::PhantomData<T>, "PhantomData");
 
