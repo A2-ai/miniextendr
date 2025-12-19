@@ -8,7 +8,7 @@ pub fn expand_altrep_struct(
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     use syn::spanned::Spanned;
-    let input: syn::ItemStruct = match syn::parse(item.clone()) {
+    let input: syn::ItemStruct = match syn::parse(item) {
         Ok(it) => it,
         Err(e) => return e.into_compile_error().into(),
     };
