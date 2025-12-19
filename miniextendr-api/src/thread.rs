@@ -156,7 +156,7 @@ where
 /// - **Unix**: Typically 8 MiB from `ulimit -s`
 /// - **Windows**: 64 MiB for the main thread (since R 4.2)
 ///
-/// Since we disable R's stack checking via [`StackCheckGuard`], the size is about
+/// Since we disable R's stack checking via `StackCheckGuard`, the size is about
 /// practical needs rather than R enforcement. Deep recursion in R code (especially
 /// recursive functions, `lapply` chains, or complex formulas) can use significant stack.
 ///
@@ -176,7 +176,7 @@ pub const WINDOWS_R_STACK_SIZE: usize = 64 * 1024 * 1024;
 ///
 /// This function:
 /// 1. Sets a stack size appropriate for R (8 MiB by default)
-/// 2. Automatically disables R's stack checking via [`StackCheckGuard`]
+/// 2. Automatically disables R's stack checking via `StackCheckGuard`
 /// 3. Restores stack checking when the thread completes
 ///
 /// # Example
@@ -211,7 +211,7 @@ where
 /// suitable for R workloads (8 MiB default, vs Rust's 2 MiB default).
 ///
 /// When the `nonapi` feature is enabled, spawned threads also automatically
-/// disable R's stack checking via [`StackCheckGuard`], allowing R API calls
+/// disable R's stack checking via `StackCheckGuard`, allowing R API calls
 /// from the thread.
 ///
 /// # Example
