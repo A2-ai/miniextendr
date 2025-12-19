@@ -871,6 +871,8 @@ miniextendr_api::impl_altreal_from_data!(ConstantRealData);
 #[miniextendr(class = "ConstantReal", pkg = "rpkg")]
 pub struct ConstantRealClass(pub ConstantRealData);
 
+/// # Safety
+/// Caller must ensure this is called from R's main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -968,12 +970,11 @@ impl AltIntegerData for LazyIntSeqData {
 
     fn is_sorted(&self) -> Option<miniextendr_api::altrep_data::Sortedness> {
         use miniextendr_api::altrep_data::Sortedness;
-        if self.step == 0 {
-            Some(Sortedness::Increasing) // All same value
-        } else if self.step > 0 {
-            Some(Sortedness::Increasing)
-        } else {
+        if self.step < 0 {
             Some(Sortedness::Decreasing)
+        } else {
+            // step == 0 (all same) or step > 0 are both non-decreasing
+            Some(Sortedness::Increasing)
         }
     }
 
@@ -1089,6 +1090,9 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 }
 
 /// Check if a LazyIntSeq has been materialized
+///
+/// # Safety
+/// Caller must ensure `x` is a valid SEXP and this is called from R's main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -1297,6 +1301,8 @@ pub fn unit_circle(n: i32) -> SEXP {
 #[miniextendr(class = "SimpleVecInt", pkg = "rpkg")]
 pub struct SimpleVecIntClass(pub Vec<i32>);
 
+/// # Safety
+/// Caller must ensure `x` is a valid integer SEXP and this is called from R's main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -1681,6 +1687,9 @@ use miniextendr_api::thread::RThreadBuilder;
 
 /// Test RThreadBuilder: spawn with large stack (16 MiB) and call _unchecked R APIs.
 /// Works WITHOUT nonapi feature by using large stacks to satisfy R's stack checking.
+///
+/// # Safety
+/// Caller must ensure this is called from R's main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -1701,6 +1710,9 @@ pub unsafe extern "C-unwind" fn C_test_r_thread_builder() -> SEXP {
 
 /// Test RThreadBuilder::spawn_join convenience method.
 /// Works WITHOUT nonapi by using large stacks.
+///
+/// # Safety
+/// Caller must ensure this is called from R's main thread.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -1737,6 +1749,7 @@ pub fn invisibly_option_return_some() -> Option<()> {
 }
 
 #[miniextendr]
+#[allow(clippy::result_unit_err)]
 pub fn invisibly_result_return_ok() -> Result<(), ()> {
     Ok(())
 }
