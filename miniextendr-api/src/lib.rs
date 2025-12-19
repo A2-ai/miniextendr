@@ -263,9 +263,8 @@ pub use error::{r_print, r_println, r_stop, r_warning};
 pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
 
 // Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
-// TODO: Fix encoding module - it references non-exported non-API symbols
-// #[cfg(feature = "nonapi")]
-// pub mod encoding;
+#[cfg(feature = "nonapi")]
+pub mod encoding;
 
 // Note: RNativeType is pub(crate), imported directly in modules that need it
 
