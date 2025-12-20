@@ -1752,7 +1752,15 @@ ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
 
-: ${R_HOME=`R RHOME`}
+if test -z "$R_HOME"; then
+  R_HOME=`R RHOME 2>/dev/null`
+  if test $? -ne 0 || test -z "$R_HOME"; then
+    as_fn_error $? "R not found. Please ensure R is installed and on PATH, or set R_HOME." "$LINENO" 5
+  fi
+fi
+if test ! -d "$R_HOME"; then
+  as_fn_error $? "R_HOME directory does not exist: $R_HOME" "$LINENO" 5
+fi
 
 : ${NOT_CRAN="true"}
 export NOT_CRAN
@@ -2020,6 +2028,16 @@ fi
 RUSTC_VERSION=`$RUSTC --version`
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: using $RUSTC_VERSION" >&5
 printf "%s\n" "$as_me: using $RUSTC_VERSION" >&6;}
+
+RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'`
+RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
+RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
+MIN_RUSTC_MAJOR=1
+MIN_RUSTC_MINOR=85
+if test "$RUSTC_MAJOR" -lt "$MIN_RUSTC_MAJOR" || \
+   (test "$RUSTC_MAJOR" -eq "$MIN_RUSTC_MAJOR" && test "$RUSTC_MINOR" -lt "$MIN_RUSTC_MINOR"); then
+  as_fn_error $? "rustc $MIN_RUSTC_MAJOR.$MIN_RUSTC_MINOR+ required for Rust edition 2024, found $RUSTC_VERSION_NUM" "$LINENO" 5
+fi
 
 
 : ${RUST_TOOLCHAIN=""}

@@ -1,7 +1,15 @@
 AC_INIT([rpkg], [1.0])
 
-dnl ensure R_HOME is set
-: ${R_HOME=`R RHOME`}
+dnl Ensure R_HOME is set and valid
+if test -z "$R_HOME"; then
+  R_HOME=`R RHOME 2>/dev/null`
+  if test $? -ne 0 || test -z "$R_HOME"; then
+    AC_MSG_ERROR([R not found. Please ensure R is installed and on PATH, or set R_HOME.])
+  fi
+fi
+if test ! -d "$R_HOME"; then
+  AC_MSG_ERROR([R_HOME directory does not exist: $R_HOME])
+fi
 
 dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
 : ${NOT_CRAN="true"}
@@ -53,6 +61,18 @@ AC_SUBST([RUSTC])
 dnl Report rustc version (required by CRAN for Rust packages)
 RUSTC_VERSION=`$RUSTC --version`
 AC_MSG_NOTICE([using $RUSTC_VERSION])
+
+dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
+dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
+RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | sed 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
+RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
+MIN_RUSTC_MAJOR=1
+MIN_RUSTC_MINOR=85
+if test "$RUSTC_MAJOR" -lt "$MIN_RUSTC_MAJOR" || \
+   (test "$RUSTC_MAJOR" -eq "$MIN_RUSTC_MAJOR" && test "$RUSTC_MINOR" -lt "$MIN_RUSTC_MINOR"); then
+  AC_MSG_ERROR([rustc $MIN_RUSTC_MAJOR.$MIN_RUSTC_MINOR+ required for Rust edition 2024, found $RUSTC_VERSION_NUM])
+fi
 
 dnl Allow explicit toolchain (e.g. +nightly); default empty (use default toolchain)
 AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly'])

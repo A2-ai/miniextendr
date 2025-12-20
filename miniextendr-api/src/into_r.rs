@@ -428,12 +428,15 @@ where
     fn into_sexp(self) -> crate::ffi::SEXP {
         // RVec was collected on Rayon threads, convert to R on main thread
         let vec = self.into_inner();
-        crate::rayon_bridge::run_r(move || vec.into_sexp())
+        crate::worker::with_r_thread(move || {
+            crate::externalptr::SendableSexp::new(vec.into_sexp())
+        })
+        .into_inner()
     }
 
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        // Still need to go through run_r since we might be on a Rayon thread
+        // Still need to go through with_r_thread since we might be on a Rayon thread
         self.into_sexp()
     }
 }

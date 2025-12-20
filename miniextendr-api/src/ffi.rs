@@ -319,6 +319,14 @@ impl SexpExt for SEXP {
 pub trait RNativeType: Sized + Copy + 'static {
     /// The SEXPTYPE for vectors containing this element type.
     const SEXP_TYPE: SEXPTYPE;
+
+    /// Get mutable pointer to vector data.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid, non-null SEXP of the corresponding vector type.
+    /// - For ALTREP vectors, this may trigger materialization.
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self;
 }
 
 /// R's logical element type (the contents of a `LGLSXP` vector).
@@ -376,22 +384,48 @@ impl From<bool> for RLogical {
 
 impl RNativeType for i32 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::INTSXP;
+
+    #[inline]
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        unsafe { INTEGER(sexp) }
+    }
 }
 
 impl RNativeType for f64 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
+
+    #[inline]
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        unsafe { REAL(sexp) }
+    }
 }
 
 impl RNativeType for u8 {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::RAWSXP;
+
+    #[inline]
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        unsafe { RAW(sexp) }
+    }
 }
 
 impl RNativeType for RLogical {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::LGLSXP;
+
+    #[inline]
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        // LOGICAL returns *mut c_int, RLogical is repr(transparent) over i32
+        unsafe { LOGICAL(sexp).cast() }
+    }
 }
 
 impl RNativeType for Rcomplex {
     const SEXP_TYPE: SEXPTYPE = SEXPTYPE::CPLXSXP;
+
+    #[inline]
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        unsafe { COMPLEX(sexp) }
+    }
 }
 
 #[repr(i32)]
