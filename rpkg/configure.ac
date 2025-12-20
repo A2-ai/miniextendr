@@ -181,11 +181,11 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
   mkdir -p "$VENDOR_OUT/miniextendr-macros"
 
   dnl Sync miniextendr-api (excluding target, .git, Cargo.toml)
-  rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
 
   dnl Sync miniextendr-macros (excluding target, .git, Cargo.toml)
-  rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
 
   dnl Clean up CRAN-unfriendly hidden files (e.g., .DS_Store, .gitignore)
@@ -193,13 +193,13 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
   find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
 
   dnl Patch Cargo.toml to remove workspace inheritance
-  sed -e 's/edition\.workspace = true/edition = "2024"/' \
-      -e 's/version\.workspace = true/version = "0.1.0"/' \
-      "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
 
-  sed -e 's/edition\.workspace = true/edition = "2024"/' \
-      -e 's/version\.workspace = true/version = "0.1.0"/' \
-      "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
 
   AC_MSG_NOTICE([miniextendr crates synced to $VENDOR_OUT])
 else

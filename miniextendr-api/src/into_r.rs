@@ -426,6 +426,135 @@ impl IntoR for &[&str] {
     }
 }
 
+/// Convert `Vec<&str>` to R character vector (STRSXP).
+impl IntoR for Vec<&str> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_slice().into_sexp()
+    }
+}
+
+// =============================================================================
+// NA-aware vector conversions
+// =============================================================================
+
+/// Convert `Vec<Option<f64>>` to R real vector with NA support.
+///
+/// `None` values become `NA_real_` (NaN) in R.
+impl IntoR for Vec<Option<f64>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::REALSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            let ptr = crate::ffi::REAL(vec);
+            for (i, val) in self.into_iter().enumerate() {
+                // NA_real_ is represented as NaN in R
+                *ptr.add(i) = val.unwrap_or(f64::NAN);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<i32>>` to R integer vector with NA support.
+///
+/// `None` values become `NA_integer_` (i32::MIN) in R.
+impl IntoR for Vec<Option<i32>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::INTSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            let ptr = crate::ffi::INTEGER(vec);
+            for (i, val) in self.into_iter().enumerate() {
+                // NA_integer_ is i32::MIN in R
+                *ptr.add(i) = val.unwrap_or(i32::MIN);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<String>>` to R character vector with NA support.
+///
+/// `None` values become `NA_character_` in R.
+impl IntoR for Vec<Option<String>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, opt_s) in self.into_iter().enumerate() {
+                let charsxp = match opt_s {
+                    Some(s) => crate::ffi::Rf_mkCharLenCE(
+                        s.as_ptr().cast(),
+                        s.len() as i32,
+                        crate::ffi::CE_UTF8,
+                    ),
+                    None => crate::ffi::R_NaString,
+                };
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+// =============================================================================
+// Tuple to list conversions
+// =============================================================================
+
+/// Macro to implement IntoR for tuples of various sizes.
+/// Converts Rust tuples to unnamed R lists (VECSXP).
+macro_rules! impl_tuple_into_r {
+    // Base case: 2-tuple
+    (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
+        impl<$($T: IntoR),+> IntoR for ($($T,)+) {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe {
+                    let list = crate::ffi::Rf_allocVector(
+                        crate::ffi::SEXPTYPE::VECSXP,
+                        $n as crate::ffi::R_xlen_t
+                    );
+                    crate::ffi::Rf_protect(list);
+
+                    $(
+                        crate::ffi::SET_VECTOR_ELT(
+                            list,
+                            $idx as crate::ffi::R_xlen_t,
+                            self.$idx.into_sexp()
+                        );
+                    )+
+
+                    crate::ffi::Rf_unprotect(1);
+                    list
+                }
+            }
+        }
+    };
+}
+
+// Implement for tuples of sizes 2-8
+impl_tuple_into_r!((A, B), (0, 1), 2);
+impl_tuple_into_r!((A, B, C), (0, 1, 2), 3);
+impl_tuple_into_r!((A, B, C, D), (0, 1, 2, 3), 4);
+impl_tuple_into_r!((A, B, C, D, E), (0, 1, 2, 3, 4), 5);
+impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
+impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
+impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
+
 // =============================================================================
 // Rayon RVec conversion
 // =============================================================================

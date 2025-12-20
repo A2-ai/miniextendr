@@ -49,31 +49,39 @@
   - Fix: Consolidated to single global token in unwind_protect.rs (no per-thread leak)
 
 === API/Ergonomics ===
-- [ ] `REngine::new()` and `shutdown()` shown in docs but not implemented
+- [x] `REngine::new()` and `shutdown()` shown in docs but not implemented
   - `miniextendr-engine/src/lib.rs:20-33`
-- [ ] `with_args` default in docs is incorrect
+  - Fix: Updated example to use `REngine::build()`, documented that shutdown is
+    intentionally not provided (Rf_endEmbeddedR is non-reentrant).
+- [x] `with_args` default in docs is incorrect
   - `miniextendr-engine/src/lib.rs:96-99`
-- [ ] Doc claims atexit cleanup is registered, but code does not
+  - Fix: Updated doc comment to show correct default: `["R", "--quiet", "--vanilla"]`
+- [x] Doc claims atexit cleanup is registered, but code does not
   - `miniextendr-engine/src/lib.rs:259-260`
+  - Fix: Corrected documentation to explain that cleanup is intentionally NOT
+    registered because Rf_endEmbeddedR is non-reentrant.
 - [ ] Encoding init is documented but disabled in R entrypoint
   - `rpkg/src/entrypoint.c.in:7-10`, `encoding.rs:29-73`
 - [ ] `#[miniextendr]` has no support for methods (`self`)
   - `miniextendr-macros/src/lib.rs:203-206`
 - [ ] `miniextendr_module!` treats `extern "C-unwind" fn` and `fn` the same
   - `miniextendr-macros/src/lib.rs:815-816`
-- [ ] String NA handling is lossy (`NA_character_` → `""`)
+- [x] String NA handling is lossy (`NA_character_` → `""`)
   - `miniextendr-api/src/from_r.rs:298-302`
-  - Fix: Return `Option<&str>` / `Option<String>`
-- [ ] Missing `IntoR`/`TryFromSexp` conveniences
-  - `Vec<String>`, `Vec<&str>` → STRSXP
-  - `Vec<Option<T>>`, `Option<T>` → NA-aware vectors
-  - Tuple-to-list for small tuples
+  - Fix: Added `Option<String>` impl that returns None for NA.
+    Updated docs on `String`/`&str` to warn about lossy behavior.
+- [x] Missing `IntoR`/`TryFromSexp` conveniences
+  - `Vec<String>`, `Vec<&str>` → STRSXP (done)
+  - `Vec<Option<T>>` for f64, i32, String → NA-aware vectors (done)
+  - [x] Tuple-to-list for small tuples (done - 2-8 element tuples → VECSXP)
 
 === Build/Packaging ===
-- [ ] `miniextendr-engine` build script doesn't validate `R RHOME` exit status
+- [x] `miniextendr-engine` build script doesn't validate `R RHOME` exit status
   - `miniextendr-engine/build.rs:17-25`
-- [ ] Generated build artifacts tracked in git (target/, config.log, etc.)
-  - Fix: Update `.gitignore`, remove tracked artifacts
+  - Fix: Added exit status check, empty output check, and directory existence check
+- [x] Generated build artifacts tracked in git (target/, config.log, etc.)
+  - Fix: Updated `.gitignore` with proper entries for config.log, config.status,
+    autom4te.cache/, generated Makevars/entrypoint.c/Cargo.toml/.cargo/, vendor/, etc.
 - [ ] Template/generated files can drift (.in vs generated)
   - Fix: CI check to ensure generated files up-to-date
 - [ ] Vendored set incomplete for `--all-features` (missing rayon crate)
@@ -84,9 +92,11 @@
 - [x] `R RHOME` not error-checked in configure.ac
   - `rpkg/configure.ac:3-5`
   - Fix: Added error checking for R RHOME command and R_HOME directory
-- [ ] `bootstrap.R` doesn't check exit status of configure/autoconf
+- [x] `bootstrap.R` doesn't check exit status of configure/autoconf
   - `rpkg/bootstrap.R:8-27`
-- [ ] `rsync` and `sed` required but not validated in configure
+  - Fix: Added `run_cmd()` helper that checks exit status and stops on failure
+- [x] `rsync` and `sed` required but not validated in configure
+  - Fix: Added AC_PATH_PROG checks with error messages, use $RSYNC/$SED variables
 - [x] `cargo pkgid --offline` can fail on fresh dev machines
   - Fix: Made `--offline` conditional on NOT_CRAN in configure.ac
 - [ ] `--all-features` always enabled (CRAN policy risk)

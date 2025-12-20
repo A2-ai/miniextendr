@@ -21,14 +21,19 @@
 //! use miniextendr_engine::REngine;
 //!
 //! fn main() {
-//!     let mut engine = REngine::new()
-//!         .with_args(&["R", "--quiet", "--vanilla"])
-//!         .init()
-//!         .expect("Failed to initialize R");
+//!     // SAFETY: Must be called once from main thread at startup.
+//!     let engine = unsafe {
+//!         REngine::build()
+//!             .with_args(&["R", "--quiet", "--vanilla"])
+//!             .init()
+//!             .expect("Failed to initialize R")
+//!     };
 //!
 //!     // Use R here...
 //!
-//!     engine.shutdown();
+//!     // Note: No explicit shutdown needed. R cleanup is skipped intentionally
+//!     // because Rf_endEmbeddedR is not reentrant-safe. The OS reclaims resources
+//!     // when the process exits.
 //! }
 //! ```
 
@@ -95,7 +100,7 @@ impl REngineBuilder {
 
     /// Set the command-line arguments for R initialization.
     ///
-    /// Default is `["R", "--quiet"]`.
+    /// Default is `["R", "--quiet", "--vanilla"]`.
     pub fn with_args(mut self, args: &[&str]) -> Self {
         self.args = args.iter().map(|s| s.to_string()).collect();
         self
@@ -175,8 +180,9 @@ impl REngineBuilder {
 /// Handle to an initialized R runtime.
 ///
 /// This is a marker type indicating R has been initialized for this process.
-/// R cleanup is registered via `atexit` and happens automatically when the
-/// process terminates.
+/// R cleanup (via `Rf_endEmbeddedR`) is intentionally NOT called because it
+/// performs non-reentrant operations that can crash if called during Drop
+/// or concurrent with other cleanup. The OS reclaims all resources on process exit.
 pub struct REngine;
 
 impl Drop for REngine {
@@ -256,8 +262,9 @@ impl REngine {
 // These operations are NOT reentrant and must run exactly once at process exit.
 // Calling during Drop (e.g., test cleanup) causes crashes.
 //
-// **Solution:** We register cleanup via `libc::atexit()` during init, so it
-// runs when the process terminates, after all Rust cleanup is complete.
+// **Solution:** We intentionally do NOT call Rf_endEmbeddedR. For short-lived
+// programs (tests, benchmarks), the OS reclaims all resources on process exit.
+// This avoids crashes from double-cleanup or reentrant calls.
 
 /// Errors that can occur during R engine initialization.
 #[derive(Debug)]

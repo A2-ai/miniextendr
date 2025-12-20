@@ -362,6 +362,15 @@ impl<T: RNativeType> TryFromSexp for &'static [T] {
 /// Extracts the first element of the character vector and returns it as a UTF-8 string.
 /// The returned string has static lifetime because it points to R's internal string pool.
 ///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` is converted to empty string `""`. This is lossy!
+/// If you need to distinguish between NA and empty strings, use `Option<String>` instead:
+///
+/// ```ignore
+/// let maybe_str: Option<String> = sexp.try_into()?;
+/// ```
+///
 /// # Safety
 /// The returned &str is only valid as long as R doesn't garbage collect the CHARSXP.
 /// In practice, this is safe within a single .Call invocation.
@@ -469,6 +478,15 @@ impl TryFromSexp for &'static str {
 /// Convert R character vector (STRSXP) to owned Rust String.
 ///
 /// Extracts the first element and creates an owned copy.
+///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` is converted to empty string `""`. This is lossy!
+/// If you need to distinguish between NA and empty strings, use `Option<String>` instead:
+///
+/// ```ignore
+/// let maybe_str: Option<String> = sexp.try_into()?;
+/// ```
 impl TryFromSexp for String {
     type Error = SexpError;
 
@@ -562,6 +580,180 @@ impl TryFromSexp for String {
             }
             .into()
         })
+    }
+}
+
+/// NA-aware string conversion: returns `None` for `NA_character_`.
+///
+/// Use this when you need to distinguish between NA and empty strings:
+/// ```ignore
+/// let maybe_str: Option<String> = sexp.try_into()?;
+/// match maybe_str {
+///     Some(s) => println!("Got string: {}", s),
+///     None => println!("Got NA"),
+/// }
+/// ```
+impl TryFromSexp for Option<String> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+
+        // Return None for NA_STRING
+        if charsxp == unsafe { crate::ffi::R_NaString } {
+            return Ok(None);
+        }
+
+        let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
+        if c_str.is_null() {
+            return Ok(Some(String::new()));
+        }
+
+        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
+        rust_str
+            .to_str()
+            .map(|s| Some(s.to_owned()))
+            .map_err(|_| {
+                SexpTypeError {
+                    expected: SEXPTYPE::STRSXP,
+                    actual: SEXPTYPE::STRSXP,
+                }
+                .into()
+            })
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        // For Option<String>, unchecked is same as checked (NA check is semantic, not safety)
+        Self::try_from_sexp(sexp)
+    }
+}
+
+// =============================================================================
+// NA-aware vector conversions
+// =============================================================================
+
+/// Convert R real vector (REALSXP) to `Vec<Option<f64>>` with NA support.
+///
+/// NaN values are converted to `None`. Non-NaN values become `Some(value)`.
+impl TryFromSexp for Vec<Option<f64>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::REALSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::REALSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::REAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| if v.is_nan() { None } else { Some(v) })
+            .collect())
+    }
+}
+
+/// Convert R integer vector (INTSXP) to `Vec<Option<i32>>` with NA support.
+///
+/// `NA_integer_` (i32::MIN) values are converted to `None`.
+impl TryFromSexp for Vec<Option<i32>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::INTSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::INTEGER(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| if v == i32::MIN { None } else { Some(v) })
+            .collect())
+    }
+}
+
+/// Convert R character vector (STRSXP) to `Vec<Option<String>>` with NA support.
+///
+/// `NA_character_` elements are converted to `None`.
+impl TryFromSexp for Vec<Option<String>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+
+            if charsxp == unsafe { crate::ffi::R_NaString } {
+                result.push(None);
+            } else {
+                let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
+                if c_str.is_null() {
+                    result.push(Some(String::new()));
+                } else {
+                    let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
+                    result.push(Some(
+                        rust_str
+                            .to_str()
+                            .map(|s| s.to_owned())
+                            .map_err(|_| SexpTypeError {
+                                expected: SEXPTYPE::STRSXP,
+                                actual: SEXPTYPE::STRSXP,
+                            })?,
+                    ));
+                }
+            }
+        }
+
+        Ok(result)
     }
 }
 
