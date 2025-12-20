@@ -162,15 +162,16 @@ impl<T: Send> FromParallelIterator<T> for RVec<T> {
 ///
 /// # Protection
 ///
-/// The vector is protected during the closure execution using R's PROTECT/UNPROTECT.
-/// After the function returns, the SEXP is the caller's responsibility to protect.
+/// The vector is protected during the closure execution using `Rf_protect`.
+/// After the function returns, the SEXP is unprotected and becomes the caller's
+/// responsibility to protect (e.g., by returning it to R or protecting it).
 #[cfg(feature = "rayon")]
 pub fn with_r_vec<T, F>(len: usize, f: F) -> SEXP
 where
     T: RNativeType + Send + Sync,
     F: FnOnce(&mut [T]),
 {
-    // Allocate and protect on the main thread
+    // Allocate and protect on the main/worker thread
     let sexp = with_r_thread(move || unsafe {
         let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(sexp);
@@ -179,14 +180,15 @@ where
     .into_inner();
 
     // Get pointer and create slice (safe: vector is protected)
+    // Note: dataptr_mut handles empty vectors by returning aligned dangling pointer
     let ptr = unsafe { T::dataptr_mut(sexp) };
     let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
 
     // Run user's parallel work
     f(slice);
 
-    // Unprotect on main thread (SEXP is now caller's responsibility)
-    with_r_thread(|| unsafe {
+    // Unprotect on main/worker thread (SEXP is now caller's responsibility)
+    with_r_thread(move || unsafe {
         crate::ffi::Rf_unprotect(1);
     });
 

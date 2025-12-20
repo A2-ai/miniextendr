@@ -130,9 +130,10 @@
   - Fix: Changed `.cargo/config.toml` to `src/rust/.cargo`
 
 === Testing ===
-- [ ] Rayon integration tests too narrow (missing `with_r_vec`)
-  - Note: `with_r_vec` tests require embedded R runtime (miniextendr-engine).
-    Unit tests exist for RVec, but full integration tests need separate infra.
+- [x] Rayon integration tests too narrow (missing `with_r_vec`)
+  - Fix: Added comprehensive integration tests in `miniextendr-api/tests/rayon.rs`
+    using miniextendr-engine for embedded R. Tests cover `with_r_vec` (basic, parallel
+    write, i32, empty, large), `RVec` parallel collect, and `IntoR` conversion.
 - [ ] No automated regression test for registration bug
   - Note: User indicated this is likely a fluke, low priority.
 - [x] Macro compile-fail tests missing (no trybuild/UI tests)
