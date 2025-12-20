@@ -22,6 +22,8 @@ Locations intentionally omit line numbers (they drift); use search on the symbol
 | `R_CStackLimit` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack limit - set to `usize::MAX` to disable checking |
 | `R_CStackDir` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack growth direction (-1 = down, 1 = up) |
 
+Note: `miniextendr-engine` is entirely non-API (uses Rembedded.h/Rinterface.h for embedding R) and is not tracked here.
+
 ## API Functions (Safe to Use)
 
 These functions are NOT in the non-API list and are safe:

@@ -44,7 +44,9 @@
 //! R internals (`R_CStackLimit`, `R_CStackStart`, `R_CStackDir`).
 
 #[cfg(feature = "nonapi")]
-use crate::ffi::nonapi_stack::{R_CStackDir, R_CStackLimit, R_CStackStart};
+use crate::ffi::nonapi_stack::{
+    get_r_cstack_dir, get_r_cstack_limit, get_r_cstack_start, set_r_cstack_limit,
+};
 
 #[cfg(feature = "nonapi")]
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -96,11 +98,11 @@ impl StackCheckGuard {
         let prev_count = STACK_GUARD_COUNT.fetch_add(1, Ordering::SeqCst);
         if prev_count == 0 {
             // We're the first guard - save the original limit
-            let original = unsafe { R_CStackLimit };
+            let original = get_r_cstack_limit();
             ORIGINAL_STACK_LIMIT.store(original, Ordering::SeqCst);
             // Disable stack checking
             unsafe {
-                R_CStackLimit = usize::MAX;
+                set_r_cstack_limit(usize::MAX);
             }
         }
         Self { _private: () }
@@ -126,7 +128,7 @@ impl Drop for StackCheckGuard {
             // We were the last guard - restore the original limit
             let original = ORIGINAL_STACK_LIMIT.load(Ordering::SeqCst);
             unsafe {
-                R_CStackLimit = original;
+                set_r_cstack_limit(original);
             }
         }
     }
@@ -137,7 +139,7 @@ impl Drop for StackCheckGuard {
 /// Returns `true` if `R_CStackLimit` is set to `usize::MAX`.
 #[cfg(feature = "nonapi")]
 pub fn is_stack_checking_disabled() -> bool {
-    unsafe { R_CStackLimit == usize::MAX }
+    get_r_cstack_limit() == usize::MAX
 }
 
 /// Get the current stack checking configuration (for debugging).
@@ -145,7 +147,7 @@ pub fn is_stack_checking_disabled() -> bool {
 /// Returns `(start, limit, direction)`.
 #[cfg(feature = "nonapi")]
 pub fn get_stack_config() -> (usize, usize, i32) {
-    unsafe { (R_CStackStart, R_CStackLimit, R_CStackDir) }
+    (get_r_cstack_start(), get_r_cstack_limit(), get_r_cstack_dir())
 }
 
 /// Disable stack checking permanently for the current session.
@@ -159,7 +161,7 @@ pub fn get_stack_config() -> (usize, usize, i32) {
 #[cfg(feature = "nonapi")]
 pub fn disable_stack_checking_permanently() {
     unsafe {
-        R_CStackLimit = usize::MAX;
+        set_r_cstack_limit(usize::MAX);
     }
 }
 
@@ -399,7 +401,7 @@ mod tests {
 
     #[test]
     fn test_guard_saves_and_restores() {
-        let original = unsafe { R_CStackLimit };
+        let original = get_r_cstack_limit();
 
         {
             let guard = StackCheckGuard::disable();
@@ -408,6 +410,6 @@ mod tests {
         }
 
         // After guard drops, should be restored
-        assert_eq!(unsafe { R_CStackLimit }, original);
+        assert_eq!(get_r_cstack_limit(), original);
     }
 }

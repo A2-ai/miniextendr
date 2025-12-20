@@ -41,8 +41,10 @@ use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
 use std::process::Command;
 
+// Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
+// for embedding R. It is not intended for use in R packages.
 unsafe extern "C" {
-    // R initialization (from Rembedded.h)
+    // R initialization (from Rembedded.h - non-API)
     fn Rf_initialize_R(argc: c_int, argv: *mut *mut c_char) -> c_int;
     #[allow(dead_code)]
     fn Rf_endEmbeddedR(fatal: c_int);
@@ -54,9 +56,34 @@ unsafe extern "C" {
     // Setup functions
     fn setup_Rmainloop();
 
-    // Global state
-    static mut R_Interactive: c_int;
-    static mut R_SignalHandlers: c_int;
+    // Global state from Rinterface.h (non-API)
+    // Declared as immutable static; written via raw pointer
+    static R_Interactive: c_int;
+    static R_SignalHandlers: c_int;
+}
+
+/// Write to R's global `R_Interactive` flag.
+///
+/// # Safety
+/// Must be called from the main thread during R initialization.
+#[inline]
+unsafe fn set_r_interactive(value: c_int) {
+    unsafe {
+        let ptr = &raw const R_Interactive as *mut c_int;
+        ptr.write(value);
+    }
+}
+
+/// Write to R's global `R_SignalHandlers` flag.
+///
+/// # Safety
+/// Must be called from the main thread during R initialization.
+#[inline]
+unsafe fn set_r_signal_handlers(value: c_int) {
+    unsafe {
+        let ptr = &raw const R_SignalHandlers as *mut c_int;
+        ptr.write(value);
+    }
 }
 
 /// Builder for configuring and initializing the R runtime.
@@ -162,8 +189,8 @@ impl REngineBuilder {
         unsafe {
             // Set global flags *after* initialization, mirroring R's own
             // `Rf_initEmbeddedR()` order (but respecting our builder flags).
-            R_Interactive = if self.interactive { 1 } else { 0 };
-            R_SignalHandlers = if self.signal_handlers { 1 } else { 0 };
+            set_r_interactive(if self.interactive { 1 } else { 0 });
+            set_r_signal_handlers(if self.signal_handlers { 1 } else { 0 });
             setup_Rmainloop();
 
             // Note: We do NOT register an atexit handler for Rf_endEmbeddedR.
