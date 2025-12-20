@@ -823,11 +823,8 @@ pub fn miniextendr(
 /// miniextendr_module! {
 ///     mod mymodule;
 ///
-///     // Regular Rust functions (generates safe R wrapper)
+///     // Functions annotated with #[miniextendr]
 ///     fn my_function;
-///
-///     // Raw C ABI functions (R wrapper prefixed with `unsafe_`)
-///     extern "C-unwind" fn C_my_raw_function;
 ///
 ///     // ALTREP types (registers the class with R)
 ///     struct MyAltrepClass;
@@ -839,22 +836,25 @@ pub fn miniextendr(
 ///
 /// # Function Registration
 ///
-/// ## Regular functions (`fn`)
+/// Functions listed here must be defined with the `#[miniextendr]` attribute.
+/// The macro looks up the generated `CALL_METHOD_DEF_<name>` constant that
+/// `#[miniextendr]` creates for each function.
 ///
-/// For functions defined with `#[miniextendr]` that have a Rust signature:
-/// - C symbol: `C_<name>` (auto-generated wrapper)
-/// - R wrapper: `<name>()` (safe, with type conversion)
+/// The distinction between Rust ABI and C ABI functions is handled by
+/// `#[miniextendr]` at the function definition site, not in this module declaration:
 ///
-/// ## Extern functions (`extern "C-unwind" fn`)
+/// - **Rust ABI** (`fn foo(...)`): `#[miniextendr]` generates a `C_foo` wrapper
+/// - **C ABI** (`extern "C-unwind" fn foo(...)`): `#[miniextendr]` uses the function directly
 ///
-/// For raw C ABI functions defined with `#[miniextendr]` and `extern "C-unwind"`:
-/// - C symbol: The function name you provided (e.g., `C_my_function`)
-/// - R wrapper: `unsafe_<name>()` (prefixed to indicate bypassed safety)
+/// Both are listed the same way in `miniextendr_module!`:
 ///
-/// The `unsafe_` prefix signals to R users that these functions:
-/// 1. Run directly on R's thread (no worker thread isolation)
-/// 2. May not have proper panic handling
-/// 3. Don't perform automatic type conversion
+/// ```ignore
+/// miniextendr_module! {
+///     mod mypackage;
+///     fn rust_function;    // refers to #[miniextendr] fn rust_function
+///     fn c_function;       // refers to #[miniextendr] extern "C-unwind" fn c_function
+/// }
+/// ```
 ///
 /// # ALTREP Registration
 ///
@@ -868,17 +868,14 @@ pub fn miniextendr(
 /// fn add(a: i32, b: i32) -> i32 { a + b }
 ///
 /// #[miniextendr]
-/// #[unsafe(no_mangle)]
-/// extern "C-unwind" fn C_fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
+/// extern "C-unwind" fn fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
 ///
 /// miniextendr_module! {
 ///     mod mypackage;
-///     fn add;                         // R: add(a, b)
-///     extern "C-unwind" fn C_fast_add; // R: unsafe_C_fast_add()
+///     fn add;
+///     fn fast_add;
 /// }
 /// ```
-// TODO: Currently, miniextendr_module does not distinguish between
-// `extern "C-unwind" fn` and `fn` items.. they are treated alike.
 #[proc_macro]
 pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed_module = syn::parse_macro_input!(item as MiniextendrModule);

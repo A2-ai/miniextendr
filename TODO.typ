@@ -70,8 +70,11 @@
     embedding R (miniextendr-engine), not for R packages where symbols aren't exported.
 - [ ] `#[miniextendr]` has no support for methods (`self`)
   - `miniextendr-macros/src/lib.rs:203-206`
-- [ ] `miniextendr_module!` treats `extern "C-unwind" fn` and `fn` the same
+- [x] `miniextendr_module!` treats `extern "C-unwind" fn` and `fn` the same
   - `miniextendr-macros/src/lib.rs:815-816`
+  - Fix: Updated documentation to clarify this is intentional. The ABI distinction
+    is handled by `#[miniextendr]` at function definition, not in module declaration.
+    The `extern "C-unwind" fn` syntax remains accepted for backwards compatibility.
 - [x] String NA handling is lossy (`NA_character_` → `""`)
   - `miniextendr-api/src/from_r.rs:298-302`
   - Fix: Added `Option<String>` impl that returns None for NA.
@@ -119,7 +122,10 @@
 === Testing ===
 - [ ] Rayon integration tests too narrow (missing `with_r_vec`)
 - [ ] No automated regression test for registration bug
-- [ ] Macro compile-fail tests missing (no trybuild/UI tests)
+- [x] Macro compile-fail tests missing (no trybuild/UI tests)
+  - Fix: Added trybuild dev-dependency to miniextendr-macros, created tests/ui.rs runner
+    and 6 compile-fail test cases: unknown_option, pattern_parameter, option_with_value,
+    module_missing_mod, module_duplicate_mod, unsafe_empty
 - [ ] Thread-safety assertions not covered by tests
 - [ ] Known TODOs not tracked as GitHub issues
 
