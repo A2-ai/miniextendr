@@ -93,11 +93,19 @@
     autom4te.cache/, generated Makevars/entrypoint.c/Cargo.toml/.cargo/, vendor/, etc.
 - [ ] Template/generated files can drift (.in vs generated)
   - Fix: CI check to ensure generated files up-to-date
-- [ ] Vendored set incomplete for `--all-features` (missing rayon crate)
+- [x] Vendored set incomplete for `--all-features` (missing rayon crate)
   - `rpkg/src/vendor/`
-- [ ] `Cargo.lock` doesn't reflect feature-enabled dependency graph
-- [ ] Vendored `miniextendr-api` dev-dep points outside vendor
-- [ ] Generated `.cargo/config.toml` contains absolute local paths
+  - Fix: CRAN builds now use default features (no rayon) to avoid unvendored deps.
+    Rayon only enabled for dev builds which use network access.
+- [x] `Cargo.lock` doesn't reflect feature-enabled dependency graph
+  - Note: Lockfile in workspace root covers all workspace members.
+    CRAN builds use default features only, so reduced dep set is fine.
+- [x] Vendored `miniextendr-api` dev-dep points outside vendor
+  - Note: dev-dependencies only used for tests, not library builds.
+    CRAN builds don't run miniextendr-api tests, so this is fine.
+- [x] Generated `.cargo/config.toml` contains absolute local paths
+  - Note: This is expected - configure regenerates paths for each build env.
+    The .cargo/ dir is under src/ and not included in installed package.
 - [x] `R RHOME` not error-checked in configure.ac
   - `rpkg/configure.ac:3-5`
   - Fix: Added error checking for R RHOME command and R_HOME directory
@@ -108,10 +116,12 @@
   - Fix: Added AC_PATH_PROG checks with error messages, use $RSYNC/$SED variables
 - [x] `cargo pkgid --offline` can fail on fresh dev machines
   - Fix: Made `--offline` conditional on NOT_CRAN in configure.ac
-- [ ] `--all-features` always enabled (CRAN policy risk)
-  - Fix: Separate CRAN-safe vs dev feature sets
-- [ ] C preprocessor flags hard-coded to NONAPI
-  - Fix: Derive C feature macros from Cargo feature selection
+- [x] `--all-features` always enabled (CRAN policy risk)
+  - Fix: Made feature selection conditional on NOT_CRAN in configure.ac:
+    - NOT_CRAN=true (dev): --all-features (nonapi + rayon)
+    - NOT_CRAN=false (CRAN): default features only (no warnings, no unvendored deps)
+- [x] C preprocessor flags hard-coded to NONAPI
+  - Fix: CARGO_FEATURE_CPPFLAGS now derived from feature selection in configure.ac
 - [x] No `.Rbuildignore` present
   - Fix: Added comprehensive `.Rbuildignore` to rpkg
 - [x] Rust edition 2024 with no minimum rustc check
@@ -121,12 +131,16 @@
 
 === Testing ===
 - [ ] Rayon integration tests too narrow (missing `with_r_vec`)
+  - Note: `with_r_vec` tests require embedded R runtime (miniextendr-engine).
+    Unit tests exist for RVec, but full integration tests need separate infra.
 - [ ] No automated regression test for registration bug
+  - Note: User indicated this is likely a fluke, low priority.
 - [x] Macro compile-fail tests missing (no trybuild/UI tests)
   - Fix: Added trybuild dev-dependency to miniextendr-macros, created tests/ui.rs runner
     and 6 compile-fail test cases: unknown_option, pattern_parameter, option_with_value,
     module_missing_mod, module_duplicate_mod, unsafe_empty
 - [ ] Thread-safety assertions not covered by tests
+  - Note: Would require embedded R runtime for meaningful tests.
 - [ ] Known TODOs not tracked as GitHub issues
 
 

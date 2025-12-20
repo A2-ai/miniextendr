@@ -26,14 +26,22 @@ fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([NOT_CRAN])
 
-dnl Set cargo features flag
-dnl Use --all-features to enable all features (including nonapi for thread utilities)
-CARGO_FEATURES_FLAG="--all-features"
+dnl Set cargo features flag based on NOT_CRAN
+dnl - NOT_CRAN=true (dev): enable all features including nonapi and rayon
+dnl - NOT_CRAN=false (CRAN): default features only (no nonapi, no rayon)
+dnl
+dnl The 'nonapi' feature enables non-API R functions that cause R CMD check
+dnl warnings, so it should only be enabled in dev builds.
+dnl The 'rayon' feature requires vendoring rayon crate; currently not vendored.
+if test "$NOT_CRAN" = "true"; then
+  CARGO_FEATURES_FLAG="--all-features"
+  CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI -DCARGO_FEATURE_RAYON"
+else
+  dnl CRAN builds: default features only (no nonapi warnings, no unvendored rayon)
+  CARGO_FEATURES_FLAG=""
+  CARGO_FEATURE_CPPFLAGS=""
+fi
 AC_SUBST([CARGO_FEATURES_FLAG])
-
-dnl Set C preprocessor flags to match Cargo features
-dnl When using --all-features, define all feature macros for C code
-CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI"
 AC_SUBST([CARGO_FEATURE_CPPFLAGS])
 
 # TODO: write a rust analyzer friendly command.

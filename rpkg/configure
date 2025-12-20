@@ -1775,10 +1775,14 @@ fi
 
 
 
-CARGO_FEATURES_FLAG="--all-features"
+if test "$NOT_CRAN" = "true"; then
+  CARGO_FEATURES_FLAG="--all-features"
+  CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI -DCARGO_FEATURE_RAYON"
+else
+    CARGO_FEATURES_FLAG=""
+  CARGO_FEATURE_CPPFLAGS=""
+fi
 
-
-CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI"
 
 
 # TODO: write a rust analyzer friendly command.
