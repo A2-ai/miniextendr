@@ -7,8 +7,8 @@
 
 #![cfg(feature = "rayon")]
 
-use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
-use miniextendr_api::rayon_bridge::{RVec, with_r_vec};
+use miniextendr_api::ffi::{Rf_xlength, REAL, SEXP};
+use miniextendr_api::rayon_bridge::{with_r_vec, RVec};
 use rayon::prelude::*;
 use std::sync::Once;
 
@@ -58,10 +58,7 @@ fn test_with_r_vec_basic() {
     });
 
     let result = unsafe { read_real_vec(sexp) };
-    assert_eq!(
-        result,
-        vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]
-    );
+    assert_eq!(result, vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0]);
 }
 
 fn test_with_r_vec_parallel_write() {

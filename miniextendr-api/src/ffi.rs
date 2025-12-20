@@ -329,6 +329,10 @@ pub trait RNativeType: Sized + Copy + 'static {
 
     /// Get mutable pointer to vector data.
     ///
+    /// For empty vectors (length 0), returns an aligned dangling pointer rather than
+    /// R's internal 0x1 sentinel, which isn't properly aligned for most types.
+    /// This allows safe creation of zero-length slices with `std::slice::from_raw_parts_mut`.
+    ///
     /// # Safety
     ///
     /// - `sexp` must be a valid, non-null SEXP of the corresponding vector type.
@@ -394,7 +398,15 @@ impl RNativeType for i32 {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe { INTEGER(sexp) }
+        // R returns 0x1 for empty vectors, which isn't properly aligned.
+        // Return an aligned dangling pointer for empty case.
+        unsafe {
+            if Rf_xlength(sexp) == 0 {
+                std::ptr::NonNull::<Self>::dangling().as_ptr()
+            } else {
+                INTEGER(sexp)
+            }
+        }
     }
 }
 
@@ -403,7 +415,15 @@ impl RNativeType for f64 {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe { REAL(sexp) }
+        // R returns 0x1 for empty vectors, which isn't properly aligned.
+        // Return an aligned dangling pointer for empty case.
+        unsafe {
+            if Rf_xlength(sexp) == 0 {
+                std::ptr::NonNull::<Self>::dangling().as_ptr()
+            } else {
+                REAL(sexp)
+            }
+        }
     }
 }
 
@@ -412,7 +432,15 @@ impl RNativeType for u8 {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe { RAW(sexp) }
+        // R returns 0x1 for empty vectors, which isn't properly aligned.
+        // Return an aligned dangling pointer for empty case.
+        unsafe {
+            if Rf_xlength(sexp) == 0 {
+                std::ptr::NonNull::<Self>::dangling().as_ptr()
+            } else {
+                RAW(sexp)
+            }
+        }
     }
 }
 
@@ -421,8 +449,16 @@ impl RNativeType for RLogical {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        // R returns 0x1 for empty vectors, which isn't properly aligned.
+        // Return an aligned dangling pointer for empty case.
         // LOGICAL returns *mut c_int, RLogical is repr(transparent) over i32
-        unsafe { LOGICAL(sexp).cast() }
+        unsafe {
+            if Rf_xlength(sexp) == 0 {
+                std::ptr::NonNull::<Self>::dangling().as_ptr()
+            } else {
+                LOGICAL(sexp).cast()
+            }
+        }
     }
 }
 
@@ -431,7 +467,15 @@ impl RNativeType for Rcomplex {
 
     #[inline]
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
-        unsafe { COMPLEX(sexp) }
+        // R returns 0x1 for empty vectors, which isn't properly aligned.
+        // Return an aligned dangling pointer for empty case.
+        unsafe {
+            if Rf_xlength(sexp) == 0 {
+                std::ptr::NonNull::<Self>::dangling().as_ptr()
+            } else {
+                COMPLEX(sexp)
+            }
+        }
     }
 }
 
