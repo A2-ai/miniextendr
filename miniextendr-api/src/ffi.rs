@@ -521,11 +521,16 @@ pub enum cetype_t {
 }
 pub use cetype_t::CE_UTF8;
 
+// region: Connections types (gated behind `connections` feature)
+// WARNING: R's connection API is explicitly marked as UNSTABLE.
+
 /// Opaque R connection implementation (from R_ext/Connections.h).
 ///
 /// This is an opaque type representing R's internal connection structure.
 /// The actual structure is explicitly unstable and may change between R versions.
+#[cfg(feature = "connections")]
 #[repr(C)]
+#[allow(non_camel_case_types)]
 pub struct Rconnection_impl(::std::os::raw::c_void);
 
 /// Pointer to an R connection handle.
@@ -533,8 +538,22 @@ pub struct Rconnection_impl(::std::os::raw::c_void);
 /// This is the typed equivalent of R's `Rconnection` type, which is a pointer
 /// to the opaque `Rconn` struct. Using this instead of `*mut c_void` provides
 /// type safety for connection APIs.
+#[cfg(feature = "connections")]
 #[allow(non_camel_case_types)]
 pub type Rconnection = *mut Rconnection_impl;
+
+/// R connections API version constant.
+///
+/// From R_ext/Connections.h: "you *must* check the version and proceed only
+/// if it matches what you expect. We explicitly reserve the right to change
+/// the connection implementation without a compatibility layer."
+///
+/// Before using any connection APIs, check that this equals the expected version (1).
+#[cfg(feature = "connections")]
+#[allow(non_upper_case_globals)]
+pub const R_CONNECTIONS_VERSION: ::std::os::raw::c_int = 1;
+
+// endregion
 
 use miniextendr_macros::r_ffi_checked;
 
@@ -1098,83 +1117,6 @@ unsafe extern "C-unwind" {
 
     // endregion
 
-    // region: Connections API (R_ext/Connections.h)
-    //
-    // WARNING: The connections API is explicitly marked as UNSTABLE in R.
-    // From R_ext/Connections.h:
-    //   "IMPORTANT: we do not expect future connection APIs to be
-    //    backward-compatible so if you use this, you *must* check the
-    //    version and proceeds only if it matches what you expect.
-    //
-    //    We explicitly reserve the right to change the connection
-    //    implementation without a compatibility layer."
-    //
-    // Use with caution and always check R_CONNECTIONS_VERSION.
-
-    /// Create a new custom connection.
-    ///
-    /// # WARNING
-    ///
-    /// This API is UNSTABLE. Check `R_CONNECTIONS_VERSION` before use.
-    /// The connection implementation may change without notice.
-    ///
-    /// # Safety
-    ///
-    /// - `description`, `mode`, and `class_name` must be valid C strings
-    /// - `ptr` must be a valid pointer to store the connection handle
-    pub fn R_new_custom_connection(
-        description: *const ::std::os::raw::c_char,
-        mode: *const ::std::os::raw::c_char,
-        class_name: *const ::std::os::raw::c_char,
-        ptr: *mut Rconnection,
-    ) -> SEXP;
-
-    /// Read from a connection.
-    ///
-    /// # WARNING
-    ///
-    /// This API is UNSTABLE and may change.
-    ///
-    /// # Safety
-    ///
-    /// - `con` must be a valid Rconnection handle
-    /// - `buf` must be a valid buffer with at least `n` bytes
-    pub fn R_ReadConnection(
-        con: Rconnection,
-        buf: *mut ::std::os::raw::c_void,
-        n: usize,
-    ) -> usize;
-
-    /// Write to a connection.
-    ///
-    /// # WARNING
-    ///
-    /// This API is UNSTABLE and may change.
-    ///
-    /// # Safety
-    ///
-    /// - `con` must be a valid Rconnection handle
-    /// - `buf` must contain at least `n` valid bytes
-    pub fn R_WriteConnection(
-        con: Rconnection,
-        buf: *const ::std::os::raw::c_void,
-        n: usize,
-    ) -> usize;
-
-    /// Get a connection from a SEXP.
-    ///
-    /// # WARNING
-    ///
-    /// This API is UNSTABLE and may change.
-    /// Added in R 3.3.0.
-    ///
-    /// # Safety
-    ///
-    /// - `sConn` must be a valid connection SEXP
-    pub fn R_GetConnection(sConn: SEXP) -> Rconnection;
-
-    // endregion
-
     // region: Type checking
 
     pub fn TYPEOF(x: SEXP) -> SEXPTYPE;
@@ -1358,7 +1300,6 @@ unsafe extern "C-unwind" {
 //    implementation without a compatibility layer."
 //
 // Use with caution and always check R_CONNECTIONS_VERSION.
-#[r_ffi_checked]
 #[cfg(feature = "connections")]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
@@ -1390,7 +1331,11 @@ unsafe extern "C-unwind" {
     ///
     /// - `con` must be a valid Rconnection handle
     /// - `buf` must be a valid buffer with at least `n` bytes
-    pub fn R_ReadConnection(con: Rconnection, buf: *mut ::std::os::raw::c_void, n: usize) -> usize;
+    pub fn R_ReadConnection(
+        con: Rconnection,
+        buf: *mut ::std::os::raw::c_void,
+        n: usize,
+    ) -> usize;
 
     /// Write to a connection.
     ///

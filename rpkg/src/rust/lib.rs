@@ -26,6 +26,8 @@ mod interrupt_tests;
 mod conversion_tests;
 mod externalptr_tests;
 mod receiver_tests;
+mod r6_tests;
+mod s3_tests;
 mod worker_tests;
 mod coerce_tests;
 mod visibility_tests;
@@ -755,6 +757,8 @@ miniextendr_module! {
     use conversion_tests;
     use externalptr_tests;
     use receiver_tests;
+    use r6_tests;
+    use s3_tests;
     use worker_tests;
     use coerce_tests;
     use visibility_tests;
