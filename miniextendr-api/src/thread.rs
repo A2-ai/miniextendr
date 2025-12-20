@@ -408,8 +408,9 @@ mod tests {
         let original = get_r_cstack_limit();
 
         {
-            let guard = StackCheckGuard::disable();
-            assert_eq!(guard.saved_limit(), original);
+            let _guard = StackCheckGuard::disable();
+            // The original limit is saved in ORIGINAL_STACK_LIMIT
+            assert_eq!(ORIGINAL_STACK_LIMIT.load(Ordering::SeqCst), original);
             assert!(is_stack_checking_disabled());
         }
 
