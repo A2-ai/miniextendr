@@ -327,22 +327,14 @@ impl ParsedImpl {
             }
         };
 
-        // Reject non-'static generics for now
+        // Reject all generics until codegen fully supports them.
+        // The wrapper generation uses `type_ident` without generic args, which would
+        // fail to compile or mis-resolve types for generic impls.
         if !item_impl.generics.params.is_empty() {
-            // Check if all type params have 'static bound
-            for param in &item_impl.generics.params {
-                if let syn::GenericParam::Type(tp) = param {
-                    let has_static = tp.bounds.iter().any(|b| {
-                        matches!(b, syn::TypeParamBound::Lifetime(lt) if lt.ident == "static")
-                    });
-                    if !has_static {
-                        return Err(syn::Error::new_spanned(
-                            param,
-                            "generic type parameters require 'static bound",
-                        ));
-                    }
-                }
-            }
+            return Err(syn::Error::new_spanned(
+                &item_impl.generics,
+                "generic impl blocks are not yet supported by #[miniextendr]",
+            ));
         }
 
         // Parse methods
