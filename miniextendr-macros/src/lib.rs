@@ -733,9 +733,11 @@ pub fn miniextendr(
             unsafe {
                 ::miniextendr_api::ffi::R_CallMethodDef {
                     name: #c_ident_name.as_ptr(),
+                    // Cast to DL_FUNC (generic function pointer) for storage in R's registration table.
+                    // R will cast back to the appropriate signature when calling.
                     fun: Some(std::mem::transmute::<
                         unsafe #abi fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
-                        unsafe #abi fn(...) -> ::miniextendr_api::ffi::SEXP
+                        unsafe #abi fn() -> *mut ::std::os::raw::c_void
                     >(#c_ident)),
                     numArgs: #num_args,
                 }

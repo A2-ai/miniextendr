@@ -71,6 +71,14 @@ pub enum SEXPTYPE {
     FUNSXP = 99,
 }
 
+impl SEXPTYPE {
+    /// Alias for `S4SXP` (value 25).
+    ///
+    /// R defines both `OBJSXP` and `S4SXP` as value 25. `S4SXP` is retained
+    /// for backwards compatibility; `OBJSXP` is the preferred name.
+    pub const OBJSXP: SEXPTYPE = SEXPTYPE::S4SXP;
+}
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct SEXPREC(::std::os::raw::c_void);
@@ -513,6 +521,22 @@ pub enum cetype_t {
     CE_ANY = 99,
 }
 pub use cetype_t::CE_UTF8;
+
+/// Opaque R connection implementation (from R_ext/Connections.h).
+///
+/// This is an opaque type representing R's internal connection structure.
+/// The actual structure is explicitly unstable and may change between R versions.
+#[repr(C)]
+pub struct Rconnection_impl(::std::os::raw::c_void);
+
+/// Pointer to an R connection handle.
+///
+/// This is the typed equivalent of R's `Rconnection` type, which is a pointer
+/// to the opaque `Rconn` struct. Using this instead of `*mut c_void` provides
+/// type safety for connection APIs.
+#[allow(non_camel_case_types)]
+pub type Rconnection = *mut Rconnection_impl;
+
 use miniextendr_macros::r_ffi_checked;
 
 // Unchecked variadic functions (internal use only, no thread check)
@@ -619,9 +643,13 @@ unsafe extern "C-unwind" {
     pub static R_BaseEnv: SEXP;
     pub static R_EmptyEnv: SEXP;
 
-    // Special logical values
+    // Special logical values (from internal Defn.h, not public API)
+    // These are gated behind `nonapi` feature as they may change across R versions.
+    #[cfg(feature = "nonapi")]
     pub static R_TrueValue: SEXP;
+    #[cfg(feature = "nonapi")]
     pub static R_FalseValue: SEXP;
+    #[cfg(feature = "nonapi")]
     pub static R_LogicalNAValue: SEXP;
 
     // Rinternals.h
@@ -969,7 +997,7 @@ unsafe extern "C-unwind" {
     pub fn SET_REAL_ELT(x: SEXP, i: R_xlen_t, v: f64);
     pub fn SET_COMPLEX_ELT(x: SEXP, i: R_xlen_t, v: Rcomplex);
     pub fn SET_RAW_ELT(x: SEXP, i: R_xlen_t, v: Rbyte);
-    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP);
+    pub fn SET_VECTOR_ELT(x: SEXP, i: R_xlen_t, v: SEXP) -> SEXP;
 
     // endregion
 
@@ -1016,7 +1044,9 @@ unsafe extern "C-unwind" {
     pub fn LEVELS(x: SEXP) -> ::std::os::raw::c_int;
 
     /// Set the LEVELS field (for factors).
-    pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int);
+    ///
+    /// Returns the value that was set.
+    pub fn SETLEVELS(x: SEXP, v: ::std::os::raw::c_int) -> ::std::os::raw::c_int;
 
     // endregion
 
@@ -1075,7 +1105,7 @@ unsafe extern "C-unwind" {
     // From R_ext/Connections.h:
     //   "IMPORTANT: we do not expect future connection APIs to be
     //    backward-compatible so if you use this, you *must* check the
-    //    version and proceed only if it matches what you expect.
+    //    version and proceeds only if it matches what you expect.
     //
     //    We explicitly reserve the right to change the connection
     //    implementation without a compatibility layer."
@@ -1092,12 +1122,12 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// - `description`, `mode`, and `class_name` must be valid C strings
-    /// - `ptr` must be a valid pointer to store the connection
+    /// - `ptr` must be a valid pointer to store the connection handle
     pub fn R_new_custom_connection(
         description: *const ::std::os::raw::c_char,
         mode: *const ::std::os::raw::c_char,
         class_name: *const ::std::os::raw::c_char,
-        ptr: *mut *mut ::std::os::raw::c_void,
+        ptr: *mut Rconnection,
     ) -> SEXP;
 
     /// Read from a connection.
@@ -1108,10 +1138,10 @@ unsafe extern "C-unwind" {
     ///
     /// # Safety
     ///
-    /// - `con` must be a valid Rconnection pointer
+    /// - `con` must be a valid Rconnection handle
     /// - `buf` must be a valid buffer with at least `n` bytes
     pub fn R_ReadConnection(
-        con: *mut ::std::os::raw::c_void,
+        con: Rconnection,
         buf: *mut ::std::os::raw::c_void,
         n: usize,
     ) -> usize;
@@ -1124,11 +1154,11 @@ unsafe extern "C-unwind" {
     ///
     /// # Safety
     ///
-    /// - `con` must be a valid Rconnection pointer
+    /// - `con` must be a valid Rconnection handle
     /// - `buf` must contain at least `n` valid bytes
     pub fn R_WriteConnection(
-        con: *mut ::std::os::raw::c_void,
-        buf: *mut ::std::os::raw::c_void,
+        con: Rconnection,
+        buf: *const ::std::os::raw::c_void,
         n: usize,
     ) -> usize;
 
@@ -1142,7 +1172,7 @@ unsafe extern "C-unwind" {
     /// # Safety
     ///
     /// - `sConn` must be a valid connection SEXP
-    pub fn R_GetConnection(sConn: SEXP) -> *mut ::std::os::raw::c_void;
+    pub fn R_GetConnection(sConn: SEXP) -> Rconnection;
 
     // endregion
 
@@ -1300,8 +1330,14 @@ unsafe extern "C-unwind" {
     #[doc(alias = "eval")]
     pub fn Rf_eval(expr: SEXP, rho: SEXP) -> SEXP;
     #[doc(alias = "applyClosure")]
-    pub fn Rf_applyClosure(call: SEXP, op: SEXP, args: SEXP, rho: SEXP, suppliedvars: SEXP)
-    -> SEXP;
+    pub fn Rf_applyClosure(
+        call: SEXP,
+        op: SEXP,
+        args: SEXP,
+        rho: SEXP,
+        suppliedvars: SEXP,
+        check: Rboolean,
+    ) -> SEXP;
     pub fn R_tryEval(expr: SEXP, env: SEXP, error_occurred: *mut ::std::os::raw::c_int) -> SEXP;
     pub fn R_tryEvalSilent(
         expr: SEXP,
@@ -1338,9 +1374,55 @@ pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
 #[derive(Debug)]
 pub struct DllInfo(::std::os::raw::c_void);
 
+/// Generic dynamic library function pointer.
+///
+/// R defines this as `void *(*)(void)` - a function taking no arguments and
+/// returning `void*`. This is used for method registration and external pointer
+/// functions. The actual function signatures vary; callers cast to the appropriate
+/// concrete function type before calling.
+///
+/// We use `fn() -> *mut c_void` to match R's signature. The function pointer is
+/// stored generically and cast to the appropriate type when called by R.
 #[allow(non_camel_case_types)]
-pub type DL_FUNC = ::std::option::Option<unsafe extern "C-unwind" fn(...) -> SEXP>;
+pub type DL_FUNC = ::std::option::Option<unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void>;
 
+/// Type descriptor for native primitive arguments in .C/.Fortran calls.
+///
+/// This is used in `R_CMethodDef` and `R_FortranMethodDef` to specify
+/// argument types for type checking.
+#[allow(non_camel_case_types)]
+pub type R_NativePrimitiveArgType = ::std::os::raw::c_uint;
+
+/// Method definition for .C interface routines.
+///
+/// Used to register C functions callable via `.C()` from R.
+#[repr(C)]
+#[derive(Debug, Copy, Clone)]
+#[allow(non_camel_case_types)]
+#[allow(non_snake_case)]
+pub struct R_CMethodDef {
+    pub name: *const ::std::os::raw::c_char,
+    pub fun: DL_FUNC,
+    pub numArgs: ::std::os::raw::c_int,
+    /// Optional array of argument types for type checking. May be null.
+    pub types: *const R_NativePrimitiveArgType,
+}
+
+// SAFETY: R_CMethodDef contains raw pointers which don't impl Sync by default.
+// However, Sync is required to store these in static arrays for R's method registration.
+// This is safe because all pointers point to static data.
+unsafe impl Sync for R_CMethodDef {}
+
+/// Method definition for .Fortran interface routines.
+///
+/// Structurally identical to `R_CMethodDef`.
+#[allow(non_camel_case_types)]
+pub type R_FortranMethodDef = R_CMethodDef;
+
+/// Method definition for .Call interface routines.
+///
+/// Used to register C functions callable via `.Call()` from R.
+/// Unlike `.C()` routines, `.Call()` functions receive and return SEXP values directly.
 #[repr(C)]
 #[derive(Debug, Copy, Clone)]
 #[allow(non_camel_case_types)]
@@ -1359,16 +1441,22 @@ pub struct R_CallMethodDef {
 // 3. These are read-only after initialization during R_init_*
 unsafe impl Sync for R_CallMethodDef {}
 
+/// Method definition for .External interface routines.
+///
+/// Structurally identical to `R_CallMethodDef`.
+#[allow(non_camel_case_types)]
+pub type R_ExternalMethodDef = R_CallMethodDef;
+
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub fn R_registerRoutines(
         info: *mut DllInfo,
-        croutines: *const ::std::os::raw::c_void,
+        croutines: *const R_CMethodDef,
         callRoutines: *const R_CallMethodDef,
-        fortranRoutines: *const ::std::os::raw::c_void,
-        externalRoutines: *const ::std::os::raw::c_void,
+        fortranRoutines: *const R_FortranMethodDef,
+        externalRoutines: *const R_ExternalMethodDef,
     ) -> ::std::os::raw::c_int;
 
     pub fn R_useDynamicSymbols(info: *mut DllInfo, value: Rboolean) -> Rboolean;
@@ -1391,7 +1479,7 @@ pub mod legacy_c {
     pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;
 
     #[allow(non_camel_case_types)]
-    pub type DL_FUNC_C = ::std::option::Option<unsafe extern "C" fn(...) -> SEXP>;
+    pub type DL_FUNC_C = ::std::option::Option<unsafe extern "C" fn() -> *mut ::std::os::raw::c_void>;
 
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]
