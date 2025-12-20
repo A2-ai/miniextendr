@@ -473,14 +473,25 @@ pub fn miniextendr(
     // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
     let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
 
+    // Check if any input parameter is SEXP (not Send, must stay on main thread)
+    let has_sexp_inputs = inputs.iter().any(|arg| {
+        if let syn::FnArg::Typed(pat_type) = arg {
+            is_sexp_type(pat_type.ty.as_ref())
+        } else {
+            false
+        }
+    });
+
     // Use worker strategy by default for functions that don't return raw SEXP.
     // Worker thread provides proper panic catching with destructor cleanup.
-    // Functions returning raw SEXP or taking Dots must stay on main thread (SEXP/Dots aren't Send).
+    // Functions returning raw SEXP, taking SEXP inputs, or taking Dots must stay on main thread
+    // (SEXP/Dots aren't Send).
     // Use #[miniextendr(unsafe(main_thread))] to force main thread for functions that call R APIs internally.
     // check_interrupt also requires main thread since R_CheckUserInterrupt must be called there.
     // Note: ExternalPtr<T> returning functions use worker thread - if they call R APIs internally,
     // the FFI wrapper's debug check will catch it and users should add #[miniextendr(unsafe(main_thread))].
-    let use_main_thread = returns_sexp || has_dots || force_main_thread || check_interrupt;
+    let use_main_thread =
+        returns_sexp || has_sexp_inputs || has_dots || force_main_thread || check_interrupt;
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else if use_main_thread {
