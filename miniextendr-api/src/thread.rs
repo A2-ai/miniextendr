@@ -147,7 +147,11 @@ pub fn is_stack_checking_disabled() -> bool {
 /// Returns `(start, limit, direction)`.
 #[cfg(feature = "nonapi")]
 pub fn get_stack_config() -> (usize, usize, i32) {
-    (get_r_cstack_start(), get_r_cstack_limit(), get_r_cstack_dir())
+    (
+        get_r_cstack_start(),
+        get_r_cstack_limit(),
+        get_r_cstack_dir(),
+    )
 }
 
 /// Disable stack checking permanently for the current session.

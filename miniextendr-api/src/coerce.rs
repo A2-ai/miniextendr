@@ -943,9 +943,21 @@ impl_tuple_coerce!((A, B), (RA, RB), (0, 1));
 impl_tuple_coerce!((A, B, C), (RA, RB, RC), (0, 1, 2));
 impl_tuple_coerce!((A, B, C, D), (RA, RB, RC, RD), (0, 1, 2, 3));
 impl_tuple_coerce!((A, B, C, D, E), (RA, RB, RC, RD, RE), (0, 1, 2, 3, 4));
-impl_tuple_coerce!((A, B, C, D, E, F), (RA, RB, RC, RD, RE, RF), (0, 1, 2, 3, 4, 5));
-impl_tuple_coerce!((A, B, C, D, E, F, G), (RA, RB, RC, RD, RE, RF, RG), (0, 1, 2, 3, 4, 5, 6));
-impl_tuple_coerce!((A, B, C, D, E, F, G, H), (RA, RB, RC, RD, RE, RF, RG, RH), (0, 1, 2, 3, 4, 5, 6, 7));
+impl_tuple_coerce!(
+    (A, B, C, D, E, F),
+    (RA, RB, RC, RD, RE, RF),
+    (0, 1, 2, 3, 4, 5)
+);
+impl_tuple_coerce!(
+    (A, B, C, D, E, F, G),
+    (RA, RB, RC, RD, RE, RF, RG),
+    (0, 1, 2, 3, 4, 5, 6)
+);
+impl_tuple_coerce!(
+    (A, B, C, D, E, F, G, H),
+    (RA, RB, RC, RD, RE, RF, RG, RH),
+    (0, 1, 2, 3, 4, 5, 6, 7)
+);
 
 // =============================================================================
 // Tests

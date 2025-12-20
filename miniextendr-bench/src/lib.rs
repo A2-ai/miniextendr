@@ -57,7 +57,9 @@ pub fn init() {
 
 #[inline(always)]
 pub fn assert_on_init_thread() {
-    let init = INIT_THREAD.get().expect("miniextendr_bench::init not called");
+    let init = INIT_THREAD
+        .get()
+        .expect("miniextendr_bench::init not called");
     assert_eq!(
         *init,
         std::thread::current().id(),

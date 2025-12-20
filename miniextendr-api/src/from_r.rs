@@ -148,14 +148,7 @@ impl<T: RNativeType> TryFromSexp for T {
             .into());
         }
         // SAFETY: sexp is a .Call argument, protected by R's calling convention
-        unsafe { sexp.as_slice::<T>() }.first().cloned().ok_or_else(|| {
-            SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        unsafe { sexp.as_slice_unchecked::<T>() }
+        unsafe { sexp.as_slice::<T>() }
             .first()
             .cloned()
             .ok_or_else(|| {
@@ -165,55 +158,6 @@ impl<T: RNativeType> TryFromSexp for T {
                 }
                 .into()
             })
-    }
-}
-
-// =============================================================================
-// Logical conversions
-// =============================================================================
-
-impl TryFromSexp for Rboolean {
-    type Error = SexpError;
-
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-        match raw.to_option_bool() {
-            Some(false) => Ok(Rboolean::FALSE),
-            Some(true) => Ok(Rboolean::TRUE),
-            None => Err(SexpNaError {
-                sexp_type: SEXPTYPE::LGLSXP,
-            }
-            .into()),
-        }
-    }
-
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        match raw.to_option_bool() {
-            Some(false) => Ok(Rboolean::FALSE),
-            Some(true) => Ok(Rboolean::TRUE),
-            None => Err(SexpNaError {
-                sexp_type: SEXPTYPE::LGLSXP,
-            }
-            .into()),
-        }
-    }
-}
-
-impl TryFromSexp for bool {
-    type Error = SexpError;
-
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
-        raw.to_option_bool().ok_or_else(|| {
-            SexpNaError {
-                sexp_type: SEXPTYPE::LGLSXP,
-            }
-            .into()
-        })
     }
 
     #[inline]
@@ -631,16 +575,13 @@ impl TryFromSexp for Option<String> {
         }
 
         let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str
-            .to_str()
-            .map(|s| Some(s.to_owned()))
-            .map_err(|_| {
-                SexpTypeError {
-                    expected: SEXPTYPE::STRSXP,
-                    actual: SEXPTYPE::STRSXP,
-                }
-                .into()
-            })
+        rust_str.to_str().map(|s| Some(s.to_owned())).map_err(|_| {
+            SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual: SEXPTYPE::STRSXP,
+            }
+            .into()
+        })
     }
 
     #[inline]
@@ -718,15 +659,12 @@ impl TryFromSexp for Vec<Option<String>> {
                     result.push(Some(String::new()));
                 } else {
                     let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-                    result.push(Some(
-                        rust_str
-                            .to_str()
-                            .map(|s| s.to_owned())
-                            .map_err(|_| SexpTypeError {
-                                expected: SEXPTYPE::STRSXP,
-                                actual: SEXPTYPE::STRSXP,
-                            })?,
-                    ));
+                    result.push(Some(rust_str.to_str().map(|s| s.to_owned()).map_err(
+                        |_| SexpTypeError {
+                            expected: SEXPTYPE::STRSXP,
+                            actual: SEXPTYPE::STRSXP,
+                        },
+                    )?));
                 }
             }
         }
