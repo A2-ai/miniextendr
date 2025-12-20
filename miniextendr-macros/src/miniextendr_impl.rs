@@ -288,6 +288,16 @@ impl ParsedMethod {
             if matches!(ty.as_ref(), syn::Type::Path(p)
                 if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)))
     }
+
+    /// Returns true if this method has no return type (returns unit `()`).
+    pub fn returns_unit(&self) -> bool {
+        match &self.sig.output {
+            syn::ReturnType::Default => true,
+            syn::ReturnType::Type(_, ty) => {
+                matches!(ty.as_ref(), syn::Type::Tuple(t) if t.elems.is_empty())
+            }
+        }
+    }
 }
 
 impl ParsedImpl {
@@ -606,7 +616,19 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             "{}${} <- function({}) {{",
             class_name, method.ident, params
         ));
-        lines.push(format!("    {}", call));
+        if method.returns_self() {
+            // Returns Self: wrap result with class attribute
+            lines.push(format!("    result <- {}", call));
+            lines.push(format!("    class(result) <- \"{}\"", class_name));
+            lines.push("    result".to_string());
+        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+            // Mutable method returning unit: return self for chaining
+            lines.push(format!("    {}", call));
+            lines.push("    self".to_string());
+        } else {
+            // All other cases: return the result directly
+            lines.push(format!("    {}", call));
+        }
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -671,6 +693,13 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    public = list(".to_string());
 
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr
+    // Add .ptr parameter if ANY method (instance or static) returns Self
+    let has_self_returning_methods = parsed_impl
+        .methods
+        .iter()
+        .filter(|m| m.should_include())
+        .any(|m| m.returns_self());
+
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
         let params = build_r_formals(&ctor.sig);
@@ -680,9 +709,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!(".Call({}, {})", c_ident, args)
         };
-        // Only add .ptr parameter if there are static methods returning Self
-        let has_self_returning_statics = parsed_impl.static_methods().any(|m| m.returns_self());
-        if has_self_returning_statics {
+        if has_self_returning_methods {
             let full_params = if params.is_empty() {
                 ".ptr = NULL".to_string()
             } else {
@@ -713,9 +740,20 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!(".Call({}, private$.ptr, {})", c_ident, args)
         };
-        lines.push(format!("        {} = function({}) {{", method.ident, params));
-        lines.push(format!("            {}", call));
         let comma = if i < instance_methods.len() - 1 { "," } else { "" };
+        lines.push(format!("        {} = function({}) {{", method.ident, params));
+        if method.returns_self() {
+            // Returns Self: create new R6 object with the result pointer
+            // has_self_returning_methods guarantees .ptr param is available
+            lines.push(format!("            {}$new(.ptr = {})", class_name, call));
+        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+            // Mutable method returning unit: return self for chaining
+            lines.push(format!("            {}", call));
+            lines.push("            invisible(self)".to_string());
+        } else {
+            // All other cases: return the result directly
+            lines.push(format!("            {}", call));
+        }
         lines.push(format!("        }}{}", comma));
     }
 
@@ -817,15 +855,17 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push(String::new());
 
         // Then create the S3 method
-        // For &mut self methods, mutate then return x to preserve S3 class chain
         lines.push(format!("#' @export"));
         lines.push(format!("{} <- function({}) {{", s3_method_name, full_params));
-        if method.receiver == ReceiverKind::RefMut {
-            // Mutable method: call modifies x in place, return x for method chaining
+        if method.returns_self() {
+            // Returns Self: wrap result in class structure
+            lines.push(format!("    structure({}, class = \"{}\")", call, class_name));
+        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+            // Mutable method returning unit: return x for method chaining
             lines.push(format!("    {}", call));
             lines.push("    x".to_string());
         } else {
-            // Immutable method: just return the result
+            // All other cases: return the result directly
             lines.push(format!("    {}", call));
         }
         lines.push("}".to_string());
@@ -882,7 +922,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("        .ptr = S7::class_any".to_string());
     lines.push("    ),".to_string());
 
-    // Constructor - only add .ptr param if there are static methods returning Self
+    // Constructor - add .ptr param if ANY method returns Self
+    let has_self_returning_methods = parsed_impl
+        .methods
+        .iter()
+        .filter(|m| m.should_include())
+        .any(|m| m.returns_self());
+
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
         let params = build_r_formals(&ctor.sig);
@@ -892,8 +938,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!(".Call({}, {})", c_ident, args)
         };
-        let has_self_returning_statics = parsed_impl.static_methods().any(|m| m.returns_self());
-        if has_self_returning_statics {
+        if has_self_returning_methods {
             let params_with_ptr = if params.is_empty() {
                 ".ptr = NULL".to_string()
             } else {
@@ -945,12 +990,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         ));
 
         // Define method
-        // For &mut self methods, mutate then return x to preserve S7 dispatch chain
-        if method.receiver == ReceiverKind::RefMut {
+        if method.returns_self() {
+            // Returns Self: wrap result in S7 class
+            lines.push(format!(
+                "S7::method({method_name}, {class_name}) <- function({full_params}) {class_name}(.ptr = {call})"
+            ));
+        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+            // Mutable method returning unit: return x for chaining
             lines.push(format!(
                 "S7::method({method_name}, {class_name}) <- function({full_params}) {{ {call}; x }}"
             ));
         } else {
+            // All other cases: return the result directly
             lines.push(format!(
                 "S7::method({method_name}, {class_name}) <- function({full_params}) {call}"
             ));
@@ -1053,10 +1104,25 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Define method with @exportMethod for proper S4 dispatch
         lines.push(format!("#' @exportMethod {}", method_name));
-        lines.push(format!(
-            "methods::setMethod(\"{}\", \"{}\", function({}) {})",
-            method_name, class_name, full_params, call
-        ));
+        if method.returns_self() {
+            // Returns Self: wrap result in S4 class
+            lines.push(format!(
+                "methods::setMethod(\"{}\", \"{}\", function({}) methods::new(\"{}\", ptr = {}))",
+                method_name, class_name, full_params, class_name, call
+            ));
+        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+            // Mutable method returning unit: return x for chaining
+            lines.push(format!(
+                "methods::setMethod(\"{}\", \"{}\", function({}) {{ {}; x }})",
+                method_name, class_name, full_params, call
+            ));
+        } else {
+            // All other cases: return the result directly
+            lines.push(format!(
+                "methods::setMethod(\"{}\", \"{}\", function({}) {})",
+                method_name, class_name, full_params, call
+            ));
+        }
         lines.push(String::new());
     }
 
