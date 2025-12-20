@@ -5,8 +5,8 @@
 //!
 //! # Design Philosophy
 //!
-//! **🚀 Rust computation: Parallel on Rayon threads (normal 2MB stacks)**
-//! **🔒 R API calls: Serial on main thread (via `run_r`)**
+//! **Rust computation: Parallel on Rayon threads (normal 2MB stacks)**
+//! **R API calls: Serial on worker/main thread (before/after parallel work)**
 //!
 //! Uses existing infrastructure:
 //! - `IntoR` trait for R conversion
@@ -21,38 +21,53 @@
 //!
 //! #[miniextendr]
 //! fn parallel_sqrt(x: &[f64]) -> SEXP {
-//!     // Leverage existing IntoR trait!
+//!     // Pure Rust parallel computation - no R calls inside!
 //!     x.par_iter()
 //!         .map(|&v| v.sqrt())
 //!         .collect::<Vec<f64>>()
-//!         .into_sexp()  // Uses existing IntoR
+//!         .into_sexp()  // Convert to R AFTER parallel work
 //! }
 //! ```
 //!
 //! # Architecture
 //!
 //! ```text
-//! ┌──────────────────────────────────┐
-//! │   Rayon Thread Pool (2MB stacks) │
-//! │   Thread 1  Thread 2  Thread 3   │
-//! │      ↓         ↓         ↓       │ Parallel Rust
-//! │   run_r()  run_r()  run_r()     │ Need R? → Main thread
-//! └──────┬─────────┬─────────┬───────┘
-//!        │         │         │
-//!        └─────────┴─────────┘
-//!                  ↓
-//!        ┌────────────────┐
-//!        │ Main R Thread  │
-//!        │ Rf_allocVector │ Sequential R ops
-//!        │ IntoR traits   │
-//!        └────────┬───────┘
-//!                 ↓ Results
-//!        Back to Rayon threads
+//! ┌───────────────────────────────────────────────────────┐
+//! │                    R Main Thread                       │
+//! │  .Call("my_func") → miniextendr entry point           │
+//! └─────────────────────────┬─────────────────────────────┘
+//!                           ↓
+//! ┌─────────────────────────┴─────────────────────────────┐
+//! │               Worker Thread (run_on_worker)           │
+//! │  1. Setup: with_r_vec() allocates R vectors           │
+//! │  2. Parallel: spawn Rayon work (pure Rust only!)      │
+//! │  3. Cleanup: convert results to R                     │
+//! └─────────────────────────┬─────────────────────────────┘
+//!                           ↓
+//! ┌──────────────────────────────────────────────────────┐
+//! │              Rayon Thread Pool (2MB stacks)          │
+//! │   Thread 1    Thread 2    Thread 3    Thread N       │
+//! │      ↓           ↓           ↓           ↓           │
+//! │   Pure Rust  Pure Rust  Pure Rust  Pure Rust         │
+//! │   compute    compute    compute    compute           │
+//! │   (NO R API calls from within parallel iterators!)   │
+//! └──────────────────────────────────────────────────────┘
 //! ```
+//!
+//! # Important Limitations
+//!
+//! **DO NOT call R APIs from within parallel iterators.** This includes:
+//! - Any direct FFI calls to R
+//! - `IntoR::into_sexp()` inside `.map()` closures
+//!
+//! **DO** perform all R interactions before or after parallel work:
+//! - Use `with_r_vec::<T>()` to pre-allocate R vectors before parallel writes
+//! - Collect to `Vec<T>` then convert with `.into_sexp()` after
+//! - Use the `reduce::*` functions which handle this correctly
 
 use crate::IntoR;
 use crate::externalptr::SendableSexp;
-use crate::ffi::SEXP;
+use crate::ffi::{RNativeType, SEXP};
 use crate::worker::with_r_thread;
 
 #[cfg(feature = "rayon")]
@@ -60,33 +75,6 @@ pub use rayon;
 
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
-
-// region: Core R execution guard
-
-/// Execute R code on the main thread from a Rayon thread.
-///
-/// Routes R API calls through the existing `with_r_thread` infrastructure.
-///
-/// # Example
-///
-/// ```ignore
-/// let sexp = run_r(|| unsafe { ffi::Rf_ScalarInteger(42) });
-/// ```
-///
-/// # Panics
-///
-/// Panics if called outside a `run_on_worker` context.
-#[cfg(feature = "rayon")]
-#[inline]
-pub fn run_r<F>(f: F) -> SEXP
-where
-    F: FnOnce() -> SEXP + Send + 'static,
-{
-    let sendable = with_r_thread(move || SendableSexp::new(f()));
-    sendable.into_inner()
-}
-
-// endregion
 
 // region: RVec - Parallel collection container
 
@@ -149,63 +137,59 @@ impl<T: Send> FromParallelIterator<T> for RVec<T> {
 
 // region: Zero-copy pre-allocation
 
-/// Pre-allocate R real vector, fill in parallel.
+/// Pre-allocate an R vector, fill in parallel, return the SEXP.
 ///
-/// Most efficient pattern - writes directly to R memory.
+/// This is the most efficient pattern for parallel output - it writes directly
+/// to R memory without intermediate copies.
+///
+/// The type `T` must implement [`RNativeType`], which maps Rust types to R vector types:
+/// - `f64` → `REALSXP`
+/// - `i32` → `INTSXP`
+/// - `RLogical` → `LGLSXP`
+/// - `u8` → `RAWSXP`
+/// - `Rcomplex` → `CPLXSXP`
 ///
 /// # Example
 ///
 /// ```ignore
-/// let r_vec = with_r_real_vec(1000, |output| {
+/// // Type is inferred from the closure parameter
+/// let r_vec = with_r_vec(1000, |output: &mut [f64]| {
 ///     output.par_iter_mut()
 ///         .enumerate()
 ///         .for_each(|(i, slot)| *slot = (i as f64).sqrt());
 /// });
 /// ```
+///
+/// # Protection
+///
+/// The vector is protected during the closure execution using R's PROTECT/UNPROTECT.
+/// After the function returns, the SEXP is the caller's responsibility to protect.
 #[cfg(feature = "rayon")]
-pub fn with_r_real_vec<F>(len: usize, f: F) -> SEXP
+pub fn with_r_vec<T, F>(len: usize, f: F) -> SEXP
 where
-    F: FnOnce(&mut [f64]),
+    T: RNativeType + Send + Sync,
+    F: FnOnce(&mut [T]),
 {
-    let sexp = run_r(move || unsafe {
-        crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::REALSXP, len as crate::ffi::R_xlen_t)
+    // Allocate and protect on the main thread
+    let sexp = with_r_thread(move || unsafe {
+        let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(sexp);
+        SendableSexp::new(sexp)
+    })
+    .into_inner();
+
+    // Get pointer and create slice (safe: vector is protected)
+    let ptr = unsafe { T::dataptr_mut(sexp) };
+    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+
+    // Run user's parallel work
+    f(slice);
+
+    // Unprotect on main thread (SEXP is now caller's responsibility)
+    with_r_thread(|| unsafe {
+        crate::ffi::Rf_unprotect(1);
     });
 
-    let ptr = unsafe { crate::ffi::REAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-    f(slice);
-    sexp
-}
-
-/// Pre-allocate R integer vector.
-#[cfg(feature = "rayon")]
-pub fn with_r_int_vec<F>(len: usize, f: F) -> SEXP
-where
-    F: FnOnce(&mut [i32]),
-{
-    let sexp = run_r(move || unsafe {
-        crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::INTSXP, len as crate::ffi::R_xlen_t)
-    });
-
-    let ptr = unsafe { crate::ffi::INTEGER(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-    f(slice);
-    sexp
-}
-
-/// Pre-allocate R logical vector.
-#[cfg(feature = "rayon")]
-pub fn with_r_logical_vec<F>(len: usize, f: F) -> SEXP
-where
-    F: FnOnce(&mut [i32]),
-{
-    let sexp = run_r(move || unsafe {
-        crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, len as crate::ffi::R_xlen_t)
-    });
-
-    let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
-    f(slice);
     sexp
 }
 
@@ -213,21 +197,23 @@ where
 
 // region: Parallel reduction
 
-/// Parallel reduction operations using existing IntoR.
+/// Parallel reduction operations.
+///
+/// These functions perform parallel computation and convert to R scalars.
 #[cfg(feature = "rayon")]
 pub mod reduce {
     use super::*;
 
-    /// Parallel sum → R scalar (uses IntoR for f64).
+    /// Parallel sum → R scalar (f64).
     pub fn sum(slice: &[f64]) -> SEXP {
         let total: f64 = slice.par_iter().sum();
-        run_r(move || total.into_sexp())
+        with_r_thread(move || SendableSexp::new(total.into_sexp())).into_inner()
     }
 
-    /// Parallel sum for integers (uses IntoR for i32).
+    /// Parallel sum → R scalar (i32).
     pub fn sum_int(slice: &[i32]) -> SEXP {
         let total: i32 = slice.par_iter().sum();
-        run_r(move || total.into_sexp())
+        with_r_thread(move || SendableSexp::new(total.into_sexp())).into_inner()
     }
 
     /// Parallel minimum.
@@ -236,7 +222,7 @@ pub mod reduce {
             .par_iter()
             .copied()
             .reduce(|| f64::INFINITY, |a, b| a.min(b));
-        run_r(move || min_val.into_sexp())
+        with_r_thread(move || SendableSexp::new(min_val.into_sexp())).into_inner()
     }
 
     /// Parallel maximum.
@@ -245,13 +231,13 @@ pub mod reduce {
             .par_iter()
             .copied()
             .reduce(|| f64::NEG_INFINITY, |a, b| a.max(b));
-        run_r(move || max_val.into_sexp())
+        with_r_thread(move || SendableSexp::new(max_val.into_sexp())).into_inner()
     }
 
     /// Parallel mean.
     pub fn mean(slice: &[f64]) -> SEXP {
         if slice.is_empty() {
-            return run_r(|| unsafe { crate::ffi::R_NaString });
+            return with_r_thread(|| SendableSexp::new(f64::NAN.into_sexp())).into_inner();
         }
 
         let (sum, count) = slice
@@ -260,7 +246,7 @@ pub mod reduce {
             .reduce(|| (0.0, 0), |(s1, c1), (s2, c2)| (s1 + s2, c1 + c2));
 
         let mean_val = sum / count as f64;
-        run_r(move || mean_val.into_sexp())
+        with_r_thread(move || SendableSexp::new(mean_val.into_sexp())).into_inner()
     }
 }
 

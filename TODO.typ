@@ -2,7 +2,10 @@
 - [ ] Only use `static` and not `static mut` for symbols from R.
   - `R_Interactive` is a challenge here.
 - [x] ensure all ffi'd function have the r_ffi macro that provide safe equivalents
-- [ ] implement proper rayon feature...
+- [x] implement proper rayon feature...
+  - Generic `with_r_vec<T>` with type inference
+  - RNativeType::dataptr_mut() for safe data pointer access
+  - Clear documentation on parallel limitations
 - [ ] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
 
 == Codex Review Findings (2024) ==
@@ -11,12 +14,14 @@
 - [x] `SexpExt::as_slice` returns `'static` slices from R memory (unsound)
   - `miniextendr-api/src/ffi.rs:208-220`
   - Fix: Made `as_slice` unsafe with comprehensive safety docs
-- [ ] Rayon `run_r` panics on Rayon threads (thread-local routing missing)
+- [x] Rayon `run_r` panics on Rayon threads (thread-local routing missing)
   - `miniextendr-api/src/rayon_bridge.rs:81-86`, `worker.rs:119-155`
-  - Fix: Add `MainThreadDispatcher` or global routing channel
-- [ ] Unprotected R vectors in `with_r_*_vec` can be GC'd mid-parallel write
+  - Fix: Removed `run_r`, documented limitations. Use `with_r_thread` directly.
+    Architecture: R calls happen before/after parallel work, not within.
+- [x] Unprotected R vectors in `with_r_*_vec` can be GC'd mid-parallel write
   - `miniextendr-api/src/rayon_bridge.rs:166-209`
-  - Fix: Use `R_PreserveObject`/`R_ReleaseObject` around parallel region
+  - Fix: Refactored to generic `with_r_vec<T>` using PROTECT/UNPROTECT.
+    Added `RNativeType::dataptr_mut()` for type-safe data pointer access.
 
 === HIGH: Thread Safety ===
 - [x] `is_r_main_thread` defaults to true before init
@@ -28,20 +33,20 @@
 - [x] `StackCheckGuard` is not concurrency-safe
   - `miniextendr-api/src/thread.rs:75-94`
   - Fix: Implemented global refcount with atomic operations
-- [ ] `SendableSexp` is marked `Sync` despite cross-thread mutation risks
+- [x] `SendableSexp` is marked `Sync` despite cross-thread mutation risks
   - `miniextendr-api/src/externalptr.rs:69-79`
-  - Fix: Remove `Sync` or gate behind unsafe/feature
-- [ ] Allocator can longjmp across Rust frames
+  - Fix: Removed `Sync` impl, documented why it's unsafe
+- [x] Allocator can longjmp across Rust frames
   - `miniextendr-api/src/allocator.rs:209`
-  - Fix: Document precondition or route through R-safe error boundary
-- [ ] Worker init can be called from non-main thread without guard
+  - Fix: Added module-level and call-site documentation about longjmp risk
+- [x] Worker init can be called from non-main thread without guard
   - `miniextendr-api/src/worker.rs:332-356`
-  - Fix: Verify caller is actually on R main thread
+  - Fix: Added thread consistency check and documentation requirements
 
 === MEDIUM: Memory/Leaks ===
-- [ ] R continuation tokens are preserved forever (leak)
+- [x] R continuation tokens are preserved forever (leak)
   - `miniextendr-api/src/worker.rs:44-51`, `unwind_protect.rs:17-24`
-  - Fix: Keep single global token or register release on exit
+  - Fix: Consolidated to single global token in unwind_protect.rs (no per-thread leak)
 
 === API/Ergonomics ===
 - [ ] `REngine::new()` and `shutdown()` shown in docs but not implemented
@@ -76,8 +81,9 @@
 - [ ] `Cargo.lock` doesn't reflect feature-enabled dependency graph
 - [ ] Vendored `miniextendr-api` dev-dep points outside vendor
 - [ ] Generated `.cargo/config.toml` contains absolute local paths
-- [ ] `R RHOME` not error-checked in configure.ac
+- [x] `R RHOME` not error-checked in configure.ac
   - `rpkg/configure.ac:3-5`
+  - Fix: Added error checking for R RHOME command and R_HOME directory
 - [ ] `bootstrap.R` doesn't check exit status of configure/autoconf
   - `rpkg/bootstrap.R:8-27`
 - [ ] `rsync` and `sed` required but not validated in configure
@@ -89,12 +95,13 @@
   - Fix: Derive C feature macros from Cargo feature selection
 - [x] No `.Rbuildignore` present
   - Fix: Added comprehensive `.Rbuildignore` to rpkg
-- [ ] Rust edition 2024 with no minimum rustc check
+- [x] Rust edition 2024 with no minimum rustc check
+  - Fix: Added rustc 1.85+ version check in configure.ac
 - [x] `cleanup` script removes wrong config path
   - Fix: Changed `.cargo/config.toml` to `src/rust/.cargo`
 
 === Testing ===
-- [ ] Rayon integration tests too narrow (missing `run_r`, `with_r_*_vec`)
+- [ ] Rayon integration tests too narrow (missing `with_r_vec`)
 - [ ] No automated regression test for registration bug
 - [ ] Macro compile-fail tests missing (no trybuild/UI tests)
 - [ ] Thread-safety assertions not covered by tests

@@ -9,6 +9,20 @@
 //! We always return a pointer aligned to at least:
 //!   `max(requested_align, align_of::<Header>())`
 //! so the `Header` placed immediately before the user pointer is always aligned.
+//!
+//! # ⚠️ Warning: longjmp Risk
+//!
+//! R's `Rf_allocVector` can longjmp on allocation failure instead of returning
+//! NULL. If this happens, Rust destructors will NOT run, potentially causing:
+//! - Resource leaks (files, locks, etc.)
+//! - Corrupted state if allocation happens mid-operation
+//!
+//! This allocator is best suited for:
+//! - Short-lived operations within a single R API call
+//! - Contexts where `R_UnwindProtect` is active (e.g., inside `run_on_worker`)
+//!
+//! For long-lived allocations or critical cleanup requirements, consider using
+//! Rust's standard allocator instead.
 
 use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
@@ -213,6 +227,9 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
         Err(_) => return SendableDataPtr::null(),
     };
 
+    // NOTE: Rf_allocVector can longjmp on failure instead of returning NULL.
+    // If this happens inside run_on_worker, R_UnwindProtect will catch it.
+    // Outside of that context, Rust destructors may be skipped.
     let sexp = unsafe { Rf_allocVector(SEXPTYPE::RAWSXP, total_isize) };
     if sexp.is_null() {
         return SendableDataPtr::null();

@@ -6,17 +6,26 @@ message("Running bootstrap.R...")
 pkg_root <- getwd()
 configure_script <- file.path(pkg_root, "configure")
 
+# Helper to run a command and check exit status
+run_cmd <- function(cmd, args = character()) {
+  message(sprintf("Running: %s %s", cmd, paste(args, collapse = " ")))
+  result <- system2(cmd, args, stdout = "", stderr = "")
+  if (result != 0) {
+    stop(sprintf("Command failed with exit code %d: %s %s",
+                 result, cmd, paste(args, collapse = " ")))
+  }
+  invisible(result)
+}
+
 if (file.exists(configure_script)) {
   message("Running ./configure...")
-  result <- system2(configure_script, stdout = TRUE, stderr = TRUE)
-  cat(result, sep = "\n")
+  run_cmd(configure_script)
   message("bootstrap.R completed successfully")
 } else {
   message("configure script not found - running autoconf first")
-  system2("autoconf", stdout = TRUE, stderr = TRUE)
+  run_cmd("autoconf")
   if (file.exists(configure_script)) {
-    result <- system2(configure_script, stdout = TRUE, stderr = TRUE)
-    cat(result, sep = "\n")
+    run_cmd(configure_script)
     message("bootstrap.R completed successfully")
   } else {
     stop("Failed to generate configure script")

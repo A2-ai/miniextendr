@@ -66,17 +66,16 @@ pub struct SendableSexp(SEXP);
 // 4. Miniextendr enforces that all R API calls happen on the main thread
 unsafe impl Send for SendableSexp {}
 
-// SAFETY for Sync: This is safe because:
-// 1. Multiple threads can read the same SEXP pointer value concurrently
-// 2. The SEXP is never dereferenced except on the main thread via run_r/with_r_thread
-// 3. When writing to R vector data in parallel (e.g., REAL(sexp)[i] = value),
-//    each thread writes to a different index - no data races on the data array
-// 4. The R SEXP structure itself is never mutated from Rayon threads, only its
-//    data array elements at disjoint memory locations
+// NOTE: SendableSexp is intentionally NOT Sync.
 //
-// This enables Rayon patterns where multiple threads share a SEXP handle and
-// write to different indices of its data array in parallel.
-unsafe impl Sync for SendableSexp {}
+// While it might seem useful for parallel writes (multiple threads writing to
+// different indices of an R vector), implementing Sync is unsound because:
+// 1. R's GC can read SEXP headers concurrently with worker thread access
+// 2. No enforcement of disjoint access - users could write to same indices
+// 3. The SEXP must remain protected during access, which requires main thread
+//
+// For parallel writes to R vectors, use the dedicated `with_r_*_vec` functions
+// in the rayon_bridge module, which handle protection correctly.
 
 impl SendableSexp {
     /// Create a new SendableSexp wrapper.
