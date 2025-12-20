@@ -7,22 +7,27 @@
 //!
 //! - `mod <name>;` - Required module name (determines `R_init_<name>_miniextendr` symbol)
 //! - `fn <name>;` - Register a `#[miniextendr]` function
-//! - `extern "C-unwind" fn <name>;` - Register a raw C ABI function
 //! - `struct <name>;` - Register an ALTREP class
 //! - `use <submodule>;` - Re-export from a submodule
+//!
+//! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
+//! treated identically to `fn <name>;`. The ABI distinction is handled by
+//! `#[miniextendr]` at the function definition site.
 
 use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 /// A single `fn ...;` line inside `miniextendr_module! { ... }`.
 ///
-/// Supported syntaxes:
+/// Registers a function that has the `#[miniextendr]` attribute.
 ///
 /// ```text
-/// fn my_rust_function;
-/// extern "C-unwind" fn C_raw_symbol;
+/// fn my_function;
 /// ```
 ///
-/// Note: To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
+/// Note: `extern "C-unwind" fn <name>;` syntax is accepted for backwards
+/// compatibility but treated identically to `fn <name>;`.
+///
+/// To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
 /// on the function definition itself, not in this module declaration.
 pub(crate) struct MiniextendrModuleFunction {
     pub _abi: Option<syn::Abi>,
