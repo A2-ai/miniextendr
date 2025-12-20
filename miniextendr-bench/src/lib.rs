@@ -78,7 +78,7 @@ unsafe fn init_r_once() {
 
         // Initialize embedded R via `miniextendr-engine` (kept alive for the
         // lifetime of the benchmark process).
-        let engine = miniextendr_engine::REngine::new()
+        let engine = miniextendr_engine::REngine::build()
             .with_args(&["R", "--quiet", "--vanilla"])
             .interactive(false)
             .signal_handlers(false)

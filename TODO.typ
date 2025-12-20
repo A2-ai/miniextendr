@@ -1,12 +1,16 @@
  - [x] Add a small assert in the macro to emit a clear compile error if the wrong base is used (e.g., using AltReal flags under base = "Int"). Implemented in `miniextendr-macros/src/lib.rs` via a base-specific trait bound check requiring the corresponding `Alt*` family trait for the selected `base`.
-- [ ] Only use `static` and not `static mut` for symbols from R.
+- [x] Only use `static` and not `static mut` for symbols from R.
   - `R_Interactive` is a challenge here.
+  - Fix: Changed `static mut` to `static` with raw pointer writes via helper functions.
+    - miniextendr-engine: set_r_interactive(), set_r_signal_handlers()
+    - miniextendr-api: set_r_cstack_limit(), get_r_cstack_*() (nonapi feature-gated)
 - [x] ensure all ffi'd function have the r_ffi macro that provide safe equivalents
 - [x] implement proper rayon feature...
   - Generic `with_r_vec<T>` with type inference
   - RNativeType::dataptr_mut() for safe data pointer access
   - Clear documentation on parallel limitations
-- [ ] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
+- [x] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
+  - Fix: Added miniextendr-bench to workspace, updated to edition 2024, fixed REngine::new() → build()
 
 == Codex Review Findings (2024) ==
 
@@ -60,8 +64,10 @@
   - `miniextendr-engine/src/lib.rs:259-260`
   - Fix: Corrected documentation to explain that cleanup is intentionally NOT
     registered because Rf_endEmbeddedR is non-reentrant.
-- [ ] Encoding init is documented but disabled in R entrypoint
+- [x] Encoding init is documented but disabled in R entrypoint
   - `rpkg/src/entrypoint.c.in:7-10`, `encoding.rs:29-73`
+  - Fix: Added documentation explaining that encoding_init only works when
+    embedding R (miniextendr-engine), not for R packages where symbols aren't exported.
 - [ ] `#[miniextendr]` has no support for methods (`self`)
   - `miniextendr-macros/src/lib.rs:203-206`
 - [ ] `miniextendr_module!` treats `extern "C-unwind" fn` and `fn` the same

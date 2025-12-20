@@ -1,7 +1,7 @@
 [package]
 name = "miniextendr-bench"
-version = "0.1.0"
-edition = "2021"
+version.workspace = true
+edition.workspace = true
 publish = false
 
 [dependencies]
@@ -15,5 +15,4 @@ divan = "0.1.21"
 name = "translate"
 harness = false
 
-[profile.release]
-debug = true
+# Note: Profile is defined in workspace root Cargo.toml
