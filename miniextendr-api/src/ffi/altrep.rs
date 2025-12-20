@@ -132,6 +132,9 @@ pub struct R_altrep_class_t {
 // The class is created once during package init and stored in a static.
 unsafe impl Send for R_altrep_class_t {}
 unsafe impl Sync for R_altrep_class_t {}
+
+#[miniextendr_macros::r_ffi_checked]
+#[allow(non_snake_case)]
 unsafe extern "C-unwind" {
     pub fn R_new_altrep(aclass: R_altrep_class_t, data1: SEXP, data2: SEXP) -> SEXP;
 

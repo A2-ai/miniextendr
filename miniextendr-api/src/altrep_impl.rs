@@ -214,6 +214,12 @@ macro_rules! __impl_altvec_extract_subset {
                 indx: $crate::ffi::SEXP,
                 _call: $crate::ffi::SEXP,
             ) -> $crate::ffi::SEXP {
+                // Validate that indx is an integer vector before calling INTEGER().
+                // Return NULL to signal R to use default subsetting if not.
+                if unsafe { $crate::ffi::TYPEOF(indx) } != $crate::ffi::SEXPTYPE::INTSXP {
+                    return core::ptr::null_mut();
+                }
+
                 // Convert indx SEXP to slice
                 let len = unsafe { $crate::ffi::Rf_xlength(indx) } as usize;
                 let indices =

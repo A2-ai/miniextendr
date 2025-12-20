@@ -8,6 +8,7 @@
 //! - `mod <name>;` - Required module name (determines `R_init_<name>_miniextendr` symbol)
 //! - `fn <name>;` - Register a `#[miniextendr]` function
 //! - `struct <name>;` - Register an ALTREP class
+//! - `impl <name>;` - Register a `#[miniextendr(receiver|r6|s7|s3|s4)]` impl block
 //! - `use <submodule>;` - Re-export from a submodule
 //!
 //! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
@@ -101,6 +102,42 @@ impl syn::parse::Parse for MiniextendrModuleName {
     }
 }
 
+/// An `impl <Type>;` line inside `miniextendr_module! { ... }`.
+///
+/// Registers an impl block that has `#[miniextendr(receiver|r6|s7|s3|s4)]` attribute.
+///
+/// ```text
+/// impl Counter;
+/// ```
+pub(crate) struct MiniextendrModuleImpl {
+    _impl_token: syn::Token![impl],
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for MiniextendrModuleImpl {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _impl_token: input.parse()?,
+            ident: input.parse()?,
+        })
+    }
+}
+
+impl MiniextendrModuleImpl {
+    /// Returns the identifier for the call defs const function.
+    pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
+        quote::format_ident!("{}_CALL_DEFS", self.ident.to_string().to_uppercase())
+    }
+
+    /// Returns the identifier for the R wrappers const.
+    pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
+        quote::format_ident!(
+            "R_WRAPPERS_IMPL_{}",
+            self.ident.to_string().to_uppercase()
+        )
+    }
+}
+
 /// A `use <module>;` line inside `miniextendr_module! { ... }`.
 ///
 /// Only the simple `use name;` form is supported. This is intentionally restrictive so the
@@ -146,12 +183,14 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// use submodule;
 /// fn exported_fn;
 /// struct MyAltrep;
+/// impl Counter;
 /// ```
 pub(crate) struct MiniextendrModule {
     pub(crate) module_name: MiniextendrModuleName,
     pub(crate) uses: Vec<MiniextendrModuleUse>,
     pub(crate) functions: Vec<MiniextendrModuleFunction>,
     pub(crate) structs: Vec<MiniextendrModuleStruct>,
+    pub(crate) impls: Vec<MiniextendrModuleImpl>,
 }
 
 /// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
@@ -160,6 +199,7 @@ enum MiniextendrModuleItem {
     Use(MiniextendrModuleUse),
     Struct(MiniextendrModuleStruct),
     Func(MiniextendrModuleFunction),
+    Impl(MiniextendrModuleImpl),
 }
 
 impl syn::parse::Parse for MiniextendrModuleItem {
@@ -176,6 +216,8 @@ impl syn::parse::Parse for MiniextendrModuleItem {
             Ok(Self::Use(input.parse()?))
         } else if look_ahead.peek(syn::Token![struct]) {
             Ok(Self::Struct(input.parse()?))
+        } else if look_ahead.peek(syn::Token![impl]) {
+            Ok(Self::Impl(input.parse()?))
         } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
             Ok(Self::Func(input.parse()?))
         } else {
@@ -196,6 +238,7 @@ impl syn::parse::Parse for MiniextendrModule {
         let mut uses = Vec::new();
         let mut funs = Vec::new();
         let mut structs = Vec::new();
+        let mut impls = Vec::new();
 
         for it in items {
             match it {
@@ -208,6 +251,7 @@ impl syn::parse::Parse for MiniextendrModule {
                 MiniextendrModuleItem::Use(u) => uses.push(u),
                 MiniextendrModuleItem::Struct(s) => structs.push(s),
                 MiniextendrModuleItem::Func(f) => funs.push(f),
+                MiniextendrModuleItem::Impl(i) => impls.push(i),
             }
         }
 
@@ -219,6 +263,7 @@ impl syn::parse::Parse for MiniextendrModule {
             uses,
             functions: funs,
             structs,
+            impls,
         })
     }
 }

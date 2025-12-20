@@ -680,12 +680,34 @@ unsafe_C_test_r_thread_builder_spawn_join <- function() {
 }
 
 #' @export
-unsafe_C_test_spawn_with_r_lean_stack <- function() {
-    .Call(C_test_spawn_with_r_lean_stack)
+ReceiverCounter <- new.env(parent = emptyenv())
+
+ReceiverCounter$new <- function(initial) {
+    self <- .Call(C_ReceiverCounter__new, initial)
+    class(self) <- "ReceiverCounter"
+    self
 }
 
-#' @export
-unsafe_C_test_stack_check_guard_lean <- function() {
-    .Call(C_test_stack_check_guard_lean)
+ReceiverCounter$value <- function() {
+    .Call(C_ReceiverCounter__value, self)
 }
+
+ReceiverCounter$inc <- function() {
+    .Call(C_ReceiverCounter__inc, self)
+}
+
+ReceiverCounter$add <- function(amount) {
+    .Call(C_ReceiverCounter__add, self, amount)
+}
+
+ReceiverCounter$default_counter <- function() {
+    .Call(C_ReceiverCounter__default_counter)
+}
+
+`$.ReceiverCounter` <- function(self, name) {
+    func <- ReceiverCounter[[name]]
+    environment(func) <- environment()
+    func
+}
+`[[.ReceiverCounter` <- `$.ReceiverCounter`
 

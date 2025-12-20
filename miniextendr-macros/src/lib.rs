@@ -3,6 +3,7 @@
 mod altrep;
 mod miniextendr_fn;
 use crate::miniextendr_fn::{CoercionMapping, MiniextendrFnAttrs, MiniextendrFunctionParsed};
+mod miniextendr_impl;
 mod miniextendr_module;
 use crate::miniextendr_module::MiniextendrModule;
 
@@ -76,8 +77,14 @@ pub fn miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    // If not a function, delegate to ALTREP path (allow structs/enums)
-    if syn::parse::<syn::ItemFn>(item.clone()).is_err() {
+    // Try to parse as function first
+    if syn::parse::<syn::ItemFn>(item.clone()).is_ok() {
+        // Continue with function handling below
+    } else if syn::parse::<syn::ItemImpl>(item.clone()).is_ok() {
+        // Delegate to impl block parser
+        return miniextendr_impl::expand_impl(attr, item);
+    } else {
+        // Delegate to ALTREP path (structs/enums)
         return altrep::expand_altrep_struct(attr, item);
     }
 
@@ -839,16 +846,48 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
-    // call the R_init from all the submodules (given by `use`)
-    let use_other_modules = parsed_module
+    // Generate impl block call defs for registration
+    let impl_call_defs: Vec<syn::Expr> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let call_defs_static = i.call_defs_const_ident();
+            syn::parse_quote!(#call_defs_static)
+        })
+        .collect();
+
+    // Generate impl R wrapper refs
+    let impl_r_wrappers: Vec<syn::Expr> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let r_wrapper_const = i.r_wrappers_const_ident();
+            syn::parse_quote!(#r_wrapper_const)
+        })
+        .collect();
+
+    // Get CALL_ENTRIES from child modules (via `use`)
+    // Use a function call to get a slice, which handles both static arrays and LazyLock<Vec>
+    let use_module_call_entries: Vec<syn::Expr> = parsed_module
         .uses
         .iter()
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
-            let use_module_init = quote::format_ident!("R_init_{use_module_ident}_miniextendr");
-            syn::parse_quote!(#use_module_ident::#use_module_init(dll))
+            let call_entries_fn = quote::format_ident!("{use_module_ident}_call_entries");
+            syn::parse_quote!(#use_module_ident::#call_entries_fn())
         })
-        .collect::<Vec<syn::Expr>>();
+        .collect();
+
+    // Call ALTREP registration from child modules (via `use`)
+    let use_module_altrep_regs: Vec<syn::Expr> = parsed_module
+        .uses
+        .iter()
+        .map(|x| {
+            let use_module_ident = &x.use_name.ident;
+            let altrep_reg_fn = quote::format_ident!("{use_module_ident}_register_altrep");
+            syn::parse_quote!(#use_module_ident::#altrep_reg_fn())
+        })
+        .collect();
 
     // region: r wrapper generation in `mod`
 
@@ -860,6 +899,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             syn::parse_quote!(#r_wrapper_const)
         })
         .collect();
+    // Collect child modules' function wrappers (PARTS)
     let r_wrappers_use_other_modules = parsed_module
         .uses
         .iter()
@@ -872,9 +912,23 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect::<Vec<syn::Expr>>();
 
+    // Collect child modules' impl wrappers (IMPLS)
+    let r_wrappers_impl_use_other_modules = parsed_module
+        .uses
+        .iter()
+        .map(|x| {
+            let use_module_ident = &x.use_name.ident;
+            let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
+            let r_wrappers_use_module =
+                quote::format_ident!("R_WRAPPERS_IMPLS_{use_module_ident_upper}");
+            syn::parse_quote!(#use_module_ident::#r_wrappers_use_module)
+        })
+        .collect::<Vec<syn::Expr>>();
+
     let module_upper = module.to_string().to_uppercase();
     let r_wrappers_parts_ident = quote::format_ident!("R_WRAPPERS_PARTS_{module_upper}");
     let r_wrappers_deps_ident = quote::format_ident!("R_WRAPPERS_DEPS_{module_upper}");
+    let r_wrappers_impl_deps_ident = quote::format_ident!("R_WRAPPERS_IMPL_DEPS_{module_upper}");
 
     // Generate doc string listing all registered functions
     let fn_links: Vec<String> = parsed_module
@@ -887,7 +941,12 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|s| format!("[`{}`]", s.ident))
         .collect();
-    let module_doc = if fn_links.is_empty() && struct_links.is_empty() {
+    let impl_links: Vec<String> = parsed_module
+        .impls
+        .iter()
+        .map(|i| format!("[`{}`]", i.ident))
+        .collect();
+    let module_doc = if fn_links.is_empty() && struct_links.is_empty() && impl_links.is_empty() {
         format!("R entrypoint for module `{}`.", module)
     } else {
         let mut doc = format!(
@@ -900,40 +959,133 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         if !struct_links.is_empty() {
             doc.push_str(&format!("- ALTREP types: {}\n", struct_links.join(", ")));
         }
+        if !impl_links.is_empty() {
+            doc.push_str(&format!("- Impl blocks: {}\n", impl_links.join(", ")));
+        }
         doc
     };
 
     // endregion
-    quote::quote! {
 
+    // Check if we have impl blocks to register (requires runtime registration)
+    let has_impls = !parsed_module.impls.is_empty();
+
+    // R wrapper parts const (includes both functions and impl wrappers)
+    let r_wrappers_impls_ident = quote::format_ident!("R_WRAPPERS_IMPLS_{module_upper}");
+
+    // Generate CALL_ENTRIES constant name
+    let call_entries_const_ident = quote::format_ident!("CALL_ENTRIES_{module_upper}");
+
+    // Generate call_entries accessor function name (returns &[R_CallMethodDef])
+    let call_entries_fn_ident = quote::format_ident!("{module}_call_entries");
+
+    // Generate ALTREP registration function name
+    let altrep_reg_fn_ident = quote::format_ident!("{module}_register_altrep");
+
+    // Generate call entries storage - differs based on whether we have impl blocks
+    let call_entries_storage = if has_impls {
+        // Use LazyLock<Vec> for runtime aggregation when impl blocks are present
+        quote::quote! {
+            /// This module's call entries (excluding children).
+            /// Built at runtime due to impl blocks requiring dynamic aggregation.
+            #[doc(hidden)]
+            pub static #call_entries_const_ident: std::sync::LazyLock<Vec<::miniextendr_api::ffi::R_CallMethodDef>> =
+                std::sync::LazyLock::new(|| {
+                    let mut entries = Vec::new();
+                    #(entries.push(#call_entries);)*
+                    #(entries.extend_from_slice(#impl_call_defs);)*
+                    entries
+                });
+
+            /// Returns this module's call entries as a slice.
+            #[doc(hidden)]
+            pub fn #call_entries_fn_ident() -> &'static [::miniextendr_api::ffi::R_CallMethodDef] {
+                &*#call_entries_const_ident
+            }
+        }
+    } else {
+        // Use static array when no impl blocks
+        quote::quote! {
+            /// This module's call entries (excluding children).
+            #[doc(hidden)]
+            pub static #call_entries_const_ident: [::miniextendr_api::ffi::R_CallMethodDef; #call_entries_len] = [
+                #(#call_entries,)*
+            ];
+
+            /// Returns this module's call entries as a slice.
+            #[doc(hidden)]
+            pub fn #call_entries_fn_ident() -> &'static [::miniextendr_api::ffi::R_CallMethodDef] {
+                &#call_entries_const_ident
+            }
+        }
+    };
+
+    // Generate R wrapper impls constant - empty if no impl blocks
+    let r_wrappers_impls_const = if has_impls {
+        quote::quote! {
+            #[doc(hidden)]
+            pub const #r_wrappers_impls_ident: &[&str] = &[#(#impl_r_wrappers),*];
+        }
+    } else {
+        quote::quote! {
+            #[doc(hidden)]
+            pub const #r_wrappers_impls_ident: &[&str] = &[];
+        }
+    };
+
+    // Generate the module - common structure for both cases
+    quote::quote! {
         #[doc(hidden)]
         pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
+        #r_wrappers_impls_const
         #[doc(hidden)]
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
+        #[doc(hidden)]
+        pub const #r_wrappers_impl_deps_ident: &[&[&str]] = &[#(#r_wrappers_impl_use_other_modules),*];
+
+        #call_entries_storage
+
+        /// Register ALTREP classes declared in this module.
+        #[doc(hidden)]
+        pub fn #altrep_reg_fn_ident() {
+            #(#altrep_regs;)*
+        }
 
         #[doc = #module_doc]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
         pub(crate) extern "C-unwind" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
-            static CALL_ENTRIES: [::miniextendr_api::ffi::R_CallMethodDef; {#call_entries_len + 1}] = [
-                #(#call_entries,)*
-                ::miniextendr_api::ffi::R_CallMethodDef {
-                    name: std::ptr::null(),
-                    fun: None,
-                    numArgs: 0,
-                }
-            ];
+            // Build combined call entries at runtime (to aggregate children)
+            let mut all_entries: Vec<::miniextendr_api::ffi::R_CallMethodDef> = Vec::new();
 
-            #(#use_other_modules;)*
+            // Add this module's entries
+            all_entries.extend_from_slice(#call_entries_fn_ident());
 
-            // Register any ALTREP classes declared as struct items in this module
-            #(#altrep_regs;)*
+            // Add child modules' entries
+            #(all_entries.extend_from_slice(#use_module_call_entries);)*
+
+            // Add sentinel
+            all_entries.push(::miniextendr_api::ffi::R_CallMethodDef {
+                name: std::ptr::null(),
+                fun: None,
+                numArgs: 0,
+            });
+
+            // Leak the vec to get a 'static slice for R
+            let entries: &'static [::miniextendr_api::ffi::R_CallMethodDef] =
+                all_entries.leak();
+
+            // Register ALTREP classes from this module
+            #altrep_reg_fn_ident();
+
+            // Register ALTREP classes from child modules
+            #(#use_module_altrep_regs;)*
 
             unsafe {
                 ::miniextendr_api::ffi::R_registerRoutines_unchecked(
                     dll,
                     std::ptr::null(),
-                    CALL_ENTRIES.as_ptr(),
+                    entries.as_ptr(),
                     std::ptr::null(),
                     std::ptr::null()
                 );
