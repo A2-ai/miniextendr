@@ -16,6 +16,7 @@
   "rust-analyzer.cargo.extraArgs": [
     "--release", "--tests", "--benches", "--examples"
   ],
+  "rust-analyzer.cargo.features": ["connections"],
   // "rust-analyzer.check.command": "check",
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",
