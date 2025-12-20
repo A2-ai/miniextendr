@@ -111,13 +111,16 @@ impl<T: RNativeType> TryFromSexp for T {
             .into());
         }
         // SAFETY: sexp is a .Call argument, protected by R's calling convention
-        unsafe { sexp.as_slice::<T>() }.first().cloned().ok_or_else(|| {
-            SexpLengthError {
-                expected: 1,
-                actual: 0,
-            }
-            .into()
-        })
+        unsafe { sexp.as_slice::<T>() }
+            .first()
+            .cloned()
+            .ok_or_else(|| {
+                SexpLengthError {
+                    expected: 1,
+                    actual: 0,
+                }
+                .into()
+            })
     }
 
     #[inline]
@@ -535,16 +538,13 @@ impl TryFromSexp for Option<String> {
         }
 
         let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str
-            .to_str()
-            .map(|s| Some(s.to_owned()))
-            .map_err(|_| {
-                SexpTypeError {
-                    expected: SEXPTYPE::STRSXP,
-                    actual: SEXPTYPE::STRSXP,
-                }
-                .into()
-            })
+        rust_str.to_str().map(|s| Some(s.to_owned())).map_err(|_| {
+            SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual: SEXPTYPE::STRSXP,
+            }
+            .into()
+        })
     }
 
     #[inline]
@@ -622,15 +622,12 @@ impl TryFromSexp for Vec<Option<String>> {
                     result.push(Some(String::new()));
                 } else {
                     let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-                    result.push(Some(
-                        rust_str
-                            .to_str()
-                            .map(|s| s.to_owned())
-                            .map_err(|_| SexpTypeError {
-                                expected: SEXPTYPE::STRSXP,
-                                actual: SEXPTYPE::STRSXP,
-                            })?,
-                    ));
+                    result.push(Some(rust_str.to_str().map(|s| s.to_owned()).map_err(
+                        |_| SexpTypeError {
+                            expected: SEXPTYPE::STRSXP,
+                            actual: SEXPTYPE::STRSXP,
+                        },
+                    )?));
                 }
             }
         }

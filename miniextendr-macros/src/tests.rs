@@ -1,5 +1,5 @@
 use crate::miniextendr_fn::{
-    is_miniextendr_coerce_attr, MiniextendrFnAttrs, MiniextendrFunctionParsed,
+    MiniextendrFnAttrs, MiniextendrFunctionParsed, is_miniextendr_coerce_attr,
 };
 use crate::miniextendr_module::MiniextendrModuleFunction;
 
@@ -150,8 +150,7 @@ fn miniextendr_attr_accepts_multiple_flags() {
 
 #[test]
 fn parsed_fn_adds_inline_never_for_rust_abi() {
-    let mut parsed: MiniextendrFunctionParsed =
-        syn::parse2(quote::quote! { fn f() {} }).unwrap();
+    let mut parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn f() {} }).unwrap();
     parsed.add_inline_never_if_needed();
 
     let has_inline_never = parsed.item().attrs.iter().any(|attr| {
@@ -159,7 +158,10 @@ fn parsed_fn_adds_inline_never_for_rust_abi() {
             && matches!(&attr.meta, syn::Meta::List(list)
                 if list.tokens.to_string() == "never")
     });
-    assert!(has_inline_never, "should add #[inline(never)] to Rust ABI functions");
+    assert!(
+        has_inline_never,
+        "should add #[inline(never)] to Rust ABI functions"
+    );
 }
 
 #[test]
@@ -175,7 +177,10 @@ fn parsed_fn_preserves_explicit_inline() {
         .iter()
         .filter(|attr| attr.path().is_ident("inline"))
         .count();
-    assert_eq!(inline_count, 1, "should preserve existing #[inline] attribute");
+    assert_eq!(
+        inline_count, 1,
+        "should preserve existing #[inline] attribute"
+    );
 }
 
 #[test]
@@ -189,5 +194,8 @@ fn parsed_fn_no_inline_for_extern_c() {
         .attrs
         .iter()
         .any(|attr| attr.path().is_ident("inline"));
-    assert!(!has_inline, "should not add #[inline] to extern C functions");
+    assert!(
+        !has_inline,
+        "should not add #[inline] to extern C functions"
+    );
 }

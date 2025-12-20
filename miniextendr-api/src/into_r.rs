@@ -102,7 +102,7 @@ impl_into_r_via_coerce!(u16 => i32);
 
 // Infallible widening to f64 (R's REALSXP)
 impl_into_r_via_coerce!(f32 => f64);
-impl_into_r_via_coerce!(u32 => f64);  // all u32 exactly representable in f64
+impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
 
 /// Macro for logical IntoR via Rf_ScalarLogical with conversion to i32.
 macro_rules! impl_logical_into_r {
@@ -448,8 +448,8 @@ macro_rules! impl_vec_option_into_r {
     };
 }
 
-impl_vec_option_into_r!(f64, REALSXP, REAL, f64::NAN);      // NA_real_ = NaN
-impl_vec_option_into_r!(i32, INTSXP, INTEGER, i32::MIN);    // NA_integer_ = i32::MIN
+impl_vec_option_into_r!(f64, REALSXP, REAL, f64::NAN); // NA_real_ = NaN
+impl_vec_option_into_r!(i32, INTSXP, INTEGER, i32::MIN); // NA_integer_ = i32::MIN
 
 /// Convert `Vec<Option<String>>` to R character vector with NA support.
 ///
@@ -536,10 +536,8 @@ where
     fn into_sexp(self) -> crate::ffi::SEXP {
         // RVec was collected on Rayon threads, convert to R on main thread
         let vec = self.into_inner();
-        crate::worker::with_r_thread(move || {
-            crate::externalptr::SendableSexp::new(vec.into_sexp())
-        })
-        .into_inner()
+        crate::worker::with_r_thread(move || crate::externalptr::SendableSexp::new(vec.into_sexp()))
+            .into_inner()
     }
 
     #[inline]
