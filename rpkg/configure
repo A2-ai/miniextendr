@@ -621,6 +621,8 @@ CARGO_STATICLIB_NAME
 CARGO_PROFILE
 CARGO_TARGET_DIR
 RUST_TOOLCHAIN
+SED
+RSYNC
 RUSTC
 CARGO
 ROOT_MINIEXTENDR_REPO
@@ -2014,6 +2016,100 @@ else
   RUSTC="$ac_cv_path_RUSTC"
 fi
 
+# Extract the first word of "rsync", so it can be a program name with args.
+set dummy rsync; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_RSYNC+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $RSYNC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_RSYNC="$RSYNC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_RSYNC="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_RSYNC" && ac_cv_path_RSYNC="no"
+  ;;
+esac ;;
+esac
+fi
+RSYNC=$ac_cv_path_RSYNC
+if test -n "$RSYNC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $RSYNC" >&5
+printf "%s\n" "$RSYNC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+# Extract the first word of "sed", so it can be a program name with args.
+set dummy sed; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_SED+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $SED in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_SED="$SED" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_SED="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_SED" && ac_cv_path_SED="no"
+  ;;
+esac ;;
+esac
+fi
+SED=$ac_cv_path_SED
+if test -n "$SED"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $SED" >&5
+printf "%s\n" "$SED" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
 if test "x$CARGO" = "xno"
 then :
   as_fn_error $? "\`cargo\` not found" "$LINENO" 5
@@ -2022,6 +2118,16 @@ if test "x$RUSTC" = "xno"
 then :
   as_fn_error $? "\`rustc\` not found" "$LINENO" 5
 fi
+if test "x$RSYNC" = "xno"
+then :
+  as_fn_error $? "\`rsync\` not found (required for vendor sync)" "$LINENO" 5
+fi
+if test "x$SED" = "xno"
+then :
+  as_fn_error $? "\`sed\` not found" "$LINENO" 5
+fi
+
+
 
 
 
@@ -2134,22 +2240,22 @@ printf "%s\n" "found, syncing to vendor" >&6; }
     mkdir -p "$VENDOR_OUT/miniextendr-api"
   mkdir -p "$VENDOR_OUT/miniextendr-macros"
 
-    rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
 
-    rsync -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
 
     find "$VENDOR_OUT" -name ".*" -type f -delete 2>/dev/null || true
   find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
 
-    sed -e 's/edition\.workspace = true/edition = "2024"/' \
-      -e 's/version\.workspace = true/version = "0.1.0"/' \
-      "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+    $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
 
-  sed -e 's/edition\.workspace = true/edition = "2024"/' \
-      -e 's/version\.workspace = true/version = "0.1.0"/' \
-      "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
 
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: miniextendr crates synced to $VENDOR_OUT" >&5
 printf "%s\n" "$as_me: miniextendr crates synced to $VENDOR_OUT" >&6;}
