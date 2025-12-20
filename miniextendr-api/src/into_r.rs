@@ -57,88 +57,73 @@ impl IntoR for std::convert::Infallible {
     }
 }
 
-impl IntoR for i32 {
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarInteger(self) }
-    }
+/// Macro for scalar IntoR via Rf_Scalar* functions.
+macro_rules! impl_scalar_into_r {
+    ($ty:ty, $checked:ident, $unchecked:ident) => {
+        impl IntoR for $ty {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::$checked(self) }
+            }
 
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarInteger_unchecked(self) }
-    }
-}
-
-impl IntoR for f64 {
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarReal(self) }
-    }
-
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarReal_unchecked(self) }
-    }
-}
-
-impl IntoR for u8 {
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarRaw(self) }
-    }
-
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarRaw_unchecked(self) }
-    }
-}
-
-impl IntoR for bool {
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarLogical(self as i32) }
-    }
-
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarLogical_unchecked(self as i32) }
-    }
-}
-
-impl IntoR for Option<bool> {
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        match self {
-            Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::Rf_ScalarLogical(i32::MIN) },
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::$unchecked(self) }
+            }
         }
-    }
+    };
+}
 
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        match self {
-            Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(i32::MIN) },
+impl_scalar_into_r!(i32, Rf_ScalarInteger, Rf_ScalarInteger_unchecked);
+impl_scalar_into_r!(f64, Rf_ScalarReal, Rf_ScalarReal_unchecked);
+impl_scalar_into_r!(u8, Rf_ScalarRaw, Rf_ScalarRaw_unchecked);
+
+/// Macro for infallible widening IntoR via Coerce.
+macro_rules! impl_into_r_via_coerce {
+    ($from:ty => $to:ty) => {
+        impl IntoR for $from {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                crate::coerce::Coerce::<$to>::coerce(self).into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { crate::coerce::Coerce::<$to>::coerce(self).into_sexp_unchecked() }
+            }
         }
-    }
-
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarLogical_unchecked(self as i32) }
-    }
+    };
 }
 
-impl IntoR for crate::ffi::RLogical {
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarLogical(self.to_i32()) }
-    }
+// Infallible widening to i32 (R's INTSXP)
+impl_into_r_via_coerce!(i8 => i32);
+impl_into_r_via_coerce!(i16 => i32);
+impl_into_r_via_coerce!(u16 => i32);
 
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { crate::ffi::Rf_ScalarLogical_unchecked(self.to_i32()) }
-    }
+// Infallible widening to f64 (R's REALSXP)
+impl_into_r_via_coerce!(f32 => f64);
+impl_into_r_via_coerce!(u32 => f64);  // all u32 exactly representable in f64
+
+/// Macro for logical IntoR via Rf_ScalarLogical with conversion to i32.
+macro_rules! impl_logical_into_r {
+    ($ty:ty, $to_i32:expr) => {
+        impl IntoR for $ty {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::Rf_ScalarLogical($to_i32(self)) }
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::Rf_ScalarLogical_unchecked($to_i32(self)) }
+            }
+        }
+    };
 }
+
+impl_logical_into_r!(bool, |v: bool| v as i32);
+impl_logical_into_r!(crate::ffi::Rboolean, |v: crate::ffi::Rboolean| v as i32);
+impl_logical_into_r!(crate::ffi::RLogical, crate::ffi::RLogical::to_i32);
 
 impl IntoR for Option<bool> {
     #[inline]
@@ -437,51 +422,34 @@ impl IntoR for Vec<&str> {
 // NA-aware vector conversions
 // =============================================================================
 
-/// Convert `Vec<Option<f64>>` to R real vector with NA support.
-///
-/// `None` values become `NA_real_` (NaN) in R.
-impl IntoR for Vec<Option<f64>> {
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe {
-            let n = self.len();
-            let vec =
-                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::REALSXP, n as crate::ffi::R_xlen_t);
-            crate::ffi::Rf_protect(vec);
+/// Macro for NA-aware Vec<Option<T>> → R vector conversions.
+macro_rules! impl_vec_option_into_r {
+    ($t:ty, $sexptype:ident, $dataptr:ident, $na_value:expr) => {
+        impl IntoR for Vec<Option<$t>> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe {
+                    let n = self.len();
+                    let vec = crate::ffi::Rf_allocVector(
+                        crate::ffi::SEXPTYPE::$sexptype,
+                        n as crate::ffi::R_xlen_t,
+                    );
+                    crate::ffi::Rf_protect(vec);
 
-            let ptr = crate::ffi::REAL(vec);
-            for (i, val) in self.into_iter().enumerate() {
-                // NA_real_ is represented as NaN in R
-                *ptr.add(i) = val.unwrap_or(f64::NAN);
+                    let ptr = crate::ffi::$dataptr(vec);
+                    for (i, val) in self.into_iter().enumerate() {
+                        *ptr.add(i) = val.unwrap_or($na_value);
+                    }
+
+                    crate::ffi::Rf_unprotect(1);
+                    vec
+                }
             }
-
-            crate::ffi::Rf_unprotect(1);
-            vec
         }
-    }
+    };
 }
 
-/// Convert `Vec<Option<i32>>` to R integer vector with NA support.
-///
-/// `None` values become `NA_integer_` (i32::MIN) in R.
-impl IntoR for Vec<Option<i32>> {
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        unsafe {
-            let n = self.len();
-            let vec =
-                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::INTSXP, n as crate::ffi::R_xlen_t);
-            crate::ffi::Rf_protect(vec);
-
-            let ptr = crate::ffi::INTEGER(vec);
-            for (i, val) in self.into_iter().enumerate() {
-                // NA_integer_ is i32::MIN in R
-                *ptr.add(i) = val.unwrap_or(i32::MIN);
-            }
-
-            crate::ffi::Rf_unprotect(1);
-            vec
-        }
-    }
-}
+impl_vec_option_into_r!(f64, REALSXP, REAL, f64::NAN);      // NA_real_ = NaN
+impl_vec_option_into_r!(i32, INTSXP, INTEGER, i32::MIN);    // NA_integer_ = i32::MIN
 
 /// Convert `Vec<Option<String>>` to R character vector with NA support.
 ///

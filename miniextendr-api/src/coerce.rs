@@ -920,6 +920,34 @@ impl<T: Coerce<R>, R> Coerce<Vec<R>> for Vec<T> {
 // use: slice.iter().map(|x| x.try_coerce()).collect::<Result<Vec<_>, _>>()
 
 // =============================================================================
+// Tuple coercions (element-wise)
+// =============================================================================
+
+/// Macro to implement element-wise Coerce for tuples.
+macro_rules! impl_tuple_coerce {
+    (($($T:ident),+), ($($R:ident),+), ($($idx:tt),+)) => {
+        impl<$($T,)+ $($R,)+> Coerce<($($R,)+)> for ($($T,)+)
+        where
+            $($T: Coerce<$R>,)+
+        {
+            #[inline]
+            fn coerce(self) -> ($($R,)+) {
+                ($(Coerce::<$R>::coerce(self.$idx),)+)
+            }
+        }
+    };
+}
+
+// Implement for tuples of sizes 2-8
+impl_tuple_coerce!((A, B), (RA, RB), (0, 1));
+impl_tuple_coerce!((A, B, C), (RA, RB, RC), (0, 1, 2));
+impl_tuple_coerce!((A, B, C, D), (RA, RB, RC, RD), (0, 1, 2, 3));
+impl_tuple_coerce!((A, B, C, D, E), (RA, RB, RC, RD, RE), (0, 1, 2, 3, 4));
+impl_tuple_coerce!((A, B, C, D, E, F), (RA, RB, RC, RD, RE, RF), (0, 1, 2, 3, 4, 5));
+impl_tuple_coerce!((A, B, C, D, E, F, G), (RA, RB, RC, RD, RE, RF, RG), (0, 1, 2, 3, 4, 5, 6));
+impl_tuple_coerce!((A, B, C, D, E, F, G, H), (RA, RB, RC, RD, RE, RF, RG, RH), (0, 1, 2, 3, 4, 5, 6, 7));
+
+// =============================================================================
 // Tests
 // =============================================================================
 
@@ -1391,5 +1419,29 @@ mod tests {
             TryCoerce::<NonZeroU16>::try_coerce(-1i32),
             Err(CoerceError::Overflow)
         );
+    }
+
+    #[test]
+    fn test_tuple_coerce() {
+        // 2-tuple
+        let t: (i8, i16) = (1, 2);
+        let coerced: (i32, i32) = t.coerce();
+        assert_eq!(coerced, (1i32, 2i32));
+
+        // Mixed types
+        let t2: (i8, f32) = (42, 3.14);
+        let coerced2: (i32, f64) = t2.coerce();
+        assert_eq!(coerced2.0, 42i32);
+        assert!((coerced2.1 - 3.14f64).abs() < 0.001);
+
+        // 3-tuple
+        let t3: (i8, i16, u8) = (1, 2, 3);
+        let coerced3: (i32, i32, i32) = t3.coerce();
+        assert_eq!(coerced3, (1, 2, 3));
+
+        // Identity coercion
+        let t4: (i32, f64) = (10, 20.0);
+        let coerced4: (i32, f64) = t4.coerce();
+        assert_eq!(coerced4, (10, 20.0));
     }
 }
