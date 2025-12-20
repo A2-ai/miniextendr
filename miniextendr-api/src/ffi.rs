@@ -1508,13 +1508,14 @@ pub struct R_CallMethodDef {
     pub numArgs: ::std::os::raw::c_int,
 }
 
-// SAFETY: R_CallMethodDef contains raw pointers which don't impl Sync by default.
-// However, Sync is required to store these in static arrays for R's method registration.
+// SAFETY: R_CallMethodDef contains raw pointers which don't impl Send/Sync by default.
+// However, Send+Sync is required to store these in LazyLock<Vec<...>> for R's method registration.
 // This is safe because:
 // 1. The name pointer points to static C string literals (&'static CStr)
 // 2. The fun pointer is a static function pointer
 // 3. These are read-only after initialization during R_init_*
 unsafe impl Sync for R_CallMethodDef {}
+unsafe impl Send for R_CallMethodDef {}
 
 /// Method definition for .External interface routines.
 ///

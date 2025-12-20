@@ -241,18 +241,49 @@ pub fn expand_altrep_struct(
             impl #ident {
                 /// Create an ALTREP SEXP from the given data.
                 ///
-                /// # Safety
-                ///
-                /// Must be called from the R main thread.
-                pub unsafe fn into_altrep(data: #data_ty) -> ::miniextendr_api::ffi::SEXP {
+                /// This is the safe version that checks we're on the R main thread in debug builds.
+                /// Use [`Self::into_altrep_unchecked`] if you need to skip the check.
+                pub fn into_altrep(data: #data_ty) -> ::miniextendr_api::ffi::SEXP {
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;
                     use ::miniextendr_api::ffi::altrep::R_new_altrep;
                     use ::miniextendr_api::ffi::R_NilValue;
+                    use ::miniextendr_api::ffi::{Rf_protect, Rf_unprotect};
 
                     let ext_ptr = ExternalPtr::new(data);
                     let cls = Self::get_or_init_class();
-                    unsafe { R_new_altrep(cls, ext_ptr.as_sexp(), R_NilValue) }
+                    // Protect data1 during R_new_altrep to prevent GC from collecting it.
+                    // R_new_altrep allocates and can trigger GC.
+                    let data1 = ext_ptr.as_sexp();
+                    unsafe {
+                        Rf_protect(data1);
+                        let altrep = R_new_altrep(cls, data1, R_NilValue);
+                        Rf_unprotect(1);
+                        altrep
+                    }
+                }
+
+                /// Create an ALTREP SEXP from the given data (unchecked).
+                ///
+                /// # Safety
+                ///
+                /// Must be called from the R main thread. No runtime check is performed.
+                pub unsafe fn into_altrep_unchecked(data: #data_ty) -> ::miniextendr_api::ffi::SEXP {
+                    use ::miniextendr_api::altrep_registration::RegisterAltrep;
+                    use ::miniextendr_api::externalptr::ExternalPtr;
+                    use ::miniextendr_api::ffi::altrep::R_new_altrep_unchecked;
+                    use ::miniextendr_api::ffi::R_NilValue;
+                    use ::miniextendr_api::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked};
+
+                    let ext_ptr = ExternalPtr::new(data);
+                    let cls = Self::get_or_init_class();
+                    // Protect data1 during R_new_altrep to prevent GC from collecting it.
+                    // R_new_altrep allocates and can trigger GC.
+                    let data1 = ext_ptr.as_sexp();
+                    Rf_protect_unchecked(data1);
+                    let altrep = R_new_altrep_unchecked(cls, data1, R_NilValue);
+                    Rf_unprotect_unchecked(1);
+                    altrep
                 }
             }
 

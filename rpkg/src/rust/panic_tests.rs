@@ -46,21 +46,6 @@ pub fn drop_on_panic_with_move() {
 pub fn take_and_return_nothing() -> () {}
 
 #[miniextendr]
-/// @title Arithmetic Tests
-/// @name rpkg_arithmetic
-/// @description Arithmetic and return-value tests
-/// @param left Integer input.
-/// @param right Integer input.
-/// @return A scalar integer result, or invisibly returns nothing for take_and_return_nothing().
-/// @examples
-/// add(1L, 2L)
-/// add2(1L, 2L, NULL)
-/// add3(1L, 2L, NULL)
-/// add4(10L, 2L)
-/// add_left_mut(1L, 2L)
-/// take_and_return_nothing()
-/// @aliases add add2 add3 add4 add_left_mut add_right_mut add_left_right_mut
-/// @aliases take_and_return_nothing
 pub fn add(left: i32, right: i32) -> i32 {
     left + right
 }
@@ -105,20 +90,6 @@ pub fn nested_panic() {
 }
 
 #[miniextendr]
-/// @title Panic and Error Handling Tests
-/// @name rpkg_panic_tests
-/// @keywords internal
-/// @description Panic and error handling tests (unsafe)
-/// @examples
-/// try(add_panic(1L, 2L))
-/// try(add_r_error(1L, 2L))
-/// \dontrun{
-/// unsafe_C_r_error_in_thread()
-/// }
-/// @aliases nested_panic add_panic add_panic_heap add_r_error add_r_error_heap
-/// @aliases drop_message_on_success drop_on_panic drop_on_panic_with_move
-/// @aliases unsafe_C_just_panic unsafe_C_panic_and_catch unsafe_C_r_error
-/// @aliases unsafe_C_r_error_in_catch unsafe_C_r_error_in_thread unsafe_C_r_print_in_thread
 pub fn add_panic(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     panic!("we cannot add right now! ");

@@ -1371,7 +1371,13 @@ impl AltrepLen for Range<i64> {
 
 impl AltIntegerData for Range<i64> {
     fn elt(&self, i: usize) -> i32 {
-        (self.start + i as i64) as i32
+        let val = self.start.saturating_add(i as i64);
+        // Bounds check: return NA_INTEGER for values outside i32 range
+        if val > i32::MAX as i64 || val < i32::MIN as i64 {
+            crate::altrep_traits::NA_INTEGER
+        } else {
+            val as i32
+        }
     }
 
     fn is_sorted(&self) -> Option<Sortedness> {
@@ -1379,7 +1385,10 @@ impl AltIntegerData for Range<i64> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(true)
+        // May contain NA if range exceeds i32 bounds
+        let start_ok = self.start >= i32::MIN as i64 && self.start <= i32::MAX as i64;
+        let end_ok = self.end >= i32::MIN as i64 && self.end <= i32::MAX as i64 + 1;
+        Some(start_ok && end_ok)
     }
 
     fn sum(&self, _na_rm: bool) -> Option<i64> {
@@ -1394,7 +1403,12 @@ impl AltIntegerData for Range<i64> {
 
     fn min(&self, _na_rm: bool) -> Option<i32> {
         if AltrepLen::len(self) > 0 {
-            Some(self.start as i32)
+            let val = self.start;
+            if val > i32::MAX as i64 || val < i32::MIN as i64 {
+                None // Out of range, let R compute
+            } else {
+                Some(val as i32)
+            }
         } else {
             None
         }
@@ -1402,7 +1416,12 @@ impl AltIntegerData for Range<i64> {
 
     fn max(&self, _na_rm: bool) -> Option<i32> {
         if AltrepLen::len(self) > 0 {
-            Some((self.end - 1) as i32)
+            let val = self.end - 1;
+            if val > i32::MAX as i64 || val < i32::MIN as i64 {
+                None // Out of range, let R compute
+            } else {
+                Some(val as i32)
+            }
         } else {
             None
         }
