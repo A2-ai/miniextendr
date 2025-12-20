@@ -28,6 +28,8 @@ mod externalptr_tests;
 mod receiver_tests;
 mod r6_tests;
 mod s3_tests;
+mod s7_tests;
+mod s4_tests;
 mod worker_tests;
 mod coerce_tests;
 mod visibility_tests;
@@ -759,6 +761,8 @@ miniextendr_module! {
     use receiver_tests;
     use r6_tests;
     use s3_tests;
+    use s7_tests;
+    use s4_tests;
     use worker_tests;
     use coerce_tests;
     use visibility_tests;
