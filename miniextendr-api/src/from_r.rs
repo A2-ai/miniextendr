@@ -558,59 +558,37 @@ impl TryFromSexp for Option<String> {
 // NA-aware vector conversions
 // =============================================================================
 
-/// Convert R real vector (REALSXP) to `Vec<Option<f64>>` with NA support.
-///
-/// NaN values are converted to `None`. Non-NaN values become `Some(value)`.
-impl TryFromSexp for Vec<Option<f64>> {
-    type Error = SexpError;
+/// Macro for NA-aware R vector → Vec<Option<T>> conversions.
+macro_rules! impl_vec_option_try_from_sexp {
+    ($t:ty, $sexptype:ident, $dataptr:ident, $is_na:expr) => {
+        impl TryFromSexp for Vec<Option<$t>> {
+            type Error = SexpError;
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::REALSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::REALSXP,
-                actual,
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::$sexptype {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::$sexptype,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let ptr = unsafe { crate::ffi::$dataptr(sexp) };
+                let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+                Ok(slice
+                    .iter()
+                    .map(|&v| if $is_na(v) { None } else { Some(v) })
+                    .collect())
             }
-            .into());
         }
-
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::REAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-
-        Ok(slice
-            .iter()
-            .map(|&v| if v.is_nan() { None } else { Some(v) })
-            .collect())
-    }
+    };
 }
 
-/// Convert R integer vector (INTSXP) to `Vec<Option<i32>>` with NA support.
-///
-/// `NA_integer_` (i32::MIN) values are converted to `None`.
-impl TryFromSexp for Vec<Option<i32>> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != SEXPTYPE::INTSXP {
-            return Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
-            }
-            .into());
-        }
-
-        let len = sexp.len();
-        let ptr = unsafe { crate::ffi::INTEGER(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
-
-        Ok(slice
-            .iter()
-            .map(|&v| if v == i32::MIN { None } else { Some(v) })
-            .collect())
-    }
-}
+impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, |v: f64| v.is_nan());
+impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
 
 /// Convert R character vector (STRSXP) to `Vec<Option<String>>` with NA support.
 ///
