@@ -108,32 +108,6 @@ impl MethodReturnBuilder {
             }
         }
     }
-
-    /// Build a single-line R expression (for use in function literals or compact wrappers).
-    ///
-    /// Examples:
-    /// - Direct: `.Call(...)`
-    /// - ChainableMutation: `{ .Call(...); self }`
-    /// - ReturnSelf: `{ result <- .Call(...); class(result) <- "Counter"; result }`
-    pub fn build_inline(&self) -> String {
-        match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                format!(
-                    "{{ result <- {}; class(result) <- \"{}\"; result }}",
-                    self.call_expr, class_name
-                )
-            }
-            ReturnStrategy::ChainableMutation => {
-                let chain_var = self.chain_var.as_deref().unwrap_or("self");
-                format!("{{ {}; {} }}", self.call_expr, chain_var)
-            }
-            ReturnStrategy::Direct => self.call_expr.clone(),
-        }
-    }
 }
 
 /// Specialized builders for different class systems.
@@ -263,14 +237,6 @@ mod tests {
         assert_eq!(lines.len(), 2);
         assert!(lines[0].contains(".Call"));
         assert_eq!(lines[1], "    self");
-    }
-
-    #[test]
-    fn test_inline_build() {
-        let builder = MethodReturnBuilder::new(".Call(C_test)".to_string())
-            .with_strategy(ReturnStrategy::Direct);
-
-        assert_eq!(builder.build_inline(), ".Call(C_test)");
     }
 
     #[test]
