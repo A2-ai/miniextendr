@@ -561,9 +561,14 @@ impl CWrapperContext {
             "R call method definition for [`{}`] (C wrapper: [`{}`]).",
             fn_ident, c_ident
         );
+        let doc_example = format!(
+            "Value: `R_CallMethodDef {{ name: \"{}\", numArgs: {}, fun: <DL_FUNC> }}`",
+            c_ident, num_args
+        );
 
         quote! {
             #[doc = #doc]
+            #[doc = #doc_example]
             #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
             const #call_method_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {

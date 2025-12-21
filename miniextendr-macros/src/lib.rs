@@ -557,6 +557,10 @@ pub fn miniextendr(
         "R call method definition for [`{}`] (C wrapper: [`{}`]).",
         rust_ident, c_ident
     );
+    let call_method_def_example = format!(
+        "Value: `R_CallMethodDef {{ name: \"{}\", numArgs: {}, fun: <DL_FUNC> }}`",
+        c_ident, num_args
+    );
 
     // Get the normalized item for output, with roxygen tags stripped from docs.
     // Roxygen tags are for R documentation and shouldn't appear in rustdoc.
@@ -585,6 +589,7 @@ pub fn miniextendr(
         // registration of C wrapper in R
         #(#cfg_attrs)*
         #[doc = #call_method_def_doc]
+        #[doc = #call_method_def_example]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         const #call_method_def: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
