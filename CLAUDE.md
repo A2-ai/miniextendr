@@ -37,3 +37,20 @@ The `background/` folder (gitignored) contains reference documentation:
 - **ExternalPtr**: Box-like owned pointer using R's EXTPTRSXP with type safety via R symbols
 - **ALTREP**: Lazy/compact vectors via proc-macro method traits
 - **R_UnwindProtect**: Ensures Rust destructors run on R errors
+
+## Development Workflow
+
+For changes to fully propagate (especially macro changes), run these steps in order:
+
+```bash
+just configure          # 1. Vendor macro crates to rpkg/src/vendor/
+just rcmdinstall        # 2. Build and install R package (compiles Rust)
+just devtools-document  # 3. Regenerate R wrappers and documentation
+just rcmdinstall        # 4. Rebuild with updated R wrappers
+```
+
+**Why this order matters:**
+- `just configure` syncs `miniextendr-api/` and `miniextendr-macros/` to the vendored copies in `rpkg/src/vendor/`
+- First build compiles the new macros
+- `devtools-document` runs the macros to regenerate `rpkg/R/miniextendr_wrappers.R`
+- Second build incorporates the regenerated R code

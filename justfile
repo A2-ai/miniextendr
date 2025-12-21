@@ -31,13 +31,13 @@ clippy *cargo_flags:
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
-doc-check *cargo_flags:
+doc-check *cargo_flags: configure
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     cargo doc --no-deps --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build and open documentation
 alias cargo-doc := doc
-doc *cargo_flags:
+doc *cargo_flags: configure
     cargo doc --document-private-items --workspace {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
 
