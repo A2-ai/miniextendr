@@ -177,6 +177,7 @@ dependencies = [
  "miniextendr-engine",
  "miniextendr-macros",
  "rayon",
+ "syn",
 ]
 
 [[package]]

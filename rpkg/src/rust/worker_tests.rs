@@ -285,6 +285,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 
 /// Test that i32 return from worker works.
 #[miniextendr]
+/// @title Worker Thread Tests
 /// @name rpkg_worker_tests
 /// @keywords internal
 /// @description Worker-thread and main-thread helpers

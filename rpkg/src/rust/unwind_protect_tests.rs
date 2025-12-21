@@ -19,6 +19,7 @@ impl Drop for SimpleDropMsg {
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
+/// @title Unwind Protect Tests
 /// @name rpkg_unwind_protect
 /// @keywords internal
 /// @description Unwind protect tests

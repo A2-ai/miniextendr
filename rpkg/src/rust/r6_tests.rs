@@ -20,9 +20,19 @@ pub struct R6Counter {
     value: i32,
 }
 
+/// @title R6 Counter Class
+/// @name R6Counter
 /// @rdname R6Counter
 /// @description R6 counter class that stores a single integer value.
 /// @aliases R6Counter
+/// @param initial The initial counter value (integer).
+/// @param amount The amount to add to the counter (integer).
+/// @details
+/// **Methods:**
+/// - `$new(initial)`: Creates a new counter with the given initial value.
+/// - `$value()`: Returns the current value.
+/// - `$inc()`: Increments the counter by 1 and returns the new value.
+/// - `$add(amount)`: Adds the given amount to the counter and returns the new value.
 /// @examples
 /// c <- R6Counter$new(1L)
 /// c$value()
@@ -66,9 +76,19 @@ pub struct R6Accumulator {
     count: usize,
 }
 
+/// @title R6 Accumulator Class
+/// @name R6Accumulator
 /// @rdname R6Accumulator
 /// @description R6 accumulator with running total and count.
 /// @aliases R6Accumulator
+/// @param value The value to accumulate (numeric).
+/// @details
+/// **Methods:**
+/// - `$new()`: Creates a new accumulator starting at zero.
+/// - `$accumulate(value)`: Adds a value and returns the new total.
+/// - `$total()`: Returns the current total.
+/// - `$count()`: Returns the count of accumulated values.
+/// - `$average()`: Returns the average, or NA if no values accumulated.
 /// @examples
 /// acc <- R6Accumulator$new()
 /// acc$accumulate(1.5)

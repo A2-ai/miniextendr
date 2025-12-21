@@ -3,6 +3,7 @@
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 #[miniextendr]
+/// @title Visibility and Interrupt Tests
 /// @name rpkg_visibility_interrupts
 /// @keywords internal
 /// @description Visibility and interrupt checks

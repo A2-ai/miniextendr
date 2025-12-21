@@ -826,6 +826,13 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_has_rdname = crate::roxygen::has_roxygen_tag(class_doc_tags, "rdname");
     let class_has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
 
+    // Check if .ptr parameter will be added to initialize (for static methods returning Self)
+    let has_self_returning_methods = parsed_impl
+        .methods
+        .iter()
+        .filter(|m| m.should_include())
+        .any(|m| m.returns_self());
+
     let mut lines = Vec::new();
 
     // Start R6Class definition
@@ -844,10 +851,15 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         type_ident
     ));
     lines.push("#' @importFrom R6 R6Class".to_string());
-    lines.push(format!(
-        "#' @field .ptr (private) External pointer to Rust `{}` struct",
-        type_ident
-    ));
+    // Document .ptr param if initialize will have it (for static methods returning Self)
+    if has_self_returning_methods
+        && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
+    {
+        lines.push(
+            "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
+                .to_string(),
+        );
+    }
     if !class_has_export {
         lines.push("#' @export".to_string());
     }
@@ -857,13 +869,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    public = list(".to_string());
 
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr
-    // Add .ptr parameter if ANY method (instance or static) returns Self
-    let has_self_returning_methods = parsed_impl
-        .methods
-        .iter()
-        .filter(|m| m.should_include())
-        .any(|m| m.returns_self());
-
+    // Note: has_self_returning_methods was calculated above for @param .ptr documentation
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
         let params = build_r_formals(&ctor.sig);
@@ -991,16 +997,22 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
+        // Static method name like "R6Counter$default_counter"
+        let static_method_name = format!("{}${}", class_name, method.ident);
         lines.push(String::new());
         if !method.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
+        }
+        // Add @name so roxygen knows what the block documents (attached to Class$method assignment)
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+            lines.push(format!("#' @name {}", static_method_name));
         }
         if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
             lines.push(format!("#' @rdname {}", class_name));
         }
         lines.push(format!(
-            "{}${} <- function({}) {{",
-            class_name, method.ident, params
+            "{} <- function({}) {{",
+            static_method_name, params
         ));
 
         // Use shared return builder (R6-specific)
@@ -1317,8 +1329,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Define generic (only if doesn't exist)
         // Note: The second arg to new_generic is the dispatch argument name (e.g., "x"), not the class
+        // Add @name so roxygen knows what the block documents (it's attached to an if statement)
         if !method.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
+        }
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+            lines.push(format!("#' @name {}", generic_name));
         }
         if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
             lines.push(format!("#' @rdname {}", class_name));
@@ -1519,8 +1535,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Define generic if needed (setGeneric is idempotent for existing generics)
         // Use roxygen block to export the generic
+        // Add @name so roxygen knows what the block documents (it's attached to an if statement)
         if !method.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
+        }
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+            lines.push(format!("#' @name {}", method_name));
         }
         if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
             lines.push(format!("#' @rdname {}", class_name));
