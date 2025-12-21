@@ -37,7 +37,7 @@ CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 ## ----------------------------------------------------------------------
 
-.PHONY: all vendor_deps
+.PHONY: all
 
 all: $(SHLIB)
 	@# Post-build cleanup: On CRAN builds, remove vendor and target to save space
@@ -47,20 +47,10 @@ all: $(SHLIB)
 
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
-# Run cargo vendor when lockfile doesn't exist (dev mode only)
-# Note: miniextendr crates are synced by configure, not here
-vendor_deps:
-	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-	  if [ ! -f "$(CARGO_LOCK)" ]; then \
-	    echo "Generating Cargo.lock and vendoring dependencies..."; \
-	    env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	    $(CARGO) $(RUST_TOOLCHAIN) vendor --quiet \
-	      --manifest-path $(CARGO_TOML) $(VENDOR_OUT); \
-	  fi; \
-	fi
-
 # Build the Rust static library
-$(CARGO_AR): vendor_deps $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+# Note: Dependencies are vendored by configure script, not by this Makefile.
+# You must run `./configure` (or `just configure`) before building.
+$(CARGO_AR): $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
 	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
 	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
