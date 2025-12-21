@@ -555,7 +555,9 @@ impl<I: Iterator<Item = i32>> AltrepLen for IterIntData<I> {
 
 impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
     fn elt(&self, i: usize) -> i32 {
-        self.state.get_element(i).unwrap_or(crate::altrep_traits::NA_INTEGER)
+        self.state
+            .get_element(i)
+            .unwrap_or(crate::altrep_traits::NA_INTEGER)
     }
 
     fn as_slice(&self) -> Option<&[i32]> {
@@ -564,8 +566,8 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -1101,9 +1103,7 @@ where
 {
     fn elt(&self, i: usize) -> SEXP {
         use crate::ffi::R_NilValue;
-        self.state
-            .get_element(i)
-            .unwrap_or(unsafe { R_NilValue })
+        self.state.get_element(i).unwrap_or(unsafe { R_NilValue })
     }
 }
 
@@ -1165,12 +1165,10 @@ where
     I: Iterator<Item = crate::ffi::Rcomplex>,
 {
     fn elt(&self, i: usize) -> crate::ffi::Rcomplex {
-        self.state
-            .get_element(i)
-            .unwrap_or(crate::ffi::Rcomplex {
-                r: f64::NAN,
-                i: f64::NAN,
-            })
+        self.state.get_element(i).unwrap_or(crate::ffi::Rcomplex {
+            r: f64::NAN,
+            i: f64::NAN,
+        })
     }
 
     fn as_slice(&self) -> Option<&[crate::ffi::Rcomplex]> {
@@ -3080,7 +3078,10 @@ mod tests {
         assert_eq!(AltIntegerData::elt(&data, 4), 10);
 
         // Out of bounds
-        assert_eq!(AltIntegerData::elt(&data, 5), crate::altrep_traits::NA_INTEGER);
+        assert_eq!(
+            AltIntegerData::elt(&data, 5),
+            crate::altrep_traits::NA_INTEGER
+        );
     }
 
     #[test]
