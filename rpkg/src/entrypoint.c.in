@@ -3,7 +3,7 @@
 #include <R_ext/Rdynload.h>
 
 extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
-extern void miniextendr_altrep_init(void);
+
 // NOTE: miniextendr_encoding_init() is disabled for R packages because it
 // references non-API symbols (utf8locale, etc.) that aren't exported from libR.
 // It only works when embedding R via miniextendr-engine.
@@ -13,7 +13,6 @@ extern void miniextendr_worker_init(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     miniextendr_panic_hook();
-    miniextendr_altrep_init();
     miniextendr_worker_init();
 
     // Main module's R_init calls nonapi's R_init via "use nonapi;" statement

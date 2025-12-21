@@ -10,8 +10,6 @@
 //! - **Macro**: `#[miniextendr]` on a struct emits `impl RegisterAltrep` that:
 //!   - Creates the class handle via `R_make_alt*`
 //!   - Installs methods based on trait bounds and HAS_* consts
-//! - **Init**: `miniextendr_altrep_init()` called from `entrypoint.c` during package init
-
 use crate::ffi::altrep::R_altrep_class_t;
 
 /// Registration trait: implemented per type by the macro on struct items.
