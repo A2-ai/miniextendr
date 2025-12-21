@@ -900,6 +900,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     let call_entries_storage = quote::quote! {
         /// This module's call entries (excluding children).
+        #[doc(hidden)]
         pub const #call_entries_const_ident: [::miniextendr_api::ffi::R_CallMethodDef; #total_len_expr] = {
             const EMPTY: ::miniextendr_api::ffi::R_CallMethodDef = ::miniextendr_api::ffi::R_CallMethodDef {
                 name: std::ptr::null(),
@@ -942,6 +943,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     };
     let all_call_entries_storage = quote::quote! {
         /// This module's call entries including children, with sentinel.
+        #[doc(hidden)]
         pub const #all_call_entries_const_ident: [::miniextendr_api::ffi::R_CallMethodDef; #all_entries_len_expr] = {
             const EMPTY: ::miniextendr_api::ffi::R_CallMethodDef = ::miniextendr_api::ffi::R_CallMethodDef {
                 name: std::ptr::null(),
@@ -995,9 +997,13 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     // Generate the module - common structure for both cases
     quote::quote! {
+        #[doc(hidden)]
         pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
+        #[doc(hidden)]
         #r_wrappers_impls_const
+        #[doc(hidden)]
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
+        #[doc(hidden)]
         pub const #r_wrappers_impl_deps_ident: &[&[&str]] = &[#(#r_wrappers_impl_use_other_modules),*];
 
         #call_entries_storage
