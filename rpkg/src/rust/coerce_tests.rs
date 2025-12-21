@@ -54,6 +54,7 @@ pub fn test_rnative_named_field(temp: f64) -> f64 {
 
 // Test 1: Concrete function using Coerce internally (identity)
 #[miniextendr]
+/// @title Coercion Tests
 /// @name rpkg_coercion_tests
 /// @keywords internal
 /// @description Coercion and RNativeType tests

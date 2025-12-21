@@ -12,6 +12,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
+/// @title Thread Builder Tests
 /// @name rpkg_thread_builder
 /// @keywords internal
 /// @description Thread builder and lean-stack tests

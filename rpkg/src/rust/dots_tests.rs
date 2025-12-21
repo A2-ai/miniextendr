@@ -3,6 +3,7 @@
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 #[miniextendr]
+/// @title Dots Handling Tests
 /// @name rpkg_dots
 /// @description Dots (`...`) handling tests
 /// @examples

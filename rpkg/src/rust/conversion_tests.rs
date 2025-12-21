@@ -6,6 +6,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 // i32 tests
 #[miniextendr]
+/// @title Conversion Tests
 /// @name rpkg_conversion_tests
 /// @keywords internal
 /// @description Scalar and slice conversion tests

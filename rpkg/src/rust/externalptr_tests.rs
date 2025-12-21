@@ -21,6 +21,7 @@ pub struct Point {
 
 /// Create a new Counter wrapped in an ExternalPtr
 #[miniextendr(unsafe(main_thread))]
+/// @title External Pointer Tests
 /// @name rpkg_externalptr
 /// @description External pointer helpers
 /// @examples

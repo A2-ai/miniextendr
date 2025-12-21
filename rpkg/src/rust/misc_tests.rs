@@ -5,6 +5,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test that wildcard `_` parameters work (transformed to synthetic names internally)
 #[miniextendr]
+/// @title Miscellaneous Tests
 /// @name rpkg_misc
 /// @keywords internal
 /// @description Miscellaneous test helpers
@@ -14,6 +15,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// @aliases underscore_it_all r6_standalone_add
 pub fn underscore_it_all(_: i32, _: f64) {}
 
+/// @title ALTREP Helpers
 /// @name rpkg_altrep_helpers
 /// @keywords internal
 /// @description ALTREP convenience wrappers (internal)

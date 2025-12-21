@@ -46,6 +46,7 @@ pub fn drop_on_panic_with_move() {
 pub fn take_and_return_nothing() -> () {}
 
 #[miniextendr]
+/// @title Arithmetic Tests
 /// @name rpkg_arithmetic
 /// @description Arithmetic and return-value tests
 /// @param left Integer input.
@@ -104,6 +105,7 @@ pub fn nested_panic() {
 }
 
 #[miniextendr]
+/// @title Panic and Error Handling Tests
 /// @name rpkg_panic_tests
 /// @keywords internal
 /// @description Panic and error handling tests (unsafe)

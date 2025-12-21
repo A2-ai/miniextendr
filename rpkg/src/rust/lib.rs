@@ -407,6 +407,7 @@ pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SE
 ///
 /// # Safety
 /// Caller must ensure this is called from R's main thread.
+/// @title ALTREP Unsafe Entry Points
 /// @name rpkg_altrep_unsafe
 /// @keywords internal
 /// @description ALTREP low-level entry points (unsafe)
@@ -685,6 +686,7 @@ pub struct UnitCircleClass(pub UnitCircleData);
 
 /// Create complex numbers on the unit circle: e^(i * 2π * k/n) for k = 0, 1, ..., n-1
 /// These are the n-th roots of unity, evenly spaced around the unit circle.
+/// @title ALTREP Example Constructors
 /// @name rpkg_altrep_examples
 /// @description ALTREP example constructors
 /// @return An ALTREP vector.
