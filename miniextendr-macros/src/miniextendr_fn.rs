@@ -105,6 +105,37 @@ pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
         && matches!(&attr.meta, syn::Meta::List(list) if list.parse_args::<syn::Ident>().is_ok_and(|id| id == "coerce"))
 }
 
+/// Parse default value from `#[miniextendr(default = "...")]`.
+///
+/// Returns Some(default_value) if the attribute is present, None otherwise.
+pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<String> {
+    if !attr.path().is_ident("miniextendr") {
+        return None;
+    }
+    let syn::Meta::List(list) = &attr.meta else {
+        return None;
+    };
+
+    // Parse as `default = "value"`
+    let Ok(nv) = list.parse_args::<syn::MetaNameValue>() else {
+        return None;
+    };
+
+    if !nv.path.is_ident("default") {
+        return None;
+    }
+
+    // Extract string literal value
+    let syn::Expr::Lit(expr_lit) = &nv.value else {
+        return None;
+    };
+    let syn::Lit::Str(lit_str) = &expr_lit.lit else {
+        return None;
+    };
+
+    Some(lit_str.value())
+}
+
 // =============================================================================
 // Function parsing
 // =============================================================================
@@ -129,6 +160,8 @@ pub(crate) struct MiniextendrFunctionParsed {
     named_dots: Option<syn::Ident>,
     /// Parameter names that had `#[miniextendr(coerce)]` attribute.
     per_param_coerce: std::collections::HashSet<String>,
+    /// Parameter names with `#[miniextendr(default = "...")]` and their default values.
+    per_param_defaults: std::collections::HashMap<String, String>,
 }
 
 impl syn::parse::Parse for MiniextendrFunctionParsed {
@@ -174,9 +207,11 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         }
 
         // Transform `_` wildcard patterns to synthetic identifiers, and consume
-        // per-parameter `#[miniextendr(coerce)]` attributes.
+        // per-parameter `#[miniextendr(coerce)]` and `#[miniextendr(default = "...")]` attributes.
         let mut per_param_coerce: std::collections::HashSet<String> =
             std::collections::HashSet::new();
+        let mut per_param_defaults: std::collections::HashMap<String, String> =
+            std::collections::HashMap::new();
         let mut unused_counter = 0usize;
         for arg in &mut item.sig.inputs {
             let syn::FnArg::Typed(pat_type) = arg else {
@@ -187,14 +222,21 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             };
 
             let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
-            pat_type
-                .attrs
-                .retain(|attr| !is_miniextendr_coerce_attr(attr));
+            let default_value = pat_type.attrs.iter().find_map(parse_default_attr);
+
+            // Remove miniextendr attributes from parameters (coerce and default)
+            pat_type.attrs.retain(|attr| {
+                !is_miniextendr_coerce_attr(attr) && parse_default_attr(attr).is_none()
+            });
 
             match pat_type.pat.as_ref() {
                 syn::Pat::Ident(pat_ident) => {
+                    let param_name = pat_ident.ident.to_string();
                     if had_coerce_attr {
-                        per_param_coerce.insert(pat_ident.ident.to_string());
+                        per_param_coerce.insert(param_name.clone());
+                    }
+                    if let Some(default) = default_value {
+                        per_param_defaults.insert(param_name, default);
                     }
                 }
                 syn::Pat::Wild(_) => {
@@ -209,7 +251,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                         subpat: None,
                     });
                     if had_coerce_attr {
-                        per_param_coerce.insert(synthetic_name);
+                        per_param_coerce.insert(synthetic_name.clone());
+                    }
+                    if let Some(default) = default_value {
+                        per_param_defaults.insert(synthetic_name, default);
                     }
                 }
                 _ => {
@@ -251,6 +296,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             has_dots,
             named_dots,
             per_param_coerce,
+            per_param_defaults,
         })
     }
 }
@@ -273,6 +319,16 @@ impl MiniextendrFunctionParsed {
     /// Check if a parameter name had `#[miniextendr(coerce)]` attribute.
     pub(crate) fn has_coerce_attr(&self, param_name: &str) -> bool {
         self.per_param_coerce.contains(param_name)
+    }
+
+    /// Get default value for a parameter if it had `#[miniextendr(default = "...")]`.
+    pub(crate) fn param_default(&self, param_name: &str) -> Option<&str> {
+        self.per_param_defaults.get(param_name).map(|s| s.as_str())
+    }
+
+    /// Get all parameter defaults.
+    pub(crate) fn param_defaults(&self) -> &std::collections::HashMap<String, String> {
+        &self.per_param_defaults
     }
 
     // -------------------------------------------------------------------------

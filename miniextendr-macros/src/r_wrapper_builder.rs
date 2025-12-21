@@ -42,6 +42,8 @@ pub struct RArgumentBuilder<'a> {
     named_dots: Option<String>,
     /// If true, skip the first parameter (used for `self` in method wrappers)
     skip_first: bool,
+    /// Parameter default values from `#[miniextendr(default = "...")]`
+    defaults: std::collections::HashMap<String, String>,
 }
 
 impl<'a> RArgumentBuilder<'a> {
@@ -52,7 +54,14 @@ impl<'a> RArgumentBuilder<'a> {
             has_dots: false,
             named_dots: None,
             skip_first: false,
+            defaults: std::collections::HashMap::new(),
         }
+    }
+
+    /// Add parameter defaults from `#[miniextendr(default = "...")]` attributes.
+    pub fn with_defaults(mut self, defaults: std::collections::HashMap<String, String>) -> Self {
+        self.defaults = defaults;
+        self
     }
 
     /// Mark the last parameter as dots (`...`).
@@ -113,6 +122,17 @@ impl<'a> RArgumentBuilder<'a> {
                 syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
                 _ => continue,
             };
+
+            // Check for user-specified default value
+            if let Some(default_val) = self.defaults.get(&arg_ident.to_string()) {
+                // User provided default via #[miniextendr(default = "...")]
+                let default_tokens: TokenStream = default_val.parse().unwrap_or_else(|_| {
+                    // Fallback: treat as raw identifier if not valid tokens
+                    syn::Ident::new(default_val, arg_ident.span()).into_token_stream()
+                });
+                formals.push(syn::parse_quote!(#arg_ident = #default_tokens));
+                continue;
+            }
 
             // Add default for unit types
             match pat_type.ty.as_ref() {
