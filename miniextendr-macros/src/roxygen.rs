@@ -30,8 +30,25 @@ use std::collections::HashSet;
 ///
 /// Handles multiline tags: continuation lines (not starting with '@') are
 /// appended to the previous tag with a newline separator.
+///
+/// For R6 methods, if no explicit tags are found, the first doc comment paragraph
+/// is auto-converted to `@description`.
 pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
+    roxygen_tags_from_attrs_impl(attrs, false)
+}
+
+/// Extract roxygen tags with optional auto-description for R6 methods.
+///
+/// If `auto_description = true` and no explicit `@tag` is found, the first
+/// paragraph of regular doc comments is converted to `@description`.
+pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) -> Vec<String> {
+    roxygen_tags_from_attrs_impl(attrs, true)
+}
+
+fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool) -> Vec<String> {
     let mut tags = Vec::new();
+    let mut regular_docs = Vec::new();
+
     for attr in attrs {
         if !attr.path().is_ident("doc") {
             continue;
@@ -51,14 +68,26 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
                 // New tag starts
                 tags.push(trimmed.to_string());
             } else if !trimmed.is_empty() {
-                // Continuation line - append to last tag if one exists
-                if let Some(last) = tags.last_mut() {
-                    last.push('\n');
-                    last.push_str(trimmed);
+                if tags.is_empty() {
+                    // Before any @tags - collect as regular docs
+                    regular_docs.push(trimmed.to_string());
+                } else {
+                    // Continuation line - append to last tag
+                    if let Some(last) = tags.last_mut() {
+                        last.push('\n');
+                        last.push_str(trimmed);
+                    }
                 }
             }
         }
     }
+
+    // Auto-generate @description from regular docs if requested and no tags found
+    if auto_description && tags.is_empty() && !regular_docs.is_empty() {
+        let description = regular_docs.join(" ");
+        tags.push(format!("@description {}", description));
+    }
+
     tags
 }
 

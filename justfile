@@ -94,7 +94,7 @@ configure:
     cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Load and test rpkg with devtools
-devtools-test FILTER="":
+devtools-test FILTER="": configure
     if [ -z "{{FILTER}}" ]; then \
       Rscript -e 'devtools::test("rpkg")'; \
     else \
@@ -103,11 +103,11 @@ devtools-test FILTER="":
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
-devtools-load:
+devtools-load: configure
     Rscript -e 'devtools::load_all("rpkg")'
 
 # Install rpkg with devtools::install
-devtools-install:
+devtools-install: configure
     Rscript -e 'devtools::install("rpkg")'
 
 # Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, etc.)
@@ -115,29 +115,29 @@ install_deps:
     Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7"), repos = "https://cloud.r-project.org")'
 
 # Build rpkg with devtools::build
-devtools-build:
+devtools-build: configure
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
-devtools-check:
+devtools-check: configure
     Rscript -e 'devtools::check("rpkg")'
 
 # Document rpkg with devtools::document
-devtools-document:
+devtools-document: configure
     Rscript -e 'devtools::document("rpkg")'
 
 alias rcmdinstall := r-cmd-install
-r-cmd-install *args:
+r-cmd-install *args: configure
     R CMD INSTALL {{args}} rpkg 
 
 # Build R package tarball
 alias rcmdbuild := r-cmd-build
-r-cmd-build *args:
+r-cmd-build *args: configure
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
 alias rcmdcheck := r-cmd-check
-r-cmd-check *args:
+r-cmd-check *args: configure
     @ERROR_ON="warning" \
     CHECK_DIR="" \
     && for arg in {{args}}; do \
@@ -160,7 +160,7 @@ r-cmd-check *args:
 #
 # Builds tarball with --compression=none and extracts to rpkg_build/ for inspection.
 # Useful for verifying what gets included in CRAN submissions.
-test-r-build:
+test-r-build: configure
     #!/usr/bin/env bash
     set -euo pipefail
     # Extract package info from DESCRIPTION

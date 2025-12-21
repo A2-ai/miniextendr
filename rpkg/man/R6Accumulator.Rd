@@ -40,6 +40,7 @@ acc$average()
 \if{html}{\out{<a id="method-R6Accumulator-new"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Accumulator-new}{}}}
 \subsection{Method \code{new()}}{
+Creates a new accumulator starting at zero.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Accumulator$new(.ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -56,6 +57,7 @@ acc$average()
 \if{html}{\out{<a id="method-R6Accumulator-accumulate"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Accumulator-accumulate}{}}}
 \subsection{Method \code{accumulate()}}{
+Adds a value and returns the new total.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Accumulator$accumulate(value)}\if{html}{\out{</div>}}
 }
@@ -72,6 +74,7 @@ acc$average()
 \if{html}{\out{<a id="method-R6Accumulator-total"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Accumulator-total}{}}}
 \subsection{Method \code{total()}}{
+Returns the current total.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Accumulator$total()}\if{html}{\out{</div>}}
 }
@@ -81,6 +84,7 @@ acc$average()
 \if{html}{\out{<a id="method-R6Accumulator-count"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Accumulator-count}{}}}
 \subsection{Method \code{count()}}{
+Returns the count of accumulated values.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Accumulator$count()}\if{html}{\out{</div>}}
 }
@@ -90,6 +94,7 @@ acc$average()
 \if{html}{\out{<a id="method-R6Accumulator-average"></a>}}
 \if{latex}{\out{\hypertarget{method-R6Accumulator-average}{}}}
 \subsection{Method \code{average()}}{
+Returns the average, or NA if no values accumulated.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{R6Accumulator$average()}\if{html}{\out{</div>}}
 }
