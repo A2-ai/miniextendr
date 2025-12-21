@@ -340,7 +340,8 @@ impl MiniextendrFunctionParsed {
             quote::format_ident!("C_{}", self.ident())
         } else {
             // For extern functions, check for #[export_name = "..."]
-            self.export_name_ident().unwrap_or_else(|| self.ident().clone())
+            self.export_name_ident()
+                .unwrap_or_else(|| self.ident().clone())
         }
     }
 

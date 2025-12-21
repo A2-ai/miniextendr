@@ -1332,11 +1332,7 @@ unsafe extern "C-unwind" {
     ///
     /// - `con` must be a valid Rconnection handle
     /// - `buf` must be a valid buffer with at least `n` bytes
-    pub fn R_ReadConnection(
-        con: Rconnection,
-        buf: *mut ::std::os::raw::c_void,
-        n: usize,
-    ) -> usize;
+    pub fn R_ReadConnection(con: Rconnection, buf: *mut ::std::os::raw::c_void, n: usize) -> usize;
 
     /// Write to a connection.
     ///
@@ -1405,7 +1401,8 @@ pub struct DllInfo(::std::os::raw::c_void);
 /// We use `fn() -> *mut c_void` to match R's signature. The function pointer is
 /// stored generically and cast to the appropriate type when called by R.
 #[allow(non_camel_case_types)]
-pub type DL_FUNC = ::std::option::Option<unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void>;
+pub type DL_FUNC =
+    ::std::option::Option<unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void>;
 
 /// Type descriptor for native primitive arguments in .C/.Fortran calls.
 ///
@@ -1501,7 +1498,8 @@ pub mod legacy_c {
     pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;
 
     #[allow(non_camel_case_types)]
-    pub type DL_FUNC_C = ::std::option::Option<unsafe extern "C" fn() -> *mut ::std::os::raw::c_void>;
+    pub type DL_FUNC_C =
+        ::std::option::Option<unsafe extern "C" fn() -> *mut ::std::os::raw::c_void>;
 
     #[repr(C)]
     #[derive(Debug, Copy, Clone)]

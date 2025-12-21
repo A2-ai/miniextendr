@@ -86,7 +86,9 @@ impl MethodReturnBuilder {
         let indent = " ".repeat(self.indent);
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
-                let class_name = self.class_name.as_ref()
+                let class_name = self
+                    .class_name
+                    .as_ref()
                     .expect("class_name required for ReturnSelf strategy");
                 vec![
                     format!("{}result <- {}", indent, self.call_expr),
@@ -95,8 +97,7 @@ impl MethodReturnBuilder {
                 ]
             }
             ReturnStrategy::ChainableMutation => {
-                let chain_var = self.chain_var.as_deref()
-                    .unwrap_or("self");
+                let chain_var = self.chain_var.as_deref().unwrap_or("self");
                 vec![
                     format!("{}{}", indent, self.call_expr),
                     format!("{}{}", indent, chain_var),
@@ -117,7 +118,9 @@ impl MethodReturnBuilder {
     pub fn build_inline(&self) -> String {
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
-                let class_name = self.class_name.as_ref()
+                let class_name = self
+                    .class_name
+                    .as_ref()
                     .expect("class_name required for ReturnSelf strategy");
                 format!(
                     "{{ result <- {}; class(result) <- \"{}\"; result }}",
@@ -125,8 +128,7 @@ impl MethodReturnBuilder {
                 )
             }
             ReturnStrategy::ChainableMutation => {
-                let chain_var = self.chain_var.as_deref()
-                    .unwrap_or("self");
+                let chain_var = self.chain_var.as_deref().unwrap_or("self");
                 format!("{{ {}; {} }}", self.call_expr, chain_var)
             }
             ReturnStrategy::Direct => self.call_expr.clone(),
@@ -141,9 +143,14 @@ impl MethodReturnBuilder {
         let indent = " ".repeat(self.indent);
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
-                let class_name = self.class_name.as_ref()
+                let class_name = self
+                    .class_name
+                    .as_ref()
                     .expect("class_name required for ReturnSelf strategy");
-                vec![format!("{}{}$new(.ptr = {})", indent, class_name, self.call_expr)]
+                vec![format!(
+                    "{}{}$new(.ptr = {})",
+                    indent, class_name, self.call_expr
+                )]
             }
             ReturnStrategy::ChainableMutation => {
                 vec![
@@ -160,12 +167,13 @@ impl MethodReturnBuilder {
     /// Build S3-style return (uses structure() for Self returns).
     pub fn build_s3_body(&self) -> Vec<String> {
         let indent = " ".repeat(self.indent);
-        let chain_var = self.chain_var.as_deref()
-            .unwrap_or("x");
+        let chain_var = self.chain_var.as_deref().unwrap_or("x");
 
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
-                let class_name = self.class_name.as_ref()
+                let class_name = self
+                    .class_name
+                    .as_ref()
                     .expect("class_name required for ReturnSelf strategy");
                 vec![format!(
                     "{}structure({}, class = \"{}\")",
@@ -188,7 +196,9 @@ impl MethodReturnBuilder {
     pub fn build_s7_inline(&self) -> String {
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
-                let class_name = self.class_name.as_ref()
+                let class_name = self
+                    .class_name
+                    .as_ref()
                     .expect("class_name required for ReturnSelf strategy");
                 format!("{}(.ptr = {})", class_name, self.call_expr)
             }
@@ -203,7 +213,9 @@ impl MethodReturnBuilder {
     pub fn build_s4_inline(&self) -> String {
         match self.strategy {
             ReturnStrategy::ReturnSelf => {
-                let class_name = self.class_name.as_ref()
+                let class_name = self
+                    .class_name
+                    .as_ref()
                     .expect("class_name required for ReturnSelf strategy");
                 format!("methods::new(\"{}\", ptr = {})", class_name, self.call_expr)
             }

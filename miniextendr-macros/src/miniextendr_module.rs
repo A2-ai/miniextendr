@@ -131,10 +131,7 @@ impl MiniextendrModuleImpl {
 
     /// Returns the identifier for the R wrappers const.
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
-        quote::format_ident!(
-            "R_WRAPPERS_IMPL_{}",
-            self.ident.to_string().to_uppercase()
-        )
+        quote::format_ident!("R_WRAPPERS_IMPL_{}", self.ident.to_string().to_uppercase())
     }
 }
 

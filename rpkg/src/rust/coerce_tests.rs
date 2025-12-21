@@ -1,6 +1,8 @@
 //! Tests for Coerce, TryCoerce, and RNativeType traits.
 
-use miniextendr_api::{miniextendr, miniextendr_module, Coerce, CoerceError, RNativeType, TryCoerce};
+use miniextendr_api::{
+    Coerce, CoerceError, RNativeType, TryCoerce, miniextendr, miniextendr_module,
+};
 
 // Test 6: RNativeType derive macro - newtype wrappers (both tuple and named field)
 #[derive(Clone, Copy, RNativeType)]

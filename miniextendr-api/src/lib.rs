@@ -226,13 +226,30 @@ pub mod ffi;
 
 // Re-export high-level ALTREP data traits
 pub use altrep_data::{
-    AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
-    AltStringData, AltrepDataptr, AltrepLen, Logical, Sortedness,
+    AltComplexData,
+    AltIntegerData,
+    AltListData,
+    AltLogicalData,
+    AltRawData,
+    AltRealData,
+    AltStringData,
+    AltrepDataptr,
+    AltrepLen,
     // Iterator-backed ALTREP types (R-native)
-    IterComplexData, IterIntData, IterListData, IterLogicalData, IterRawData, IterRealData,
-    IterState, IterStringData,
+    IterComplexData,
     // Iterator-backed ALTREP types (with Coerce support)
-    IterIntCoerceData, IterIntFromBoolData, IterRealCoerceData,
+    IterIntCoerceData,
+    IterIntData,
+    IterIntFromBoolData,
+    IterListData,
+    IterLogicalData,
+    IterRawData,
+    IterRealCoerceData,
+    IterRealData,
+    IterState,
+    IterStringData,
+    Logical,
+    Sortedness,
 };
 // Re-export RBase enum
 pub use altrep::RBase;
@@ -291,11 +308,19 @@ pub mod externalptr;
 #[cfg(feature = "connections")]
 pub mod connection;
 pub use externalptr::{
-    ErasedExternalPtr, ExternalPtr, ExternalSlice, SendableSexp, TypedExternal,
+    ErasedExternalPtr,
+    ExternalPtr,
+    ExternalSlice,
+    SendableSexp,
+    TypedExternal,
     // ALTREP helpers (checked)
-    altrep_data1_as, altrep_data1_mut, altrep_data2_as,
+    altrep_data1_as,
     // ALTREP helpers (unchecked - for performance-critical callbacks)
-    altrep_data1_as_unchecked, altrep_data1_mut_unchecked, altrep_data2_as_unchecked,
+    altrep_data1_as_unchecked,
+    altrep_data1_mut,
+    altrep_data1_mut_unchecked,
+    altrep_data2_as,
+    altrep_data2_as_unchecked,
 };
 
 // TypedExternal implementations for std types

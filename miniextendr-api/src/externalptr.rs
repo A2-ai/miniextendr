@@ -787,7 +787,9 @@ impl<T: TypedExternal> ExternalPtr<T> {
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
     pub unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Option<Self> {
-        use crate::ffi::{R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked};
+        use crate::ffi::{
+            R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked,
+        };
 
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr_unchecked(sexp) };
