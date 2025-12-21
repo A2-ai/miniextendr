@@ -30,6 +30,7 @@ mod interrupt_tests;
 mod misc_tests;
 mod panic_tests;
 mod r6_tests;
+mod r6_default_tests;
 mod receiver_tests;
 mod s3_tests;
 mod s4_tests;
@@ -1025,6 +1026,7 @@ miniextendr_module! {
     use identical_tests;
     use receiver_tests;
     use r6_tests;
+    use r6_default_tests;
     use s3_tests;
     use s7_tests;
     use s4_tests;

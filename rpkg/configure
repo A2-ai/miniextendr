@@ -1802,8 +1802,6 @@ fi
 
 
 
-# TODO: write a rust analyzer friendly command.
-# see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
 
 
 abs_top_srcdir=`(cd "$srcdir" && pwd)`

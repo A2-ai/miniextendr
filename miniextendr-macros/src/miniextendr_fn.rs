@@ -321,11 +321,6 @@ impl MiniextendrFunctionParsed {
         self.per_param_coerce.contains(param_name)
     }
 
-    /// Get default value for a parameter if it had `#[miniextendr(default = "...")]`.
-    pub(crate) fn param_default(&self, param_name: &str) -> Option<&str> {
-        self.per_param_defaults.get(param_name).map(|s| s.as_str())
-    }
-
     /// Get all parameter defaults.
     pub(crate) fn param_defaults(&self) -> &std::collections::HashMap<String, String> {
         &self.per_param_defaults
@@ -550,6 +545,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 ));
                             }
                         }
+                    } else if list.path.is_ident("defaults") {
+                        // Ignore defaults(...) - it's handled by impl method parsing
+                        // This allows #[miniextendr(defaults(...))] on impl methods
                     } else {
                         // invisible(something) etc
                         return Err(syn::Error::new_spanned(

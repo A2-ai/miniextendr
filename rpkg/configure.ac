@@ -59,8 +59,10 @@ fi
 AC_SUBST([CARGO_FEATURES_FLAG])
 AC_SUBST([CARGO_FEATURE_CPPFLAGS])
 
-# TODO: write a rust analyzer friendly command.
-# see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
+dnl rust-analyzer configuration: For IDE support, configure rust-analyzer to use
+dnl the standalone workspace, not the vendored rpkg workspace:
+dnl   "rust-analyzer.linkedProjects": ["/path/to/miniextendr/Cargo.toml"]
+dnl This allows rust-analyzer to see the full workspace during development.
 
 
 dnl ---- canonical paths ----
