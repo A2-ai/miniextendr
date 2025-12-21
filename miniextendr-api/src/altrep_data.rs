@@ -334,6 +334,632 @@ pub trait AltListData: AltrepLen {
 }
 
 // =============================================================================
+// Iterator-backed ALTREP infrastructure
+// =============================================================================
+
+use std::cell::RefCell;
+use std::sync::OnceLock;
+
+/// Core state for iterator-backed ALTREP vectors.
+///
+/// Provides lazy element generation with caching for random-access semantics.
+/// Iterator elements are cached as they're accessed, enabling repeatable reads.
+///
+/// # Type Parameters
+///
+/// - `I`: The iterator type (must be `ExactSizeIterator` or provide explicit length)
+/// - `T`: The element type produced by the iterator
+///
+/// # Design
+///
+/// - **Lazy:** Elements generated on-demand via `elt(i)`
+/// - **Cached:** Once generated, elements stored in cache for repeat access
+/// - **Materializable:** Can be fully materialized for `Dataptr` or serialization
+/// - **Safe:** Uses `RefCell` for interior mutability, protected by R's GC
+pub struct IterState<I, T> {
+    /// Vector length (from `ExactSizeIterator::len()` or explicit)
+    len: usize,
+    /// Iterator state (consumed as we advance)
+    iter: RefCell<Option<I>>,
+    /// Cache of generated elements (prefix of the vector)
+    cache: RefCell<Vec<T>>,
+    /// Full materialization (when all elements have been generated)
+    materialized: OnceLock<Vec<T>>,
+}
+
+impl<I, T> IterState<I, T>
+where
+    I: Iterator<Item = T>,
+{
+    /// Create a new iterator state with an explicit length.
+    ///
+    /// # Arguments
+    ///
+    /// - `iter`: The iterator to wrap
+    /// - `len`: The expected number of elements (must match iterator length)
+    ///
+    /// # Panics
+    ///
+    /// Panics if the iterator produces more or fewer elements than `len`.
+    pub fn new(iter: I, len: usize) -> Self {
+        Self {
+            len,
+            iter: RefCell::new(Some(iter)),
+            cache: RefCell::new(Vec::with_capacity(len.min(1024))),
+            materialized: OnceLock::new(),
+        }
+    }
+
+    /// Ensure the element at index `i` is in the cache and return it by value.
+    ///
+    /// Advances the iterator as needed. Only works for `Copy` types.
+    ///
+    /// # Returns
+    ///
+    /// - `Some(T)` if element exists
+    /// - `None` if index is out of bounds or iterator exhausted early
+    ///
+    /// # Panics
+    ///
+    /// May panic if iterator produces more elements than declared length.
+    pub fn get_element(&self, i: usize) -> Option<T>
+    where
+        T: Copy,
+    {
+        // Check bounds
+        if i >= self.len {
+            return None;
+        }
+
+        // If fully materialized, return from materialized vec
+        if let Some(vec) = self.materialized.get() {
+            return vec.get(i).copied();
+        }
+
+        // Otherwise, check cache and advance iterator if needed
+        let mut cache = self.cache.borrow_mut();
+
+        // Already in cache?
+        if i < cache.len() {
+            return Some(cache[i]);
+        }
+
+        // Need to advance iterator to index i
+        let mut iter_opt = self.iter.borrow_mut();
+        let iter = iter_opt.as_mut()?;
+
+        // Fill cache up to and including index i
+        while cache.len() <= i {
+            if let Some(elem) = iter.next() {
+                cache.push(elem);
+            } else {
+                // Iterator exhausted before reaching expected length
+                return None;
+            }
+        }
+
+        Some(cache[i])
+    }
+
+    /// Materialize all remaining elements from the iterator.
+    ///
+    /// After this call, all elements are guaranteed to be in memory and
+    /// `as_materialized()` will return `Some`.
+    ///
+    /// # Panics
+    ///
+    /// Panics if iterator produces more elements than declared length.
+    pub fn materialize_all(&self) -> &[T] {
+        // Already materialized?
+        if let Some(vec) = self.materialized.get() {
+            return vec;
+        }
+
+        // Consume iterator and move cache to materialized storage
+        let mut cache = self.cache.borrow_mut();
+        let mut iter_opt = self.iter.borrow_mut();
+
+        if let Some(iter) = iter_opt.take() {
+            // Drain remaining elements
+            cache.extend(iter);
+
+            // Verify length matches
+            assert_eq!(
+                cache.len(),
+                self.len,
+                "iterator produced {} elements, expected {}",
+                cache.len(),
+                self.len
+            );
+        }
+
+        // Move cache to materialized (take ownership)
+        let vec = std::mem::take(&mut *cache);
+        drop(cache);
+        drop(iter_opt);
+
+        // Store in OnceLock and return reference
+        self.materialized.get_or_init(|| vec)
+    }
+
+    /// Get the materialized vector if all elements have been generated.
+    ///
+    /// Returns `None` if not yet fully materialized.
+    pub fn as_materialized(&self) -> Option<&[T]> {
+        self.materialized.get().map(|v| v.as_slice())
+    }
+
+    /// Get the current length.
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if the vector is empty.
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
+impl<I, T> IterState<I, T>
+where
+    I: ExactSizeIterator<Item = T>,
+{
+    /// Create a new iterator state from an `ExactSizeIterator`.
+    ///
+    /// The length is automatically determined from `iter.len()`.
+    pub fn from_exact_size(iter: I) -> Self {
+        let len = iter.len();
+        Self::new(iter, len)
+    }
+}
+
+/// Iterator-backed integer vector data.
+///
+/// Wraps an iterator producing `i32` values and exposes it as an ALTREP integer vector.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::altrep_data::IterIntData;
+///
+/// // Create from an iterator
+/// let data = IterIntData::from_iter((1..=10).map(|x| x * 2), 10);
+/// ```
+pub struct IterIntData<I: Iterator<Item = i32>> {
+    state: IterState<I, i32>,
+}
+
+impl<I: Iterator<Item = i32>> IterIntData<I> {
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I: ExactSizeIterator<Item = i32>> IterIntData<I> {
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I: Iterator<Item = i32>> AltrepLen for IterIntData<I> {
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
+    fn elt(&self, i: usize) -> i32 {
+        self.state.get_element(i).unwrap_or(crate::altrep_traits::NA_INTEGER)
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        self.state.as_materialized()
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
+/// Iterator-backed real (f64) vector data.
+///
+/// Wraps an iterator producing `f64` values and exposes it as an ALTREP real vector.
+pub struct IterRealData<I: Iterator<Item = f64>> {
+    state: IterState<I, f64>,
+}
+
+impl<I: Iterator<Item = f64>> IterRealData<I> {
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I: ExactSizeIterator<Item = f64>> IterRealData<I> {
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I: Iterator<Item = f64>> AltrepLen for IterRealData<I> {
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
+    fn elt(&self, i: usize) -> f64 {
+        self.state.get_element(i).unwrap_or(f64::NAN)
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        self.state.as_materialized()
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
+/// Iterator-backed logical vector data.
+///
+/// Wraps an iterator producing `bool` values and exposes it as an ALTREP logical vector.
+pub struct IterLogicalData<I: Iterator<Item = bool>> {
+    state: IterState<I, bool>,
+}
+
+impl<I: Iterator<Item = bool>> IterLogicalData<I> {
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I: ExactSizeIterator<Item = bool>> IterLogicalData<I> {
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I: Iterator<Item = bool>> AltrepLen for IterLogicalData<I> {
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
+    fn elt(&self, i: usize) -> Logical {
+        self.state
+            .get_element(i)
+            .map(Logical::from_bool)
+            .unwrap_or(Logical::Na)
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i).to_r_int();
+        }
+        actual_len
+    }
+}
+
+/// Iterator-backed raw (u8) vector data.
+///
+/// Wraps an iterator producing `u8` values and exposes it as an ALTREP raw vector.
+pub struct IterRawData<I: Iterator<Item = u8>> {
+    state: IterState<I, u8>,
+}
+
+impl<I: Iterator<Item = u8>> IterRawData<I> {
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I: ExactSizeIterator<Item = u8>> IterRawData<I> {
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I: Iterator<Item = u8>> AltrepLen for IterRawData<I> {
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
+    fn elt(&self, i: usize) -> u8 {
+        self.state.get_element(i).unwrap_or(0)
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        self.state.as_materialized()
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
+// =============================================================================
+// Iterator-backed ALTREP with Coerce support
+// =============================================================================
+
+/// Iterator-backed integer vector with coercion from any integer-like type.
+///
+/// Wraps an iterator producing values that coerce to `i32` (e.g., `u16`, `i8`, etc.).
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::altrep_data::IterIntCoerceData;
+///
+/// // Create from an iterator of u16 values
+/// let iter = (0..10u16).map(|x| x * 100);
+/// let data = IterIntCoerceData::from_iter(iter, 10);
+/// // Values are coerced from u16 to i32 when accessed
+/// ```
+pub struct IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<i32> + Copy,
+{
+    state: IterState<I, T>,
+}
+
+impl<I, T> IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<i32> + Copy,
+{
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I, T> IterIntCoerceData<I, T>
+where
+    I: ExactSizeIterator<Item = T>,
+    T: crate::coerce::Coerce<i32> + Copy,
+{
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I, T> AltrepLen for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<i32> + Copy,
+{
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I, T> AltIntegerData for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<i32> + Copy,
+{
+    fn elt(&self, i: usize) -> i32 {
+        self.state
+            .get_element(i)
+            .map(|val| val.coerce())
+            .unwrap_or(crate::altrep_traits::NA_INTEGER)
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        // Can't return slice of i32 when cached values are type T
+        // Would need a separate coerced cache
+        None
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
+/// Iterator-backed real vector with coercion from any float-like type.
+///
+/// Wraps an iterator producing values that coerce to `f64` (e.g., `f32`, integer types).
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::altrep_data::IterRealCoerceData;
+///
+/// // Create from an iterator of f32 values
+/// let iter = (0..5).map(|x| x as f32 * 1.5);
+/// let data = IterRealCoerceData::from_iter(iter, 5);
+/// // Values are coerced from f32 to f64 when accessed
+/// ```
+pub struct IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<f64> + Copy,
+{
+    state: IterState<I, T>,
+}
+
+impl<I, T> IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<f64> + Copy,
+{
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I, T> IterRealCoerceData<I, T>
+where
+    I: ExactSizeIterator<Item = T>,
+    T: crate::coerce::Coerce<f64> + Copy,
+{
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I, T> AltrepLen for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<f64> + Copy,
+{
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I, T> AltRealData for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T>,
+    T: crate::coerce::Coerce<f64> + Copy,
+{
+    fn elt(&self, i: usize) -> f64 {
+        self.state
+            .get_element(i)
+            .map(|val| val.coerce())
+            .unwrap_or(f64::NAN)
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        // Can't return slice of f64 when cached values are type T
+        None
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
+/// Iterator-backed integer vector with coercion from bool.
+///
+/// Wraps an iterator producing `bool` values that coerce to `i32`.
+/// Useful for converting boolean iterators to integer vectors.
+pub struct IterIntFromBoolData<I>
+where
+    I: Iterator<Item = bool>,
+{
+    state: IterState<I, bool>,
+}
+
+impl<I> IterIntFromBoolData<I>
+where
+    I: Iterator<Item = bool>,
+{
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I> IterIntFromBoolData<I>
+where
+    I: ExactSizeIterator<Item = bool>,
+{
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I> AltrepLen for IterIntFromBoolData<I>
+where
+    I: Iterator<Item = bool>,
+{
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I> AltIntegerData for IterIntFromBoolData<I>
+where
+    I: Iterator<Item = bool>,
+{
+    fn elt(&self, i: usize) -> i32 {
+        use crate::coerce::Coerce;
+        self.state
+            .get_element(i)
+            .map(|val| val.coerce())
+            .unwrap_or(crate::altrep_traits::NA_INTEGER)
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        None
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
+// =============================================================================
 // Sortedness enum
 // =============================================================================
 
@@ -2210,5 +2836,188 @@ mod tests {
         let v: Vec<i32> = vec![i32::MAX, i32::MAX];
         let sum = AltIntegerData::sum(&v, false).unwrap();
         assert_eq!(sum, 2 * i32::MAX as i64);
+    }
+
+    // -------------------------------------------------------------------------
+    // Iterator-backed ALTREP tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_iter_int_basic() {
+        // Use from_iter with explicit length since Map doesn't preserve ExactSizeIterator
+        let iter = (1..=5).map(|x| x * 2);
+        let data = IterIntData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltIntegerData::elt(&data, 0), 2);
+        assert_eq!(AltIntegerData::elt(&data, 4), 10);
+
+        // Out of bounds
+        assert_eq!(AltIntegerData::elt(&data, 5), crate::altrep_traits::NA_INTEGER);
+    }
+
+    #[test]
+    fn test_iter_int_random_access() {
+        let iter = (0..10).map(|x| x * x);
+        let data = IterIntData::from_iter(iter, 10);
+
+        // Access in non-sequential order (tests caching)
+        assert_eq!(AltIntegerData::elt(&data, 5), 25);
+        assert_eq!(AltIntegerData::elt(&data, 2), 4);
+        assert_eq!(AltIntegerData::elt(&data, 5), 25); // Cached
+        assert_eq!(AltIntegerData::elt(&data, 9), 81);
+    }
+
+    #[test]
+    fn test_iter_real_basic() {
+        let iter = (1..=5).map(|x| x as f64 * 1.5);
+        let data = IterRealData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltRealData::elt(&data, 0), 1.5);
+        assert_eq!(AltRealData::elt(&data, 4), 7.5);
+    }
+
+    #[test]
+    fn test_iter_logical_basic() {
+        let iter = (0..5).map(|x| x % 2 == 0);
+        let data = IterLogicalData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltLogicalData::elt(&data, 0), Logical::True);
+        assert_eq!(AltLogicalData::elt(&data, 1), Logical::False);
+        assert_eq!(AltLogicalData::elt(&data, 2), Logical::True);
+    }
+
+    #[test]
+    fn test_iter_raw_basic() {
+        let iter = (0..5u8).map(|x| x * 10);
+        let data = IterRawData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltRawData::elt(&data, 0), 0);
+        assert_eq!(AltRawData::elt(&data, 2), 20);
+        assert_eq!(AltRawData::elt(&data, 4), 40);
+    }
+
+    #[test]
+    fn test_iter_get_region() {
+        let iter = (1..=10).map(|x| x * 10);
+        let data = IterIntData::from_iter(iter, 10);
+
+        let mut buf = [0i32; 5];
+        let n = AltIntegerData::get_region(&data, 2, 5, &mut buf);
+
+        assert_eq!(n, 5);
+        assert_eq!(buf, [30, 40, 50, 60, 70]);
+    }
+
+    #[test]
+    fn test_iter_state_materialization() {
+        let iter = (1..=3).map(|x| x * 2);
+        let data = IterIntData::from_iter(iter, 3);
+
+        // Initially not materialized
+        assert!(data.state.as_materialized().is_none());
+
+        // Access some elements
+        assert_eq!(AltIntegerData::elt(&data, 0), 2);
+        assert!(data.state.as_materialized().is_none()); // Still not fully materialized
+
+        // Access all elements
+        assert_eq!(AltIntegerData::elt(&data, 2), 6);
+
+        // Materialize
+        let materialized = data.state.materialize_all();
+        assert_eq!(materialized, &[2, 4, 6]);
+
+        // Now as_slice works
+        assert_eq!(data.as_slice(), Some(&[2, 4, 6][..]));
+    }
+
+    #[test]
+    fn test_iter_explicit_length() {
+        // Create with explicit length (not ExactSizeIterator)
+        let iter = vec![10, 20, 30].into_iter();
+        let data = IterIntData::from_iter(iter, 3);
+
+        assert_eq!(AltrepLen::len(&data), 3);
+        assert_eq!(AltIntegerData::elt(&data, 1), 20);
+    }
+
+    // -------------------------------------------------------------------------
+    // Iterator-backed ALTREP with Coerce tests
+    // -------------------------------------------------------------------------
+
+    #[test]
+    fn test_iter_int_coerce_u16() {
+        // Iterator of u16 values coerced to i32
+        let iter = (0..5u16).map(|x| x * 1000);
+        let data = IterIntCoerceData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltIntegerData::elt(&data, 0), 0);
+        assert_eq!(AltIntegerData::elt(&data, 2), 2000);
+        assert_eq!(AltIntegerData::elt(&data, 4), 4000);
+    }
+
+    #[test]
+    fn test_iter_int_coerce_i8() {
+        // Iterator of i8 values coerced to i32
+        let iter = (-5i8..5i8);
+        let data = IterIntCoerceData::from_exact_iter(iter);
+
+        assert_eq!(AltrepLen::len(&data), 10);
+        assert_eq!(AltIntegerData::elt(&data, 0), -5);
+        assert_eq!(AltIntegerData::elt(&data, 5), 0);
+        assert_eq!(AltIntegerData::elt(&data, 9), 4);
+    }
+
+    #[test]
+    fn test_iter_real_coerce_f32() {
+        // Iterator of f32 values coerced to f64
+        let iter = (0..5).map(|x| x as f32 * 1.5);
+        let data = IterRealCoerceData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert!((AltRealData::elt(&data, 0) - 0.0).abs() < 0.001);
+        assert!((AltRealData::elt(&data, 2) - 3.0).abs() < 0.001);
+        assert!((AltRealData::elt(&data, 4) - 6.0).abs() < 0.001);
+    }
+
+    #[test]
+    fn test_iter_real_coerce_i32() {
+        // Iterator of i32 values coerced to f64
+        let iter = 1..=5;
+        let data = IterRealCoerceData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltRealData::elt(&data, 0), 1.0);
+        assert_eq!(AltRealData::elt(&data, 4), 5.0);
+    }
+
+    #[test]
+    fn test_iter_int_from_bool() {
+        // Iterator of bool values coerced to i32
+        let iter = (0..10).map(|x| x % 3 == 0);
+        let data = IterIntFromBoolData::from_iter(iter, 10);
+
+        assert_eq!(AltrepLen::len(&data), 10);
+        assert_eq!(AltIntegerData::elt(&data, 0), 1); // TRUE
+        assert_eq!(AltIntegerData::elt(&data, 1), 0); // FALSE
+        assert_eq!(AltIntegerData::elt(&data, 3), 1); // TRUE
+    }
+
+    #[test]
+    fn test_iter_coerce_get_region() {
+        // Test get_region with coerced types
+        let iter = (0..10u16).map(|x| x * 10);
+        let data = IterIntCoerceData::from_iter(iter, 10);
+
+        let mut buf = [0i32; 5];
+        let n = AltIntegerData::get_region(&data, 3, 5, &mut buf);
+
+        assert_eq!(n, 5);
+        assert_eq!(buf, [30, 40, 50, 60, 70]);
     }
 }
