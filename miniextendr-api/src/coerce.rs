@@ -596,6 +596,9 @@ impl TryCoerce<u16> for f64 {
         if self.is_nan() {
             return Err(CoerceError::NaN);
         }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
         if self < 0.0 || self > u16::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
@@ -614,6 +617,9 @@ impl TryCoerce<i16> for f64 {
         if self.is_nan() {
             return Err(CoerceError::NaN);
         }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
         if self < i16::MIN as f64 || self > i16::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
@@ -631,6 +637,9 @@ impl TryCoerce<i8> for f64 {
     fn try_coerce(self) -> Result<i8, CoerceError> {
         if self.is_nan() {
             return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
         }
         if self < i8::MIN as f64 || self > i8::MAX as f64 {
             return Err(CoerceError::Overflow);
@@ -653,6 +662,9 @@ impl TryCoerce<i32> for f64 {
     fn try_coerce(self) -> Result<i32, CoerceError> {
         if self.is_nan() {
             return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
         }
         if self < i32::MIN as f64 || self > i32::MAX as f64 {
             return Err(CoerceError::Overflow);
@@ -693,6 +705,9 @@ impl TryCoerce<u8> for f64 {
         if self.is_nan() {
             return Err(CoerceError::NaN);
         }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
         if self < 0.0 || self > u8::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
@@ -724,6 +739,9 @@ impl TryCoerce<u32> for f64 {
         if self.is_nan() {
             return Err(CoerceError::NaN);
         }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
         if self < 0.0 || self > u32::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
@@ -746,6 +764,9 @@ impl TryCoerce<i64> for f64 {
         if self.is_nan() {
             return Err(CoerceError::NaN);
         }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
         // i64::MIN/MAX can't be exactly represented in f64, so use safe bounds
         if self < i64::MIN as f64 || self >= i64::MAX as f64 {
             return Err(CoerceError::Overflow);
@@ -764,6 +785,9 @@ impl TryCoerce<u64> for f64 {
     fn try_coerce(self) -> Result<u64, CoerceError> {
         if self.is_nan() {
             return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
         }
         if self < 0.0 || self >= u64::MAX as f64 {
             return Err(CoerceError::Overflow);

@@ -281,6 +281,8 @@ pub unsafe extern "C-unwind" fn t_lgl_sum<T: AltLogical>(x: SEXP, narm: Rboolean
     T::sum(x, matches!(narm, Rboolean::TRUE))
 }
 
+// Note: R's ALTREP API does not expose min/max for logical vectors
+
 // =============================================================================
 // ALTRAW TRAMPOLINES
 // =============================================================================
@@ -500,6 +502,7 @@ pub unsafe fn install_lgl<T: AltLogical>(cls: R_altrep_class_t) {
     if T::HAS_SUM {
         unsafe { R_set_altlogical_Sum_method(cls, Some(t_lgl_sum::<T>)) };
     }
+    // Note: R's ALTREP API does not expose min/max for logical vectors
 }
 
 /// Install raw-specific methods.
