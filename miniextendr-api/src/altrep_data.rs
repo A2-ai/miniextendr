@@ -615,8 +615,8 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -663,8 +663,8 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i).to_r_int();
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i).to_r_int();
         }
         actual_len
     }
@@ -712,8 +712,8 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -801,8 +801,8 @@ where
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -885,8 +885,8 @@ where
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -954,8 +954,8 @@ where
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -1177,8 +1177,8 @@ where
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [crate::ffi::Rcomplex]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for i in 0..actual_len {
-            buf[i] = self.elt(start + i);
+        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
+            *buf_i = self.elt(start + i);
         }
         actual_len
     }
@@ -3192,7 +3192,7 @@ mod tests {
     #[test]
     fn test_iter_int_coerce_i8() {
         // Iterator of i8 values coerced to i32
-        let iter = (-5i8..5i8);
+        let iter = -5i8..5i8;
         let data = IterIntCoerceData::from_exact_iter(iter);
 
         assert_eq!(AltrepLen::len(&data), 10);
