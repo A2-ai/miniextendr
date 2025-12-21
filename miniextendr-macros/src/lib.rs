@@ -584,6 +584,7 @@ pub fn miniextendr(
 
         // registration of C wrapper in R
         #(#cfg_attrs)*
+        #[doc(hidden)]
         #[doc = #call_method_def_doc]
         #[inline(always)]
         #[allow(non_snake_case)]
