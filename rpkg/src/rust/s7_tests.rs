@@ -9,6 +9,15 @@ pub struct S7Counter {
     value: i32,
 }
 
+/// @rdname S7Counter
+/// @description S7 counter with `s7_value()`, `s7_inc()`, and `s7_add()` methods.
+/// @aliases S7Counter s7_value s7_inc s7_add S7Counter_default_counter
+/// @examples
+/// x <- S7Counter(1L)
+/// s7_value(x)
+/// s7_inc(x)
+/// s7_add(x, 2L)
+/// s7_value(S7Counter_default_counter())
 #[miniextendr(s7)]
 impl S7Counter {
     /// Creates a new counter with the given initial value.

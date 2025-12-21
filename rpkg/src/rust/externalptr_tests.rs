@@ -21,6 +21,19 @@ pub struct Point {
 
 /// Create a new Counter wrapped in an ExternalPtr
 #[miniextendr(unsafe(main_thread))]
+/// @name rpkg_externalptr
+/// @description External pointer helpers
+/// @examples
+/// ptr <- extptr_counter_new(1L)
+/// unsafe_C_extptr_counter_get(ptr)
+/// unsafe_C_extptr_counter_increment(ptr)
+/// p <- extptr_point_new(0.1, 0.2)
+/// unsafe_C_extptr_point_get_x(p)
+/// @aliases extptr_counter_new extptr_point_new
+/// @aliases unsafe_C_extptr_counter_get unsafe_C_extptr_counter_increment
+/// @aliases unsafe_C_extptr_point_get_x unsafe_C_extptr_point_get_y
+/// @aliases unsafe_C_extptr_type_mismatch_test unsafe_C_extptr_null_test
+/// @aliases unsafe_C_extptr_is_counter unsafe_C_extptr_is_point
 pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
     miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }

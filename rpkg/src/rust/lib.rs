@@ -407,6 +407,19 @@ pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SE
 ///
 /// # Safety
 /// Caller must ensure this is called from R's main thread.
+/// @name rpkg_altrep_unsafe
+/// @keywords internal
+/// @description ALTREP low-level entry points (unsafe)
+/// @examples \dontrun{
+/// x <- unsafe_rpkg_altrep_from_doubles(c(1, 2, 3))
+/// unsafe_rpkg_lazy_int_seq_is_materialized(x)
+/// }
+/// @aliases unsafe_rpkg_altrep_compact_int unsafe_rpkg_altrep_from_doubles
+/// @aliases unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
+/// @aliases unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
+/// @aliases unsafe_rpkg_constant_int unsafe_rpkg_constant_real
+/// @aliases unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
+/// @aliases unsafe_rpkg_lazy_int_seq_is_materialized
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -672,6 +685,16 @@ pub struct UnitCircleClass(pub UnitCircleData);
 
 /// Create complex numbers on the unit circle: e^(i * 2π * k/n) for k = 0, 1, ..., n-1
 /// These are the n-th roots of unity, evenly spaced around the unit circle.
+/// @name rpkg_altrep_examples
+/// @description ALTREP example constructors
+/// @return An ALTREP vector.
+/// @examples
+/// unit_circle(8L)
+/// lazy <- lazy_int_seq(1L, 5L, 1L)
+/// lazy[1:3]
+/// boxed_ints(3L)
+/// static_strings()
+/// @aliases unit_circle lazy_int_seq boxed_ints static_ints leaked_ints static_strings
 #[miniextendr]
 pub fn unit_circle(n: i32) -> SEXP {
     let data = UnitCircleData { n: n as usize };

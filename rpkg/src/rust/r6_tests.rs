@@ -20,6 +20,15 @@ pub struct R6Counter {
     value: i32,
 }
 
+/// @rdname R6Counter
+/// @description R6 counter class that stores a single integer value.
+/// @aliases R6Counter
+/// @examples
+/// c <- R6Counter$new(1L)
+/// c$value()
+/// c$inc()
+/// c$add(10L)
+/// R6Counter$default_counter()$value()
 #[miniextendr(r6)]
 impl R6Counter {
     /// Creates a new counter with the given initial value.
@@ -57,6 +66,15 @@ pub struct R6Accumulator {
     count: usize,
 }
 
+/// @rdname R6Accumulator
+/// @description R6 accumulator with running total and count.
+/// @aliases R6Accumulator
+/// @examples
+/// acc <- R6Accumulator$new()
+/// acc$accumulate(1.5)
+/// acc$total()
+/// acc$count()
+/// acc$average()
 #[miniextendr(r6)]
 impl R6Accumulator {
     /// Creates a new accumulator starting at zero.

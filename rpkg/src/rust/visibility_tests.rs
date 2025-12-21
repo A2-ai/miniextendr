@@ -3,6 +3,21 @@
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 #[miniextendr]
+/// @name rpkg_visibility_interrupts
+/// @keywords internal
+/// @description Visibility and interrupt checks
+/// @examples
+/// invisibly_return_no_arrow()
+/// force_invisible_i32()
+/// with_interrupt_check(2L)
+/// try(invisibly_option_return_none())
+/// \dontrun{
+/// unsafe_C_check_interupt_after()
+/// }
+/// @aliases invisibly_return_no_arrow invisibly_return_arrow
+/// @aliases invisibly_option_return_none invisibly_option_return_some
+/// @aliases invisibly_result_return_ok force_invisible_i32 force_visible_unit
+/// @aliases with_interrupt_check unsafe_C_check_interupt_after unsafe_C_check_interupt_unwind
 pub fn invisibly_return_no_arrow() {}
 
 #[miniextendr]
