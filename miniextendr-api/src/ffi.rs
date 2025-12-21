@@ -1426,11 +1426,6 @@ pub struct R_CMethodDef {
     pub types: *const R_NativePrimitiveArgType,
 }
 
-// SAFETY: R_CMethodDef contains raw pointers which don't impl Sync by default.
-// However, Sync is required to store these in static arrays for R's method registration.
-// This is safe because all pointers point to static data.
-unsafe impl Sync for R_CMethodDef {}
-
 /// Method definition for .Fortran interface routines.
 ///
 /// Structurally identical to `R_CMethodDef`.
@@ -1451,14 +1446,6 @@ pub struct R_CallMethodDef {
     pub numArgs: ::std::os::raw::c_int,
 }
 
-// SAFETY: R_CallMethodDef contains raw pointers which don't impl Send/Sync by default.
-// However, Send+Sync is required to store these in static arrays or shared collections for R's method registration.
-// This is safe because:
-// 1. The name pointer points to static C string literals (&'static CStr)
-// 2. The fun pointer is a static function pointer
-// 3. These are read-only after initialization during R_init_*
-unsafe impl Sync for R_CallMethodDef {}
-unsafe impl Send for R_CallMethodDef {}
 
 /// Method definition for .External interface routines.
 ///
@@ -1511,8 +1498,6 @@ pub mod legacy_c {
         pub numArgs: ::std::os::raw::c_int,
     }
 
-    // SAFETY: Same as R_CallMethodDef - contains only static pointers
-    unsafe impl Sync for R_CallMethodDef_C {}
 
     unsafe extern "C" {
         #[link_name = "R_RegisterCFinalizer"]
