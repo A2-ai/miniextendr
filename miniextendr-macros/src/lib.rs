@@ -162,7 +162,11 @@ pub fn miniextendr(
         let arg = pair.value();
         match arg {
             syn::FnArg::Receiver(receiver) => {
-                syn::Error::new(receiver.span(), "impl-blocks not supported yet").to_compile_error()
+                syn::Error::new(
+                    receiver.span(),
+                    "self parameter not allowed in standalone functions; \
+                     use #[miniextendr(receiver|r6|s3|s4|s7)] on impl blocks instead"
+                ).to_compile_error()
             }
             syn::FnArg::Typed(pt) => {
                 let syn::PatType {
