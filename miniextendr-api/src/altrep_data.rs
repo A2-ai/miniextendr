@@ -959,6 +959,233 @@ where
     }
 }
 
+/// Iterator-backed string vector.
+///
+/// Wraps an iterator producing `String` values and exposes it as an ALTREP character vector.
+///
+/// # Note
+///
+/// String elements must be materialized and stored to satisfy the `&str` borrow
+/// requirement of `AltStringData::elt()`. This means strings are allocated eagerly
+/// as they're accessed and kept in memory.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::altrep_data::IterStringData;
+///
+/// let iter = (0..5).map(|x| format!("item_{}", x));
+/// let data = IterStringData::from_iter(iter, 5);
+/// ```
+pub struct IterStringData<I>
+where
+    I: Iterator<Item = String>,
+{
+    state: IterState<I, String>,
+}
+
+impl<I> IterStringData<I>
+where
+    I: Iterator<Item = String>,
+{
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I> IterStringData<I>
+where
+    I: ExactSizeIterator<Item = String>,
+{
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I> AltrepLen for IterStringData<I>
+where
+    I: Iterator<Item = String>,
+{
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I> AltStringData for IterStringData<I>
+where
+    I: Iterator<Item = String>,
+{
+    fn elt(&self, i: usize) -> Option<&str> {
+        // Materialize to get stable storage for &str references
+        // This is necessary because we can't return &str from RefCell borrows
+        let materialized = self.state.materialize_all();
+        materialized.get(i).map(|s| s.as_str())
+    }
+}
+
+/// Iterator-backed list vector.
+///
+/// Wraps an iterator producing R `SEXP` values and exposes it as an ALTREP list.
+///
+/// # Safety
+///
+/// The iterator must produce valid, protected SEXP values. Each SEXP must remain
+/// protected for the lifetime of the ALTREP object.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::altrep_data::IterListData;
+/// use miniextendr_api::IntoR;
+///
+/// let iter = (0..5).map(|x| vec![x, x+1, x+2].into_sexp());
+/// let data = IterListData::from_iter(iter, 5);
+/// ```
+pub struct IterListData<I>
+where
+    I: Iterator<Item = SEXP>,
+{
+    state: IterState<I, SEXP>,
+}
+
+impl<I> IterListData<I>
+where
+    I: Iterator<Item = SEXP>,
+{
+    /// Create from an iterator with explicit length.
+    ///
+    /// # Safety
+    ///
+    /// The iterator must produce valid, protected SEXP values.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I> IterListData<I>
+where
+    I: ExactSizeIterator<Item = SEXP>,
+{
+    /// Create from an ExactSizeIterator (length auto-detected).
+    ///
+    /// # Safety
+    ///
+    /// The iterator must produce valid, protected SEXP values.
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I> AltrepLen for IterListData<I>
+where
+    I: Iterator<Item = SEXP>,
+{
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I> AltListData for IterListData<I>
+where
+    I: Iterator<Item = SEXP>,
+{
+    fn elt(&self, i: usize) -> SEXP {
+        use crate::ffi::R_NilValue;
+        self.state
+            .get_element(i)
+            .unwrap_or(unsafe { R_NilValue })
+    }
+}
+
+/// Iterator-backed complex number vector.
+///
+/// Wraps an iterator producing `Rcomplex` values and exposes it as an ALTREP complex vector.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::altrep_data::IterComplexData;
+/// use miniextendr_api::ffi::Rcomplex;
+///
+/// let iter = (0..5).map(|x| Rcomplex { r: x as f64, i: (x * 2) as f64 });
+/// let data = IterComplexData::from_iter(iter, 5);
+/// ```
+pub struct IterComplexData<I>
+where
+    I: Iterator<Item = crate::ffi::Rcomplex>,
+{
+    state: IterState<I, crate::ffi::Rcomplex>,
+}
+
+impl<I> IterComplexData<I>
+where
+    I: Iterator<Item = crate::ffi::Rcomplex>,
+{
+    /// Create from an iterator with explicit length.
+    pub fn from_iter(iter: I, len: usize) -> Self {
+        Self {
+            state: IterState::new(iter, len),
+        }
+    }
+}
+
+impl<I> IterComplexData<I>
+where
+    I: ExactSizeIterator<Item = crate::ffi::Rcomplex>,
+{
+    /// Create from an ExactSizeIterator (length auto-detected).
+    pub fn from_exact_iter(iter: I) -> Self {
+        Self {
+            state: IterState::from_exact_size(iter),
+        }
+    }
+}
+
+impl<I> AltrepLen for IterComplexData<I>
+where
+    I: Iterator<Item = crate::ffi::Rcomplex>,
+{
+    fn len(&self) -> usize {
+        self.state.len()
+    }
+}
+
+impl<I> AltComplexData for IterComplexData<I>
+where
+    I: Iterator<Item = crate::ffi::Rcomplex>,
+{
+    fn elt(&self, i: usize) -> crate::ffi::Rcomplex {
+        self.state
+            .get_element(i)
+            .unwrap_or(crate::ffi::Rcomplex {
+                r: f64::NAN,
+                i: f64::NAN,
+            })
+    }
+
+    fn as_slice(&self) -> Option<&[crate::ffi::Rcomplex]> {
+        self.state.as_materialized()
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [crate::ffi::Rcomplex]) -> usize {
+        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
+        for i in 0..actual_len {
+            buf[i] = self.elt(start + i);
+        }
+        actual_len
+    }
+}
+
 // =============================================================================
 // Sortedness enum
 // =============================================================================
@@ -3019,5 +3246,37 @@ mod tests {
 
         assert_eq!(n, 5);
         assert_eq!(buf, [30, 40, 50, 60, 70]);
+    }
+
+    #[test]
+    fn test_iter_string_basic() {
+        let iter = (0..3).map(|x| format!("item_{}", x));
+        let data = IterStringData::from_iter(iter, 3);
+
+        assert_eq!(AltrepLen::len(&data), 3);
+        assert_eq!(AltStringData::elt(&data, 0), Some("item_0"));
+        assert_eq!(AltStringData::elt(&data, 1), Some("item_1"));
+        assert_eq!(AltStringData::elt(&data, 2), Some("item_2"));
+    }
+
+    #[test]
+    fn test_iter_complex_basic() {
+        use crate::ffi::Rcomplex;
+
+        let iter = (0..5).map(|x| Rcomplex {
+            r: x as f64,
+            i: (x * 2) as f64,
+        });
+        let data = IterComplexData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+
+        let z0 = AltComplexData::elt(&data, 0);
+        assert_eq!(z0.r, 0.0);
+        assert_eq!(z0.i, 0.0);
+
+        let z2 = AltComplexData::elt(&data, 2);
+        assert_eq!(z2.r, 2.0);
+        assert_eq!(z2.i, 4.0);
     }
 }
