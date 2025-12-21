@@ -5,16 +5,6 @@
 
 use crate::ffi::{R_xlen_t, SEXP};
 
-/// Initialize ALTREP subsystem.
-///
-/// Called automatically during package initialization.
-/// This is a no-op since ALTREP classes are registered lazily
-/// via the `#[miniextendr]` proc-macro approach.
-#[unsafe(no_mangle)]
-pub extern "C-unwind" fn miniextendr_altrep_init() {
-    // No-op: ALTREP classes are registered lazily via proc-macro generated code
-}
-
 /// Base type for ALTREP vectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RBase {
