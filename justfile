@@ -16,7 +16,6 @@ check *cargo_flags:
     cargo check --workspace {{cargo_flags}}
     cargo check --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-
 # Build all crates
 alias cargo-build := build
 build *cargo_flags:

@@ -207,12 +207,25 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && test -
   find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
 
   dnl Patch Cargo.toml to remove workspace inheritance
+  dnl Expand all workspace.package fields and workspace dependencies inline
   $SED -e 's/edition\.workspace = true/edition = "2024"/' \
        -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/license\.workspace = true/license = "MIT"/' \
+       -e 's/repository\.workspace = true/repository = "https:\/\/github.com\/CGMossa\/miniextendr"/' \
+       -e 's/homepage\.workspace = true/homepage = "https:\/\/github.com\/CGMossa\/miniextendr"/' \
+       -e 's/keywords\.workspace = true/keywords = @<:@"r", "ffi", "bindings"@:>@/' \
+       -e 's/categories\.workspace = true/categories = @<:@"api-bindings", "external-ffi-bindings"@:>@/' \
+       -e 's/miniextendr-macros = { workspace = true }/miniextendr-macros = { version = "0.1.0", path = "..\/miniextendr-macros" }/' \
+       -e 's/miniextendr-engine = { workspace = true }/miniextendr-engine = { version = "0.1.0", path = "..\/miniextendr-engine" }/' \
        "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
 
   $SED -e 's/edition\.workspace = true/edition = "2024"/' \
        -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/license\.workspace = true/license = "MIT"/' \
+       -e 's/repository\.workspace = true/repository = "https:\/\/github.com\/CGMossa\/miniextendr"/' \
+       -e 's/homepage\.workspace = true/homepage = "https:\/\/github.com\/CGMossa\/miniextendr"/' \
+       -e 's/keywords\.workspace = true/keywords = @<:@"r", "ffi", "bindings"@:>@/' \
+       -e 's/categories\.workspace = true/categories = @<:@"api-bindings", "external-ffi-bindings"@:>@/' \
        -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
        -e 's/quote = { workspace = true }/quote = "1.0"/' \
        -e 's/syn = { workspace = true }/syn = { version = "2.0", features = @<:@"full", "extra-traits"@:>@ }/' \
@@ -220,6 +233,9 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && test -
 
   $SED -e 's/edition\.workspace = true/edition = "2024"/' \
        -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/license\.workspace = true/license = "MIT"/' \
+       -e 's/repository\.workspace = true/repository = "https:\/\/github.com\/CGMossa\/miniextendr"/' \
+       -e 's/homepage\.workspace = true/homepage = "https:\/\/github.com\/CGMossa\/miniextendr"/' \
        -e 's/proc-macro2 = { workspace = true }/proc-macro2 = { version = "1.0", features = @<:@"span-locations"@:>@ }/' \
        -e 's/quote = { workspace = true }/quote = "1.0"/' \
        -e 's/syn = { workspace = true }/syn = { version = "2.0", features = @<:@"full", "extra-traits"@:>@ }/' \

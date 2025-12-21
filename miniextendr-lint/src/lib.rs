@@ -8,27 +8,26 @@
 //! }
 //! ```
 //!
-//! # Architecture Note: Parser Coupling
+//! # Architecture Note: Parser Duplication
 //!
-//! This crate shares the `miniextendr_module!` parser from `miniextendr-macros`
-//! via `#[path]` inclusion. This creates a tight coupling:
+//! This crate contains a **copy** of `miniextendr_module.rs` from `miniextendr-macros`.
 //!
-//! - **Location**: `../../miniextendr-macros/src/miniextendr_module.rs`
+//! - **Source**: `miniextendr-macros/src/miniextendr_module.rs`
+//! - **Copy**: `miniextendr-lint/src/miniextendr_module.rs` (this file)
 //! - **Requirement**: The parser imports `call_method_def_ident_for` and
 //!   `r_wrapper_const_ident_for` from `crate::`, so we must define stubs below
-//! - **Fragility**: If miniextendr-macros refactors file structure or adds more
-//!   imports from `crate::`, this lint will break
-//! - **Trade-off**: Tight coupling vs. single source of truth for module syntax
 //!
-//! **Why this design?**
-//! - Ensures lint and macro parse `miniextendr_module!` identically
-//! - Avoids duplicating complex parser logic
-//! - Simpler than extracting to shared crate (which adds build complexity)
+//! **Why duplicate instead of sharing?**
+//! - Allows miniextendr-lint to be published independently to crates.io
+//! - `#[path = "../../"]` includes don't work in published packages
+//! - Trade-off: Code duplication vs. independent publishing
+//!
+//! **Keeping in sync:**
+//! When `miniextendr-macros/src/miniextendr_module.rs` changes, manually copy to
+//! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
-// Include the shared parser from miniextendr-macros.
-// IMPORTANT: This creates a coupling - see module doc for details.
+// Parser module (copied from miniextendr-macros for independent publishing).
 #[allow(dead_code)]
-#[path = "../../miniextendr-macros/src/miniextendr_module.rs"]
 mod miniextendr_module;
 
 use std::collections::HashSet;
