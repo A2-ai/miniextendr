@@ -7,10 +7,26 @@
 //!     miniextendr_lint::build_script();
 //! }
 //! ```
+//!
+//! # Architecture Note: Parser Coupling
+//!
+//! This crate shares the `miniextendr_module!` parser from `miniextendr-macros`
+//! via `#[path]` inclusion. This creates a tight coupling:
+//!
+//! - **Location**: `../../miniextendr-macros/src/miniextendr_module.rs`
+//! - **Requirement**: The parser imports `call_method_def_ident_for` and
+//!   `r_wrapper_const_ident_for` from `crate::`, so we must define stubs below
+//! - **Fragility**: If miniextendr-macros refactors file structure or adds more
+//!   imports from `crate::`, this lint will break
+//! - **Trade-off**: Tight coupling vs. single source of truth for module syntax
+//!
+//! **Why this design?**
+//! - Ensures lint and macro parse `miniextendr_module!` identically
+//! - Avoids duplicating complex parser logic
+//! - Simpler than extracting to shared crate (which adds build complexity)
 
 // Include the shared parser from miniextendr-macros.
-// This module uses `use crate::{call_method_def_ident_for, r_wrapper_const_ident_for}`
-// so we must define those functions below (even though the lint doesn't call them).
+// IMPORTANT: This creates a coupling - see module doc for details.
 #[allow(dead_code)]
 #[path = "../../miniextendr-macros/src/miniextendr_module.rs"]
 mod miniextendr_module;

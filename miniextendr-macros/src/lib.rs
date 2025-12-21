@@ -13,6 +13,7 @@ mod rust_conversion_builder;
 pub(crate) use rust_conversion_builder::RustConversionBuilder;
 mod method_return_builder;
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
+mod return_type_analysis;
 mod altrep_derive;
 mod roxygen;
 
@@ -155,7 +156,9 @@ pub fn miniextendr(
         .collect();
     // dbg!(&rust_inputs);
 
-    // calling the C-wrapper with
+    // Hygiene: Use call_site() for internal variable names that should be visible to
+    // procedural macro machinery but not create unhygienic references to user code.
+    // call_site() = span of the macro invocation (#[miniextendr])
     let call_param_ident = syn::Ident::new("__miniextendr_call", proc_macro2::Span::call_site());
     let mut c_wrapper_inputs: Vec<_> = Vec::new();
     if uses_internal_c_wrapper {
@@ -221,126 +224,25 @@ pub fn miniextendr(
 
     // Generate conversion statements
     let closure_statements = conversion_builder.build_conversions(inputs, &rust_inputs);
-    let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
 
-    // Automatic invisibility detection based on return type.
-    // Can be overridden with #[miniextendr(invisible)] or #[miniextendr(visible)].
-    let is_invisible_return_type: bool;
+    // Hygiene: Use mixed_site() for internal variables that need to reference both
+    // macro-generated items (quote!) and user-provided items from the original function.
+    // mixed_site() = allows capturing both hygiene contexts for cross-context references.
     let rust_result_ident =
         syn::Ident::new("__miniextendr_rust_result", proc_macro2::Span::mixed_site());
-    let option_none_error_msg = quote::quote! {
-        concat!(
-            "miniextendr function `",
-            stringify!(#rust_ident),
-            "` returned None"
-        )
-    };
 
-    // Generate return expression (converts Rust result to SEXP)
-    // Also track whether return type involves SEXP (can't use worker strategy for those)
-    let mut returns_sexp = false;
-    let return_expression = match &output {
-        // no arrow
-        syn::ReturnType::Default => {
-            is_invisible_return_type = true;
-            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
-        }
+    // Analyze return type to determine:
+    // - Whether it returns SEXP (affects thread strategy)
+    // - Whether result should be invisible
+    // - How to convert Rust → SEXP
+    // - Post-call processing (unwrap Option/Result)
+    let return_analysis =
+        return_type_analysis::analyze_return_type(output, &rust_result_ident, rust_ident);
 
-        syn::ReturnType::Type(_, ty) => match ty.as_ref() {
-            // -> ()
-            syn::Type::Tuple(t) if t.elems.is_empty() => {
-                is_invisible_return_type = true;
-                quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
-            }
-            syn::Type::Path(_p) if is_sexp_type(ty.as_ref()) => {
-                is_invisible_return_type = false;
-                returns_sexp = true;
-                quote::quote! { #rust_result_ident }
-            }
-
-            // -> Option<...> cases
-            syn::Type::Path(p)
-                if p.path.segments.last().map(|s| &s.ident)
-                    == Some(&syn::Ident::new("Option", p.path.span())) =>
-            {
-                let seg = p.path.segments.last().unwrap();
-                let inner_ty = first_type_argument(seg);
-                let is_unit_inner = inner_ty
-                    .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
-                let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
-
-                if is_unit_inner {
-                    is_invisible_return_type = true;
-                    post_call_statements.push(quote::quote! {
-                        if #rust_result_ident.is_none() {
-                            panic!(#option_none_error_msg);
-                        }
-                    });
-                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
-                } else {
-                    is_invisible_return_type = false;
-                    if is_sexp_inner {
-                        returns_sexp = true;
-                    }
-                    post_call_statements.push(quote::quote! {
-                        let #rust_result_ident = match #rust_result_ident {
-                            Some(v) => v,
-                            None => panic!(#option_none_error_msg),
-                        };
-                    });
-                    if is_sexp_inner {
-                        quote::quote! { #rust_result_ident }
-                    } else {
-                        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
-                    }
-                }
-            }
-
-            // -> Result<...> cases
-            syn::Type::Path(p)
-                if p.path.segments.last().map(|s| &s.ident)
-                    == Some(&syn::Ident::new("Result", p.path.span())) =>
-            {
-                let seg = p.path.segments.last().unwrap();
-                let ok_ty = first_type_argument(seg);
-                let ok_is_unit =
-                    ok_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
-                let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
-
-                if ok_is_unit {
-                    is_invisible_return_type = true;
-                    post_call_statements.push(quote::quote! {
-                        if let Err(e) = #rust_result_ident {
-                            panic!("{:?}", e);
-                        }
-                    });
-                    quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
-                } else {
-                    is_invisible_return_type = false;
-                    if ok_is_sexp {
-                        returns_sexp = true;
-                    }
-                    post_call_statements.push(quote::quote! {
-                        let #rust_result_ident = match #rust_result_ident {
-                            Ok(v) => v,
-                            Err(e) => panic!("{:?}", e),
-                        };
-                    });
-                    if ok_is_sexp {
-                        quote::quote! { #rust_result_ident }
-                    } else {
-                        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
-                    }
-                }
-            }
-
-            // all other T
-            _ => {
-                is_invisible_return_type = false;
-                quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
-            }
-        },
-    };
+    let returns_sexp = return_analysis.returns_sexp;
+    let is_invisible_return_type = return_analysis.is_invisible;
+    let return_expression = return_analysis.return_expression;
+    let post_call_statements = return_analysis.post_call_statements;
 
     // Apply explicit visibility override from #[miniextendr(invisible)] or #[miniextendr(visible)]
     let is_invisible_return_type = force_invisible.unwrap_or(is_invisible_return_type);
@@ -354,14 +256,43 @@ pub fn miniextendr(
         }
     });
 
-    // Use worker strategy by default for functions that don't return raw SEXP.
-    // Worker thread provides proper panic catching with destructor cleanup.
-    // Functions returning raw SEXP, taking SEXP inputs, or taking Dots must stay on main thread
-    // (SEXP/Dots aren't Send).
-    // Use #[miniextendr(unsafe(main_thread))] to force main thread for functions that call R APIs internally.
-    // check_interrupt also requires main thread since R_CheckUserInterrupt must be called there.
-    // Note: ExternalPtr<T> returning functions use worker thread - if they call R APIs internally,
-    // the FFI wrapper's debug check will catch it and users should add #[miniextendr(unsafe(main_thread))].
+    // ═══════════════════════════════════════════════════════════════════════════
+    // Thread Strategy Selection
+    // ═══════════════════════════════════════════════════════════════════════════
+    //
+    // miniextendr supports two execution strategies:
+    //
+    // 1. **Main Thread Strategy** (with_r_unwind_protect)
+    //    - All code runs on R's main thread
+    //    - Required when SEXP types are involved (not Send)
+    //    - Required for R API calls (Rf_*, R_*)
+    //    - Panic handling via R_UnwindProtect (Rust destructors run correctly)
+    //    - Use cases:
+    //      * Functions returning SEXP
+    //      * Functions taking SEXP parameters
+    //      * Functions using Dots (variadic args)
+    //      * Functions with #[miniextendr(unsafe(main_thread))]
+    //      * Functions with check_interrupt (R_CheckUserInterrupt)
+    //
+    // 2. **Worker Thread Strategy** (run_on_worker + catch_unwind)
+    //    - Argument conversion on main thread (SEXP → Rust types)
+    //    - Function execution on dedicated worker thread (clean panic isolation)
+    //    - Result conversion on main thread (Rust types → SEXP)
+    //    - Panic handling via catch_unwind (prevents unwinding across FFI boundary)
+    //    - Benefits:
+    //      * Clean panic handling with proper destructors
+    //      * Isolates user code from R's execution context
+    //      * Catches panics from both user code and conversions
+    //    - Limitations:
+    //      * Cannot call R APIs directly (use ExternalPtr + main_thread if needed)
+    //      * All parameters and return types must be Send
+    //
+    // Default: Worker thread (safer, cleaner panic handling)
+    // Override: Use main thread when SEXP types or R APIs are involved
+    //
+    // Note: ExternalPtr<T> returning functions use worker thread by default.
+    // If they internally call R APIs, the debug FFI check will catch it at runtime.
+    // Users should add #[miniextendr(unsafe(main_thread))] in that case.
     let use_main_thread =
         returns_sexp || has_sexp_inputs || has_dots || force_main_thread || check_interrupt;
     let c_wrapper = if abi.is_some() {
