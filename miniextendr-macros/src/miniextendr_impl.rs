@@ -194,44 +194,113 @@ impl syn::parse::Parse for ImplAttrs {
 }
 
 impl ParsedMethod {
-    /// Parse method attributes (#[r6(...)], #[s3(...)], etc.)
-    fn parse_method_attrs(attrs: &[syn::Attribute]) -> MethodAttrs {
+    /// Validate method attributes for the given class system.
+    /// Returns an error if unsupported attributes are used.
+    fn validate_method_attrs(
+        attrs: &MethodAttrs,
+        class_system: ClassSystem,
+        span: proc_macro2::Span,
+    ) -> syn::Result<()> {
+        // #[...(active)] is only meaningful for R6, and not yet implemented
+        if attrs.active {
+            if class_system != ClassSystem::R6 {
+                return Err(syn::Error::new(
+                    span,
+                    "#[r6(active)] is only valid for R6 class systems",
+                ));
+            }
+            return Err(syn::Error::new(
+                span,
+                "#[r6(active)] active bindings are not yet implemented",
+            ));
+        }
+
+        // #[...(worker)] for per-method worker thread execution is not yet implemented
+        if attrs.worker {
+            return Err(syn::Error::new(
+                span,
+                "method-level #[...(worker)] attribute is not yet implemented; \
+                 use function-level #[miniextendr(worker)] instead",
+            ));
+        }
+
+        Ok(())
+    }
+
+    /// Parse method attributes in #[miniextendr(class_system(...))] format.
+    ///
+    /// Supported formats:
+    /// - `#[miniextendr(r6(ignore, constructor, finalize, private, generic = "...")]`
+    /// - `#[miniextendr(s3(ignore, constructor, generic = "..."))]`
+    /// - `#[miniextendr(s7(ignore, constructor, generic = "..."))]`
+    /// - etc.
+    fn parse_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<MethodAttrs> {
         let mut method_attrs = MethodAttrs::default();
 
         for attr in attrs {
-            // Check for class-system-specific attributes
+            // Check for old-style attributes (#[r6(...)], #[s3(...)], etc.) and reject
             let path = attr.path();
-            let is_class_attr = path.is_ident("receiver")
+            let is_old_class_attr = path.is_ident("receiver")
                 || path.is_ident("r6")
                 || path.is_ident("s7")
                 || path.is_ident("s3")
                 || path.is_ident("s4");
 
-            if is_class_attr {
-                let _ = attr.parse_nested_meta(|meta| {
-                    if meta.path.is_ident("ignore") {
-                        method_attrs.ignore = true;
-                    } else if meta.path.is_ident("constructor") {
-                        method_attrs.constructor = true;
-                    } else if meta.path.is_ident("finalize") {
-                        method_attrs.finalize = true;
-                    } else if meta.path.is_ident("private") {
-                        method_attrs.private = true;
-                    } else if meta.path.is_ident("active") {
-                        method_attrs.active = true;
-                    } else if meta.path.is_ident("worker") {
-                        method_attrs.worker = true;
-                    } else if meta.path.is_ident("generic") {
-                        let _: syn::Token![=] = meta.input.parse()?;
-                        let value: syn::LitStr = meta.input.parse()?;
-                        method_attrs.generic = Some(value.value());
-                    }
-                    Ok(())
-                });
+            if is_old_class_attr {
+                let class_system = path
+                    .get_ident()
+                    .map(|i| i.to_string())
+                    .unwrap_or_default();
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    format!(
+                        "#[{}(...)] is not supported; use #[miniextendr({}(...))] instead",
+                        class_system, class_system
+                    ),
+                ));
             }
+
+            // Parse new-style #[miniextendr(class_system(...))] attributes
+            if !path.is_ident("miniextendr") {
+                continue;
+            }
+
+            // Parse the nested content: miniextendr(class_system(options...))
+            attr.parse_nested_meta(|meta| {
+                let is_class_meta = meta.path.is_ident("receiver")
+                    || meta.path.is_ident("r6")
+                    || meta.path.is_ident("s7")
+                    || meta.path.is_ident("s3")
+                    || meta.path.is_ident("s4");
+
+                if is_class_meta {
+                    // Parse the inner options: r6(ignore, constructor, ...)
+                    meta.parse_nested_meta(|inner| {
+                        if inner.path.is_ident("ignore") {
+                            method_attrs.ignore = true;
+                        } else if inner.path.is_ident("constructor") {
+                            method_attrs.constructor = true;
+                        } else if inner.path.is_ident("finalize") {
+                            method_attrs.finalize = true;
+                        } else if inner.path.is_ident("private") {
+                            method_attrs.private = true;
+                        } else if inner.path.is_ident("active") {
+                            method_attrs.active = true;
+                        } else if inner.path.is_ident("worker") {
+                            method_attrs.worker = true;
+                        } else if inner.path.is_ident("generic") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.generic = Some(value.value());
+                        }
+                        Ok(())
+                    })?;
+                }
+                Ok(())
+            })?;
         }
 
-        method_attrs
+        Ok(method_attrs)
     }
 
     /// Detect receiver kind from function signature.
@@ -264,7 +333,7 @@ impl ParsedMethod {
     /// Parse a method from an impl item.
     pub fn from_impl_item(item: syn::ImplItemFn) -> syn::Result<Self> {
         let receiver = Self::detect_receiver(&item.sig);
-        let method_attrs = Self::parse_method_attrs(&item.attrs);
+        let method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
@@ -359,11 +428,29 @@ impl ParsedImpl {
             ));
         }
 
-        // Parse methods
+        // Reject unsupported attributes on the impl block
+        for attr in &item_impl.attrs {
+            if attr.path().is_ident("export_name") {
+                return Err(syn::Error::new_spanned(
+                    attr,
+                    "#[export_name] is not supported with #[miniextendr]; \
+                     the macro generates its own C symbol names",
+                ));
+            }
+        }
+
+        // Parse methods and validate attributes
         let mut methods = Vec::new();
         for item in &item_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                methods.push(ParsedMethod::from_impl_item(fn_item.clone())?);
+                let method = ParsedMethod::from_impl_item(fn_item.clone())?;
+                // Validate method attributes for this class system
+                ParsedMethod::validate_method_attrs(
+                    &method.method_attrs,
+                    attrs.class_system,
+                    fn_item.sig.ident.span(),
+                )?;
+                methods.push(method);
             }
         }
 
@@ -460,26 +547,26 @@ pub fn generate_method_c_wrapper(
 
     // Add regular parameters
     for (idx, arg) in method.sig.inputs.iter().enumerate() {
-        if let syn::FnArg::Typed(pt) = arg {
-            if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                let ident = &pat_ident.ident;
-                let ty = &pt.ty;
-                let param_ident = format_ident!("arg_{}", idx);
+        if let syn::FnArg::Typed(pt) = arg
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+        {
+            let ident = &pat_ident.ident;
+            let ty = &pt.ty;
+            let param_ident = format_ident!("arg_{}", idx);
 
-                c_params.push(quote!(#param_ident: ::miniextendr_api::ffi::SEXP));
-                rust_args.push(ident.clone());
+            c_params.push(quote!(#param_ident: ::miniextendr_api::ffi::SEXP));
+            rust_args.push(ident.clone());
 
-                // Generate conversion
-                conversion_stmts.push(quote! {
-                    let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#param_ident).unwrap();
-                });
-            }
+            // Generate conversion
+            conversion_stmts.push(quote! {
+                let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#param_ident).unwrap();
+            });
         }
     }
 
     // Generate self extraction for instance methods
     let self_extraction = if method.receiver.is_instance() {
-        let borrow = if method.receiver == ReceiverKind::RefMut {
+        if method.receiver == ReceiverKind::RefMut {
             quote! {
                 let mut self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
@@ -495,8 +582,7 @@ pub fn generate_method_c_wrapper(
                 let self_ref = self_ptr.downcast_ref::<#type_ident>()
                     .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
             }
-        };
-        borrow
+        }
     } else {
         TokenStream::new()
     };
@@ -678,13 +764,13 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // $ dispatch - export as S3 methods
-    lines.push(format!("#' @export"));
+    lines.push("#' @export".to_string());
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("    func <- {}[[name]]", class_name));
     lines.push("    environment(func) <- environment()".to_string());
     lines.push("    func".to_string());
     lines.push("}".to_string());
-    lines.push(format!("#' @export"));
+    lines.push("#' @export".to_string());
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
 
     lines.join("\n")
@@ -846,12 +932,18 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S3 generics + methods
     for method in parsed_impl.instance_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let method_name = method.ident.to_string();
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
 
+        // Use generic override if provided, otherwise use method name
+        let generic_name = method
+            .method_attrs
+            .generic
+            .clone()
+            .unwrap_or_else(|| method.ident.to_string());
+
         // S3 method: generic.class
-        let s3_method_name = format!("{}.{}", method_name, class_name);
+        let s3_method_name = format!("{}.{}", generic_name, class_name);
 
         // Build full parameter list (x first, then others)
         let full_params = if params.is_empty() {
@@ -866,14 +958,27 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             format!(".Call({}, x, {})", c_ident, args)
         };
 
-        // First, create the S3 generic
-        lines.push(format!("#' @source Generated by miniextendr from `{}::{}`", type_ident, method.ident));
-        lines.push("#' @export".to_string());
-        lines.push(format!("{} <- function(x, ...) UseMethod(\"{}\")", method_name, method_name));
-        lines.push(String::new());
+        // Only create the S3 generic if no generic override was provided
+        // (i.e., we're creating a new generic, not implementing a method for an existing one)
+        let skip_generic_creation = method.method_attrs.generic.is_some();
+
+        if !skip_generic_creation {
+            // Create the S3 generic (only for custom generics, not base R overrides)
+            // Use conditional creation to avoid overwriting existing generics
+            lines.push(format!(
+                "#' @source Generated by miniextendr from `{}::{}`",
+                type_ident, method.ident
+            ));
+            lines.push("#' @export".to_string());
+            lines.push(format!(
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")"
+            ));
+            lines.push(String::new());
+        }
 
         // Then create the S3 method
-        lines.push(format!("#' @export"));
+        lines.push("#' @export".to_string());
+        lines.push(format!("#' @method {} {}", generic_name, class_name));
         lines.push(format!("{} <- function({}) {{", s3_method_name, full_params));
         if method.returns_self() {
             // Returns Self: wrap result in class structure
@@ -982,9 +1087,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S7 generics + methods
     for method in parsed_impl.instance_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let method_name = method.ident.to_string();
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
+
+        // Use generic override if provided, otherwise use method name
+        let generic_name = method
+            .method_attrs
+            .generic
+            .clone()
+            .unwrap_or_else(|| method.ident.to_string());
+
+        // Check if this references an external generic (e.g., "base::print" or "pkg::func")
+        let is_external_generic = method.method_attrs.generic.is_some();
 
         let call = if args.is_empty() {
             format!(".Call({}, x@.ptr)", c_ident)
@@ -1001,29 +1115,62 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Define generic (only if doesn't exist)
         // Note: The second arg to new_generic is the dispatch argument name (e.g., "x"), not the class
-        lines.push(format!("#' @rdname {}", method_name));
-        lines.push(format!("#' @source Generated by miniextendr from `{}::{}`", type_ident, method.ident));
-        lines.push("#' @export".to_string());
+        lines.push(format!("#' @rdname {}", generic_name));
         lines.push(format!(
-            "if (!exists(\"{method_name}\", mode = \"function\")) {method_name} <- S7::new_generic(\"{method_name}\", \"x\")"
+            "#' @source Generated by miniextendr from `{}::{}`",
+            type_ident, method.ident
         ));
+        lines.push("#' @export".to_string());
 
-        // Define method
-        if method.returns_self() {
-            // Returns Self: wrap result in S7 class
+        if is_external_generic {
+            // Parse "pkg::name" format for external generics
+            // If no "::" present, assume base R
+            let (pkg, gen_name) = if generic_name.contains("::") {
+                let parts: Vec<&str> = generic_name.split("::").collect();
+                (parts[0].to_string(), parts[1].to_string())
+            } else {
+                ("base".to_string(), generic_name.clone())
+            };
+
+            // Use S7::new_external_generic for existing generics from other packages
             lines.push(format!(
-                "S7::method({method_name}, {class_name}) <- function({full_params}) {class_name}(.ptr = {call})"
+                "if (!exists(\"{gen_name}\", mode = \"function\")) {gen_name} <- S7::new_external_generic(\"{pkg}\", \"{gen_name}\")"
             ));
-        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
-            // Mutable method returning unit: return x for chaining
-            lines.push(format!(
-                "S7::method({method_name}, {class_name}) <- function({full_params}) {{ {call}; x }}"
-            ));
+
+            // Define method using the resolved generic name
+            if method.returns_self() {
+                lines.push(format!(
+                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {class_name}(.ptr = {call})"
+                ));
+            } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+                lines.push(format!(
+                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {{ {call}; x }}"
+                ));
+            } else {
+                lines.push(format!(
+                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {call}"
+                ));
+            }
         } else {
-            // All other cases: return the result directly
+            // Create new S7 generic if it doesn't exist
             lines.push(format!(
-                "S7::method({method_name}, {class_name}) <- function({full_params}) {call}"
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\")"
             ));
+
+            // Define method
+            if method.returns_self() {
+                lines.push(format!(
+                    "S7::method({generic_name}, {class_name}) <- function({full_params}) {class_name}(.ptr = {call})"
+                ));
+            } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+                lines.push(format!(
+                    "S7::method({generic_name}, {class_name}) <- function({full_params}) {{ {call}; x }}"
+                ));
+            } else {
+                lines.push(format!(
+                    "S7::method({generic_name}, {class_name}) <- function({full_params}) {call}"
+                ));
+            }
         }
         lines.push(String::new());
     }
@@ -1179,10 +1326,10 @@ fn build_r_formals(sig: &syn::Signature) -> String {
     sig.inputs
         .iter()
         .filter_map(|arg| {
-            if let syn::FnArg::Typed(pt) = arg {
-                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                    return Some(crate::normalize_r_arg_ident(&pat_ident.ident).to_string());
-                }
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                return Some(crate::normalize_r_arg_ident(&pat_ident.ident).to_string());
             }
             None
         })
@@ -1195,10 +1342,10 @@ fn build_r_call_args(sig: &syn::Signature) -> String {
     sig.inputs
         .iter()
         .filter_map(|arg| {
-            if let syn::FnArg::Typed(pt) = arg {
-                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                    return Some(crate::normalize_r_arg_ident(&pat_ident.ident).to_string());
-                }
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                return Some(crate::normalize_r_arg_ident(&pat_ident.ident).to_string());
             }
             None
         })

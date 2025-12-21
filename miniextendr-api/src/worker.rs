@@ -42,13 +42,16 @@ enum WorkerMessage<T> {
 // Type alias for the common worker message type
 type TypeErasedWorkerMessage = WorkerMessage<Box<dyn Any + Send>>;
 
+// Type alias to avoid type_complexity lint
+type WorkerToMainSender = RefCell<Option<SyncSender<TypeErasedWorkerMessage>>>;
+type MainResponseReceiver = RefCell<Option<Receiver<MainThreadResponse>>>;
+
 // Thread-local channels for worker -> main communication during run_on_worker
 thread_local! {
     // Channel to send messages (work requests or done) to main thread
-    #[allow(clippy::type_complexity)]
-    static WORKER_TO_MAIN_TX: RefCell<Option<SyncSender<TypeErasedWorkerMessage>>> = const { RefCell::new(None) };
+    static WORKER_TO_MAIN_TX: WorkerToMainSender = const { RefCell::new(None) };
     // Channel to receive responses from main thread
-    static MAIN_RESPONSE_RX: RefCell<Option<Receiver<MainThreadResponse>>> = const { RefCell::new(None) };
+    static MAIN_RESPONSE_RX: MainResponseReceiver = const { RefCell::new(None) };
 }
 
 /// Check whether the current thread is running inside a `run_on_worker` context

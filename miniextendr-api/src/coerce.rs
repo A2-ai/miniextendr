@@ -1441,10 +1441,10 @@ mod tests {
         assert_eq!(coerced, (1i32, 2i32));
 
         // Mixed types
-        let t2: (i8, f32) = (42, 3.14);
+        let t2: (i8, f32) = (42, std::f32::consts::PI);
         let coerced2: (i32, f64) = t2.coerce();
         assert_eq!(coerced2.0, 42i32);
-        assert!((coerced2.1 - 3.14f64).abs() < 0.001);
+        assert!((coerced2.1 - std::f64::consts::PI).abs() < 0.001);
 
         // 3-tuple
         let t3: (i8, i16, u8) = (1, 2, 3);

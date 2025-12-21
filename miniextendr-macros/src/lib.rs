@@ -550,7 +550,7 @@ pub fn miniextendr(
 
     // check the validity of the provided C-function!
     if abi.is_some() {
-        // check that #[no_mangle] or #[unsafe(no_mangle)] is present!
+        // check that #[no_mangle] or #[unsafe(no_mangle)] or #[export_name] is present!
         let has_no_mangle = attrs.iter().any(|attr| {
             attr.path().is_ident("no_mangle")
                 || attr
@@ -564,13 +564,17 @@ pub fn miniextendr(
                     .is_err()
         });
 
-        if !has_no_mangle {
+        let has_export_name = attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("export_name"));
+
+        if !has_no_mangle && !has_export_name {
             return syn::Error::new(
                 attrs
                     .first()
                     .map(|attr| attr.span())
                     .unwrap_or_else(|| abi.span()),
-                "missing #[no_mangle] (edition 2021) or #[unsafe(no_mangle)] (edition 2024).",
+                "missing #[no_mangle] (edition 2021), #[unsafe(no_mangle)] (edition 2024), or #[export_name = \"...\"]",
             )
             .into_compile_error()
             .into();

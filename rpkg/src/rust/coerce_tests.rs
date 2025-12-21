@@ -6,6 +6,7 @@ use miniextendr_api::{miniextendr, miniextendr_module, Coerce, CoerceError, RNat
 #[derive(Clone, Copy, RNativeType)]
 struct UserId(i32); // Tuple struct
 
+#[allow(dead_code)] // Demonstrates RNativeType derive on pub tuple struct
 #[derive(Clone, Copy, RNativeType)]
 pub struct Score(pub f64); // Tuple struct
 
