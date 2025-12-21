@@ -136,7 +136,7 @@ impl<'a> RArgumentBuilder<'a> {
         self.build_call_args_vec().join(", ")
     }
 
-    /// Build R call arguments as Vec<String>.
+    /// Build R call arguments as `Vec<String>`.
     pub fn build_call_args_vec(&self) -> Vec<String> {
         let mut call_args = Vec::new();
         let last_idx = self.inputs.len().saturating_sub(1);
