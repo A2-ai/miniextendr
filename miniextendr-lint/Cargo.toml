@@ -2,6 +2,11 @@
 name = "miniextendr-lint"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Internal build-time linter for miniextendr (not published to crates.io)"
+publish = true
 
 [dependencies]
 proc-macro2 = { workspace = true }

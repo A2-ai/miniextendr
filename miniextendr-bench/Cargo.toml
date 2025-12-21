@@ -2,11 +2,15 @@
 name = "miniextendr-bench"
 version.workspace = true
 edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Benchmarks for miniextendr"
 publish = false
 
 [dependencies]
-miniextendr-api = { path = "../miniextendr-api" }
-miniextendr-engine = { path = "../miniextendr-engine" }
+miniextendr-api = { workspace = true }
+miniextendr-engine = { workspace = true }
 
 [dev-dependencies]
 divan = "0.1.21"
