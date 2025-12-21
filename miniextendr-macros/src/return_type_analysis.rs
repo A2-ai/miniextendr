@@ -124,8 +124,8 @@ fn analyze_option_type(
 ) -> proc_macro2::TokenStream {
     let seg = type_path.path.segments.last().unwrap();
     let inner_ty = crate::first_type_argument(seg);
-    let is_unit_inner = inner_ty
-        .is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
+    let is_unit_inner =
+        inner_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
     let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
     if is_unit_inner {

@@ -227,10 +227,7 @@ fn should_skip_dir(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
     };
-    matches!(
-        name,
-        "target" | "ra_target" | ".cargo" | ".git" | "vendor"
-    )
+    matches!(name, "target" | "ra_target" | ".cargo" | ".git" | "vendor")
 }
 
 fn lint_file(path: &Path) -> Result<(), Vec<String>> {
@@ -242,10 +239,7 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
     let parsed = match syn::parse_file(&src) {
         Ok(parsed) => parsed,
         Err(err) => {
-            return Err(vec![format!(
-                "{}: failed to parse: {err}",
-                path.display()
-            )]);
+            return Err(vec![format!("{}: failed to parse: {err}", path.display())]);
         }
     };
 
@@ -412,17 +406,29 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
 
     for func in parsed.functions {
         let line = func.ident.span().start().line;
-        items.push(LintItem::new(LintKind::Function, func.ident.to_string(), line));
+        items.push(LintItem::new(
+            LintKind::Function,
+            func.ident.to_string(),
+            line,
+        ));
     }
 
     for strukt in parsed.structs {
         let line = strukt.ident.span().start().line;
-        items.push(LintItem::new(LintKind::Struct, strukt.ident.to_string(), line));
+        items.push(LintItem::new(
+            LintKind::Struct,
+            strukt.ident.to_string(),
+            line,
+        ));
     }
 
     for impl_block in parsed.impls {
         let line = impl_block.ident.span().start().line;
-        items.push(LintItem::new(LintKind::Impl, impl_block.ident.to_string(), line));
+        items.push(LintItem::new(
+            LintKind::Impl,
+            impl_block.ident.to_string(),
+            line,
+        ));
     }
 
     Ok(items)

@@ -99,7 +99,10 @@ pub struct R6Accumulator {
 impl R6Accumulator {
     /// Creates a new accumulator starting at zero.
     pub fn new() -> Self {
-        R6Accumulator { total: 0.0, count: 0 }
+        R6Accumulator {
+            total: 0.0,
+            count: 0,
+        }
     }
 
     /// Adds a value and returns the new total.
