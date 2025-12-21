@@ -3250,6 +3250,34 @@ mod tests {
     }
 
     #[test]
+    fn test_iter_real_coerce_option() {
+        // Iterator of Option<f64> coerced to f64 with None → NA (NaN)
+        let iter = (0..5).map(|x| if x % 2 == 0 { Some(x as f64) } else { None });
+        let data = IterRealCoerceData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltRealData::elt(&data, 0), 0.0); // Some(0.0)
+        assert!(AltRealData::elt(&data, 1).is_nan()); // None → NaN
+        assert_eq!(AltRealData::elt(&data, 2), 2.0); // Some(2.0)
+        assert!(AltRealData::elt(&data, 3).is_nan()); // None → NaN
+        assert_eq!(AltRealData::elt(&data, 4), 4.0); // Some(4.0)
+    }
+
+    #[test]
+    fn test_iter_int_coerce_option() {
+        // Iterator of Option<i32> coerced to i32 with None → NA (i32::MIN)
+        let iter = (0..5).map(|x| if x % 2 == 0 { Some(x) } else { None });
+        let data = IterIntCoerceData::from_iter(iter, 5);
+
+        assert_eq!(AltrepLen::len(&data), 5);
+        assert_eq!(AltIntegerData::elt(&data, 0), 0); // Some(0)
+        assert_eq!(AltIntegerData::elt(&data, 1), i32::MIN); // None → NA
+        assert_eq!(AltIntegerData::elt(&data, 2), 2); // Some(2)
+        assert_eq!(AltIntegerData::elt(&data, 3), i32::MIN); // None → NA
+        assert_eq!(AltIntegerData::elt(&data, 4), 4); // Some(4)
+    }
+
+    #[test]
     fn test_iter_string_basic() {
         let iter = (0..3).map(|x| format!("item_{}", x));
         let data = IterStringData::from_iter(iter, 3);
