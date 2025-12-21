@@ -229,7 +229,8 @@ pub use altrep_data::{
     AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
     AltStringData, AltrepDataptr, AltrepLen, Logical, Sortedness,
     // Iterator-backed ALTREP types (R-native)
-    IterIntData, IterLogicalData, IterRawData, IterRealData, IterState,
+    IterComplexData, IterIntData, IterListData, IterLogicalData, IterRawData, IterRealData,
+    IterState, IterStringData,
     // Iterator-backed ALTREP types (with Coerce support)
     IterIntCoerceData, IterIntFromBoolData, IterRealCoerceData,
 };
