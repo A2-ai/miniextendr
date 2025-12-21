@@ -199,3 +199,65 @@ fn parsed_fn_no_inline_for_extern_c() {
         "should not add #[inline] to extern C functions"
     );
 }
+
+// =============================================================================
+// ALTREP derive macro tests
+// =============================================================================
+
+#[test]
+fn test_derive_altrep_integer_basic() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestData {
+            len: usize,
+        }
+    }).unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should generate AltrepLen impl
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("fn len"));
+
+    // Should generate AltIntegerData impl
+    assert!(output_str.contains("AltIntegerData"));
+    assert!(output_str.contains("fn elt"));
+
+    // Should call impl_altinteger_from_data!
+    assert!(output_str.contains("impl_altinteger_from_data"));
+}
+
+#[test]
+fn test_derive_altrep_integer_with_elt_field() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(elt = "value")]
+        pub struct ConstantData {
+            value: i32,
+            len: usize,
+        }
+    }).unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should use field for elt()
+    assert!(output_str.contains("self . value"));
+}
+
+#[test]
+fn test_derive_altrep_integer_with_options() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(dataptr, serialize)]
+        pub struct VecData {
+            data: Vec<i32>,
+            len: usize,
+        }
+    }).unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should pass options to macro
+    assert!(output_str.contains("dataptr"));
+    assert!(output_str.contains("serialize"));
+}

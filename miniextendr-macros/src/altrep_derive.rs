@@ -63,7 +63,10 @@ impl AltrepAttrs {
     }
 
     /// Get the length field or try to auto-detect it.
-    fn get_len_field(&self, input: &syn::DeriveInput) -> syn::Result<syn::Ident> {
+    fn get_len_field(
+        &self,
+        input: &syn::DeriveInput,
+    ) -> syn::Result<syn::Ident> {
         if let Some(ref field) = self.len_field {
             return Ok(field.clone());
         }
@@ -75,14 +78,12 @@ impl AltrepAttrs {
                 return Err(syn::Error::new(
                     input.span(),
                     "Altrep derive only supports structs",
-                ));
+                ))
             }
         };
 
         for field in fields {
-            if let Some(ident) = &field.ident
-                && (ident == "len" || ident == "length")
-            {
+            if let Some(ident) = &field.ident && (ident == "len" || ident == "length") {
                 return Ok(ident.clone());
             }
         }
