@@ -610,7 +610,7 @@ impl TryFromSexp for Option<String> {
 // NA-aware vector conversions
 // =============================================================================
 
-/// Macro for NA-aware R vector → Vec<Option<T>> conversions.
+/// Macro for NA-aware `R vector → Vec<Option<T>>` conversions.
 macro_rules! impl_vec_option_try_from_sexp {
     ($t:ty, $sexptype:ident, $dataptr:ident, $is_na:expr) => {
         impl TryFromSexp for Vec<Option<$t>> {

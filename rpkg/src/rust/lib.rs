@@ -648,6 +648,8 @@ pub fn boxed_ints(n: i32) -> SEXP {
 // region: StaticInts: &'static [i32] wrapper (static slice example)
 
 /// Static data that lives for the entire program lifetime
+/// 
+/// Data to showcase functionality
 static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
 
 /// ALTREP class wrapping a static slice - demonstrates `&'static [T]` support
@@ -678,6 +680,8 @@ pub fn leaked_ints(n: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 /// Static string data
+/// 
+/// Data to showcase functionality
 static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
 /// ALTREP class wrapping static string slices

@@ -422,7 +422,7 @@ impl IntoR for Vec<&str> {
 // NA-aware vector conversions
 // =============================================================================
 
-/// Macro for NA-aware Vec<Option<T>> → R vector conversions.
+/// Macro for NA-aware `Vec<Option<T>> → R` vector conversions.
 macro_rules! impl_vec_option_into_r {
     ($t:ty, $sexptype:ident, $dataptr:ident, $na_value:expr) => {
         impl IntoR for Vec<Option<$t>> {
