@@ -366,7 +366,10 @@ pub fn miniextendr(
         proc_macro2::TokenStream::new()
     } else if use_main_thread {
         // SEXP-returning or Dots-taking functions: use with_r_unwind_protect on main thread
-        let c_wrapper_doc = format!("C wrapper for [`{}`] (main thread).", rust_ident);
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{}`] (main thread). See [`{}`] for R wrapper.",
+            rust_ident, r_wrapper_generator
+        );
         quote::quote! {
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
@@ -394,7 +397,10 @@ pub fn miniextendr(
         // - TryFromSexp::try_from_sexp().unwrap() (argument conversion)
         // - IntoR::into_sexp() (result conversion) - also wrapped in with_r_unwind_protect
         //   to catch R errors (longjmp) from SEXP creation (e.g., allocation failure)
-        let c_wrapper_doc = format!("C wrapper for [`{}`] (worker thread).", rust_ident);
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{}`] (worker thread). See [`{}`] for R wrapper.",
+            rust_ident, r_wrapper_generator
+        );
         quote::quote! {
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
@@ -612,10 +618,10 @@ pub fn miniextendr(
     // Get the normalized item for output
     let original_item = parsed.item();
 
-    // Generate doc comment linking to R wrapper constant
+    // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
-        "See [`{}`] for the generated R wrapper code.",
-        r_wrapper_generator
+        "See [`{}`] for C wrapper, [`{}`] for R wrapper.",
+        c_ident, r_wrapper_generator
     );
 
     let expanded: proc_macro::TokenStream = quote::quote! {
