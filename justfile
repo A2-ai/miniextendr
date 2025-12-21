@@ -119,6 +119,10 @@ devtools-load:
 devtools-install:
     Rscript -e 'devtools::install("rpkg")'
 
+# Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, etc.)
+install_deps:
+    Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7"), repos = "https://cloud.r-project.org")'
+
 # Build rpkg with devtools::build
 devtools-build:
     Rscript -e 'devtools::build("rpkg")'
