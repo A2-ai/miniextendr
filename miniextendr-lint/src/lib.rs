@@ -1,4 +1,12 @@
 //! Lint helpers for miniextendr usage in a crate.
+//!
+//! # Usage in build.rs
+//!
+//! ```ignore
+//! fn main() {
+//!     miniextendr_lint::build_script();
+//! }
+//! ```
 
 // Include the shared parser from miniextendr-macros.
 // This module uses `use crate::{call_method_def_ident_for, r_wrapper_const_ident_for}`
@@ -24,6 +32,58 @@ fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
 fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+}
+
+fn cargo_warning(message: &str) {
+    let message = message.replace(['\n', '\r'], " ");
+    println!("cargo::warning={}", message.trim());
+}
+
+/// Entry point for build.rs. Runs the lint and prints cargo directives.
+///
+/// Controlled by `MINIEXTENDR_LINT` env var (enabled by default).
+/// Set to `0`, `false`, `no`, or `off` to disable.
+pub fn build_script() {
+    println!("cargo::rerun-if-env-changed=MINIEXTENDR_LINT");
+
+    let enabled = match lint_enabled("MINIEXTENDR_LINT") {
+        Ok(enabled) => enabled,
+        Err(message) => {
+            cargo_warning(&message);
+            return;
+        }
+    };
+
+    if !enabled {
+        return;
+    }
+
+    let manifest_dir = match env::var("CARGO_MANIFEST_DIR") {
+        Ok(dir) => PathBuf::from(dir),
+        Err(err) => {
+            cargo_warning(&format!("CARGO_MANIFEST_DIR: {err}"));
+            return;
+        }
+    };
+
+    let report = match run(&manifest_dir) {
+        Ok(report) => report,
+        Err(message) => {
+            cargo_warning(&message);
+            return;
+        }
+    };
+
+    for path in &report.files {
+        println!("cargo::rerun-if-changed={}", path.display());
+    }
+
+    if !report.errors.is_empty() {
+        cargo_warning("miniextendr-lint found issues");
+        for err in &report.errors {
+            cargo_warning(err);
+        }
+    }
 }
 
 #[derive(Debug, Default)]
