@@ -123,6 +123,8 @@ pub struct MethodAttrs {
     pub generic: Option<String>,
     /// Worker thread execution
     pub worker: bool,
+    /// Enable coercion for this method's parameters
+    pub coerce: bool,
 }
 
 /// Parsed impl block with all methods.
@@ -288,6 +290,8 @@ impl ParsedMethod {
                             method_attrs.active = true;
                         } else if inner.path.is_ident("worker") {
                             method_attrs.worker = true;
+                        } else if inner.path.is_ident("coerce") {
+                            method_attrs.coerce = true;
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -560,8 +564,10 @@ pub fn generate_method_c_wrapper(
     }
 
     // Generate conversion statements using shared builder
-    // TODO: Add coercion support for impl methods once attribute parsing supports it
-    let conversion_builder = crate::RustConversionBuilder::new();
+    let mut conversion_builder = crate::RustConversionBuilder::new();
+    if method.method_attrs.coerce {
+        conversion_builder = conversion_builder.with_coerce_all();
+    }
     let conversion_stmts = conversion_builder.build_conversions(&method.sig.inputs, &sexp_idents);
 
     // Generate self extraction for instance methods

@@ -73,15 +73,30 @@ impl std::fmt::Display for SexpNaError {
 impl std::error::Error for SexpNaError {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct SexpNaError {
-    pub sexp_type: SEXPTYPE,
-}
-
-#[derive(Debug, Clone, Copy)]
 pub enum SexpError {
     Type(SexpTypeError),
     Length(SexpLengthError),
     Na(SexpNaError),
+}
+
+impl std::fmt::Display for SexpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            SexpError::Type(e) => write!(f, "{}", e),
+            SexpError::Length(e) => write!(f, "{}", e),
+            SexpError::Na(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for SexpError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            SexpError::Type(e) => Some(e),
+            SexpError::Length(e) => Some(e),
+            SexpError::Na(e) => Some(e),
+        }
+    }
 }
 
 impl From<SexpTypeError> for SexpError {
@@ -859,6 +874,24 @@ pub enum CoercedSexpError {
     Sexp(SexpError),
     /// Error from the coercion step
     Coerce(String),
+}
+
+impl std::fmt::Display for CoercedSexpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CoercedSexpError::Sexp(e) => write!(f, "SEXP conversion failed: {}", e),
+            CoercedSexpError::Coerce(msg) => write!(f, "coercion failed: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for CoercedSexpError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            CoercedSexpError::Sexp(e) => Some(e),
+            CoercedSexpError::Coerce(_) => None,
+        }
+    }
 }
 
 impl From<SexpError> for CoercedSexpError {

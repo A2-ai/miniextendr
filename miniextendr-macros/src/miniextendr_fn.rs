@@ -180,7 +180,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         let mut unused_counter = 0usize;
         for arg in &mut item.sig.inputs {
             let syn::FnArg::Typed(pat_type) = arg else {
-                // TODO: no support for self!
+                // Self parameters are not allowed in standalone functions.
+                // Users should use #[miniextendr(receiver|r6|s3|s4|s7)] on impl blocks instead.
+                // The error is raised in lib.rs c_wrapper_inputs generation.
                 continue;
             };
 
