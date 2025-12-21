@@ -578,7 +578,9 @@ pub fn miniextendr(
                     .is_err()
         });
 
-        let has_export_name = attrs.iter().any(|attr| attr.path().is_ident("export_name"));
+        let has_export_name = attrs
+            .iter()
+            .any(|attr| attr.path().is_ident("export_name"));
 
         if !has_no_mangle && !has_export_name {
             return syn::Error::new(

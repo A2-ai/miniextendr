@@ -82,7 +82,7 @@ pub unsafe extern "C-unwind" fn t_unserialize_ex<T: Altrep>(
     objf: ::std::os::raw::c_int,
     levs: ::std::os::raw::c_int,
 ) -> SEXP {
-    T::unserialize_ex(class, state, attr, objf as i32, levs as i32)
+    T::unserialize_ex(class, state, attr, objf, levs)
 }
 
 /// Trampoline for Coerce method.
