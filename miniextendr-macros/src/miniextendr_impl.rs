@@ -1390,17 +1390,21 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// Build R formal parameters from a Rust signature.
 /// For impl methods, this skips the self parameter.
 fn build_r_formals(sig: &syn::Signature) -> String {
-    crate::RArgumentBuilder::new(&sig.inputs)
-        .skip_first() // Skip self parameter
-        .build_formals()
+    let mut builder = crate::RArgumentBuilder::new(&sig.inputs);
+    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        builder = builder.skip_first(); // Skip self parameter for instance methods
+    }
+    builder.build_formals()
 }
 
 /// Build R .Call arguments from a Rust signature.
 /// For impl methods, this skips the self parameter.
 fn build_r_call_args(sig: &syn::Signature) -> String {
-    crate::RArgumentBuilder::new(&sig.inputs)
-        .skip_first() // Skip self parameter
-        .build_call_args()
+    let mut builder = crate::RArgumentBuilder::new(&sig.inputs);
+    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        builder = builder.skip_first(); // Skip self parameter for instance methods
+    }
+    builder.build_call_args()
 }
 
 /// Expand a #[miniextendr(receiver|r6|s7|s3|s4)] impl block.
@@ -1474,9 +1478,46 @@ pub fn expand_impl(
 
         // Call method def array for module registration
         #(#cfg_attrs)*
+        #[doc(hidden)]
         pub const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
             [#(#call_def_idents()),*];
     };
 
     expanded.into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn receiver_wrappers_preserve_static_params() {
+        let attrs = ImplAttrs {
+            class_system: ClassSystem::Receiver,
+            class_name: None,
+        };
+
+        let item_impl: syn::ItemImpl = syn::parse_quote! {
+            impl ReceiverCounter {
+                pub fn new(initial: i32) -> Self {
+                    unimplemented!()
+                }
+
+                pub fn add(&self, amount: i32) -> i32 {
+                    amount
+                }
+
+                pub fn default_counter(step: i32) -> Self {
+                    unimplemented!()
+                }
+            }
+        };
+
+        let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
+        let wrapper = generate_receiver_r_wrapper(&parsed);
+
+        assert!(wrapper.contains("ReceiverCounter$new <- function(initial)"));
+        assert!(wrapper.contains("ReceiverCounter$add <- function(amount)"));
+        assert!(wrapper.contains("ReceiverCounter$default_counter <- function(step)"));
+    }
 }
