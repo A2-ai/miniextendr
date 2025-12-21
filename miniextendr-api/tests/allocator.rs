@@ -17,7 +17,6 @@ fn initialize_r() {
             .expect("Failed to initialize R");
         // Initialize in same order as rpkg/src/entrypoint.c.in
         miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::altrep::miniextendr_altrep_init();
         miniextendr_api::worker::miniextendr_worker_init();
         std::mem::forget(engine);
     });
