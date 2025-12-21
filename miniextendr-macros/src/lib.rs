@@ -473,6 +473,8 @@ pub fn miniextendr(
     if has_dots {
         arg_builder = arg_builder.with_dots(named_dots.map(|id| id.to_string()));
     }
+    // Add user-specified parameter defaults
+    arg_builder = arg_builder.with_defaults(parsed.param_defaults().clone());
 
     let r_formals = arg_builder.build_formals_tokens();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();

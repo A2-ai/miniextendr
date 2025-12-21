@@ -22,6 +22,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 // Test modules
 mod coerce_tests;
 mod conversion_tests;
+mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
 mod interrupt_tests;
@@ -1018,6 +1019,7 @@ miniextendr_module! {
     use dots_tests;
     use interrupt_tests;
     use conversion_tests;
+    use default_tests;
     use externalptr_tests;
     use receiver_tests;
     use r6_tests;
