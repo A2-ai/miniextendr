@@ -1,7 +1,7 @@
 [workspace]
 resolver = "3"
 members = ["miniextendr-api", "miniextendr-macros", "miniextendr-engine", "miniextendr-bench"]
-exclude = ["vendor", "rpkg/src/rust", "rpkg/src/vendor", "rpkg/inst/vendor"]
+exclude = ["vendor", "rpkg/src/rust", "rpkg/src/vendor"]
 
 [workspace.dependencies]
 miniextendr-api = { path = "miniextendr-api"}
@@ -10,7 +10,7 @@ miniextendr-macros = { path = "miniextendr-macros"}
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-exclude = ["vendor", "rpkg/inst/vendor"]
+exclude = ["vendor"]
 
 [profile.release]
 debug-assertions = true
