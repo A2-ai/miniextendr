@@ -31,13 +31,13 @@ clippy *cargo_flags:
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
-doc-check *cargo_flags:
+doc-check *cargo_flags: configure
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     cargo doc --no-deps --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build and open documentation
 alias cargo-doc := doc
-doc *cargo_flags:
+doc *cargo_flags: configure
     cargo doc --document-private-items --workspace {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
 
@@ -79,9 +79,10 @@ expand *cargo_flags:
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-# Vendor rpkg deps and run ./configure
-configure: vendor-rpkg
+# Run ./configure and vendor rpkg deps
+configure:
     cd rpkg && autoconf && ./configure
+    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Vendor dependencies (workspace-level)
 alias cargo-vendor := vendor
@@ -89,31 +90,17 @@ vendor:
     cargo vendor \
         --sync=Cargo.toml \
         --sync=miniextendr-api/Cargo.toml \
+        --sync=miniextendr-bench/Cargo.toml \
         --sync=miniextendr-macros/Cargo.toml \
         --sync=rpkg/src/rust/Cargo.toml \
         vendor
 
-# Vendor dependencies for rpkg (into inst/vendor)
-# Also copies local workspace crates since cargo vendor only handles crates.io deps
-# Patches Cargo.toml to remove workspace inheritance (not available when vendored)
+# Vendor crates.io dependencies for rpkg (into src/vendor)
+# Local crates (miniextendr-api, miniextendr-macros) are handled by:
+# - configure.ac rsync (dev builds)
+# - bootstrap.R (CRAN tarball builds)
 vendor-rpkg:
-    cargo vendor \
-        --sync=miniextendr-api/Cargo.toml \
-        --sync=miniextendr-macros/Cargo.toml \
-        rpkg/inst/vendor
-    rm -rf rpkg/inst/vendor/miniextendr-api rpkg/inst/vendor/miniextendr-macros
-    cp -r miniextendr-api rpkg/inst/vendor/
-    cp -r miniextendr-macros rpkg/inst/vendor/
-    @# Patch miniextendr-api Cargo.toml - remove workspace inheritance
-    sed -i '' \
-        -e 's/edition\.workspace = true/edition = "2024"/' \
-        -e 's/version\.workspace = true/version = "0.1.0"/' \
-        rpkg/inst/vendor/miniextendr-api/Cargo.toml
-    @# Patch miniextendr-macros Cargo.toml - remove workspace inheritance
-    sed -i '' \
-        -e 's/edition\.workspace = true/edition = "2024"/' \
-        -e 's/version\.workspace = true/version = "0.1.0"/' \
-        rpkg/inst/vendor/miniextendr-macros/Cargo.toml
+    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Load and test rpkg with devtools
 devtools-test FILTER="":
@@ -131,6 +118,14 @@ devtools-load:
 # Install rpkg with devtools::install
 devtools-install:
     Rscript -e 'devtools::install("rpkg")'
+
+# Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, etc.)
+install_deps:
+    Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7"), repos = "https://cloud.r-project.org")'
+
+# Build rpkg with devtools::build
+devtools-build:
+    Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
 devtools-check:
@@ -173,5 +168,11 @@ r-cmd-check *args:
 # REVIEW THIS SLOP:
 # Build R package tarball
 test-r-build:
-    R CMD build --compression=none rpkg
-    tar -xvzf rpkg_0.0.0.9000.tar -C "$(mkdir -p rpkg_build && echo rpkg_build)"
+    pkg="$$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Package"]])')" \
+    && ver="$$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Version"]])')" \
+    && R CMD build --compression=none rpkg \
+    && tarball="$${pkg}_$${ver}.tar" \
+    && [ -f "$$tarball" ] || tarball="$${tarball}.gz" \
+    && out_dir="rpkg_build/$${pkg}_$${ver}" \
+    && mkdir -p "$$out_dir" \
+    && Rscript -e 'args <- commandArgs(trailingOnly = TRUE); utils::untar(args[[1]], exdir = args[[2]])' "$$tarball" "$$out_dir"

@@ -8,19 +8,33 @@
 //!
 use std::{
     any::Any,
-    cell::LazyCell,
     ffi::c_void,
     panic::{AssertUnwindSafe, catch_unwind},
+    sync::OnceLock,
 };
 
 use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
 
-thread_local! {
-    static R_CONTINUATION_TOKEN: LazyCell<SEXP> = LazyCell::new(|| unsafe {
+/// Global continuation token for R_UnwindProtect.
+///
+/// Using a single global token instead of thread-local tokens avoids leaking
+/// one token per thread that uses `with_r_unwind_protect`.
+///
+/// # Safety
+///
+/// The token is created and preserved once during first use. It remains valid
+/// for the entire R session.
+static R_CONTINUATION_TOKEN: OnceLock<SEXP> = OnceLock::new();
+
+/// Get or create the global continuation token.
+///
+/// This is public for use by the worker module.
+pub(crate) fn get_continuation_token() -> SEXP {
+    *R_CONTINUATION_TOKEN.get_or_init(|| unsafe {
         let token = ffi::R_MakeUnwindCont();
         ffi::R_PreserveObject(token);
         token
-    });
+    })
 }
 
 /// Convert a Rust panic payload into an R error and continue unwinding on the R side.
@@ -113,7 +127,7 @@ where
     }
 
     unsafe {
-        let token = R_CONTINUATION_TOKEN.with(|x| **x);
+        let token = get_continuation_token();
 
         let data = Box::into_raw(Box::new(CallData::<F, R> {
             f: Some(f),

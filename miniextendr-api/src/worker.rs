@@ -42,30 +42,41 @@ enum WorkerMessage<T> {
 // Type alias for the common worker message type
 type TypeErasedWorkerMessage = WorkerMessage<Box<dyn Any + Send>>;
 
+// Type alias to avoid type_complexity lint
+type WorkerToMainSender = RefCell<Option<SyncSender<TypeErasedWorkerMessage>>>;
+type MainResponseReceiver = RefCell<Option<Receiver<MainThreadResponse>>>;
+
 // Thread-local channels for worker -> main communication during run_on_worker
 thread_local! {
-    static R_CONTINUATION_TOKEN: std::cell::LazyCell<SEXP> = std::cell::LazyCell::new(|| unsafe {
-        let token = ffi::R_MakeUnwindCont();
-        ffi::R_PreserveObject(token);
-        token
-    });
     // Channel to send messages (work requests or done) to main thread
-    #[allow(clippy::type_complexity)]
-    static WORKER_TO_MAIN_TX: RefCell<Option<SyncSender<TypeErasedWorkerMessage>>> = const { RefCell::new(None) };
+    static WORKER_TO_MAIN_TX: WorkerToMainSender = const { RefCell::new(None) };
     // Channel to receive responses from main thread
-    static MAIN_RESPONSE_RX: RefCell<Option<Receiver<MainThreadResponse>>> = const { RefCell::new(None) };
+    static MAIN_RESPONSE_RX: MainResponseReceiver = const { RefCell::new(None) };
+}
+
+/// Check whether the current thread is running inside a `run_on_worker` context
+/// (i.e., `with_r_thread` has routing channels available).
+pub fn has_worker_context() -> bool {
+    WORKER_TO_MAIN_TX.with(|tx_cell| tx_cell.borrow().is_some())
 }
 
 /// Check if the current thread is R's main thread.
 ///
 /// Returns `true` if called from the main R thread, `false` otherwise.
-/// If the worker hasn't been initialized yet, returns `true` (assumes main thread).
+/// If the worker hasn't been initialized yet, returns `false` (safe default).
+///
+/// # Note
+///
+/// Before `miniextendr_worker_init()` is called, this always returns `false`.
+/// This is intentional - it prevents R API calls from arbitrary threads before
+/// the worker is properly set up. Ensure `miniextendr_worker_init()` is called
+/// during R package initialization (typically in `R_init_<pkgname>`).
 #[inline(always)]
 pub fn is_r_main_thread() -> bool {
     R_MAIN_THREAD_ID
         .get()
         .map(|&id| id == std::thread::current().id())
-        .unwrap_or(true) // If not initialized, assume we're on main thread
+        .unwrap_or(false) // Safe default: assume NOT main thread until initialized
 }
 
 /// Extract a message from a panic payload.
@@ -259,7 +270,7 @@ where
                 }
 
                 let response: MainThreadResponse = unsafe {
-                    let token = R_CONTINUATION_TOKEN.with(|x| **x);
+                    let token = crate::unwind_protect::get_continuation_token();
 
                     let data = Box::into_raw(Box::new(CallData {
                         work: Some(work),
@@ -323,16 +334,43 @@ where
     }
 }
 
+/// Initialize the miniextendr worker thread infrastructure.
+///
+/// # Requirements
+///
+/// This function **MUST** be called from R's main thread, typically from the
+/// `R_init_<pkgname>` function in `entrypoint.c`. Calling from any other thread
+/// will cause all subsequent thread checks to be incorrect, leading to unsafe
+/// R API calls from wrong threads.
+///
+/// # Panics
+///
+/// Panics if called when `R_MAIN_THREAD_ID` was already set to a different thread,
+/// as this indicates incorrect initialization order.
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_worker_init() {
     static RUN_ONCE: std::sync::Once = std::sync::Once::new();
     RUN_ONCE.call_once_force(|x| {
-        // just ignore repeated calls to this function
+        // Ignore repeated calls from the same thread
         if x.is_poisoned() {
-            println!("warning: miniextendr worker initialisation was done more than once");
+            eprintln!("warning: miniextendr worker initialisation was done more than once");
             return;
         }
-        let _ = R_MAIN_THREAD_ID.set(std::thread::current().id());
+
+        // Safety check: if R_MAIN_THREAD_ID was already set, verify it's the same thread
+        let current_id = std::thread::current().id();
+        if let Some(&existing_id) = R_MAIN_THREAD_ID.get() {
+            if existing_id != current_id {
+                panic!(
+                    "miniextendr_worker_init called from thread {:?}, but R_MAIN_THREAD_ID \
+                     was already set to {:?}. This indicates incorrect initialization order.",
+                    current_id, existing_id
+                );
+            }
+            return; // Already initialized correctly
+        }
+
+        let _ = R_MAIN_THREAD_ID.set(current_id);
 
         if JOB_TX.get().is_some() {
             return;

@@ -1,8 +1,0 @@
-[source.crates-io]
-replace-with = "vendored-sources"
-
-[source.vendored-sources]
-directory = "/Users/elea/Documents/GitHub/miniextendr/rpkg/inst/vendor"
-
-[build]
-target-dir = "/Users/elea/Documents/GitHub/miniextendr/rpkg/src/rust/target"

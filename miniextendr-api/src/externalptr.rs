@@ -1,16 +1,31 @@
-//! ExternalPtr<T> - A Box-like owned pointer that wraps R's EXTPTRSXP
+//! `ExternalPtr<T>` - A Box-like owned pointer that wraps R's EXTPTRSXP
 //!
-//! This provides ownership semantics similar to Box<T>, with the key difference
+//! This provides ownership semantics similar to `Box<T>`, with the key difference
 //! that cleanup is deferred to R's garbage collector via finalizers.
+//!
+//! This means you can hand ownership of Rust-allocated data to R and let its GC
+//! decide when to drop it. The `tag` slot is a human-friendly type name, and the
+//! `prot` slot stores both the type symbol and any R objects you want to keep
+//! alive alongside the pointer. Neither slot is an R class attribute; if you
+//! want an S3/S4 class, attach it yourself in R.
+//!
+//! `PartialEq`/`PartialOrd` compare the pointee values (like `Box<T>`). Use
+//! `ptr_eq` when you care about pointer identity, and `as_ref()`/`as_mut()` for
+//! explicit by-value comparisons.
 //!
 //! # Type Identification
 //!
-//! The `tag` slot holds a human-readable symbol (type name).
+//! Type identification uses R's interned symbols (`Rf_install`). Since R interns
+//! symbols, the same type name always returns the same pointer, enabling fast
+//! pointer comparison for type checking.
+//!
+//! The `tag` slot holds a symbol (type name).
 //! The `prot` slot holds a VECSXP (list) with two elements:
-//!   - Index 0: RAWSXP containing the `StableTypeId` for fast type comparison
+//!   - Index 0: SYMSXP (interned symbol) for fast pointer-based type comparison
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
 
 use std::alloc::Layout;
+use std::any::TypeId;
 use std::fmt;
 use std::hash::{Hash, Hasher};
 use std::marker::PhantomData;
@@ -21,35 +36,19 @@ use std::ptr::{self, NonNull};
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
-    R_MakeExternalPtr, R_NilValue, R_RegisterCFinalizerEx, RAW, Rboolean, Rf_allocVector,
-    Rf_install, Rf_protect, Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, VECTOR_ELT,
+    R_MakeExternalPtr, R_MakeExternalPtr_unchecked, R_NilValue, R_RegisterCFinalizerEx,
+    R_RegisterCFinalizerEx_unchecked, Rboolean, Rf_allocVector, Rf_allocVector_unchecked,
+    Rf_install, Rf_install_unchecked, Rf_protect, Rf_protect_unchecked, Rf_unprotect,
+    Rf_unprotect_unchecked, SET_VECTOR_ELT, SET_VECTOR_ELT_unchecked, SEXP, SEXPTYPE, SexpExt,
+    VECTOR_ELT,
 };
 
-/// A wrapper around SEXP that implements Send.
-///
-/// # Safety
-///
-/// This wrapper is **only** safe when used with `with_r_thread` to transfer
-/// a SEXP created on the main thread back to the calling thread. The SEXP
-/// itself is not thread-safe, but the pointer value can be safely transmitted
-/// between threads as long as R APIs are only called on the main thread.
-///
-/// Do not use this to enable concurrent access to SEXPs from multiple threads.
-#[repr(transparent)]
-struct SendableSexp(SEXP);
-
-// SAFETY: This is safe because:
-// 1. SEXP is just a pointer (memory address)
-// 2. We only send it from main thread to worker after R API work is done
-// 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
-unsafe impl Send for SendableSexp {}
-
-/// A wrapper around a raw pointer that implements Send.
+/// A wrapper around a raw pointer that implements [`Send`].
 ///
 /// # Safety
 ///
 /// This is safe to send between threads because it's just a memory address.
-/// The data T is owned and transferred to the main thread before being accessed.
+/// The data `T` is owned and transferred to the main thread before being accessed.
 #[repr(transparent)]
 struct SendablePtr<T>(NonNull<T>, PhantomData<T>);
 
@@ -58,7 +57,7 @@ struct SendablePtr<T>(NonNull<T>, PhantomData<T>);
 unsafe impl<T> Send for SendablePtr<T> {}
 
 impl<T> SendablePtr<T> {
-    /// Create a new SendablePtr from a raw pointer.
+    /// Create a new `SendablePtr` from a raw pointer.
     ///
     /// # Safety
     ///
@@ -76,160 +75,53 @@ impl<T> SendablePtr<T> {
     }
 }
 
-/// Index of the StableTypeId RAWSXP in the prot VECSXP
+/// Index of the type SYMSXP contained in the `prot` (a `VECSXP` list)
 const PROT_TYPE_ID_INDEX: isize = 0;
-/// Index of user-protected objects in the prot VECSXP
+/// Index of user-protected objects contained in the `prot` (a `VECSXP` list)
 const PROT_USER_INDEX: isize = 1;
-/// Length of the prot VECSXP
+/// Length of the `prot` list (`VECSXP`)
 const PROT_VEC_LEN: isize = 2;
 
-// =============================================================================
-// Stable Type Identification
-// =============================================================================
+#[inline]
+fn is_type_erased<T: 'static>() -> bool {
+    TypeId::of::<T>() == TypeId::of::<()>()
+}
 
-/// A stable type identifier that works across different rustc versions.
+/// Get the interned R symbol for a type's name.
 ///
-/// Unlike `std::any::TypeId`, this uses `std::any::type_name` which provides
-/// a stable string representation. We hash this at compile time for fast comparison.
+/// R interns symbols via `Rf_install`, so the same string always returns
+/// the same pointer. This enables fast pointer comparison for type checking.
 ///
-/// Note: `type_name` output isn't guaranteed to be unique across all types,
-/// but in practice it's sufficient for FFI type-checking purposes.
+/// # Safety
 ///
-/// # Layout
+/// Must be called from R's main thread.
+#[inline]
+unsafe fn type_symbol<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) }
+}
+
+/// Unchecked version of [`type_symbol`] - no thread safety checks.
 ///
-/// This struct is `repr(C)` so it can be safely stored in a RAWSXP and
-/// retrieved via pointer cast.
-#[derive(Clone, Copy)]
-#[repr(C)]
-pub struct StableTypeId {
-    /// Hash of the type name (for fast comparison)
-    hash: u64,
-    /// Length of the type name
-    name_len: usize,
-    /// Pointer to the static type name string
-    name_ptr: *const u8,
+/// # Safety
+///
+/// Must be called from R's main thread. No debug assertions.
+#[inline]
+unsafe fn type_symbol_unchecked<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install_unchecked(T::TYPE_NAME_CSTR.as_ptr().cast()) }
 }
 
-unsafe impl Send for StableTypeId {}
-unsafe impl Sync for StableTypeId {}
-
-impl StableTypeId {
-    /// Create a new StableTypeId from a static type name string.
-    ///
-    /// This is const and can be used in const contexts when the type name
-    /// is known at compile time (e.g., from `stringify!` in macros).
-    #[inline]
-    pub const fn from_name(name: &'static str) -> Self {
-        Self {
-            hash: const_hash_str(name),
-            name_len: name.len(),
-            name_ptr: name.as_ptr(),
-        }
-    }
-
-    /// Create a new StableTypeId for type T using `std::any::type_name`.
-    ///
-    /// Note: This is NOT const because `type_name` is not const-stable.
-    /// For const contexts, use `from_name` with a compile-time string.
-    #[inline]
-    pub fn of<T: ?Sized + 'static>() -> Self {
-        Self::from_name(std::any::type_name::<T>())
-    }
-
-    /// Get the type name as a string slice
-    #[inline]
-    pub fn name(&self) -> &'static str {
-        unsafe {
-            std::str::from_utf8_unchecked(std::slice::from_raw_parts(self.name_ptr, self.name_len))
-        }
-    }
-
-    /// Get the hash value
-    #[inline]
-    pub const fn hash_value(&self) -> u64 {
-        self.hash
-    }
-
-    /// Create a RAWSXP containing this StableTypeId.
-    ///
-    /// The returned SEXP must be protected by the caller if needed.
-    #[inline]
-    unsafe fn to_rawsxp(self) -> SEXP {
-        let size = mem::size_of::<Self>();
-        let raw = unsafe { Rf_allocVector(SEXPTYPE::RAWSXP, size as isize) };
-        unsafe { ptr::copy_nonoverlapping(std::ptr::from_ref(&self).cast(), RAW(raw), size) };
-        raw
-    }
-
-    /// Extract a StableTypeId from a RAWSXP.
-    ///
-    /// Returns `None` if:
-    /// - The SEXP is not a RAWSXP
-    /// - The RAWSXP is not the correct size
-    #[inline]
-    fn from_rawsxp(sexp: SEXP) -> Option<Self> {
-        if sexp.is_null_or_nil() {
-            return None;
-        }
-
-        if sexp.type_of() != SEXPTYPE::RAWSXP {
-            return None;
-        }
-
-        let expected_size = mem::size_of::<Self>();
-        if sexp.len() != expected_size {
-            return None;
-        }
-
-        let mut result = MaybeUninit::<Self>::uninit();
-        unsafe { ptr::copy_nonoverlapping(RAW(sexp), result.as_mut_ptr().cast(), expected_size) };
-        Some(unsafe { result.assume_init() })
-    }
-}
-
-impl PartialEq for StableTypeId {
-    #[inline]
-    fn eq(&self, other: &Self) -> bool {
-        // Fast path: compare hashes first
-        if self.hash != other.hash {
-            return false;
-        }
-        // Slow path: compare names for hash collision safety
-        self.name() == other.name()
-    }
-}
-
-impl Eq for StableTypeId {}
-
-impl fmt::Debug for StableTypeId {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("StableTypeId")
-            .field("name", &self.name())
-            .field("hash", &format_args!("{:#018x}", self.hash))
-            .finish()
-    }
-}
-
-impl Hash for StableTypeId {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.hash.hash(state);
-    }
-}
-
-/// Compile-time string hashing using FNV-1a
-const fn const_hash_str(s: &str) -> u64 {
-    const FNV_OFFSET: u64 = 0xcbf29ce484222325;
-    const FNV_PRIME: u64 = 0x100000001b3;
-
-    let bytes = s.as_bytes();
-    let mut hash = FNV_OFFSET;
-    let mut i = 0;
-    while i < bytes.len() {
-        hash ^= bytes[i] as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-        i += 1;
-    }
-    hash
+/// Get the type name from a stored symbol SEXP.
+///
+/// # Safety
+///
+/// `sym` must be a valid SYMSXP.
+#[inline]
+unsafe fn symbol_name(sym: SEXP) -> &'static str {
+    // SYMSXP's PRINTNAME is a CHARSXP
+    let printname = unsafe { crate::ffi::PRINTNAME(sym) };
+    let cstr = unsafe { crate::ffi::R_CHAR(printname) };
+    let len = unsafe { crate::ffi::Rf_xlength(printname) as usize };
+    unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(cstr.cast(), len)) }
 }
 
 // =============================================================================
@@ -238,27 +130,21 @@ const fn const_hash_str(s: &str) -> u64 {
 
 /// Trait for types that can be stored in an ExternalPtr.
 ///
-/// This provides the stable type identification needed for runtime type checking.
+/// This provides the type identification needed for runtime type checking.
+/// Type identification uses R's symbol interning (`Rf_install`) for fast
+/// pointer-based comparison.
 pub trait TypedExternal: 'static {
-    /// The type name as a static string (used for hashing and debugging)
+    /// The type name as a static string (for debugging)
     const TYPE_NAME: &'static str;
 
-    /// The stable type identifier for this type (computed from TYPE_NAME)
-    const TYPE_ID: StableTypeId = StableTypeId::from_name(Self::TYPE_NAME);
-
-    /// The type name as a C string (for R tag)
+    /// The type name as a null-terminated C string (for R symbol creation)
     const TYPE_NAME_CSTR: &'static [u8];
 }
 
 /// Implement TypedExternal for a type.
 ///
-/// This macro generates both the `StableTypeId` (using `std::any::type_name`)
-/// and a C-string tag name for R (also using `type_name` for consistency).
-///
-/// # Note
-///
-/// The tag name uses `std::any::type_name` at runtime to match the `StableTypeId`.
-/// This means the tag will include the full module path (e.g., "mycrate::MyStruct").
+/// This macro generates the type name as both a Rust string and a null-terminated
+/// C string for use with R's symbol interning (`Rf_install`).
 #[macro_export]
 macro_rules! impl_typed_external {
     ($ty:ty) => {
@@ -283,6 +169,11 @@ macro_rules! impl_typed_external_with_tag {
     };
 }
 
+impl TypedExternal for () {
+    const TYPE_NAME: &'static str = "()";
+    const TYPE_NAME_CSTR: &'static [u8] = b"()\0";
+}
+
 // =============================================================================
 // ExternalPtr<T>
 // =============================================================================
@@ -296,7 +187,7 @@ type PhantomUnsend = PhantomData<*mut ()>;
 /// This is conceptually similar to `Box<T>`, but with the following differences:
 /// - Memory is freed by R's GC via a registered finalizer (non-deterministic)
 /// - The underlying SEXP is Copy, so aliasing must be manually prevented
-/// - Type checking happens at runtime via StableTypeId stored in the prot slot
+/// - Type checking happens at runtime via R symbol comparison in the prot slot
 ///
 /// # Thread Safety
 ///
@@ -317,10 +208,6 @@ pub struct ExternalPtr<T: TypedExternal> {
 }
 
 impl<T: TypedExternal> ExternalPtr<T> {
-    // =========================================================================
-    // Constructors (Box-equivalent)
-    // =========================================================================
-
     /// Allocates memory on the heap and places `x` into it.
     ///
     /// This function can be called from any thread:
@@ -344,21 +231,22 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sendable_ptr = unsafe { SendablePtr::new_unchecked(ptr) };
 
         // Use with_r_thread to run R API calls on main thread
-        // Returns SendableSexp which can be sent back
-        let sendable_sexp = crate::worker::with_r_thread(move || {
+        let sexp = crate::worker::with_r_thread(move || {
             // This runs on main thread - unwrap the pointer
             let ptr: *mut T = sendable_ptr.into_ptr();
-            SendableSexp(unsafe { Self::create_extptr_sexp(ptr) })
+            unsafe { Self::create_extptr_sexp(ptr) }
         });
 
         Self {
-            sexp: sendable_sexp.0,
+            sexp,
             _marker: PhantomData,
             _unsend: PhantomData,
         }
     }
 
-    /// Allocates memory on the heap and places `x` into it, without thread check.
+    /// Allocates memory on the heap and places `x` into it, without thread checks.
+    ///
+    /// This version skips the debug thread-safety assertions in R API calls.
     ///
     /// # Safety
     ///
@@ -372,7 +260,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
     #[inline]
     pub unsafe fn new_unchecked(x: T) -> Self {
         let ptr = Box::into_raw(Box::new(x));
-        let sexp = unsafe { Self::create_extptr_sexp(ptr) };
+        let sexp = unsafe { Self::create_extptr_sexp_unchecked(ptr) };
         Self {
             sexp,
             _marker: PhantomData,
@@ -387,30 +275,60 @@ impl<T: TypedExternal> ExternalPtr<T> {
     unsafe fn create_extptr_sexp(ptr: *mut T) -> SEXP {
         debug_assert!(!ptr.is_null(), "create_extptr_sexp received null pointer");
 
-        // Create the tag symbol for human-readable type identification
-        let tag = unsafe { Rf_install(T::TYPE_NAME_CSTR.as_ptr().cast()) };
+        // Create the type symbol (R interns symbols, so same string = same pointer)
+        let type_sym = unsafe { type_symbol::<T>() };
 
-        // Create the prot VECSXP: [type_id_rawsxp, user_protected]
+        // Create the prot VECSXP: [type_symbol, user_protected]
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
 
-        // Create a RAWSXP containing the StableTypeId for fast type checking
-        let type_id = T::TYPE_ID;
-        let type_id_raw = unsafe { type_id.to_rawsxp() };
-        unsafe { Rf_protect(type_id_raw) };
-
-        // Store type ID in slot 0
-        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_raw) };
+        // Store type symbol in slot 0 for fast pointer-based type checking
+        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_sym) };
         // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with tag and prot
-        let sexp = unsafe { R_MakeExternalPtr(ptr.cast(), tag, prot) };
+        // Create the external pointer with tag (same symbol) and prot
+        let sexp = unsafe { R_MakeExternalPtr(ptr.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
 
         // Register the C finalizer that will call drop
         unsafe { R_RegisterCFinalizerEx(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
 
-        unsafe { Rf_unprotect(3) };
+        unsafe { Rf_unprotect(2) };
+
+        sexp
+    }
+
+    /// Create an EXTPTRSXP from a raw pointer without thread safety checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. No debug assertions for thread safety.
+    #[inline]
+    unsafe fn create_extptr_sexp_unchecked(ptr: *mut T) -> SEXP {
+        debug_assert!(
+            !ptr.is_null(),
+            "create_extptr_sexp_unchecked received null pointer"
+        );
+
+        // Create the type symbol (R interns symbols, so same string = same pointer)
+        let type_sym = unsafe { type_symbol_unchecked::<T>() };
+
+        // Create the prot VECSXP: [type_symbol, user_protected]
+        let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
+        unsafe { Rf_protect_unchecked(prot) };
+
+        // Store type symbol in slot 0 for fast pointer-based type checking
+        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_sym) };
+        // Slot 1 (user protected) starts as R_NilValue (already default)
+
+        // Create the external pointer with tag (same symbol) and prot
+        let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr.cast(), type_sym, prot) };
+        unsafe { Rf_protect_unchecked(sexp) };
+
+        // Register the C finalizer that will call drop
+        unsafe { R_RegisterCFinalizerEx_unchecked(sexp, Some(release_raw::<T>), Rboolean::TRUE) };
+
+        unsafe { Rf_unprotect_unchecked(2) };
 
         sexp
     }
@@ -450,6 +368,24 @@ impl<T: TypedExternal> ExternalPtr<T> {
     #[inline]
     pub unsafe fn from_raw(raw: *mut T) -> Self {
         let sexp = unsafe { Self::create_extptr_sexp(raw) };
+        Self {
+            sexp,
+            _marker: PhantomData,
+            _unsend: PhantomData,
+        }
+    }
+
+    /// Constructs an ExternalPtr from a raw pointer, without thread checks.
+    ///
+    /// # Safety
+    ///
+    /// - `raw` must have been allocated via `Box::into_raw` or equivalent
+    /// - `raw` must not be null
+    /// - Caller transfers ownership to the ExternalPtr
+    /// - Must be called from R's main thread (no debug assertions)
+    #[inline]
+    pub unsafe fn from_raw_unchecked(raw: *mut T) -> Self {
+        let sexp = unsafe { Self::create_extptr_sexp_unchecked(raw) };
         Self {
             sexp,
             _marker: PhantomData,
@@ -600,6 +536,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { R_ExternalPtrAddr(self.sexp).cast() }
     }
 
+    /// Checks whether two `ExternalPtr`s refer to the same allocation (pointer identity).
+    ///
+    /// This ignores the pointee values. Use this when you need alias detection;
+    /// prefer `PartialEq`/`PartialOrd` or `as_ref()` for value comparisons.
+    #[inline]
+    pub fn ptr_eq(this: &Self, other: &Self) -> bool {
+        let a = unsafe { R_ExternalPtrAddr(this.sexp).cast::<()>().cast_const() };
+        let b = unsafe { R_ExternalPtrAddr(other.sexp).cast::<()>().cast_const() };
+        ptr::eq(a, b)
+    }
+
     // =========================================================================
     // R-specific accessors
     // =========================================================================
@@ -620,6 +567,19 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { R_ExternalPtrTag(self.sexp) }
     }
 
+    /// Returns the tag SEXP (unchecked version).
+    ///
+    /// Skips thread safety checks for performance-critical paths.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Only use in ALTREP callbacks
+    /// or other contexts where you're certain you're on the main thread.
+    #[inline]
+    pub unsafe fn tag_unchecked(&self) -> SEXP {
+        unsafe { crate::ffi::R_ExternalPtrTag_unchecked(self.sexp) }
+    }
+
     /// Returns the protected SEXP slot (user-protected objects).
     ///
     /// This returns the user-protected object stored in the prot VECSXP,
@@ -635,6 +595,30 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 return R_NilValue;
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
+        }
+    }
+
+    /// Returns the protected SEXP slot (unchecked version).
+    ///
+    /// Skips thread safety checks for performance-critical paths.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Only use in ALTREP callbacks
+    /// or other contexts where you're certain you're on the main thread.
+    #[inline]
+    pub unsafe fn protected_unchecked(&self) -> SEXP {
+        use crate::ffi::{R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked};
+
+        unsafe {
+            let prot = R_ExternalPtrProtected_unchecked(self.sexp);
+            if prot.is_null_or_nil() {
+                return R_NilValue;
+            }
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
+                return R_NilValue;
+            }
+            VECTOR_ELT_unchecked(prot, PROT_USER_INDEX)
         }
     }
 
@@ -692,8 +676,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
     ///
     /// Returns `None` if:
     /// - The internal pointer is null
-    /// - The `prot` slot doesn't contain a valid VECSXP with StableTypeId
-    /// - The StableTypeId doesn't match T's type
+    /// - The `prot` slot doesn't contain a valid VECSXP with type symbol
+    /// - The type symbol doesn't match T's type
     ///
     /// # Safety
     ///
@@ -715,12 +699,63 @@ impl<T: TypedExternal> ExternalPtr<T> {
             return None;
         }
 
-        // Extract StableTypeId RAWSXP from slot 0
-        let type_id_raw = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
-        let stored_type_id = StableTypeId::from_rawsxp(type_id_raw)?;
+        // Extract type symbol from slot 0
+        let stored_sym = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
+        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+            return None;
+        }
 
-        // Compare with expected type
-        if stored_type_id != T::TYPE_ID {
+        // Compare symbols by pointer (R interns symbols)
+        let expected_sym = unsafe { type_symbol::<T>() };
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
+            return None;
+        }
+
+        Some(Self {
+            sexp,
+            _marker: PhantomData,
+            _unsend: PhantomData,
+        })
+    }
+
+    /// Attempt to create an ExternalPtr from an SEXP (unchecked version).
+    ///
+    /// Skips thread safety checks for performance-critical paths.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid EXTPTRSXP
+    /// - The caller must ensure exclusive ownership
+    /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+    pub unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Option<Self> {
+        use crate::ffi::{
+            R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked,
+        };
+
+        // Check if pointer is null
+        let ptr = unsafe { R_ExternalPtrAddr_unchecked(sexp) };
+        if ptr.is_null() {
+            return None;
+        }
+
+        // Extract prot VECSXP
+        let prot = unsafe { R_ExternalPtrProtected_unchecked(sexp) };
+        if prot.is_null_or_nil() {
+            return None;
+        }
+        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
+            return None;
+        }
+
+        // Extract type symbol from slot 0
+        let stored_sym = unsafe { VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX) };
+        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+            return None;
+        }
+
+        // Compare symbols by pointer (R interns symbols)
+        let expected_sym = unsafe { type_symbol::<T>() };
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
 
@@ -752,19 +787,18 @@ impl<T: TypedExternal> ExternalPtr<T> {
             return Err(TypeMismatchError::InvalidTypeId);
         }
 
-        // Extract StableTypeId RAWSXP from slot 0
-        let type_id_raw = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
-        let stored_type_id = match StableTypeId::from_rawsxp(type_id_raw) {
-            Some(id) => id,
-            None => return Err(TypeMismatchError::InvalidTypeId),
-        };
+        // Extract type symbol from slot 0
+        let stored_sym = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
+        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+            return Err(TypeMismatchError::InvalidTypeId);
+        }
 
-        // Compare with expected type
-        let expected = T::TYPE_ID;
-        if stored_type_id != expected {
+        // Compare symbols by pointer (R interns symbols)
+        let expected_sym = unsafe { type_symbol::<T>() };
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return Err(TypeMismatchError::Mismatch {
-                expected: expected.name(),
-                found: stored_type_id.name(),
+                expected: T::TYPE_NAME,
+                found: unsafe { symbol_name(stored_sym) },
             });
         }
 
@@ -794,17 +828,17 @@ impl<T: TypedExternal> ExternalPtr<T> {
     // Downcast support
     // =========================================================================
 
-    /// Returns the StableTypeId for type T.
+    /// Returns the type name for type T.
     #[inline]
-    pub fn type_id() -> StableTypeId {
-        T::TYPE_ID
+    pub fn type_name() -> &'static str {
+        T::TYPE_NAME
     }
 
-    /// Returns the StableTypeId stored in this ExternalPtr's prot slot.
+    /// Returns the type name stored in this ExternalPtr's prot slot.
     ///
-    /// Returns `None` if the prot slot doesn't contain a valid StableTypeId.
+    /// Returns `None` if the prot slot doesn't contain a valid type symbol.
     #[inline]
-    pub fn stored_type_id(&self) -> Option<StableTypeId> {
+    pub fn stored_type_name(&self) -> Option<&'static str> {
         unsafe {
             let prot = R_ExternalPtrProtected(self.sexp);
             if prot.is_null_or_nil() {
@@ -813,28 +847,76 @@ impl<T: TypedExternal> ExternalPtr<T> {
             if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
                 return None;
             }
-            let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
-            StableTypeId::from_rawsxp(type_id_raw)
+            let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+            if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+                return None;
+            }
+            Some(symbol_name(stored_sym))
         }
+    }
+}
+
+impl ExternalPtr<()> {
+    /// Create a type-erased ExternalPtr from an EXTPTRSXP without checking the stored type.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid EXTPTRSXP
+    /// - Caller must ensure exclusive ownership semantics are upheld
+    #[inline]
+    pub unsafe fn from_sexp(sexp: SEXP) -> Self {
+        debug_assert!(sexp.type_of() == SEXPTYPE::EXTPTRSXP);
+        unsafe { Self::from_sexp_unchecked(sexp) }
+    }
+
+    /// Check whether the stored type symbol matches `T`.
+    #[inline]
+    pub fn is<T: TypedExternal>(&self) -> bool {
+        if self.is_null() {
+            return false;
+        }
+        unsafe {
+            let prot = R_ExternalPtrProtected(self.sexp);
+            if prot.is_null_or_nil() || prot.type_of() != SEXPTYPE::VECSXP {
+                return false;
+            }
+            let stored_sym = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
+            if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+                return false;
+            }
+            let expected_sym = type_symbol::<T>();
+            std::ptr::eq(stored_sym.0, expected_sym.0)
+        }
+    }
+
+    /// Downcast to an immutable reference of the stored type if it matches `T`.
+    #[inline]
+    pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
+        if !self.is::<T>() {
+            return None;
+        }
+        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_ref() }
+    }
+
+    /// Downcast to a mutable reference of the stored type if it matches `T`.
+    #[inline]
+    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
+        if !self.is::<T>() {
+            return None;
+        }
+        unsafe { R_ExternalPtrAddr(self.sexp).cast::<T>().as_mut() }
     }
 }
 
 /// Error returned when type checking fails in `try_from_sexp_with_error`.
 ///
-/// # Lifetime of `found` type name
-///
-/// The `found` field in `Mismatch` contains a `&'static str` that comes from
-/// deserializing the `StableTypeId` stored in the SEXP. This works because
-/// `std::any::type_name` returns `&'static str` pointing to static memory.
-///
-/// **Warning**: If an `ExternalPtr` is somehow serialized and deserialized
-/// across process boundaries, the `name_ptr` in `StableTypeId` will be invalid.
-/// This crate assumes same-process usage only.
+/// The `found` field in `Mismatch` contains a `&'static str` from R's
+/// interned symbol table, which persists for the R session lifetime.
 #[derive(Debug, Clone)]
 pub enum TypeMismatchError {
     /// The external pointer's address was null.
     NullPointer,
-    /// The prot slot didn't contain a valid StableTypeId.
+    /// The prot slot didn't contain a valid type symbol.
     InvalidTypeId,
     /// The stored type doesn't match the expected type.
     Mismatch {
@@ -911,160 +993,7 @@ where
         }
     }
 }
-
-// =============================================================================
-// Erased ExternalPtr (for downcasting)
-// =============================================================================
-
-/// A type-erased external pointer.
-///
-/// This is useful when you need to store external pointers of different types
-/// in a collection, or when interfacing with R where the type is not known
-/// at compile time.
-///
-/// # Thread Safety
-///
-/// Like `ExternalPtr`, this is `!Send` and `!Sync` because it wraps an R SEXP.
-pub struct ErasedExternalPtr {
-    sexp: SEXP,
-    /// Makes this type !Send and !Sync
-    _unsend: PhantomUnsend,
-}
-
-impl ErasedExternalPtr {
-    /// Create an erased pointer from any ExternalPtr.
-    #[inline]
-    pub fn new<T: TypedExternal>(ptr: ExternalPtr<T>) -> Self {
-        let sexp = ptr.sexp;
-        mem::forget(ptr); // Don't run ExternalPtr's drop
-        Self {
-            sexp,
-            _unsend: PhantomData,
-        }
-    }
-
-    /// Create from a raw SEXP.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be a valid EXTPTRSXP with a StableTypeId in prot.
-    #[inline]
-    pub unsafe fn from_sexp(sexp: SEXP) -> Self {
-        Self {
-            sexp,
-            _unsend: PhantomData,
-        }
-    }
-
-    /// Get the underlying SEXP.
-    #[inline]
-    pub fn as_sexp(&self) -> SEXP {
-        self.sexp
-    }
-
-    /// Get the stored type ID, if valid.
-    #[inline]
-    pub fn type_id(&self) -> Option<StableTypeId> {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return None;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return None;
-            }
-            let type_id_raw = VECTOR_ELT(prot, PROT_TYPE_ID_INDEX);
-            StableTypeId::from_rawsxp(type_id_raw)
-        }
-    }
-
-    /// Returns the user-protected SEXP slot.
-    #[inline]
-    pub fn protected(&self) -> SEXP {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return R_NilValue;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return R_NilValue;
-            }
-            VECTOR_ELT(prot, PROT_USER_INDEX)
-        }
-    }
-
-    /// Sets the user-protected SEXP slot.
-    ///
-    /// Returns `false` if the prot structure is malformed.
-    ///
-    /// # Safety
-    ///
-    /// - `user_prot` must be a valid SEXP or R_NilValue
-    /// - Must be called from the R main thread
-    #[inline]
-    pub unsafe fn set_protected(&self, user_prot: SEXP) -> bool {
-        unsafe {
-            let prot = R_ExternalPtrProtected(self.sexp);
-            if prot.is_null_or_nil() {
-                return false;
-            }
-            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
-                return false;
-            }
-            SET_VECTOR_ELT(prot, PROT_USER_INDEX, user_prot);
-            true
-        }
-    }
-
-    /// Check if this pointer holds type T.
-    #[inline]
-    pub fn is<T: TypedExternal>(&self) -> bool {
-        self.type_id().map(|id| id == T::TYPE_ID).unwrap_or(false)
-    }
-
-    /// Attempt to downcast to a concrete ExternalPtr type.
-    ///
-    /// Returns `Err(self)` if the type doesn't match.
-    #[inline]
-    pub fn downcast<T: TypedExternal>(self) -> Result<ExternalPtr<T>, Self> {
-        if self.is::<T>() {
-            let sexp = self.sexp;
-            Ok(ExternalPtr {
-                sexp,
-                _marker: PhantomData,
-                _unsend: PhantomData,
-            })
-        } else {
-            Err(self)
-        }
-    }
-
-    /// Attempt to get a reference to the inner value as type T.
-    #[inline]
-    pub fn downcast_ref<T: TypedExternal>(&self) -> Option<&T> {
-        if self.is::<T>() {
-            unsafe {
-                let ptr = R_ExternalPtrAddr(self.sexp).cast::<T>();
-                if ptr.is_null() { None } else { Some(&*ptr) }
-            }
-        } else {
-            None
-        }
-    }
-
-    /// Attempt to get a mutable reference to the inner value as type T.
-    #[inline]
-    pub fn downcast_mut<T: TypedExternal>(&mut self) -> Option<&mut T> {
-        if self.is::<T>() {
-            unsafe {
-                let ptr = R_ExternalPtrAddr(self.sexp).cast::<T>();
-                if ptr.is_null() { None } else { Some(&mut *ptr) }
-            }
-        } else {
-            None
-        }
-    }
-}
+pub type ErasedExternalPtr = ExternalPtr<()>;
 
 // =============================================================================
 // Trait Implementations
@@ -1274,7 +1203,7 @@ extern "C-unwind" fn release_raw<T>(sexp: SEXP) {
     if sexp.is_null() {
         return;
     }
-    if std::ptr::addr_eq(sexp, unsafe { R_NilValue }) {
+    if std::ptr::addr_eq(sexp.0, unsafe { R_NilValue.0 }) {
         return;
     }
 
@@ -1399,6 +1328,20 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
     unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data1(x)) }
 }
 
+/// Extract the ALTREP data1 slot (unchecked version).
+///
+/// Skips thread safety checks for performance-critical ALTREP callbacks.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+#[inline]
+pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
+    use crate::ffi::R_altrep_data1_unchecked;
+    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data1_unchecked(x)) }
+}
+
 /// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
 ///
 /// Similar to `altrep_data1_as`, but for the data2 slot.
@@ -1410,6 +1353,20 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data2(x)) }
+}
+
+/// Extract the ALTREP data2 slot (unchecked version).
+///
+/// Skips thread safety checks for performance-critical ALTREP callbacks.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+#[inline]
+pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
+    use crate::ffi::R_altrep_data2_unchecked;
+    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data2_unchecked(x)) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.
@@ -1443,32 +1400,22 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
     }
 }
 
-// =============================================================================
-// Tests
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_stable_type_id() {
-        let id1 = StableTypeId::of::<i32>();
-        let id2 = StableTypeId::of::<i32>();
-        let id3 = StableTypeId::of::<u32>();
-
-        assert_eq!(id1, id2);
-        assert_ne!(id1, id3);
-        assert_eq!(id1.name(), "i32");
-    }
-
-    #[test]
-    fn test_const_hash() {
-        let h1 = const_hash_str("hello");
-        let h2 = const_hash_str("hello");
-        let h3 = const_hash_str("world");
-
-        assert_eq!(h1, h2);
-        assert_ne!(h1, h3);
+/// Get a mutable reference to data in ALTREP data1 slot (unchecked version).
+///
+/// Skips thread safety checks for performance-critical ALTREP callbacks.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+/// - The caller must ensure no other references to the data exist
+#[inline]
+pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
+    use crate::ffi::R_altrep_data1_unchecked;
+    unsafe {
+        let mut erased = ErasedExternalPtr::from_sexp(R_altrep_data1_unchecked(x));
+        erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
     }
 }
+
+// Tests for ExternalPtr require R runtime, so they are in rpkg/src/rust/lib.rs

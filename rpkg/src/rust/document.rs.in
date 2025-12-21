@@ -1,9 +1,12 @@
 use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
 use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
+use @CARGO_STATICLIB_NAME@::R_WRAPPERS_IMPLS_@PACKAGE_TARNAME_RS_UPPERCASE@ as IMPLS;
+use @CARGO_STATICLIB_NAME@::R_WRAPPERS_IMPL_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as IMPL_DEPS;
 
 fn main() {
     let dep_flat: Vec<&'static str> = DEPS.concat();
-    let roots: [&[&'static str]; 2] = [PARTS, &dep_flat];
+    let impl_dep_flat: Vec<&'static str> = IMPL_DEPS.concat();
+    let roots: [&[&'static str]; 4] = [PARTS, IMPLS, &dep_flat, &impl_dep_flat];
 
     let mut f = std::fs::OpenOptions::new()
         .write(true)
@@ -12,7 +15,7 @@ fn main() {
         .open("miniextendr_wrappers.R")
         .unwrap();
 
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = std::collections::HashSet::<&str>::new();
     for group in roots {
         for &s in group {
             if seen.insert(s) {

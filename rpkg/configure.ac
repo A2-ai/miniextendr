@@ -1,25 +1,48 @@
 AC_INIT([rpkg], [1.0])
 
-dnl ensure R_HOME is set
-: ${R_HOME=`R RHOME`}
+dnl Ensure R_HOME is set and valid
+if test -z "$R_HOME"; then
+  R_HOME=`R RHOME 2>/dev/null`
+  if test $? -ne 0 || test -z "$R_HOME"; then
+    AC_MSG_ERROR([R not found. Please ensure R is installed and on PATH, or set R_HOME.])
+  fi
+fi
+if test ! -d "$R_HOME"; then
+  AC_MSG_ERROR([R_HOME directory does not exist: $R_HOME])
+fi
 
 dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
 : ${NOT_CRAN="true"}
 export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline, regenerate lockfile
-dnl - NOT_CRAN not true (CRAN): use --offline, don't regenerate lockfile
+dnl - NOT_CRAN=true (dev): no --offline
+dnl - NOT_CRAN not true (CRAN): use --offline
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  GENERATE_LOCKFILE="yes"
 else
   CARGO_OFFLINE_FLAG="--offline"
-  GENERATE_LOCKFILE="no"
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
-AC_SUBST([GENERATE_LOCKFILE])
 AC_SUBST([NOT_CRAN])
+
+dnl Set cargo features flag based on NOT_CRAN
+dnl - NOT_CRAN=true (dev): enable all features including nonapi and rayon
+dnl - NOT_CRAN=false (CRAN): default features only (no nonapi, no rayon)
+dnl
+dnl The 'nonapi' feature enables non-API R functions that cause R CMD check
+dnl warnings, so it should only be enabled in dev builds.
+dnl The 'rayon' feature requires vendoring rayon crate; currently not vendored.
+if test "$NOT_CRAN" = "true"; then
+  CARGO_FEATURES_FLAG="--all-features"
+  CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI -DCARGO_FEATURE_RAYON"
+else
+  dnl CRAN builds: default features only (no nonapi warnings, no unvendored rayon)
+  CARGO_FEATURES_FLAG=""
+  CARGO_FEATURE_CPPFLAGS=""
+fi
+AC_SUBST([CARGO_FEATURES_FLAG])
+AC_SUBST([CARGO_FEATURE_CPPFLAGS])
 
 # TODO: write a rust analyzer friendly command.
 # see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
@@ -38,14 +61,32 @@ AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
+AC_PATH_PROG([RSYNC],[rsync],[no])
+AC_PATH_PROG([SED],[sed],[no])
 AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
+AS_IF([test "x$RSYNC" = "xno"], [AC_MSG_ERROR([`rsync` not found (required for vendor sync)])])
+AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
+AC_SUBST([RSYNC])
+AC_SUBST([SED])
 
 dnl Report rustc version (required by CRAN for Rust packages)
 RUSTC_VERSION=`$RUSTC --version`
 AC_MSG_NOTICE([using $RUSTC_VERSION])
+
+dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
+dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
+RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | sed 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
+RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
+MIN_RUSTC_MAJOR=1
+MIN_RUSTC_MINOR=85
+if test "$RUSTC_MAJOR" -lt "$MIN_RUSTC_MAJOR" || \
+   (test "$RUSTC_MAJOR" -eq "$MIN_RUSTC_MAJOR" && test "$RUSTC_MINOR" -lt "$MIN_RUSTC_MINOR"); then
+  AC_MSG_ERROR([rustc $MIN_RUSTC_MAJOR.$MIN_RUSTC_MINOR+ required for Rust edition 2024, found $RUSTC_VERSION_NUM])
+fi
 
 dnl Allow explicit toolchain (e.g. +nightly); default empty (use default toolchain)
 AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly'])
@@ -61,10 +102,9 @@ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
 : ${CARGO_PROFILE="release"}
 AC_SUBST([CARGO_PROFILE])
 
-dnl TODO: read this from Cargo.toml manually.. or somewhere else
-AC_ARG_VAR([CARGO_STATICLIB_NAME], [Name of Rust static library])
-dnl TODO: use cargo metadata to figure out what the library or libraries ought to be named!
-: ${CARGO_STATICLIB_NAME="juice"}
+dnl CARGO_STATICLIB_NAME will be extracted after Cargo.toml generation
+dnl Use placeholder for now - AC_CONFIG_COMMANDS will substitute the real value
+CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 AC_SUBST([CARGO_STATICLIB_NAME])
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
@@ -128,22 +168,116 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (in inst/vendor for self-contained builds) ----
-VENDOR_OUT="$abs_top_srcdir/inst/vendor"
-dnl Only sync workspace crates (not rpkg - it has circular vendor path refs)
-SYNC1="--sync=$root_miniextendr_repo/miniextendr-api/Cargo.toml"
-SYNC2="--sync=$root_miniextendr_repo/miniextendr-macros/Cargo.toml"
-VENDOR_SYNC_FLAGS="$SYNC1 $SYNC2"
-AC_SUBST([VENDOR_SYNC_FLAGS])
+dnl ---- vendoring (in src/vendor for builds, cleaned up post-install) ----
+VENDOR_OUT="$abs_rpkg_src/vendor"
 AC_SUBST([VENDOR_OUT])
 
+dnl Source locations for miniextendr crates (relative to rpkg root)
+dnl Note: miniextendr-engine is NOT vendored - it's only for standalone binaries
+dnl that embed R, not for R packages.
+MINIEXTENDR_API_SRC="$abs_top_srcdir/../miniextendr-api"
+MINIEXTENDR_MACROS_SRC="$abs_top_srcdir/../miniextendr-macros"
+
+dnl Sync miniextendr crates from monorepo to vendor (if sources exist)
+dnl This handles workspace inheritance by patching Cargo.toml during copy
+AC_MSG_CHECKING([for miniextendr source crates])
+if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
+  AC_MSG_RESULT([found, syncing to vendor])
+
+  dnl Create vendor directories
+  mkdir -p "$VENDOR_OUT/miniextendr-api"
+  mkdir -p "$VENDOR_OUT/miniextendr-macros"
+
+  dnl Sync miniextendr-api (excluding target, .git, Cargo.toml)
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
+
+  dnl Sync miniextendr-macros (excluding target, .git, Cargo.toml)
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+  dnl Clean up CRAN-unfriendly hidden files (e.g., .DS_Store, .gitignore)
+  find "$VENDOR_OUT" -name ".*" -type f -delete 2>/dev/null || true
+  find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
+
+  dnl Patch Cargo.toml to remove workspace inheritance
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+  AC_MSG_NOTICE([miniextendr crates synced to $VENDOR_OUT])
+else
+  AC_MSG_RESULT([not found, using existing vendor])
+  dnl Sources not found - assume we're building from tarball with pre-vendored crates
+  if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+    AC_MSG_WARN([vendor/miniextendr-api not found - build may fail])
+  fi
+fi
+
+dnl Source replacement config: only use vendored sources on CRAN (offline builds)
+dnl Dev mode uses network for crates.io, path deps for miniextendr-*
+if test "$NOT_CRAN" = "true"; then
+  CARGO_SOURCE_REPLACE=""
+else
+  CARGO_SOURCE_REPLACE="[source.crates-io]
+replace-with = \"vendored-sources\"
+
+[source.vendored-sources]
+directory = \"$VENDOR_OUT\""
+fi
+AC_SUBST([CARGO_SOURCE_REPLACE])
+
 dnl ---- output files ----
+dnl Create .cargo directory (it's a hidden dir not included in tarball)
+mkdir -p src/rust/.cargo
+
 AC_CONFIG_FILES([
   src/rust/Cargo.toml
-  src/rust/.cargo/config.toml
+  src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars
   src/entrypoint.c
 ])
+
+dnl Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
+dnl This runs after AC_CONFIG_FILES generates the files
+AC_CONFIG_COMMANDS([patch-staticlib-name],
+[
+  dnl cargo pkgid outputs: path+file:///path/to/project#name@version
+  dnl Extract package name between # and @, convert hyphens to underscores for Rust
+  dnl Use --offline only for CRAN builds (NOT_CRAN != true) to avoid network access
+  dnl Dev builds (NOT_CRAN=true) may not have cache populated yet
+  if test "$NOT_CRAN" = "true"; then
+    _pkgid_flags="--color=never"
+  else
+    _pkgid_flags="--offline --color=never"
+  fi
+  _pkgid_output=`$CARGO pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
+  _pkgid_status=$?
+  if test $_pkgid_status -ne 0; then
+    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
+    echo "configure: cargo pkgid output: $_pkgid_output" >&2
+    exit 1
+  fi
+  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | sed 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_'`
+  if test -z "$REAL_STATICLIB_NAME"; then
+    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
+    exit 1
+  fi
+  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
+
+  dnl Patch generated files to replace placeholder
+  for f in src/Makevars src/rust/document.rs; do
+    if test -f "$f"; then
+      sed -i.bak "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f"
+      rm -f "$f.bak"
+    fi
+  done
+],
+[CARGO="$CARGO" NOT_CRAN="$NOT_CRAN"])
 
 dnl Also install a copy at top-level .cargo for dev ergonomics
 dnl this is specific to miniextendr repository

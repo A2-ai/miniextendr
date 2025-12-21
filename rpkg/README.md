@@ -34,7 +34,7 @@ When you modify Rust code that changes the R API (add/remove/rename exported
 functions), regenerate the wrappers:
 
 ```shell
-just load  # or devtools::load_all("rpkg")
+just devtools-load  # or devtools::load_all("rpkg")
 ```
 
 This runs cargo build and the document binary, then copies the generated
@@ -43,9 +43,8 @@ This runs cargo build and the document binary, then copies the generated
 ### Build Flow
 
 1. **bootstrap.R** (runs before R CMD build via `Config/build/bootstrap: TRUE`):
-   - Copies `miniextendr-api` and `miniextendr-macros` from monorepo to `inst/vendor/`
-   - Patches workspace inheritance in Cargo.toml files
-   - Runs `./configure`
+   - Runs `./configure` to sync `miniextendr-api` and `miniextendr-macros` into `src/vendor/`
+   - Patches workspace inheritance in Cargo.toml files (during sync)
 
 2. **configure** (runs during R CMD INSTALL):
    - Sets `NOT_CRAN=true` if not already set
@@ -60,7 +59,7 @@ This runs cargo build and the document binary, then copies the generated
 ### CRAN vs Development Builds
 
 - **CRAN builds**: `NOT_CRAN` is not "true", so vendoring is skipped. The tarball
-  must already contain all vendored dependencies in `inst/vendor/`.
+  must already contain all vendored dependencies in `src/vendor/`.
 
 - **Development builds**: `NOT_CRAN=true` (set by devtools or configure), so
   `cargo vendor` runs to refresh dependencies.
