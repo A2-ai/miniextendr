@@ -52,6 +52,25 @@ unsafe fn init() -> SEXP {
     }
 }
 
+/// Initialize the preservation list (unchecked version).
+///
+/// Skips thread safety checks for performance-critical paths.
+///
+/// # Safety
+///
+/// Must be called from the R main thread. Only use in contexts where
+/// you're certain you're on the main thread.
+#[inline]
+unsafe fn init_unchecked() -> SEXP {
+    use crate::ffi::{R_PreserveObject_unchecked, Rf_cons_unchecked};
+
+    unsafe {
+        let out = Rf_cons_unchecked(R_NilValue, Rf_cons_unchecked(R_NilValue, R_NilValue));
+        R_PreserveObject_unchecked(out);
+        out
+    }
+}
+
 /// Get the current thread's preservation list, initializing if needed.
 ///
 /// # Safety
@@ -61,6 +80,20 @@ unsafe fn init() -> SEXP {
 pub(crate) unsafe fn get() -> SEXP {
     // One global preserve list per thread.
     PRESERVE_LIST.with(|x| *x.get_or_init(|| unsafe { init() }))
+}
+
+/// Get the current thread's preservation list (unchecked version).
+///
+/// Skips thread safety checks for performance-critical paths.
+///
+/// # Safety
+///
+/// Must be called from the R main thread. Only use in contexts where
+/// you're certain you're on the main thread (ALTREP callbacks, extern "C-unwind" functions).
+#[inline]
+pub(crate) unsafe fn get_unchecked() -> SEXP {
+    // Use unchecked init for full consistency
+    PRESERVE_LIST.with(|x| *x.get_or_init(|| unsafe { init_unchecked() }))
 }
 
 /// Count the number of currently protected objects.
@@ -79,6 +112,27 @@ pub unsafe fn count() -> R_xlen_t {
         let tail: R_xlen_t = 1;
         let list = get();
         Rf_xlength(list) - head - tail
+    }
+}
+
+/// Count the number of currently protected objects (unchecked version).
+///
+/// Skips thread safety checks for performance-critical paths.
+///
+/// # Safety
+///
+/// Must be called from the R main thread. Only use in contexts where
+/// you're certain you're on the main thread.
+#[allow(dead_code)]
+#[inline]
+pub unsafe fn count_unchecked() -> R_xlen_t {
+    use crate::ffi::Rf_xlength_unchecked;
+
+    unsafe {
+        let head: R_xlen_t = 1;
+        let tail: R_xlen_t = 1;
+        let list = get_unchecked();
+        Rf_xlength_unchecked(list) - head - tail
     }
 }
 
@@ -123,6 +177,50 @@ pub unsafe fn insert(x: SEXP) -> SEXP {
     }
 }
 
+/// Insert a SEXP into the preservation list (unchecked version).
+///
+/// Skips thread safety checks for performance-critical paths.
+/// Otherwise identical to [`insert`].
+///
+/// # Safety
+///
+/// Must be called from the R main thread. Only use in contexts where
+/// you're certain you're on the main thread (ALTREP callbacks, extern "C-unwind" functions).
+/// The returned cell must eventually be passed to [`release_unchecked`].
+#[inline]
+pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
+    use crate::ffi::{
+        CAR_unchecked, CDR_unchecked, Rf_cons_unchecked, Rf_protect_unchecked,
+        Rf_unprotect_unchecked, SETCAR_unchecked, SETCDR_unchecked, SET_TAG_unchecked,
+    };
+
+    unsafe {
+        if x == R_NilValue {
+            return R_NilValue;
+        }
+
+        Rf_protect_unchecked(x);
+
+        let list = get_unchecked();
+
+        // head is the list itself; next is the node after head
+        let head = list;
+        let next = CDR_unchecked(list);
+
+        // New cell points to current head and next
+        let cell = Rf_protect_unchecked(Rf_cons_unchecked(head, next));
+        SET_TAG_unchecked(cell, x);
+
+        // Splice cell between head and next
+        SETCDR_unchecked(head, cell);
+        SETCAR_unchecked(next, cell);
+
+        Rf_unprotect_unchecked(2);
+
+        cell
+    }
+}
+
 /// Release a previously protected SEXP from the preservation list.
 ///
 /// The `cell` parameter should be a value returned from [`insert`].
@@ -152,5 +250,34 @@ pub unsafe fn release(cell: SEXP) {
         // SET_TAG(cell, R_NilValue);
         // SETCAR(cell, R_NilValue);
         // SETCDR(cell, R_NilValue);
+    }
+}
+
+/// Release a previously protected SEXP (unchecked version).
+///
+/// Skips thread safety checks for performance-critical paths.
+/// Otherwise identical to [`release`].
+///
+/// # Safety
+///
+/// Must be called from the R main thread. Only use in contexts where
+/// you're certain you're on the main thread. The `cell` must be a valid
+/// cell returned from [`insert_unchecked`] and must not have been released already.
+#[inline]
+pub unsafe fn release_unchecked(cell: SEXP) {
+    use crate::ffi::{CAR_unchecked, CDR_unchecked, SETCAR_unchecked, SETCDR_unchecked};
+
+    unsafe {
+        if cell == R_NilValue {
+            return;
+        }
+
+        // Neighbors around the cell
+        let lhs = CAR_unchecked(cell);
+        let rhs = CDR_unchecked(cell);
+
+        // Bypass cell
+        SETCDR_unchecked(lhs, rhs);
+        SETCAR_unchecked(rhs, lhs);
     }
 }
