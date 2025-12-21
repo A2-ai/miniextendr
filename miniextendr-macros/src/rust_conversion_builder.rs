@@ -105,13 +105,8 @@ impl RustConversionBuilder {
                     });
                 } else if is_slice {
                     // &[T]: use TryFromSexp (backed by DATAPTR_RO)
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to slice: wrong type or length",
-                        ident
-                    );
                     statements.push(quote! {
-                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                            .expect(#error_msg);
+                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident).unwrap();
                     });
                 } else if is_str {
                     // &str: decode to String first, then borrow
@@ -122,13 +117,8 @@ impl RustConversionBuilder {
                     } else {
                         quote!()
                     };
-                    let error_msg = format!(
-                        "failed to convert parameter '{}' to string: expected character vector",
-                        ident
-                    );
                     statements.push(quote! {
-                        let #storage_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                            .expect(#error_msg);
+                        let #storage_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident).unwrap();
                     });
                     statements.push(quote! {
                         let #mutability #ident: &str = #storage_ident.as_str();
@@ -164,21 +154,11 @@ impl RustConversionBuilder {
                         } else {
                             quote!()
                         };
-                        let error_msg_convert = format!(
-                            "failed to convert parameter '{}' from R: wrong type",
-                            param_name
-                        );
-                        let error_msg_coerce = format!(
-                            "failed to coerce parameter '{}' to {}: overflow, NaN, or precision loss",
-                            param_name,
-                            quote!(#target)
-                        );
                         statements.push(quote! {
                             let #mutability #ident: #target = {
-                                let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                    .expect(#error_msg_convert);
+                                let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident).unwrap();
                                 ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val)
-                                    .expect(#error_msg_coerce)
+                                    .expect(concat!("coercion to ", stringify!(#target), " failed"))
                             };
                         });
                     }
@@ -192,42 +172,25 @@ impl RustConversionBuilder {
                         } else {
                             quote!()
                         };
-                        let error_msg_convert = format!(
-                            "failed to convert parameter '{}' to vector: wrong type",
-                            param_name
-                        );
-                        let error_msg_coerce = format!(
-                            "failed to coerce parameter '{}' to Vec<{}>: element overflow, NaN, or precision loss",
-                            param_name,
-                            quote!(#target_elem)
-                        );
                         statements.push(quote! {
                             let #mutability #ident: Vec<#target_elem> = {
-                                let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                    .expect(#error_msg_convert);
+                                let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident).unwrap();
                                 __r_slice.iter().copied()
                                     .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
                                     .collect::<Result<Vec<_>, _>>()
-                                    .expect(#error_msg_coerce)
+                                    .expect(concat!("coercion to Vec<", stringify!(#target_elem), "> failed"))
                             };
                         });
                     }
                     None => {
                         // No coercion - use standard TryFromSexp
-                        let error_msg = format!(
-                            "failed to convert parameter '{}' to {}: wrong type, length, or contains NA",
-                            param_name,
-                            quote!(#ty)
-                        );
                         if pat_ident.mutability.is_some() {
                             statements.push(quote! {
-                                let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                    .expect(#error_msg);
+                                let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident).unwrap();
                             });
                         } else {
                             statements.push(quote! {
-                                let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
-                                    .expect(#error_msg);
+                                let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident).unwrap();
                             });
                         }
                     }

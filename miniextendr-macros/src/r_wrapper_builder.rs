@@ -58,9 +58,7 @@ impl<'a> RArgumentBuilder<'a> {
     /// Mark the last parameter as dots (`...`).
     pub fn with_dots(mut self, named_dots: Option<String>) -> Self {
         self.has_dots = true;
-        self.named_dots = named_dots.map(|s| {
-            normalize_r_arg_ident(&syn::Ident::new(&s, proc_macro2::Span::call_site())).to_string()
-        });
+        self.named_dots = named_dots.map(|s| normalize_r_arg_ident(&syn::Ident::new(&s, proc_macro2::Span::call_site())).to_string());
         self
     }
 
@@ -136,7 +134,7 @@ impl<'a> RArgumentBuilder<'a> {
         self.build_call_args_vec().join(", ")
     }
 
-    /// Build R call arguments as `Vec<String>`.
+    /// Build R call arguments as Vec<String>.
     pub fn build_call_args_vec(&self) -> Vec<String> {
         let mut call_args = Vec::new();
         let last_idx = self.inputs.len().saturating_sub(1);
@@ -189,10 +187,7 @@ mod tests {
         assert_eq!(normalize_r_arg_ident(&ident).to_string(), "unused_x");
 
         let ident = syn::Ident::new("__private", proc_macro2::Span::call_site());
-        assert_eq!(
-            normalize_r_arg_ident(&ident).to_string(),
-            "private__private"
-        );
+        assert_eq!(normalize_r_arg_ident(&ident).to_string(), "private__private");
 
         let ident = syn::Ident::new("value", proc_macro2::Span::call_site());
         assert_eq!(normalize_r_arg_ident(&ident).to_string(), "value");
