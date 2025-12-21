@@ -1451,7 +1451,7 @@ pub struct R_CallMethodDef {
 }
 
 // SAFETY: R_CallMethodDef contains raw pointers which don't impl Send/Sync by default.
-// However, Send+Sync is required to store these in LazyLock<Vec<...>> for R's method registration.
+// However, Send+Sync is required to store these in static arrays or shared collections for R's method registration.
 // This is safe because:
 // 1. The name pointer points to static C string literals (&'static CStr)
 // 2. The fun pointer is a static function pointer
