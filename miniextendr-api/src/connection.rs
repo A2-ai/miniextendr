@@ -347,6 +347,26 @@ unsafe fn get_state<T: RConnectionImpl>(conn: *mut Rconn) -> &'static mut T {
     unsafe { &mut *(private as *mut T) }
 }
 
+/// Macro to generate simple trampolines that just delegate to the trait method.
+macro_rules! simple_trampoline {
+    ($name:ident, $ret:ty, $($arg:ident: $arg_ty:ty),* => $method:ident($($call_arg:expr),*)) => {
+        unsafe extern "C-unwind" fn $name<T: RConnectionImpl>(
+            conn: *mut Rconn,
+            $($arg: $arg_ty),*
+        ) -> $ret {
+            let state = unsafe { get_state::<T>(conn) };
+            state.$method($($call_arg),*)
+        }
+    };
+    // Variant for no additional arguments
+    ($name:ident, $ret:ty => $method:ident()) => {
+        unsafe extern "C-unwind" fn $name<T: RConnectionImpl>(conn: *mut Rconn) -> $ret {
+            let state = unsafe { get_state::<T>(conn) };
+            state.$method()
+        }
+    };
+}
+
 /// Open callback trampoline.
 unsafe extern "C-unwind" fn open_trampoline<T: RConnectionImpl>(conn: *mut Rconn) -> Rboolean {
     let state = unsafe { get_state::<T>(conn) };
@@ -423,44 +443,12 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
     }
 }
 
-/// Fgetc callback trampoline.
-unsafe extern "C-unwind" fn fgetc_trampoline<T: RConnectionImpl>(conn: *mut Rconn) -> c_int {
-    let state = unsafe { get_state::<T>(conn) };
-    state.fgetc()
-}
-
-/// Seek callback trampoline.
-unsafe extern "C-unwind" fn seek_trampoline<T: RConnectionImpl>(
-    conn: *mut Rconn,
-    where_: f64,
-    origin: c_int,
-    rw: c_int,
-) -> f64 {
-    let state = unsafe { get_state::<T>(conn) };
-    state.seek(where_, origin, rw)
-}
-
-/// Truncate callback trampoline.
-unsafe extern "C-unwind" fn truncate_trampoline<T: RConnectionImpl>(conn: *mut Rconn) {
-    let state = unsafe { get_state::<T>(conn) };
-    state.truncate();
-}
-
-/// Flush callback trampoline.
-unsafe extern "C-unwind" fn flush_trampoline<T: RConnectionImpl>(conn: *mut Rconn) -> c_int {
-    let state = unsafe { get_state::<T>(conn) };
-    state.flush()
-}
-
-/// Vfprintf callback trampoline.
-unsafe extern "C-unwind" fn vfprintf_trampoline<T: RConnectionImpl>(
-    conn: *mut Rconn,
-    fmt: *const c_char,
-    ap: *mut c_void,
-) -> c_int {
-    let state = unsafe { get_state::<T>(conn) };
-    state.vfprintf(fmt, ap)
-}
+// Generate simple trampolines using macro
+simple_trampoline!(fgetc_trampoline, c_int => fgetc());
+simple_trampoline!(seek_trampoline, f64, where_: f64, origin: c_int, rw: c_int => seek(where_, origin, rw));
+simple_trampoline!(truncate_trampoline, () => truncate());
+simple_trampoline!(flush_trampoline, c_int => flush());
+simple_trampoline!(vfprintf_trampoline, c_int, fmt: *const c_char, ap: *mut c_void => vfprintf(fmt, ap));
 
 // =============================================================================
 // RCustomConnection builder
@@ -723,296 +711,221 @@ pub trait IoCaps {
     const HAS_TERMINAL: bool = false;
 }
 
-/// Adapter for types implementing `std::io::Read`.
+/// Macro to generate std::io adapter types with automatic capability detection.
 ///
-/// Provides read-only connection with automatic capability detection.
-pub struct IoRead<T: std::io::Read + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::Read + 'static> IoRead<T> {
-    /// Create a new read-only adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::Read + 'static> IoCaps for IoRead<T> {
-    const HAS_READ: bool = true;
-}
-
-impl<T: std::io::Read + 'static> RConnectionImpl for IoRead<T> {
-    fn read(&mut self, buf: &mut [u8]) -> usize {
-        use std::io::Read;
-        self.inner.read(buf).unwrap_or(0)
-    }
-}
-
-/// Adapter for types implementing `std::io::Write`.
-///
-/// Provides write-only connection with automatic capability detection.
-pub struct IoWrite<T: std::io::Write + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::Write + 'static> IoWrite<T> {
-    /// Create a new write-only adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::Write + 'static> IoCaps for IoWrite<T> {
-    const HAS_WRITE: bool = true;
-}
-
-impl<T: std::io::Write + 'static> RConnectionImpl for IoWrite<T> {
-    fn write(&mut self, buf: &[u8]) -> usize {
-        use std::io::Write;
-        self.inner.write(buf).unwrap_or(0)
-    }
-
-    fn flush(&mut self) -> i32 {
-        use std::io::Write;
-        if self.inner.flush().is_ok() { 0 } else { -1 }
-    }
-}
-
-/// Adapter for types implementing both `Read` and `Write`.
-///
-/// Provides read-write connection with automatic capability detection.
-pub struct IoReadWrite<T: std::io::Read + std::io::Write + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::Read + std::io::Write + 'static> IoReadWrite<T> {
-    /// Create a new read-write adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::Read + std::io::Write + 'static> IoCaps for IoReadWrite<T> {
-    const HAS_READ: bool = true;
-    const HAS_WRITE: bool = true;
-}
-
-impl<T: std::io::Read + std::io::Write + 'static> RConnectionImpl for IoReadWrite<T> {
-    fn read(&mut self, buf: &mut [u8]) -> usize {
-        use std::io::Read;
-        self.inner.read(buf).unwrap_or(0)
-    }
-
-    fn write(&mut self, buf: &[u8]) -> usize {
-        use std::io::Write;
-        self.inner.write(buf).unwrap_or(0)
-    }
-
-    fn flush(&mut self) -> i32 {
-        use std::io::Write;
-        if self.inner.flush().is_ok() { 0 } else { -1 }
-    }
-}
-
-/// Adapter for types implementing `Read + Seek`.
-///
-/// Provides seekable read connection with automatic capability detection.
-pub struct IoReadSeek<T: std::io::Read + std::io::Seek + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::Read + std::io::Seek + 'static> IoReadSeek<T> {
-    /// Create a new read+seek adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::Read + std::io::Seek + 'static> IoCaps for IoReadSeek<T> {
-    const HAS_READ: bool = true;
-    const HAS_SEEK: bool = true;
-}
-
-impl<T: std::io::Read + std::io::Seek + 'static> RConnectionImpl for IoReadSeek<T> {
-    fn read(&mut self, buf: &mut [u8]) -> usize {
-        use std::io::Read;
-        self.inner.read(buf).unwrap_or(0)
-    }
-
-    fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
-        use std::io::Seek;
-
-        // Handle position query (where_ is NA/NaN)
-        if where_.is_nan() {
-            return self.inner.stream_position()
-                .map(|pos| pos as f64)
-                .unwrap_or(-1.0);
-        }
-
-        // Map R's origin to SeekFrom
-        let seek_from = match origin {
-            1 => std::io::SeekFrom::Start(where_.max(0.0) as u64),
-            2 => std::io::SeekFrom::Current(where_ as i64),
-            3 => std::io::SeekFrom::End(where_ as i64),
-            _ => return -1.0,
-        };
-
-        self.inner.seek(seek_from)
-            .map(|pos| pos as f64)
-            .unwrap_or(-1.0)
-    }
-}
-
-/// Adapter for types implementing `Write + Seek`.
-///
-/// Provides seekable write connection with automatic capability detection.
-pub struct IoWriteSeek<T: std::io::Write + std::io::Seek + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::Write + std::io::Seek + 'static> IoWriteSeek<T> {
-    /// Create a new write+seek adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::Write + std::io::Seek + 'static> IoCaps for IoWriteSeek<T> {
-    const HAS_WRITE: bool = true;
-    const HAS_SEEK: bool = true;
-}
-
-impl<T: std::io::Write + std::io::Seek + 'static> RConnectionImpl for IoWriteSeek<T> {
-    fn write(&mut self, buf: &[u8]) -> usize {
-        use std::io::Write;
-        self.inner.write(buf).unwrap_or(0)
-    }
-
-    fn flush(&mut self) -> i32 {
-        use std::io::Write;
-        if self.inner.flush().is_ok() { 0 } else { -1 }
-    }
-
-    fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
-        use std::io::Seek;
-
-        // Handle position query (where_ is NA/NaN)
-        if where_.is_nan() {
-            return self.inner.stream_position()
-                .map(|pos| pos as f64)
-                .unwrap_or(-1.0);
-        }
-
-        // Map R's origin to SeekFrom
-        let seek_from = match origin {
-            1 => std::io::SeekFrom::Start(where_.max(0.0) as u64),
-            2 => std::io::SeekFrom::Current(where_ as i64),
-            3 => std::io::SeekFrom::End(where_ as i64),
-            _ => return -1.0,
-        };
-
-        self.inner.seek(seek_from)
-            .map(|pos| pos as f64)
-            .unwrap_or(-1.0)
-    }
-}
-
-/// Adapter for types implementing `Read + Write + Seek`.
-///
-/// Provides full bidirectional seekable connection with automatic capability detection.
-pub struct IoReadWriteSeek<T: std::io::Read + std::io::Write + std::io::Seek + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::Read + std::io::Write + std::io::Seek + 'static> IoReadWriteSeek<T> {
-    /// Create a new read+write+seek adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::Read + std::io::Write + std::io::Seek + 'static> IoCaps for IoReadWriteSeek<T> {
-    const HAS_READ: bool = true;
-    const HAS_WRITE: bool = true;
-    const HAS_SEEK: bool = true;
-}
-
-impl<T: std::io::Read + std::io::Write + std::io::Seek + 'static> RConnectionImpl for IoReadWriteSeek<T> {
-    fn read(&mut self, buf: &mut [u8]) -> usize {
-        use std::io::Read;
-        self.inner.read(buf).unwrap_or(0)
-    }
-
-    fn write(&mut self, buf: &[u8]) -> usize {
-        use std::io::Write;
-        self.inner.write(buf).unwrap_or(0)
-    }
-
-    fn flush(&mut self) -> i32 {
-        use std::io::Write;
-        if self.inner.flush().is_ok() { 0 } else { -1 }
-    }
-
-    fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
-        use std::io::Seek;
-
-        // Handle position query (where_ is NA/NaN)
-        if where_.is_nan() {
-            return self.inner.stream_position()
-                .map(|pos| pos as f64)
-                .unwrap_or(-1.0);
-        }
-
-        // Map R's origin to SeekFrom
-        let seek_from = match origin {
-            1 => std::io::SeekFrom::Start(where_.max(0.0) as u64),
-            2 => std::io::SeekFrom::Current(where_ as i64),
-            3 => std::io::SeekFrom::End(where_ as i64),
-            _ => return -1.0,
-        };
-
-        self.inner.seek(seek_from)
-            .map(|pos| pos as f64)
-            .unwrap_or(-1.0)
-    }
-}
-
-/// Adapter for types implementing `BufRead`.
-///
-/// Provides buffered reading with optimized `fgetc` implementation.
-pub struct IoBufRead<T: std::io::BufRead + 'static> {
-    inner: T,
-}
-
-impl<T: std::io::BufRead + 'static> IoBufRead<T> {
-    /// Create a new buffered read adapter.
-    pub fn new(inner: T) -> Self {
-        Self { inner }
-    }
-}
-
-impl<T: std::io::BufRead + 'static> IoCaps for IoBufRead<T> {
-    const HAS_READ: bool = true;
-    const HAS_BUFREAD: bool = true;
-}
-
-impl<T: std::io::BufRead + 'static> RConnectionImpl for IoBufRead<T> {
-    fn read(&mut self, buf: &mut [u8]) -> usize {
-        use std::io::Read;
-        self.inner.read(buf).unwrap_or(0)
-    }
-
-    fn fgetc(&mut self) -> i32 {
-        use std::io::BufRead;
-
-        // Use fill_buf for optimized buffered reading
-        match self.inner.fill_buf() {
-            Ok(buffer) if !buffer.is_empty() => {
-                let byte = buffer[0];
-                self.inner.consume(1);
-                byte as i32
+/// This reduces ~400 lines of boilerplate to ~50 lines of macro invocations.
+macro_rules! define_io_adapter {
+    (
+        $(#[$meta:meta])*
+        $adapter_name:ident<$t:ident: $($trait_bound:path),+>
+        {
+            caps: { $($cap_name:ident = $cap_value:expr),* $(,)? },
+            methods: {
+                $($method_impl:tt)*
             }
-            _ => -1, // EOF or error
+        }
+    ) => {
+        $(#[$meta])*
+        pub struct $adapter_name<$t: $($trait_bound +)+ 'static> {
+            inner: $t,
+        }
+
+        impl<$t: $($trait_bound +)+ 'static> $adapter_name<$t> {
+            /// Create a new adapter.
+            pub fn new(inner: $t) -> Self {
+                Self { inner }
+            }
+        }
+
+        impl<$t: $($trait_bound +)+ 'static> IoCaps for $adapter_name<$t> {
+            $(const $cap_name: bool = $cap_value;)*
+        }
+
+        impl<$t: $($trait_bound +)+ 'static> RConnectionImpl for $adapter_name<$t> {
+            $($method_impl)*
+        }
+    };
+}
+
+// Helper macro for seek implementation (shared across all seekable adapters)
+macro_rules! impl_seek {
+    () => {
+        fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
+            use std::io::Seek;
+
+            // Handle position query (where_ is NA/NaN)
+            if where_.is_nan() {
+                return self.inner.stream_position()
+                    .map(|pos| pos as f64)
+                    .unwrap_or(-1.0);
+            }
+
+            // Map R's origin to SeekFrom
+            let seek_from = match origin {
+                1 => std::io::SeekFrom::Start(where_.max(0.0) as u64),
+                2 => std::io::SeekFrom::Current(where_ as i64),
+                3 => std::io::SeekFrom::End(where_ as i64),
+                _ => return -1.0,
+            };
+
+            self.inner.seek(seek_from)
+                .map(|pos| pos as f64)
+                .unwrap_or(-1.0)
+        }
+    };
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing `std::io::Read`.
+    ///
+    /// Provides read-only connection with automatic capability detection.
+    IoRead<T: std::io::Read> {
+        caps: { HAS_READ = true },
+        methods: {
+            fn read(&mut self, buf: &mut [u8]) -> usize {
+                use std::io::Read;
+                self.inner.read(buf).unwrap_or(0)
+            }
+        }
+    }
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing `std::io::Write`.
+    ///
+    /// Provides write-only connection with automatic capability detection.
+    IoWrite<T: std::io::Write> {
+        caps: { HAS_WRITE = true },
+        methods: {
+            fn write(&mut self, buf: &[u8]) -> usize {
+                use std::io::Write;
+                self.inner.write(buf).unwrap_or(0)
+            }
+
+            fn flush(&mut self) -> i32 {
+                use std::io::Write;
+                if self.inner.flush().is_ok() { 0 } else { -1 }
+            }
+        }
+    }
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing both `Read` and `Write`.
+    ///
+    /// Provides read-write connection with automatic capability detection.
+    IoReadWrite<T: std::io::Read, std::io::Write> {
+        caps: { HAS_READ = true, HAS_WRITE = true },
+        methods: {
+            fn read(&mut self, buf: &mut [u8]) -> usize {
+                use std::io::Read;
+                self.inner.read(buf).unwrap_or(0)
+            }
+
+            fn write(&mut self, buf: &[u8]) -> usize {
+                use std::io::Write;
+                self.inner.write(buf).unwrap_or(0)
+            }
+
+            fn flush(&mut self) -> i32 {
+                use std::io::Write;
+                if self.inner.flush().is_ok() { 0 } else { -1 }
+            }
+        }
+    }
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing `Read + Seek`.
+    ///
+    /// Provides seekable read connection with automatic capability detection.
+    IoReadSeek<T: std::io::Read, std::io::Seek> {
+        caps: { HAS_READ = true, HAS_SEEK = true },
+        methods: {
+            fn read(&mut self, buf: &mut [u8]) -> usize {
+                use std::io::Read;
+                self.inner.read(buf).unwrap_or(0)
+            }
+
+            impl_seek!();
+        }
+    }
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing `Write + Seek`.
+    ///
+    /// Provides seekable write connection with automatic capability detection.
+    IoWriteSeek<T: std::io::Write, std::io::Seek> {
+        caps: { HAS_WRITE = true, HAS_SEEK = true },
+        methods: {
+            fn write(&mut self, buf: &[u8]) -> usize {
+                use std::io::Write;
+                self.inner.write(buf).unwrap_or(0)
+            }
+
+            fn flush(&mut self) -> i32 {
+                use std::io::Write;
+                if self.inner.flush().is_ok() { 0 } else { -1 }
+            }
+
+            impl_seek!();
+        }
+    }
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing `Read + Write + Seek`.
+    ///
+    /// Provides full bidirectional seekable connection with automatic capability detection.
+    IoReadWriteSeek<T: std::io::Read, std::io::Write, std::io::Seek> {
+        caps: { HAS_READ = true, HAS_WRITE = true, HAS_SEEK = true },
+        methods: {
+            fn read(&mut self, buf: &mut [u8]) -> usize {
+                use std::io::Read;
+                self.inner.read(buf).unwrap_or(0)
+            }
+
+            fn write(&mut self, buf: &[u8]) -> usize {
+                use std::io::Write;
+                self.inner.write(buf).unwrap_or(0)
+            }
+
+            fn flush(&mut self) -> i32 {
+                use std::io::Write;
+                if self.inner.flush().is_ok() { 0 } else { -1 }
+            }
+
+            impl_seek!();
+        }
+    }
+}
+
+define_io_adapter! {
+    /// Adapter for types implementing `BufRead`.
+    ///
+    /// Provides buffered reading with optimized `fgetc` implementation.
+    IoBufRead<T: std::io::BufRead> {
+        caps: { HAS_READ = true, HAS_BUFREAD = true },
+        methods: {
+            fn read(&mut self, buf: &mut [u8]) -> usize {
+                use std::io::Read;
+                self.inner.read(buf).unwrap_or(0)
+            }
+
+            fn fgetc(&mut self) -> i32 {
+                use std::io::BufRead;
+
+                // Use fill_buf for optimized buffered reading
+                match self.inner.fill_buf() {
+                    Ok(buffer) if !buffer.is_empty() => {
+                        let byte = buffer[0];
+                        self.inner.consume(1);
+                        byte as i32
+                    }
+                    _ => -1, // EOF or error
+                }
+            }
         }
     }
 }
