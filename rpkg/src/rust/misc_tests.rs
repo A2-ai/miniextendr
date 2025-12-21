@@ -42,4 +42,5 @@ miniextendr_module! {
     // Wildcard parameter test
     fn underscore_it_all;
     fn rpkg_doc_altrep_helpers;
+    fn do_nothing;
 }

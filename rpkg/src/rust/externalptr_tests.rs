@@ -226,4 +226,5 @@ miniextendr_module! {
     extern "C-unwind" fn C_extptr_null_test;
     extern "C-unwind" fn C_extptr_is_counter;
     extern "C-unwind" fn C_extptr_is_point;
+    //fn test_extptr_on_main_thread;
 }

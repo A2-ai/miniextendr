@@ -1,15 +1,9 @@
 [package]
-name = "miniextendr-macros"
+name = "miniextendr-lint"
 version.workspace = true
 edition.workspace = true
-
-[lib]
-proc-macro = true
 
 [dependencies]
 proc-macro2 = { workspace = true }
 quote = { workspace = true }
 syn = { workspace = true }
-
-[dev-dependencies]
-trybuild = "1.0"
