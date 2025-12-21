@@ -1465,8 +1465,15 @@ pub fn expand_impl(
         TokenStream::from_str(&raw).expect("valid raw string literal")
     };
 
+    // Generate doc comment linking to R wrapper constant
+    let r_wrapper_doc = format!(
+        "See [`{}`] for the generated R wrapper code.",
+        r_wrappers_const
+    );
+
     let expanded = quote! {
-        // Original impl block
+        // Original impl block with doc link to R wrapper
+        #[doc = #r_wrapper_doc]
         #original_impl
 
         // C wrappers and call method defs
