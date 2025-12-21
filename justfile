@@ -79,28 +79,19 @@ expand *cargo_flags:
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
-# Run ./configure and vendor rpkg deps
+# Run ./configure and vendor rpkg dependencies
+#
+# This prepares the R package for building by:
+# 1. Running autoconf + configure script
+#    - Syncs miniextendr-api and miniextendr-macros to rpkg/src/vendor/ (via rsync)
+#    - Generates build configuration files
+# 2. Vendoring crates.io dependencies to rpkg/src/vendor/
+#    - proc-macro2, quote, syn, unicode-ident
+#
+# This is the only vendoring needed - R packages must be self-contained for CRAN.
+# Workspace crates use normal cargo dependency resolution (no vendoring needed).
 configure:
     cd rpkg && autoconf && ./configure
-    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
-
-# Vendor dependencies (workspace-level)
-alias cargo-vendor := vendor
-vendor:
-    cargo vendor \
-        --sync=Cargo.toml \
-        --sync=miniextendr-api/Cargo.toml \
-        --sync=miniextendr-bench/Cargo.toml \
-        --sync=miniextendr-lint/Cargo.toml \
-        --sync=miniextendr-macros/Cargo.toml \
-        --sync=rpkg/src/rust/Cargo.toml \
-        vendor
-
-# Vendor crates.io dependencies for rpkg (into src/vendor)
-# Local crates (miniextendr-api, miniextendr-macros) are handled by:
-# - configure.ac rsync (dev builds)
-# - bootstrap.R (CRAN tarball builds)
-vendor-rpkg:
     cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Load and test rpkg with devtools
@@ -166,14 +157,23 @@ r-cmd-check *args:
     fi \
     && Rscript -e "rcmdcheck::rcmdcheck('rpkg', args = c('--as-cran','--no-manual'), error_on = '${ERROR_ON}', check_dir = ${CHECK_DIR_ARG})"
 
-# REVIEW THIS SLOP:
-# Build R package tarball
+# Extract and inspect R package tarball contents (for debugging build artifacts)
+#
+# Builds tarball with --compression=none and extracts to rpkg_build/ for inspection.
+# Useful for verifying what gets included in CRAN submissions.
 test-r-build:
-    pkg="$$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Package"]])')" \
-    && ver="$$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Version"]])')" \
-    && R CMD build --compression=none rpkg \
-    && tarball="$${pkg}_$${ver}.tar" \
-    && [ -f "$$tarball" ] || tarball="$${tarball}.gz" \
-    && out_dir="rpkg_build/$${pkg}_$${ver}" \
-    && mkdir -p "$$out_dir" \
-    && Rscript -e 'args <- commandArgs(trailingOnly = TRUE); utils::untar(args[[1]], exdir = args[[2]])' "$$tarball" "$$out_dir"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    # Extract package info from DESCRIPTION
+    pkg=$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Package"]])')
+    ver=$(Rscript -e 'd <- read.dcf("rpkg/DESCRIPTION")[1,]; cat(d[["Version"]])')
+    # Build tarball
+    R CMD build --compression=none rpkg
+    # Determine tarball name (.tar or .tar.gz)
+    tarball="${pkg}_${ver}.tar"
+    [[ -f "$tarball" ]] || tarball="${tarball}.gz"
+    # Extract for inspection
+    out_dir="rpkg_build/${pkg}_${ver}"
+    mkdir -p "$out_dir"
+    tar -xf "$tarball" -C "$out_dir" --strip-components=1
+    echo "Extracted to: $out_dir"
