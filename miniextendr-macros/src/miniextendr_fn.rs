@@ -307,9 +307,19 @@ impl MiniextendrFunctionParsed {
         &self.item.sig.output
     }
 
-    /// The normalized function item, for emitting in the output.
+    /// The normalized function item (with original doc comments).
     pub(crate) fn item(&self) -> &syn::ItemFn {
         &self.item
+    }
+
+    /// The normalized function item with roxygen tags stripped from doc comments.
+    ///
+    /// This is used for emitting the Rust function without R-specific documentation
+    /// tags (e.g., `@param`, `@examples`) that don't belong in rustdoc.
+    pub(crate) fn item_without_roxygen(&self) -> syn::ItemFn {
+        let mut item = self.item.clone();
+        item.attrs = crate::roxygen::strip_roxygen_from_attrs(&item.attrs);
+        item
     }
 
     // -------------------------------------------------------------------------

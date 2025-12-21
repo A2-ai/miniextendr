@@ -625,8 +625,9 @@ pub fn miniextendr(
         rust_ident, c_ident
     );
 
-    // Get the normalized item for output
-    let original_item = parsed.item();
+    // Get the normalized item for output, with roxygen tags stripped from docs.
+    // Roxygen tags are for R documentation and shouldn't appear in rustdoc.
+    let original_item = parsed.item_without_roxygen();
 
     // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
