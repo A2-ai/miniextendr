@@ -2,10 +2,16 @@
 
 mod altrep;
 mod miniextendr_fn;
-use crate::miniextendr_fn::{CoercionMapping, MiniextendrFnAttrs, MiniextendrFunctionParsed};
+use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
 mod miniextendr_module;
 use crate::miniextendr_module::MiniextendrModule;
+mod r_wrapper_builder;
+pub(crate) use r_wrapper_builder::RArgumentBuilder;
+mod rust_conversion_builder;
+pub(crate) use rust_conversion_builder::RustConversionBuilder;
+mod method_return_builder;
+pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 
 /// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
 ///
@@ -24,20 +30,7 @@ pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
 }
 
-/// Normalize a Rust parameter identifier into an R argument identifier.
-///
-/// The generated R wrapper uses this to avoid exporting leading underscore names.
-/// - `__foo` → `private__foo`
-/// - `_foo` → `unused_foo`
-fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
-    let mut arg_name = rust_ident.to_string();
-    if arg_name.starts_with("__") {
-        arg_name.insert_str(0, "private");
-    } else if arg_name.starts_with('_') {
-        arg_name.insert_str(0, "unused");
-    }
-    syn::Ident::new(&arg_name, rust_ident.span())
-}
+// normalize_r_arg_ident is now provided by r_wrapper_builder module
 
 /// Extract `#[cfg(...)]` attributes from a list of attributes.
 ///
@@ -105,7 +98,6 @@ pub fn miniextendr(
     let c_ident = parsed.c_wrapper_ident();
     let r_wrapper_generator = parsed.r_wrapper_const_ident();
 
-    use quote::ToTokens;
     use syn::spanned::Spanned;
 
     // Extract references to parsed components
@@ -117,7 +109,7 @@ pub fn miniextendr(
     let vis = parsed.vis();
     let generics = parsed.generics();
     let has_dots = parsed.has_dots();
-    let mut named_dots = parsed.named_dots().cloned();
+    let named_dots = parsed.named_dots().cloned();
 
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
@@ -204,144 +196,25 @@ pub fn miniextendr(
             unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
         });
     }
-    let mut closure_statements: Vec<proc_macro2::TokenStream> = Vec::new();
-    let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
-    for arg in inputs.iter() {
-        let syn::FnArg::Typed(pat_type) = arg else {
-            // TODO: no support for self!
-            continue;
-        };
-        let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
-            continue;
-        };
-        let ident = pat_ident.ident.clone();
-
-        match pat_type.ty.as_ref() {
-            syn::Type::Tuple(t) if t.elems.is_empty() => {
-                if pat_ident.mutability.is_some() {
-                    closure_statements.push(quote::quote! { let mut #ident = (); });
-                } else {
-                    closure_statements.push(quote::quote! { let #ident = (); });
-                }
-            }
-            syn::Type::Reference(r) => {
-                let is_dots = matches!(
-                    r.elem.as_ref(),
-                    syn::Type::Path(tp)
-                        if tp
-                            .path
-                            .segments
-                            .last()
-                            .map(|s| s.ident == "Dots")
-                            .unwrap_or(false)
-                );
-                let is_slice = matches!(r.elem.as_ref(), syn::Type::Slice(_));
-                // Check for &str - strings need TryFromSexp, not DATAPTR_RO
-                let is_str = matches!(
-                    r.elem.as_ref(),
-                    syn::Type::Path(tp) if tp.path.is_ident("str")
-                );
-                if is_dots {
-                    let storage_ident = quote::format_ident!("{}_storage", ident);
-                    closure_statements.push(quote::quote! {
-                        let #storage_ident = ::miniextendr_api::dots::Dots { inner: #ident };
-                        let #ident = &#storage_ident;
-                    });
-                } else if is_slice {
-                    // Slice references use TryFromSexp (backed by DATAPTR_RO).
-                    closure_statements.push(quote::quote! {
-                        let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                    });
-                } else if is_str {
-                    // `&str` parameters are decoded to an owned `String` first (via TryFromSexp),
-                    // then borrowed as `&str` for the Rust call. This avoids returning a `'static`
-                    // borrow into R memory and also allows UTF-8 translation when needed.
-                    let storage_ident = quote::format_ident!("__miniextendr_{}_string", ident);
-                    let mutability = if pat_ident.mutability.is_some() {
-                        quote::quote!(mut)
-                    } else {
-                        quote::quote!()
-                    };
-                    closure_statements.push(quote::quote! {
-                        let #storage_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                    });
-                    closure_statements.push(quote::quote! {
-                        let #mutability #ident: &str = #storage_ident.as_str();
-                    });
-                } else if pat_ident.mutability.is_some() {
-                    closure_statements.push(quote::quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#ident).cast() };
-                    });
-                } else {
-                    closure_statements.push(quote::quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#ident).cast() };
-                    });
-                }
-            }
-            _ => {
-                // Check if coercion is enabled for this parameter:
-                // - coerce_all: #[miniextendr(coerce)] on function applies to all params
-                // - has_coerce_attr: #[miniextendr(coerce)] on individual param
-                let param_name = ident.to_string();
-                let should_coerce = coerce_all || parsed.has_coerce_attr(&param_name);
-                let coercion_mapping = if should_coerce {
-                    CoercionMapping::from_type(pat_type.ty.as_ref())
-                } else {
-                    None
-                };
-
-                match coercion_mapping {
-                    Some(CoercionMapping::Scalar { r_native, target }) => {
-                        // Scalar coercion: extract R native, coerce to target
-                        let mutability = if pat_ident.mutability.is_some() {
-                            quote::quote!(mut)
-                        } else {
-                            quote::quote!()
-                        };
-                        closure_statements.push(quote::quote! {
-                            let #mutability #ident: #target = {
-                                let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                                ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val)
-                                    .expect(concat!("coercion to ", stringify!(#target), " failed"))
-                            };
-                        });
-                    }
-                    Some(CoercionMapping::Vec {
-                        r_native_elem,
-                        target_elem,
-                    }) => {
-                        // Vec coercion: extract R native slice, coerce element-wise
-                        let mutability = if pat_ident.mutability.is_some() {
-                            quote::quote!(mut)
-                        } else {
-                            quote::quote!()
-                        };
-                        closure_statements.push(quote::quote! {
-                            let #mutability #ident: Vec<#target_elem> = {
-                                let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                                __r_slice.iter().copied()
-                                    .map(::miniextendr_api::TryCoerce::<#target_elem>::try_coerce)
-                                    .collect::<Result<Vec<_>, _>>()
-                                    .expect(concat!("coercion to Vec<", stringify!(#target_elem), "> failed"))
-                            };
-                        });
-                    }
-                    None => {
-                        // No coercion - use standard TryFromSexp
-                        if pat_ident.mutability.is_some() {
-                            closure_statements.push(quote::quote! {
-                                let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                            });
-                        } else {
-                            closure_statements.push(quote::quote! {
-                                let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#ident).unwrap();
-                            });
-                        }
-                    }
-                }
+    // Build conversion builder with coercion settings
+    let mut conversion_builder = RustConversionBuilder::new();
+    if coerce_all {
+        conversion_builder = conversion_builder.with_coerce_all();
+    }
+    for input in inputs.iter() {
+        if let syn::FnArg::Typed(pt) = input
+            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+        {
+            let param_name = pat_ident.ident.to_string();
+            if parsed.has_coerce_attr(&param_name) {
+                conversion_builder = conversion_builder.with_coerce_param(param_name);
             }
         }
     }
+
+    // Generate conversion statements
+    let closure_statements = conversion_builder.build_conversions(inputs, &rust_inputs);
+    let mut post_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
 
     // Automatic invisibility detection based on return type.
     // Can be overridden with #[miniextendr(invisible)] or #[miniextendr(visible)].
@@ -653,67 +526,20 @@ pub fn miniextendr(
     }
 
     // region: R wrappers generation in `fn`
-    // normalize `named_dots` for R (no leading underscore)
-    if has_dots && let Some(named) = &mut named_dots {
-        *named = normalize_r_arg_ident(named);
+    // Build R formal parameters and call arguments using shared builder
+    let mut arg_builder = RArgumentBuilder::new(inputs);
+    if has_dots {
+        arg_builder = arg_builder.with_dots(named_dots.map(|id| id.to_string()));
     }
 
-    // Build both the .Call argument list and the formal parameter list in one pass
-    let last_idx = inputs.len().saturating_sub(1);
-    let mut r_call_args_strs: Vec<String> = Vec::new();
+    let r_formals = arg_builder.build_formals_tokens();
+    let mut r_call_args_strs = arg_builder.build_call_args_vec();
+
+    // Prepend .call parameter if using internal C wrapper
     if uses_internal_c_wrapper {
-        r_call_args_strs.push(".call = match.call()".to_string());
-    }
-    let mut r_formals: Vec<proc_macro2::TokenStream> = Vec::new();
-    for (idx, x) in inputs.iter().enumerate() {
-        let syn::FnArg::Typed(pat_type) = x else {
-            unreachable!()
-        };
-        let syn::PatType {
-            attrs: _,
-            pat,
-            colon_token: _,
-            ty,
-        } = pat_type;
-
-        // derive R argument name, applying leading-underscore rename
-        let arg_ident = match pat.as_ref() {
-            syn::Pat::Ident(pat_ident) => normalize_r_arg_ident(&pat_ident.ident),
-            _ => unreachable!(),
-        };
-
-        // call-site argument
-        if has_dots && idx == last_idx {
-            if let Some(named_dots) = &named_dots {
-                r_call_args_strs.push(format!("list({})", named_dots));
-            } else {
-                r_call_args_strs.push("list(...)".to_string());
-            }
-        } else {
-            r_call_args_strs.push(arg_ident.to_string());
-        }
-
-        // formal parameter (with defaults for unit types)
-        if has_dots && idx == last_idx {
-            if let Some(named_dots) = &named_dots {
-                let named = syn::Ident::new(&named_dots.to_string(), named_dots.span());
-                r_formals.push(syn::parse_quote!(#named = ...));
-            } else {
-                r_formals.push(syn::parse_quote!(...));
-            }
-        } else {
-            match ty.as_ref() {
-                syn::Type::Tuple(t) if t.elems.is_empty() => {
-                    r_formals.push(syn::parse_quote!(#arg_ident = NULL));
-                }
-                _ => {
-                    r_formals.push(arg_ident.into_token_stream());
-                }
-            }
-        }
+        r_call_args_strs.insert(0, ".call = match.call()".to_string());
     }
 
-    // region: R wrappers generation in `fn`
     // Build the R body string consistently
     let c_ident_str = c_ident.to_string();
     let call_args_joined = r_call_args_strs.join(", ");
