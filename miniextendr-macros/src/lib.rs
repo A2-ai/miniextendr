@@ -12,6 +12,7 @@ mod rust_conversion_builder;
 pub(crate) use rust_conversion_builder::RustConversionBuilder;
 mod method_return_builder;
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
+mod altrep_derive;
 
 /// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
 ///
@@ -1264,6 +1265,128 @@ pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenS
     };
 
     expanded.into()
+}
+
+/// Derive macro for ALTREP integer vector data types.
+///
+/// Auto-implements `AltrepLen`, `AltIntegerData`, and calls `impl_altinteger_from_data!`.
+///
+/// # Attributes
+///
+/// - `#[altrep(len = "field_name")]` - Specify length field (auto-detects "len" or "length")
+/// - `#[altrep(elt = "field_name")]` - For constant vectors, specify which field provides elements
+/// - `#[altrep(dataptr)]` - Pass `dataptr` option to low-level macro
+/// - `#[altrep(serialize)]` - Pass `serialize` option to low-level macro
+/// - `#[altrep(subset)]` - Pass `subset` option to low-level macro
+/// - `#[altrep(no_lowlevel)]` - Skip automatic `impl_altinteger_from_data!` call
+///
+/// # Example (Constant Vector - Zero Boilerplate!)
+///
+/// ```ignore
+/// #[derive(ExternalPtr, AltrepInteger)]
+/// #[altrep(elt = "value")]  // All elements return this field
+/// pub struct ConstantIntData {
+///     value: i32,
+///     len: usize,
+/// }
+///
+/// // That's it! 3 lines instead of 30!
+/// // AltrepLen, AltIntegerData, and low-level impls are auto-generated
+///
+/// #[miniextendr(class = "ConstantInt", pkg = "mypkg")]
+/// pub struct ConstantIntClass(pub ConstantIntData);
+/// ```
+///
+/// # Example (Custom elt() - Override One Method)
+///
+/// ```ignore
+/// #[derive(ExternalPtr, AltrepInteger)]
+/// pub struct ArithSeqData {
+///     start: i32,
+///     step: i32,
+///     len: usize,
+/// }
+///
+/// // Auto-generates AltrepLen and stub AltIntegerData
+/// // Just override elt() for custom logic:
+/// impl AltIntegerData for ArithSeqData {
+///     fn elt(&self, i: usize) -> i32 {
+///         self.start + (i as i32) * self.step
+///     }
+/// }
+/// ```
+#[proc_macro_derive(AltrepInteger, attributes(altrep))]
+pub fn derive_altrep_integer(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_integer(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive macro for ALTREP real vector data types.
+///
+/// Auto-implements `AltrepLen` and `AltRealData` traits.
+#[proc_macro_derive(AltrepReal, attributes(altrep))]
+pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_real(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive macro for ALTREP logical vector data types.
+///
+/// Auto-implements `AltrepLen` and `AltLogicalData` traits.
+#[proc_macro_derive(AltrepLogical, attributes(altrep))]
+pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_logical(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive macro for ALTREP raw vector data types.
+///
+/// Auto-implements `AltrepLen` and `AltRawData` traits.
+#[proc_macro_derive(AltrepRaw, attributes(altrep))]
+pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_raw(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive macro for ALTREP string vector data types.
+///
+/// Auto-implements `AltrepLen` and `AltStringData` traits.
+#[proc_macro_derive(AltrepString, attributes(altrep))]
+pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_string(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive macro for ALTREP complex vector data types.
+///
+/// Auto-implements `AltrepLen` and `AltComplexData` traits.
+#[proc_macro_derive(AltrepComplex, attributes(altrep))]
+pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_complex(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive macro for ALTREP list vector data types.
+///
+/// Auto-implements `AltrepLen` and `AltListData` traits.
+#[proc_macro_derive(AltrepList, attributes(altrep))]
+pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    altrep_derive::derive_altrep_list(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
 }
 
 #[cfg(test)]
