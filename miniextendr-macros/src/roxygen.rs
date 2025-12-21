@@ -1,29 +1,3 @@
-//! Roxygen tag extraction and processing for R wrapper generation.
-//!
-//! This module extracts roxygen2-style tags (e.g., `@param`, `@examples`) from Rust
-//! doc comments and propagates them to generated R wrapper code.
-//!
-//! # Usage
-//!
-//! In Rust doc comments, use roxygen2 tags:
-//!
-//! ```rust,ignore
-//! /// @param x A numeric input.
-//! /// @return The squared value.
-//! /// @examples
-//! /// square(4)
-//! #[miniextendr]
-//! pub fn square(x: f64) -> f64 { x * x }
-//! ```
-//!
-//! # R Package Configuration
-//!
-//! For roxygen2 to process multiline tags correctly, add this to your `DESCRIPTION` file:
-//!
-//! ```text
-//! Roxygen: list(markdown = TRUE)
-//! ```
-
 use std::collections::HashSet;
 
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
@@ -108,77 +82,6 @@ fn tag_names(tags: &[String]) -> HashSet<&str> {
         }
     }
     names
-}
-
-/// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
-///
-/// Returns a new vector of attributes with roxygen lines removed from doc comments.
-/// Non-doc attributes are passed through unchanged.
-///
-/// # Algorithm
-///
-/// Roxygen tags typically appear at the end of documentation blocks. We use a simple
-/// but effective approach:
-/// 1. Keep all content before the first `@tag` line
-/// 2. Strip everything from the first `@tag` to the end of the roxygen region
-///
-/// A roxygen region ends when we see a non-empty line that doesn't start with `@`
-/// and follows an empty line (paragraph break). This handles multi-paragraph tags.
-pub(crate) fn strip_roxygen_from_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
-    // Collect doc attribute indices and their trimmed content
-    let mut doc_info: Vec<(usize, String)> = Vec::new();
-    for (i, attr) in attrs.iter().enumerate() {
-        if !attr.path().is_ident("doc") {
-            continue;
-        }
-        let syn::Meta::NameValue(nv) = &attr.meta else {
-            continue;
-        };
-        let syn::Expr::Lit(expr_lit) = &nv.value else {
-            continue;
-        };
-        let syn::Lit::Str(lit) = &expr_lit.lit else {
-            continue;
-        };
-        // Trim the leading space that comes from `/// `
-        doc_info.push((i, lit.value().trim_start().to_string()));
-    }
-
-    // Find roxygen line indices
-    let mut roxygen_indices: std::collections::HashSet<usize> = std::collections::HashSet::new();
-    let mut in_roxygen = false;
-    let mut prev_was_empty = false;
-
-    for (i, trimmed) in &doc_info {
-        if trimmed.starts_with('@') {
-            // Start or continue roxygen region
-            in_roxygen = true;
-            roxygen_indices.insert(*i);
-            prev_was_empty = false;
-        } else if in_roxygen {
-            if trimmed.is_empty() {
-                // Empty line in roxygen - might end the block or be part of multi-paragraph tag
-                roxygen_indices.insert(*i);
-                prev_was_empty = true;
-            } else if prev_was_empty {
-                // Non-empty line after empty line - end roxygen region
-                // This is likely regular documentation
-                in_roxygen = false;
-                prev_was_empty = false;
-            } else {
-                // Continuation line (no paragraph break)
-                roxygen_indices.insert(*i);
-            }
-        }
-    }
-
-    // Build result excluding roxygen lines
-    attrs
-        .iter()
-        .enumerate()
-        .filter(|(i, _)| !roxygen_indices.contains(i))
-        .map(|(_, attr)| attr.clone())
-        .collect()
 }
 
 #[cfg(test)]
