@@ -194,6 +194,49 @@ impl Coerce<i32> for Rboolean {
 }
 
 // =============================================================================
+// Option<T> to R-native with None → NA
+// =============================================================================
+
+/// `Option<f64>` → `f64` with `None` → `NA_real_` (NaN).
+impl Coerce<f64> for Option<f64> {
+    #[inline(always)]
+    fn coerce(self) -> f64 {
+        self.unwrap_or(f64::NAN)
+    }
+}
+
+/// `Option<i32>` → `i32` with `None` → `NA_integer_` (i32::MIN).
+impl Coerce<i32> for Option<i32> {
+    #[inline(always)]
+    fn coerce(self) -> i32 {
+        self.unwrap_or(i32::MIN)
+    }
+}
+
+/// `Option<bool>` → `i32` with `None` → `NA_LOGICAL` (i32::MIN).
+impl Coerce<i32> for Option<bool> {
+    #[inline(always)]
+    fn coerce(self) -> i32 {
+        match self {
+            Some(true) => 1,
+            Some(false) => 0,
+            None => i32::MIN,
+        }
+    }
+}
+
+/// `Option<Rboolean>` → `i32` with `None` → `NA_LOGICAL` (i32::MIN).
+impl Coerce<i32> for Option<Rboolean> {
+    #[inline(always)]
+    fn coerce(self) -> i32 {
+        match self {
+            Some(v) => v as i32,
+            None => i32::MIN,
+        }
+    }
+}
+
+// =============================================================================
 // i32 to larger/unsigned types (for argument coercion from R integers)
 // =============================================================================
 
@@ -1479,5 +1522,88 @@ mod tests {
         let t4: (i32, f64) = (10, 20.0);
         let coerced4: (i32, f64) = t4.coerce();
         assert_eq!(coerced4, (10, 20.0));
+    }
+
+    #[test]
+    fn test_option_f64_coerce() {
+        // Some value passes through
+        let x: f64 = Some(42.0).coerce();
+        assert_eq!(x, 42.0);
+
+        // None becomes NA_real_ (NaN)
+        let na: f64 = None::<f64>.coerce();
+        assert!(na.is_nan());
+    }
+
+    #[test]
+    fn test_option_i32_coerce() {
+        // Some value passes through
+        let x: i32 = Some(42).coerce();
+        assert_eq!(x, 42);
+
+        // None becomes NA_integer_ (i32::MIN)
+        let na: i32 = None::<i32>.coerce();
+        assert_eq!(na, i32::MIN);
+    }
+
+    #[test]
+    fn test_option_bool_coerce() {
+        // Some(true) -> 1
+        let t: i32 = Some(true).coerce();
+        assert_eq!(t, 1);
+
+        // Some(false) -> 0
+        let f: i32 = Some(false).coerce();
+        assert_eq!(f, 0);
+
+        // None -> NA_LOGICAL (i32::MIN)
+        let na: i32 = None::<bool>.coerce();
+        assert_eq!(na, i32::MIN);
+    }
+
+    #[test]
+    fn test_option_rboolean_coerce() {
+        // Some values pass through
+        let t: i32 = Some(Rboolean::TRUE).coerce();
+        assert_eq!(t, 1);
+
+        let f: i32 = Some(Rboolean::FALSE).coerce();
+        assert_eq!(f, 0);
+
+        // None -> NA_LOGICAL (i32::MIN)
+        let na: i32 = None::<Rboolean>.coerce();
+        assert_eq!(na, i32::MIN);
+    }
+
+    #[test]
+    fn test_option_vec_coerce() {
+        // Vec<Option<T>> element-wise coercion via blanket impl
+        let v: Vec<Option<f64>> = vec![Some(1.0), None, Some(3.0)];
+        let coerced: Vec<f64> = v.coerce();
+        assert_eq!(coerced[0], 1.0);
+        assert!(coerced[1].is_nan());
+        assert_eq!(coerced[2], 3.0);
+
+        let v2: Vec<Option<i32>> = vec![Some(1), None, Some(3)];
+        let coerced2: Vec<i32> = v2.coerce();
+        assert_eq!(coerced2, vec![1, i32::MIN, 3]);
+    }
+
+    #[test]
+    fn test_option_slice_coerce() {
+        // &[Option<T>] element-wise coercion to Vec<R>
+        let slice: &[Option<f64>] = &[Some(1.0), None, Some(3.0)];
+        let coerced: Vec<f64> = slice.coerce();
+        assert_eq!(coerced[0], 1.0);
+        assert!(coerced[1].is_nan());
+        assert_eq!(coerced[2], 3.0);
+
+        let slice2: &[Option<i32>] = &[Some(1), None, Some(3)];
+        let coerced2: Vec<i32> = slice2.coerce();
+        assert_eq!(coerced2, vec![1, i32::MIN, 3]);
+
+        let slice3: &[Option<bool>] = &[Some(true), None, Some(false)];
+        let coerced3: Vec<i32> = slice3.coerce();
+        assert_eq!(coerced3, vec![1, i32::MIN, 0]);
     }
 }
