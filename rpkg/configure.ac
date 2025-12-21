@@ -26,18 +26,33 @@ fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([NOT_CRAN])
 
-dnl Set cargo features flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): enable all features including nonapi and rayon
-dnl - NOT_CRAN=false (CRAN): default features only (no nonapi, no rayon)
+dnl Set cargo features flag
 dnl
-dnl The 'nonapi' feature enables non-API R functions that cause R CMD check
-dnl warnings, so it should only be enabled in dev builds.
-dnl The 'rayon' feature requires vendoring rayon crate; currently not vendored.
-if test "$NOT_CRAN" = "true"; then
-  CARGO_FEATURES_FLAG="--all-features"
-  CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI -DCARGO_FEATURE_RAYON"
+dnl By default, use no extra features (safe, passes R CMD check).
+dnl Advanced users can enable features via environment variables:
+dnl - MINIEXTENDR_FEATURES="nonapi" for non-API R functions (advanced threading, stack control)
+dnl - MINIEXTENDR_FEATURES="rayon" for parallel computation support
+dnl - MINIEXTENDR_FEATURES="nonapi,rayon" for both
+dnl
+dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
+dnl Only enable when you specifically need those features and understand the risks.
+AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+: ${MINIEXTENDR_FEATURES=""}
+
+if test -n "$MINIEXTENDR_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+  # Set C preprocessor flags based on enabled features
+  CARGO_FEATURE_CPPFLAGS=""
+  case ",$MINIEXTENDR_FEATURES," in
+    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
+  esac
+  case ",$MINIEXTENDR_FEATURES," in
+    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
+  esac
+  case ",$MINIEXTENDR_FEATURES," in
+    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
+  esac
 else
-  dnl CRAN builds: default features only (no nonapi warnings, no unvendored rayon)
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
 fi

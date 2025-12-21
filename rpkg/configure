@@ -630,6 +630,7 @@ ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURE_CPPFLAGS
 CARGO_FEATURES_FLAG
+MINIEXTENDR_FEATURES
 NOT_CRAN
 CARGO_OFFLINE_FLAG
 target_alias
@@ -678,6 +679,7 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
+MINIEXTENDR_FEATURES
 RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
@@ -1298,6 +1300,8 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
+  MINIEXTENDR_FEATURES
+              Comma-separated cargo features to enable (e.g., "nonapi,rayon")
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
   CARGO_TARGET_DIR
@@ -1775,11 +1779,24 @@ fi
 
 
 
-if test "$NOT_CRAN" = "true"; then
-  CARGO_FEATURES_FLAG="--all-features"
-  CARGO_FEATURE_CPPFLAGS="-DCARGO_FEATURE_NONAPI -DCARGO_FEATURE_RAYON"
+
+: ${MINIEXTENDR_FEATURES=""}
+
+if test -n "$MINIEXTENDR_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+  # Set C preprocessor flags based on enabled features
+  CARGO_FEATURE_CPPFLAGS=""
+  case ",$MINIEXTENDR_FEATURES," in
+    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
+  esac
+  case ",$MINIEXTENDR_FEATURES," in
+    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
+  esac
+  case ",$MINIEXTENDR_FEATURES," in
+    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
+  esac
 else
-    CARGO_FEATURES_FLAG=""
+  CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
 fi
 
