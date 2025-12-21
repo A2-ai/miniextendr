@@ -190,8 +190,8 @@ pub unsafe fn insert(x: SEXP) -> SEXP {
 #[inline]
 pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
     use crate::ffi::{
-        CAR_unchecked, CDR_unchecked, Rf_cons_unchecked, Rf_protect_unchecked,
-        Rf_unprotect_unchecked, SETCAR_unchecked, SETCDR_unchecked, SET_TAG_unchecked,
+        CDR_unchecked, Rf_cons_unchecked, Rf_protect_unchecked, Rf_unprotect_unchecked,
+        SET_TAG_unchecked, SETCAR_unchecked, SETCDR_unchecked,
     };
 
     unsafe {

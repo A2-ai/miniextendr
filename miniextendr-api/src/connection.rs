@@ -48,7 +48,7 @@
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int, c_void};
 
-use crate::ffi::{Rboolean, Rconnection, SEXP, R_CONNECTIONS_VERSION, R_NilValue};
+use crate::ffi::{R_CONNECTIONS_VERSION, R_NilValue, Rboolean, Rconnection, SEXP};
 
 /// The expected R connections API version this module is compatible with.
 ///
@@ -86,7 +86,8 @@ pub type CloseCallback = unsafe extern "C-unwind" fn(*mut Rconn);
 pub type DestroyCallback = unsafe extern "C-unwind" fn(*mut Rconn);
 
 /// Callback type: vfprintf (formatted output).
-pub type VfprintfCallback = unsafe extern "C-unwind" fn(*mut Rconn, *const c_char, *mut c_void) -> c_int;
+pub type VfprintfCallback =
+    unsafe extern "C-unwind" fn(*mut Rconn, *const c_char, *mut c_void) -> c_int;
 
 /// Callback type: fgetc (read single character).
 pub type FgetcCallback = unsafe extern "C-unwind" fn(*mut Rconn) -> c_int;
@@ -104,7 +105,8 @@ pub type FlushCallback = unsafe extern "C-unwind" fn(*mut Rconn) -> c_int;
 pub type ReadCallback = unsafe extern "C-unwind" fn(*mut c_void, usize, usize, *mut Rconn) -> usize;
 
 /// Callback type: write (fwrite-style: buf, size, nitems, conn).
-pub type WriteCallback = unsafe extern "C-unwind" fn(*const c_void, usize, usize, *mut Rconn) -> usize;
+pub type WriteCallback =
+    unsafe extern "C-unwind" fn(*const c_void, usize, usize, *mut Rconn) -> usize;
 
 /// R connection structure (mirrors `struct Rconn` from R_ext/Connections.h).
 ///
@@ -414,11 +416,7 @@ unsafe extern "C-unwind" fn read_trampoline<T: RConnectionImpl>(
     let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, total_bytes) };
     let bytes_read = state.read(slice);
     // Return number of items read
-    if size > 0 {
-        bytes_read / size
-    } else {
-        0
-    }
+    if size > 0 { bytes_read / size } else { 0 }
 }
 
 /// Write callback trampoline.
@@ -436,11 +434,7 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
     let slice = unsafe { std::slice::from_raw_parts(buf as *const u8, total_bytes) };
     let bytes_written = state.write(slice);
     // Return number of items written
-    if size > 0 {
-        bytes_written / size
-    } else {
-        0
-    }
+    if size > 0 { bytes_written / size } else { 0 }
 }
 
 // Generate simple trampolines using macro
@@ -631,19 +625,39 @@ impl RCustomConnection {
 
             // Set optional flags
             if let Some(text) = self.text {
-                (*conn).text = if text { Rboolean::TRUE } else { Rboolean::FALSE };
+                (*conn).text = if text {
+                    Rboolean::TRUE
+                } else {
+                    Rboolean::FALSE
+                };
             }
             if let Some(can_read) = self.can_read {
-                (*conn).canread = if can_read { Rboolean::TRUE } else { Rboolean::FALSE };
+                (*conn).canread = if can_read {
+                    Rboolean::TRUE
+                } else {
+                    Rboolean::FALSE
+                };
             }
             if let Some(can_write) = self.can_write {
-                (*conn).canwrite = if can_write { Rboolean::TRUE } else { Rboolean::FALSE };
+                (*conn).canwrite = if can_write {
+                    Rboolean::TRUE
+                } else {
+                    Rboolean::FALSE
+                };
             }
             if let Some(can_seek) = self.can_seek {
-                (*conn).canseek = if can_seek { Rboolean::TRUE } else { Rboolean::FALSE };
+                (*conn).canseek = if can_seek {
+                    Rboolean::TRUE
+                } else {
+                    Rboolean::FALSE
+                };
             }
             if let Some(blocking) = self.blocking {
-                (*conn).blocking = if blocking { Rboolean::TRUE } else { Rboolean::FALSE };
+                (*conn).blocking = if blocking {
+                    Rboolean::TRUE
+                } else {
+                    Rboolean::FALSE
+                };
             }
 
             sexp
@@ -663,9 +677,7 @@ impl RCustomConnection {
 /// - `buf` must be a valid buffer with at least `n` bytes
 #[inline]
 pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
-    unsafe {
-        crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr() as *mut c_void, buf.len())
-    }
+    unsafe { crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr() as *mut c_void, buf.len()) }
 }
 
 /// Write data to an R connection.
@@ -675,9 +687,7 @@ pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
 /// - `conn` must be a valid, open connection handle
 #[inline]
 pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
-    unsafe {
-        crate::ffi::R_WriteConnection(conn, buf.as_ptr() as *const c_void, buf.len())
-    }
+    unsafe { crate::ffi::R_WriteConnection(conn, buf.as_ptr() as *const c_void, buf.len()) }
 }
 
 /// Get a connection handle from an R connection SEXP.
@@ -751,11 +761,11 @@ macro_rules! define_io_adapter {
 macro_rules! impl_seek {
     () => {
         fn seek(&mut self, where_: f64, origin: i32, _rw: i32) -> f64 {
-            use std::io::Seek;
-
             // Handle position query (where_ is NA/NaN)
             if where_.is_nan() {
-                return self.inner.stream_position()
+                return self
+                    .inner
+                    .stream_position()
                     .map(|pos| pos as f64)
                     .unwrap_or(-1.0);
             }
@@ -768,7 +778,8 @@ macro_rules! impl_seek {
                 _ => return -1.0,
             };
 
-            self.inner.seek(seek_from)
+            self.inner
+                .seek(seek_from)
                 .map(|pos| pos as f64)
                 .unwrap_or(-1.0)
         }
@@ -783,7 +794,6 @@ define_io_adapter! {
         caps: { HAS_READ = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                use std::io::Read;
                 self.inner.read(buf).unwrap_or(0)
             }
         }
@@ -798,12 +808,10 @@ define_io_adapter! {
         caps: { HAS_WRITE = true },
         methods: {
             fn write(&mut self, buf: &[u8]) -> usize {
-                use std::io::Write;
                 self.inner.write(buf).unwrap_or(0)
             }
 
             fn flush(&mut self) -> i32 {
-                use std::io::Write;
                 if self.inner.flush().is_ok() { 0 } else { -1 }
             }
         }
@@ -818,17 +826,14 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_WRITE = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                use std::io::Read;
                 self.inner.read(buf).unwrap_or(0)
             }
 
             fn write(&mut self, buf: &[u8]) -> usize {
-                use std::io::Write;
                 self.inner.write(buf).unwrap_or(0)
             }
 
             fn flush(&mut self) -> i32 {
-                use std::io::Write;
                 if self.inner.flush().is_ok() { 0 } else { -1 }
             }
         }
@@ -843,7 +848,6 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_SEEK = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                use std::io::Read;
                 self.inner.read(buf).unwrap_or(0)
             }
 
@@ -860,12 +864,10 @@ define_io_adapter! {
         caps: { HAS_WRITE = true, HAS_SEEK = true },
         methods: {
             fn write(&mut self, buf: &[u8]) -> usize {
-                use std::io::Write;
                 self.inner.write(buf).unwrap_or(0)
             }
 
             fn flush(&mut self) -> i32 {
-                use std::io::Write;
                 if self.inner.flush().is_ok() { 0 } else { -1 }
             }
 
@@ -882,17 +884,14 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_WRITE = true, HAS_SEEK = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                use std::io::Read;
                 self.inner.read(buf).unwrap_or(0)
             }
 
             fn write(&mut self, buf: &[u8]) -> usize {
-                use std::io::Write;
                 self.inner.write(buf).unwrap_or(0)
             }
 
             fn flush(&mut self) -> i32 {
-                use std::io::Write;
                 if self.inner.flush().is_ok() { 0 } else { -1 }
             }
 
@@ -909,13 +908,10 @@ define_io_adapter! {
         caps: { HAS_READ = true, HAS_BUFREAD = true },
         methods: {
             fn read(&mut self, buf: &mut [u8]) -> usize {
-                use std::io::Read;
                 self.inner.read(buf).unwrap_or(0)
             }
 
             fn fgetc(&mut self) -> i32 {
-                use std::io::BufRead;
-
                 // Use fill_buf for optimized buffered reading
                 match self.inner.fill_buf() {
                     Ok(buffer) if !buffer.is_empty() => {
@@ -1025,7 +1021,6 @@ impl<T> RConnectionIo<T> {
         self.can_seek_override = Some(can_seek);
         self
     }
-
 }
 
 // Specialized build methods for different adapter types

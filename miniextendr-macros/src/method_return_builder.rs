@@ -95,8 +95,7 @@ impl MethodReturnBuilder {
                 ]
             }
             ReturnStrategy::ChainableMutation => {
-                let chain_var = self.chain_var.as_ref()
-                    .map(|s| s.as_str())
+                let chain_var = self.chain_var.as_deref()
                     .unwrap_or("self");
                 vec![
                     format!("{}{}", indent, self.call_expr),
@@ -126,8 +125,7 @@ impl MethodReturnBuilder {
                 )
             }
             ReturnStrategy::ChainableMutation => {
-                let chain_var = self.chain_var.as_ref()
-                    .map(|s| s.as_str())
+                let chain_var = self.chain_var.as_deref()
                     .unwrap_or("self");
                 format!("{{ {}; {} }}", self.call_expr, chain_var)
             }
@@ -162,8 +160,7 @@ impl MethodReturnBuilder {
     /// Build S3-style return (uses structure() for Self returns).
     pub fn build_s3_body(&self) -> Vec<String> {
         let indent = " ".repeat(self.indent);
-        let chain_var = self.chain_var.as_ref()
-            .map(|s| s.as_str())
+        let chain_var = self.chain_var.as_deref()
             .unwrap_or("x");
 
         match self.strategy {

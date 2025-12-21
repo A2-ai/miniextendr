@@ -171,7 +171,7 @@ impl RustConversionBuilder {
                         let error_msg_coerce = format!(
                             "failed to coerce parameter '{}' to {}: overflow, NaN, or precision loss",
                             param_name,
-                            quote!(#target).to_string()
+                            quote!(#target)
                         );
                         statements.push(quote! {
                             let #mutability #ident: #target = {
@@ -199,7 +199,7 @@ impl RustConversionBuilder {
                         let error_msg_coerce = format!(
                             "failed to coerce parameter '{}' to Vec<{}>: element overflow, NaN, or precision loss",
                             param_name,
-                            quote!(#target_elem).to_string()
+                            quote!(#target_elem)
                         );
                         statements.push(quote! {
                             let #mutability #ident: Vec<#target_elem> = {
@@ -217,7 +217,7 @@ impl RustConversionBuilder {
                         let error_msg = format!(
                             "failed to convert parameter '{}' to {}: wrong type, length, or contains NA",
                             param_name,
-                            quote!(#ty).to_string()
+                            quote!(#ty)
                         );
                         if pat_ident.mutability.is_some() {
                             statements.push(quote! {

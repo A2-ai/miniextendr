@@ -302,7 +302,7 @@ pub use externalptr::{
 pub mod externalptr_std;
 
 // R object preservation and allocator
-pub(crate) mod preserve;
+pub mod preserve;
 
 pub mod allocator;
 pub use allocator::RAllocator;
