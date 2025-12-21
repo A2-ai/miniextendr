@@ -13,27 +13,34 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// Check if an attribute is a class-system or miniextendr attribute that should be stripped.
-fn is_class_system_attr(attr: &syn::Attribute) -> bool {
-    let path = attr.path();
-    // Strip old-style class system attributes
-    if path.is_ident("receiver")
-        || path.is_ident("r6")
-        || path.is_ident("s7")
-        || path.is_ident("s3")
-        || path.is_ident("s4")
-    {
-        return true;
-    }
-    // Strip #[miniextendr(...)] attributes from methods to prevent recursive proc macro application
-    path.is_ident("miniextendr")
-}
-
 /// Strip class-system attributes from an impl block to avoid unused_attributes warnings.
 fn strip_class_system_attrs(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
     for item in &mut item_impl.items {
         if let syn::ImplItem::Fn(fn_item) = item {
-            fn_item.attrs.retain(|attr| !is_class_system_attr(attr));
+            fn_item.attrs.retain(|attr| !attr.path().is_ident("miniextendr"));
+        }
+    }
+    item_impl
+}
+
+/// Strip roxygen tags from doc attributes on an impl block and its items.
+fn strip_roxygen_from_impl(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
+    item_impl.attrs = crate::roxygen::strip_roxygen_from_attrs(&item_impl.attrs);
+    for item in &mut item_impl.items {
+        match item {
+            syn::ImplItem::Fn(fn_item) => {
+                fn_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&fn_item.attrs);
+            }
+            syn::ImplItem::Const(const_item) => {
+                const_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&const_item.attrs);
+            }
+            syn::ImplItem::Type(type_item) => {
+                type_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&type_item.attrs);
+            }
+            syn::ImplItem::Macro(macro_item) => {
+                macro_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&macro_item.attrs);
+            }
+            _ => {}
         }
     }
     item_impl
@@ -253,27 +260,8 @@ impl ParsedMethod {
         let mut method_attrs = MethodAttrs::default();
 
         for attr in attrs {
-            // Check for old-style attributes (#[r6(...)], #[s3(...)], etc.) and reject
-            let path = attr.path();
-            let is_old_class_attr = path.is_ident("receiver")
-                || path.is_ident("r6")
-                || path.is_ident("s7")
-                || path.is_ident("s3")
-                || path.is_ident("s4");
-
-            if is_old_class_attr {
-                let class_system = path.get_ident().map(|i| i.to_string()).unwrap_or_default();
-                return Err(syn::Error::new_spanned(
-                    attr,
-                    format!(
-                        "#[{}(...)] is not supported; use #[miniextendr({}(...))] instead",
-                        class_system, class_system
-                    ),
-                ));
-            }
-
             // Parse new-style #[miniextendr(class_system(...))] attributes
-            if !path.is_ident("miniextendr") {
+            if !attr.path().is_ident("miniextendr") {
                 continue;
             }
 
@@ -528,7 +516,7 @@ impl ParsedImpl {
             doc_tags,
             methods,
             // Strip class-system attrs to avoid unused_attributes warnings
-            original_impl: strip_class_system_attrs(item_impl),
+            original_impl: strip_roxygen_from_impl(strip_class_system_attrs(item_impl)),
             cfg_attrs,
         })
     }

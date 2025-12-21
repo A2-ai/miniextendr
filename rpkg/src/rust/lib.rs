@@ -40,9 +40,6 @@ mod unwind_protect_tests;
 mod visibility_tests;
 mod worker_tests;
 
-// Stub for ALTREP re-exports (actual ALTREP code is below)
-mod altrep;
-
 // region: proc-macro ALTREP test
 // This tests the #[miniextendr] on struct path for custom ALTREP classes.
 //
