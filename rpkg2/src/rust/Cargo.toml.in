@@ -1,0 +1,29 @@
+[package]
+name = "rpkg"
+version = "0.1.0"
+edition = "2024"
+# edition = "2021" # testing 2021 compatibility!
+publish = false
+
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
+[[bin]]
+name = "document"
+path = "document.rs"
+bench = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+nonapi = ["miniextendr-api/nonapi"]
+connections = ["miniextendr-api/connections"]
+
+[dependencies]
+miniextendr-api = { path = "../vendor/miniextendr-api" }
+
+[build-dependencies]
+miniextendr-lint = { path = "../vendor/miniextendr-lint" }
