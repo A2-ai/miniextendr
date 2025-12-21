@@ -210,7 +210,8 @@ fn test_derive_altrep_integer_basic() {
         pub struct TestData {
             len: usize,
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();
@@ -235,7 +236,8 @@ fn test_derive_altrep_integer_with_elt_field() {
             value: i32,
             len: usize,
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();
@@ -252,7 +254,8 @@ fn test_derive_altrep_integer_with_options() {
             data: Vec<i32>,
             len: usize,
         }
-    }).unwrap();
+    })
+    .unwrap();
 
     let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
     let output_str = output.to_string();

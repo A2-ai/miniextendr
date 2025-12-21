@@ -19,22 +19,22 @@ use miniextendr_api::ffi::SEXP;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
-mod panic_tests;
-mod unwind_protect_tests;
-mod dots_tests;
-mod interrupt_tests;
-mod conversion_tests;
-mod externalptr_tests;
-mod receiver_tests;
-mod r6_tests;
-mod s3_tests;
-mod s7_tests;
-mod s4_tests;
-mod worker_tests;
 mod coerce_tests;
-mod visibility_tests;
-mod thread_tests;
+mod conversion_tests;
+mod dots_tests;
+mod externalptr_tests;
+mod interrupt_tests;
 mod misc_tests;
+mod panic_tests;
+mod r6_tests;
+mod receiver_tests;
+mod s3_tests;
+mod s4_tests;
+mod s7_tests;
+mod thread_tests;
+mod unwind_protect_tests;
+mod visibility_tests;
+mod worker_tests;
 
 // Stub for ALTREP re-exports (actual ALTREP code is below)
 mod altrep;
@@ -47,7 +47,7 @@ mod altrep;
 // 2. Low-level trait impls generated via impl_alt*_from_data! macro
 // 3. A 1-field wrapper struct with #[miniextendr] macro
 
-use miniextendr_api::altrep_data::{AltrepLen, AltIntegerData};
+use miniextendr_api::altrep_data::{AltIntegerData, AltrepLen};
 
 // -----------------------------------------------------------------------------
 // ConstantInt: An ALTREP integer that always returns the same value
