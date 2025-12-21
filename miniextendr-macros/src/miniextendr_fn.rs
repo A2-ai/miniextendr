@@ -384,7 +384,7 @@ impl MiniextendrFunctionParsed {
         self.abi().is_none()
     }
 
-    /// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
+    /// Identifier for the generated `const` `R_CallMethodDef` value.
     pub(crate) fn call_method_def_ident(&self) -> syn::Ident {
         call_method_def_ident_for(self.ident())
     }

@@ -17,7 +17,7 @@ mod altrep_derive;
 mod return_type_analysis;
 mod roxygen;
 
-/// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
+/// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
 /// and the module macro (which references it).
@@ -584,24 +584,21 @@ pub fn miniextendr(
 
         // registration of C wrapper in R
         #(#cfg_attrs)*
-        #[doc(hidden)]
         #[doc = #call_method_def_doc]
-        #[inline(always)]
+        #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
-        const fn #call_method_def() -> ::miniextendr_api::ffi::R_CallMethodDef {
-            unsafe {
-                ::miniextendr_api::ffi::R_CallMethodDef {
-                    name: #c_ident_name.as_ptr(),
-                    // Cast to DL_FUNC (generic function pointer) for storage in R's registration table.
-                    // R will cast back to the appropriate signature when calling.
-                    fun: Some(std::mem::transmute::<
-                        unsafe #abi fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
-                        unsafe #abi fn() -> *mut ::std::os::raw::c_void
-                    >(#c_ident)),
-                    numArgs: #num_args,
-                }
+        const #call_method_def: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+            ::miniextendr_api::ffi::R_CallMethodDef {
+                name: #c_ident_name.as_ptr(),
+                // Cast to DL_FUNC (generic function pointer) for storage in R's registration table.
+                // R will cast back to the appropriate signature when calling.
+                fun: Some(std::mem::transmute::<
+                    unsafe #abi fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
+                    unsafe #abi fn() -> *mut ::std::os::raw::c_void
+                >(#c_ident)),
+                numArgs: #num_args,
             }
-        }
+        };
     }
     .into();
 
@@ -683,7 +680,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|f| {
             let call_method_def = f.call_method_def_ident();
-            syn::parse_quote!(#call_method_def())
+            syn::parse_quote!(#call_method_def)
         })
         .collect();
     let call_entries_len = call_entries.len();

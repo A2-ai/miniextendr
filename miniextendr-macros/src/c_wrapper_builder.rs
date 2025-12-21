@@ -531,7 +531,7 @@ impl CWrapperContext {
         }
     }
 
-    /// Generate call_method_def constant function.
+    /// Generate call_method_def constant.
     fn generate_call_method_def(&self) -> TokenStream {
         let fn_ident = &self.fn_ident;
         let c_ident = &self.c_ident;
@@ -563,22 +563,19 @@ impl CWrapperContext {
         );
 
         quote! {
-            #[doc(hidden)]
             #[doc = #doc]
-            #[inline(always)]
+            #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
-            const fn #call_method_def_ident() -> ::miniextendr_api::ffi::R_CallMethodDef {
-                unsafe {
-                    ::miniextendr_api::ffi::R_CallMethodDef {
-                        name: #c_ident_name.as_ptr(),
-                        fun: Some(std::mem::transmute::<
-                            unsafe extern "C-unwind" fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
-                            unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void
-                        >(#c_ident)),
-                        numArgs: #num_args_lit,
-                    }
+            const #call_method_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
+                ::miniextendr_api::ffi::R_CallMethodDef {
+                    name: #c_ident_name.as_ptr(),
+                    fun: Some(std::mem::transmute::<
+                        unsafe extern "C-unwind" fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
+                        unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void
+                    >(#c_ident)),
+                    numArgs: #num_args_lit,
                 }
-            }
+            };
         }
     }
 
