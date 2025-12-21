@@ -1182,6 +1182,7 @@ ReceiverCounter$default_counter <- function() {
 #' @export
 R6Counter <- R6::R6Class("R6Counter",
     public = list(
+        #' @description Creates a new counter with the given initial value.
         initialize = function(initial, .ptr = NULL) {
             if (!is.null(.ptr)) {
                 private$.ptr <- .ptr
@@ -1189,12 +1190,15 @@ R6Counter <- R6::R6Class("R6Counter",
                 private$.ptr <- .Call(C_R6Counter__new, .call = match.call(), initial)
             }
         },
+        #' @description Returns the current value.
         value = function() {
             .Call(C_R6Counter__value, .call = match.call(), private$.ptr)
         },
+        #' @description Increments the counter by 1 and returns the new value.
         inc = function() {
             .Call(C_R6Counter__inc, .call = match.call(), private$.ptr)
         },
+        #' @description Adds the given amount to the counter and returns the new value.
         add = function(amount) {
             .Call(C_R6Counter__add, .call = match.call(), private$.ptr, amount)
         }
@@ -1207,6 +1211,7 @@ R6Counter <- R6::R6Class("R6Counter",
     cloneable = FALSE
 )
 
+#' @description A static method that returns a default counter (value = 0).
 #' @name R6Counter$default_counter
 #' @rdname R6Counter
 R6Counter$default_counter <- function() {
@@ -1238,6 +1243,7 @@ R6Counter$default_counter <- function() {
 #' @export
 R6Accumulator <- R6::R6Class("R6Accumulator",
     public = list(
+        #' @description Creates a new accumulator starting at zero.
         initialize = function(.ptr = NULL) {
             if (!is.null(.ptr)) {
                 private$.ptr <- .ptr
@@ -1245,15 +1251,19 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
                 private$.ptr <- .Call(C_R6Accumulator__new, .call = match.call())
             }
         },
+        #' @description Adds a value and returns the new total.
         accumulate = function(value) {
             .Call(C_R6Accumulator__accumulate, .call = match.call(), private$.ptr, value)
         },
+        #' @description Returns the current total.
         total = function() {
             .Call(C_R6Accumulator__total, .call = match.call(), private$.ptr)
         },
+        #' @description Returns the count of accumulated values.
         count = function() {
             .Call(C_R6Accumulator__count, .call = match.call(), private$.ptr)
         },
+        #' @description Returns the average, or NA if no values accumulated.
         average = function() {
             .Call(C_R6Accumulator__average, .call = match.call(), private$.ptr)
         }

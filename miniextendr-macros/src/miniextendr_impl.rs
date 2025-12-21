@@ -339,10 +339,18 @@ impl ParsedMethod {
     }
 
     /// Parse a method from an impl item.
-    pub fn from_impl_item(item: syn::ImplItemFn) -> syn::Result<Self> {
+    ///
+    /// For R6 methods, regular doc comments are auto-converted to `@description`.
+    pub fn from_impl_item(item: syn::ImplItemFn, class_system: ClassSystem) -> syn::Result<Self> {
         let receiver = Self::detect_receiver(&item.sig);
         let method_attrs = Self::parse_method_attrs(&item.attrs)?;
-        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&item.attrs);
+
+        // For R6, auto-convert regular doc comments to @description
+        let doc_tags = if class_system == ClassSystem::R6 {
+            crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs)
+        } else {
+            crate::roxygen::roxygen_tags_from_attrs(&item.attrs)
+        };
 
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
@@ -464,7 +472,7 @@ impl ParsedImpl {
         let mut methods = Vec::new();
         for item in &item_impl.items {
             if let syn::ImplItem::Fn(fn_item) = item {
-                let method = ParsedMethod::from_impl_item(fn_item.clone())?;
+                let method = ParsedMethod::from_impl_item(fn_item.clone(), attrs.class_system)?;
                 // Validate method attributes for this class system
                 ParsedMethod::validate_method_attrs(
                     &method.method_attrs,
@@ -879,6 +887,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
+
+        // Add inline roxygen documentation for initialize method
+        for tag in &ctor.doc_tags {
+            for line in tag.lines() {
+                lines.push(format!("        #' {}", line));
+            }
+        }
+
         if has_self_returning_methods {
             let full_params = if params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -918,6 +934,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             ""
         };
+
+        // Add inline roxygen documentation for this method
+        for tag in &method.doc_tags {
+            for line in tag.lines() {
+                lines.push(format!("        #' {}", line));
+            }
+        }
+
         lines.push(format!(
             "        {} = function({}) {{",
             method.ident, params
