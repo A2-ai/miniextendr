@@ -10,6 +10,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "miniextendr-lint"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "miniextendr-macros"
 version = "0.1.0"
 dependencies = [
@@ -41,6 +50,7 @@ name = "rpkg"
 version = "0.1.0"
 dependencies = [
  "miniextendr-api",
+ "miniextendr-lint",
 ]
 
 [[package]]

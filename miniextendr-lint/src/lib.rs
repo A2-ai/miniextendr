@@ -1,0 +1,324 @@
+//! Lint helpers for miniextendr usage in a crate.
+
+#[allow(dead_code)]
+#[path = "../../miniextendr-macros/src/miniextendr_module.rs"]
+mod miniextendr_module;
+
+use std::collections::HashSet;
+use std::env;
+use std::fs;
+use std::path::{Path, PathBuf};
+
+use syn::{Attribute, Item, Macro};
+
+/// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
+///
+/// This mirrors `miniextendr-macros` so the shared parser compiles.
+fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+    quote::format_ident!("call_method_def_{rust_ident}")
+}
+
+/// Identifier for the generated `const &str` holding the R wrapper source code.
+///
+/// This mirrors `miniextendr-macros` so the shared parser compiles.
+fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
+    let rust_ident_upper = rust_ident.to_string().to_uppercase();
+    quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
+}
+
+#[derive(Debug, Default)]
+pub struct LintReport {
+    pub files: Vec<PathBuf>,
+    pub errors: Vec<String>,
+}
+
+/// Returns whether the lint should run based on the given env var.
+///
+/// Defaults to `true` when the var is unset. Set to 0/false/no/off to disable.
+pub fn lint_enabled(env_var: &str) -> Result<bool, String> {
+    match env::var(env_var) {
+        Ok(value) => {
+            let normalized = value.trim().to_ascii_lowercase();
+            match normalized.as_str() {
+                "0" | "false" | "no" | "off" | "" => Ok(false),
+                "1" | "true" | "yes" | "on" => Ok(true),
+                _ => Err(format!(
+                    "{env_var} has invalid value '{value}'; use 1/0, true/false, yes/no, on/off"
+                )),
+            }
+        }
+        Err(env::VarError::NotPresent) => Ok(true),
+        Err(err) => Err(format!("{env_var}: {err}")),
+    }
+}
+
+/// Run the lint against the crate rooted at `root`.
+///
+/// If `root/src` exists, that directory is scanned. Otherwise `root` is scanned.
+pub fn run(root: impl AsRef<Path>) -> Result<LintReport, String> {
+    let root = root.as_ref();
+    let src_dir = if root.join("src").is_dir() {
+        root.join("src")
+    } else {
+        root.to_path_buf()
+    };
+
+    if !src_dir.is_dir() {
+        return Err(format!(
+            "miniextendr-lint: root is not a directory: {}",
+            src_dir.display()
+        ));
+    }
+
+    let mut rs_files = Vec::new();
+    collect_rs_files(&src_dir, &mut rs_files)
+        .map_err(|err| format!("miniextendr-lint: failed to read src: {err}"))?;
+    rs_files.sort();
+
+    let mut errors = Vec::new();
+    for path in &rs_files {
+        if let Err(mut file_errors) = lint_file(path) {
+            errors.append(&mut file_errors);
+        }
+    }
+
+    Ok(LintReport {
+        files: rs_files,
+        errors,
+    })
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum LintKind {
+    Function,
+    Impl,
+    Struct,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+struct LintItem {
+    kind: LintKind,
+    name: String,
+}
+
+impl LintItem {
+    fn new(kind: LintKind, name: String) -> Self {
+        Self { kind, name }
+    }
+
+    fn display(&self) -> String {
+        let prefix = match self.kind {
+            LintKind::Function => "fn",
+            LintKind::Impl => "impl",
+            LintKind::Struct => "struct",
+        };
+        format!("{prefix} {}", self.name)
+    }
+}
+
+fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
+    for entry in fs::read_dir(dir)? {
+        let entry = entry?;
+        let path = entry.path();
+        if path.is_dir() {
+            if should_skip_dir(&path) {
+                continue;
+            }
+            collect_rs_files(&path, out)?;
+        } else if path.extension().is_some_and(|ext| ext == "rs") {
+            out.push(path);
+        }
+    }
+    Ok(())
+}
+
+fn should_skip_dir(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+        return false;
+    };
+    matches!(
+        name,
+        "target" | "ra_target" | ".cargo" | ".git" | "vendor"
+    )
+}
+
+fn lint_file(path: &Path) -> Result<(), Vec<String>> {
+    let src = match fs::read_to_string(path) {
+        Ok(src) => src,
+        Err(err) => return Err(vec![format!("{}: failed to read: {err}", path.display())]),
+    };
+
+    let parsed = match syn::parse_file(&src) {
+        Ok(parsed) => parsed,
+        Err(err) => {
+            return Err(vec![format!(
+                "{}: failed to parse: {err}",
+                path.display()
+            )]);
+        }
+    };
+
+    let mut miniextendr_items = HashSet::new();
+    let mut module_items = HashSet::new();
+    let mut errors = Vec::new();
+
+    collect_items(
+        &parsed.items,
+        path,
+        &mut miniextendr_items,
+        &mut module_items,
+        &mut errors,
+    );
+
+    if !errors.is_empty() {
+        return Err(errors);
+    }
+
+    if !miniextendr_items.is_empty() && module_items.is_empty() {
+        errors.push(format!(
+            "{}: #[miniextendr] items found but no miniextendr_module! in file",
+            path.display()
+        ));
+    }
+
+    if miniextendr_items.is_empty() && !module_items.is_empty() {
+        errors.push(format!(
+            "{}: miniextendr_module! present but no #[miniextendr] items in file",
+            path.display()
+        ));
+    }
+
+    let mut missing: Vec<_> = miniextendr_items
+        .iter()
+        .filter(|item| !module_items.contains(*item))
+        .map(|item| item.display())
+        .collect();
+    missing.sort();
+    if !missing.is_empty() {
+        errors.push(format!(
+            "{}: #[miniextendr] items not listed in miniextendr_module!: {}",
+            path.display(),
+            missing.join(", ")
+        ));
+    }
+
+    if errors.is_empty() {
+        Ok(())
+    } else {
+        Err(errors)
+    }
+}
+
+fn collect_items(
+    items: &[Item],
+    path: &Path,
+    miniextendr_items: &mut HashSet<LintItem>,
+    module_items: &mut HashSet<LintItem>,
+    errors: &mut Vec<String>,
+) {
+    for item in items {
+        match item {
+            Item::Fn(item_fn) => {
+                if has_miniextendr_attr(&item_fn.attrs) {
+                    miniextendr_items.insert(LintItem::new(
+                        LintKind::Function,
+                        item_fn.sig.ident.to_string(),
+                    ));
+                }
+            }
+            Item::Struct(item_struct) => {
+                if has_miniextendr_attr(&item_struct.attrs) {
+                    miniextendr_items.insert(LintItem::new(
+                        LintKind::Struct,
+                        item_struct.ident.to_string(),
+                    ));
+                }
+            }
+            Item::Impl(item_impl) => {
+                if has_miniextendr_attr(&item_impl.attrs) {
+                    match impl_type_name(&item_impl.self_ty) {
+                        Some(name) => {
+                            miniextendr_items.insert(LintItem::new(LintKind::Impl, name));
+                        }
+                        None => errors.push(format!(
+                            "{}: #[miniextendr] impl type not supported by lint",
+                            path.display()
+                        )),
+                    }
+                }
+            }
+            Item::Macro(item_macro) => {
+                if is_miniextendr_module_macro(&item_macro.mac) {
+                    match parse_miniextendr_module_items(&item_macro.mac) {
+                        Ok(items) => {
+                            module_items.extend(items);
+                        }
+                        Err(err) => errors.push(format!(
+                            "{}: failed to parse miniextendr_module!: {err}",
+                            path.display()
+                        )),
+                    }
+                }
+            }
+            Item::Mod(item_mod) => {
+                if let Some((_, items)) = &item_mod.content {
+                    collect_items(items, path, miniextendr_items, module_items, errors);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+fn has_miniextendr_attr(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        attr.path()
+            .segments
+            .last()
+            .map_or(false, |seg| seg.ident == "miniextendr")
+    })
+}
+
+fn impl_type_name(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map(|seg| seg.ident.to_string()),
+        syn::Type::Reference(type_ref) => impl_type_name(&type_ref.elem),
+        _ => None,
+    }
+}
+
+fn is_miniextendr_module_macro(mac: &Macro) -> bool {
+    mac.path
+        .segments
+        .last()
+        .map_or(false, |seg| seg.ident == "miniextendr_module")
+}
+
+fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
+    let parsed = syn::parse2::<miniextendr_module::MiniextendrModule>(mac.tokens.clone())?;
+    let mut items = Vec::new();
+
+    for func in parsed.functions {
+        items.push(LintItem::new(
+            LintKind::Function,
+            func.ident.to_string(),
+        ));
+    }
+
+    for strukt in parsed.structs {
+        items.push(LintItem::new(
+            LintKind::Struct,
+            strukt.ident.to_string(),
+        ));
+    }
+
+    for impl_block in parsed.impls {
+        items.push(LintItem::new(LintKind::Impl, impl_block.ident.to_string()));
+    }
+
+    Ok(items)
+}

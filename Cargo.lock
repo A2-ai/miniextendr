@@ -177,7 +177,6 @@ dependencies = [
  "miniextendr-engine",
  "miniextendr-macros",
  "rayon",
- "syn",
 ]
 
 [[package]]
@@ -192,6 +191,15 @@ dependencies = [
 [[package]]
 name = "miniextendr-engine"
 version = "0.1.0"
+
+[[package]]
+name = "miniextendr-lint"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
 
 [[package]]
 name = "miniextendr-macros"

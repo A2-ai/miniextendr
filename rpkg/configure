@@ -2234,21 +2234,26 @@ VENDOR_OUT="$abs_rpkg_src/vendor"
 
 MINIEXTENDR_API_SRC="$abs_top_srcdir/../miniextendr-api"
 MINIEXTENDR_MACROS_SRC="$abs_top_srcdir/../miniextendr-macros"
+MINIEXTENDR_LINT_SRC="$abs_top_srcdir/../miniextendr-lint"
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for miniextendr source crates" >&5
 printf %s "checking for miniextendr source crates... " >&6; }
-if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
+if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && test -d "$MINIEXTENDR_LINT_SRC"; then
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found, syncing to vendor" >&5
 printf "%s\n" "found, syncing to vendor" >&6; }
 
     mkdir -p "$VENDOR_OUT/miniextendr-api"
   mkdir -p "$VENDOR_OUT/miniextendr-macros"
+  mkdir -p "$VENDOR_OUT/miniextendr-lint"
 
     $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
 
-    $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_LINT_SRC/" "$VENDOR_OUT/miniextendr-lint/"
 
     find "$VENDOR_OUT" -name ".*" -type f -delete 2>/dev/null || true
   find "$VENDOR_OUT" -name ".*" -type d -exec rm -rf {} + 2>/dev/null || true
@@ -2259,16 +2264,30 @@ printf "%s\n" "found, syncing to vendor" >&6; }
 
   $SED -e 's/edition\.workspace = true/edition = "2024"/' \
        -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
+       -e 's/quote = { workspace = true }/quote = "1.0"/' \
+       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = ["full", "extra-traits"] }/' \
        "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
+       -e 's/quote = { workspace = true }/quote = "1.0"/' \
+       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = ["full", "extra-traits"] }/' \
+       "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
 
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: miniextendr crates synced to $VENDOR_OUT" >&5
 printf "%s\n" "$as_me: miniextendr crates synced to $VENDOR_OUT" >&6;}
 else
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: not found, using existing vendor" >&5
 printf "%s\n" "not found, using existing vendor" >&6; }
-    if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+  if test ! -d "$VENDOR_OUT/miniextendr-api"; then
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: vendor/miniextendr-api not found - build may fail" >&5
 printf "%s\n" "$as_me: WARNING: vendor/miniextendr-api not found - build may fail" >&2;}
+  fi
+  if test ! -d "$VENDOR_OUT/miniextendr-lint"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: vendor/miniextendr-lint not found - build may fail" >&5
+printf "%s\n" "$as_me: WARNING: vendor/miniextendr-lint not found - build may fail" >&2;}
   fi
 fi
 
@@ -3490,5 +3509,3 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: unrecognized options: $ac_unrecognized_opts" >&5
 printf "%s\n" "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
-
-

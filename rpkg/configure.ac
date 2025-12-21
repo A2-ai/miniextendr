@@ -177,16 +177,18 @@ dnl Note: miniextendr-engine is NOT vendored - it's only for standalone binaries
 dnl that embed R, not for R packages.
 MINIEXTENDR_API_SRC="$abs_top_srcdir/../miniextendr-api"
 MINIEXTENDR_MACROS_SRC="$abs_top_srcdir/../miniextendr-macros"
+MINIEXTENDR_LINT_SRC="$abs_top_srcdir/../miniextendr-lint"
 
 dnl Sync miniextendr crates from monorepo to vendor (if sources exist)
 dnl This handles workspace inheritance by patching Cargo.toml during copy
 AC_MSG_CHECKING([for miniextendr source crates])
-if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
+if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && test -d "$MINIEXTENDR_LINT_SRC"; then
   AC_MSG_RESULT([found, syncing to vendor])
 
   dnl Create vendor directories
   mkdir -p "$VENDOR_OUT/miniextendr-api"
   mkdir -p "$VENDOR_OUT/miniextendr-macros"
+  mkdir -p "$VENDOR_OUT/miniextendr-lint"
 
   dnl Sync miniextendr-api (excluding target, .git, Cargo.toml)
   $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
@@ -195,6 +197,10 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
   dnl Sync miniextendr-macros (excluding target, .git, Cargo.toml)
   $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
     "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+  dnl Sync miniextendr-lint (excluding target, .git, Cargo.toml)
+  $RSYNC -a --delete --exclude='target' --exclude='.git' --exclude='Cargo.toml' \
+    "$MINIEXTENDR_LINT_SRC/" "$VENDOR_OUT/miniextendr-lint/"
 
   dnl Clean up CRAN-unfriendly hidden files (e.g., .DS_Store, .gitignore)
   find "$VENDOR_OUT" -name ".*" -type f -delete 2>/dev/null || true
@@ -207,7 +213,17 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC"; then
 
   $SED -e 's/edition\.workspace = true/edition = "2024"/' \
        -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
+       -e 's/quote = { workspace = true }/quote = "1.0"/' \
+       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = ["full", "extra-traits"] }/' \
        "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+  $SED -e 's/edition\.workspace = true/edition = "2024"/' \
+       -e 's/version\.workspace = true/version = "0.1.0"/' \
+       -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
+       -e 's/quote = { workspace = true }/quote = "1.0"/' \
+       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = ["full", "extra-traits"] }/' \
+       "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
 
   AC_MSG_NOTICE([miniextendr crates synced to $VENDOR_OUT])
 else

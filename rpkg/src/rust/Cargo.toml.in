@@ -24,3 +24,6 @@ connections = ["miniextendr-api/connections"]
 
 [dependencies]
 miniextendr-api = { path = "../vendor/miniextendr-api" }
+
+[build-dependencies]
+miniextendr-lint = { path = "../vendor/miniextendr-lint" }
