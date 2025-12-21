@@ -282,6 +282,54 @@ impl TryFromSexp for Option<bool> {
     }
 }
 
+impl TryFromSexp for Option<i32> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+        if value == crate::altrep_traits::NA_INTEGER {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        if value == crate::altrep_traits::NA_INTEGER {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    }
+}
+
+impl TryFromSexp for Option<f64> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+        if value.is_nan() {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        if value.is_nan() {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    }
+}
+
 // Blanket implementation for slices of R native types
 impl<T: RNativeType> TryFromSexp for &'static [T] {
     type Error = SexpTypeError;
@@ -641,6 +689,51 @@ macro_rules! impl_vec_option_try_from_sexp {
 
 impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, |v: f64| v.is_nan());
 impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
+
+/// Convert R logical vector (LGLSXP) to `Vec<Option<bool>>` with NA support.
+impl TryFromSexp for Vec<Option<bool>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| RLogical::from_i32(v).to_option_bool())
+            .collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| RLogical::from_i32(v).to_option_bool())
+            .collect())
+    }
+}
 
 /// Convert R character vector (STRSXP) to `Vec<Option<String>>` with NA support.
 ///

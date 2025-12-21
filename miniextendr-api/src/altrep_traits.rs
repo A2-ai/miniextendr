@@ -358,3 +358,5 @@ pub const SORTED_DECR_NA_1ST: i32 = -2;
 pub const NA_INTEGER: i32 = i32::MIN;
 /// NA value for logical (same as integer in R).
 pub const NA_LOGICAL: i32 = i32::MIN;
+/// NA value for reals (IEEE NaN with R's NA payload).
+pub const NA_REAL: f64 = f64::from_bits(0x7FF0_0000_0000_07A2);

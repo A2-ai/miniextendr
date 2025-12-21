@@ -31,8 +31,11 @@ fn initialize_r() {
 unsafe fn read_real_vec(sexp: SEXP) -> Vec<f64> {
     unsafe {
         let len = Rf_xlength(sexp) as usize;
+        if len == 0 {
+            return Vec::new();
+        }
         let ptr = REAL(sexp);
-        (0..len).map(|i| *ptr.add(i)).collect()
+        std::slice::from_raw_parts(ptr, len).to_vec()
     }
 }
 
@@ -88,8 +91,8 @@ fn test_with_r_vec_i32() {
     assert_eq!(len, 100);
 
     let ptr = unsafe { miniextendr_api::ffi::INTEGER(sexp) };
-    for i in 0..100 {
-        let v = unsafe { *ptr.add(i) };
+    let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+    for (i, &v) in slice.iter().enumerate() {
         assert_eq!(v, i as i32 * 2, "mismatch at index {}", i);
     }
 }
@@ -136,10 +139,9 @@ fn test_with_r_vec_large() {
 
     // Spot check some values
     let ptr = unsafe { REAL(sexp) };
-    unsafe {
-        assert_eq!(*ptr.add(0), 0.0);
-        assert_eq!(*ptr.add(999), 999.0);
-        assert_eq!(*ptr.add(1000), 0.0);
-        assert_eq!(*ptr.add(50_000), 0.0);
-    }
+    let slice = unsafe { std::slice::from_raw_parts(ptr, SIZE) };
+    assert_eq!(slice[0], 0.0);
+    assert_eq!(slice[999], 999.0);
+    assert_eq!(slice[1000], 0.0);
+    assert_eq!(slice[50_000], 0.0);
 }

@@ -13,6 +13,8 @@
 //! - Inside `#[miniextendr(unsafe(main_thread))]` functions
 //! - Inside `extern "C-unwind"` functions called directly by R
 
+use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+
 /// Trait for converting Rust types to R SEXP values.
 pub trait IntoR {
     /// Convert this value to an R SEXP.
@@ -125,12 +127,12 @@ impl_logical_into_r!(bool, |v: bool| v as i32);
 impl_logical_into_r!(crate::ffi::Rboolean, |v: crate::ffi::Rboolean| v as i32);
 impl_logical_into_r!(crate::ffi::RLogical, crate::ffi::RLogical::to_i32);
 
-impl IntoR for Option<bool> {
+impl IntoR for Option<i32> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::Rf_ScalarLogical(i32::MIN) },
+            None => unsafe { crate::ffi::Rf_ScalarInteger(NA_INTEGER) },
         }
     }
 
@@ -138,7 +140,79 @@ impl IntoR for Option<bool> {
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
         match self {
             Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(i32::MIN) },
+            None => unsafe { crate::ffi::Rf_ScalarInteger_unchecked(NA_INTEGER) },
+        }
+    }
+}
+
+impl IntoR for Option<f64> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::Rf_ScalarReal(NA_REAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::Rf_ScalarReal_unchecked(NA_REAL) },
+        }
+    }
+}
+
+impl IntoR for Option<crate::ffi::Rboolean> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v as i32) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(v as i32) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+        }
+    }
+}
+
+impl IntoR for Option<crate::ffi::RLogical> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v.to_i32()) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(v.to_i32()) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+        }
+    }
+}
+
+impl IntoR for Option<bool> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
         }
     }
 }
@@ -207,6 +281,42 @@ impl IntoR for &str {
             let charsxp = str_to_charsxp_unchecked(self);
             crate::ffi::Rf_ScalarString_unchecked(charsxp)
         }
+    }
+}
+
+impl IntoR for Option<&str> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = match self {
+                Some(s) => str_to_charsxp(s),
+                None => crate::ffi::R_NaString,
+            };
+            crate::ffi::Rf_ScalarString(charsxp)
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = match self {
+                Some(s) => str_to_charsxp_unchecked(s),
+                None => crate::ffi::R_NaString,
+            };
+            crate::ffi::Rf_ScalarString_unchecked(charsxp)
+        }
+    }
+}
+
+impl IntoR for Option<String> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_deref().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_deref().into_sexp_unchecked() }
     }
 }
 
@@ -387,6 +497,30 @@ impl IntoR for Vec<String> {
     }
 }
 
+/// Convert `&[String]` to R character vector (STRSXP).
+impl IntoR for &[String] {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, s) in self.iter().enumerate() {
+                let charsxp = crate::ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    crate::ffi::CE_UTF8,
+                );
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
 /// Convert &[&str] to R character vector (STRSXP).
 impl IntoR for &[&str] {
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -435,9 +569,12 @@ macro_rules! impl_vec_option_into_r {
                     );
                     crate::ffi::Rf_protect(vec);
 
-                    let ptr = crate::ffi::$dataptr(vec);
-                    for (i, val) in self.into_iter().enumerate() {
-                        *ptr.add(i) = val.unwrap_or($na_value);
+                    if n > 0 {
+                        let ptr = crate::ffi::$dataptr(vec);
+                        let out = std::slice::from_raw_parts_mut(ptr, n);
+                        for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                            *slot = val.unwrap_or($na_value);
+                        }
                     }
 
                     crate::ffi::Rf_unprotect(1);
@@ -448,8 +585,87 @@ macro_rules! impl_vec_option_into_r {
     };
 }
 
-impl_vec_option_into_r!(f64, REALSXP, REAL, f64::NAN); // NA_real_ = NaN
-impl_vec_option_into_r!(i32, INTSXP, INTEGER, i32::MIN); // NA_integer_ = i32::MIN
+impl_vec_option_into_r!(f64, REALSXP, REAL, NA_REAL); // NA_real_
+impl_vec_option_into_r!(i32, INTSXP, INTEGER, NA_INTEGER); // NA_integer_
+
+/// Convert `Vec<Option<bool>>` to R logical vector with NA support.
+impl IntoR for Vec<Option<bool>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            if n > 0 {
+                let ptr = crate::ffi::LOGICAL(vec);
+                let out = std::slice::from_raw_parts_mut(ptr, n);
+                for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                    *slot = match val {
+                        Some(true) => 1,
+                        Some(false) => 0,
+                        None => NA_LOGICAL,
+                    };
+                }
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<Rboolean>>` to R logical vector with NA support.
+impl IntoR for Vec<Option<crate::ffi::Rboolean>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            if n > 0 {
+                let ptr = crate::ffi::LOGICAL(vec);
+                let out = std::slice::from_raw_parts_mut(ptr, n);
+                for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                    *slot = match val {
+                        Some(v) => v as i32,
+                        None => NA_LOGICAL,
+                    };
+                }
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<RLogical>>` to R logical vector with NA support.
+impl IntoR for Vec<Option<crate::ffi::RLogical>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            if n > 0 {
+                let ptr = crate::ffi::LOGICAL(vec);
+                let out = std::slice::from_raw_parts_mut(ptr, n);
+                for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                    *slot = match val {
+                        Some(v) => v.to_i32(),
+                        None => NA_LOGICAL,
+                    };
+                }
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
 
 /// Convert `Vec<Option<String>>` to R character vector with NA support.
 ///

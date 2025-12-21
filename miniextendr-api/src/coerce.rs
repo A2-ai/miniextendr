@@ -25,6 +25,7 @@
 //! let vec: Vec<i32> = slice.coerce();
 //! ```
 
+use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{Rboolean, Rcomplex};
 
 /// Infallible coercion from `Self` to type `R`.
@@ -197,41 +198,41 @@ impl Coerce<i32> for Rboolean {
 // Option<T> to R-native with None → NA
 // =============================================================================
 
-/// `Option<f64>` → `f64` with `None` → `NA_real_` (NaN).
+/// `Option<f64>` → `f64` with `None` → `NA_real_`.
 impl Coerce<f64> for Option<f64> {
     #[inline(always)]
     fn coerce(self) -> f64 {
-        self.unwrap_or(f64::NAN)
+        self.unwrap_or(NA_REAL)
     }
 }
 
-/// `Option<i32>` → `i32` with `None` → `NA_integer_` (i32::MIN).
+/// `Option<i32>` → `i32` with `None` → `NA_integer_`.
 impl Coerce<i32> for Option<i32> {
     #[inline(always)]
     fn coerce(self) -> i32 {
-        self.unwrap_or(i32::MIN)
+        self.unwrap_or(NA_INTEGER)
     }
 }
 
-/// `Option<bool>` → `i32` with `None` → `NA_LOGICAL` (i32::MIN).
+/// `Option<bool>` → `i32` with `None` → `NA_LOGICAL`.
 impl Coerce<i32> for Option<bool> {
     #[inline(always)]
     fn coerce(self) -> i32 {
         match self {
             Some(true) => 1,
             Some(false) => 0,
-            None => i32::MIN,
+            None => NA_LOGICAL,
         }
     }
 }
 
-/// `Option<Rboolean>` → `i32` with `None` → `NA_LOGICAL` (i32::MIN).
+/// `Option<Rboolean>` → `i32` with `None` → `NA_LOGICAL`.
 impl Coerce<i32> for Option<Rboolean> {
     #[inline(always)]
     fn coerce(self) -> i32 {
         match self {
             Some(v) => v as i32,
-            None => i32::MIN,
+            None => NA_LOGICAL,
         }
     }
 }
@@ -1105,6 +1106,16 @@ mod tests {
         let slice: &[i8] = &[1, 2, 3];
         let vec: Vec<i32> = slice.coerce();
         assert_eq!(vec, vec![1i32, 2, 3]);
+    }
+
+    #[test]
+    fn test_option_na_coerce() {
+        assert_eq!(Coerce::<i32>::coerce(None::<i32>), NA_INTEGER);
+        assert_eq!(Coerce::<i32>::coerce(None::<bool>), NA_LOGICAL);
+        assert_eq!(Coerce::<i32>::coerce(None::<Rboolean>), NA_LOGICAL);
+
+        let na_real = Coerce::<f64>::coerce(None::<f64>);
+        assert_eq!(na_real.to_bits(), NA_REAL.to_bits());
     }
 
     #[test]

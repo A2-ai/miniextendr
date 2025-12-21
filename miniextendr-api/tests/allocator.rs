@@ -58,11 +58,12 @@ unsafe fn test_various_sizes() {
                 size
             );
 
-            for i in 0..size {
-                *ptr.add(i) = (i % 256) as u8;
+            let slice = std::slice::from_raw_parts_mut(ptr, size);
+            for (i, slot) in slice.iter_mut().enumerate() {
+                *slot = (i % 256) as u8;
             }
-            for i in 0..size {
-                assert_eq!(*ptr.add(i), (i % 256) as u8, "data corrupted at {}", i);
+            for (i, &val) in slice.iter().enumerate() {
+                assert_eq!(val, (i % 256) as u8, "data corrupted at {}", i);
             }
             RAllocator.dealloc(ptr, layout);
         }
@@ -84,8 +85,9 @@ unsafe fn test_various_alignments() {
                 ptr as usize
             );
             std::ptr::write_bytes(ptr, 0xAA, size);
-            for i in 0..size {
-                assert_eq!(*ptr.add(i), 0xAA, "data mismatch at {}", i);
+            let slice = std::slice::from_raw_parts(ptr, size);
+            for (i, &val) in slice.iter().enumerate() {
+                assert_eq!(val, 0xAA, "data mismatch at {}", i);
             }
             RAllocator.dealloc(ptr, layout);
         }
@@ -106,14 +108,16 @@ unsafe fn test_realloc_grow() {
         let layout = Layout::from_size_align(64, 8).unwrap();
         let ptr = RAllocator.alloc(layout);
         assert!(!ptr.is_null());
-        for i in 0..64 {
-            *ptr.add(i) = i as u8;
+        let slice = std::slice::from_raw_parts_mut(ptr, 64);
+        for (i, slot) in slice.iter_mut().enumerate() {
+            *slot = i as u8;
         }
         let new_ptr = RAllocator.realloc(ptr, layout, 128);
         assert!(!new_ptr.is_null());
         assert_eq!(new_ptr.align_offset(8), 0);
-        for i in 0..64 {
-            assert_eq!(*new_ptr.add(i), i as u8);
+        let slice = std::slice::from_raw_parts(new_ptr, 64);
+        for (i, &val) in slice.iter().enumerate() {
+            assert_eq!(val, i as u8);
         }
         let new_layout = Layout::from_size_align(128, 8).unwrap();
         RAllocator.dealloc(new_ptr, new_layout);
@@ -124,13 +128,15 @@ unsafe fn test_realloc_shrink() {
     unsafe {
         let layout = Layout::from_size_align(128, 8).unwrap();
         let ptr = RAllocator.alloc(layout);
-        for i in 0..128 {
-            *ptr.add(i) = (i % 256) as u8;
+        let slice = std::slice::from_raw_parts_mut(ptr, 128);
+        for (i, slot) in slice.iter_mut().enumerate() {
+            *slot = (i % 256) as u8;
         }
         let new_ptr = RAllocator.realloc(ptr, layout, 64);
         assert!(!new_ptr.is_null());
-        for i in 0..64 {
-            assert_eq!(*new_ptr.add(i), (i % 256) as u8);
+        let slice = std::slice::from_raw_parts(new_ptr, 64);
+        for (i, &val) in slice.iter().enumerate() {
+            assert_eq!(val, (i % 256) as u8);
         }
         let new_layout = Layout::from_size_align(64, 8).unwrap();
         RAllocator.dealloc(new_ptr, new_layout);
@@ -141,14 +147,14 @@ unsafe fn test_realloc_same_size() {
     unsafe {
         let layout = Layout::from_size_align(64, 8).unwrap();
         let ptr = RAllocator.alloc(layout);
-        for i in 0..64 {
-            *ptr.add(i) = 0xFF;
+        let slice = std::slice::from_raw_parts_mut(ptr, 64);
+        for slot in slice.iter_mut() {
+            *slot = 0xFF;
         }
         let new_ptr = RAllocator.realloc(ptr, layout, 64);
         assert_eq!(ptr, new_ptr);
-        for i in 0..64 {
-            assert_eq!(*new_ptr.add(i), 0xFF);
-        }
+        let slice = std::slice::from_raw_parts(new_ptr, 64);
+        assert!(slice.iter().all(|&v| v == 0xFF));
         RAllocator.dealloc(new_ptr, layout);
     }
 }
@@ -180,15 +186,15 @@ unsafe fn test_multiple_allocations() {
             let layout = Layout::from_size_align(size, 8).unwrap();
             let ptr = RAllocator.alloc(layout);
             assert!(!ptr.is_null());
-            for j in 0..size {
-                *ptr.add(j) = (i % 256) as u8;
+            let slice = std::slice::from_raw_parts_mut(ptr, size);
+            for slot in slice.iter_mut() {
+                *slot = (i % 256) as u8;
             }
             ptrs.push((ptr, layout, i as u8));
         }
         for (ptr, layout, marker) in &ptrs {
-            for j in 0..layout.size() {
-                assert_eq!(*ptr.add(j), *marker);
-            }
+            let slice = std::slice::from_raw_parts(*ptr, layout.size());
+            assert!(slice.iter().all(|&v| v == *marker));
         }
         for (ptr, layout, _) in ptrs.into_iter().rev() {
             RAllocator.dealloc(ptr, layout);
@@ -201,18 +207,21 @@ unsafe fn test_stress_realloc() {
         let mut ptr = RAllocator.alloc(Layout::from_size_align(16, 8).unwrap());
         let mut current_size = 16;
         let mut layout = Layout::from_size_align(16, 8).unwrap();
-        for i in 0..16 {
-            *ptr.add(i) = i as u8;
+        let slice = std::slice::from_raw_parts_mut(ptr, 16);
+        for (i, slot) in slice.iter_mut().enumerate() {
+            *slot = i as u8;
         }
         for _ in 0..10 {
             let new_size = current_size * 2;
             ptr = RAllocator.realloc(ptr, layout, new_size);
             assert!(!ptr.is_null());
-            for i in 0..current_size {
-                assert_eq!(*ptr.add(i), (i % 256) as u8);
+            let slice = std::slice::from_raw_parts_mut(ptr, new_size);
+            let (prefix, suffix) = slice.split_at_mut(current_size);
+            for (i, &val) in prefix.iter().enumerate() {
+                assert_eq!(val, (i % 256) as u8);
             }
-            for i in current_size..new_size {
-                *ptr.add(i) = (i % 256) as u8;
+            for (i, slot) in suffix.iter_mut().enumerate() {
+                *slot = ((current_size + i) % 256) as u8;
             }
             current_size = new_size;
             layout = Layout::from_size_align(new_size, 8).unwrap();
@@ -228,12 +237,13 @@ unsafe fn test_multiple_threads_sequential() {
             let ptr = RAllocator.alloc(layout);
             assert!(!ptr.is_null(), "alloc failed {}", thread_id);
             assert_eq!(ptr.align_offset(16), 0, "alignment failed {}", thread_id);
-            for i in 0..256 {
-                *ptr.add(i) = ((thread_id * 100 + i) % 256) as u8;
+            let slice = std::slice::from_raw_parts_mut(ptr, 256);
+            for (i, slot) in slice.iter_mut().enumerate() {
+                *slot = ((thread_id * 100 + i) % 256) as u8;
             }
-            for i in 0..256 {
+            for (i, &val) in slice.iter().enumerate() {
                 let expected = ((thread_id * 100 + i) % 256) as u8;
-                assert_eq!(*ptr.add(i), expected, "data corrupted {}", thread_id);
+                assert_eq!(val, expected, "data corrupted {}", thread_id);
             }
             RAllocator.dealloc(ptr, layout);
         }
@@ -247,12 +257,13 @@ unsafe fn test_default_stack_threads_sequential() {
             let ptr = RAllocator.alloc(layout);
             assert!(!ptr.is_null(), "alloc failed {}", thread_id);
             assert_eq!(ptr.align_offset(8), 0, "alignment failed {}", thread_id);
-            for i in 0..128 {
-                *ptr.add(i) = ((thread_id * 50 + i) % 256) as u8;
+            let slice = std::slice::from_raw_parts_mut(ptr, 128);
+            for (i, slot) in slice.iter_mut().enumerate() {
+                *slot = ((thread_id * 50 + i) % 256) as u8;
             }
-            for i in 0..128 {
+            for (i, &val) in slice.iter().enumerate() {
                 let expected = ((thread_id * 50 + i) % 256) as u8;
-                assert_eq!(*ptr.add(i), expected, "data corrupted {}", thread_id);
+                assert_eq!(val, expected, "data corrupted {}", thread_id);
             }
             RAllocator.dealloc(ptr, layout);
         }
