@@ -119,8 +119,12 @@ pub struct MethodAttrs {
     pub active: bool,
     /// Override generic name (S3/S4/S7)
     pub generic: Option<String>,
-    /// Worker thread execution
+    /// Worker thread execution (default: auto-detect based on types)
     pub worker: bool,
+    /// Force main thread execution (unsafe)
+    pub unsafe_main_thread: bool,
+    /// Enable R interrupt checking
+    pub check_interrupt: bool,
     /// Enable coercion for this method's parameters
     pub coerce: bool,
 }
@@ -218,14 +222,8 @@ impl ParsedMethod {
             ));
         }
 
-        // #[...(worker)] for per-method worker thread execution is not yet implemented
-        if attrs.worker {
-            return Err(syn::Error::new(
-                span,
-                "method-level #[...(worker)] attribute is not yet implemented; \
-                 use function-level #[miniextendr(worker)] instead",
-            ));
-        }
+        // Worker attribute is now supported on methods
+        // (validation happens during wrapper generation based on return type)
 
         Ok(())
     }
@@ -288,6 +286,10 @@ impl ParsedMethod {
                             method_attrs.active = true;
                         } else if inner.path.is_ident("worker") {
                             method_attrs.worker = true;
+                        } else if inner.path.is_ident("main_thread") {
+                            method_attrs.unsafe_main_thread = true;
+                        } else if inner.path.is_ident("check_interrupt") {
+                            method_attrs.check_interrupt = true;
                         } else if inner.path.is_ident("coerce") {
                             method_attrs.coerce = true;
                         } else if inner.path.is_ident("generic") {
@@ -349,20 +351,34 @@ impl ParsedMethod {
     /// Returns true if this method should be included in the class.
     pub fn should_include(&self) -> bool {
         // Skip ignored methods
-        if self.method_attrs.ignore {
-            return false;
+        !self.method_attrs.ignore
+    }
+
+    /// Returns true if this method should be private in R6.
+    /// Inferred from Rust visibility: anything not `pub` is private.
+    pub fn is_private(&self) -> bool {
+        // Explicit attribute takes precedence
+        if self.method_attrs.private {
+            return true;
         }
-        // Skip private visibility unless explicitly marked
-        if matches!(self.vis, syn::Visibility::Inherited) && !self.method_attrs.private {
-            return false;
-        }
-        true
+        // Infer from visibility: anything not `pub` is private
+        !matches!(self.vis, syn::Visibility::Public(_))
     }
 
     /// Returns true if this is likely a constructor.
+    /// Inferred from: no receiver + named "new" + returns Self.
     pub fn is_constructor(&self) -> bool {
         self.method_attrs.constructor
-            || (self.receiver == ReceiverKind::None && self.ident == "new")
+            || (self.receiver == ReceiverKind::None
+                && self.ident == "new"
+                && self.returns_self())
+    }
+
+    /// Returns true if this is likely a finalizer.
+    /// Inferred from: consumes self (by value) + doesn't return Self.
+    pub fn is_finalizer(&self) -> bool {
+        self.method_attrs.finalize
+            || (self.receiver == ReceiverKind::Value && !self.returns_self())
     }
 
     /// C wrapper identifier for this method.
@@ -496,21 +512,53 @@ impl ParsedImpl {
             .find(|m| m.should_include() && m.is_constructor())
     }
 
-    /// Get instance methods (have receiver).
-    pub fn instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
-        self.methods
-            .iter()
-            .filter(|m| m.should_include() && m.receiver.is_instance() && !m.is_constructor())
+    /// Get public instance methods (have receiver, not private).
+    pub fn public_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods.iter().filter(|m| {
+            m.should_include()
+                && m.receiver.is_instance()
+                && !m.is_constructor()
+                && !m.is_finalizer()
+                && !m.is_private()
+        })
     }
 
-    /// Get static methods (no receiver, not constructor).
+    /// Get private instance methods (have receiver, private visibility).
+    pub fn private_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods.iter().filter(|m| {
+            m.should_include()
+                && m.receiver.is_instance()
+                && !m.is_constructor()
+                && !m.is_finalizer()
+                && m.is_private()
+        })
+    }
+
+    /// Get instance methods (have receiver) - includes both public and private.
+    pub fn instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods.iter().filter(|m| {
+            m.should_include()
+                && m.receiver.is_instance()
+                && !m.is_constructor()
+                && !m.is_finalizer()
+        })
+    }
+
+    /// Get static methods (no receiver, not constructor, not finalizer).
     pub fn static_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
                 && m.receiver == ReceiverKind::None
                 && !m.is_constructor()
-                && !m.method_attrs.finalize
+                && !m.is_finalizer()
         })
+    }
+
+    /// Get the finalizer method, if any.
+    pub fn finalizer(&self) -> Option<&ParsedMethod> {
+        self.methods
+            .iter()
+            .find(|m| m.should_include() && m.is_finalizer())
     }
 
     /// Module constant identifier for all call method defs.
@@ -572,6 +620,13 @@ pub fn generate_method_c_wrapper(
     }
     let conversion_stmts = conversion_builder.build_conversions(&method.sig.inputs, &sexp_idents);
 
+    // Determine if we should use worker thread strategy
+    // Instance methods must stay on main thread (self_ptr isn't Send)
+    // Methods with main_thread or check_interrupt must stay on main thread
+    let force_main_thread = method.receiver.is_instance()
+        || method.method_attrs.unsafe_main_thread
+        || method.method_attrs.check_interrupt;
+
     // Generate self extraction for instance methods
     let self_extraction = if method.receiver.is_instance() {
         if method.receiver == ReceiverKind::RefMut {
@@ -602,34 +657,10 @@ pub fn generate_method_c_wrapper(
         quote! { #type_ident::#method_ident(#(#rust_args),*) }
     };
 
-    // Generate return handling
-    let return_handling = match &method.sig.output {
-        syn::ReturnType::Default => {
-            quote! {
-                #call;
-                unsafe { ::miniextendr_api::ffi::R_NilValue }
-            }
-        }
-        syn::ReturnType::Type(_, ty) => {
-            // Check if return type is Self
-            let is_self_return = matches!(ty.as_ref(), syn::Type::Path(p)
-                if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false));
-
-            if is_self_return {
-                quote! {
-                    let result = #call;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(
-                        ::miniextendr_api::externalptr::ExternalPtr::new(result)
-                    )
-                }
-            } else {
-                quote! {
-                    let result = #call;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(result)
-                }
-            }
-        }
-    };
+    // Check if return type is Self (for ExternalPtr wrapping)
+    let is_self_return = matches!(&method.sig.output, syn::ReturnType::Type(_, ty)
+        if matches!(ty.as_ref(), syn::Type::Path(p)
+            if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)));
 
     // Number of arguments for registration
     let num_args = c_params.len();
@@ -649,26 +680,121 @@ pub fn generate_method_c_wrapper(
         .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
         .collect();
 
-    // Generate doc comment linking to method and R wrapper
-    let c_wrapper_doc = format!(
-        "C wrapper for [`{}::{}`]. See [`{}`] for R wrapper.",
-        type_ident, method_ident, r_wrappers_const
-    );
+    // Generate the C wrapper body based on thread strategy
+    let c_wrapper_body = if force_main_thread {
+        // Main thread strategy: use with_r_unwind_protect directly
+        let return_handling = match &method.sig.output {
+            syn::ReturnType::Default => {
+                quote! {
+                    #call;
+                    unsafe { ::miniextendr_api::ffi::R_NilValue }
+                }
+            }
+            syn::ReturnType::Type(_, _) => {
+                if is_self_return {
+                    quote! {
+                        let result = #call;
+                        ::miniextendr_api::into_r::IntoR::into_sexp(
+                            ::miniextendr_api::externalptr::ExternalPtr::new(result)
+                        )
+                    }
+                } else {
+                    quote! {
+                        let result = #call;
+                        ::miniextendr_api::into_r::IntoR::into_sexp(result)
+                    }
+                }
+            }
+        };
+
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{}::{}`] (main thread). See [`{}`] for R wrapper.",
+            type_ident, method_ident, r_wrappers_const
+        );
+
+        quote! {
+            #[doc = #c_wrapper_doc]
+            #[unsafe(no_mangle)]
+            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || {
+                        #self_extraction
+                        #(#conversion_stmts)*
+                        #return_handling
+                    },
+                    Some(__miniextendr_call),
+                )
+            }
+        }
+    } else {
+        // Worker thread strategy: catch_unwind + run_on_worker + with_r_unwind_protect
+        let return_conversion = if is_self_return {
+            quote! {
+                ::miniextendr_api::into_r::IntoR::into_sexp(
+                    ::miniextendr_api::externalptr::ExternalPtr::new(__miniextendr_result)
+                )
+            }
+        } else {
+            quote! {
+                ::miniextendr_api::into_r::IntoR::into_sexp(__miniextendr_result)
+            }
+        };
+
+        let worker_body = match &method.sig.output {
+            syn::ReturnType::Default => {
+                quote! {
+                    #call;
+                }
+            }
+            syn::ReturnType::Type(_, _) => {
+                quote! {
+                    #call
+                }
+            }
+        };
+
+        let return_sexp = if matches!(&method.sig.output, syn::ReturnType::Default) {
+            quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+        } else {
+            quote! {
+                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    || #return_conversion,
+                    None,
+                )
+            }
+        };
+
+        let c_wrapper_doc = format!(
+            "C wrapper for [`{}::{}`] (worker thread). See [`{}`] for R wrapper.",
+            type_ident, method_ident, r_wrappers_const
+        );
+
+        quote! {
+            #[doc = #c_wrapper_doc]
+            #[unsafe(no_mangle)]
+            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                    #(#conversion_stmts)*
+
+                    let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
+                        #worker_body
+                    });
+
+                    #return_sexp
+                }));
+                match __miniextendr_panic_result {
+                    Ok(sexp) => sexp,
+                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
+                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    ),
+                }
+            }
+        }
+    };
 
     quote! {
         #(#cfg_attrs)*
-        #[doc = #c_wrapper_doc]
-        #[unsafe(no_mangle)]
-        pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-            ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                || {
-                    #self_extraction
-                    #(#conversion_stmts)*
-                    #return_handling
-                },
-                Some(__miniextendr_call),
-            )
-        }
+        #c_wrapper_body
 
         #(#cfg_attrs)*
         #[inline(always)]
@@ -860,9 +986,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
 
-    // Instance methods
-    let instance_methods: Vec<_> = parsed_impl.instance_methods().collect();
-    for (i, method) in instance_methods.iter().enumerate() {
+    // Public instance methods
+    let public_methods: Vec<_> = parsed_impl.public_instance_methods().collect();
+    for (i, method) in public_methods.iter().enumerate() {
         let c_ident = method.c_wrapper_ident(type_ident);
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
@@ -871,7 +997,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!(".Call({}, match.call(), private$.ptr, {})", c_ident, args)
         };
-        let comma = if i < instance_methods.len() - 1 {
+        let comma = if i < public_methods.len() - 1 {
             ","
         } else {
             ""
@@ -894,8 +1020,45 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     lines.push("    ),".to_string());
 
-    // Private list
+    // Private list - includes .ptr and any private methods
     lines.push("    private = list(".to_string());
+
+    // Private instance methods
+    let private_methods: Vec<_> = parsed_impl.private_instance_methods().collect();
+    for method in &private_methods {
+        let c_ident = method.c_wrapper_ident(type_ident);
+        let params = build_r_formals(&method.sig);
+        let args = build_r_call_args(&method.sig);
+        let call = if args.is_empty() {
+            format!(".Call({}, match.call(), private$.ptr)", c_ident)
+        } else {
+            format!(".Call({}, match.call(), private$.ptr, {})", c_ident, args)
+        };
+        lines.push(format!(
+            "        {} = function({}) {{",
+            method.ident, params
+        ));
+
+        let strategy = crate::ReturnStrategy::for_method(method);
+        let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone())
+            .with_indent(12);
+        lines.extend(return_builder.build_r6_body());
+
+        lines.push("        },".to_string());
+    }
+
+    // Finalizer (if any)
+    if let Some(finalizer) = parsed_impl.finalizer() {
+        let c_ident = finalizer.c_wrapper_ident(type_ident);
+        lines.push(format!(
+            "        finalize = function() .Call({}, match.call(), private$.ptr),",
+            c_ident
+        ));
+    }
+
+    // .ptr field (always last, no trailing comma)
     lines.push("        .ptr = NULL".to_string());
     lines.push("    ),".to_string());
 
