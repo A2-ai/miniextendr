@@ -1364,9 +1364,9 @@ unsafe extern "C-unwind" {
 //    implementation without a compatibility layer."
 //
 // Use with caution and always check R_CONNECTIONS_VERSION.
+#[r_ffi_checked]
 #[cfg(feature = "connections")]
 #[allow(non_snake_case)]
-#[r_ffi_checked]
 unsafe extern "C-unwind" {
     /// Create a new custom connection.
     ///
