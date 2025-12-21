@@ -14,6 +14,21 @@
 //! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
 //! treated identically to `fn <name>;`. The ABI distinction is handled by
 //! `#[miniextendr]` at the function definition site.
+//!
+//! # IMPORTANT: Shared Parser
+//!
+//! **This file is included by `miniextendr-lint` via `#[path]`.**
+//!
+//! Changes to this file affect both:
+//! 1. The `miniextendr_module!` macro in this crate
+//! 2. The build-time linter in `miniextendr-lint`
+//!
+//! **Constraints when modifying:**
+//! - Don't add new imports from `crate::` without updating lint stubs
+//! - Don't move this file without updating the `#[path]` in lint
+//! - Keep parser self-contained where possible
+//!
+//! See `miniextendr-lint/src/lib.rs` module docs for coupling details.
 
 use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
