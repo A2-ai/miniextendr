@@ -1766,7 +1766,7 @@ pub fn expand_impl(
         #(#cfg_attrs)*
         #[doc(hidden)]
         pub const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
-            [#(#call_def_idents()),*];
+            [#(#call_def_idents),*];
     };
 
     expanded.into()
