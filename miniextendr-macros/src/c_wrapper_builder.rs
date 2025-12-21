@@ -563,6 +563,7 @@ impl CWrapperContext {
         );
 
         quote! {
+            #[doc(hidden)]
             #[doc = #doc]
             #[inline(always)]
             #[allow(non_snake_case)]

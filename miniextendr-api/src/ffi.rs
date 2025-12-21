@@ -94,8 +94,31 @@ pub struct SEXPREC(::std::os::raw::c_void);
 /// While SEXP is Send+Sync (allowing it to be passed between threads), the data
 /// it points to must only be accessed on R's main thread. The miniextendr runtime
 /// enforces this through the worker thread pattern.
+///
+/// # Equality Semantics
+///
+/// IMPORTANT: The derived `PartialEq` compares **pointer equality**, not semantic equality.
+/// For proper R semantics (comparing object contents), use [`R_compute_identical`].
+///
+/// ```ignore
+/// // Pointer equality (fast, often wrong for R semantics)
+/// if sexp1 == sexp2 { ... }  // Only true if same pointer
+///
+/// // Semantic equality (correct R semantics)
+/// if R_compute_identical(sexp1, sexp2, 16) != 0 { ... }
+/// ```
+///
+/// **Hash trait removed**: SEXP no longer implements `Hash` because proper hashing
+/// would require deep content inspection via `R_compute_identical`, which is too
+/// expensive for general use. If you need SEXP as a HashMap key, use pointer identity:
+///
+/// ```ignore
+/// // Store by pointer identity (common pattern for R symbol lookups)
+/// let mut map: HashMap<usize, Value> = HashMap::new();
+/// map.insert(sexp.as_ptr() as usize, value);
+/// ```
 #[repr(transparent)]
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SEXP(pub *mut SEXPREC);
 
 // SAFETY: SEXP is just a pointer (memory address). Passing the address between
@@ -1210,6 +1233,44 @@ unsafe extern "C-unwind" {
     #[doc(alias = "shallow_duplicate")]
     pub fn Rf_shallow_duplicate(s: SEXP) -> SEXP;
 
+    // Object comparison
+    /// Check if two R objects are identical (deep semantic equality).
+    ///
+    /// This is the C implementation of R's `identical()` function.
+    ///
+    /// # Flags
+    ///
+    /// Use the `IDENT_*` constants below. Flags are inverted: set bit = disable that check.
+    ///
+    /// **Default from R**: `IDENT_USE_CLOENV` (16) - ignore closure environments
+    ///
+    /// # Returns
+    ///
+    /// `TRUE` if identical, `FALSE` otherwise.
+    ///
+    /// # Performance
+    ///
+    /// Fast-path: Returns `TRUE` immediately if pointers are equal.
+    pub fn R_compute_identical(x: SEXP, y: SEXP, flags: ::std::os::raw::c_int) -> Rboolean;
+}
+
+/// Flags for `R_compute_identical` (bitmask, inverted logic: set bit = disable check).
+pub const IDENT_NUM_AS_BITS: ::std::os::raw::c_int = 1;
+/// Treat all NAs as identical (ignore NA payload differences).
+pub const IDENT_NA_AS_BITS: ::std::os::raw::c_int = 2;
+/// Compare attributes in order (not as a set).
+pub const IDENT_ATTR_BY_ORDER: ::std::os::raw::c_int = 4;
+/// Include bytecode in comparison.
+pub const IDENT_USE_BYTECODE: ::std::os::raw::c_int = 8;
+/// Include closure environments in comparison.
+pub const IDENT_USE_CLOENV: ::std::os::raw::c_int = 16;
+/// Include source references in comparison.
+pub const IDENT_USE_SRCREF: ::std::os::raw::c_int = 32;
+/// Compare external pointers as references (not by address).
+pub const IDENT_EXTPTR_AS_REF: ::std::os::raw::c_int = 64;
+
+#[r_ffi_checked]
+unsafe extern "C-unwind" {
     // Type coercion
     #[doc(alias = "asLogical")]
     pub fn Rf_asLogical(x: SEXP) -> ::std::os::raw::c_int;
