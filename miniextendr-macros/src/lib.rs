@@ -1,6 +1,7 @@
 // miniextendr-macros procedural macros
 
 mod altrep;
+mod c_wrapper_builder;
 mod miniextendr_fn;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
@@ -780,8 +781,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|x| {
             let use_module_ident = &x.use_name.ident;
             let use_module_ident_upper = use_module_ident.to_string().to_uppercase();
-            let call_entries_const =
-                quote::format_ident!("CALL_ENTRIES_{use_module_ident_upper}");
+            let call_entries_const = quote::format_ident!("CALL_ENTRIES_{use_module_ident_upper}");
             syn::parse_quote!(#use_module_ident::#call_entries_const)
         })
         .collect();
@@ -891,8 +891,10 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let altrep_reg_fn_ident = quote::format_ident!("{module}_register_altrep");
 
     // Build const call entries array, including impl call defs if present.
-    let call_entries_len_lit =
-        syn::LitInt::new(&call_entries_len.to_string(), proc_macro2::Span::call_site());
+    let call_entries_len_lit = syn::LitInt::new(
+        &call_entries_len.to_string(),
+        proc_macro2::Span::call_site(),
+    );
     let impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
         .impls
         .iter()
@@ -947,8 +949,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .iter()
             .map(|expr| quote::quote!(#expr.len()))
             .collect();
-    let all_call_entries_const_ident =
-        quote::format_ident!("ALL_CALL_ENTRIES_{module_upper}");
+    let all_call_entries_const_ident = quote::format_ident!("ALL_CALL_ENTRIES_{module_upper}");
     let all_entries_len_expr = if use_module_call_entries_len_exprs.is_empty() {
         quote::quote!(#total_len_expr + 1usize)
     } else {

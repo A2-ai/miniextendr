@@ -311,7 +311,6 @@ pub use externalptr::{
     ErasedExternalPtr,
     ExternalPtr,
     ExternalSlice,
-    SendableSexp,
     TypedExternal,
     // ALTREP helpers (checked)
     altrep_data1_as,

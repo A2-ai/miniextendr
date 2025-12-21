@@ -369,16 +369,13 @@ impl ParsedMethod {
     /// Inferred from: no receiver + named "new" + returns Self.
     pub fn is_constructor(&self) -> bool {
         self.method_attrs.constructor
-            || (self.receiver == ReceiverKind::None
-                && self.ident == "new"
-                && self.returns_self())
+            || (self.receiver == ReceiverKind::None && self.ident == "new" && self.returns_self())
     }
 
     /// Returns true if this is likely a finalizer.
     /// Inferred from: consumes self (by value) + doesn't return Self.
     pub fn is_finalizer(&self) -> bool {
-        self.method_attrs.finalize
-            || (self.receiver == ReceiverKind::Value && !self.returns_self())
+        self.method_attrs.finalize || (self.receiver == ReceiverKind::Value && !self.returns_self())
     }
 
     /// C wrapper identifier for this method.
@@ -581,55 +578,42 @@ pub fn generate_method_c_wrapper(
     method: &ParsedMethod,
     r_wrappers_const: &syn::Ident,
 ) -> TokenStream {
+    use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
+
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
     let c_ident = method.c_wrapper_ident(type_ident);
-    let cfg_attrs = &parsed_impl.cfg_attrs;
 
-    // Build parameter list
-    let mut c_params: Vec<TokenStream> = Vec::new();
-    let mut rust_args: Vec<syn::Ident> = Vec::new();
-    let mut sexp_idents: Vec<syn::Ident> = Vec::new();
+    // Determine thread strategy
+    // Instance methods must use main thread because self_ref is a borrow that can't cross threads
+    // Static methods use worker thread by default, main thread only when explicitly requested
+    let thread_strategy = if method.method_attrs.unsafe_main_thread || method.receiver.is_instance()
+    {
+        ThreadStrategy::MainThread
+    } else {
+        ThreadStrategy::WorkerThread
+    };
 
-    // First param is always __miniextendr_call for error context
-    c_params.push(quote!(__miniextendr_call: ::miniextendr_api::ffi::SEXP));
-
-    // For instance methods, next param is self_sexp
-    if method.receiver.is_instance() {
-        c_params.push(quote!(self_sexp: ::miniextendr_api::ffi::SEXP));
-    }
-
-    // Add regular parameters
-    for (idx, arg) in method.sig.inputs.iter().enumerate() {
-        if let syn::FnArg::Typed(pt) = arg
-            && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
-        {
-            let ident = &pat_ident.ident;
-            let param_ident = format_ident!("arg_{}", idx);
-
-            c_params.push(quote!(#param_ident: ::miniextendr_api::ffi::SEXP));
-            rust_args.push(ident.clone());
-            sexp_idents.push(param_ident);
-        }
-    }
-
-    // Generate conversion statements using shared builder
-    let mut conversion_builder = crate::RustConversionBuilder::new();
-    if method.method_attrs.coerce {
-        conversion_builder = conversion_builder.with_coerce_all();
-    }
-    let conversion_stmts = conversion_builder.build_conversions(&method.sig.inputs, &sexp_idents);
-
-    // Determine if we should use worker thread strategy
-    // Instance methods must stay on main thread (self_ptr isn't Send)
-    // Methods with main_thread or check_interrupt must stay on main thread
-    let force_main_thread = method.receiver.is_instance()
-        || method.method_attrs.unsafe_main_thread
-        || method.method_attrs.check_interrupt;
+    // Build rust argument names from the signature
+    let rust_args: Vec<syn::Ident> = method
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pt) = arg
+                && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+            {
+                Some(pat_ident.ident.clone())
+            } else {
+                None
+            }
+        })
+        .collect();
 
     // Generate self extraction for instance methods
-    let self_extraction = if method.receiver.is_instance() {
-        if method.receiver == ReceiverKind::RefMut {
+    // SEXP is now Send+Sync, so this works for both main and worker threads
+    let pre_call = if method.receiver.is_instance() {
+        let self_extraction = if method.receiver == ReceiverKind::RefMut {
             quote! {
                 let mut self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
@@ -645,173 +629,51 @@ pub fn generate_method_c_wrapper(
                 let self_ref = self_ptr.downcast_ref::<#type_ident>()
                     .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
             }
-        }
+        };
+        vec![self_extraction]
     } else {
-        TokenStream::new()
+        vec![]
     };
 
-    // Generate call
-    let call = if method.receiver.is_instance() {
+    // Generate call expression
+    let call_expr = if method.receiver.is_instance() {
         quote! { self_ref.#method_ident(#(#rust_args),*) }
     } else {
         quote! { #type_ident::#method_ident(#(#rust_args),*) }
     };
 
-    // Check if return type is Self (for ExternalPtr wrapping)
-    let is_self_return = matches!(&method.sig.output, syn::ReturnType::Type(_, ty)
-        if matches!(ty.as_ref(), syn::Type::Path(p)
-            if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)));
-
-    // Number of arguments for registration
-    let num_args = c_params.len();
-    let num_args_lit = syn::LitInt::new(&num_args.to_string(), proc_macro2::Span::call_site());
-
-    let c_ident_name = syn::LitCStr::new(
-        std::ffi::CString::new(c_ident.to_string())
-            .expect("valid C string")
-            .as_c_str(),
-        c_ident.span(),
-    );
-
-    let call_method_def_ident = method.call_method_def_ident(type_ident);
-
-    // Build func_ptr_def for transmute
-    let func_ptr_def: Vec<syn::Type> = (0..num_args)
-        .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
-        .collect();
-
-    // Generate the C wrapper body based on thread strategy
-    let c_wrapper_body = if force_main_thread {
-        // Main thread strategy: use with_r_unwind_protect directly
-        let return_handling = match &method.sig.output {
-            syn::ReturnType::Default => {
-                quote! {
-                    #call;
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
-                }
-            }
-            syn::ReturnType::Type(_, _) => {
-                if is_self_return {
-                    quote! {
-                        let result = #call;
-                        ::miniextendr_api::into_r::IntoR::into_sexp(
-                            ::miniextendr_api::externalptr::ExternalPtr::new(result)
-                        )
-                    }
-                } else {
-                    quote! {
-                        let result = #call;
-                        ::miniextendr_api::into_r::IntoR::into_sexp(result)
-                    }
-                }
-            }
-        };
-
-        let c_wrapper_doc = format!(
-            "C wrapper for [`{}::{}`] (main thread). See [`{}`] for R wrapper.",
-            type_ident, method_ident, r_wrappers_const
-        );
-
-        quote! {
-            #[doc = #c_wrapper_doc]
-            #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                    || {
-                        #self_extraction
-                        #(#conversion_stmts)*
-                        #return_handling
-                    },
-                    Some(__miniextendr_call),
-                )
-            }
-        }
+    // Determine return handling strategy
+    let return_handling = if method.returns_self() {
+        ReturnHandling::ExternalPtr
     } else {
-        // Worker thread strategy: catch_unwind + run_on_worker + with_r_unwind_protect
-        let return_conversion = if is_self_return {
-            quote! {
-                ::miniextendr_api::into_r::IntoR::into_sexp(
-                    ::miniextendr_api::externalptr::ExternalPtr::new(__miniextendr_result)
-                )
-            }
-        } else {
-            quote! {
-                ::miniextendr_api::into_r::IntoR::into_sexp(__miniextendr_result)
-            }
-        };
-
-        let worker_body = match &method.sig.output {
-            syn::ReturnType::Default => {
-                quote! {
-                    #call;
-                }
-            }
-            syn::ReturnType::Type(_, _) => {
-                quote! {
-                    #call
-                }
-            }
-        };
-
-        let return_sexp = if matches!(&method.sig.output, syn::ReturnType::Default) {
-            quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
-        } else {
-            quote! {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                    || #return_conversion,
-                    None,
-                )
-            }
-        };
-
-        let c_wrapper_doc = format!(
-            "C wrapper for [`{}::{}`] (worker thread). See [`{}`] for R wrapper.",
-            type_ident, method_ident, r_wrappers_const
-        );
-
-        quote! {
-            #[doc = #c_wrapper_doc]
-            #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                    #(#conversion_stmts)*
-
-                    let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
-                        #worker_body
-                    });
-
-                    #return_sexp
-                }));
-                match __miniextendr_panic_result {
-                    Ok(sexp) => sexp,
-                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
-                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
-                    ),
-                }
-            }
-        }
+        crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
     };
 
-    quote! {
-        #(#cfg_attrs)*
-        #c_wrapper_body
+    // Build the context using the builder
+    let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+        .r_wrapper_const(r_wrappers_const.clone())
+        .inputs(method.sig.inputs.clone())
+        .output(method.sig.output.clone())
+        .pre_call(pre_call)
+        .call_expr(call_expr)
+        .thread_strategy(thread_strategy)
+        .return_handling(return_handling)
+        .cfg_attrs(parsed_impl.cfg_attrs.clone())
+        .type_context(type_ident.clone());
 
-        #(#cfg_attrs)*
-        #[inline(always)]
-        #[allow(non_snake_case)]
-        const fn #call_method_def_ident() -> ::miniextendr_api::ffi::R_CallMethodDef {
-            unsafe {
-                ::miniextendr_api::ffi::R_CallMethodDef {
-                    name: #c_ident_name.as_ptr(),
-                    fun: Some(std::mem::transmute::<
-                        unsafe extern "C-unwind" fn(#(#func_ptr_def),*) -> ::miniextendr_api::ffi::SEXP,
-                        unsafe extern "C-unwind" fn() -> *mut ::std::os::raw::c_void
-                    >(#c_ident)),
-                    numArgs: #num_args_lit,
-                }
-            }
-        }
+    if method.receiver.is_instance() {
+        builder = builder.has_self();
     }
+
+    if method.method_attrs.coerce {
+        builder = builder.coerce_all();
+    }
+
+    if method.method_attrs.check_interrupt {
+        builder = builder.check_interrupt();
+    }
+
+    builder.build().generate()
 }
 
 /// Generate R wrapper string for receiver-style class.
@@ -839,9 +701,9 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&ctor.sig);
         let args = build_r_call_args(&ctor.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         lines.push(format!("{}$new <- function({}) {{", class_name, params));
         lines.push(format!("    self <- {}", call));
@@ -857,9 +719,9 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call(), self)", c_ident)
+            format!(".Call({}, .call = match.call(), self)", c_ident)
         } else {
-            format!(".Call({}, match.call(), self, {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), self, {})", c_ident, args)
         };
         lines.push(format!(
             "{}${} <- function({}) {{",
@@ -883,9 +745,9 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         lines.push(format!(
             "{}${} <- function({}) {{",
@@ -962,9 +824,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&ctor.sig);
         let args = build_r_call_args(&ctor.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         if has_self_returning_methods {
             let full_params = if params.is_empty() {
@@ -993,9 +855,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call(), private$.ptr)", c_ident)
+            format!(".Call({}, .call = match.call(), private$.ptr)", c_ident)
         } else {
-            format!(".Call({}, match.call(), private$.ptr, {})", c_ident, args)
+            format!(
+                ".Call({}, .call = match.call(), private$.ptr, {})",
+                c_ident, args
+            )
         };
         let comma = if i < public_methods.len() - 1 {
             ","
@@ -1030,9 +895,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call(), private$.ptr)", c_ident)
+            format!(".Call({}, .call = match.call(), private$.ptr)", c_ident)
         } else {
-            format!(".Call({}, match.call(), private$.ptr, {})", c_ident, args)
+            format!(
+                ".Call({}, .call = match.call(), private$.ptr, {})",
+                c_ident, args
+            )
         };
         lines.push(format!(
             "        {} = function({}) {{",
@@ -1053,7 +921,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(finalizer) = parsed_impl.finalizer() {
         let c_ident = finalizer.c_wrapper_ident(type_ident);
         lines.push(format!(
-            "        finalize = function() .Call({}, match.call(), private$.ptr),",
+            "        finalize = function() .Call({}, .call = match.call(), private$.ptr),",
             c_ident
         ));
     }
@@ -1074,9 +942,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         lines.push(String::new());
         lines.push(format!("#' @rdname {}", class_name));
@@ -1117,9 +985,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&ctor.sig);
         let args = build_r_call_args(&ctor.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         lines.push(format!("#' @title {} S3 Class", class_name));
         lines.push(format!("#' @name {}", class_name));
@@ -1162,9 +1030,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         let call = if args.is_empty() {
-            format!(".Call({}, match.call(), x)", c_ident)
+            format!(".Call({}, .call = match.call(), x)", c_ident)
         } else {
-            format!(".Call({}, match.call(), x, {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), x, {})", c_ident, args)
         };
 
         // Only create the S3 generic if no generic override was provided
@@ -1212,9 +1080,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
 
         // Static methods get a prefix to avoid naming conflicts
@@ -1261,7 +1129,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         "#' @source Generated by miniextendr from Rust type `{}`",
         type_ident
     ));
-    lines.push("#' @importFrom S7 new_class class_any new_object S7_object new_generic method".to_string());
+    lines.push(
+        "#' @importFrom S7 new_class class_any new_object S7_object new_generic method".to_string(),
+    );
     lines.push("#' @export".to_string());
     lines.push(format!(
         "{} <- S7::new_class(\"{}\",",
@@ -1285,9 +1155,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&ctor.sig);
         let args = build_r_call_args(&ctor.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         if has_self_returning_methods {
             let params_with_ptr = if params.is_empty() {
@@ -1338,9 +1208,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let is_external_generic = method.method_attrs.generic.is_some();
 
         let call = if args.is_empty() {
-            format!(".Call({}, match.call(), x@.ptr)", c_ident)
+            format!(".Call({}, .call = match.call(), x@.ptr)", c_ident)
         } else {
-            format!(".Call({}, match.call(), x@.ptr, {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), x@.ptr, {})", c_ident, args)
         };
 
         // Build full parameter list (x first, then others, then ...)
@@ -1408,9 +1278,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
 
         let fn_name = format!("{}_{}", class_name, method.ident);
@@ -1475,9 +1345,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&ctor.sig);
         let args = build_r_call_args(&ctor.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
         lines.push(format!("#' @rdname {}", class_name));
         lines.push(format!(
@@ -1506,9 +1376,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let args = build_r_call_args(&method.sig);
 
         let call = if args.is_empty() {
-            format!(".Call({}, match.call(), x@ptr)", c_ident)
+            format!(".Call({}, .call = match.call(), x@ptr)", c_ident)
         } else {
-            format!(".Call({}, match.call(), x@ptr, {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), x@ptr, {})", c_ident, args)
         };
 
         // Build full parameter list (x first, then others, then ...)
@@ -1553,9 +1423,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let params = build_r_formals(&method.sig);
         let args = build_r_call_args(&method.sig);
         let call = if args.is_empty() {
-            format!(".Call({}, match.call())", c_ident)
+            format!(".Call({}, .call = match.call())", c_ident)
         } else {
-            format!(".Call({}, match.call(), {})", c_ident, args)
+            format!(".Call({}, .call = match.call(), {})", c_ident, args)
         };
 
         let fn_name = format!("{}_{}", class_name, method.ident);

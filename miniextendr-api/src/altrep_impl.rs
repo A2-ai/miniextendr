@@ -131,7 +131,7 @@ macro_rules! __impl_altrep_base_with_serialize {
             fn serialized_state(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| <$ty as $crate::altrep_data::AltrepSerialize>::serialized_state(&*d))
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
 
             const HAS_UNSERIALIZE: bool = true;
@@ -231,7 +231,7 @@ macro_rules! __impl_altvec_extract_subset {
                             &*d, indices,
                         )
                     })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
         }
     };
@@ -303,7 +303,7 @@ macro_rules! __impl_altinteger_methods {
                             unsafe { $crate::ffi::Rf_ScalarReal(s as f64) }
                         }
                     })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
 
             const HAS_MIN: bool = true;
@@ -312,7 +312,7 @@ macro_rules! __impl_altinteger_methods {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::min(&*d, narm))
                     .map(|m| unsafe { $crate::ffi::Rf_ScalarInteger(m) })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
 
             const HAS_MAX: bool = true;
@@ -321,7 +321,7 @@ macro_rules! __impl_altinteger_methods {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltIntegerData>::max(&*d, narm))
                     .map(|m| unsafe { $crate::ffi::Rf_ScalarInteger(m) })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
         }
     };
@@ -435,7 +435,7 @@ macro_rules! __impl_altreal_methods {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::sum(&*d, narm))
                     .map(|s| unsafe { $crate::ffi::Rf_ScalarReal(s) })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
 
             const HAS_MIN: bool = true;
@@ -444,7 +444,7 @@ macro_rules! __impl_altreal_methods {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::min(&*d, narm))
                     .map(|m| unsafe { $crate::ffi::Rf_ScalarReal(m) })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
 
             const HAS_MAX: bool = true;
@@ -453,7 +453,7 @@ macro_rules! __impl_altreal_methods {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| <$ty as $crate::altrep_data::AltRealData>::max(&*d, narm))
                     .map(|m| unsafe { $crate::ffi::Rf_ScalarReal(m) })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
         }
     };
@@ -540,7 +540,7 @@ macro_rules! impl_altlogical_from_data {
                             unsafe { $crate::ffi::Rf_ScalarReal(s as f64) }
                         }
                     })
-                    .unwrap_or(core::ptr::null_mut())
+                    .unwrap_or($crate::ffi::SEXP::null())
             }
         }
 
@@ -1131,7 +1131,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
                     unsafe { crate::ffi::Rf_ScalarReal(s as f64) }
                 }
             })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 
     const HAS_MIN: bool = true;
@@ -1140,7 +1140,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::min(&*d, narm))
             .map(|m| unsafe { crate::ffi::Rf_ScalarInteger(m) })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 
     const HAS_MAX: bool = true;
@@ -1149,7 +1149,7 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
         unsafe { crate::altrep_data1_as::<&'static [i32]>(x) }
             .and_then(|d| crate::altrep_data::AltIntegerData::max(&*d, narm))
             .map(|m| unsafe { crate::ffi::Rf_ScalarInteger(m) })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 }
 
@@ -1235,7 +1235,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::sum(&*d, narm))
             .map(|s| unsafe { crate::ffi::Rf_ScalarReal(s) })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 
     const HAS_MIN: bool = true;
@@ -1244,7 +1244,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::min(&*d, narm))
             .map(|m| unsafe { crate::ffi::Rf_ScalarReal(m) })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 
     const HAS_MAX: bool = true;
@@ -1253,7 +1253,7 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
         unsafe { crate::altrep_data1_as::<&'static [f64]>(x) }
             .and_then(|d| crate::altrep_data::AltRealData::max(&*d, narm))
             .map(|m| unsafe { crate::ffi::Rf_ScalarReal(m) })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 }
 
@@ -1300,7 +1300,7 @@ impl crate::altrep_traits::AltLogical for &'static [bool] {
                     unsafe { crate::ffi::Rf_ScalarReal(s as f64) }
                 }
             })
-            .unwrap_or(std::ptr::null_mut())
+            .unwrap_or(crate::ffi::SEXP::null())
     }
 }
 

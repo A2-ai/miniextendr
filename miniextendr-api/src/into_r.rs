@@ -536,8 +536,7 @@ where
     fn into_sexp(self) -> crate::ffi::SEXP {
         // RVec was collected on Rayon threads, convert to R on main thread
         let vec = self.into_inner();
-        crate::worker::with_r_thread(move || crate::externalptr::SendableSexp::new(vec.into_sexp()))
-            .into_inner()
+        crate::worker::with_r_thread(move || vec.into_sexp())
     }
 
     #[inline]
