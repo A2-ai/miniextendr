@@ -242,6 +242,7 @@ pub trait AltLogical: AltVec {
     fn sum(_x: SEXP, _narm: bool) -> SEXP {
         unreachable!("HAS_SUM = false")
     }
+    // Note: R's ALTREP API does not expose min/max for logical vectors
 }
 
 // =============================================================================

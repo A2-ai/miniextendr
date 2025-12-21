@@ -65,7 +65,16 @@ pub trait AltIntegerData: AltrepLen {
     }
 
     /// Optional: bulk read into buffer. Returns number of elements read.
-    /// Default uses `elt()` in a loop.
+    ///
+    /// # Safety Contract
+    ///
+    /// R guarantees that `buf.len() >= len`. Implementations must validate
+    /// `start` and `len` against `self.len()` to prevent out-of-bounds access.
+    /// The default implementation safely clamps to available data.
+    ///
+    /// # Default Implementation
+    ///
+    /// Uses `elt()` in a loop with bounds checking.
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
         for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
@@ -115,6 +124,10 @@ pub trait AltRealData: AltrepLen {
     }
 
     /// Optional: bulk read into buffer.
+    ///
+    /// # Safety Contract
+    ///
+    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
         for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
@@ -197,6 +210,10 @@ pub trait AltLogicalData: AltrepLen {
     }
 
     /// Optional: bulk read into buffer.
+    ///
+    /// # Safety Contract
+    ///
+    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
         for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
@@ -219,6 +236,7 @@ pub trait AltLogicalData: AltrepLen {
     fn sum(&self, _na_rm: bool) -> Option<i64> {
         None
     }
+    // Note: R's ALTREP API does not expose min/max for logical vectors
 }
 
 // =============================================================================
@@ -236,6 +254,10 @@ pub trait AltRawData: AltrepLen {
     }
 
     /// Optional: bulk read into buffer.
+    ///
+    /// # Safety Contract
+    ///
+    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
         for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
@@ -260,6 +282,10 @@ pub trait AltComplexData: AltrepLen {
     }
 
     /// Optional: bulk read into buffer.
+    ///
+    /// # Safety Contract
+    ///
+    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
     fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
         let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
         for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
@@ -1398,7 +1424,12 @@ impl AltIntegerData for Range<i64> {
         }
         let first = self.start;
         let last = self.end - 1;
-        Some(n * (first + last) / 2)
+
+        // Use checked arithmetic to detect overflow
+        // Formula: n * (first + last) / 2
+        let sum_endpoints = first.checked_add(last)?;
+        let product = n.checked_mul(sum_endpoints)?;
+        Some(product / 2)
     }
 
     fn min(&self, _na_rm: bool) -> Option<i32> {
