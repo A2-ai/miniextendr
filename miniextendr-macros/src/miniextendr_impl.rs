@@ -528,7 +528,11 @@ impl ParsedImpl {
 }
 
 /// Generate C wrapper for a method.
-pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod) -> TokenStream {
+pub fn generate_method_c_wrapper(
+    parsed_impl: &ParsedImpl,
+    method: &ParsedMethod,
+    r_wrappers_const: &syn::Ident,
+) -> TokenStream {
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
     let c_ident = method.c_wrapper_ident(type_ident);
@@ -642,8 +646,15 @@ pub fn generate_method_c_wrapper(parsed_impl: &ParsedImpl, method: &ParsedMethod
         .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
         .collect();
 
+    // Generate doc comment linking to method and R wrapper
+    let c_wrapper_doc = format!(
+        "C wrapper for [`{}::{}`]. See [`{}`] for R wrapper.",
+        type_ident, method_ident, r_wrappers_const
+    );
+
     quote! {
         #(#cfg_attrs)*
+        #[doc = #c_wrapper_doc]
         #[unsafe(no_mangle)]
         pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
             ::miniextendr_api::unwind_protect::with_r_unwind_protect(
@@ -1427,10 +1438,15 @@ pub fn expand_impl(
         Err(e) => return e.into_compile_error().into(),
     };
 
+    // Generate constants for module registration (needed for doc links)
+    let type_ident = &parsed.type_ident;
+    let cfg_attrs = &parsed.cfg_attrs;
+    let r_wrappers_const = parsed.r_wrappers_const_ident();
+
     // Generate C wrappers for all included methods
     let c_wrappers: Vec<TokenStream> = parsed
         .included_methods()
-        .map(|m| generate_method_c_wrapper(&parsed, m))
+        .map(|m| generate_method_c_wrapper(&parsed, m, &r_wrappers_const))
         .collect();
 
     // Generate R wrapper string based on class system
@@ -1441,11 +1457,6 @@ pub fn expand_impl(
         ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
         ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
     };
-
-    // Generate constants for module registration
-    let type_ident = &parsed.type_ident;
-    let cfg_attrs = &parsed.cfg_attrs;
-    let r_wrappers_const = parsed.r_wrappers_const_ident();
     let call_defs_const = parsed.call_defs_const_ident();
 
     let call_def_idents: Vec<syn::Ident> = parsed

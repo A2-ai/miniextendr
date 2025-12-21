@@ -618,10 +618,10 @@ pub fn miniextendr(
     // Get the normalized item for output
     let original_item = parsed.item();
 
-    // Generate doc comment linking to R wrapper constant
+    // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
-        "See [`{}`] for the generated R wrapper code.",
-        r_wrapper_generator
+        "See [`{}`] for C wrapper, [`{}`] for R wrapper.",
+        c_ident, r_wrapper_generator
     );
 
     let expanded: proc_macro::TokenStream = quote::quote! {

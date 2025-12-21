@@ -1,6 +1,17 @@
 //! Tests for R6-style impl blocks (e.g., `#[miniextendr(r6)] impl Foo`).
+//!
+//! This module also tests:
+//! - Standalone functions mixed with impl blocks
+//! - Multiple impl blocks in a single module
 
 use miniextendr_api::{miniextendr, miniextendr_module};
+
+/// A standalone function in an impl-block module.
+/// Tests that standalone fns work alongside impl blocks.
+#[miniextendr]
+pub fn r6_standalone_add(a: i32, b: i32) -> i32 {
+    a + b
+}
 
 /// A simple counter that demonstrates R6-style impl block support.
 /// This gets exported as an R6Class with `$new()`, `$value()`, `$inc()`, `$add()` methods.
@@ -39,8 +50,54 @@ impl R6Counter {
     }
 }
 
+/// A second R6 class to test multiple impl blocks in one module.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6Accumulator {
+    total: f64,
+    count: usize,
+}
+
+#[miniextendr(r6)]
+impl R6Accumulator {
+    /// Creates a new accumulator starting at zero.
+    pub fn new() -> Self {
+        R6Accumulator { total: 0.0, count: 0 }
+    }
+
+    /// Adds a value and returns the new total.
+    pub fn accumulate(&mut self, value: f64) -> f64 {
+        self.total += value;
+        self.count += 1;
+        self.total
+    }
+
+    /// Returns the current total.
+    pub fn total(&self) -> f64 {
+        self.total
+    }
+
+    /// Returns the count of accumulated values.
+    pub fn count(&self) -> i32 {
+        self.count as i32
+    }
+
+    /// Returns the average, or NA if no values accumulated.
+    pub fn average(&self) -> f64 {
+        if self.count == 0 {
+            f64::NAN
+        } else {
+            self.total / self.count as f64
+        }
+    }
+}
+
 miniextendr_module! {
     mod r6_tests;
 
+    // Standalone function
+    fn r6_standalone_add;
+
+    // Multiple impl blocks
     impl R6Counter;
+    impl R6Accumulator;
 }
