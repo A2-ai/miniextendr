@@ -175,7 +175,7 @@ impl Coerce<Rboolean> for bool {
 impl Coerce<i32> for bool {
     #[inline(always)]
     fn coerce(self) -> i32 {
-        self as i32
+        if self { 1 } else { 0 }
     }
 }
 
@@ -724,7 +724,7 @@ impl TryCoerce<i32> for f32 {
 
     #[inline]
     fn try_coerce(self) -> Result<i32, CoerceError> {
-        (self as f64).try_coerce()
+        f64::from(self).try_coerce()
     }
 }
 
@@ -766,7 +766,7 @@ impl TryCoerce<u8> for f32 {
 
     #[inline]
     fn try_coerce(self) -> Result<u8, CoerceError> {
-        (self as f64).try_coerce()
+        f64::from(self).try_coerce()
     }
 }
 
