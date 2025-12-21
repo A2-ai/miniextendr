@@ -21,22 +21,22 @@ pub struct Fixtures {
 impl Fixtures {
     #[inline(always)]
     pub fn utf8_charsxp(self) -> SEXP {
-        self.utf8_charsxp as SEXP
+        SEXP::from_ptr((self.utf8_charsxp as *const ()).cast_mut().cast())
     }
 
     #[inline(always)]
     pub fn latin1_charsxp(self) -> SEXP {
-        self.latin1_charsxp as SEXP
+        SEXP::from_ptr((self.latin1_charsxp as *const ()).cast_mut().cast())
     }
 
     #[inline(always)]
     pub fn utf8_strsxp(self) -> SEXP {
-        self.utf8_strsxp as SEXP
+        SEXP::from_ptr((self.utf8_strsxp as *const ()).cast_mut().cast())
     }
 
     #[inline(always)]
     pub fn latin1_strsxp(self) -> SEXP {
-        self.latin1_strsxp as SEXP
+        SEXP::from_ptr((self.latin1_strsxp as *const ()).cast_mut().cast())
     }
 }
 
@@ -119,10 +119,10 @@ unsafe fn init_fixtures_once() {
         SET_STRING_ELT(latin1_strsxp, 0, latin1_charsxp);
 
         Fixtures {
-            utf8_charsxp: utf8_charsxp as SexpAddr,
-            latin1_charsxp: latin1_charsxp as SexpAddr,
-            utf8_strsxp: utf8_strsxp as SexpAddr,
-            latin1_strsxp: latin1_strsxp as SexpAddr,
+            utf8_charsxp: utf8_charsxp.as_ptr() as SexpAddr,
+            latin1_charsxp: latin1_charsxp.as_ptr() as SexpAddr,
+            utf8_strsxp: utf8_strsxp.as_ptr() as SexpAddr,
+            latin1_strsxp: latin1_strsxp.as_ptr() as SexpAddr,
         }
     });
 }

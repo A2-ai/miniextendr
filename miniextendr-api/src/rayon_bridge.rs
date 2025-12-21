@@ -66,7 +66,6 @@
 //! - Use the `reduce::*` functions which handle this correctly
 
 use crate::IntoR;
-use crate::externalptr::SendableSexp;
 use crate::ffi::{RNativeType, SEXP};
 use crate::worker::with_r_thread;
 
@@ -175,9 +174,8 @@ where
     let sexp = with_r_thread(move || unsafe {
         let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(sexp);
-        SendableSexp::new(sexp)
-    })
-    .into_inner();
+        sexp
+    });
 
     // Get pointer and create slice (safe: vector is protected)
     // Note: dataptr_mut handles empty vectors by returning aligned dangling pointer
@@ -209,13 +207,13 @@ pub mod reduce {
     /// Parallel sum → R scalar (f64).
     pub fn sum(slice: &[f64]) -> SEXP {
         let total: f64 = slice.par_iter().sum();
-        with_r_thread(move || SendableSexp::new(total.into_sexp())).into_inner()
+        with_r_thread(move || total.into_sexp())
     }
 
     /// Parallel sum → R scalar (i32).
     pub fn sum_int(slice: &[i32]) -> SEXP {
         let total: i32 = slice.par_iter().sum();
-        with_r_thread(move || SendableSexp::new(total.into_sexp())).into_inner()
+        with_r_thread(move || total.into_sexp())
     }
 
     /// Parallel minimum.
@@ -224,7 +222,7 @@ pub mod reduce {
             .par_iter()
             .copied()
             .reduce(|| f64::INFINITY, |a, b| a.min(b));
-        with_r_thread(move || SendableSexp::new(min_val.into_sexp())).into_inner()
+        with_r_thread(move || min_val.into_sexp())
     }
 
     /// Parallel maximum.
@@ -233,13 +231,13 @@ pub mod reduce {
             .par_iter()
             .copied()
             .reduce(|| f64::NEG_INFINITY, |a, b| a.max(b));
-        with_r_thread(move || SendableSexp::new(max_val.into_sexp())).into_inner()
+        with_r_thread(move || max_val.into_sexp())
     }
 
     /// Parallel mean.
     pub fn mean(slice: &[f64]) -> SEXP {
         if slice.is_empty() {
-            return with_r_thread(|| SendableSexp::new(f64::NAN.into_sexp())).into_inner();
+            return with_r_thread(|| f64::NAN.into_sexp());
         }
 
         let (sum, count) = slice
@@ -248,7 +246,7 @@ pub mod reduce {
             .reduce(|| (0.0, 0), |(s1, c1), (s2, c2)| (s1 + s2, c1 + c2));
 
         let mean_val = sum / count as f64;
-        with_r_thread(move || SendableSexp::new(mean_val.into_sexp())).into_inner()
+        with_r_thread(move || mean_val.into_sexp())
     }
 }
 

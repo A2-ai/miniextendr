@@ -83,9 +83,73 @@ impl SEXPTYPE {
 #[derive(Debug)]
 pub struct SEXPREC(::std::os::raw::c_void);
 
-// NOTE: SEXP is a raw pointer type alias, so we cannot implement Send/Sync for it.
-// Instead, use SendableSexp wrapper from externalptr module for thread-safe SEXP passing.
-// See externalptr::SendableSexp documentation for details.
+/// R's pointer type for S-expressions.
+///
+/// This is a newtype wrapper around `*mut SEXPREC` that implements Send and Sync.
+/// SEXP is just a handle (pointer) - the actual data it points to is managed by R's
+/// garbage collector and should only be accessed on R's main thread.
+///
+/// # Safety
+///
+/// While SEXP is Send+Sync (allowing it to be passed between threads), the data
+/// it points to must only be accessed on R's main thread. The miniextendr runtime
+/// enforces this through the worker thread pattern.
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct SEXP(pub *mut SEXPREC);
+
+// SAFETY: SEXP is just a pointer (memory address). Passing the address between
+// threads is safe. The actual data access is protected by miniextendr's runtime
+// which ensures R API calls happen on the main thread.
+unsafe impl Send for SEXP {}
+unsafe impl Sync for SEXP {}
+
+impl SEXP {
+    /// Create a null SEXP.
+    #[inline]
+    pub const fn null() -> Self {
+        Self(std::ptr::null_mut())
+    }
+
+    /// Check if this SEXP is null.
+    #[inline]
+    pub const fn is_null(self) -> bool {
+        self.0.is_null()
+    }
+
+    /// Get the raw pointer.
+    #[inline]
+    pub const fn as_ptr(self) -> *mut SEXPREC {
+        self.0
+    }
+
+    /// Create from a raw pointer.
+    #[inline]
+    pub const fn from_ptr(ptr: *mut SEXPREC) -> Self {
+        Self(ptr)
+    }
+}
+
+impl Default for SEXP {
+    #[inline]
+    fn default() -> Self {
+        Self::null()
+    }
+}
+
+impl From<*mut SEXPREC> for SEXP {
+    #[inline]
+    fn from(ptr: *mut SEXPREC) -> Self {
+        Self(ptr)
+    }
+}
+
+impl From<SEXP> for *mut SEXPREC {
+    #[inline]
+    fn from(sexp: SEXP) -> Self {
+        sexp.0
+    }
+}
 
 /// Extension trait for SEXP providing safe(r) accessors and type checking.
 ///
@@ -1302,6 +1366,7 @@ unsafe extern "C-unwind" {
 // Use with caution and always check R_CONNECTIONS_VERSION.
 #[cfg(feature = "connections")]
 #[allow(non_snake_case)]
+#[r_ffi_checked]
 unsafe extern "C-unwind" {
     /// Create a new custom connection.
     ///
@@ -1445,7 +1510,6 @@ pub struct R_CallMethodDef {
     pub numArgs: ::std::os::raw::c_int,
 }
 
-
 /// Method definition for .External interface routines.
 ///
 /// Structurally identical to `R_CallMethodDef`.
@@ -1478,7 +1542,7 @@ unsafe extern "C-unwind" {
 /// `extern "C-unwind"` everywhere to properly propagate Rust panics.
 #[allow(clashing_extern_declarations)]
 pub mod legacy_c {
-    use super::{Rboolean, SEXP};
+    use super::{r_ffi_checked, Rboolean, SEXP};
 
     #[allow(non_camel_case_types)]
     pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;
@@ -1497,7 +1561,7 @@ pub mod legacy_c {
         pub numArgs: ::std::os::raw::c_int,
     }
 
-
+    #[r_ffi_checked]
     unsafe extern "C" {
         #[link_name = "R_RegisterCFinalizer"]
         pub fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);

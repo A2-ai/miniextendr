@@ -15,21 +15,6 @@ use std::{
 
 use crate::ffi::{self, R_ContinueUnwind, R_UnwindProtect_C_unwind, Rboolean, SEXP};
 
-/// Thread-safe wrapper for SEXP used as continuation token.
-///
-/// This is safe because:
-/// 1. The token is created once and never modified
-/// 2. R preserves the token, preventing GC
-/// 3. We only read the pointer value, never dereference it from other threads
-#[repr(transparent)]
-struct SyncSexp(SEXP);
-
-// SAFETY: The SEXP pointer value is immutable after creation and only used
-// as an opaque handle passed to R_UnwindProtect. The actual SEXP data is
-// only accessed by R on the main thread.
-unsafe impl Send for SyncSexp {}
-unsafe impl Sync for SyncSexp {}
-
 /// Global continuation token for R_UnwindProtect.
 ///
 /// Using a single global token instead of thread-local tokens avoids leaking
@@ -39,19 +24,17 @@ unsafe impl Sync for SyncSexp {}
 ///
 /// The token is created and preserved once during first use. It remains valid
 /// for the entire R session.
-static R_CONTINUATION_TOKEN: OnceLock<SyncSexp> = OnceLock::new();
+static R_CONTINUATION_TOKEN: OnceLock<SEXP> = OnceLock::new();
 
 /// Get or create the global continuation token.
 ///
 /// This is public for use by the worker module.
 pub(crate) fn get_continuation_token() -> SEXP {
-    R_CONTINUATION_TOKEN
-        .get_or_init(|| unsafe {
-            let token = ffi::R_MakeUnwindCont();
-            ffi::R_PreserveObject(token);
-            SyncSexp(token)
-        })
-        .0
+    *R_CONTINUATION_TOKEN.get_or_init(|| unsafe {
+        let token = ffi::R_MakeUnwindCont();
+        ffi::R_PreserveObject(token);
+        token
+    })
 }
 
 /// Convert a Rust panic payload into an R error and continue unwinding on the R side.

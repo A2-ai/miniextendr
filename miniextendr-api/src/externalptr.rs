@@ -43,64 +43,6 @@ use crate::ffi::{
     VECTOR_ELT,
 };
 
-/// A wrapper around [`SEXP`] that implements Send.
-///
-/// # Safety
-///
-/// This wrapper is **only** safe when used with [`with_r_thread`] to transfer
-/// a [`SEXP`] created on the main thread back to the calling thread. The `SEXP`
-/// itself is not thread-safe, but the pointer value can be safely transmitted
-/// between threads as long as R APIs are only called on the main thread.
-///
-/// Do not use this to enable concurrent access to [`SEXP`]s from multiple threads.
-///
-/// [`with_r_thread`]: crate::worker::with_r_thread
-#[repr(transparent)]
-#[derive(Copy, Clone)]
-pub struct SendableSexp(SEXP);
-
-// SAFETY for Send: This is safe because:
-// 1. SEXP is just a pointer (memory address)
-// 2. We only send it from main thread to worker after R API work is done
-// 3. The worker thread doesn't call R APIs on it - it just stores it in ExternalPtr
-// 4. Miniextendr enforces that all R API calls happen on the main thread
-unsafe impl Send for SendableSexp {}
-
-// NOTE: SendableSexp is intentionally NOT Sync.
-//
-// While it might seem useful for parallel writes (multiple threads writing to
-// different indices of an R vector), implementing Sync is unsound because:
-// 1. R's GC can read SEXP headers concurrently with worker thread access
-// 2. No enforcement of disjoint access - users could write to same indices
-// 3. The SEXP must remain protected during access, which requires main thread
-//
-// For parallel writes to R vectors, use the dedicated `with_r_*_vec` functions
-// in the rayon_bridge module, which handle protection correctly.
-
-impl SendableSexp {
-    /// Create a new SendableSexp wrapper.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must only be dereferenced on R's main thread.
-    #[inline]
-    pub const fn new(sexp: SEXP) -> Self {
-        Self(sexp)
-    }
-
-    /// Unwrap to get the inner SEXP.
-    #[inline]
-    pub const fn into_inner(self) -> SEXP {
-        self.0
-    }
-
-    /// Get the inner SEXP by reference.
-    #[inline]
-    pub const fn as_sexp(&self) -> SEXP {
-        self.0
-    }
-}
-
 /// A wrapper around a raw pointer that implements [`Send`].
 ///
 /// # Safety
@@ -765,7 +707,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Compare symbols by pointer (R interns symbols)
         let expected_sym = unsafe { type_symbol::<T>() };
-        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym, expected_sym) {
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
 
@@ -813,7 +755,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Compare symbols by pointer (R interns symbols)
         let expected_sym = unsafe { type_symbol::<T>() };
-        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym, expected_sym) {
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
 
@@ -853,7 +795,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Compare symbols by pointer (R interns symbols)
         let expected_sym = unsafe { type_symbol::<T>() };
-        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym, expected_sym) {
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return Err(TypeMismatchError::Mismatch {
                 expected: T::TYPE_NAME,
                 found: unsafe { symbol_name(stored_sym) },
@@ -943,7 +885,7 @@ impl ExternalPtr<()> {
                 return false;
             }
             let expected_sym = type_symbol::<T>();
-            std::ptr::eq(stored_sym, expected_sym)
+            std::ptr::eq(stored_sym.0, expected_sym.0)
         }
     }
 
