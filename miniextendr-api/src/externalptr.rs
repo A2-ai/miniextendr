@@ -626,6 +626,19 @@ impl<T: TypedExternal> ExternalPtr<T> {
         unsafe { R_ExternalPtrTag(self.sexp) }
     }
 
+    /// Returns the tag SEXP (unchecked version).
+    ///
+    /// Skips thread safety checks for performance-critical paths.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Only use in ALTREP callbacks
+    /// or other contexts where you're certain you're on the main thread.
+    #[inline]
+    pub unsafe fn tag_unchecked(&self) -> SEXP {
+        unsafe { crate::ffi::R_ExternalPtrTag_unchecked(self.sexp) }
+    }
+
     /// Returns the protected SEXP slot (user-protected objects).
     ///
     /// This returns the user-protected object stored in the prot VECSXP,
@@ -641,6 +654,30 @@ impl<T: TypedExternal> ExternalPtr<T> {
                 return R_NilValue;
             }
             VECTOR_ELT(prot, PROT_USER_INDEX)
+        }
+    }
+
+    /// Returns the protected SEXP slot (unchecked version).
+    ///
+    /// Skips thread safety checks for performance-critical paths.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Only use in ALTREP callbacks
+    /// or other contexts where you're certain you're on the main thread.
+    #[inline]
+    pub unsafe fn protected_unchecked(&self) -> SEXP {
+        use crate::ffi::{R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked};
+
+        unsafe {
+            let prot = R_ExternalPtrProtected_unchecked(self.sexp);
+            if prot.is_null_or_nil() {
+                return R_NilValue;
+            }
+            if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
+                return R_NilValue;
+            }
+            VECTOR_ELT_unchecked(prot, PROT_USER_INDEX)
         }
     }
 
@@ -723,6 +760,52 @@ impl<T: TypedExternal> ExternalPtr<T> {
 
         // Extract type symbol from slot 0
         let stored_sym = unsafe { VECTOR_ELT(prot, PROT_TYPE_ID_INDEX) };
+        if stored_sym.type_of() != SEXPTYPE::SYMSXP {
+            return None;
+        }
+
+        // Compare symbols by pointer (R interns symbols)
+        let expected_sym = unsafe { type_symbol::<T>() };
+        if !is_type_erased::<T>() && !std::ptr::eq(stored_sym, expected_sym) {
+            return None;
+        }
+
+        Some(Self {
+            sexp,
+            _marker: PhantomData,
+            _unsend: PhantomData,
+        })
+    }
+
+    /// Attempt to create an ExternalPtr from an SEXP (unchecked version).
+    ///
+    /// Skips thread safety checks for performance-critical paths.
+    ///
+    /// # Safety
+    ///
+    /// - `sexp` must be a valid EXTPTRSXP
+    /// - The caller must ensure exclusive ownership
+    /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+    pub unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Option<Self> {
+        use crate::ffi::{R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked};
+
+        // Check if pointer is null
+        let ptr = unsafe { R_ExternalPtrAddr_unchecked(sexp) };
+        if ptr.is_null() {
+            return None;
+        }
+
+        // Extract prot VECSXP
+        let prot = unsafe { R_ExternalPtrProtected_unchecked(sexp) };
+        if prot.is_null_or_nil() {
+            return None;
+        }
+        if prot.type_of() != SEXPTYPE::VECSXP || prot.len() < PROT_VEC_LEN as usize {
+            return None;
+        }
+
+        // Extract type symbol from slot 0
+        let stored_sym = unsafe { VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX) };
         if stored_sym.type_of() != SEXPTYPE::SYMSXP {
             return None;
         }
@@ -1302,6 +1385,20 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
     unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data1(x)) }
 }
 
+/// Extract the ALTREP data1 slot (unchecked version).
+///
+/// Skips thread safety checks for performance-critical ALTREP callbacks.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+#[inline]
+pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
+    use crate::ffi::R_altrep_data1_unchecked;
+    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data1_unchecked(x)) }
+}
+
 /// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
 ///
 /// Similar to `altrep_data1_as`, but for the data2 slot.
@@ -1313,6 +1410,20 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data2(x)) }
+}
+
+/// Extract the ALTREP data2 slot (unchecked version).
+///
+/// Skips thread safety checks for performance-critical ALTREP callbacks.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+#[inline]
+pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
+    use crate::ffi::R_altrep_data2_unchecked;
+    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data2_unchecked(x)) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.
@@ -1342,6 +1453,24 @@ pub unsafe fn altrep_data1_mut<T: TypedExternal>(x: SEXP) -> Option<&'static mut
         // Transmute the lifetime to 'static - this is safe because:
         // 1. The ExternalPtr is protected by R's GC as part of the ALTREP object
         // 2. The ALTREP object `x` is kept alive by R during the callback
+        erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
+    }
+}
+
+/// Get a mutable reference to data in ALTREP data1 slot (unchecked version).
+///
+/// Skips thread safety checks for performance-critical ALTREP callbacks.
+///
+/// # Safety
+///
+/// - `x` must be a valid ALTREP SEXP
+/// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
+/// - The caller must ensure no other references to the data exist
+#[inline]
+pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'static mut T> {
+    use crate::ffi::R_altrep_data1_unchecked;
+    unsafe {
+        let mut erased = ErasedExternalPtr::from_sexp(R_altrep_data1_unchecked(x));
         erased.downcast_mut::<T>().map(|r| std::mem::transmute(r))
     }
 }
