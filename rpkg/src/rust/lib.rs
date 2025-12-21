@@ -25,6 +25,7 @@ mod conversion_tests;
 mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
+mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
 mod panic_tests;
@@ -1021,6 +1022,7 @@ miniextendr_module! {
     use conversion_tests;
     use default_tests;
     use externalptr_tests;
+    use identical_tests;
     use receiver_tests;
     use r6_tests;
     use s3_tests;
