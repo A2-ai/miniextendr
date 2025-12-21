@@ -216,7 +216,10 @@ mod tests {
 
     #[test]
     fn test_format_single_line_tags() {
-        let tags = vec!["@param x An input".to_string(), "@return Output".to_string()];
+        let tags = vec![
+            "@param x An input".to_string(),
+            "@return Output".to_string(),
+        ];
         let formatted = format_roxygen_tags(&tags);
         assert_eq!(formatted, "#' @param x An input\n#' @return Output\n");
     }
@@ -236,11 +239,7 @@ mod tests {
         push_roxygen_tags(&mut lines, &tags);
         assert_eq!(
             lines,
-            vec![
-                "#' @description Line one",
-                "#' Line two",
-                "#' Line three"
-            ]
+            vec!["#' @description Line one", "#' Line two", "#' Line three"]
         );
     }
 

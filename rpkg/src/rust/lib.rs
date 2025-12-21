@@ -29,8 +29,8 @@ mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
 mod panic_tests;
-mod r6_tests;
 mod r6_default_tests;
+mod r6_tests;
 mod receiver_tests;
 mod s3_tests;
 mod s4_tests;
@@ -847,7 +847,7 @@ pub fn boxed_ints(n: i32) -> SEXP {
 // region: StaticInts: &'static [i32] wrapper (static slice example)
 
 /// Static data that lives for the entire program lifetime
-/// 
+///
 /// Data to showcase functionality
 static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
 
@@ -879,7 +879,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
 // -----------------------------------------------------------------------------
 
 /// Static string data
-/// 
+///
 /// Data to showcase functionality
 static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
@@ -938,7 +938,7 @@ pub struct ListDataClass(pub ListData);
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{Rf_xlength, R_NilValue, R_PreserveObject, SEXPTYPE, TYPEOF};
+    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
 
     if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
         miniextendr_api::r_error!("altrep_from_list: expected a list (VECSXP)");

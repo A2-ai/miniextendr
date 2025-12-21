@@ -1,6 +1,6 @@
 //! Tests for R_compute_identical and SEXP equality semantics.
 
-use miniextendr_api::ffi::{R_compute_identical, SEXP, IDENT_USE_CLOENV};
+use miniextendr_api::ffi::{IDENT_USE_CLOENV, R_compute_identical, SEXP};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @title Test SEXP Equality Semantics
@@ -23,7 +23,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{Rf_allocVector, Rf_ScalarLogical, SET_VECTOR_ELT, SEXPTYPE};
+    use miniextendr_api::ffi::{Rf_ScalarLogical, Rf_allocVector, SET_VECTOR_ELT, SEXPTYPE};
 
     // Pointer equality (what == does on SEXP)
     let pointer_eq = x == y;

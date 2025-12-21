@@ -17,7 +17,9 @@ use quote::{format_ident, quote};
 fn strip_class_system_attrs(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
     for item in &mut item_impl.items {
         if let syn::ImplItem::Fn(fn_item) = item {
-            fn_item.attrs.retain(|attr| !attr.path().is_ident("miniextendr"));
+            fn_item
+                .attrs
+                .retain(|attr| !attr.path().is_ident("miniextendr"));
         }
     }
     item_impl
@@ -305,7 +307,9 @@ impl ParsedMethod {
                     // Parse defaults(param = "value", param2 = "value2", ...)
                     meta.parse_nested_meta(|inner| {
                         // Get parameter name
-                        let param_name = inner.path.get_ident()
+                        let param_name = inner
+                            .path
+                            .get_ident()
                             .ok_or_else(|| inner.error("expected parameter name"))?
                             .to_string();
                         // Parse = "value"
@@ -876,8 +880,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     ));
     lines.push("#' @importFrom R6 R6Class".to_string());
     // Document .ptr param if initialize will have it (for static methods returning Self)
-    if has_self_returning_methods
-        && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
+    if has_self_returning_methods && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
     {
         lines.push(
             "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
@@ -1050,10 +1053,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
             lines.push(format!("#' @rdname {}", class_name));
         }
-        lines.push(format!(
-            "{} <- function({}) {{",
-            static_method_name, params
-        ));
+        lines.push(format!("{} <- function({}) {{", static_method_name, params));
 
         // Use shared return builder (R6-specific)
         let strategy = crate::ReturnStrategy::for_method(method);

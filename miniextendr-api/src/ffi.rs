@@ -1603,7 +1603,7 @@ unsafe extern "C-unwind" {
 /// `extern "C-unwind"` everywhere to properly propagate Rust panics.
 #[allow(clashing_extern_declarations)]
 pub mod legacy_c {
-    use super::{r_ffi_checked, Rboolean, SEXP};
+    use super::{Rboolean, SEXP, r_ffi_checked};
 
     #[allow(non_camel_case_types)]
     pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;

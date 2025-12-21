@@ -13,8 +13,8 @@ mod rust_conversion_builder;
 pub(crate) use rust_conversion_builder::RustConversionBuilder;
 mod method_return_builder;
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
-mod return_type_analysis;
 mod altrep_derive;
+mod return_type_analysis;
 mod roxygen;
 
 /// Identifier for the generated `const fn` returning an `R_CallMethodDef`.

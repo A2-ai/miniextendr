@@ -195,7 +195,7 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
     };
 
     unsafe {
-        if std::ptr::addr_eq(x.0, R_NilValue.0)  {
+        if std::ptr::addr_eq(x.0, R_NilValue.0) {
             return R_NilValue;
         }
 
@@ -235,7 +235,7 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 pub unsafe fn release(cell: SEXP) {
     unsafe {
         // TODO: compare pointer address
-        if std::ptr::addr_eq(cell.0, R_NilValue.0)  {
+        if std::ptr::addr_eq(cell.0, R_NilValue.0) {
             return;
         }
 
@@ -269,7 +269,7 @@ pub unsafe fn release_unchecked(cell: SEXP) {
     use crate::ffi::{CAR_unchecked, CDR_unchecked, SETCAR_unchecked, SETCDR_unchecked};
 
     unsafe {
-        if std::ptr::addr_eq(cell.0, R_NilValue.0)  {
+        if std::ptr::addr_eq(cell.0, R_NilValue.0) {
             return;
         }
 
