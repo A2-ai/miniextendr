@@ -215,14 +215,14 @@ if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && test -
        -e 's/version\.workspace = true/version = "0.1.0"/' \
        -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
        -e 's/quote = { workspace = true }/quote = "1.0"/' \
-       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = ["full", "extra-traits"] }/' \
+       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = @<:@"full", "extra-traits"@:>@ }/' \
        "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
 
   $SED -e 's/edition\.workspace = true/edition = "2024"/' \
        -e 's/version\.workspace = true/version = "0.1.0"/' \
-       -e 's/proc-macro2 = { workspace = true }/proc-macro2 = "1.0"/' \
+       -e 's/proc-macro2 = { workspace = true }/proc-macro2 = { version = "1.0", features = @<:@"span-locations"@:>@ }/' \
        -e 's/quote = { workspace = true }/quote = "1.0"/' \
-       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = ["full", "extra-traits"] }/' \
+       -e 's/syn = { workspace = true }/syn = { version = "2.0", features = @<:@"full", "extra-traits"@:>@ }/' \
        "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
 
   AC_MSG_NOTICE([miniextendr crates synced to $VENDOR_OUT])

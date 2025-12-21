@@ -1,5 +1,8 @@
 //! Lint helpers for miniextendr usage in a crate.
 
+// Include the shared parser from miniextendr-macros.
+// This module uses `use crate::{call_method_def_ident_for, r_wrapper_const_ident_for}`
+// so we must define those functions below (even though the lint doesn't call them).
 #[allow(dead_code)]
 #[path = "../../miniextendr-macros/src/miniextendr_module.rs"]
 mod miniextendr_module;
@@ -9,18 +12,15 @@ use std::env;
 use std::fs;
 use std::path::{Path, PathBuf};
 
+use syn::spanned::Spanned;
 use syn::{Attribute, Item, Macro};
 
-/// Identifier for the generated `const fn` returning an `R_CallMethodDef`.
-///
-/// This mirrors `miniextendr-macros` so the shared parser compiles.
+/// Required by `miniextendr_module.rs` shared parser (not called by lint).
 fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("call_method_def_{rust_ident}")
 }
 
-/// Identifier for the generated `const &str` holding the R wrapper source code.
-///
-/// This mirrors `miniextendr-macros` so the shared parser compiles.
+/// Required by `miniextendr_module.rs` shared parser (not called by lint).
 fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
@@ -95,15 +95,31 @@ enum LintKind {
     Struct,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Clone, Debug)]
 struct LintItem {
     kind: LintKind,
     name: String,
+    line: usize,
+}
+
+impl PartialEq for LintItem {
+    fn eq(&self, other: &Self) -> bool {
+        self.kind == other.kind && self.name == other.name
+    }
+}
+
+impl Eq for LintItem {}
+
+impl std::hash::Hash for LintItem {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.kind.hash(state);
+        self.name.hash(state);
+    }
 }
 
 impl LintItem {
-    fn new(kind: LintKind, name: String) -> Self {
-        Self { kind, name }
+    fn new(kind: LintKind, name: String, line: usize) -> Self {
+        Self { kind, name, line }
     }
 
     fn display(&self) -> String {
@@ -188,23 +204,34 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
         ));
     }
 
-    let mut missing: Vec<_> = miniextendr_items
-        .iter()
-        .filter(|item| !module_items.contains(*item))
-        .map(|item| item.display())
-        .collect();
-    missing.sort();
-    if !missing.is_empty() {
-        errors.push(format!(
-            "{}: #[miniextendr] items not listed in miniextendr_module!: {}",
-            path.display(),
-            missing.join(", ")
-        ));
+    // Check for #[miniextendr] items missing from module
+    for item in &miniextendr_items {
+        if !module_items.contains(item) {
+            errors.push(format!(
+                "{}:{}: #[miniextendr] {} not listed in miniextendr_module!",
+                path.display(),
+                item.line,
+                item.display()
+            ));
+        }
+    }
+
+    // Check for module items without #[miniextendr] attribute (bidirectional)
+    for item in &module_items {
+        if !miniextendr_items.contains(item) {
+            errors.push(format!(
+                "{}:{}: {} listed in miniextendr_module! but has no #[miniextendr] attribute",
+                path.display(),
+                item.line,
+                item.display()
+            ));
+        }
     }
 
     if errors.is_empty() {
         Ok(())
     } else {
+        errors.sort();
         Err(errors)
     }
 }
@@ -220,29 +247,35 @@ fn collect_items(
         match item {
             Item::Fn(item_fn) => {
                 if has_miniextendr_attr(&item_fn.attrs) {
+                    let line = item_fn.sig.ident.span().start().line;
                     miniextendr_items.insert(LintItem::new(
                         LintKind::Function,
                         item_fn.sig.ident.to_string(),
+                        line,
                     ));
                 }
             }
             Item::Struct(item_struct) => {
                 if has_miniextendr_attr(&item_struct.attrs) {
+                    let line = item_struct.ident.span().start().line;
                     miniextendr_items.insert(LintItem::new(
                         LintKind::Struct,
                         item_struct.ident.to_string(),
+                        line,
                     ));
                 }
             }
             Item::Impl(item_impl) => {
                 if has_miniextendr_attr(&item_impl.attrs) {
+                    let line = item_impl.self_ty.span().start().line;
                     match impl_type_name(&item_impl.self_ty) {
                         Some(name) => {
-                            miniextendr_items.insert(LintItem::new(LintKind::Impl, name));
+                            miniextendr_items.insert(LintItem::new(LintKind::Impl, name, line));
                         }
                         None => errors.push(format!(
-                            "{}: #[miniextendr] impl type not supported by lint",
-                            path.display()
+                            "{}:{}: #[miniextendr] impl type not supported by lint",
+                            path.display(),
+                            line
                         )),
                     }
                 }
@@ -275,7 +308,7 @@ fn has_miniextendr_attr(attrs: &[Attribute]) -> bool {
         attr.path()
             .segments
             .last()
-            .map_or(false, |seg| seg.ident == "miniextendr")
+            .is_some_and(|seg| seg.ident == "miniextendr")
     })
 }
 
@@ -295,7 +328,7 @@ fn is_miniextendr_module_macro(mac: &Macro) -> bool {
     mac.path
         .segments
         .last()
-        .map_or(false, |seg| seg.ident == "miniextendr_module")
+        .is_some_and(|seg| seg.ident == "miniextendr_module")
 }
 
 fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
@@ -303,21 +336,18 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
     let mut items = Vec::new();
 
     for func in parsed.functions {
-        items.push(LintItem::new(
-            LintKind::Function,
-            func.ident.to_string(),
-        ));
+        let line = func.ident.span().start().line;
+        items.push(LintItem::new(LintKind::Function, func.ident.to_string(), line));
     }
 
     for strukt in parsed.structs {
-        items.push(LintItem::new(
-            LintKind::Struct,
-            strukt.ident.to_string(),
-        ));
+        let line = strukt.ident.span().start().line;
+        items.push(LintItem::new(LintKind::Struct, strukt.ident.to_string(), line));
     }
 
     for impl_block in parsed.impls {
-        items.push(LintItem::new(LintKind::Impl, impl_block.ident.to_string()));
+        let line = impl_block.ident.span().start().line;
+        items.push(LintItem::new(LintKind::Impl, impl_block.ident.to_string(), line));
     }
 
     Ok(items)
