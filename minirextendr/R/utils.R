@@ -134,15 +134,37 @@ ensure_dir <- function(path) {
 
 #' Check if current project has miniextendr setup
 #'
-#' @return TRUE if configure.ac exists and mentions miniextendr
+#' Checks for multiple indicators of a miniextendr package:
+#' - src/rust/lib.rs exists
+#' - src/vendor/miniextendr-api directory exists
+#' - DESCRIPTION has Config/build/bootstrap field
+#'
+#' @return TRUE if project appears to be a miniextendr package
 #' @noRd
 is_miniextendr_package <- function() {
-  configure_ac <- usethis::proj_path("configure.ac")
-  if (!fs::file_exists(configure_ac)) {
-    return(FALSE)
+ # Check for Rust source
+  if (fs::file_exists(usethis::proj_path("src", "rust", "lib.rs"))) {
+    return(TRUE)
   }
-  contents <- readLines(configure_ac, warn = FALSE)
-  any(grepl("miniextendr", contents, ignore.case = TRUE))
+
+  # Check for vendored miniextendr crates
+  if (fs::dir_exists(usethis::proj_path("src", "vendor", "miniextendr-api"))) {
+    return(TRUE)
+  }
+
+  # Check DESCRIPTION for bootstrap config
+  desc_path <- usethis::proj_path("DESCRIPTION")
+  if (fs::file_exists(desc_path)) {
+    d <- tryCatch(desc::desc(desc_path), error = function(e) NULL)
+    if (!is.null(d)) {
+      bootstrap <- d$get_field("Config/build/bootstrap", default = "")
+      if (identical(bootstrap, "TRUE")) {
+        return(TRUE)
+      }
+    }
+  }
+
+  FALSE
 }
 
 #' CLI bullet for file creation

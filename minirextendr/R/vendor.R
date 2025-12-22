@@ -206,14 +206,15 @@ miniextendr_update <- function(version = "main") {
   use_miniextendr_vendor(version = version)
 }
 
-#' Run cargo vendor for external dependencies
+#' Vendor external crates.io dependencies
 #'
 #' Runs `cargo vendor` to download all external crates.io dependencies
-#' for offline/CRAN builds.
+#' (like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
+#' from `use_miniextendr_vendor()` which downloads the miniextendr crates.
 #'
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_vendor <- function() {
+cargo_vendor <- function() {
   check_rust()
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")

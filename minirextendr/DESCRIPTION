@@ -24,6 +24,7 @@ Imports:
     usethis (>= 2.0.0),
     withr
 Suggests:
+    devtools,
     roxygen2,
     testthat (>= 3.0.0)
 SystemRequirements: autoconf, Rust (>= 1.85)

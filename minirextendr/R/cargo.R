@@ -93,6 +93,23 @@ cargo_add <- function(dep,
                       dry_run = FALSE,
                       offline = FALSE,
                       quiet = FALSE) {
+  # Input validation
+ if (missing(dep) || length(dep) == 0 || !is.character(dep)) {
+    abort("dep must be a non-empty character vector of crate names")
+  }
+  if (!is.null(features) && !is.character(features)) {
+    abort("features must be a character vector")
+  }
+  if (!is.null(git) && !is.null(path)) {
+    abort("Cannot specify both 'git' and 'path' - choose one source")
+  }
+  if (dev && build) {
+    abort("Cannot specify both 'dev' and 'build' - choose one section")
+  }
+  if ((!is.null(branch) || !is.null(tag) || !is.null(rev)) && is.null(git)) {
+    abort("'branch', 'tag', and 'rev' require 'git' to be specified")
+  }
+
   check_rust()
   manifest_path <- cargo_toml_path()
 
