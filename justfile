@@ -65,6 +65,15 @@ test *args:
     && cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
     && cargo test --manifest-path=rpkg/src/rust/Cargo.toml --no-fail-fast $cargo_flags -- --no-capture $test_args
 
+# Run benchmarks (miniextendr-bench)
+alias cargo-bench := bench
+bench *cargo_flags:
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
+
+# Check benchmark crate
+bench-check *cargo_flags:
+    cargo check --manifest-path=miniextendr-bench/Cargo.toml --benches {{cargo_flags}}
+
 # Show dependency tree
 alias cargo-tree := tree
 tree *cargo_flags:

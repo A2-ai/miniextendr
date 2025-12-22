@@ -19,4 +19,20 @@ divan = "0.1.21"
 name = "translate"
 harness = false
 
+[[bench]]
+name = "ffi_calls"
+harness = false
+
+[[bench]]
+name = "into_r"
+harness = false
+
+[[bench]]
+name = "from_r"
+harness = false
+
+[[bench]]
+name = "externalptr"
+harness = false
+
 # Note: Profile is defined in workspace root Cargo.toml
