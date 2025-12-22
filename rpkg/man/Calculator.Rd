@@ -27,7 +27,6 @@ calc$get()
 \if{html}{\out{<a id="method-Calculator-new"></a>}}
 \if{latex}{\out{\hypertarget{method-Calculator-new}{}}}
 \subsection{Method \code{new()}}{
-Creates a new calculator.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{Calculator$new(initial = 0, .ptr = NULL)}\if{html}{\out{</div>}}
 }
@@ -35,6 +34,8 @@ Creates a new calculator.
 \subsection{Arguments}{
 \if{html}{\out{<div class="arguments">}}
 \describe{
+\item{\code{initial}}{Starting value (defaults to 0.0).}
+
 \item{\code{.ptr}}{Internal pointer (used by static methods, not for direct use).}
 }
 \if{html}{\out{</div>}}
@@ -54,20 +55,32 @@ Returns the current value.
 \if{html}{\out{<a id="method-Calculator-add"></a>}}
 \if{latex}{\out{\hypertarget{method-Calculator-add}{}}}
 \subsection{Method \code{add()}}{
-Adds to the current value.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{Calculator$add(amount = 1)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{amount}}{Amount to add (defaults to 1.0).}
+}
+\if{html}{\out{</div>}}
+}
 }
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Calculator-set"></a>}}
 \if{latex}{\out{\hypertarget{method-Calculator-set}{}}}
 \subsection{Method \code{set()}}{
-Sets a new value.
 \subsection{Usage}{
 \if{html}{\out{<div class="r">}}\preformatted{Calculator$set(new_value = 0)}\if{html}{\out{</div>}}
 }
 
+\subsection{Arguments}{
+\if{html}{\out{<div class="arguments">}}
+\describe{
+\item{\code{new_value}}{New value to set (defaults to 0.0).}
+}
+\if{html}{\out{</div>}}
+}
 }
 }
