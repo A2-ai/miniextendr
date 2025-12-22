@@ -134,37 +134,36 @@ ensure_dir <- function(path) {
 
 #' Check if current project has miniextendr setup
 #'
-#' Checks for multiple indicators of a miniextendr package:
-#' - src/rust/lib.rs exists
-#' - src/vendor/miniextendr-api directory exists
-#' - DESCRIPTION has Config/build/bootstrap field
-#'
 #' @return TRUE if project appears to be a miniextendr package
 #' @noRd
 is_miniextendr_package <- function() {
- # Check for Rust source
-  if (fs::file_exists(usethis::proj_path("src", "rust", "lib.rs"))) {
-    return(TRUE)
+  configure_ac <- usethis::proj_path("configure.ac")
+  if (!fs::file_exists(configure_ac)) {
+    return(FALSE)
   }
 
-  # Check for vendored miniextendr crates
-  if (fs::dir_exists(usethis::proj_path("src", "vendor", "miniextendr-api"))) {
-    return(TRUE)
+  contents <- readLines(configure_ac, warn = FALSE)
+  if (!any(grepl("MINIEXTENDR_FEATURES", contents, fixed = TRUE))) {
+    return(FALSE)
   }
 
-  # Check DESCRIPTION for bootstrap config
-  desc_path <- usethis::proj_path("DESCRIPTION")
-  if (fs::file_exists(desc_path)) {
-    d <- tryCatch(desc::desc(desc_path), error = function(e) NULL)
-    if (!is.null(d)) {
-      bootstrap <- d$get_field("Config/build/bootstrap", default = "")
-      if (identical(bootstrap, "TRUE")) {
-        return(TRUE)
-      }
-    }
-  }
+  templates <- c(
+    "src/rust/Cargo.toml.in",
+    "src/rust/document.rs.in",
+    "src/entrypoint.c.in",
+    "src/Makevars.in"
+  )
+  generated <- c(
+    "src/rust/Cargo.toml",
+    "src/rust/document.rs",
+    "src/entrypoint.c",
+    "src/Makevars"
+  )
 
-  FALSE
+  has_templates <- all(fs::file_exists(usethis::proj_path(templates)))
+  has_generated <- all(fs::file_exists(usethis::proj_path(generated)))
+
+  has_templates || has_generated
 }
 
 #' CLI bullet for file creation
@@ -174,13 +173,4 @@ is_miniextendr_package <- function() {
 #' @noRd
 bullet_created <- function(path, verb = "Created") {
   cli::cli_alert_success("{verb} {.path {path}}")
-}
-
-#' CLI bullet for skipped file
-#'
-#' @param path Path that was skipped
-#' @param reason Why it was skipped
-#' @noRd
-bullet_skipped <- function(path, reason = "already exists") {
-  cli::cli_alert_info("Skipped {.path {path}} ({reason})")
 }

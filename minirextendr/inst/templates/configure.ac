@@ -191,7 +191,7 @@ if test -d "$VENDOR_OUT/miniextendr-api"; then
   AC_MSG_RESULT([found])
 else
   AC_MSG_RESULT([not found])
-  AC_MSG_WARN([vendor/miniextendr-api not found - run minirextendr::use_miniextendr_vendor() first])
+  AC_MSG_WARN([vendor/miniextendr-api not found - run minirextendr::vendor_miniextendr() first])
 fi
 
 dnl Source replacement config: only use vendored sources on CRAN (offline builds)

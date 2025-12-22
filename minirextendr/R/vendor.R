@@ -45,8 +45,8 @@ miniextendr_available_versions <- function() {
 #' @param dest Destination directory for vendored crates
 #' @return Invisibly returns TRUE on success
 #' @export
-use_miniextendr_vendor <- function(version = "main",
-                                    dest = usethis::proj_path("src", "vendor")) {
+vendor_miniextendr <- function(version = "main",
+                               dest = usethis::proj_path("src", "vendor")) {
   cli::cli_alert("Downloading miniextendr {version} from GitHub...")
 
   # Create temp directory for download
@@ -203,18 +203,18 @@ patch_cargo_toml <- function(path, crate_name) {
 #' @export
 miniextendr_update <- function(version = "main") {
   cli::cli_alert_info("Updating miniextendr to version: {version}")
-  use_miniextendr_vendor(version = version)
+  vendor_miniextendr(version = version)
 }
 
 #' Vendor external crates.io dependencies
 #'
 #' Runs `cargo vendor` to download all external crates.io dependencies
 #' (like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
-#' from `use_miniextendr_vendor()` which downloads the miniextendr crates.
+#' from `vendor_miniextendr()` which downloads the miniextendr crates.
 #'
 #' @return Invisibly returns TRUE on success
 #' @export
-cargo_vendor <- function() {
+vendor_crates_io <- function() {
   check_rust()
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")

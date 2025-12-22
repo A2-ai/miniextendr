@@ -10,7 +10,6 @@ use std::process::Command;
 fn main() {
     // Only set stack size flags when nonapi feature is enabled
     // (since that's where thread utilities live)
-    #[cfg(feature = "nonapi")]
     set_stack_size_flags();
 
     // Always link to R. This keeps tests/binaries consistent and avoids
@@ -21,7 +20,6 @@ fn main() {
     println!("cargo::rerun-if-env-changed=CARGO_FEATURE_NONAPI");
 }
 
-#[cfg(feature = "nonapi")]
 fn set_stack_size_flags() {
     // R requires larger stacks than Rust's default 2 MiB:
     // - Unix: typically 8 MiB

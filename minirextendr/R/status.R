@@ -174,7 +174,7 @@ miniextendr_check <- function() {
   vendor_path <- usethis::proj_path("src", "vendor", "miniextendr-api")
   if (!fs::dir_exists(vendor_path)) {
     warnings <- c(warnings, "miniextendr crates not vendored")
-    cli::cli_alert_warning("miniextendr crates not vendored - run use_miniextendr_vendor()")
+    cli::cli_alert_warning("miniextendr crates not vendored - run vendor_miniextendr()")
   } else {
     cli::cli_alert_success("miniextendr crates vendored")
   }

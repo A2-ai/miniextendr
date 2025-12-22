@@ -15,6 +15,106 @@ cargo_toml_path <- function() {
   path
 }
 
+validate_non_empty_char <- function(x, arg) {
+  if (!is.character(x) || length(x) == 0 || anyNA(x)) {
+    abort("{arg} must be a non-empty character vector.")
+  }
+  if (any(!nzchar(trimws(x)))) {
+    abort("{arg} must not contain empty strings.")
+  }
+  invisible(TRUE)
+}
+
+validate_feature_names <- function(features) {
+  if (is.null(features)) {
+    return(invisible(TRUE))
+  }
+
+  validate_non_empty_char(features, "features")
+
+  features <- trimws(features)
+  invalid <- features[!grepl("^[A-Za-z0-9_][A-Za-z0-9._:/-]*$", features)]
+  if (length(invalid) > 0) {
+    abort(c(
+      "Invalid feature name(s).",
+      "i" = "Invalid: {paste(invalid, collapse = ', ')}"
+    ))
+  }
+
+  invisible(TRUE)
+}
+
+#' Initialize a Rust crate
+#'
+#' Wraps `cargo init` to create a new Rust crate in src/rust.
+#'
+#' @param name Optional crate name. Defaults to the package name (Rust-safe).
+#' @param edition Rust edition to use (default "2024").
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cargo_init()
+#' }
+cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
+  check_rust()
+
+  rust_dir <- usethis::proj_path("src", "rust")
+  ensure_dir(rust_dir)
+
+  manifest_path <- fs::path(rust_dir, "Cargo.toml")
+  if (fs::file_exists(manifest_path)) {
+    abort(c(
+      "Cargo.toml already exists at {.path {manifest_path}}",
+      "i" = "Remove it first if you want to re-initialize"
+    ))
+  }
+
+  if (is.null(name)) {
+    name <- to_rust_name(get_package_name())
+  } else {
+    validate_non_empty_char(name, "name")
+    if (length(name) != 1) {
+      abort("name must be a single string.")
+    }
+    name <- trimws(name)
+  }
+
+  validate_non_empty_char(edition, "edition")
+  if (length(edition) != 1) {
+    abort("edition must be a single string.")
+  }
+  edition <- trimws(edition)
+
+  args <- c("init", "--lib", "--vcs", "none", "--edition", edition, "--name", name)
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+  args <- c(args, rust_dir)
+
+  cli::cli_alert("Running cargo init in {.path {rust_dir}}...")
+
+  result <- system2("cargo", args, stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo init failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Initialized Rust crate")
+  invisible(TRUE)
+}
+
 #' Add a dependency to Cargo.toml
 #'
 #' Wraps `cargo add` to add Rust dependencies to your miniextendr package.
@@ -94,11 +194,11 @@ cargo_add <- function(dep,
                       offline = FALSE,
                       quiet = FALSE) {
   # Input validation
- if (missing(dep) || length(dep) == 0 || !is.character(dep)) {
-    abort("dep must be a non-empty character vector of crate names")
-  }
-  if (!is.null(features) && !is.character(features)) {
-    abort("features must be a character vector")
+  validate_non_empty_char(dep, "dep")
+  dep <- trimws(dep)
+  validate_feature_names(features)
+  if (!is.null(features)) {
+    features <- trimws(features)
   }
   if (!is.null(git) && !is.null(path)) {
     abort("Cannot specify both 'git' and 'path' - choose one source")
@@ -363,6 +463,488 @@ cargo_update <- function(dep = NULL,
   }
 
   cli::cli_alert_success("Dependencies updated")
+  invisible(TRUE)
+}
+
+#' Build Rust crate
+#'
+#' Wraps `cargo build` to compile the Rust crate for this package.
+#'
+#' @param release Logical. If TRUE, build with --release.
+#' @param features Character vector of features to activate.
+#' @param no_default_features Logical. If TRUE, disable default features.
+#' @param all_features Logical. If TRUE, enable all features.
+#' @param target Character. Build for specific target platform.
+#' @param jobs Integer. Number of parallel jobs to run.
+#' @param offline Logical. If TRUE, run without network access.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Build debug
+#' cargo_build()
+#'
+#' # Build release with features
+#' cargo_build(release = TRUE, features = c("serde", "rayon"))
+#' }
+cargo_build <- function(release = FALSE,
+                        features = NULL,
+                        no_default_features = FALSE,
+                        all_features = FALSE,
+                        target = NULL,
+                        jobs = NULL,
+                        offline = FALSE,
+                        quiet = FALSE) {
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  args <- c("--manifest-path", manifest_path)
+
+  if (release) {
+    args <- c(args, "--release")
+  }
+
+  if (no_default_features) {
+    args <- c(args, "--no-default-features")
+  }
+
+  if (all_features) {
+    args <- c(args, "--all-features")
+  }
+
+  if (!is.null(features) && length(features) > 0) {
+    args <- c(args, "--features", paste(features, collapse = ","))
+  }
+
+  if (!is.null(target)) {
+    args <- c(args, "--target", target)
+  }
+
+  if (!is.null(jobs)) {
+    args <- c(args, "--jobs", as.character(jobs))
+  }
+
+  if (offline) {
+    args <- c(args, "--offline")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  cli::cli_alert("Running cargo build...")
+
+  result <- system2("cargo", c("build", args), stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo build failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Build complete")
+  invisible(TRUE)
+}
+
+#' Check Rust crate
+#'
+#' Wraps `cargo check` to type-check the Rust crate for this package.
+#'
+#' @param release Logical. If TRUE, check with --release.
+#' @param features Character vector of features to activate.
+#' @param no_default_features Logical. If TRUE, disable default features.
+#' @param all_features Logical. If TRUE, enable all features.
+#' @param target Character. Check for specific target platform.
+#' @param offline Logical. If TRUE, run without network access.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cargo_check()
+#' }
+cargo_check <- function(release = FALSE,
+                        features = NULL,
+                        no_default_features = FALSE,
+                        all_features = FALSE,
+                        target = NULL,
+                        offline = FALSE,
+                        quiet = FALSE) {
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  args <- c("--manifest-path", manifest_path)
+
+  if (release) {
+    args <- c(args, "--release")
+  }
+
+  if (no_default_features) {
+    args <- c(args, "--no-default-features")
+  }
+
+  if (all_features) {
+    args <- c(args, "--all-features")
+  }
+
+  if (!is.null(features) && length(features) > 0) {
+    args <- c(args, "--features", paste(features, collapse = ","))
+  }
+
+  if (!is.null(target)) {
+    args <- c(args, "--target", target)
+  }
+
+  if (offline) {
+    args <- c(args, "--offline")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  cli::cli_alert("Running cargo check...")
+
+  result <- system2("cargo", c("check", args), stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo check failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Check complete")
+  invisible(TRUE)
+}
+
+#' Run Rust tests
+#'
+#' Wraps `cargo test` to run Rust tests for this package.
+#'
+#' @param release Logical. If TRUE, run tests with --release.
+#' @param features Character vector of features to activate.
+#' @param no_default_features Logical. If TRUE, disable default features.
+#' @param all_features Logical. If TRUE, enable all features.
+#' @param target Character. Test for specific target platform.
+#' @param no_run Logical. If TRUE, compile tests but don't run them.
+#' @param offline Logical. If TRUE, run without network access.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cargo_test()
+#' }
+cargo_test <- function(release = FALSE,
+                       features = NULL,
+                       no_default_features = FALSE,
+                       all_features = FALSE,
+                       target = NULL,
+                       no_run = FALSE,
+                       offline = FALSE,
+                       quiet = FALSE) {
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  args <- c("--manifest-path", manifest_path)
+
+  if (release) {
+    args <- c(args, "--release")
+  }
+
+  if (no_default_features) {
+    args <- c(args, "--no-default-features")
+  }
+
+  if (all_features) {
+    args <- c(args, "--all-features")
+  }
+
+  if (!is.null(features) && length(features) > 0) {
+    args <- c(args, "--features", paste(features, collapse = ","))
+  }
+
+  if (!is.null(target)) {
+    args <- c(args, "--target", target)
+  }
+
+  if (no_run) {
+    args <- c(args, "--no-run")
+  }
+
+  if (offline) {
+    args <- c(args, "--offline")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  cli::cli_alert("Running cargo test...")
+
+  result <- system2("cargo", c("test", args), stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo test failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Tests complete")
+  invisible(TRUE)
+}
+
+#' Run clippy lints
+#'
+#' Wraps `cargo clippy` to run Rust lints for this package.
+#'
+#' @param release Logical. If TRUE, run clippy with --release.
+#' @param features Character vector of features to activate.
+#' @param no_default_features Logical. If TRUE, disable default features.
+#' @param all_features Logical. If TRUE, enable all features.
+#' @param target Character. Lint for specific target platform.
+#' @param all_targets Logical. If TRUE, lint all targets (tests/examples/benches).
+#' @param offline Logical. If TRUE, run without network access.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cargo_clippy()
+#' }
+cargo_clippy <- function(release = FALSE,
+                         features = NULL,
+                         no_default_features = FALSE,
+                         all_features = FALSE,
+                         target = NULL,
+                         all_targets = FALSE,
+                         offline = FALSE,
+                         quiet = FALSE) {
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  args <- c("--manifest-path", manifest_path)
+
+  if (release) {
+    args <- c(args, "--release")
+  }
+
+  if (no_default_features) {
+    args <- c(args, "--no-default-features")
+  }
+
+  if (all_features) {
+    args <- c(args, "--all-features")
+  }
+
+  if (!is.null(features) && length(features) > 0) {
+    args <- c(args, "--features", paste(features, collapse = ","))
+  }
+
+  if (!is.null(target)) {
+    args <- c(args, "--target", target)
+  }
+
+  if (all_targets) {
+    args <- c(args, "--all-targets")
+  }
+
+  if (offline) {
+    args <- c(args, "--offline")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  cli::cli_alert("Running cargo clippy...")
+
+  result <- system2("cargo", c("clippy", args), stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo clippy failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Clippy complete")
+  invisible(TRUE)
+}
+
+#' Format Rust sources
+#'
+#' Wraps `cargo fmt` to format Rust sources for this package.
+#'
+#' @param check Logical. If TRUE, check formatting without modifying files.
+#' @param all Logical. If TRUE, format all packages in the workspace.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cargo_fmt()
+#' }
+cargo_fmt <- function(check = FALSE,
+                      all = TRUE,
+                      quiet = FALSE) {
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  args <- c("--manifest-path", manifest_path)
+
+  if (all) {
+    args <- c(args, "--all")
+  }
+
+  if (check) {
+    args <- c(args, "--check")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  if (check) {
+    cli::cli_alert("Checking Rust formatting...")
+  } else {
+    cli::cli_alert("Formatting Rust sources...")
+  }
+
+  result <- system2("cargo", c("fmt", args), stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo fmt failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Formatting complete")
+  invisible(TRUE)
+}
+
+#' Build Rust documentation
+#'
+#' Wraps `cargo doc` to build documentation for this package.
+#'
+#' @param open Logical. If TRUE, open docs after building.
+#' @param no_deps Logical. If TRUE, do not build docs for dependencies.
+#' @param features Character vector of features to activate.
+#' @param no_default_features Logical. If TRUE, disable default features.
+#' @param all_features Logical. If TRUE, enable all features.
+#' @param target Character. Build docs for specific target platform.
+#' @param offline Logical. If TRUE, run without network access.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns TRUE on success
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' cargo_doc(no_deps = TRUE)
+#' }
+cargo_doc <- function(open = FALSE,
+                      no_deps = TRUE,
+                      features = NULL,
+                      no_default_features = FALSE,
+                      all_features = FALSE,
+                      target = NULL,
+                      offline = FALSE,
+                      quiet = FALSE) {
+  check_rust()
+  manifest_path <- cargo_toml_path()
+
+  args <- c("--manifest-path", manifest_path)
+
+  if (open) {
+    args <- c(args, "--open")
+  }
+
+  if (no_deps) {
+    args <- c(args, "--no-deps")
+  }
+
+  if (no_default_features) {
+    args <- c(args, "--no-default-features")
+  }
+
+  if (all_features) {
+    args <- c(args, "--all-features")
+  }
+
+  if (!is.null(features) && length(features) > 0) {
+    args <- c(args, "--features", paste(features, collapse = ","))
+  }
+
+  if (!is.null(target)) {
+    args <- c(args, "--target", target)
+  }
+
+  if (offline) {
+    args <- c(args, "--offline")
+  }
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  cli::cli_alert("Building cargo docs...")
+
+  result <- system2("cargo", c("doc", args), stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo doc failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  cli::cli_alert_success("Docs complete")
   invisible(TRUE)
 }
 

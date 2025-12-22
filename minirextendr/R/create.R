@@ -78,7 +78,7 @@ use_miniextendr <- function(miniextendr_version = "latest") {
 
   # Vendor miniextendr crates
   cli::cli_h2("Vendoring miniextendr crates")
-  use_miniextendr_vendor(version = miniextendr_version)
+  vendor_miniextendr(version = miniextendr_version)
 
   # Summary
   cli::cli_h1("Setup complete!")
