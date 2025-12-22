@@ -49,30 +49,23 @@ use crate::ffi::{
 ///
 /// This is safe to send between threads because it's just a memory address.
 /// The data `T` is owned and transferred to the main thread before being accessed.
-#[repr(transparent)]
-struct SendablePtr<T>(NonNull<T>, PhantomData<T>);
+type SendablePtr<T> = crate::worker::Sendable<NonNull<T>>;
 
-// SAFETY: The pointer is only used to transfer ownership to the main thread.
-// The data is not accessed concurrently from multiple threads.
-unsafe impl<T> Send for SendablePtr<T> {}
+/// Create a new sendable pointer from a raw pointer.
+///
+/// # Safety
+///
+/// The pointer must be non-null.
+#[inline]
+unsafe fn sendable_ptr_new_unchecked<T>(ptr: *mut T) -> SendablePtr<T> {
+    // SAFETY: Caller guarantees ptr is non-null
+    crate::worker::Sendable(unsafe { NonNull::new_unchecked(ptr) })
+}
 
-impl<T> SendablePtr<T> {
-    /// Create a new `SendablePtr` from a raw pointer.
-    ///
-    /// # Safety
-    ///
-    /// The pointer must be non-null.
-    #[inline]
-    unsafe fn new_unchecked(ptr: *mut T) -> Self {
-        // SAFETY: Caller guarantees ptr is non-null
-        Self(unsafe { NonNull::new_unchecked(ptr) }, PhantomData)
-    }
-
-    /// Get the raw pointer, consuming self.
-    #[inline]
-    fn into_ptr(self) -> *mut T {
-        self.0.as_ptr()
-    }
+/// Get the raw pointer, consuming the sendable wrapper.
+#[inline]
+fn sendable_ptr_into_ptr<T>(ptr: SendablePtr<T>) -> *mut T {
+    ptr.0.as_ptr()
 }
 
 /// Index of the type SYMSXP contained in the `prot` (a `VECSXP` list)
@@ -228,12 +221,12 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let ptr = Box::into_raw(Box::new(x));
         // Wrap in SendablePtr so it can be sent across thread boundary
         // SAFETY: Box::into_raw never returns null
-        let sendable_ptr = unsafe { SendablePtr::new_unchecked(ptr) };
+        let sendable_ptr = unsafe { sendable_ptr_new_unchecked(ptr) };
 
         // Use with_r_thread to run R API calls on main thread
         let sexp = crate::worker::with_r_thread(move || {
             // This runs on main thread - unwrap the pointer
-            let ptr: *mut T = sendable_ptr.into_ptr();
+            let ptr: *mut T = sendable_ptr_into_ptr(sendable_ptr);
             unsafe { Self::create_extptr_sexp(ptr) }
         });
 
