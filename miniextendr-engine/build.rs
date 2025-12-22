@@ -50,6 +50,14 @@ fn link_to_r() {
     println!("cargo:rerun-if-env-changed=R_HOME");
 
     // Link to libR.
-    println!("cargo:rustc-link-search=native={}/lib", r_home);
+    let r_arch = env::var("R_ARCH").unwrap_or_default();
+    let r_libdir = format!("{}/lib{}", r_home, r_arch);
+    println!("cargo:rustc-link-search=native={}", r_libdir);
     println!("cargo:rustc-link-lib=R");
+
+    // Mirror `R CMD LINK` behavior: add runtime search path for libR.
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    if target_os != "windows" {
+        println!("cargo:rustc-link-arg=-Wl,-rpath,{}", r_libdir);
+    }
 }
