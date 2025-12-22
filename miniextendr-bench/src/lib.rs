@@ -2,11 +2,15 @@
 //!
 //! This crate is **not** part of the main workspace build. It's intended to be
 //! invoked directly via `cargo bench` from `miniextendr-bench/`.
+//!
+//! The benchmark plan is documented in `bench_plan` (module-level docs only).
 
 use std::os::raw::c_char;
 use std::sync::OnceLock;
 
 use miniextendr_api::ffi::{self, SEXP};
+
+pub mod bench_plan;
 
 type SexpAddr = usize;
 
