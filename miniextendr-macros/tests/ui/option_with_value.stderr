@@ -1,0 +1,5 @@
+error: this option does not take any arguments
+ --> tests/ui/option_with_value.rs:5:15
+  |
+5 | #[miniextendr(invisible = true)]
+  |               ^^^^^^^^^^^^^^^^

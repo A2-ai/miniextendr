@@ -1,21 +1,762 @@
+//! Conversions from Rust types to R SEXP.
+//!
+//! This module provides the [`IntoR`] trait for converting Rust values to R SEXPs.
+//!
+//! # Thread Safety
+//!
+//! The trait provides two methods:
+//! - [`IntoR::into_sexp`] - checked version with debug thread assertions
+//! - [`IntoR::into_sexp_unchecked`] - unchecked version for performance-critical paths
+//!
+//! Use `into_sexp_unchecked` when you're certain you're on the main thread:
+//! - Inside ALTREP callbacks
+//! - Inside `#[miniextendr(unsafe(main_thread))]` functions
+//! - Inside `extern "C-unwind"` functions called directly by R
+
+use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+
+/// Trait for converting Rust types to R SEXP values.
 pub trait IntoR {
+    /// Convert this value to an R SEXP.
+    ///
+    /// In debug builds, asserts that we're on R's main thread.
     fn into_sexp(self) -> crate::ffi::SEXP;
+
+    /// Convert to SEXP without thread safety checks.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from R's main thread. In debug builds, this still
+    /// calls the checked version by default, but implementations may
+    /// skip thread assertions for performance.
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP
+    where
+        Self: Sized,
+    {
+        // Default: just call the checked version
+        self.into_sexp()
+    }
 }
 
 impl IntoR for crate::ffi::SEXP {
+    #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self
     }
 }
 
 impl IntoR for () {
+    #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::R_NilValue }
     }
 }
 
 impl IntoR for std::convert::Infallible {
+    #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe { crate::ffi::R_NilValue }
+    }
+}
+
+/// Macro for scalar IntoR via Rf_Scalar* functions.
+macro_rules! impl_scalar_into_r {
+    ($ty:ty, $checked:ident, $unchecked:ident) => {
+        impl IntoR for $ty {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::$checked(self) }
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::$unchecked(self) }
+            }
+        }
+    };
+}
+
+impl_scalar_into_r!(i32, Rf_ScalarInteger, Rf_ScalarInteger_unchecked);
+impl_scalar_into_r!(f64, Rf_ScalarReal, Rf_ScalarReal_unchecked);
+impl_scalar_into_r!(u8, Rf_ScalarRaw, Rf_ScalarRaw_unchecked);
+
+/// Macro for infallible widening IntoR via Coerce.
+macro_rules! impl_into_r_via_coerce {
+    ($from:ty => $to:ty) => {
+        impl IntoR for $from {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                crate::coerce::Coerce::<$to>::coerce(self).into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { crate::coerce::Coerce::<$to>::coerce(self).into_sexp_unchecked() }
+            }
+        }
+    };
+}
+
+// Infallible widening to i32 (R's INTSXP)
+impl_into_r_via_coerce!(i8 => i32);
+impl_into_r_via_coerce!(i16 => i32);
+impl_into_r_via_coerce!(u16 => i32);
+
+// Infallible widening to f64 (R's REALSXP)
+impl_into_r_via_coerce!(f32 => f64);
+impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
+
+/// Macro for logical IntoR via Rf_ScalarLogical with conversion to i32.
+macro_rules! impl_logical_into_r {
+    ($ty:ty, $to_i32:expr) => {
+        impl IntoR for $ty {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::Rf_ScalarLogical($to_i32(self)) }
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                unsafe { crate::ffi::Rf_ScalarLogical_unchecked($to_i32(self)) }
+            }
+        }
+    };
+}
+
+impl_logical_into_r!(bool, |v: bool| v as i32);
+impl_logical_into_r!(crate::ffi::Rboolean, |v: crate::ffi::Rboolean| v as i32);
+impl_logical_into_r!(crate::ffi::RLogical, crate::ffi::RLogical::to_i32);
+
+impl IntoR for Option<i32> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::Rf_ScalarInteger(NA_INTEGER) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::Rf_ScalarInteger_unchecked(NA_INTEGER) },
+        }
+    }
+}
+
+impl IntoR for Option<f64> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::Rf_ScalarReal(NA_REAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::Rf_ScalarReal_unchecked(NA_REAL) },
+        }
+    }
+}
+
+impl IntoR for Option<crate::ffi::Rboolean> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v as i32) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(v as i32) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+        }
+    }
+}
+
+impl IntoR for Option<crate::ffi::RLogical> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical(v.to_i32()) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(v.to_i32()) },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+        }
+    }
+}
+
+impl IntoR for Option<bool> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::Rf_ScalarLogical(NA_LOGICAL) },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::Rf_ScalarLogical_unchecked(NA_LOGICAL) },
+        }
+    }
+}
+
+impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_sexp()
+    }
+}
+
+/// Helper to convert a string slice to R CHARSXP.
+/// Uses UTF-8 encoding. Empty strings return R_BlankString (static, no allocation).
+#[inline]
+fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
+    unsafe {
+        if s.is_empty() {
+            crate::ffi::R_BlankString
+        } else {
+            crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8)
+        }
+    }
+}
+
+/// Unchecked version of [`str_to_charsxp`].
+#[inline]
+unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
+    unsafe {
+        if s.is_empty() {
+            crate::ffi::R_BlankString
+        } else {
+            crate::ffi::Rf_mkCharLenCE_unchecked(
+                s.as_ptr().cast(),
+                s.len() as i32,
+                crate::ffi::CE_UTF8,
+            )
+        }
+    }
+}
+
+impl IntoR for String {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_str().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_str().into_sexp_unchecked() }
+    }
+}
+
+impl IntoR for &str {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = str_to_charsxp(self);
+            crate::ffi::Rf_ScalarString(charsxp)
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = str_to_charsxp_unchecked(self);
+            crate::ffi::Rf_ScalarString_unchecked(charsxp)
+        }
+    }
+}
+
+impl IntoR for Option<&str> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = match self {
+                Some(s) => str_to_charsxp(s),
+                None => crate::ffi::R_NaString,
+            };
+            crate::ffi::Rf_ScalarString(charsxp)
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            let charsxp = match self {
+                Some(s) => str_to_charsxp_unchecked(s),
+                None => crate::ffi::R_NaString,
+            };
+            crate::ffi::Rf_ScalarString_unchecked(charsxp)
+        }
+    }
+}
+
+impl IntoR for Option<String> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_deref().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_deref().into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
+// Vector conversions
+// =============================================================================
+
+impl<T> IntoR for Vec<T>
+where
+    T: crate::ffi::RNativeType,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp(&self) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp_unchecked(&self) }
+    }
+}
+
+impl<T> IntoR for &[T]
+where
+    T: crate::ffi::RNativeType,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp(self) }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { vec_to_sexp_unchecked(self) }
+    }
+}
+
+/// Convert a slice to an R vector (checked).
+#[inline]
+unsafe fn vec_to_sexp<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SEXP {
+    unsafe {
+        let n = slice.len();
+        let vec = crate::ffi::Rf_allocVector(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
+        let ptr = crate::ffi::DATAPTR_RO(vec) as *mut T;
+        std::ptr::copy_nonoverlapping(slice.as_ptr(), ptr, n);
+        vec
+    }
+}
+
+/// Convert a slice to an R vector (unchecked).
+#[inline]
+unsafe fn vec_to_sexp_unchecked<T: crate::ffi::RNativeType>(slice: &[T]) -> crate::ffi::SEXP {
+    unsafe {
+        let n = slice.len();
+        let vec = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, n as crate::ffi::R_xlen_t);
+        let ptr = crate::ffi::DATAPTR_RO_unchecked(vec) as *mut T;
+        std::ptr::copy_nonoverlapping(slice.as_ptr(), ptr, n);
+        vec
+    }
+}
+
+// =============================================================================
+// Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
+// =============================================================================
+
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
+
+/// Convert HashMap<String, V> to R named list (VECSXP).
+impl<V: IntoR> IntoR for HashMap<String, V> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        map_to_named_list(self.into_iter())
+    }
+}
+
+/// Convert BTreeMap<String, V> to R named list (VECSXP).
+impl<V: IntoR> IntoR for BTreeMap<String, V> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        map_to_named_list(self.into_iter())
+    }
+}
+
+/// Helper to convert an iterator of (String, V) pairs to a named R list.
+fn map_to_named_list<V: IntoR>(
+    iter: impl ExactSizeIterator<Item = (String, V)>,
+) -> crate::ffi::SEXP {
+    unsafe {
+        let n = iter.len();
+        let list =
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(list);
+
+        // Allocate names vector
+        let names =
+            crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(names);
+
+        for (i, (key, value)) in iter.enumerate() {
+            // Set list element
+            crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, value.into_sexp());
+
+            // Set name
+            let charsxp = crate::ffi::Rf_mkCharLenCE(
+                key.as_ptr().cast(),
+                key.len() as i32,
+                crate::ffi::CE_UTF8,
+            );
+            crate::ffi::SET_STRING_ELT(names, i as crate::ffi::R_xlen_t, charsxp);
+        }
+
+        // Attach names attribute
+        crate::ffi::Rf_setAttrib(list, crate::ffi::R_NamesSymbol, names);
+
+        crate::ffi::Rf_unprotect(2);
+        list
+    }
+}
+
+/// Convert `HashSet<T>` to R vector.
+impl<T> IntoR for HashSet<T>
+where
+    T: crate::ffi::RNativeType + Eq + Hash,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<T> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert `BTreeSet<T>` to R vector.
+impl<T> IntoR for BTreeSet<T>
+where
+    T: crate::ffi::RNativeType + Ord,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<T> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert `HashSet<String>` to R character vector.
+impl IntoR for HashSet<String> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<String> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert `BTreeSet<String>` to R character vector.
+impl IntoR for BTreeSet<String> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let vec: Vec<String> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+}
+
+/// Convert `Vec<String>` to R character vector (STRSXP).
+impl IntoR for Vec<String> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, s) in self.into_iter().enumerate() {
+                let charsxp = crate::ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    crate::ffi::CE_UTF8,
+                );
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `&[String]` to R character vector (STRSXP).
+impl IntoR for &[String] {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, s) in self.iter().enumerate() {
+                let charsxp = crate::ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    crate::ffi::CE_UTF8,
+                );
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert &[&str] to R character vector (STRSXP).
+impl IntoR for &[&str] {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, s) in self.iter().enumerate() {
+                let charsxp = crate::ffi::Rf_mkCharLenCE(
+                    s.as_ptr().cast(),
+                    s.len() as i32,
+                    crate::ffi::CE_UTF8,
+                );
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<&str>` to R character vector (STRSXP).
+impl IntoR for Vec<&str> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_slice().into_sexp()
+    }
+}
+
+// =============================================================================
+// NA-aware vector conversions
+// =============================================================================
+
+/// Macro for NA-aware `Vec<Option<T>> → R` vector conversions.
+macro_rules! impl_vec_option_into_r {
+    ($t:ty, $sexptype:ident, $dataptr:ident, $na_value:expr) => {
+        impl IntoR for Vec<Option<$t>> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe {
+                    let n = self.len();
+                    let vec = crate::ffi::Rf_allocVector(
+                        crate::ffi::SEXPTYPE::$sexptype,
+                        n as crate::ffi::R_xlen_t,
+                    );
+                    crate::ffi::Rf_protect(vec);
+
+                    if n > 0 {
+                        let ptr = crate::ffi::$dataptr(vec);
+                        let out = std::slice::from_raw_parts_mut(ptr, n);
+                        for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                            *slot = val.unwrap_or($na_value);
+                        }
+                    }
+
+                    crate::ffi::Rf_unprotect(1);
+                    vec
+                }
+            }
+        }
+    };
+}
+
+impl_vec_option_into_r!(f64, REALSXP, REAL, NA_REAL); // NA_real_
+impl_vec_option_into_r!(i32, INTSXP, INTEGER, NA_INTEGER); // NA_integer_
+
+/// Convert `Vec<Option<bool>>` to R logical vector with NA support.
+impl IntoR for Vec<Option<bool>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            if n > 0 {
+                let ptr = crate::ffi::LOGICAL(vec);
+                let out = std::slice::from_raw_parts_mut(ptr, n);
+                for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                    *slot = match val {
+                        Some(true) => 1,
+                        Some(false) => 0,
+                        None => NA_LOGICAL,
+                    };
+                }
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<Rboolean>>` to R logical vector with NA support.
+impl IntoR for Vec<Option<crate::ffi::Rboolean>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            if n > 0 {
+                let ptr = crate::ffi::LOGICAL(vec);
+                let out = std::slice::from_raw_parts_mut(ptr, n);
+                for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                    *slot = match val {
+                        Some(v) => v as i32,
+                        None => NA_LOGICAL,
+                    };
+                }
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<RLogical>>` to R logical vector with NA support.
+impl IntoR for Vec<Option<crate::ffi::RLogical>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::LGLSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            if n > 0 {
+                let ptr = crate::ffi::LOGICAL(vec);
+                let out = std::slice::from_raw_parts_mut(ptr, n);
+                for (slot, val) in out.iter_mut().zip(self.into_iter()) {
+                    *slot = match val {
+                        Some(v) => v.to_i32(),
+                        None => NA_LOGICAL,
+                    };
+                }
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+/// Convert `Vec<Option<String>>` to R character vector with NA support.
+///
+/// `None` values become `NA_character_` in R.
+impl IntoR for Vec<Option<String>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let vec =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::STRSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(vec);
+
+            for (i, opt_s) in self.into_iter().enumerate() {
+                let charsxp = match opt_s {
+                    Some(s) => crate::ffi::Rf_mkCharLenCE(
+                        s.as_ptr().cast(),
+                        s.len() as i32,
+                        crate::ffi::CE_UTF8,
+                    ),
+                    None => crate::ffi::R_NaString,
+                };
+                crate::ffi::SET_STRING_ELT(vec, i as crate::ffi::R_xlen_t, charsxp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            vec
+        }
+    }
+}
+
+// =============================================================================
+// Tuple to list conversions
+// =============================================================================
+
+/// Macro to implement IntoR for tuples of various sizes.
+/// Converts Rust tuples to unnamed R lists (VECSXP).
+macro_rules! impl_tuple_into_r {
+    // Base case: 2-tuple
+    (($($T:ident),+), ($($idx:tt),+), $n:expr) => {
+        impl<$($T: IntoR),+> IntoR for ($($T,)+) {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                unsafe {
+                    let list = crate::ffi::Rf_allocVector(
+                        crate::ffi::SEXPTYPE::VECSXP,
+                        $n as crate::ffi::R_xlen_t
+                    );
+                    crate::ffi::Rf_protect(list);
+
+                    $(
+                        crate::ffi::SET_VECTOR_ELT(
+                            list,
+                            $idx as crate::ffi::R_xlen_t,
+                            self.$idx.into_sexp()
+                        );
+                    )+
+
+                    crate::ffi::Rf_unprotect(1);
+                    list
+                }
+            }
+        }
+    };
+}
+
+// Implement for tuples of sizes 2-8
+impl_tuple_into_r!((A, B), (0, 1), 2);
+impl_tuple_into_r!((A, B, C), (0, 1, 2), 3);
+impl_tuple_into_r!((A, B, C, D), (0, 1, 2, 3), 4);
+impl_tuple_into_r!((A, B, C, D, E), (0, 1, 2, 3, 4), 5);
+impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
+impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
+impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
+
+// =============================================================================
+// Rayon RVec conversion
+// =============================================================================
+
+#[cfg(feature = "rayon")]
+impl<T> IntoR for crate::rayon_bridge::RVec<T>
+where
+    T: crate::ffi::RNativeType + Send,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        // RVec was collected on Rayon threads, convert to R on main thread
+        let vec = self.into_inner();
+        crate::worker::with_r_thread(move || vec.into_sexp())
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        // Still need to go through with_r_thread since we might be on a Rayon thread
+        self.into_sexp()
     }
 }

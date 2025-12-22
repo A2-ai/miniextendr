@@ -1,13 +1,34 @@
 {
+  "files.associations": {
+    "Makefile.in": "makefile",
+    "Makefile.win": "makefile",
+    "Makevars.in": "makefile",
+    "Makeconf.in": "makefile",
+    "configure.ac": "m4",
+    "*.ac": "m4",
+    "NAMESPACE": "r",
+    "DESCRIPTION": "yaml"
+  },
   "rust-analyzer.linkedProjects": [
-    "rpkg/src/rust/Cargo.toml",
     "Cargo.toml",
-    "miniextendr-api/Cargo.toml",
-    "miniextendr-macros/Cargo.toml"
+    "rpkg/src/rust/Cargo.toml"
   ],
   "rust-analyzer.cargo.extraArgs": [
-    "--release"
+    "--release", "--tests", "--benches", "--examples"
   ],
+  "rust-analyzer.cargo.features": ["connections"],
+  // "rust-analyzer.check.command": "check",
   "rust-analyzer.check.command": "clippy",
-  "rust-analyzer.cargo.targetDir": "ra_target",
+  "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",
+  "terminal.integrated.env.osx": {
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
+  },
+  "terminal.integrated.env.linux": {
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
+  },
+  "terminal.integrated.env.windows": {
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
+  }
+  // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpful to ai tools
+
 }

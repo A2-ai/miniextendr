@@ -1,6 +1,27 @@
 //! miniextendr-api: core runtime, FFI, ALTREP, and macros
+//!
+//! Note: ALTREP trait methods receive raw SEXP pointers from R's runtime.
+//! These are safe to dereference because R guarantees valid SEXPs in ALTREP callbacks.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Export a rust function to R
+/// Derive macro for implementing `TypedExternal` on a type.
+/// This enables the type to be stored in an `ExternalPtr<T>`.
+pub use miniextendr_macros::ExternalPtr;
+/// Derive macro for implementing `RNativeType` on newtype wrappers.
+/// This enables the newtype to work with `Vec<T>` conversions.
+///
+/// Supports both tuple structs and single-field named structs:
+///
+/// ```ignore
+/// #[derive(Clone, Copy, miniextendr_api::RNativeType)]
+/// struct UserId(i32);  // tuple struct
+///
+/// #[derive(Clone, Copy, miniextendr_api::RNativeType)]
+/// struct Temperature { celsius: f64 }  // named field
+/// ```
+///
+pub use miniextendr_macros::RNativeType;
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -14,9 +35,12 @@
 /// In case of function arguments beginning with `_*`, then the R wrapper renames the argument
 /// to `unused_*`, as it is not allowed for a variable to begin with `_` in R.
 ///
-/// ## `extern "C"`
+/// ## `extern "C-unwind"` and the `unsafe_` prefix
 ///
-/// A function with the C ABI may be provided as
+/// When providing a raw C ABI function, the function IS the C wrapper (no safe Rust
+/// wrapper is generated). Since these functions bypass miniextendr's safety features
+/// (worker thread, panic handling, type conversion), the R wrapper is prefixed with
+/// `unsafe_` to signal this to R users.
 ///
 /// ```
 /// use miniextendr_api::miniextendr;
@@ -24,11 +48,20 @@
 ///
 /// #[miniextendr]
 /// #[unsafe(no_mangle)]
-/// extern "C" fn C_foo() -> SEXP { unsafe { R_NilValue } }
+/// extern "C-unwind" fn C_my_function() -> SEXP { unsafe { R_NilValue } }
 /// ```
 ///
-/// Here, the provided function definition is the C wrapper, there are no Rust definition, therefore
-/// the R wrapper is named `unsafe_*` together with the provided name.
+/// This generates:
+/// - C symbol: `C_my_function` (the function you wrote)
+/// - R wrapper: `unsafe_C_my_function()` (prefixed with `unsafe_`)
+///
+/// The `unsafe_` prefix indicates that:
+/// 1. The function runs directly on R's main thread (no worker thread isolation)
+/// 2. Panics may not be properly caught (depends on your implementation)
+/// 3. No automatic type conversion from R to Rust types
+///
+/// Use `extern "C-unwind"` when you need direct FFI control, such as for ALTREP
+/// callbacks or performance-critical code that handles its own safety.
 ///
 ///
 /// ## Variadic support: [`Dots`] / DotDotDot / `...`
@@ -44,53 +77,263 @@
 /// It is necessary to add register these functions using [`miniextendr_module`] in order for them to
 /// be available in the surrounding R package.
 ///
+/// ## Attributes
+///
+/// The macro supports the following attributes:
+///
+/// - `#[miniextendr(unsafe(main_thread))]` - Force the function to run on the main R thread.
+///   Use this for functions that call R APIs internally. This is marked `unsafe(...)` because
+///   bypassing the worker-thread pattern can allow R errors (longjmp) to skip Rust destructors.
+///
+/// - `#[miniextendr(invisible)]` - Force the R wrapper to return invisibly.
+///   Normally, functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly.
+///
+/// - `#[miniextendr(visible)]` - Force the R wrapper to return visibly.
+///   Overrides the default invisible behavior for unit-returning functions.
+///
+/// - `#[miniextendr(check_interrupt)]` - Check for user interrupts (Ctrl+C) before executing.
+///   Calls `R_CheckUserInterrupt()` at the start of the function. Implies `unsafe(main_thread)`.
+///
+/// - `#[miniextendr(coerce)]` - Enable type coercion for ALL non-R-native parameter types.
+///   Allows using types like `u16`, `i16`, `i8`, `f32`, `Vec<u16>`, etc. as parameters.
+///   R values are extracted as native types (i32, f64) and coerced using [`TryCoerce`].
+///
+/// - Per-parameter `#[miniextendr(coerce)]` - Add to individual parameters for selective coercion:
+///   ```ignore
+///   #[miniextendr]
+///   fn foo(#[miniextendr(coerce)] x: u16, y: i32) { ... }
+///   ```
+///
+/// Multiple attributes can be combined: `#[miniextendr(coerce, invisible)]`
+///
 /// ## R wrappers
 ///
-// TODO
+/// The generated R wrapper calls the C wrapper via `.Call()`. By default:
+/// - Functions returning `()`, `Option<()>`, or `Result<(), _>` return invisibly
+/// - All other return types are visible
 ///
 /// [`&Dots`]: dots::Dots
 /// [`Dots`]: dots::Dots
 pub use miniextendr_macros::miniextendr;
+
+/// Register functions and ALTREP types with R's dynamic symbol registration.
+///
+/// This macro generates the `R_init_<module>_miniextendr` entrypoint that R calls
+/// when loading the shared library.
+///
+/// # Syntax
+///
+/// ```ignore
+/// miniextendr_module! {
+///     mod mymodule;
+///
+///     // Regular Rust functions (generates safe R wrapper)
+///     fn my_function;
+///
+///     // Raw C ABI functions (R wrapper prefixed with `unsafe_`)
+///     extern "C-unwind" fn C_my_raw_function;
+///
+///     // ALTREP types (registers the class with R)
+///     struct MyAltrepClass;
+///
+///     // Re-export from submodules
+///     use submodule;
+/// }
+/// ```
+///
+/// # Function Registration
+///
+/// ## Regular functions (`fn`)
+///
+/// For functions defined with `#[miniextendr]` that have a Rust signature:
+/// - C symbol: `C_<name>` (auto-generated wrapper)
+/// - R wrapper: `<name>()` (safe, with type conversion)
+///
+/// ## Extern functions (`extern "C-unwind" fn`)
+///
+/// For raw C ABI functions defined with `#[miniextendr]` and `extern "C-unwind"`:
+/// - C symbol: The function name you provided (e.g., `C_my_function`)
+/// - R wrapper: `unsafe_<name>()` (prefixed to indicate bypassed safety)
+///
+/// The `unsafe_` prefix signals to R users that these functions:
+/// 1. Run directly on R's thread (no worker thread isolation)
+/// 2. May not have proper panic handling
+/// 3. Don't perform automatic type conversion
+///
+/// # ALTREP Registration
+///
+/// Structs listed are registered as ALTREP classes during `R_init_*`.
+/// The struct must implement the appropriate ALTREP traits.
+///
+/// # Example
+///
+/// ```ignore
+/// #[miniextendr]
+/// fn add(a: i32, b: i32) -> i32 { a + b }
+///
+/// #[miniextendr]
+/// #[unsafe(no_mangle)]
+/// extern "C-unwind" fn C_fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
+///
+/// miniextendr_module! {
+///     mod mypackage;
+///     fn add;                         // R: add(a, b)
+///     extern "C-unwind" fn C_fast_add; // R: unsafe_C_fast_add()
+/// }
+/// ```
 pub use miniextendr_macros::miniextendr_module;
+
+/// Generate main-thread routed wrappers for R FFI functions.
+///
+/// Apply this to an `extern "C-unwind"` block to generate wrappers
+/// that run on R's main thread (routing via `with_r_thread` if needed).
+///
+/// **Limitations:**
+/// - Variadic functions and statics are passed through unchanged
+/// - Only non-variadic functions get routed wrappers
+/// - Calling from a non-main thread without worker context will panic
+///
+/// # Example
+///
+/// ```ignore
+/// #[r_ffi_checked]
+/// unsafe extern "C-unwind" {
+///     pub fn Rf_ScalarInteger(arg1: i32) -> SEXP;
+/// }
+/// ```
+///
+/// Generates:
+/// ```ignore
+/// unsafe extern "C-unwind" {
+///     #[link_name = "Rf_ScalarInteger"]
+///     pub fn Rf_ScalarInteger_unchecked(arg1: i32) -> SEXP;
+/// }
+///
+/// #[inline(always)]
+/// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
+///     if is_r_main_thread() {
+///         Rf_ScalarInteger_unchecked(arg1)
+///     } else {
+///         with_r_thread(move || unsafe { Rf_ScalarInteger_unchecked(arg1) })
+///     }
+/// }
+/// ```
+pub use miniextendr_macros::r_ffi_checked;
 
 pub mod altrep;
 pub mod altrep_bridge;
+pub mod altrep_data;
+pub mod altrep_impl;
 pub mod altrep_registration;
-pub mod altrep_std_impls;
 pub mod altrep_traits;
 pub mod ffi;
+
+// Re-export high-level ALTREP data traits
+pub use altrep_data::{
+    AltComplexData,
+    AltIntegerData,
+    AltListData,
+    AltLogicalData,
+    AltRawData,
+    AltRealData,
+    AltStringData,
+    AltrepDataptr,
+    AltrepLen,
+    // Iterator-backed ALTREP types (R-native)
+    IterComplexData,
+    // Iterator-backed ALTREP types (with Coerce support)
+    IterIntCoerceData,
+    IterIntData,
+    IterIntFromBoolData,
+    IterListData,
+    IterLogicalData,
+    IterRawData,
+    IterRealCoerceData,
+    IterRealData,
+    IterState,
+    IterStringData,
+    Logical,
+    Sortedness,
+};
+// Re-export RBase enum
+pub use altrep::RBase;
+// Note: SexpExt is pub(crate), imported directly in modules that need it
+pub mod from_r;
 pub mod into_r;
-pub mod unwind;
+pub use into_r::IntoR;
 pub mod unwind_protect;
+pub mod worker;
 
-pub mod error {
-    // use crate::ffi::Rprintf;
-    // use std::{
-    //     cell::RefCell,
-    //     ffi::{CStr, CString},
-    // };
+// Rayon integration (parallel computation with R interop)
+#[cfg(feature = "rayon")]
+pub mod rayon_bridge;
+pub use worker::*;
 
-    // work-in-progress: Use common buffer for the *const char APIs..
-    // thread_local! {
-    //     /// Buffer using in `rprintln`/`rprint`/`rerror`
-    //     pub static R_MESSAGE_BUFFER: RefCell<Vec<u8>> = RefCell::new(Vec::with_capacity(256));
-    // }
-}
+// Thread safety utilities for calling R from non-main threads
+pub mod thread;
 
-pub mod dots {
-    use crate::ffi::SEXP;
+// Stack size constants and builder (always available)
+#[cfg(windows)]
+pub use thread::WINDOWS_R_STACK_SIZE;
+pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
 
-    /// Rust type representing `...`.
-    ///
-    /// See [`miniextendr`] macro for more information.
-    ///
-    /// [`miniextendr`]: crate::miniextendr
-    #[derive(Debug)]
-    pub struct Dots {
-        // Dots is always passed to us, they need no protection.
-        pub inner: SEXP,
-    }
-}
+// Stack checking control (requires nonapi feature)
+#[cfg(feature = "nonapi")]
+pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
+
+// Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
+pub mod error;
+pub use error::{r_print, r_println, r_stop, r_warning};
+
+// Re-export from_r
+pub use from_r::{
+    CoercedSexpError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,
+};
+
+// Encoding / locale probing (mainly for debugging; some parts require `nonapi`)
+// NOTE: Disabled because it references non-exported symbols from R's Defn.h
+// (e.g., known_to_be_utf8, utf8locale) that cause dlopen failures at runtime.
+// #[cfg(feature = "nonapi")]
+// pub mod encoding;
+
+// Note: RNativeType is pub(crate), imported directly in modules that need it
+
+pub mod backtrace;
+
+pub mod coerce;
+pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
+
+pub mod dots;
+
+// External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
+pub mod externalptr;
+
+// Connection framework (unstable R API - use with caution)
+#[cfg(feature = "connections")]
+pub mod connection;
+pub use externalptr::{
+    ErasedExternalPtr,
+    ExternalPtr,
+    ExternalSlice,
+    TypedExternal,
+    // ALTREP helpers (checked)
+    altrep_data1_as,
+    // ALTREP helpers (unchecked - for performance-critical callbacks)
+    altrep_data1_as_unchecked,
+    altrep_data1_mut,
+    altrep_data1_mut_unchecked,
+    altrep_data2_as,
+    altrep_data2_as_unchecked,
+};
+
+// TypedExternal implementations for std types
+pub mod externalptr_std;
+
+// R object preservation and allocator
+pub mod preserve;
+
+pub mod allocator;
+pub use allocator::RAllocator;
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`

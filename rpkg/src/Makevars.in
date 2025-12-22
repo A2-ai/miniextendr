@@ -1,43 +1,74 @@
-ABS_SRCDIR=@ABS_SRCDIR@
-PROFILE=@CARGO_PROFILE@
-STATICLIB_NAME=@CARGO_STATICLIB_NAME@
-CARGO_TARGET_DIR=@CARGO_TARGET_DIR@
-ENV_RUSTFLAGS=@ENV_RUSTFLAGS@
+## --- filled by configure ----------------------------------------------
+ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
+ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
+ROOT_MINIEXTENDR_REPO = @ROOT_MINIEXTENDR_REPO@
+CARGO = @CARGO@
+RUSTC = @RUSTC@
+RUST_TOOLCHAIN = @RUST_TOOLCHAIN@
+CARGO_TARGET_DIR = @CARGO_TARGET_DIR@
+CARGO_PROFILE = @CARGO_PROFILE@
+CARGO_STATICLIB_NAME = @CARGO_STATICLIB_NAME@
+ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
+CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
+CARGO_LIBDIR = @CARGO_LIBDIR@
 
-CARGO_LIBDIR=$(CARGO_TARGET_DIR)/$(PROFILE)
-CARGO_AR=$(CARGO_LIBDIR)/lib$(STATICLIB_NAME).a
+CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 
-R_WRAPPERS_GENERATED=$(ABS_SRCDIR)/miniextendr_wrappers.R
-R_WRAPPERS_CURRENT=$(ABS_SRCDIR)/../R/miniextendr_wrappers.R
+R_WRAPPERS_GENERATED = $(ABS_RPKG_SRCDIR)/miniextendr_wrappers.R
+R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/miniextendr_wrappers.R
 
-PKG_LIBS=-L$(CARGO_LIBDIR) -l$(STATICLIB_NAME)
+PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
+
+VENDOR_OUT = @VENDOR_OUT@
+
+CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
+NOT_CRAN_FLAG = @NOT_CRAN@
+
+# Features to enable - use --all-features to enable everything including nonapi
+CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+
+RUST_SOURCES = @RUST_SOURCES@
+OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
+
+CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
+CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
+
+# Pass Cargo feature flags to C compiler so entrypoint.c knows which modules exist
+PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
+## ----------------------------------------------------------------------
+
+.PHONY: all
+
+all: $(SHLIB)
+	@# Post-build cleanup: On CRAN builds, remove vendor and target to save space
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	  rm -rf $(VENDOR_OUT) $(CARGO_TARGET_DIR) $(ABS_RPKG_SRCDIR)/rust/.cargo; \
+	fi
 
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
-$(ABS_SRCDIR)/rust/Cargo.lock: $(ABS_SRCDIR)/rust/Cargo.toml
-	cargo +nightly generate-lockfile --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --color=always
-
-$(CARGO_AR): $(ABS_SRCDIR)/rust/Cargo.lock $(ABS_SRCDIR)/rust/document.rs
-	RUSTFLAGS="$(ENV_RUSTFLAGS) -Zmacro-backtrace --print=native-static-libs" \
-	cargo +nightly build --lib --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR) --color=always
+# Build the Rust static library
+# Note: Dependencies are vendored by configure script, not by this Makefile.
+# You must run `./configure` (or `just configure`) before building.
+$(CARGO_AR): $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --lib --profile $(CARGO_PROFILE) \
+	  --manifest-path $(CARGO_TOML) \
+	  --target-dir $(CARGO_TARGET_DIR)
 
 $(R_WRAPPERS_GENERATED): $(CARGO_AR)
-	cargo +nightly run --bin document --profile $(PROFILE) --manifest-path $(ABS_SRCDIR)/rust/Cargo.toml --target-dir $(CARGO_TARGET_DIR) --color=always
+	@# Touch Cargo.toml to force document binary rebuild with current features
+	@touch $(CARGO_TOML)
+	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --bin document --profile $(CARGO_PROFILE) \
+	  --manifest-path $(CARGO_TOML) \
+	  --target-dir $(CARGO_TARGET_DIR)
 
-$(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED) 
-	cp miniextendr_wrappers.R $@
+$(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)
+	@cp $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT)
 
-# TODO: these must be included if they are present
-# $(CARGO_AR): $(ABS_SRCDIR)/rust/build.rs
-# $(CARGO_AR): $(ABS_SRCDIR)/rust/.cargo/config.toml
-# $(CARGO_AR): $(ABS_SRCDIR)/rust/rust-toolchain.toml
-# $(CARGO_AR): $(ABS_SRCDIR)/rust/rust-toolchain
-
--include $(CARGO_LIBDIR)/lib$(STATICLIB_NAME).d
--include $(CARGO_TARGET_DIR)/*/*.d
--include $(CARGO_TARGET_DIR)/*/deps/*.d
--include $(CARGO_TARGET_DIR)/*/build/*/*.d
-
--include $(CARGO_TARGET_DIR)/*/*/*.d
--include $(CARGO_TARGET_DIR)/*/*/deps/*.d
--include $(CARGO_TARGET_DIR)/*/*/build/*/*.d
+clean:
+	@# Only clean generated files on CRAN (preserve for dev)
+	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
+	  rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); \
+	fi

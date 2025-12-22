@@ -1,0 +1,5 @@
+error: unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce
+ --> tests/ui/unknown_miniextendr_option.rs:5:15
+  |
+5 | #[miniextendr(unknown_option)]
+  |               ^^^^^^^^^^^^^^

@@ -1,0 +1,24 @@
+[package]
+name = "miniextendr-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "R embedding engine for miniextendr - standalone R initialization and evaluation"
+documentation = "https://docs.rs/miniextendr-engine"
+links = "R"
+publish = true
+
+[lib]
+crate-type = ["lib"]
+
+[dependencies]
+# No dependencies on miniextendr-api - this is standalone
+
+[build-dependencies]
+
+[features]
+default = []
+# Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
+# for embedding R. It is not intended for use in R packages.

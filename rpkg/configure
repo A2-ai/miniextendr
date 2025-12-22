@@ -608,14 +608,41 @@ PACKAGE_URL=''
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
+CARGO_SOURCE_REPLACE
+FORCE_VENDOR
+VENDOR_OUT
+OPTIONAL_CARGO_DEPS
+RUST_SOURCES
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
+CARGO_LIBDIR
+CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
 CARGO_PROFILE
 CARGO_TARGET_DIR
+CARGO_CMD
+RUST_TOOLCHAIN
+SED
+RSYNC
+RUSTC
+CARGO
 ROOT_MINIEXTENDR_REPO
-ABS_SRCDIR
+ABS_RPKG_SRCDIR
+ABS_TOP_SRCDIR
+CARGO_FEATURE_CPPFLAGS
+CARGO_FEATURES_FLAG
+MINIEXTENDR_FEATURES
+NOT_CRAN
+CARGO_OFFLINE_FLAG
+host_os
+host_vendor
+host_cpu
+host
+build_os
+build_vendor
+build_cpu
+build
 target_alias
 host_alias
 build_alias
@@ -662,10 +689,13 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
+MINIEXTENDR_FEATURES
+RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
-CARGO_STATICLIB_NAME
-ENV_RUSTFLAGS'
+ENV_RUSTFLAGS
+CARGO_BUILD_TARGET
+FORCE_VENDOR'
 
 
 # Initialize some variables set by options.
@@ -1271,6 +1301,10 @@ Fine tuning of the installation directories:
 _ACEOF
 
   cat <<\_ACEOF
+
+System types:
+  --build=BUILD     configure for building on BUILD [guessed]
+  --host=HOST       cross-compile to build programs to run on HOST [BUILD]
 _ACEOF
 fi
 
@@ -1281,14 +1315,20 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
+  MINIEXTENDR_FEATURES
+              Comma-separated cargo features to enable (e.g., "nonapi,rayon")
+  RUST_TOOLCHAIN
+              Rust toolchain selector like '+stable' or '+nightly'
   CARGO_TARGET_DIR
               Cargo target directory (default: src/rust/target)
   CARGO_PROFILE
               Cargo build profile (debug or release)
-  CARGO_STATICLIB_NAME
-              Name of Rust static library
   ENV_RUSTFLAGS
               Rust compiler flags passed as RUSTFLAGS
+  CARGO_BUILD_TARGET
+              Cargo build target triple (e.g. aarch64-apple-darwin)
+  FORCE_VENDOR
+              Set to 1 to force `cargo vendor` refresh in dev mode
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -1665,6 +1705,105 @@ printf "%s\n" "$as_me: creating cache $cache_file" >&6;}
   >$cache_file
 fi
 
+
+# Auxiliary files required by this configure script.
+ac_aux_files="config.guess config.sub"
+
+# Locations in which to look for auxiliary files.
+ac_aux_dir_candidates="${srcdir}${PATH_SEPARATOR}${srcdir}/..${PATH_SEPARATOR}${srcdir}/../.."
+
+# Search for a directory containing all of the required auxiliary files,
+# $ac_aux_files, from the $PATH-style list $ac_aux_dir_candidates.
+# If we don't find one directory that contains all the files we need,
+# we report the set of missing files from the *first* directory in
+# $ac_aux_dir_candidates and give up.
+ac_missing_aux_files=""
+ac_first_candidate=:
+printf "%s\n" "$as_me:${as_lineno-$LINENO}: looking for aux files: $ac_aux_files" >&5
+as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+as_found=false
+for as_dir in $ac_aux_dir_candidates
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+  as_found=:
+
+  printf "%s\n" "$as_me:${as_lineno-$LINENO}:  trying $as_dir" >&5
+  ac_aux_dir_found=yes
+  ac_install_sh=
+  for ac_aux in $ac_aux_files
+  do
+    # As a special case, if "install-sh" is required, that requirement
+    # can be satisfied by any of "install-sh", "install.sh", or "shtool",
+    # and $ac_install_sh is set appropriately for whichever one is found.
+    if test x"$ac_aux" = x"install-sh"
+    then
+      if test -f "${as_dir}install-sh"; then
+        printf "%s\n" "$as_me:${as_lineno-$LINENO}:   ${as_dir}install-sh found" >&5
+        ac_install_sh="${as_dir}install-sh -c"
+      elif test -f "${as_dir}install.sh"; then
+        printf "%s\n" "$as_me:${as_lineno-$LINENO}:   ${as_dir}install.sh found" >&5
+        ac_install_sh="${as_dir}install.sh -c"
+      elif test -f "${as_dir}shtool"; then
+        printf "%s\n" "$as_me:${as_lineno-$LINENO}:   ${as_dir}shtool found" >&5
+        ac_install_sh="${as_dir}shtool install -c"
+      else
+        ac_aux_dir_found=no
+        if $ac_first_candidate; then
+          ac_missing_aux_files="${ac_missing_aux_files} install-sh"
+        else
+          break
+        fi
+      fi
+    else
+      if test -f "${as_dir}${ac_aux}"; then
+        printf "%s\n" "$as_me:${as_lineno-$LINENO}:   ${as_dir}${ac_aux} found" >&5
+      else
+        ac_aux_dir_found=no
+        if $ac_first_candidate; then
+          ac_missing_aux_files="${ac_missing_aux_files} ${ac_aux}"
+        else
+          break
+        fi
+      fi
+    fi
+  done
+  if test "$ac_aux_dir_found" = yes; then
+    ac_aux_dir="$as_dir"
+    break
+  fi
+  ac_first_candidate=false
+
+  as_found=false
+done
+IFS=$as_save_IFS
+if $as_found
+then :
+
+else case e in #(
+  e) as_fn_error $? "cannot find required auxiliary files:$ac_missing_aux_files" "$LINENO" 5 ;;
+esac
+fi
+
+
+# These three variables are undocumented and unsupported,
+# and are intended to be withdrawn in a future Autoconf release.
+# They can cause serious problems if a builder's source tree is in a directory
+# whose full name contains unusual characters.
+if test -f "${ac_aux_dir}config.guess"; then
+  ac_config_guess="$SHELL ${ac_aux_dir}config.guess"
+fi
+if test -f "${ac_aux_dir}config.sub"; then
+  ac_config_sub="$SHELL ${ac_aux_dir}config.sub"
+fi
+if test -f "$ac_aux_dir/configure"; then
+  ac_configure="$SHELL ${ac_aux_dir}configure"
+fi
+
 # Check that the precious variables saved in the cache have kept the same
 # value.
 ac_cache_corrupted=false
@@ -1734,39 +1873,536 @@ ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
 
-: ${R_HOME=`R RHOME`}
-# TODO: write a rust analyzer friendly command.
-# see https://rust-analyzer.github.io/book/configuration.html?highlight=command#check.overrideCommand
+
+
+
+
+  # Make sure we can run config.sub.
+$SHELL "${ac_aux_dir}config.sub" sun4 >/dev/null 2>&1 ||
+  as_fn_error $? "cannot run $SHELL ${ac_aux_dir}config.sub" "$LINENO" 5
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking build system type" >&5
+printf %s "checking build system type... " >&6; }
+if test ${ac_cv_build+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) ac_build_alias=$build_alias
+test "x$ac_build_alias" = x &&
+  ac_build_alias=`$SHELL "${ac_aux_dir}config.guess"`
+test "x$ac_build_alias" = x &&
+  as_fn_error $? "cannot guess build type; you must specify one" "$LINENO" 5
+ac_cv_build=`$SHELL "${ac_aux_dir}config.sub" $ac_build_alias` ||
+  as_fn_error $? "$SHELL ${ac_aux_dir}config.sub $ac_build_alias failed" "$LINENO" 5
+ ;;
+esac
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_build" >&5
+printf "%s\n" "$ac_cv_build" >&6; }
+case $ac_cv_build in
+*-*-*) ;;
+*) as_fn_error $? "invalid value of canonical build" "$LINENO" 5;;
+esac
+build=$ac_cv_build
+ac_save_IFS=$IFS; IFS='-'
+set x $ac_cv_build
+shift
+build_cpu=$1
+build_vendor=$2
+shift; shift
+# Remember, the first character of IFS is used to create $*,
+# except with old shells:
+build_os=$*
+IFS=$ac_save_IFS
+case $build_os in *\ *) build_os=`echo "$build_os" | sed 's/ /-/g'`;; esac
+
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking host system type" >&5
+printf %s "checking host system type... " >&6; }
+if test ${ac_cv_host+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) if test "x$host_alias" = x; then
+  ac_cv_host=$ac_cv_build
+else
+  ac_cv_host=`$SHELL "${ac_aux_dir}config.sub" $host_alias` ||
+    as_fn_error $? "$SHELL ${ac_aux_dir}config.sub $host_alias failed" "$LINENO" 5
+fi
+ ;;
+esac
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_cv_host" >&5
+printf "%s\n" "$ac_cv_host" >&6; }
+case $ac_cv_host in
+*-*-*) ;;
+*) as_fn_error $? "invalid value of canonical host" "$LINENO" 5;;
+esac
+host=$ac_cv_host
+ac_save_IFS=$IFS; IFS='-'
+set x $ac_cv_host
+shift
+host_cpu=$1
+host_vendor=$2
+shift; shift
+# Remember, the first character of IFS is used to create $*,
+# except with old shells:
+host_os=$*
+IFS=$ac_save_IFS
+case $host_os in *\ *) host_os=`echo "$host_os" | sed 's/ /-/g'`;; esac
+
+
+
+if test -z "$R_HOME"; then
+  R_HOME=`R RHOME 2>/dev/null`
+  if test $? -ne 0 || test -z "$R_HOME"; then
+    as_fn_error $? "R not found. Please ensure R is installed and on PATH, or set R_HOME." "$LINENO" 5
+  fi
+fi
+if test ! -d "$R_HOME"; then
+  as_fn_error $? "R_HOME directory does not exist: $R_HOME" "$LINENO" 5
+fi
+
+: ${NOT_CRAN:=false}
+case "$NOT_CRAN" in
+  true|TRUE|1) NOT_CRAN=true ;;
+  *)           NOT_CRAN=false ;;
+esac
+export NOT_CRAN
+
+if test "$NOT_CRAN" = "true"; then
+  CARGO_OFFLINE_FLAG=""
+else
+  CARGO_OFFLINE_FLAG="--offline"
+fi
+
+
+
+
+: ${MINIEXTENDR_FEATURES=""}
+
+if test -n "$MINIEXTENDR_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+  # Set C preprocessor flags based on enabled features
+  CARGO_FEATURE_CPPFLAGS=""
+  case ",$MINIEXTENDR_FEATURES," in
+    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
+  esac
+  case ",$MINIEXTENDR_FEATURES," in
+    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
+  esac
+  case ",$MINIEXTENDR_FEATURES," in
+    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
+  esac
+else
+  CARGO_FEATURES_FLAG=""
+  CARGO_FEATURE_CPPFLAGS=""
+fi
+
+
 
 
 
 abs_top_srcdir=`(cd "$srcdir" && pwd)`
-abs_srcdir="$abs_top_srcdir/src"
-ABS_SRCDIR="$abs_srcdir"
+ABS_TOP_SRCDIR="$abs_top_srcdir"
+
+abs_rpkg_src="$abs_top_srcdir/src"
+ABS_RPKG_SRCDIR="$abs_rpkg_src"
 
 
-ROOT_MINIEXTENDR_REPO="$abs_srcdir/../.."
+root_miniextendr_repo=`(cd "$abs_rpkg_src/../.." && pwd)`
+ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
 
 
-# TODO: Add all these to the R build process
-# https://doc.rust-lang.org/cargo/reference/environment-variables.html
+MINIEXTENDR_API_SRC="$root_miniextendr_repo/miniextendr-api"
+MINIEXTENDR_MACROS_SRC="$root_miniextendr_repo/miniextendr-macros"
+MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
+MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
 
-: ${CARGO_TARGET_DIR="$abs_srcdir/rust/target"}
+if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}cargo", so it can be a program name with args.
+set dummy ${ac_tool_prefix}cargo; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_CARGO+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $CARGO in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_CARGO="$CARGO" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_CARGO="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+CARGO=$ac_cv_path_CARGO
+if test -n "$CARGO"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $CARGO" >&5
+printf "%s\n" "$CARGO" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+fi
+if test -z "$ac_cv_path_CARGO"; then
+  ac_pt_CARGO=$CARGO
+  # Extract the first word of "cargo", so it can be a program name with args.
+set dummy cargo; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_ac_pt_CARGO+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $ac_pt_CARGO in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_ac_pt_CARGO="$ac_pt_CARGO" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_ac_pt_CARGO="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+ac_pt_CARGO=$ac_cv_path_ac_pt_CARGO
+if test -n "$ac_pt_CARGO"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_pt_CARGO" >&5
+printf "%s\n" "$ac_pt_CARGO" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+  if test "x$ac_pt_CARGO" = x; then
+    CARGO="no"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
+printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
+ac_tool_warned=yes ;;
+esac
+    CARGO=$ac_pt_CARGO
+  fi
+else
+  CARGO="$ac_cv_path_CARGO"
+fi
+
+if test -n "$ac_tool_prefix"; then
+  # Extract the first word of "${ac_tool_prefix}rustc", so it can be a program name with args.
+set dummy ${ac_tool_prefix}rustc; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_RUSTC+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $RUSTC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_RUSTC="$RUSTC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_RUSTC="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+RUSTC=$ac_cv_path_RUSTC
+if test -n "$RUSTC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $RUSTC" >&5
+printf "%s\n" "$RUSTC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+fi
+if test -z "$ac_cv_path_RUSTC"; then
+  ac_pt_RUSTC=$RUSTC
+  # Extract the first word of "rustc", so it can be a program name with args.
+set dummy rustc; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_ac_pt_RUSTC+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $ac_pt_RUSTC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_ac_pt_RUSTC="$ac_pt_RUSTC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_ac_pt_RUSTC="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  ;;
+esac ;;
+esac
+fi
+ac_pt_RUSTC=$ac_cv_path_ac_pt_RUSTC
+if test -n "$ac_pt_RUSTC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ac_pt_RUSTC" >&5
+printf "%s\n" "$ac_pt_RUSTC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+  if test "x$ac_pt_RUSTC" = x; then
+    RUSTC="no"
+  else
+    case $cross_compiling:$ac_tool_warned in
+yes:)
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: using cross tools not prefixed with host triplet" >&5
+printf "%s\n" "$as_me: WARNING: using cross tools not prefixed with host triplet" >&2;}
+ac_tool_warned=yes ;;
+esac
+    RUSTC=$ac_pt_RUSTC
+  fi
+else
+  RUSTC="$ac_cv_path_RUSTC"
+fi
+
+# Extract the first word of "rsync", so it can be a program name with args.
+set dummy rsync; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_RSYNC+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $RSYNC in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_RSYNC="$RSYNC" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_RSYNC="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_RSYNC" && ac_cv_path_RSYNC="no"
+  ;;
+esac ;;
+esac
+fi
+RSYNC=$ac_cv_path_RSYNC
+if test -n "$RSYNC"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $RSYNC" >&5
+printf "%s\n" "$RSYNC" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+# Extract the first word of "sed", so it can be a program name with args.
+set dummy sed; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_SED+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $SED in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_SED="$SED" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_SED="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_SED" && ac_cv_path_SED="no"
+  ;;
+esac ;;
+esac
+fi
+SED=$ac_cv_path_SED
+if test -n "$SED"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $SED" >&5
+printf "%s\n" "$SED" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
+if test "x$CARGO" = "xno"
+then :
+  as_fn_error $? "\`cargo\` not found" "$LINENO" 5
+fi
+if test "x$RUSTC" = "xno"
+then :
+  as_fn_error $? "\`rustc\` not found" "$LINENO" 5
+fi
+if test "x$SED" = "xno"
+then :
+  as_fn_error $? "\`sed\` not found" "$LINENO" 5
+fi
+
+
+
+
+
+RUSTC_VERSION=`$RUSTC --version`
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: using $RUSTC_VERSION" >&5
+printf "%s\n" "$as_me: using $RUSTC_VERSION" >&6;}
+
+RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'`
+RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
+RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
+MIN_RUSTC_MAJOR=1
+MIN_RUSTC_MINOR=85
+if test "$RUSTC_MAJOR" -lt "$MIN_RUSTC_MAJOR" || \
+   (test "$RUSTC_MAJOR" -eq "$MIN_RUSTC_MAJOR" && test "$RUSTC_MINOR" -lt "$MIN_RUSTC_MINOR"); then
+  as_fn_error $? "rustc $MIN_RUSTC_MAJOR.$MIN_RUSTC_MINOR+ required for Rust edition 2024, found $RUSTC_VERSION_NUM" "$LINENO" 5
+fi
+
+
+: ${RUST_TOOLCHAIN=""}
+
+
+CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
+
+
+
+: ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
 
 
 
 : ${CARGO_PROFILE="release"}
 
 
-# TODO: read this from Cargo.toml manually.. or somewhere else
-
-# TODO: use cargo metadata to figure out what the library or libraries ought to be named!
-: ${CARGO_STATICLIB_NAME="juice"}
-
+CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 
 
 
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
+
+
+
+if test -z "$CARGO_BUILD_TARGET"; then
+  if test -n "$host" && test -n "$build" && test "$host" != "$build"; then
+    CARGO_BUILD_TARGET="$host"
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET not set; using host triple $host" >&5
+printf "%s\n" "$as_me: CARGO_BUILD_TARGET not set; using host triple $host" >&6;}
+  else
+    CARGO_BUILD_TARGET=""
+  fi
+fi
+
+
+if test -n "$CARGO_BUILD_TARGET"; then
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE"
+else
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
+fi
 
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: R_HOME                = $R_HOME" >&5
@@ -1779,9 +2415,16 @@ printf "%s\n" "$as_me: CARGO_PROFILE         = $CARGO_PROFILE" >&6;}
 printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&5
 printf "%s\n" "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_LIBDIR          = $CARGO_LIBDIR" >&5
+printf "%s\n" "$as_me: CARGO_LIBDIR          = $CARGO_LIBDIR" >&6;}
+if test -n "$RUST_TOOLCHAIN"
+then :
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&5
+printf "%s\n" "$as_me: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&6;}
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
+printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
 
-# TODO
-# Rust-safe tarname (hyphens → underscores)
 pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
 PACKAGE_TARNAME_RS=$pkg_rs
 
@@ -1789,75 +2432,187 @@ pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
 
-# Ensure template exists
-if test ! -f "$srcdir/src/rust/document.rs.in"
-then :
-
-  mkdir -p "$srcdir/src/rust"
-  cat >"$srcdir/src/rust/document.rs.in" <<'EOF'
-use juice::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
-use juice::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
-
-fn main() {
-    let dep_flat: Vec<&'static str> = DEPS.concat();
-    let roots: [&[&'static str]; 2] = [PARTS, &dep_flat];
-
-    let mut f = std::fs::OpenOptions::new()
-        .write(true)
-        .truncate(true)
-        .create(true)
-        .open("miniextendr_wrappers.R")
-        .unwrap();
-
-    let mut seen = std::collections::HashSet::new();
-    for group in roots {
-        for &s in group {
-            if seen.insert(s) {
-                use std::io::Write;
-                f.write_all(s.as_bytes()).unwrap();
-                f.write_all(b"\n\n").unwrap();
-            }
-        }
-    }
-}
-EOF
-
-fi
-
-# Generate the concrete file with substitutions
 ac_config_files="$ac_config_files src/rust/document.rs"
 
 
+RUST_SRC_DIR="$abs_rpkg_src/rust"
+RUST_SOURCES=
+if test -d "$RUST_SRC_DIR"; then
+  RUST_SOURCES=`(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
+    | sed "s|^.|$RUST_SRC_DIR|" \
+    | tr '\012' ' ')`
+fi
 
 
-# Ensure entrypoint.c.in exists
-if test ! -f "$abs_srcdir/entrypoint.c.in"
+OPTIONAL_CARGO_DEPS=
+for f in \
+  "$RUST_SRC_DIR/build.rs" \
+  "$RUST_SRC_DIR/.cargo/config.toml" \
+  "$RUST_SRC_DIR/rust-toolchain.toml" \
+  "$RUST_SRC_DIR/rust-toolchain"
+do
+  test -f "$f" && OPTIONAL_CARGO_DEPS="$OPTIONAL_CARGO_DEPS $f"
+done
+
+
+VENDOR_OUT="$abs_rpkg_src/vendor"
+
+
+
+: ${FORCE_VENDOR="0"}
+
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for miniextendr source crates" >&5
+printf %s "checking for miniextendr source crates... " >&6; }
+if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && \
+   test -d "$MINIEXTENDR_LINT_SRC" && test -d "$MINIEXTENDR_ENGINE_SRC"; then
+
+    if test "x$RSYNC" = "xno"
 then :
 
-  mkdir -p "$abs_srcdir"
-  cat >"$abs_srcdir/entrypoint.c.in" <<EOF
-#include <R.h>
-#include <Rinternals.h>
-#include <R_ext/Rdynload.h>
-
-extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo * dll);
-
-void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
-
-    R_useDynamicSymbols(dll, FALSE);
-    R_forceSymbols(dll, TRUE);
-}
-EOF
+    as_fn_error $? "\`rsync\` not found (required for syncing miniextendr crates from monorepo)" "$LINENO" 5
 
 fi
 
-# TODO
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found, syncing to vendor" >&5
+printf "%s\n" "found, syncing to vendor" >&6; }
 
-ac_config_files="$ac_config_files src/rust/Cargo.toml src/Makevars .cargo/config.toml src/entrypoint.c"
+    ROOT_CARGO_TOML="$root_miniextendr_repo/Cargo.toml"
+
+    WS_VERSION=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^version = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_EDITION=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^edition = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_LICENSE=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^license = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_REPOSITORY=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^repository = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_HOMEPAGE=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^homepage = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+
+    WS_KEYWORDS=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^keywords = //p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_CATEGORIES=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^categories = //p; }' "$ROOT_CARGO_TOML" | head -1`
+
+    WS_DEP_PROC_MACRO2=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^proc-macro2 = //p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_DEP_QUOTE=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^quote = //p; }' "$ROOT_CARGO_TOML" | head -1`
+  WS_DEP_SYN=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^syn = //p; }' "$ROOT_CARGO_TOML" | head -1`
+
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&5
+printf "%s\n" "$as_me: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&6;}
+
+    as_dir="$VENDOR_OUT/miniextendr-api"; as_fn_mkdir_p
+  as_dir="$VENDOR_OUT/miniextendr-macros"; as_fn_mkdir_p
+  as_dir="$VENDOR_OUT/miniextendr-lint"; as_fn_mkdir_p
+  as_dir="$VENDOR_OUT/miniextendr-engine"; as_fn_mkdir_p
+
+    _rsync_exclude="--exclude=target --exclude=.git --exclude=Cargo.toml --exclude=.DS_Store --exclude=.gitignore --exclude=.github"
+
+  $RSYNC -a --delete $_rsync_exclude \
+    "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
+
+  $RSYNC -a --delete $_rsync_exclude \
+    "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+  $RSYNC -a --delete $_rsync_exclude \
+    "$MINIEXTENDR_LINT_SRC/" "$VENDOR_OUT/miniextendr-lint/"
+
+  $RSYNC -a --delete $_rsync_exclude \
+    "$MINIEXTENDR_ENGINE_SRC/" "$VENDOR_OUT/miniextendr-engine/"
+
+      escape_sed_repl () {
+    printf '%s' "$1" | $SED 's/\[&|\]/\\&/g'
+  }
+  WS_REPOSITORY_ESC=`escape_sed_repl "$WS_REPOSITORY"`
+  WS_HOMEPAGE_ESC=`escape_sed_repl "$WS_HOMEPAGE"`
+  WS_KEYWORDS_ESC=`escape_sed_repl "$WS_KEYWORDS"`
+  WS_CATEGORIES_ESC=`escape_sed_repl "$WS_CATEGORIES"`
+  WS_DEP_PROC_MACRO2_ESC=`escape_sed_repl "$WS_DEP_PROC_MACRO2"`
+  WS_DEP_QUOTE_ESC=`escape_sed_repl "$WS_DEP_QUOTE"`
+  WS_DEP_SYN_ESC=`escape_sed_repl "$WS_DEP_SYN"`
+
+      $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+       -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
+       -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
+       -e "s|miniextendr-macros = { workspace = true }|miniextendr-macros = { version = \"$WS_VERSION\", path = \"../miniextendr-macros\" }|" \
+       -e "s|miniextendr-engine = { workspace = true }|miniextendr-engine = { version = \"$WS_VERSION\", path = \"../miniextendr-engine\" }|" \
+       "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+
+  $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+       -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
+       -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
+       -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
+       -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
+       -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
+       "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+  $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+       -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
+       -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
+       -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
+       "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
+
+    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+       "$MINIEXTENDR_ENGINE_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-engine/Cargo.toml"
+
+    for _crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+    _cargo_toml="$VENDOR_OUT/$_crate/Cargo.toml"
+    if grep -q '\.workspace = true' "$_cargo_toml" 2>/dev/null; then
+      as_fn_error $? "$_crate/Cargo.toml still contains '.workspace = true' after patching; incomplete workspace inheritance removal" "$LINENO" 5
+    fi
+  done
+
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: miniextendr crates synced to $VENDOR_OUT" >&5
+printf "%s\n" "$as_me: miniextendr crates synced to $VENDOR_OUT" >&6;}
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: not found, using existing vendor" >&5
+printf "%s\n" "not found, using existing vendor" >&6; }
+    if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: vendor/miniextendr-api not found - build may fail" >&5
+printf "%s\n" "$as_me: WARNING: vendor/miniextendr-api not found - build may fail" >&2;}
+  fi
+fi
+
+if test "$NOT_CRAN" = "true"
+then :
+
+  CARGO_SOURCE_REPLACE=""
+
+else case e in #(
+  e)
+  CARGO_SOURCE_REPLACE='source.crates-io
+replace-with = "vendored-sources"
+
+source.vendored-sources
+directory = "'"$VENDOR_OUT"'"'
+ ;;
+esac
+fi
 
 
-ac_config_commands="$ac_config_commands postcopy"
+as_dir=src/rust/.cargo; as_fn_mkdir_p
+
+ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c"
+
+
+
+ac_config_commands="$ac_config_commands cargo-lockfile-compat"
+
+
+ac_config_commands="$ac_config_commands cargo-vendor"
+
+
+ac_config_commands="$ac_config_commands patch-staticlib-name"
 
 
 cat >confcache <<\_ACEOF
@@ -2557,6 +3312,13 @@ _ASBOX
 
 _ACEOF
 cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
+#
+# INIT-COMMANDS
+#
+CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
+
 _ACEOF
 
 cat >>$CONFIG_STATUS <<\_ACEOF || ac_write_fail=1
@@ -2567,10 +3329,12 @@ do
   case $ac_config_target in
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
     "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
+    "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
-    ".cargo/config.toml") CONFIG_FILES="$CONFIG_FILES .cargo/config.toml" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
-    "postcopy") CONFIG_COMMANDS="$CONFIG_COMMANDS postcopy" ;;
+    "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
+    "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
+    "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -2989,9 +3753,104 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
 
   case $ac_file$ac_mode in
-    "postcopy":C)
-  mkdir -p ../.cargo 2>/dev/null || true
-  cp .cargo/config.toml ../.cargo/config.toml 2>/dev/null || true
+    "cargo-lockfile-compat":C)
+  LOCKFILE_PATH="src/rust/Cargo.lock"
+  if test -f "$LOCKFILE_PATH"; then
+    LOCKFILE_VERSION=`"$SED" -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
+  else
+    LOCKFILE_VERSION=""
+  fi
+
+  CARGO_VERSION=`$CARGO_CMD --version | "$SED" 's/cargo \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'`
+  CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
+  CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
+
+  if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
+    if test "$CARGO_MAJOR" -lt 1 || \
+       (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+      rm -f "$LOCKFILE_PATH"
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+      _gen_status=$?
+      if test $_gen_status -ne 0; then
+        echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
+        exit 1
+      fi
+    fi
+  fi
+ ;;
+    "cargo-vendor":C)
+    if test "$NOT_CRAN" != "true"; then
+    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+  else
+    MANIFEST="src/rust/Cargo.toml"
+    LOCKFILE="src/rust/Cargo.lock"
+    STAMP="$VENDOR_OUT/.vendor.lock.cksum"
+
+        if test ! -f "$LOCKFILE"; then
+      echo "configure: generating Cargo.lock"
+      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST"
+      if test $? -ne 0; then
+        echo "configure: error: cargo generate-lockfile failed" >&2
+        exit 1
+      fi
+    fi
+
+        _new=`cksum < "$LOCKFILE" | awk '{print ":"}'`
+    _old=`cat "$STAMP" 2>/dev/null || true`
+
+    _need=0
+    if test "$FORCE_VENDOR" = "1"; then
+      _need=1
+    elif test ! -f "$STAMP"; then
+      _need=1
+    elif test "x$_new" != "x$_old"; then
+      _need=1
+    fi
+
+    if test $_need -eq 1; then
+      echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
+      mkdir -p "$VENDOR_OUT"
+      $CARGO_CMD vendor \
+        --manifest-path "$MANIFEST" \
+        --sync "$ROOT_MINIEXTENDR_REPO/Cargo.toml" \
+        --sync "$ROOT_MINIEXTENDR_REPO/miniextendr-bench/Cargo.toml" \
+        "$VENDOR_OUT"
+      if test $? -ne 0; then
+        echo "configure: error: cargo vendor failed" >&2
+        exit 1
+      fi
+      echo "$_new" > "$STAMP"
+    else
+      echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
+    fi
+  fi
+ ;;
+    "patch-staticlib-name":C)
+          if test "$NOT_CRAN" = "true"; then
+    _pkgid_flags="--color=never"
+  else
+    _pkgid_flags="--offline --color=never"
+  fi
+  _pkgid_output=`$CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
+  _pkgid_status=$?
+  if test $_pkgid_status -ne 0; then
+    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
+    echo "configure: cargo pkgid output: $_pkgid_output" >&2
+    exit 1
+  fi
+  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | "$SED" 's/.*#\([^@]*\)@.*/\1/' | tr '-' '_'`
+  if test -z "$REAL_STATICLIB_NAME"; then
+    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
+    exit 1
+  fi
+  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
+
+    for f in src/Makevars src/rust/document.rs; do
+    if test -f "$f"; then
+      "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    fi
+  done
  ;;
 
   esac

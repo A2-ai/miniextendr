@@ -1,0 +1,9 @@
+error: missing `mod <name>`
+ --> tests/ui/module_missing_mod.rs:5:1
+  |
+5 | / miniextendr_module! {
+6 | |     fn some_function;
+7 | | }
+  | |_^
+  |
+  = note: this error originates in the macro `miniextendr_module` (in Nightly builds, run with -Z macro-backtrace for more info)
