@@ -153,8 +153,8 @@ unsafe fn init_r_once() {
 unsafe fn init_fixtures_once() {
     let _ = FIXTURES.get_or_init(|| unsafe {
         use miniextendr_api::ffi::{
-            Rf_allocVector, Rf_mkCharLenCE, Rf_protect, SET_STRING_ELT,
-            INTEGER, REAL, LOGICAL, RAW, SEXPTYPE,
+            INTEGER, LOGICAL, RAW, REAL, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
+            SET_STRING_ELT, SEXPTYPE,
         };
 
         // UTF-8 string.

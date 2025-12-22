@@ -135,7 +135,9 @@ pub struct RAllocator;
 
 unsafe impl GlobalAlloc for RAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
-        sendable_data_ptr_get(with_r_thread_or_inline(move || unsafe { alloc_main_thread(layout) }))
+        sendable_data_ptr_get(with_r_thread_or_inline(move || unsafe {
+            alloc_main_thread(layout)
+        }))
     }
 
     unsafe fn dealloc(&self, data: *mut u8, _layout: Layout) {
@@ -311,7 +313,9 @@ unsafe fn realloc_main_thread(
         return sendable_data_ptr_null();
     }
 
-    unsafe { ptr::copy_nonoverlapping(old, sendable_data_ptr_get(new_ptr), old_size.min(new_size)) };
+    unsafe {
+        ptr::copy_nonoverlapping(old, sendable_data_ptr_get(new_ptr), old_size.min(new_size))
+    };
     unsafe { release(preserve_tag) }; // Free old allocation
 
     new_ptr

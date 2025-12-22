@@ -150,8 +150,7 @@ where
             .clone();
 
         // Create type-erased work that boxes the result
-        let work: MainThreadWork =
-            Sendable(Box::new(move || Box::new(f()) as Box<dyn Any + Send>));
+        let work: MainThreadWork = Sendable(Box::new(move || Box::new(f()) as Box<dyn Any + Send>));
 
         // Send work request to main thread
         tx.send(WorkerMessage::WorkRequest(work))

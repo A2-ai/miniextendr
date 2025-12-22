@@ -377,12 +377,15 @@ impl ParsedMethod {
         if receiver != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
             return Err(syn::Error::new(
                 item.sig.ident.span(),
-                "cannot specify default for self parameter in defaults(...)"
+                "cannot specify default for self parameter in defaults(...)",
             ));
         }
 
         // Validate: all defaults reference existing parameters
-        let param_names: std::collections::HashSet<String> = item.sig.inputs.iter()
+        let param_names: std::collections::HashSet<String> = item
+            .sig
+            .inputs
+            .iter()
             .filter_map(|input| {
                 if let syn::FnArg::Typed(pat_type) = input
                     && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
@@ -394,7 +397,9 @@ impl ParsedMethod {
             })
             .collect();
 
-        let invalid_params: Vec<String> = method_attrs.defaults.keys()
+        let invalid_params: Vec<String> = method_attrs
+            .defaults
+            .keys()
             .filter(|key| *key != "self" && !param_names.contains(*key))
             .cloned()
             .collect();
@@ -405,7 +410,7 @@ impl ParsedMethod {
                 format!(
                     "defaults(...) references non-existent parameter(s): {}",
                     invalid_params.join(", ")
-                )
+                ),
             ));
         }
 

@@ -1,13 +1,12 @@
 //! Integration tests for TryFromSexp conversions.
 
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
-use miniextendr_api::from_r::{CoercedSexpError, TryFromSexp};
-use miniextendr_api::ffi::{
-    INTEGER, LOGICAL, RAW, R_NaString, R_xlen_t, Rf_ScalarInteger, Rf_ScalarLogical,
-    Rf_ScalarReal, Rf_allocVector, Rf_mkChar, Rf_protect, Rf_unprotect,
-    SET_STRING_ELT, SEXP, SEXPTYPE,
-};
 use miniextendr_api::coerce::Coerced;
+use miniextendr_api::ffi::{
+    INTEGER, LOGICAL, R_NaString, R_xlen_t, RAW, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal,
+    Rf_allocVector, Rf_mkChar, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
+};
+use miniextendr_api::from_r::{CoercedSexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::CString;
 use std::sync::Once;
@@ -61,7 +60,8 @@ unsafe fn make_int_vec(values: &[i32], guard: &mut ProtectCount) -> SEXP {
 unsafe fn make_real_vec(values: &[f64], guard: &mut ProtectCount) -> SEXP {
     let len = values.len() as R_xlen_t;
     let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::REALSXP, len)) };
-    let slice = unsafe { std::slice::from_raw_parts_mut(miniextendr_api::ffi::REAL(sexp), values.len()) };
+    let slice =
+        unsafe { std::slice::from_raw_parts_mut(miniextendr_api::ffi::REAL(sexp), values.len()) };
     slice.copy_from_slice(values);
     sexp
 }

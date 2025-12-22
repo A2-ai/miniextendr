@@ -570,7 +570,7 @@ pub fn miniextendr(
         .attrs
         .retain(|attr| !attr.path().is_ident("miniextendr"));
     let original_item = original_item;
-    
+
     // Generate doc comment linking to C wrapper and R wrapper constant
     let fn_r_wrapper_doc = format!(
         "See [`{}`] for C wrapper, [`{}`] for R wrapper.",

@@ -15,9 +15,9 @@
 //! - `misc_tests`: Miscellaneous test functions
 //! - `nonapi`: Feature-gated tests requiring nonapi feature
 
+use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::from_r::TryFromSexp;
-use miniextendr_api::IntoR;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules

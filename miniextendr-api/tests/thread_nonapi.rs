@@ -3,7 +3,7 @@
 #![cfg(feature = "nonapi")]
 
 use miniextendr_api::thread::{
-    get_stack_config, is_stack_checking_disabled, with_stack_checking_disabled, StackCheckGuard,
+    StackCheckGuard, get_stack_config, is_stack_checking_disabled, with_stack_checking_disabled,
 };
 use std::sync::Once;
 

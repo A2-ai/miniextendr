@@ -2,8 +2,8 @@
 //!
 //! Measures the cost of converting Rust types to R SEXP values.
 
-use miniextendr_api::ffi::SEXP;
 use miniextendr_api::IntoR;
+use miniextendr_api::ffi::SEXP;
 use miniextendr_bench::SIZES;
 
 fn main() {
@@ -111,7 +111,15 @@ fn slice_f64(bencher: divan::Bencher, n: usize) {
 use miniextendr_api::ffi::RLogical;
 
 fn make_logical_vec(n: usize) -> Vec<RLogical> {
-    (0..n).map(|i| if i % 2 == 0 { RLogical::TRUE } else { RLogical::FALSE }).collect()
+    (0..n)
+        .map(|i| {
+            if i % 2 == 0 {
+                RLogical::TRUE
+            } else {
+                RLogical::FALSE
+            }
+        })
+        .collect()
 }
 
 #[divan::bench(args = SIZES)]
@@ -218,8 +226,7 @@ fn vec_string(n: usize) -> SEXP {
 fn make_str_vec(n: usize) -> Vec<&'static str> {
     // Use a static slice to avoid lifetime issues
     static ITEMS: [&str; 10] = [
-        "alpha", "beta", "gamma", "delta", "epsilon",
-        "zeta", "eta", "theta", "iota", "kappa"
+        "alpha", "beta", "gamma", "delta", "epsilon", "zeta", "eta", "theta", "iota", "kappa",
     ];
     (0..n).map(|i| ITEMS[i % ITEMS.len()]).collect()
 }

@@ -90,21 +90,21 @@
 //!
 //! Each submodule contains a detailed plan for its bench cases.
 
-pub mod harness;
-pub mod ffi_calls;
-pub mod sexp_ext;
-pub mod into_r;
-pub mod from_r;
-pub mod strings;
-pub mod coerce;
+pub mod allocator;
 pub mod altrep;
 pub mod altrep_iter;
+pub mod coerce;
+pub mod connections;
 pub mod externalptr;
+pub mod ffi_calls;
+pub mod from_r;
+pub mod harness;
+pub mod into_r;
 pub mod preserve;
+pub mod rayon;
+pub mod rffi_checked;
+pub mod sexp_ext;
+pub mod strings;
 pub mod unwind_protect;
 pub mod worker;
-pub mod allocator;
-pub mod rayon;
-pub mod connections;
 pub mod wrappers;
-pub mod rffi_checked;

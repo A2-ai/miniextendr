@@ -2,8 +2,8 @@
 //!
 //! Measures the cost of converting R SEXP values to Rust types.
 
-use miniextendr_api::ffi;
 use miniextendr_api::TryFromSexp;
+use miniextendr_api::ffi;
 
 fn main() {
     miniextendr_bench::init();

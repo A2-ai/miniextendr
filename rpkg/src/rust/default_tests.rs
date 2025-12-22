@@ -9,7 +9,7 @@ pub fn greet(#[miniextendr(default = "\"World\"")] name: String) -> String {
 }
 
 /// Test function with default parameter.
-/// 
+///
 /// @export
 #[miniextendr]
 fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {

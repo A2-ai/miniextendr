@@ -292,7 +292,10 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         }
 
         // Validate: all defaults reference existing parameters
-        let param_names: std::collections::HashSet<String> = item.sig.inputs.iter()
+        let param_names: std::collections::HashSet<String> = item
+            .sig
+            .inputs
+            .iter()
             .filter_map(|input| {
                 if let syn::FnArg::Typed(pat_type) = input
                     && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
@@ -304,7 +307,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             })
             .collect();
 
-        let invalid_params: Vec<String> = per_param_defaults.keys()
+        let invalid_params: Vec<String> = per_param_defaults
+            .keys()
             .filter(|key| !param_names.contains(*key))
             .cloned()
             .collect();
@@ -315,7 +319,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 format!(
                     "default attribute(s) reference non-existent parameter(s): {}",
                     invalid_params.join(", ")
-                )
+                ),
             ));
         }
 

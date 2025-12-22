@@ -5,9 +5,9 @@
 //! - R-level coercion via Rf_coerceVector
 //! - Rust-level coercion via Coerce/TryCoerce traits
 
+use miniextendr_api::TryFromSexp;
 use miniextendr_api::coerce::{Coerce, TryCoerce};
 use miniextendr_api::ffi::{self, SEXPTYPE};
-use miniextendr_api::TryFromSexp;
 use miniextendr_bench::SIZES;
 
 fn main() {
@@ -137,10 +137,7 @@ fn vec_real_to_int_rust_coerce(size_idx: usize) {
     let sexp = fixtures().real_vec(size_idx);
     let slice: &[f64] = TryFromSexp::try_from_sexp(sexp).unwrap();
     // Manual coercion since TryCoerce doesn't have blanket slice impl
-    let coerced: Vec<i32> = slice
-        .iter()
-        .map(|&x| x.try_coerce().unwrap())
-        .collect();
+    let coerced: Vec<i32> = slice.iter().map(|&x| x.try_coerce().unwrap()).collect();
     divan::black_box(coerced);
 }
 
@@ -228,10 +225,7 @@ fn rust_only_i32_to_f64(n: usize) {
 #[divan::bench(args = SIZES)]
 fn rust_only_f64_to_i32(n: usize) {
     let data: Vec<f64> = (0..n).map(|i| i as f64).collect();
-    let coerced: Vec<i32> = data
-        .iter()
-        .map(|&x| x.try_coerce().unwrap())
-        .collect();
+    let coerced: Vec<i32> = data.iter().map(|&x| x.try_coerce().unwrap()).collect();
     divan::black_box(coerced);
 }
 
