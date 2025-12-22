@@ -9,5 +9,5 @@
 //! - `into_raw` and reclaim cost
 //!
 //! Parameters:
-//! - small vs large payload types (e.g., i32 vs Vec<i32>)
+//! - small vs large payload types (e.g., i32 vs `Vec<i32>`)
 //! - type-erased vs typed external pointers

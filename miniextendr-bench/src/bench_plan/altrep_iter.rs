@@ -6,9 +6,9 @@
 //! - `materialize` (force full realization)
 //! - `get_region` (bulk read)
 //! - `coerce_variants` (IterIntCoerce, IterRealCoerce, bool->int)
-//! - `option_iterators` (Option<T> -> NA)
+//! - `option_iterators` (`Option<T>` -> NA)
 //!
 //! Compare:
-//! - iterator-backed vs pre-materialized Vec<T>
+//! - iterator-backed vs pre-materialized `Vec<T>`
 //! - ExactSizeIterator vs explicit length
 //! - cache hit vs miss performance

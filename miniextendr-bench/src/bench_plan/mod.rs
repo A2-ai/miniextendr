@@ -61,7 +61,7 @@
 //! - UTF-8 and Latin-1 CHARSXP and STRSXP fixtures (already in lib.rs).
 //! - Pre-allocated vectors for each type/size matrix (INTSXP, REALSXP,
 //!   LGLSXP, RAWSXP, STRSXP, VECSXP).
-//! - Rust-side Vec<T> inputs mirroring the same sizes.
+//! - Rust-side `Vec<T>` inputs mirroring the same sizes.
 //! - Named list fixtures for map conversions.
 //! - ExternalPtr fixtures for tagging/protection tests.
 //! - ALTREP class fixtures for each data type and iterator variant.

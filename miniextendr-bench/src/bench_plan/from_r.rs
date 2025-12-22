@@ -4,23 +4,23 @@
 //!
 //! 1) `scalars`
 //!    - i32, f64, bool, Rboolean
-//!    - Option<T> (NA handling)
+//!    - `Option<T>` (NA handling)
 //!
 //! 2) `slices`
 //!    - &'static [i32], &'static [f64], &'static [u8]
 //!    - Compare to manual pointer access + slice creation
 //!
 //! 3) `vectors`
-//!    - Vec<String> (NA -> empty string)
-//!    - Vec<Option<String>> (NA -> None)
-//!    - Vec<Option<i32/f64/bool>>
+//!    - `Vec<String>` (NA -> empty string)
+//!    - `Vec<Option<String>>` (NA -> None)
+//!    - `Vec<Option<i32/f64/bool>>`
 //!
 //! 4) `collections`
-//!    - HashSet<T>, BTreeSet<T> for native types
-//!    - HashMap<String, V> and BTreeMap<String, V> from named lists
+//!    - `HashSet<T>`, `BTreeSet<T>` for native types
+//!    - `HashMap<String, V>` and `BTreeMap<String, V>` from named lists
 //!
 //! 5) `coerced`
-//!    - Coerced<T, R> for numeric widening/narrowing
+//!    - `Coerced<T, R>` for numeric widening/narrowing
 //!    - Error path measurement (overflow, precision loss)
 //!
 //! Parameters:

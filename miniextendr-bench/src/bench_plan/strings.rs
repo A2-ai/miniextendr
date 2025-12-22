@@ -7,12 +7,12 @@
 //!    - Rf_translateCharUTF8 (UTF-8, Latin-1, bytes)
 //!
 //! 2) `strsxp_to_string`
-//!    - TryFromSexp<String> from STRSXP
-//!    - Vec<String> from STRSXP
+//!    - `TryFromSexp<String>` from STRSXP
+//!    - `Vec<String>` from STRSXP
 //!
 //! 3) `option_strings`
-//!    - Option<String> from NA vs empty
-//!    - Vec<Option<String>> across NA densities
+//!    - `Option<String>` from NA vs empty
+//!    - `Vec<Option<String>>` across NA densities
 //!
 //! 4) `roundtrip`
 //!    - Rust String -> SEXP -> String

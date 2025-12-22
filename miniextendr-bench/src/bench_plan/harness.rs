@@ -16,7 +16,7 @@
 //!
 //! 3) `Fixtures` struct
 //!    - Pre-allocated R vectors for each type and size class.
-//!    - Matching Rust Vec<T> inputs for IntoR benchmarks.
+//!    - Matching Rust `Vec<T>` inputs for IntoR benchmarks.
 //!    - Named lists for map conversion benches.
 //!    - ExternalPtr fixtures (typed and type-erased).
 //!    - ALTREP classes for data and iterator-backed variants.
