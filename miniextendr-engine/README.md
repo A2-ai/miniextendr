@@ -1,6 +1,6 @@
 # miniextendr-engine
 
-Standalone R embedding engine for Rust binaries/tests.
+Standalone R embedding engine for Rust binaries and tests.
 
 This crate centralizes:
 - Linking to `libR` (via `build.rs`).
@@ -9,6 +9,17 @@ This crate centralizes:
 
 > Note: This crate uses **non-API** R internals (`Rembedded.h`,
 > `Rinterface.h`). It is **not** intended for use inside R packages.
+
+## When to use
+
+- Rust-only binaries that need to embed R.
+- Integration tests for crates that call into R.
+- Benchmarks or tooling that want full control over R initialization.
+
+## When not to use
+
+- Code that will be built into an R package shared library.
+- CRAN-facing packages (see Publishing to CRAN below).
 
 ## Usage
 
@@ -52,7 +63,26 @@ This checks the C stack markers set by `Rf_initialize_R`.
 - R installed and `R` available on PATH.
 - System linker able to link against `libR` (handled by `build.rs`).
 
-## Crate status
+## Publishing to CRAN
 
-This crate is intentionally small and low‑level; most user‑facing functionality
-lives in `miniextendr-api` and `miniextendr-macros`.
+This crate **must not** be used by an R package that is intended for CRAN. It
+relies on non-API R internals and performs embedding, which is not appropriate
+inside an R process.
+
+Acceptable uses in a CRAN workflow:
+- As a **dev-dependency** for Rust tests or benchmarks that run outside the R
+  package build.
+- For **integration tests** executed by developers (not during CRAN checks).
+
+For CRAN packages, use `miniextendr-api` and `miniextendr-macros` instead, and
+keep the `nonapi` feature disabled.
+
+## Maintainer
+
+- Keep `build.rs` in sync with R installation behavior across platforms.
+- Verify the initialization sequence against current R sources before changing
+  any embedding logic.
+- Update `r_initialized_sentinel()` if R changes how it initializes stack
+  markers.
+- Keep `ENGINE.md` current when behavior or rationale changes.
+- Ensure no `Rf_endEmbeddedR` is called in Drop (non-reentrant cleanup risk).

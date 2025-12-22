@@ -19,3 +19,15 @@ cargo bench --bench translate
 - Requires R installed and available on PATH.
 - Uses `divan` as the benchmark harness.
 - Benchmark intent and methodology are described in `ENGINE.md`.
+
+## Publishing to CRAN
+
+This crate is **not** part of any R package build and should never be shipped
+in a CRAN tarball. It embeds R and is purely for developer benchmarking.
+
+## Maintainer
+
+- Keep benchmarks aligned with current conversion paths in `miniextendr-api`.
+- Update any fixture sizes or data if performance goals change.
+- Re-run benchmarks after any substantial FFI or conversion changes.
+- Ensure `miniextendr-engine` remains the only embedding dependency.
