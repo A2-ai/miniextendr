@@ -39,6 +39,8 @@ pub struct Fixtures {
     real_vecs: [SexpAddr; 5],
     lgl_vecs: [SexpAddr; 5],
     raw_vecs: [SexpAddr; 5],
+    // STRSXP with single string element of various sizes
+    str_vecs: [SexpAddr; 5],
 }
 
 impl Fixtures {
@@ -84,6 +86,12 @@ impl Fixtures {
     #[inline(always)]
     pub fn raw_vec(self, size_idx: usize) -> SEXP {
         SEXP::from_ptr((self.raw_vecs[size_idx] as *const ()).cast_mut().cast())
+    }
+
+    /// Get pre-allocated STRSXP(1) with string of given size index.
+    #[inline(always)]
+    pub fn str_vec(self, size_idx: usize) -> SEXP {
+        SEXP::from_ptr((self.str_vecs[size_idx] as *const ()).cast_mut().cast())
     }
 }
 
@@ -212,6 +220,16 @@ unsafe fn init_fixtures_once() {
             raw_vecs[i] = raw_vec.as_ptr() as SexpAddr;
         }
 
+        // String vectors: STRSXP(1) with string of various lengths
+        let mut str_vecs = [0usize; 5];
+        for (i, &size) in SIZES.iter().enumerate() {
+            let s: String = "x".repeat(size);
+            let strsxp = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
+            let charsxp = Rf_mkCharLenCE(s.as_ptr().cast::<c_char>(), size as i32, ffi::CE_UTF8);
+            SET_STRING_ELT(strsxp, 0, charsxp);
+            str_vecs[i] = strsxp.as_ptr() as SexpAddr;
+        }
+
         Fixtures {
             utf8_charsxp: utf8_charsxp.as_ptr() as SexpAddr,
             latin1_charsxp: latin1_charsxp.as_ptr() as SexpAddr,
@@ -221,6 +239,7 @@ unsafe fn init_fixtures_once() {
             real_vecs,
             lgl_vecs,
             raw_vecs,
+            str_vecs,
         }
     });
 }

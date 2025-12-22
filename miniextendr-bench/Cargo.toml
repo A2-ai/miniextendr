@@ -35,4 +35,12 @@ harness = false
 name = "externalptr"
 harness = false
 
+[[bench]]
+name = "coerce"
+harness = false
+
+[[bench]]
+name = "strings"
+harness = false
+
 # Note: Profile is defined in workspace root Cargo.toml

@@ -738,6 +738,8 @@ unsafe extern "C-unwind" {
 
     #[doc(alias = "NA_STRING")]
     pub static R_NaString: SEXP;
+    /// Empty string CHARSXP (length 0).
+    pub static R_BlankString: SEXP;
     pub static R_NamesSymbol: SEXP;
     pub static R_DimSymbol: SEXP;
     pub static R_DimNamesSymbol: SEXP;

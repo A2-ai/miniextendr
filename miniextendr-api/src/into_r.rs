@@ -225,13 +225,12 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
 }
 
 /// Helper to convert a string slice to R CHARSXP.
-/// Uses UTF-8 encoding. Empty strings return R_BlankString equivalent.
+/// Uses UTF-8 encoding. Empty strings return R_BlankString (static, no allocation).
 #[inline]
 fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
     unsafe {
         if s.is_empty() {
-            // For empty string, still use mkCharLenCE with length 0
-            crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), 0, crate::ffi::CE_UTF8)
+            crate::ffi::R_BlankString
         } else {
             crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, crate::ffi::CE_UTF8)
         }
@@ -243,7 +242,7 @@ fn str_to_charsxp(s: &str) -> crate::ffi::SEXP {
 unsafe fn str_to_charsxp_unchecked(s: &str) -> crate::ffi::SEXP {
     unsafe {
         if s.is_empty() {
-            crate::ffi::Rf_mkCharLenCE_unchecked(s.as_ptr().cast(), 0, crate::ffi::CE_UTF8)
+            crate::ffi::R_BlankString
         } else {
             crate::ffi::Rf_mkCharLenCE_unchecked(
                 s.as_ptr().cast(),

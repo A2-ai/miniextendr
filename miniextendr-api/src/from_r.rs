@@ -23,6 +23,40 @@
 
 use crate::ffi::{RLogical, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
+// =============================================================================
+// CHARSXP to &str conversion helpers
+// =============================================================================
+
+/// Convert CHARSXP to `&str` using LENGTH (O(1)) instead of strlen (O(n)).
+///
+/// # Safety
+///
+/// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
+/// - R must guarantee UTF-8 encoding (CE_UTF8 or ASCII).
+/// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
+#[inline]
+unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
+    unsafe {
+        let ptr = crate::ffi::R_CHAR(charsxp);
+        let len = crate::ffi::LENGTH(charsxp) as usize;
+        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        // R's CE_UTF8 strings are guaranteed valid UTF-8, so skip validation
+        std::str::from_utf8_unchecked(bytes)
+    }
+}
+
+/// Unchecked version of [`charsxp_to_str`].
+#[inline]
+unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
+    unsafe {
+        let ptr = crate::ffi::R_CHAR_unchecked(charsxp);
+        // LENGTH is a simple macro, no thread check needed
+        let len = crate::ffi::LENGTH(charsxp) as usize;
+        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        std::str::from_utf8_unchecked(bytes)
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct SexpTypeError {
     pub expected: SEXPTYPE,
@@ -386,7 +420,7 @@ impl TryFromSexp for &'static str {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{R_CHAR, STRING_ELT};
+        use crate::ffi::STRING_ELT;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -409,34 +443,21 @@ impl TryFromSexp for &'static str {
         // Get the CHARSXP at index 0
         let charsxp = unsafe { STRING_ELT(sexp, 0) };
 
-        // Check for NA_STRING
+        // Check for NA_STRING or R_BlankString
         if charsxp == unsafe { crate::ffi::R_NaString } {
-            // Return empty string for NA (or we could return an error)
+            return Ok("");
+        }
+        if charsxp == unsafe { crate::ffi::R_BlankString } {
             return Ok("");
         }
 
-        // Get the C string pointer - R_CHAR returns UTF-8 for ASCII/UTF-8 strings
-        let c_str = unsafe { R_CHAR(charsxp) };
-        if c_str.is_null() {
-            return Ok("");
-        }
-
-        // Convert to Rust str
-        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str.to_str().map_err(|_| {
-            // If not valid UTF-8, this is an error
-            // In practice, R strings should be valid after R_CHAR
-            SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual: SEXPTYPE::STRSXP,
-            }
-            .into()
-        })
+        // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
+        Ok(unsafe { charsxp_to_str(charsxp) })
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::ffi::{R_CHAR_unchecked, STRING_ELT_unchecked};
+        use crate::ffi::STRING_ELT_unchecked;
 
         let actual = sexp.type_of();
         if actual != SEXPTYPE::STRSXP {
@@ -459,26 +480,16 @@ impl TryFromSexp for &'static str {
         // Get the CHARSXP at index 0
         let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
 
-        // Check for NA_STRING
+        // Check for NA_STRING or R_BlankString
         if charsxp == unsafe { crate::ffi::R_NaString } {
             return Ok("");
         }
-
-        // Get the C string pointer
-        let c_str = unsafe { R_CHAR_unchecked(charsxp) };
-        if c_str.is_null() {
+        if charsxp == unsafe { crate::ffi::R_BlankString } {
             return Ok("");
         }
 
-        // Convert to Rust str
-        let rust_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
-        rust_str.to_str().map_err(|_| {
-            SexpTypeError {
-                expected: SEXPTYPE::STRSXP,
-                actual: SEXPTYPE::STRSXP,
-            }
-            .into()
-        })
+        // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
+        Ok(unsafe { charsxp_to_str_unchecked(charsxp) })
     }
 }
 
