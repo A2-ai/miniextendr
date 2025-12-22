@@ -141,6 +141,32 @@ just devtools-test
    - You must still serialize R access; R is not thread-safe.
    - See `THREADS.md` and `NONAPI.md`.
 
+## Publishing to CRAN
+
+This workspace supports CRAN-compatible packages through `rpkg/`, but only
+under the following constraints:
+
+- **Do not embed R** in a CRAN-facing package. `miniextendr-engine` is for
+  Rust-only binaries and tests, not for package shared libraries.
+- **Avoid non-API symbols** unless you are prepared for CRAN checks to flag
+  them (see `NONAPI.md`). Keep `nonapi` disabled by default.
+- **Vendor Rust dependencies** into `rpkg/src/vendor/` and include them in the
+  source tarball.
+- **Commit generated artifacts** required by CRAN: `rpkg/configure`,
+  `rpkg/config.guess`, `rpkg/config.sub`, and `rpkg/R/miniextendr_wrappers.R`.
+- **Run `R CMD check`** on the release tarball before submission.
+
+See `rpkg/README.md` for the complete CRAN workflow.
+
+## Maintainer
+
+- Keep `NONAPI.md` current when adding or removing non-API symbol usage.
+- Regenerate `rpkg/configure` whenever `rpkg/configure.ac` changes.
+- Update `rpkg/config.guess` and `rpkg/config.sub` from GNU config when needed
+  (see `rpkg/README.md`).
+- Ensure wrapper generation remains in sync with macro behavior.
+- Run CI/local checks across Rust and R tooling before releases.
+
 ## Notes on release builds
 
 The workspace keeps `debug-assertions = true` in the release profile (see

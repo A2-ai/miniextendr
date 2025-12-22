@@ -10,8 +10,10 @@ This package embeds a Rust crate under `src/rust/` and builds it during
 `R CMD INSTALL`. The key stages are:
 
 1) `bootstrap.R` (pre-build, configured by `Config/build/bootstrap: TRUE`)
-   - Syncs `miniextendr-api` and `miniextendr-macros` into `src/vendor/`.
-   - Patches workspace inheritance in vendored Cargo.toml files.
+   - Only runs `rpkg/configure` and stops. It is intentionally simple.
+   - Exists to support monorepos where the R package lives alongside the Rust
+     crate it exposes to R (i.e., the package is a subdirectory of the Rust
+     workspace).
 
 2) `configure`
    - Generated from `configure.ac` via `autoconf`.
