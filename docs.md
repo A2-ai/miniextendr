@@ -38,7 +38,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 │                      miniextendr-macros                             │
 │  • #[miniextendr] - generates C wrappers + R wrappers               │
 │  • miniextendr_module! - registers functions with R                 │
-│  • #[r_ffi_checked] - thread-checked R FFI wrappers                 │
+│  • #[r_ffi_checked] - main-thread routed R FFI wrappers             │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   ▼
@@ -110,15 +110,15 @@ R_UnwindProtect(...)       // Catch R errors with cleanup
 
 #### Thread Safety
 
-Most R FFI functions have checked wrappers that panic if called from a non-main thread when
-`cfg(debug_assertions)` is enabled (this repo keeps `debug-assertions = true` in the release profile):
+Most R FFI functions have wrappers that route calls to the R main thread when
+invoked from a non-main thread (requires a worker context):
 
 ```rust
-// Checked (panics if wrong thread)
-Rf_error(fmt, arg)
+// Checked (routes to main thread if needed)
+Rf_allocVector(t, n)
 
 // Unchecked (internal use)
-Rf_error_unchecked(fmt, arg)
+Rf_allocVector_unchecked(t, n)
 ```
 
 #### Internal Traits
@@ -643,7 +643,8 @@ Generates:
 
 ### #[r_ffi_checked]
 
-Applied to extern blocks to generate thread-checked wrappers:
+Applied to extern blocks to generate main-thread routed wrappers (requires a
+worker context when called off the main thread):
 
 ```rust
 #[r_ffi_checked]
@@ -651,10 +652,13 @@ unsafe extern "C-unwind" {
     pub fn Rf_allocVector(t: SEXPTYPE, n: R_xlen_t) -> SEXP;
 }
 
-// Generates (when cfg(debug_assertions) is enabled):
+// Generates:
 pub unsafe fn Rf_allocVector(t: SEXPTYPE, n: R_xlen_t) -> SEXP {
-    debug_assert!(is_r_main_thread(), "...");
-    Rf_allocVector_unchecked(t, n)
+    if is_r_main_thread() {
+        Rf_allocVector_unchecked(t, n)
+    } else {
+        with_r_thread(move || unsafe { Rf_allocVector_unchecked(t, n) })
+    }
 }
 ```
 

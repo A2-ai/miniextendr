@@ -183,14 +183,15 @@ pub use miniextendr_macros::miniextendr;
 /// ```
 pub use miniextendr_macros::miniextendr_module;
 
-/// Generate thread-checked wrappers for R FFI functions.
+/// Generate main-thread routed wrappers for R FFI functions.
 ///
-/// Apply this to an `extern "C-unwind"` block to generate checked wrappers
-/// that assert we're on the main thread in debug builds.
+/// Apply this to an `extern "C-unwind"` block to generate wrappers
+/// that run on R's main thread (routing via `with_r_thread` if needed).
 ///
 /// **Limitations:**
 /// - Variadic functions and statics are passed through unchanged
-/// - Only non-variadic functions get checked wrappers
+/// - Only non-variadic functions get routed wrappers
+/// - Calling from a non-main thread without worker context will panic
 ///
 /// # Example
 ///
@@ -210,8 +211,11 @@ pub use miniextendr_macros::miniextendr_module;
 ///
 /// #[inline(always)]
 /// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
-///     debug_assert!(is_r_main_thread(), "Rf_ScalarInteger called from non-main thread");
-///     Rf_ScalarInteger_unchecked(arg1)
+///     if is_r_main_thread() {
+///         Rf_ScalarInteger_unchecked(arg1)
+///     } else {
+///         with_r_thread(move || unsafe { Rf_ScalarInteger_unchecked(arg1) })
+///     }
 /// }
 /// ```
 pub use miniextendr_macros::r_ffi_checked;

@@ -26,7 +26,7 @@ type AnyJob = Box<dyn FnOnce() + Send>;
 static JOB_TX: OnceLock<SyncSender<AnyJob>> = OnceLock::new();
 
 // Type-erased main thread work: closure that returns boxed result
-type MainThreadWork = Box<dyn FnOnce() -> Box<dyn Any + Send> + Send>;
+type MainThreadWork = Sendable<Box<dyn FnOnce() -> Box<dyn Any + Send> + 'static>>;
 
 // Response from main thread: Ok(result) or Err(panic_message)
 type MainThreadResponse = Result<Box<dyn Any + Send>, String>;
@@ -59,6 +59,16 @@ thread_local! {
 pub fn has_worker_context() -> bool {
     WORKER_TO_MAIN_TX.with(|tx_cell| tx_cell.borrow().is_some())
 }
+
+/// Wrapper to mark values as Send for main-thread routing.
+///
+/// This is only safe if the value is not accessed on the worker thread and is
+/// used exclusively on the main thread.
+#[repr(transparent)]
+#[derive(Clone, Copy)]
+pub struct Sendable<T>(pub T);
+
+unsafe impl<T> Send for Sendable<T> {}
 
 /// Check if the current thread is R's main thread.
 ///
@@ -123,7 +133,7 @@ pub fn panic_message_to_r_error(msg: String) -> ! {
 /// ```
 pub fn with_r_thread<F, R>(f: F) -> R
 where
-    F: FnOnce() -> R + Send + 'static,
+    F: FnOnce() -> R + 'static,
     R: Send + 'static,
 {
     if is_r_main_thread() {
@@ -140,7 +150,8 @@ where
             .clone();
 
         // Create type-erased work that boxes the result
-        let work: MainThreadWork = Box::new(move || Box::new(f()) as Box<dyn Any + Send>);
+        let work: MainThreadWork =
+            Sendable(Box::new(move || Box::new(f()) as Box<dyn Any + Send>));
 
         // Send work request to main thread
         tx.send(WorkerMessage::WorkRequest(work))
@@ -236,7 +247,11 @@ where
 
                 unsafe extern "C-unwind" fn trampoline(data: *mut std::ffi::c_void) -> SEXP {
                     let data = unsafe { data.cast::<CallData>().as_mut().unwrap() };
-                    let work = data.work.take().expect("trampoline: work already consumed");
+                    let work = data
+                        .work
+                        .take()
+                        .expect("trampoline: work already consumed")
+                        .0;
 
                     match catch_unwind(AssertUnwindSafe(work)) {
                         Ok(result) => {

@@ -49,31 +49,27 @@ use core::{
 /// - This is guaranteed by the `with_r_thread_or_inline` routing mechanism
 #[repr(transparent)]
 #[derive(Clone, Copy)]
-struct SendableDataPtr(*mut u8);
-
-// SAFETY: We only transmit the address between threads.
-// The actual memory is only accessed on the R main thread.
-unsafe impl Send for SendableDataPtr {}
+struct SendableDataPtr(crate::worker::Sendable<*mut u8>);
 
 impl SendableDataPtr {
     #[inline]
     const fn new(ptr: *mut u8) -> Self {
-        Self(ptr)
+        Self(crate::worker::Sendable(ptr))
     }
 
     #[inline]
     const fn get(self) -> *mut u8 {
-        self.0
+        self.0.0
     }
 
     #[inline]
     const fn is_null(self) -> bool {
-        self.0.is_null()
+        self.0.0.is_null()
     }
 
     #[inline]
     const fn null() -> Self {
-        Self(ptr::null_mut())
+        Self(crate::worker::Sendable(ptr::null_mut()))
     }
 }
 

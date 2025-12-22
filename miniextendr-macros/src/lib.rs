@@ -1004,14 +1004,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     .into()
 }
 
-/// Generate thread-checked wrappers for R FFI functions.
+/// Generate thread-routed wrappers for R FFI functions.
 ///
-/// Apply this to an `extern "C-unwind"` block to generate checked wrappers
-/// that assert we're on the main thread in debug builds.
+/// Apply this to an `extern "C-unwind"` block to generate wrappers
+/// that run on R's main thread (routing via `with_r_thread` if called
+/// from another thread).
 ///
 /// **Limitations:**
 /// - Variadic functions and statics are passed through unchanged
-/// - Only non-variadic functions get checked wrappers
+/// - Only non-variadic functions get routed wrappers
+/// - Calling from a non-main thread without worker context will panic
 ///
 /// # Example
 ///
@@ -1031,8 +1033,11 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 ///
 /// #[inline(always)]
 /// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
-///     debug_assert!(is_r_main_thread(), "Rf_ScalarInteger called from non-main thread");
-///     Rf_ScalarInteger_unchecked(arg1)
+///     if is_r_main_thread() {
+///         Rf_ScalarInteger_unchecked(arg1)
+///     } else {
+///         with_r_thread(move || unsafe { Rf_ScalarInteger_unchecked(arg1) })
+///     }
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -1098,16 +1103,32 @@ pub fn r_ffi_checked(
                         })
                         .collect();
 
-                    let wrapper = quote::quote! {
-                        #(#attrs)*
-                        #[inline(always)]
-                        #[allow(non_snake_case)]
-                        #vis unsafe fn #fn_name(#inputs) #output {
-                            #[cfg(debug_assertions)]
-                            if !::miniextendr_api::worker::is_r_main_thread() {
-                                panic!(concat!("R API `", #fn_name_str, "` called from non-main thread"));
+                    let is_never = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Never(_)));
+
+                    let wrapper = if is_never {
+                        quote::quote! {
+                            #(#attrs)*
+                            #[inline(always)]
+                            #[allow(non_snake_case)]
+                            #vis unsafe fn #fn_name(#inputs) #output {
+                                ::miniextendr_api::worker::with_r_thread(move || unsafe {
+                                    #unchecked_name(#(#arg_names),*)
+                                })
                             }
-                            #unchecked_name(#(#arg_names),*)
+                        }
+                    } else {
+                        quote::quote! {
+                            #(#attrs)*
+                            #[inline(always)]
+                            #[allow(non_snake_case)]
+                            #vis unsafe fn #fn_name(#inputs) #output {
+                                let result = ::miniextendr_api::worker::with_r_thread(move || {
+                                    ::miniextendr_api::worker::Sendable(unsafe {
+                                        #unchecked_name(#(#arg_names),*)
+                                    })
+                                });
+                                result.0
+                            }
                         }
                     };
                     checked_wrappers.push(wrapper);

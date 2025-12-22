@@ -41,7 +41,8 @@ miniextendr_module! {
 
 ### `#[r_ffi_checked]`
 
-Wraps `extern "C-unwind"` blocks with thread assertions in debug builds.
+Wraps `extern "C-unwind"` blocks with wrappers that route calls to R's main
+thread when invoked from a non-main thread (requires a worker context).
 
 ### Derives
 

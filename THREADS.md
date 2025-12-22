@@ -65,12 +65,11 @@ miniextendr-api = { version = "...", features = ["nonapi"] }
 
 ### Checked vs Unchecked R FFI
 
-Most `miniextendr_api::ffi::*` functions are **thread-checked** (via `#[r_ffi_checked]`) when
-`cfg(debug_assertions)` is enabled. Note: this repo’s workspace sets `debug-assertions = true`
-for the release profile, so don’t rely on `--release` to disable these checks.
+Most `miniextendr_api::ffi::*` functions are **main-thread routed** (via `#[r_ffi_checked]`).
+If called from a non-main thread with a worker context, they execute on R's main thread.
 
 When you intentionally call R from a non-main thread using this module, use the `*_unchecked`
-variants.
+variants if you want to bypass routing and you are certain you're on the main thread already.
 
 ### Simple Spawning: `spawn_with_r`
 

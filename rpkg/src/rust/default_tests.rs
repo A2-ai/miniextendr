@@ -3,9 +3,16 @@
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Test function with default parameter.
-/// @export
 #[miniextendr]
 pub fn greet(#[miniextendr(default = "\"World\"")] name: String) -> String {
+    format!("Hello, {}!", name)
+}
+
+/// Test function with default parameter.
+/// 
+/// @export
+#[miniextendr]
+fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }
 
@@ -30,6 +37,7 @@ pub fn with_flag(#[miniextendr(default = "FALSE")] flag: bool) -> bool {
 miniextendr_module! {
     mod default_tests;
     fn greet;
+    fn greet_hidden;
     fn add_with_defaults;
     fn with_flag;
 }

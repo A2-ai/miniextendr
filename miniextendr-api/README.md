@@ -115,9 +115,8 @@ pattern is:
 - Run Rust logic on a **worker thread** where `catch_unwind` is reliable.
 - Marshal R API calls back to the **main R thread** via `with_r_thread`.
 
-Most FFI wrappers are **thread‑checked** in debug builds (this workspace keeps
-`debug-assertions = true` in release builds too). Use `*_unchecked` variants
-only when you have explicitly arranged safe context.
+Most FFI wrappers are **main-thread routed** via `#[r_ffi_checked]`. Use
+`*_unchecked` variants only when you have explicitly arranged safe context.
 
 ### Calling R from non‑main threads (unsafe)
 

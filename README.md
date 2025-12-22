@@ -53,7 +53,7 @@ Main macros:
 - `#[miniextendr]` – exports Rust functions to R, generates wrappers and
   conversion glue.
 - `miniextendr_module!` – registers exported functions and ALTREP types.
-- `#[r_ffi_checked]` – wraps R FFI calls with thread checks in debug builds.
+- `#[r_ffi_checked]` – routes R FFI calls to the main thread when needed.
 - Derives: `ExternalPtr`, `RNativeType`.
 
 ### `miniextendr-engine`
@@ -168,7 +168,7 @@ See `rpkg/README.md` for the complete CRAN workflow.
 ## Notes on release builds
 
 The workspace keeps `debug-assertions = true` in the release profile (see
-`Cargo.toml`) so thread checks from `#[r_ffi_checked]` stay enabled.
+`Cargo.toml`) so debug-only safety checks remain enabled.
 
 ## License
 
