@@ -110,7 +110,7 @@ macro_rules! __impl_altrep_base {
 /// [`AltrepSerialize::unserialize`] and then creates a fresh ALTREP instance via
 /// `R_new_altrep(class, data1, R_NilValue)` where `data1` is an `ExternalPtr<$ty>`.
 ///
-/// This matches the proc-macro-generated `into_altrep` behavior (data is stored in `data1`,
+/// This matches the proc-macro-generated `IntoR::into_sexp` behavior (data is stored in `data1`,
 /// and `data2` is `R_NilValue`).
 #[macro_export]
 #[doc(hidden)]

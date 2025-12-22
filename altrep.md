@@ -115,7 +115,7 @@ miniextendr uses a two-layer trait design:
 │                ALTREP Class Registration                        │
 │                                                                 │
 │  struct MyClass(MyData);  // 1-field wrapper                   │
-│  MyClass::into_altrep(data) -> SEXP                            │
+│  MyClass(data).into_sexp() -> SEXP                             │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -275,7 +275,7 @@ pub struct BoxedIntsClass(Box<[i32]>);
 
 fn create_boxed(v: Vec<i32>) -> SEXP {
     let boxed: Box<[i32]> = v.into_boxed_slice();
-    unsafe { BoxedIntsClass::into_altrep(boxed) }
+    BoxedIntsClass(boxed).into_sexp()
 }
 ```
 
@@ -289,13 +289,13 @@ static DATA: [i32; 5] = [1, 2, 3, 4, 5];
 pub struct StaticIntsClass(&'static [i32]);
 
 fn create_static() -> SEXP {
-    unsafe { StaticIntsClass::into_altrep(&DATA[..]) }
+    StaticIntsClass(&DATA[..]).into_sexp()
 }
 
 // Leaked data (intentional memory leak for process lifetime)
 fn create_leaked(v: Vec<i32>) -> SEXP {
     let leaked: &'static [i32] = Box::leak(v.into_boxed_slice());
-    unsafe { StaticIntsClass::into_altrep(leaked) }
+    StaticIntsClass(leaked).into_sexp()
 }
 
 // String literals
@@ -348,7 +348,7 @@ pub struct FibonacciClass(FibonacciData);
 // 5. Create instances
 fn create_fibonacci(n: i32) -> SEXP {
     let data = FibonacciData { len: n as usize };
-    unsafe { FibonacciClass::into_altrep(data) }
+    FibonacciClass(data).into_sexp()
 }
 ```
 
@@ -356,7 +356,7 @@ The `#[miniextendr]` macro on the struct:
 
 - Registers the ALTREP class with R via `R_make_altinteger_class`
 - Installs trampolines based on `HAS_*` flags
-- Generates `into_altrep(data) -> SEXP` for instance creation
+- Implements `From<InnerData>` and `IntoR` for instance creation
 
 ### Using Standard Types Directly
 
@@ -368,7 +368,7 @@ For standard types, skip the data trait implementation:
 pub struct SimpleVecIntClass(Vec<i32>);
 
 fn create_vec_int(data: Vec<i32>) -> SEXP {
-    unsafe { SimpleVecIntClass::into_altrep(data) }
+    SimpleVecIntClass(data).into_sexp()
 }
 ```
 
@@ -480,7 +480,7 @@ pub struct ArithSeqClass(ArithSeq);
 #[miniextendr]
 fn arith_seq(from: i32, by: i32, length_out: i32) -> SEXP {
     let data = ArithSeq { start: from, step: by, len: length_out as usize };
-    unsafe { ArithSeqClass::into_altrep(data) }
+    ArithSeqClass(data).into_sexp()
 }
 
 // Register in module
@@ -663,7 +663,7 @@ impl AltrepExtractSubset for ArithSeqData {
                 step: self.step,
                 len: new_len,
             };
-            return Some(unsafe { ArithSeqClass::into_altrep(new_data) });
+            return Some(ArithSeqClass(new_data).into_sexp());
         }
 
         // For non-contiguous subsets, return None to let R handle it
@@ -837,7 +837,7 @@ test_that("my ALTREP works", {
 - [x] Bridge macros for all ALTREP types
 - [x] Built-in implementations for `Vec<T>`, `Range<T>`, `[T; N]`, `&'static [T]`
 - [x] Proc-macro ALTREP class registration
-- [x] `into_altrep()` instance creation
+- [x] `IntoR` trait for instance creation
 - [x] Trampoline generation with `HAS_*` gating
 - [x] ExternalPtr integration for data storage
 - [x] FFI bindings for all R ALTREP APIs

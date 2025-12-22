@@ -17,6 +17,7 @@
 
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::from_r::TryFromSexp;
+use miniextendr_api::IntoR;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
@@ -108,7 +109,7 @@ pub struct ConstantIntClass(pub ConstantIntData);
 #[allow(non_snake_case)]
 pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
     let data = ConstantIntData { value: 42, len: 10 };
-    ConstantIntClass::into_altrep(data)
+    ConstantIntClass(data).into_sexp()
 }
 
 // endregion
@@ -167,7 +168,7 @@ pub unsafe extern "C-unwind" fn rpkg_constant_real() -> SEXP {
         value: std::f64::consts::PI,
         len: 10,
     };
-    ConstantRealClass::into_altrep(data)
+    ConstantRealClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -214,7 +215,7 @@ fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
         step,
         len,
     };
-    ArithSeqClass::into_altrep(data)
+    ArithSeqClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -372,7 +373,7 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
         len,
         materialized: None,
     };
-    LazyIntSeqClass::into_altrep(data)
+    LazyIntSeqClass(data).into_sexp()
 }
 
 /// Check if a LazyIntSeq has been materialized
@@ -446,7 +447,7 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, st
         len,
         materialized: None,
     };
-    LazyIntSeqClass::into_altrep(data)
+    LazyIntSeqClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -490,7 +491,7 @@ fn constant_logical(value: i32, n: i32) -> SEXP {
         value: logical_value,
         len: n as usize,
     };
-    ConstantLogicalClass::into_altrep(data)
+    ConstantLogicalClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -554,7 +555,7 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
         data.push(Logical::from_r_int(unsafe { *src.add(i) }));
     }
 
-    LogicalVecClass::into_altrep(LogicalVecData { data })
+    LogicalVecClass(LogicalVecData { data }).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -596,7 +597,7 @@ fn lazy_string(prefix: &str, n: i32) -> SEXP {
         prefix: prefix.to_string(),
         len: n as usize,
     };
-    LazyStringClass::into_altrep(data)
+    LazyStringClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -636,7 +637,7 @@ fn repeating_raw(pattern: &[u8], n: i32) -> SEXP {
         pattern: pattern.to_vec(),
         total_len: n as usize,
     };
-    RepeatingRawClass::into_altrep(data)
+    RepeatingRawClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -700,7 +701,7 @@ pub struct UnitCircleClass(pub UnitCircleData);
 #[miniextendr]
 pub fn unit_circle(n: i32) -> SEXP {
     let data = UnitCircleData { n: n as usize };
-    UnitCircleClass::into_altrep(data)
+    UnitCircleClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -723,7 +724,7 @@ pub unsafe extern "C-unwind" fn rpkg_simple_vec_int(x: SEXP) -> SEXP {
     for i in 0..n {
         data.push(unsafe { *src.add(i) });
     }
-    SimpleVecIntClass::into_altrep(data)
+    SimpleVecIntClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -764,7 +765,7 @@ pub struct SimpleVecStringClass(pub StringVecData);
 pub unsafe extern "C-unwind" fn rpkg_altrep_from_strings(x: SEXP) -> SEXP {
     let data: Vec<Option<String>> = TryFromSexp::try_from_sexp(x)
         .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_from_strings: {err}"));
-    SimpleVecStringClass::into_altrep(StringVecData { data })
+    SimpleVecStringClass(StringVecData { data }).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -788,7 +789,7 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_raw(x: SEXP) -> SEXP {
     for i in 0..n {
         data.push(unsafe { *src.add(i) });
     }
-    SimpleVecRawClass::into_altrep(data)
+    SimpleVecRawClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -815,7 +816,7 @@ pub unsafe extern "C-unwind" fn rpkg_inferred_vec_real(x: SEXP) -> SEXP {
     for i in 0..n {
         data.push(unsafe { *src.add(i) });
     }
-    InferredVecRealClass::into_altrep(data)
+    InferredVecRealClass(data).into_sexp()
 }
 
 /// # Safety
@@ -841,7 +842,7 @@ pub struct BoxedIntsClass(pub Box<[i32]>);
 #[miniextendr]
 pub fn boxed_ints(n: i32) -> SEXP {
     let data: Box<[i32]> = (1..=n).collect::<Vec<_>>().into_boxed_slice();
-    BoxedIntsClass::into_altrep(data)
+    BoxedIntsClass(data).into_sexp()
 }
 
 // region: StaticInts: &'static [i32] wrapper (static slice example)
@@ -859,7 +860,7 @@ pub struct StaticIntsClass(pub &'static [i32]);
 /// This data lives in the binary and never needs to be freed.
 #[miniextendr]
 pub fn static_ints() -> SEXP {
-    StaticIntsClass::into_altrep(&STATIC_INTS[..])
+    StaticIntsClass(&STATIC_INTS[..]).into_sexp()
 }
 
 /// Create an ALTREP backed by leaked heap data (intentional memory leak).
@@ -869,7 +870,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
     // Create data and leak it to get 'static lifetime
     let data: Vec<i32> = (1..=n).collect();
     let leaked: &'static [i32] = Box::leak(data.into_boxed_slice());
-    StaticIntsClass::into_altrep(leaked)
+    StaticIntsClass(leaked).into_sexp()
 }
 
 // endregion
@@ -890,7 +891,7 @@ pub struct StaticStringsClass(pub &'static [&'static str]);
 /// Create a string ALTREP backed by static data.
 #[miniextendr]
 pub fn static_strings() -> SEXP {
-    StaticStringsClass::into_altrep(&STATIC_STRINGS[..])
+    StaticStringsClass(&STATIC_STRINGS[..]).into_sexp()
 }
 
 // endregion
@@ -950,7 +951,7 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
 
     let len = unsafe { Rf_xlength(x) } as usize;
     let data = ListData { list: x, len };
-    ListDataClass::into_altrep(data)
+    ListDataClass(data).into_sexp()
 }
 
 // region: Nonapi module for lean-stack thread tests

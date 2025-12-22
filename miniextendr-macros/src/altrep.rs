@@ -224,7 +224,7 @@ pub fn expand_altrep_struct(
     // For standard types like Vec<i32>, Vec<f64>, these are provided by miniextendr_api.
     // For custom types, users must implement the data traits themselves.
 
-    // Generate helper methods and TryFromSexp wrappers
+    // Generate From, IntoR, and TryFromSexp wrappers
     let ref_ident = quote::format_ident!("{}Ref", ident);
     let mut_ident = quote::format_ident!("{}Mut", ident);
     let data_helper_impl: proc_macro2::TokenStream = {
@@ -237,20 +237,32 @@ pub fn expand_altrep_struct(
             "Mutable reference wrapper for [`{}`] ALTREP data. Implements `TryFromSexp`, `Deref`, and `DerefMut`.",
             ident
         );
+        let from_doc = format!(
+            "Create a [`{}`] ALTREP wrapper from the inner data type.",
+            ident
+        );
+        let into_r_doc = format!(
+            "Convert [`{}`] to an R ALTREP SEXP.\n\nIn debug builds, asserts that we're on R's main thread.",
+            ident
+        );
         quote::quote! {
-            impl #ident {
-                /// Create an ALTREP SEXP from the given data.
-                ///
-                /// This is the safe version that checks we're on the R main thread in debug builds.
-                /// Use [`Self::into_altrep_unchecked`] if you need to skip the check.
-                pub fn into_altrep(data: #data_ty) -> ::miniextendr_api::ffi::SEXP {
+            #[doc = #from_doc]
+            impl From<#data_ty> for #ident {
+                fn from(data: #data_ty) -> Self {
+                    Self(data)
+                }
+            }
+
+            #[doc = #into_r_doc]
+            impl ::miniextendr_api::IntoR for #ident {
+                fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                     use ::miniextendr_api::altrep_registration::RegisterAltrep;
                     use ::miniextendr_api::externalptr::ExternalPtr;
                     use ::miniextendr_api::ffi::altrep::R_new_altrep;
                     use ::miniextendr_api::ffi::R_NilValue;
                     use ::miniextendr_api::ffi::{Rf_protect, Rf_unprotect};
 
-                    let ext_ptr = ExternalPtr::new(data);
+                    let ext_ptr = ExternalPtr::new(self.0);
                     let cls = Self::get_or_init_class();
                     // Protect data1 during R_new_altrep to prevent GC from collecting it.
                     // R_new_altrep allocates and can trigger GC.
@@ -261,29 +273,6 @@ pub fn expand_altrep_struct(
                         Rf_unprotect(1);
                         altrep
                     }
-                }
-
-                /// Create an ALTREP SEXP from the given data (unchecked).
-                ///
-                /// # Safety
-                ///
-                /// Must be called from the R main thread. No runtime check is performed.
-                pub unsafe fn into_altrep_unchecked(data: #data_ty) -> ::miniextendr_api::ffi::SEXP {
-                    use ::miniextendr_api::altrep_registration::RegisterAltrep;
-                    use ::miniextendr_api::externalptr::ExternalPtr;
-                    use ::miniextendr_api::ffi::altrep::R_new_altrep_unchecked;
-                    use ::miniextendr_api::ffi::R_NilValue;
-                    use ::miniextendr_api::ffi::{Rf_protect_unchecked, Rf_unprotect_unchecked};
-
-                    let ext_ptr = ExternalPtr::new(data);
-                    let cls = Self::get_or_init_class();
-                    // Protect data1 during R_new_altrep to prevent GC from collecting it.
-                    // R_new_altrep allocates and can trigger GC.
-                    let data1 = ext_ptr.as_sexp();
-                    Rf_protect_unchecked(data1);
-                    let altrep = R_new_altrep_unchecked(cls, data1, R_NilValue);
-                    Rf_unprotect_unchecked(1);
-                    altrep
                 }
             }
 
