@@ -2,8 +2,8 @@
 
 use miniextendr_api::altrep_traits::NA_LOGICAL;
 use miniextendr_api::ffi::{
-    LOGICAL, Rf_translateCharUTF8, Rf_xlength, SEXPTYPE, STRING_ELT, TYPEOF, R_NaString, R_xlen_t,
-    RLogical, Rboolean, SEXP,
+    LOGICAL, R_NaString, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, Rf_xlength, SEXP,
+    SEXPTYPE, STRING_ELT, TYPEOF,
 };
 use miniextendr_api::into_r::IntoR;
 use std::ffi::CStr;

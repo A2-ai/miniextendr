@@ -1,5 +1,8 @@
 AC_INIT([rpkg], [1.0])
 
+dnl Canonicalize build/host triples for cross-compilation support
+AC_CANONICAL_HOST
+
 dnl Ensure R_HOME is set and valid
 if test -z "$R_HOME"; then
   R_HOME=`R RHOME 2>/dev/null`
@@ -129,7 +132,14 @@ AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 AC_SUBST([ENV_RUSTFLAGS])
 
 AC_ARG_VAR([CARGO_BUILD_TARGET], [Cargo build target triple (e.g. aarch64-apple-darwin)])
-: ${CARGO_BUILD_TARGET=""}
+if test -z "$CARGO_BUILD_TARGET"; then
+  if test -n "$host" && test -n "$build" && test "$host" != "$build"; then
+    CARGO_BUILD_TARGET="$host"
+    AC_MSG_NOTICE([CARGO_BUILD_TARGET not set; using host triple $host])
+  else
+    CARGO_BUILD_TARGET=""
+  fi
+fi
 AC_SUBST([CARGO_BUILD_TARGET])
 
 dnl Compute Cargo libdir path:
@@ -327,6 +337,37 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
   done
 ],
 [CARGO="$CARGO" NOT_CRAN="$NOT_CRAN"])
+
+dnl Ensure Cargo.lock is compatible with the installed cargo version.
+dnl Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
+AC_CONFIG_COMMANDS([cargo-lockfile-compat],
+[
+  LOCKFILE_PATH="src/rust/Cargo.lock"
+  if test -f "$LOCKFILE_PATH"; then
+    LOCKFILE_VERSION=`sed -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
+  else
+    LOCKFILE_VERSION=""
+  fi
+
+  CARGO_VERSION=`$CARGO --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+  CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
+  CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
+
+  if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
+    if test "$CARGO_MAJOR" -lt 1 || \
+       (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+      rm -f "$LOCKFILE_PATH"
+      $CARGO generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+      _gen_status=$?
+      if test $_gen_status -ne 0; then
+        echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
+        exit 1
+      fi
+    fi
+  fi
+],
+[CARGO="$CARGO" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
 
 dnl Also install a copy at top-level .cargo for dev ergonomics
 dnl this is specific to miniextendr repository

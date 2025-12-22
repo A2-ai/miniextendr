@@ -13,34 +13,37 @@
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
 
-/// Strip class-system attributes from an impl block to avoid unused_attributes warnings.
-fn strip_class_system_attrs(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
-    for item in &mut item_impl.items {
-        if let syn::ImplItem::Fn(fn_item) = item {
-            fn_item
-                .attrs
-                .retain(|attr| !attr.path().is_ident("miniextendr"));
-        }
-    }
-    item_impl
-}
-
-/// Strip roxygen tags from doc attributes on an impl block and its items.
-fn strip_roxygen_from_impl(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
+/// Strip miniextendr attributes (and roxygen tags) from an impl block and its items.
+fn strip_miniextendr_attrs_from_impl(mut item_impl: syn::ItemImpl) -> syn::ItemImpl {
     item_impl.attrs = crate::roxygen::strip_roxygen_from_attrs(&item_impl.attrs);
+    item_impl
+        .attrs
+        .retain(|attr| !attr.path().is_ident("miniextendr"));
     for item in &mut item_impl.items {
         match item {
             syn::ImplItem::Fn(fn_item) => {
                 fn_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&fn_item.attrs);
+                fn_item
+                    .attrs
+                    .retain(|attr| !attr.path().is_ident("miniextendr"));
             }
             syn::ImplItem::Const(const_item) => {
                 const_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&const_item.attrs);
+                const_item
+                    .attrs
+                    .retain(|attr| !attr.path().is_ident("miniextendr"));
             }
             syn::ImplItem::Type(type_item) => {
                 type_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&type_item.attrs);
+                type_item
+                    .attrs
+                    .retain(|attr| !attr.path().is_ident("miniextendr"));
             }
             syn::ImplItem::Macro(macro_item) => {
                 macro_item.attrs = crate::roxygen::strip_roxygen_from_attrs(&macro_item.attrs);
+                macro_item
+                    .attrs
+                    .retain(|attr| !attr.path().is_ident("miniextendr"));
             }
             _ => {}
         }
@@ -519,8 +522,8 @@ impl ParsedImpl {
             class_name: attrs.class_name,
             doc_tags,
             methods,
-            // Strip class-system attrs to avoid unused_attributes warnings
-            original_impl: strip_roxygen_from_impl(strip_class_system_attrs(item_impl)),
+            // Strip miniextendr attributes (and roxygen tags) before re-emitting.
+            original_impl: strip_miniextendr_attrs_from_impl(item_impl),
             cfg_attrs,
         })
     }
