@@ -381,6 +381,34 @@ impl ParsedMethod {
             ));
         }
 
+        // Validate: all defaults reference existing parameters
+        let param_names: std::collections::HashSet<String> = item.sig.inputs.iter()
+            .filter_map(|input| {
+                if let syn::FnArg::Typed(pat_type) = input
+                    && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                {
+                    Some(pat_ident.ident.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let invalid_params: Vec<String> = method_attrs.defaults.keys()
+            .filter(|key| *key != "self" && !param_names.contains(*key))
+            .cloned()
+            .collect();
+
+        if !invalid_params.is_empty() {
+            return Err(syn::Error::new(
+                item.sig.ident.span(),
+                format!(
+                    "defaults(...) references non-existent parameter(s): {}",
+                    invalid_params.join(", ")
+                )
+            ));
+        }
+
         // Auto-convert regular doc comments to @description for all class systems
         let doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
 

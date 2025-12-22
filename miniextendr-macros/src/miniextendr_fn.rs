@@ -291,6 +291,34 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                 });
         }
 
+        // Validate: all defaults reference existing parameters
+        let param_names: std::collections::HashSet<String> = item.sig.inputs.iter()
+            .filter_map(|input| {
+                if let syn::FnArg::Typed(pat_type) = input
+                    && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+                {
+                    Some(pat_ident.ident.to_string())
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let invalid_params: Vec<String> = per_param_defaults.keys()
+            .filter(|key| !param_names.contains(*key))
+            .cloned()
+            .collect();
+
+        if !invalid_params.is_empty() {
+            return Err(syn::Error::new(
+                item.sig.ident.span(),
+                format!(
+                    "default attribute(s) reference non-existent parameter(s): {}",
+                    invalid_params.join(", ")
+                )
+            ));
+        }
+
         Ok(Self {
             item,
             has_dots,
