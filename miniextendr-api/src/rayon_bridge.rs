@@ -95,8 +95,9 @@ pub struct RVec<T> {
 #[cfg(feature = "rayon")]
 impl<T> RVec<T> {
     /// Create from a Vec.
+    #[inline]
     pub fn from_vec(data: Vec<T>) -> Self {
-        Self { data }
+        data.into()
     }
 
     /// Get length.
@@ -115,8 +116,23 @@ impl<T> RVec<T> {
     }
 
     /// Consume and get Vec.
+    #[inline]
     pub fn into_inner(self) -> Vec<T> {
-        self.data
+        self.into()
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T> From<Vec<T>> for RVec<T> {
+    fn from(data: Vec<T>) -> Self {
+        Self { data }
+    }
+}
+
+#[cfg(feature = "rayon")]
+impl<T> From<RVec<T>> for Vec<T> {
+    fn from(rvec: RVec<T>) -> Self {
+        rvec.data
     }
 }
 

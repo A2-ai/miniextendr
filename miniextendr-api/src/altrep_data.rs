@@ -176,25 +176,49 @@ pub enum Logical {
 
 impl Logical {
     /// Convert to R's integer representation.
+    #[inline]
     pub fn to_r_int(self) -> i32 {
-        match self {
+        self.into()
+    }
+
+    /// Convert from R's integer representation.
+    #[inline]
+    pub fn from_r_int(i: i32) -> Self {
+        i.into()
+    }
+
+    /// Convert from Rust bool (no NA representation).
+    #[inline]
+    pub fn from_bool(b: bool) -> Self {
+        b.into()
+    }
+}
+
+/// Convert Logical to R's integer representation.
+impl From<Logical> for i32 {
+    fn from(logical: Logical) -> i32 {
+        match logical {
             Logical::False => 0,
             Logical::True => 1,
             Logical::Na => i32::MIN,
         }
     }
+}
 
-    /// Convert from R's integer representation.
-    pub fn from_r_int(i: i32) -> Self {
+/// Convert from R's integer representation to Logical.
+impl From<i32> for Logical {
+    fn from(i: i32) -> Self {
         match i {
             0 => Logical::False,
             i32::MIN => Logical::Na,
             _ => Logical::True,
         }
     }
+}
 
-    /// Convert from Rust bool (no NA representation).
-    pub fn from_bool(b: bool) -> Self {
+/// Convert from Rust bool to Logical (no NA representation).
+impl From<bool> for Logical {
+    fn from(b: bool) -> Self {
         if b { Logical::True } else { Logical::False }
     }
 }
@@ -1213,8 +1237,22 @@ pub enum Sortedness {
 
 impl Sortedness {
     /// Convert to R's integer representation.
+    #[inline]
     pub fn to_r_int(self) -> i32 {
-        match self {
+        self.into()
+    }
+
+    /// Convert from R's integer representation.
+    #[inline]
+    pub fn from_r_int(i: i32) -> Self {
+        i.into()
+    }
+}
+
+/// Convert Sortedness to R's integer representation.
+impl From<Sortedness> for i32 {
+    fn from(s: Sortedness) -> i32 {
+        match s {
             Sortedness::Unknown => i32::MIN,
             Sortedness::KnownUnsorted => 0,
             Sortedness::Increasing => 1,
@@ -1223,9 +1261,11 @@ impl Sortedness {
             Sortedness::DecreasingNaFirst => -2,
         }
     }
+}
 
-    /// Convert from R's integer representation.
-    pub fn from_r_int(i: i32) -> Self {
+/// Convert from R's integer representation to Sortedness.
+impl From<i32> for Sortedness {
+    fn from(i: i32) -> Self {
         match i {
             i32::MIN => Sortedness::Unknown,
             0 => Sortedness::KnownUnsorted,
