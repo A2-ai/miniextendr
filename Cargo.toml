@@ -1,9 +1,31 @@
 [workspace]
 resolver = "3"
-members = ["miniextendr-api", "miniextendr-macros"]
-exclude = ["rpkg", "rpkg/src/rust"]
+members = [
+    "miniextendr-api",
+    "miniextendr-macros",
+    "miniextendr-engine",
+    "miniextendr-bench",
+    "miniextendr-lint",
+]
+exclude = ["vendor", "rpkg/src/rust", "rpkg/src/vendor"]
+
+[workspace.dependencies]
+miniextendr-api = { version = "*" , path = "miniextendr-api" }
+miniextendr-macros = { version = "*" , path = "miniextendr-macros" }
+miniextendr-engine = { version = "*" , path = "miniextendr-engine" }
+proc-macro2 = { version = "1.0", features = ["span-locations"] }
+quote = "1.0"
+syn = { version = "2.0", features = ["full", "extra-traits"] }
 
 [workspace.package]
 version = "0.1.0"
 edition = "2024"
-exclude = ["rpkg"]
+license = "MIT"
+repository = "https://github.com/CGMossa/miniextendr"
+homepage = "https://github.com/CGMossa/miniextendr"
+keywords = ["r", "ffi", "bindings"]
+categories = ["api-bindings", "external-ffi-bindings"]
+exclude = ["vendor"]
+
+[profile.release]
+debug-assertions = true
