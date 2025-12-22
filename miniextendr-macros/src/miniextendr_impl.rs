@@ -111,11 +111,12 @@ impl ReceiverKind {
 ///
 /// # Default Parameters
 ///
-/// Default parameters can be specified in two ways:
-/// - Parameter-level: `#[miniextendr(default = "value")]` on the parameter
-/// - Method-level: `#[miniextendr(defaults(param = "value", ...))]` on the method
+/// Default parameters are specified using method-level syntax:
+/// - `#[miniextendr(defaults(param = "value", ...))]` on the method
 ///
-/// If both are specified for the same parameter, method-level takes precedence.
+/// Note: Parameter-level `#[miniextendr(default = "...")]` syntax is only supported
+/// for standalone functions, not impl methods (Rust language limitation).
+///
 /// Defaults cannot be specified for `self` parameters (compile error).
 #[derive(Debug)]
 pub struct ParsedMethod {
@@ -367,49 +368,24 @@ impl ParsedMethod {
 
     /// Parse a method from an impl item.
     ///
-    /// For R6 methods, regular doc comments are auto-converted to `@description`.
-    pub fn from_impl_item(item: syn::ImplItemFn, class_system: ClassSystem) -> syn::Result<Self> {
+    /// Regular doc comments are auto-converted to `@description` for all class systems.
+    pub fn from_impl_item(item: syn::ImplItemFn, _class_system: ClassSystem) -> syn::Result<Self> {
         let receiver = Self::detect_receiver(&item.sig);
         let method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
-        // Parse parameter-level defaults from ALL parameters (including receiver, for validation)
-        let mut param_level_defaults = std::collections::HashMap::new();
-        for input in &item.sig.inputs {
-            if let syn::FnArg::Typed(pat_type) = input
-                && let Some(default_val) = pat_type.attrs.iter()
-                    .find_map(crate::miniextendr_fn::parse_default_attr)
-                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
-            {
-                param_level_defaults.insert(pat_ident.ident.to_string(), default_val);
-            }
-        }
-
-        // Validate: no defaults on self parameter
-        if receiver.is_instance() {
-            if param_level_defaults.contains_key("self") {
-                return Err(syn::Error::new(
-                    item.sig.ident.span(),
-                    "cannot specify default for self parameter"
-                ));
-            }
-            if method_attrs.defaults.contains_key("self") {
-                return Err(syn::Error::new(
-                    item.sig.ident.span(),
-                    "cannot specify default for self parameter in defaults(...)"
-                ));
-            }
+        // Validate: no defaults on self parameter (any kind: &self, &mut self, self)
+        if receiver != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
+            return Err(syn::Error::new(
+                item.sig.ident.span(),
+                "cannot specify default for self parameter in defaults(...)"
+            ));
         }
 
         // Auto-convert regular doc comments to @description for all class systems
         let doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
 
-        // Merge parameter-level and method-level defaults (method-level wins)
-        // Parameter-level: #[miniextendr(default = "value")] on individual parameters
-        // Method-level: #[miniextendr(defaults(param = "value", ...))] on the method
-        let mut param_defaults = param_level_defaults;
-        for (key, value) in method_attrs.defaults.iter() {
-            param_defaults.insert(key.clone(), value.clone());
-        }
+        // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
+        let param_defaults = method_attrs.defaults.clone();
 
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
