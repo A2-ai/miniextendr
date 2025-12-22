@@ -1,0 +1,5 @@
+error: defaults(...) references non-existent parameter(s): another, nonexistent
+  --> tests/ui/default_invalid_param_impl.rs:10:12
+   |
+10 |     pub fn method(&self, x: i32) {}
+   |            ^^^^^^

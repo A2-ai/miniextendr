@@ -5,22 +5,25 @@ edition = "2024"
 # edition = "2021" # testing 2021 compatibility!
 publish = false
 
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
 [[bin]]
 name = "document"
 path = "document.rs"
 bench = false
 
 [lib]
-name = "juice"
 path = "lib.rs"
 crate-type = ["rlib", "staticlib"]
 
-[profile.release]
-debug = 1
-panic = "unwind"
-
-[profile.dev]
-panic = "unwind"
+[features]
+default = []
+nonapi = ["miniextendr-api/nonapi"]
+connections = ["miniextendr-api/connections"]
 
 [dependencies]
-miniextendr-api = { path = "@ROOT_MINIEXTENDR_REPO@/miniextendr-api"}
+miniextendr-api = { version = "*" }
+
+[build-dependencies]
+miniextendr-lint = { version = "*" }

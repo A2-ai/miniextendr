@@ -1,0 +1,94 @@
+[package]
+name = "miniextendr-bench"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+description = "Benchmarks for miniextendr"
+publish = false
+
+[dependencies]
+miniextendr-api = { workspace = true }
+miniextendr-engine = { workspace = true }
+
+[features]
+rayon = ["miniextendr-api/rayon"]
+connections = ["miniextendr-api/connections"]
+
+[dev-dependencies]
+divan = "0.1.21"
+
+[[bench]]
+name = "translate"
+harness = false
+
+[[bench]]
+name = "ffi_calls"
+harness = false
+
+[[bench]]
+name = "into_r"
+harness = false
+
+[[bench]]
+name = "from_r"
+harness = false
+
+[[bench]]
+name = "externalptr"
+harness = false
+
+[[bench]]
+name = "coerce"
+harness = false
+
+[[bench]]
+name = "strings"
+harness = false
+
+[[bench]]
+name = "allocator"
+harness = false
+
+[[bench]]
+name = "altrep"
+harness = false
+
+[[bench]]
+name = "altrep_iter"
+harness = false
+
+[[bench]]
+name = "connections"
+harness = false
+
+[[bench]]
+name = "preserve"
+harness = false
+
+[[bench]]
+name = "rayon"
+harness = false
+
+[[bench]]
+name = "rffi_checked"
+harness = false
+
+[[bench]]
+name = "sexp_ext"
+harness = false
+
+[[bench]]
+name = "unwind_protect"
+harness = false
+
+[[bench]]
+name = "worker"
+harness = false
+
+[[bench]]
+name = "wrappers"
+harness = false
+
+# Note: Profile is defined in workspace root Cargo.toml

@@ -1,0 +1,4 @@
+@CARGO_SOURCE_REPLACE@
+
+[build]
+target-dir = "@CARGO_TARGET_DIR@"
