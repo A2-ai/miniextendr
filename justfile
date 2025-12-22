@@ -14,23 +14,23 @@ clean *cargo_flags:
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:
-    cargo check --workspace {{cargo_flags}}
-    cargo check -p miniextendr-bench {{cargo_flags}}
-    cargo check --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo check --benches --tests --examples --workspace {{cargo_flags}}
+    cargo check --benches --tests --examples -p miniextendr-bench {{cargo_flags}}
+    cargo check --benches --tests --examples --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build all crates
 alias cargo-build := build
 build *cargo_flags:
-    cargo build --workspace {{cargo_flags}}
-    cargo build -p miniextendr-bench {{cargo_flags}}
-    cargo build --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo build --benches --tests --examples --workspace {{cargo_flags}}
+    cargo build --benches --tests --examples -p miniextendr-bench {{cargo_flags}}
+    cargo build --benches --tests --examples --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
 clippy *cargo_flags:
-    cargo clippy --workspace {{cargo_flags}}
-    cargo clippy -p miniextendr-bench {{cargo_flags}}
-    cargo clippy --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
+    cargo clippy --benches --tests --examples -p miniextendr-bench {{cargo_flags}}
+    cargo clippy --benches --tests --examples --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
@@ -80,7 +80,7 @@ bench *cargo_flags:
 
 # Check benchmark crate
 bench-check *cargo_flags:
-    cargo check --manifest-path=miniextendr-bench/Cargo.toml --benches {{cargo_flags}}
+    cargo check --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
 
 # Show dependency tree
 alias cargo-tree := tree
