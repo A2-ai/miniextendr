@@ -3,6 +3,11 @@
 \docType{data}
 \name{ReceiverCounter}
 \alias{ReceiverCounter}
+\alias{ReceiverCounter$new}
+\alias{ReceiverCounter$value}
+\alias{ReceiverCounter$inc}
+\alias{ReceiverCounter$add}
+\alias{ReceiverCounter$default_counter}
 \alias{$.ReceiverCounter}
 \alias{[[.ReceiverCounter}
 \title{ReceiverCounter Class}
@@ -21,6 +26,16 @@ ReceiverCounter
 }
 \description{
 Receiver-style counter with \verb{$new()}, \verb{$value()}, \verb{$inc()}, and \verb{$add()} methods.
+
+Creates a new counter with the given initial value.
+
+Returns the current value.
+
+Increments the counter by 1 and returns the new value.
+
+Adds the given amount to the counter and returns the new value.
+
+A static method that returns a default counter (value = 0).
 }
 \examples{
 rc <- ReceiverCounter$new(1L)

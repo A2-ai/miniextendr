@@ -29,6 +29,16 @@ s3counter_default_counter()
 }
 \description{
 S3 counter with \code{s3_value()}, \code{s3_inc()}, and \code{s3_add()} methods.
+
+Creates a new counter with the given initial value.
+
+Returns the current value (S3-specific method name to avoid conflicts).
+
+Increments the counter by 1 and returns the new value.
+
+Adds the given amount to the counter and returns the new value.
+
+A static method that returns a default counter (value = 0).
 }
 \examples{
 x <- new_s3counter(1L)

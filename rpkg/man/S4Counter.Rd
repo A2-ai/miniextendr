@@ -28,6 +28,16 @@ S4Counter_default_counter()
 }
 \description{
 S4 counter with \code{s4_value()}, \code{s4_inc()}, and \code{s4_add()} methods.
+
+Creates a new counter with the given initial value.
+
+Returns the current value.
+
+Increments the counter by 1 and returns the new value.
+
+Adds the given amount to the counter and returns the new value.
+
+A static method that returns a default counter (value = 0).
 }
 \section{Slots}{
 

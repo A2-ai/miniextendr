@@ -108,6 +108,15 @@ impl ReceiverKind {
 }
 
 /// Parsed method from an impl block.
+///
+/// # Default Parameters
+///
+/// Default parameters can be specified in two ways:
+/// - Parameter-level: `#[miniextendr(default = "value")]` on the parameter
+/// - Method-level: `#[miniextendr(defaults(param = "value", ...))]` on the method
+///
+/// If both are specified for the same parameter, method-level takes precedence.
+/// Defaults cannot be specified for `self` parameters (compile error).
 #[derive(Debug)]
 pub struct ParsedMethod {
     /// Method identifier
@@ -363,16 +372,44 @@ impl ParsedMethod {
         let receiver = Self::detect_receiver(&item.sig);
         let method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
-        // For R6, auto-convert regular doc comments to @description
-        let doc_tags = if class_system == ClassSystem::R6 {
-            crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs)
-        } else {
-            crate::roxygen::roxygen_tags_from_attrs(&item.attrs)
-        };
+        // Parse parameter-level defaults from ALL parameters (including receiver, for validation)
+        let mut param_level_defaults = std::collections::HashMap::new();
+        for input in &item.sig.inputs {
+            if let syn::FnArg::Typed(pat_type) = input
+                && let Some(default_val) = pat_type.attrs.iter()
+                    .find_map(crate::miniextendr_fn::parse_default_attr)
+                && let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref()
+            {
+                param_level_defaults.insert(pat_ident.ident.to_string(), default_val);
+            }
+        }
 
-        // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
-        // (parameter-level attributes aren't allowed in impl methods in Rust)
-        let param_defaults = method_attrs.defaults.clone();
+        // Validate: no defaults on self parameter
+        if receiver.is_instance() {
+            if param_level_defaults.contains_key("self") {
+                return Err(syn::Error::new(
+                    item.sig.ident.span(),
+                    "cannot specify default for self parameter"
+                ));
+            }
+            if method_attrs.defaults.contains_key("self") {
+                return Err(syn::Error::new(
+                    item.sig.ident.span(),
+                    "cannot specify default for self parameter in defaults(...)"
+                ));
+            }
+        }
+
+        // Auto-convert regular doc comments to @description for all class systems
+        let doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
+
+        // Merge parameter-level and method-level defaults (method-level wins)
+        // Parameter-level: #[miniextendr(default = "value")] on individual parameters
+        // Method-level: #[miniextendr(defaults(param = "value", ...))] on the method
+        let mut param_defaults = param_level_defaults;
+        for (key, value) in method_attrs.defaults.iter() {
+            param_defaults.insert(key.clone(), value.clone());
+        }
 
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
@@ -761,6 +798,13 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         if !ctor.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, &ctor.doc_tags);
         }
+        // Add @name and @rdname to combine methods into one doc page
+        if !crate::roxygen::has_roxygen_tag(&ctor.doc_tags, "name") {
+            lines.push(format!("#' @name {}$new", class_name));
+        }
+        if !crate::roxygen::has_roxygen_tag(&ctor.doc_tags, "rdname") {
+            lines.push(format!("#' @rdname {}", class_name));
+        }
         lines.push(format!("{}$new <- function({}) {{", class_name, params));
         lines.push(format!("    self <- {}", call));
         lines.push(format!("    class(self) <- \"{}\"", class_name));
@@ -781,6 +825,13 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
         if !method.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
+        }
+        // Add @name and @rdname to combine methods into one doc page
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+            lines.push(format!("#' @name {}${}", class_name, method.ident));
+        }
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
+            lines.push(format!("#' @rdname {}", class_name));
         }
         lines.push(format!(
             "{}${} <- function({}) {{",
@@ -810,6 +861,13 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
         if !method.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
+        }
+        // Add @name and @rdname to combine methods into one doc page
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
+            lines.push(format!("#' @name {}${}", class_name, method.ident));
+        }
+        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
+            lines.push(format!("#' @rdname {}", class_name));
         }
         lines.push(format!(
             "{}${} <- function({}) {{",

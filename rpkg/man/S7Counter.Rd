@@ -25,6 +25,14 @@ S7Counter_default_counter()
 }
 \description{
 S7 counter with \code{s7_value()}, \code{s7_inc()}, and \code{s7_add()} methods.
+
+Returns the current value (S7-specific method name to avoid conflicts).
+
+Increments the counter by 1 and returns the new value.
+
+Adds the given amount to the counter and returns the new value.
+
+A static method that returns a default counter (value = 0).
 }
 \examples{
 x <- S7Counter(1L)
