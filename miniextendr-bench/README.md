@@ -18,7 +18,18 @@ cargo bench --bench translate
 
 - Requires R installed and available on PATH.
 - Uses `divan` as the benchmark harness.
-- Benchmark intent and methodology are described in `ENGINE.md`.
+
+## What is measured
+
+The `translate` benchmark focuses on string extraction costs:
+
+- `R_CHAR(charsxp)` fast path (UTF‑8/ASCII)
+- `Rf_translateCharUTF8(charsxp)` translation path
+- End‑to‑end conversions (`CHARSXP → CStr → String`)
+- `TryFromSexp<String>` for STRSXP inputs
+
+It includes both UTF‑8 and Latin‑1 fixtures to highlight the cost of always
+translating vs taking an encoding‑aware fast path.
 
 ## Publishing to CRAN
 

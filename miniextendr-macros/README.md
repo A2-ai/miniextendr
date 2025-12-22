@@ -53,7 +53,7 @@ Wraps `extern "C-unwind"` blocks with thread assertions in debug builds.
 - Attributes like `#[miniextendr(unsafe(main_thread))]` and
   `#[miniextendr(coerce)]` control wrapper behavior and safety.
 - R wrapper generation is driven by doc comments and roxygen tags.
-- See `docs.md` and the `miniextendr-api` docs for full usage examples.
+- Impl‑block support covers S3/S4/S7/R6 methods plus receiver‑style dispatch.
 
 ## Publishing to CRAN
 
@@ -64,7 +64,7 @@ are part of the package.
 Guidelines for CRAN-facing packages:
 - Use the macros via `miniextendr-api` re-exports.
 - Avoid the `nonapi` feature unless you are prepared for CRAN checks to report
-  non-API symbol usage (see `NONAPI.md`).
+  non-API symbol usage.
 - Regenerate and commit the generated R wrappers (`R/miniextendr_wrappers.R`).
 - Keep exported symbol names stable, and document any changes.
 
@@ -83,5 +83,5 @@ cargo test -p miniextendr-macros
 - Maintain trybuild fixtures for any macro expansion changes.
 - Ensure roxygen/doc extraction logic stays aligned with `miniextendr-api`
   conventions.
-- When adding attributes or changing wrapper behavior, update `docs.md` and
-  any examples that mention macro output.
+- When adding attributes or changing wrapper behavior, update user-facing
+  examples and any tests that validate macro output.

@@ -77,8 +77,7 @@ rules:
 
 - Ensure all Rust dependencies are vendored in `src/vendor/` and included in
   the source tarball.
-- Do not enable non-API R symbols unless you are prepared to handle CRAN checks
-  (see `NONAPI.md`).
+- Do not enable non‑API R symbols unless you are prepared to handle CRAN checks.
 - Keep `configure`, `config.guess`, and `config.sub` committed and up to date.
 - Regenerate `R/miniextendr_wrappers.R` before release.
 - Run `R CMD check` on the built tarball.

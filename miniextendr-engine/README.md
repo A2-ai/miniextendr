@@ -44,7 +44,18 @@ std::mem::forget(engine); // optional: intentionally leak the handle
   `setup_Rmainloop()` calls.
 - `setup_Rmainloop()` is called exactly once after initialization.
 
-See `ENGINE.md` in the repo root for rationale and history.
+### Why this crate exists
+
+Embedding logic used to be duplicated across binaries/benches, which made it
+easy for fixes to drift and hard to debug initialization problems. Centralizing
+embedding here provides:
+
+- **Consistent linking** – `build.rs` resolves `R_HOME` and emits `-lR` so
+  dependents link correctly without re‑implementing discovery logic.
+- **Safe initialization** – avoids double‑calling `setup_Rmainloop()` (a common
+  source of crashes when `Rf_initEmbeddedR()` is followed by a manual call).
+- **Single source of truth** – keeps `R_HOME` handling and initialization
+  sequencing in one place.
 
 ### Runtime sentinel
 
@@ -84,5 +95,5 @@ keep the `nonapi` feature disabled.
   any embedding logic.
 - Update `r_initialized_sentinel()` if R changes how it initializes stack
   markers.
-- Keep `ENGINE.md` current when behavior or rationale changes.
+- Keep this README’s rationale and safety notes current when behavior changes.
 - Ensure no `Rf_endEmbeddedR` is called in Drop (non-reentrant cleanup risk).

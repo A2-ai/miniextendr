@@ -24,16 +24,6 @@ into R, ALTREP support, and safe threading patterns.
   autoconf build, vendoring, and wrapper generation flow.
 - `rpkg_0.0.0.9000.tar.gz` – Example built tarball (when present).
 
-### Documentation
-
-- `docs.md` – User-facing overview and API notes.
-- `altrep.md` – ALTREP design and examples.
-- `THREADS.md` – Threading model and safety constraints.
-- `NONAPI.md` – Non-API R symbols tracked in this repo.
-- `COERCE.md` – Type coercion strategy.
-- `RAYON.md` – Rayon integration details.
-- `ENGINE.md` – R embedding rationale and design notes.
-
 ## Crate details
 
 ### `miniextendr-api`
@@ -48,7 +38,7 @@ Highlights:
   on a single crate.
 
 Feature flags:
-- `nonapi` – enable non-API R symbols (tracked in `NONAPI.md`).
+- `nonapi` – enable feature‑gated non‑API R symbols (e.g., stack controls).
 - `rayon` – parallel helpers for R vectors.
 - `connections` – experimental R connection framework (unstable API).
 
@@ -71,7 +61,7 @@ Notes:
 - Uses `Rembedded.h`/`Rinterface.h` (non-API), so it is **not** intended for
   use inside R packages.
 - Centralizes `R_HOME` discovery/linking and avoids double-calling
-  `setup_Rmainloop()` (see `ENGINE.md`).
+  `setup_Rmainloop()` while keeping initialization order consistent.
 
 ### `miniextendr-bench`
 
@@ -106,11 +96,9 @@ just r-cmd-check     # run R CMD check
 ```
 
 Standalone R package notes:
-- `bootstrap.R` runs before build to sync and vendor Rust sources into
-  `rpkg/src/vendor/`.
+- `bootstrap.R` runs before build and only invokes `rpkg/configure` to support
+  monorepos where the R package is a subdirectory of the Rust workspace.
 - `configure` generates `src/Makevars` and Rust config for `cargo build`.
-
-See `rpkg/README.md` for the detailed flow.
 
 ## Development setup
 
@@ -139,7 +127,7 @@ just devtools-test
 2) **Opt-in non-main-thread R calls (unsafe)**
    - `miniextendr_api::thread` under feature `nonapi` disables stack checking.
    - You must still serialize R access; R is not thread-safe.
-   - See `THREADS.md` and `NONAPI.md`.
+   - Non-API usage is feature gated (e.g., `R_CStack*`, mutable `DATAPTR`).
 
 ## Publishing to CRAN
 
@@ -149,7 +137,7 @@ under the following constraints:
 - **Do not embed R** in a CRAN-facing package. `miniextendr-engine` is for
   Rust-only binaries and tests, not for package shared libraries.
 - **Avoid non-API symbols** unless you are prepared for CRAN checks to flag
-  them (see `NONAPI.md`). Keep `nonapi` disabled by default.
+  them. Keep `nonapi` disabled by default.
 - **Vendor Rust dependencies** into `rpkg/src/vendor/` and include them in the
   source tarball.
 - **Commit generated artifacts** required by CRAN: `rpkg/configure`,
@@ -160,10 +148,10 @@ See `rpkg/README.md` for the complete CRAN workflow.
 
 ## Maintainer
 
-- Keep `NONAPI.md` current when adding or removing non-API symbol usage.
+- Keep non-API usage feature-gated and documented in code.
 - Regenerate `rpkg/configure` whenever `rpkg/configure.ac` changes.
 - Update `rpkg/config.guess` and `rpkg/config.sub` from GNU config when needed
-  (see `rpkg/README.md`).
+  (`https://cgit.git.savannah.gnu.org/cgit/config.git/tree/`).
 - Ensure wrapper generation remains in sync with macro behavior.
 - Run CI/local checks across Rust and R tooling before releases.
 
