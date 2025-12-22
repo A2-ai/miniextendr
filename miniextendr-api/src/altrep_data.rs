@@ -713,6 +713,69 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
     }
 }
 
+impl<I: Iterator<Item = f64> + 'static> crate::externalptr::TypedExternal for IterRealData<I> {
+    const TYPE_NAME: &'static str = "IterRealData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterRealData\0";
+}
+
+impl<I: Iterator<Item = f64> + 'static> InferBase for IterRealData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Real;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_real::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::Altrep for IterRealData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltVec for IterRealData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = f64> + 'static> crate::altrep_traits::AltReal for IterRealData<I> {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltRealData::elt(&*d, i as usize))
+            .unwrap_or(f64::NAN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut f64,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltRealData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+}
+
 /// Iterator-backed logical vector data.
 ///
 /// Wraps an iterator producing `bool` values and exposes it as an ALTREP logical vector.
@@ -758,6 +821,69 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
             *buf_i = self.elt(start + i).to_r_int();
         }
         actual_len
+    }
+}
+
+impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal for IterLogicalData<I> {
+    const TYPE_NAME: &'static str = "IterLogicalData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterLogicalData\0";
+}
+
+impl<I: Iterator<Item = bool> + 'static> InferBase for IterLogicalData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Logical;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_lgl::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for IterLogicalData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltVec for IterLogicalData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical for IterLogicalData<I> {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltLogicalData::elt(&*d, i as usize).to_r_int())
+            .unwrap_or(crate::altrep_traits::NA_LOGICAL)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut i32,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltLogicalData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
     }
 }
 
@@ -807,6 +933,69 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
             *buf_i = self.elt(start + i);
         }
         actual_len
+    }
+}
+
+impl<I: Iterator<Item = u8> + 'static> crate::externalptr::TypedExternal for IterRawData<I> {
+    const TYPE_NAME: &'static str = "IterRawData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterRawData\0";
+}
+
+impl<I: Iterator<Item = u8> + 'static> InferBase for IterRawData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Raw;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_raw::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::Altrep for IterRawData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltVec for IterRawData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = u8> + 'static> crate::altrep_traits::AltRaw for IterRawData<I> {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> u8 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltRawData::elt(&*d, i as usize))
+            .unwrap_or(0)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut u8,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltRawData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
     }
 }
 
@@ -899,6 +1088,90 @@ where
     }
 }
 
+impl<I, T> crate::externalptr::TypedExternal for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<i32> + Copy + 'static,
+{
+    const TYPE_NAME: &'static str = "IterIntCoerceData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterIntCoerceData\0";
+}
+
+impl<I, T> InferBase for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<i32> + Copy + 'static,
+{
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Int;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_int::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I, T> crate::altrep_traits::Altrep for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<i32> + Copy + 'static,
+{
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I, T> crate::altrep_traits::AltVec for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<i32> + Copy + 'static,
+{
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I, T> crate::altrep_traits::AltInteger for IterIntCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<i32> + Copy + 'static,
+{
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltIntegerData::elt(&*d, i as usize))
+            .unwrap_or(i32::MIN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut i32,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltIntegerData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+}
+
 /// Iterator-backed real vector with coercion from any float-like type.
 ///
 /// Wraps an iterator producing values that coerce to `f64` (e.g., `f32`, integer types).
@@ -983,6 +1256,90 @@ where
     }
 }
 
+impl<I, T> crate::externalptr::TypedExternal for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<f64> + Copy + 'static,
+{
+    const TYPE_NAME: &'static str = "IterRealCoerceData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterRealCoerceData\0";
+}
+
+impl<I, T> InferBase for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<f64> + Copy + 'static,
+{
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Real;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_real::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I, T> crate::altrep_traits::Altrep for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<f64> + Copy + 'static,
+{
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I, T> crate::altrep_traits::AltVec for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<f64> + Copy + 'static,
+{
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I, T> crate::altrep_traits::AltReal for IterRealCoerceData<I, T>
+where
+    I: Iterator<Item = T> + 'static,
+    T: crate::coerce::Coerce<f64> + Copy + 'static,
+{
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> f64 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltRealData::elt(&*d, i as usize))
+            .unwrap_or(f64::NAN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut f64,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltRealData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+}
+
 /// Iterator-backed integer vector with coercion from bool.
 ///
 /// Wraps an iterator producing `bool` values that coerce to `i32`.
@@ -1049,6 +1406,69 @@ where
             *buf_i = self.elt(start + i);
         }
         actual_len
+    }
+}
+
+impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal for IterIntFromBoolData<I> {
+    const TYPE_NAME: &'static str = "IterIntFromBoolData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterIntFromBoolData\0";
+}
+
+impl<I: Iterator<Item = bool> + 'static> InferBase for IterIntFromBoolData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Int;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_int::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for IterIntFromBoolData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltVec for IterIntFromBoolData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltInteger for IterIntFromBoolData<I> {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltIntegerData::elt(&*d, i as usize))
+            .unwrap_or(i32::MIN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut i32,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltIntegerData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
     }
 }
 
@@ -1119,6 +1539,58 @@ where
         // This is necessary because we can't return &str from RefCell borrows
         let materialized = self.state.materialize_all();
         materialized.get(i).map(|s| s.as_str())
+    }
+}
+
+impl<I: Iterator<Item = String> + 'static> crate::externalptr::TypedExternal for IterStringData<I> {
+    const TYPE_NAME: &'static str = "IterStringData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterStringData\0";
+}
+
+impl<I: Iterator<Item = String> + 'static> InferBase for IterStringData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::String;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altstring_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_str::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = String> + 'static> crate::altrep_traits::Altrep for IterStringData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = String> + 'static> crate::altrep_traits::AltVec for IterStringData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = String> + 'static> crate::altrep_traits::AltString for IterStringData<I> {
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .and_then(|d| {
+                AltStringData::elt(&*d, i as usize).map(|s| unsafe {
+                    crate::ffi::Rf_mkCharLenCE(
+                        s.as_ptr().cast(),
+                        s.len() as i32,
+                        crate::ffi::cetype_t::CE_UTF8,
+                    )
+                })
+            })
+            .unwrap_or(unsafe { crate::ffi::R_NaString })
     }
 }
 
@@ -1198,6 +1670,50 @@ where
     }
 }
 
+impl<I: Iterator<Item = SEXP> + 'static> crate::externalptr::TypedExternal for IterListData<I> {
+    const TYPE_NAME: &'static str = "IterListData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterListData\0";
+}
+
+impl<I: Iterator<Item = SEXP> + 'static> InferBase for IterListData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::List;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altlist_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_list::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = SEXP> + 'static> crate::altrep_traits::Altrep for IterListData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = SEXP> + 'static> crate::altrep_traits::AltVec for IterListData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = SEXP> + 'static> crate::altrep_traits::AltList for IterListData<I> {
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltListData::elt(&*d, i as usize))
+            .unwrap_or(unsafe { crate::ffi::R_NilValue })
+    }
+}
+
 /// Iterator-backed complex number vector.
 ///
 /// Wraps an iterator producing `Rcomplex` values and exposes it as an ALTREP complex vector.
@@ -1272,6 +1788,81 @@ where
             *buf_i = self.elt(start + i);
         }
         actual_len
+    }
+}
+
+impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::externalptr::TypedExternal
+    for IterComplexData<I>
+{
+    const TYPE_NAME: &'static str = "IterComplexData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterComplexData\0";
+}
+
+impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> InferBase for IterComplexData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Complex;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altcomplex_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_cplx::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::altrep_traits::Altrep
+    for IterComplexData<I>
+{
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::altrep_traits::AltVec
+    for IterComplexData<I>
+{
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::altrep_traits::AltComplex
+    for IterComplexData<I>
+{
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::Rcomplex {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltComplexData::elt(&*d, i as usize))
+            .unwrap_or(crate::ffi::Rcomplex {
+                r: f64::NAN,
+                i: f64::NAN,
+            })
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut crate::ffi::Rcomplex,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltComplexData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
     }
 }
 
