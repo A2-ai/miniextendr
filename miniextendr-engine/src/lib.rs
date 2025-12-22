@@ -60,6 +60,8 @@ unsafe extern "C" {
     // Declared as immutable static; written via raw pointer
     static R_Interactive: c_int;
     static R_SignalHandlers: c_int;
+    static R_CStackStart: usize;
+    static R_CStackDir: c_int;
 }
 
 /// Write to R's global `R_Interactive` flag.
@@ -83,6 +85,19 @@ unsafe fn set_r_signal_handlers(value: c_int) {
     unsafe {
         let ptr = &raw const R_SignalHandlers as *mut c_int;
         ptr.write(value);
+    }
+}
+
+/// Check whether `Rf_initialize_R` has run by inspecting stack sentinels.
+///
+/// `R_CStackStart`/`R_CStackDir` are set during R initialization on the main
+/// thread. A zero or `usize::MAX` value indicates "not initialized".
+#[inline]
+pub fn r_initialized_sentinel() -> bool {
+    unsafe {
+        let start = R_CStackStart;
+        let dir = R_CStackDir;
+        dir != 0 && start != 0 && start != usize::MAX
     }
 }
 

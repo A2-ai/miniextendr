@@ -18,6 +18,10 @@ fn initialize_r() {
         // Initialize in same order as rpkg/src/entrypoint.c.in
         miniextendr_api::backtrace::miniextendr_panic_hook();
         miniextendr_api::worker::miniextendr_worker_init();
+        assert!(
+            miniextendr_engine::r_initialized_sentinel(),
+            "Rf_initialize_R did not set C stack sentinels"
+        );
         std::mem::forget(engine);
     });
 }
