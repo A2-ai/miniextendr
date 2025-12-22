@@ -597,6 +597,73 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
     }
 }
 
+impl<I: Iterator<Item = i32> + 'static> crate::externalptr::TypedExternal for IterIntData<I> {
+    const TYPE_NAME: &'static str = "IterIntData";
+    const TYPE_NAME_CSTR: &'static [u8] = b"IterIntData\0";
+}
+
+impl<I: Iterator<Item = i32> + 'static> InferBase for IterIntData<I> {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Int;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altinteger_class(
+                class_name,
+                pkg_name,
+                core::ptr::null_mut(),
+            )
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_int::<Self>(cls) };
+    }
+}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::Altrep for IterIntData<I> {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| d.len() as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltVec for IterIntData<I> {}
+
+#[allow(clippy::not_unsafe_ptr_arg_deref)]
+impl<I: Iterator<Item = i32> + 'static> crate::altrep_traits::AltInteger for IterIntData<I> {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| AltIntegerData::elt(&*d, i as usize))
+            .unwrap_or(i32::MIN)
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut i32,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<Self>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                AltIntegerData::get_region(&*d, start as usize, len as usize, slice)
+                    as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+}
+
 /// Iterator-backed real (f64) vector data.
 ///
 /// Wraps an iterator producing `f64` values and exposes it as an ALTREP real vector.
