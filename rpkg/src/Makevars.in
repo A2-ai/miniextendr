@@ -11,24 +11,18 @@ CARGO_STATICLIB_NAME = @CARGO_STATICLIB_NAME@
 ENV_RUSTFLAGS = @ENV_RUSTFLAGS@
 CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
 CARGO_LIBDIR = @CARGO_LIBDIR@
+VENDOR_OUT = @VENDOR_OUT@
+CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
+NOT_CRAN_FLAG = @NOT_CRAN@
+CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
+RUST_SOURCES = @RUST_SOURCES@
+OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
+PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
 
 R_WRAPPERS_GENERATED = $(ABS_RPKG_SRCDIR)/miniextendr_wrappers.R
 R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/miniextendr_wrappers.R
-
-PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
-
-VENDOR_OUT = @VENDOR_OUT@
-
-CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
-NOT_CRAN_FLAG = @NOT_CRAN@
-
-# Features to enable - use --all-features to enable everything including nonapi
-CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
-
-RUST_SOURCES = @RUST_SOURCES@
-OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 
 CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -37,12 +31,18 @@ CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 ## ----------------------------------------------------------------------
 
-.PHONY: all
+.PHONY: all clean
 
 all: $(SHLIB)
 	@# Post-build cleanup: On CRAN builds, remove vendor and target to save space
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
-	  rm -rf $(VENDOR_OUT) $(CARGO_TARGET_DIR) $(ABS_RPKG_SRCDIR)/rust/.cargo; \
+	  set -e; \
+	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
+	  case "$(CARGO_TARGET_DIR)" in \
+	    "$(ABS_RPKG_SRCDIR)"/*) if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi ;; \
+	    *) echo "Skipping cleanup of CARGO_TARGET_DIR (outside package): $(CARGO_TARGET_DIR)" ;; \
+	  esac; \
+	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
 	fi
 
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
@@ -50,25 +50,33 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 # Build the Rust static library
 # Note: Dependencies are vendored by configure script, not by this Makefile.
 # You must run `./configure` (or `just configure`) before building.
-$(CARGO_AR): $(CARGO_TOML) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
-	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --lib --profile $(CARGO_PROFILE) \
+$(CARGO_AR): $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+	@set -e; \
+	TARGET_OPT=""; \
+	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
+	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	  --locked --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
-	  --target-dir $(CARGO_TARGET_DIR)
+	  --target-dir $(CARGO_TARGET_DIR); \
+	test -f "$(CARGO_AR)"
 
-$(R_WRAPPERS_GENERATED): $(CARGO_AR)
-	@# Touch Cargo.toml to force document binary rebuild with current features
-	@touch $(CARGO_TOML)
-	env RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) --bin document --profile $(CARGO_PROFILE) \
+$(R_WRAPPERS_GENERATED): $(CARGO_AR) $(CARGO_TOML) $(CARGO_LOCK)
+	@set -e; \
+	TARGET_OPT=""; \
+	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
+	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	  --locked --bin document --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
-	  --target-dir $(CARGO_TARGET_DIR)
+	  --target-dir $(CARGO_TARGET_DIR); \
+	test -f "$(R_WRAPPERS_GENERATED)"
 
 $(R_WRAPPERS_CURRENT): $(R_WRAPPERS_GENERATED)
-	@cp $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT)
+	@cp "$(R_WRAPPERS_GENERATED)" "$(R_WRAPPERS_CURRENT)"
 
 clean:
 	@# Only clean generated files on CRAN (preserve for dev)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
-	  rm -f $(R_WRAPPERS_GENERATED) $(R_WRAPPERS_CURRENT); \
+	  rm -f "$(R_WRAPPERS_GENERATED)" "$(R_WRAPPERS_CURRENT)"; \
 	fi
