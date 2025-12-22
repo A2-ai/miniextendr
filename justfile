@@ -8,35 +8,41 @@ alias cargo-clean := clean
 clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
+    cargo clean -p miniextendr-bench {{cargo_flags}}
     cargo clean --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:
     cargo check --workspace {{cargo_flags}}
+    cargo check -p miniextendr-bench {{cargo_flags}}
     cargo check --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build all crates
 alias cargo-build := build
 build *cargo_flags:
     cargo build --workspace {{cargo_flags}}
+    cargo build -p miniextendr-bench {{cargo_flags}}
     cargo build --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
 clippy *cargo_flags:
     cargo clippy --workspace {{cargo_flags}}
+    cargo clippy -p miniextendr-bench {{cargo_flags}}
     cargo clippy --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
 doc-check *cargo_flags: configure
+    cargo doc --no-deps --document-private-items -p miniextendr-bench {{cargo_flags}}
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     cargo doc --no-deps --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build and open documentation
 alias cargo-doc := doc
 doc *cargo_flags: configure
+    cargo doc --document-private-items -p miniextendr-bench {{cargo_flags}}
     cargo doc --document-private-items --workspace {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
 
@@ -44,12 +50,14 @@ doc *cargo_flags: configure
 alias cargo-fmt-check := fmt-check
 fmt-check *cargo_flags:
     cargo fmt --all {{cargo_flags}} -- --check
+    cargo fmt -p miniextendr-bench {{cargo_flags}} -- --check
     cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
 
 # Format all code
 alias cargo-fmt := fmt
 fmt *cargo_flags:
     cargo fmt --all {{cargo_flags}}
+    cargo fmt -p miniextendr-bench {{cargo_flags}}
     cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run tests
@@ -77,6 +85,7 @@ bench-check *cargo_flags:
 # Show dependency tree
 alias cargo-tree := tree
 tree *cargo_flags:
+    cargo tree -p miniextendr-bench {{cargo_flags}}
     cargo tree --workspace {{cargo_flags}}
     cargo tree --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
@@ -100,7 +109,6 @@ expand *cargo_flags:
 # Workspace crates use normal cargo dependency resolution (no vendoring needed).
 configure:
     cd rpkg && autoconf && ./configure
-    cargo vendor --manifest-path rpkg/src/rust/Cargo.toml rpkg/src/vendor
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": configure

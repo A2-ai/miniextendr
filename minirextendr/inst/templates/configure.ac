@@ -71,12 +71,15 @@ AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
 dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
+AC_PATH_PROG([RSYNC],[rsync],[no])
 AC_PATH_PROG([SED],[sed],[no])
 AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
+AS_IF([test "x$RSYNC" = "xno"], [AC_MSG_ERROR([`rsync` not found (required for vendor sync)])])
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
+AC_SUBST([RSYNC])
 AC_SUBST([SED])
 
 dnl Report rustc version (required by CRAN for Rust packages)
@@ -99,6 +102,10 @@ dnl Allow explicit toolchain (e.g. +nightly); default empty (use default toolcha
 AC_ARG_VAR([RUST_TOOLCHAIN],[Rust toolchain selector like '+stable' or '+nightly'])
 : ${RUST_TOOLCHAIN=""}
 AC_SUBST([RUST_TOOLCHAIN])
+
+dnl Convenience: cargo command that includes optional toolchain selector
+CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
+AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: src/rust/target)])
@@ -181,9 +188,14 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (in src/vendor for builds, cleaned up post-install) ----
+dnl ---- vendoring (cached, in src/vendor) ----
 VENDOR_OUT="$abs_rpkg_src/vendor"
 AC_SUBST([VENDOR_OUT])
+
+dnl Force refresh if you want
+AC_ARG_VAR([FORCE_VENDOR],[Set to 1 to force `cargo vendor` refresh in dev mode])
+: ${FORCE_VENDOR="0"}
+AC_SUBST([FORCE_VENDOR])
 
 dnl Check for vendored miniextendr crates (downloaded via minirextendr)
 AC_MSG_CHECKING([for vendored miniextendr crates])
@@ -194,22 +206,72 @@ else
   AC_MSG_WARN([vendor/miniextendr-api not found - run minirextendr::vendor_miniextendr() first])
 fi
 
+dnl Stamp file for crates.io vendoring cache (keyed on Cargo.lock)
+LOCKFILE="$abs_rpkg_src/rust/Cargo.lock"
+STAMP="$VENDOR_OUT/.vendor.lock.cksum"
+MANIFEST="$abs_rpkg_src/rust/Cargo.toml"
+
+dnl Run `cargo vendor` only in dev mode (NOT_CRAN=true) and only if needed.
+dnl CRAN/offline mode expects the vendor dir to already be present in the tarball.
+AS_IF([test "$NOT_CRAN" = "true"], [
+  dnl Generate Cargo.lock if missing (required for fingerprinting)
+  AS_IF([test ! -f "$LOCKFILE"], [
+    AS_IF([test -f "$MANIFEST"], [
+      AC_MSG_NOTICE([generating Cargo.lock])
+      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
+        AC_MSG_ERROR([cargo generate-lockfile failed])
+    ], [
+      AC_MSG_NOTICE([no Cargo.toml yet; skipping cargo vendor])
+    ])
+  ])
+
+  dnl Now vendor if needed (lockfile should exist after above step)
+  AS_IF([test -f "$LOCKFILE"], [
+    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
+    _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
+    _old=`cat "$STAMP" 2>/dev/null || true`
+
+    _need=0
+    if test "$FORCE_VENDOR" = "1"; then
+      _need=1
+    elif test ! -d "$VENDOR_OUT"; then
+      _need=1
+    elif test ! -f "$STAMP"; then
+      dnl Stamp missing (vendor dir exists but wasn't tracked)
+      _need=1
+    elif test "x$_new" != "x$_old"; then
+      _need=1
+    fi
+
+    AS_IF([test $_need -eq 1], [
+      AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
+      AS_MKDIR_P(["$VENDOR_OUT"])
+      $CARGO_CMD vendor \
+        --sync "$MANIFEST" \
+        "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
+      echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
+    ], [
+      AC_MSG_NOTICE([skipping cargo vendor (Cargo.lock unchanged)])
+    ])
+  ])
+])
+
 dnl Source replacement config: only use vendored sources on CRAN (offline builds)
 dnl Dev mode uses network for crates.io, path deps for miniextendr-*
-if test "$NOT_CRAN" = "true"; then
+AS_IF([test "$NOT_CRAN" = "true"], [
   CARGO_SOURCE_REPLACE=""
-else
-  CARGO_SOURCE_REPLACE="[source.crates-io]
-replace-with = \"vendored-sources\"
+], [
+  CARGO_SOURCE_REPLACE='[source.crates-io]
+replace-with = "vendored-sources"
 
 [source.vendored-sources]
-directory = \"$VENDOR_OUT\""
-fi
+directory = "'"$VENDOR_OUT"'"'
+])
 AC_SUBST([CARGO_SOURCE_REPLACE])
 
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
-mkdir -p src/rust/.cargo
+AS_MKDIR_P([src/rust/.cargo])
 
 AC_CONFIG_FILES([
   src/rust/Cargo.toml
@@ -231,7 +293,7 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
   else
     _pkgid_flags="--offline --color=never"
   fi
-  _pkgid_output=`$CARGO pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
+  _pkgid_output=`$CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
@@ -253,7 +315,7 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
     fi
   done
 ],
-[CARGO="$CARGO" NOT_CRAN="$NOT_CRAN"])
+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN"])
 
 dnl Ensure Cargo.lock is compatible with the installed cargo version.
 dnl Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
@@ -266,7 +328,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
     LOCKFILE_VERSION=""
   fi
 
-  CARGO_VERSION=`$CARGO --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+  CARGO_VERSION=`$CARGO_CMD --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
   CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
   CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
 
@@ -275,7 +337,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
       rm -f "$LOCKFILE_PATH"
-      $CARGO generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
       _gen_status=$?
       if test $_gen_status -ne 0; then
         echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
@@ -284,6 +346,6 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
     fi
   fi
 ],
-[CARGO="$CARGO" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
 
 AC_OUTPUT

@@ -23,7 +23,7 @@ nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
 
 [dependencies]
-miniextendr-api = { path = "../vendor/miniextendr-api" }
+miniextendr-api = { version = "*" }
 
 [build-dependencies]
-miniextendr-lint = { path = "../vendor/miniextendr-lint" }
+miniextendr-lint = { version = "*" }

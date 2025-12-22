@@ -1,12 +1,18 @@
 [workspace]
 resolver = "3"
-members = ["miniextendr-api", "miniextendr-macros", "miniextendr-engine", "miniextendr-bench", "miniextendr-lint"]
+members = [
+    "miniextendr-api",
+    "miniextendr-macros",
+    "miniextendr-engine",
+    "miniextendr-bench",
+    "miniextendr-lint",
+]
 exclude = ["vendor", "rpkg/src/rust", "rpkg/src/vendor"]
 
 [workspace.dependencies]
-miniextendr-api = { path = "miniextendr-api", version = "0.1.0" }
-miniextendr-macros = { path = "miniextendr-macros", version = "0.1.0" }
-miniextendr-engine = { path = "miniextendr-engine", version = "0.1.0" }
+miniextendr-api = { version = "*" }
+miniextendr-macros = { version = "*" }
+miniextendr-engine = { version = "*" }
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "extra-traits"] }
