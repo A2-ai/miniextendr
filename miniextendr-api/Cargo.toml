@@ -12,7 +12,7 @@ documentation = "https://docs.rs/miniextendr-api"
 rust-version = "1.85"
 
 [features]
-default = []
+default = ["doc-lint", "rayon"]
 ## Enable non-API R functions. These may break with R updates and cause
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
@@ -20,6 +20,7 @@ rayon = ["dep:rayon"]
 ## Enable custom R connection framework. WARNING: R's connection API is explicitly
 ## marked as unstable and may change between R versions without notice.
 connections = []
+doc-lint = ["miniextendr-macros/doc-lint"]
 
 [dependencies]
 miniextendr-macros = { workspace = true }

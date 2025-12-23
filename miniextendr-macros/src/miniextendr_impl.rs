@@ -417,6 +417,9 @@ impl ParsedMethod {
         // Auto-convert regular doc comments to @description for all class systems
         let doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
 
+        // Check for @title/@description conflicts with implicit values
+        crate::roxygen::warn_on_doc_conflicts(&item.attrs, item.sig.ident.span());
+
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 

@@ -70,6 +70,7 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
 }
 
 #[proc_macro_attribute]
+#[cfg_attr(feature = "doc-lint", proc_macro_error::proc_macro_error)]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -114,6 +115,9 @@ pub fn miniextendr(
     let generics = parsed.generics();
     let has_dots = parsed.has_dots();
     let named_dots = parsed.named_dots().cloned();
+
+    // Check for @title/@description conflicts with implicit values
+    crate::roxygen::warn_on_doc_conflicts(attrs, rust_ident.span());
 
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {

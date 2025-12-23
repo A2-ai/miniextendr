@@ -2,7 +2,7 @@
 
 ## FFI Overhead is Minimal
 
-- Basic FFI calls (integer_elt, real_ptr, xlength): 7-8ns
+- Basic FFI calls (`integer_elt`, `real_ptr`, `xlength`): 7-8ns
 - Scalar creation: 8-11ns
 - This is near-native performance
 
@@ -70,13 +70,13 @@ Size 4 (65,536 elements) - Most significant difference
 
 Key Insights
 
-1. Zero-copy slice is O(1): ~19ns regardless of size - always prefer &[i32] when possible
+1. Zero-copy slice is O(1): ~19ns regardless of size - always prefer `&[i32]` when possible
 2. RNative Vec uses memcpy: 3.8µs for 64K elements - fast memory copy
-3. Widening coercion (i32→i64) adds ~80% overhead: 6.9µs vs 3.8µs
+3. Widening coercion (`i32 -→ i64`) adds ~80% overhead: 6.9µs vs 3.8µs
 
    - The extra cost is from element-by-element conversion
 
-4. Checked coercion is expensive: TryCoerce<u32> for i32 values takes 24.8µs (6.5x slower)
+4. Checked coercion is expensive: `TryCoerce<u32>` for `i32` values takes 24.8µs (6.5x slower)
 
    - The bounds checking (if x < 0 { return Err }) prevents vectorization
    - Use unchecked cast when you know values are valid
@@ -93,3 +93,75 @@ When possible:
 - Use `&[i32] / &[f64]` for read-only access (zero-copy)
 - Use `Vec<i32> / Vec<f64>` when you need ownership (memcpy)
 - Avoid `Vec<i64> / Vec<u32>` with checked coercion in hot paths
+
+## Allocator Benchmark Results
+
+Results Summary
+
+| Operation    | Size    | System | RAllocator | Overhead |
+|--------------|---------|--------|------------|----------|
+| alloc        | 8 B     | 17 ns  | 78 ns      | 4.6x     |
+| alloc        | 64 B    | 18 ns  | 82 ns      | 4.6x     |
+| alloc        | 1 KB    | 22 ns  | 165 ns     | 7.5x     |
+| alloc        | 8 KB    | 23 ns  | 521 ns     | 23x      |
+| alloc        | 64 KB   | 346 ns | 849 ns     | 2.5x     |
+| realloc grow | 64→1024 | 54 ns  | 173 ns     | 3.2x     |
+| realloc grow | 1K→64K  | 411 ns | 505 ns     | 1.2x     |
+
+Key observations:
+
+- R allocator is 2-23x slower depending on size
+- Overhead is highest for medium allocations (8KB)
+- Large allocations have less relative overhead
+- The overhead comes from: `Rf_allocVector`, GC protection via preserve mechanism, and header bookkeeping
+
+Single Allocation (`alloc` + `dealloc`)
+
+| Size  | System | RAllocator | Overhead |
+|-------|--------|------------|----------|
+| 8 B   | 17 ns  | 72 ns      | 4.2x     |
+| 64 B  | 18 ns  | 77 ns      | 4.3x     |
+| 1 KB  | 24 ns  | 157 ns     | 6.5x     |
+| 8 KB  | 23 ns  | 578 ns     | 25x      |
+| 64 KB | 500 ns | 859 ns     | 1.7x     |
+
+Zeroed Allocation (alloc_zeroed)
+
+| Size  | `System` | `RAllocator` | Overhead |
+|-------|----------|--------------|----------|
+| 8 B   | 16 ns    | 64 ns        | 4x       |
+| 64 B  | 17 ns    | 71 ns        | 4.2x     |
+| 1 KB  | 21 ns    | 111 ns       | 5.3x     |
+| 8 KB  | 128 ns   | 417 ns       | 3.3x     |
+| 64 KB | 620 ns   | 3.6 µs       | 5.8x     |
+
+Batch Allocation (N × 64-byte objects)
+
+| Count | `System`  | `RAllocator` | Overhead |
+|-------|-----------|--------------|----------|
+| 10    | 190 ns    | 797 ns       | 4.2x     |
+| 100   | 1.7 µs    | 7.7 µs       | 4.5x     |
+| 1000  | 16.7 µs   | 76.7 µs      | 4.6x     |
+
+Vec-like Growth (doubling pattern)
+
+| Pattern  | `System` | `RAllocator` | Overhead |
+|----------|----------|--------------|----------|
+| 8→1KB    | 302 ns   | 791 ns       | 2.6x     |
+| 64→8KB   | 417 ns   | 1.5 µs       | 3.5x     |
+| 256→64KB | 2.0 µs   | 8.3 µs       | 4.1x     |
+
+Mixed Workload (interleaved alloc/dealloc)
+
+| Allocator    | Time   |
+|--------------|--------|
+| `System`     | 164 ns |
+| `RAllocator` | 794 ns |
+| Overhead     | 4.8x   |
+
+Key insights:
+
+- `RAllocator` has consistent ~4-5x overhead for most patterns
+- Medium-sized allocations (8KB) have highest overhead (~25x) due to R's allocation strategy
+- realloc_shrink is nearly free for `RAllocator` (reuses existing `RAWSXP` capacity)
+- Batch and mixed workloads show the overhead is predictable and scales linearly
