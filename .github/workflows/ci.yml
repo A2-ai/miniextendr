@@ -9,6 +9,8 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
+  SCCACHE_GHA_ENABLED: "true"
+  RUSTC_WRAPPER: "sccache"
 
 jobs:
   # ===========================================================================
@@ -67,7 +69,11 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: clippy
+          cache-on-failure: true
       - name: Clippy (default features)
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Clippy (all features)
@@ -122,9 +128,12 @@ jobs:
         with:
           toolchain: ${{ matrix.rust }}
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.rust }}
+          shared-key: ${{ matrix.os }}-${{ matrix.arch }}-${{ matrix.rust }}
+          cache-on-failure: true
 
       - name: Build (default features)
         run: cargo build --workspace
@@ -161,13 +170,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - name: Sanitize cache key
         id: cache-key
         run: echo "key=features-$(echo '${{ matrix.features }}' | tr ',' '-')" >> "$GITHUB_OUTPUT"
 
       - uses: Swatinem/rust-cache@v2
         with:
-          key: ${{ steps.cache-key.outputs.key }}
+          shared-key: ${{ steps.cache-key.outputs.key }}
+          cache-on-failure: true
 
       - name: Build
         run: cargo build -p miniextendr-api --no-default-features --features "${{ matrix.features }}"
@@ -185,7 +196,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+      - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: docs
+          cache-on-failure: true
       - name: Build docs
         run: cargo doc --workspace --no-deps --all-features
         env:
@@ -235,11 +250,18 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rpkg/src/rust -> target
-          key: r-linux-${{ matrix.r }}
+          shared-key: r-linux-${{ matrix.r }}
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
       - name: Configure
         working-directory: rpkg
@@ -314,11 +336,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rpkg/src/rust -> target
-          key: r-macos-${{ matrix.arch }}
+          shared-key: r-macos-${{ matrix.arch }}
+          cache-on-failure: true
 
       - name: Configure
         working-directory: rpkg
@@ -370,6 +395,7 @@ jobs:
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: release
+          rtools-version: '44'
           use-public-rspm: true
 
       - name: Setup R dependencies
@@ -381,12 +407,43 @@ jobs:
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rpkg/src/rust -> target
-          key: r-windows
+          shared-key: r-windows
+          cache-on-failure: true
+
+      - name: Configure Windows Rust
+        shell: pwsh
+        run: |
+          $rtools_home = "C:\rtools44"
+
+          # Add Rtools to PATH
+          echo "${rtools_home}\x86_64-w64-mingw32.static.posix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "${rtools_home}\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "$(Rscript.exe -e 'cat(normalizePath(R.home()))')\bin\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Create empty libgcc stubs for Rust linking
+          New-Item -Path libgcc_mock -Type Directory -Force
+          New-Item -Path libgcc_mock\libgcc_eh.a -Type File -Force
+          New-Item -Path libgcc_mock\libgcc_s.a -Type File -Force
+
+          # Configure Cargo for Windows GNU target
+          New-Item -Path .cargo -ItemType Directory -Force
+          $pwd_slash = echo "${PWD}" | % {$_ -replace '\\','/'}
+          @"
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+
+          [env]
+          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
+          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8 -Append
 
       - name: Configure
         working-directory: rpkg
@@ -467,11 +524,14 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rpkg/src/rust -> target
-          key: r-tests-${{ matrix.os }}-${{ matrix.arch || 'default' }}
+          shared-key: r-tests-${{ matrix.os }}-${{ matrix.arch || 'default' }}
+          cache-on-failure: true
 
       - name: Configure (Unix)
         if: runner.os != 'Windows'
@@ -531,11 +591,18 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
           workspaces: rpkg/src/rust -> target
-          key: cran-check
+          shared-key: cran-check
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
       - name: Vendor dependencies (CRAN simulation)
         working-directory: rpkg/src/rust
@@ -589,7 +656,12 @@ jobs:
         with:
           toolchain: "1.85"
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: msrv
+          cache-on-failure: true
 
       - name: Check MSRV
         run: cargo check --workspace --all-features
@@ -613,9 +685,16 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
       - uses: Swatinem/rust-cache@v2
         with:
-          key: benchmarks
+          shared-key: benchmarks
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
       - name: Build benchmarks
         run: cargo build --release -p miniextendr-bench
