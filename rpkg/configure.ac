@@ -354,10 +354,10 @@ dnl Dev mode uses network for crates.io, path deps for miniextendr-*
 AS_IF([test "$NOT_CRAN" = "true"], [
   CARGO_SOURCE_REPLACE=""
 ], [
-  CARGO_SOURCE_REPLACE='[source.crates-io]
+  CARGO_SOURCE_REPLACE='[[source.crates-io]]
 replace-with = "vendored-sources"
 
-[source.vendored-sources]
+[[source.vendored-sources]]
 directory = "'"$VENDOR_OUT"'"'
 ])
 AC_SUBST([CARGO_SOURCE_REPLACE])

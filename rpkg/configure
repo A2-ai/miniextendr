@@ -2590,10 +2590,10 @@ then :
 
 else case e in #(
   e)
-  CARGO_SOURCE_REPLACE='source.crates-io
+  CARGO_SOURCE_REPLACE='[source.crates-io]
 replace-with = "vendored-sources"
 
-source.vendored-sources
+[source.vendored-sources]
 directory = "'"$VENDOR_OUT"'"'
  ;;
 esac
