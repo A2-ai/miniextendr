@@ -1,7 +1,7 @@
 //! Iterator-backed ALTREP benchmarks.
 
 use miniextendr_api::ffi;
-use miniextendr_api::{miniextendr, IntoR, IterIntData};
+use miniextendr_api::{IntoR, IterIntData, miniextendr};
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 

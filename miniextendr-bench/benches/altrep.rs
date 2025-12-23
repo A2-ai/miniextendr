@@ -1,7 +1,7 @@
 //! ALTREP benchmarks.
 
 use miniextendr_api::ffi;
-use miniextendr_api::{miniextendr, IntoR};
+use miniextendr_api::{IntoR, miniextendr};
 
 const SIZE_INDICES: &[usize] = &[0, 2, 4];
 

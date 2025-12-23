@@ -454,10 +454,7 @@ mod tests {
         // Basic normalization
         assert_eq!(normalize_for_comparison("Hello World"), "hello world");
         // Collapse whitespace
-        assert_eq!(
-            normalize_for_comparison("Hello    World"),
-            "hello world"
-        );
+        assert_eq!(normalize_for_comparison("Hello    World"), "hello world");
         // Strip trailing punctuation
         assert_eq!(normalize_for_comparison("Hello World."), "hello world");
         assert_eq!(normalize_for_comparison("Hello World!"), "hello world");

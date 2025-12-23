@@ -610,11 +610,7 @@ impl<I: Iterator<Item = i32> + 'static> InferBase for IterIntData<I> {
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
         unsafe {
-            crate::ffi::altrep::R_make_altinteger_class(
-                class_name,
-                pkg_name,
-                core::ptr::null_mut(),
-            )
+            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
         }
     }
 
@@ -1409,7 +1405,9 @@ where
     }
 }
 
-impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal for IterIntFromBoolData<I> {
+impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal
+    for IterIntFromBoolData<I>
+{
     const TYPE_NAME: &'static str = "IterIntFromBoolData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterIntFromBoolData\0";
 }
@@ -1445,7 +1443,9 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for IterIn
 impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltVec for IterIntFromBoolData<I> {}
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltInteger for IterIntFromBoolData<I> {
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltInteger
+    for IterIntFromBoolData<I>
+{
     const HAS_ELT: bool = true;
 
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {

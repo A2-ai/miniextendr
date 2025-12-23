@@ -16,9 +16,7 @@ fn run_on_worker_no_r() {
 
 #[divan::bench]
 fn run_on_worker_with_r_thread() {
-    let out = run_on_worker(|| {
-        with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) })
-    });
+    let out = run_on_worker(|| with_r_thread(|| unsafe { ffi::Rf_ScalarInteger(1) }));
     divan::black_box(out);
 }
 

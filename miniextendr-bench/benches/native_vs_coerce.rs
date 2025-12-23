@@ -10,8 +10,8 @@
 //! - `Vec<i64>` - Coercion: element-wise i32 → i64 widening
 //! - `Vec<u32>` - Coercion: element-wise i32 → u32 with bounds check
 
-use miniextendr_api::coerce::TryCoerce;
 use miniextendr_api::TryFromSexp;
+use miniextendr_api::coerce::TryCoerce;
 
 fn main() {
     miniextendr_bench::init();
@@ -58,10 +58,7 @@ fn vec_i64_coerce(size_idx: usize) {
 fn vec_u32_coerce_checked(size_idx: usize) {
     let sexp = fixtures().int_vec(size_idx);
     let slice: &[i32] = TryFromSexp::try_from_sexp(sexp).unwrap();
-    let vec: Vec<u32> = slice
-        .iter()
-        .map(|&x| x.try_coerce().unwrap())
-        .collect();
+    let vec: Vec<u32> = slice.iter().map(|&x| x.try_coerce().unwrap()).collect();
     divan::black_box(vec);
 }
 
@@ -79,10 +76,7 @@ fn vec_u32_coerce_unchecked(size_idx: usize) {
 fn vec_usize_coerce(size_idx: usize) {
     let sexp = fixtures().int_vec(size_idx);
     let slice: &[i32] = TryFromSexp::try_from_sexp(sexp).unwrap();
-    let vec: Vec<usize> = slice
-        .iter()
-        .map(|&x| x.try_coerce().unwrap())
-        .collect();
+    let vec: Vec<usize> = slice.iter().map(|&x| x.try_coerce().unwrap()).collect();
     divan::black_box(vec);
 }
 
