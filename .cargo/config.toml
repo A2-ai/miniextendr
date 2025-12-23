@@ -1,6 +1,0 @@
-[patch.crates-io]
-miniextendr-macros = { path = "miniextendr-macros" }
-miniextendr-engine = { path = "miniextendr-engine" }
-miniextendr-api = { path = "miniextendr-api" }
-miniextendr-lint = { path = "miniextendr-lint" }
-# miniextendr-bench = { path = "miniextendr-bench" }
