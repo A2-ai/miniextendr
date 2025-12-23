@@ -27,14 +27,25 @@ R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/miniextendr_wrappers.R
 CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 
+# Sentinel file to force pkgbuild:::needs_compile() to return TRUE in dev mode.
+# Touched after building so it's always newer than the DLL.
+DEVTOOLS_REBUILD_SENTINEL = $(ABS_RPKG_SRCDIR)/devtools_rebuild.rs
+
 # Pass Cargo feature flags to C compiler so entrypoint.c knows which modules exist
 PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 ## ----------------------------------------------------------------------
 
-.PHONY: all clean
+# FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
+# letting Cargo's own incremental compilation decide what to rebuild.
+.PHONY: all clean FORCE_CARGO
+FORCE_CARGO:
 
 all: $(SHLIB)
-	@# Post-build cleanup: On CRAN builds, remove vendor and target to save space
+	@# Dev mode: touch sentinel so pkgbuild always thinks sources changed
+	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
+	  touch "$(DEVTOOLS_REBUILD_SENTINEL)"; \
+	fi
+	@# CRAN mode: cleanup vendor and target to save space
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
@@ -48,9 +59,10 @@ all: $(SHLIB)
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 # Build the Rust static library
+# FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
 # Note: Dependencies are vendored by configure script, not by this Makefile.
 # You must run `./configure` (or `just configure`) before building.
-$(CARGO_AR): $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+$(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
@@ -61,7 +73,9 @@ $(CARGO_AR): $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(O
 	  --target-dir $(CARGO_TARGET_DIR); \
 	test -f "$(CARGO_AR)"
 
-$(R_WRAPPERS_GENERATED): $(CARGO_AR) $(CARGO_TOML) $(CARGO_LOCK)
+# Generate R wrappers from proc-macro output
+# FORCE_CARGO ensures the document binary is always run.
+$(R_WRAPPERS_GENERATED): FORCE_CARGO $(CARGO_AR) $(CARGO_TOML) $(CARGO_LOCK)
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \

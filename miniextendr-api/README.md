@@ -3,6 +3,7 @@
 Core runtime crate for Rust ↔ R interop.
 
 This crate provides:
+
 - FFI bindings to R’s C API.
 - Safe(ish) conversions between Rust and R types.
 - The worker‑thread pattern for panic isolation and Drop safety.
@@ -49,6 +50,7 @@ miniextendr_module! {
 ## R wrapper generation
 
 `#[miniextendr]` and `miniextendr_module!` generate:
+
 - C‑ABI wrappers (`C_<name>` symbols)
 - R functions that call `.Call(...)` with the original argument names
 - Class constructors and methods for impl‑block types

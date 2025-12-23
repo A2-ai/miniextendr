@@ -1,3 +1,5 @@
 *.o
 *.so
 *.dll
+Makevars
+devtools_rebuild.rs
