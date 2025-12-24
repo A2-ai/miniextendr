@@ -227,11 +227,11 @@ templates-sources:
     set -euo pipefail
 
     cat <<'EOF'
-# rel\tsrc
-# add lines below (TAB-separated). Lines starting with # are ignored.
-# foo/bar.mustache\tpath/to/upstream/foo/bar.mustache
-# baz/\tpath/to/upstream/baz/
-EOF
+    # rel\tsrc
+    # add lines below (TAB-separated). Lines starting with # are ignored.
+    # foo/bar.mustache\tpath/to/upstream/foo/bar.mustache
+    # baz/\tpath/to/upstream/baz/
+    EOF
 
 # Internal helper: populate an upstream snapshot into DEST.
 # The snapshot is a tree laid out to match inst/templates.
