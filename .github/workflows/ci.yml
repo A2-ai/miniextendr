@@ -13,8 +13,6 @@ concurrency:
 env:
   CARGO_TERM_COLOR: always
   RUST_BACKTRACE: 1
-  SCCACHE_GHA_ENABLED: "true"
-  RUSTC_WRAPPER: "sccache"
 
 jobs:
   # ===========================================================================
@@ -78,6 +76,12 @@ jobs:
               - '.cargo/**'
             r:
               - 'rpkg/**'
+              - '**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '.cargo/**'
             docs:
               - '**/*.rs'
               - 'Cargo.toml'
@@ -106,6 +110,9 @@ jobs:
   # Rust: Clippy linting
   # ===========================================================================
   clippy:
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     name: Clippy
     runs-on: ubuntu-latest
     needs: changes
@@ -131,6 +138,9 @@ jobs:
   # Rust: Test matrix (multiple platforms and Rust versions)
   # ===========================================================================
   rust-test:
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     name: Rust ${{ matrix.rust }} / ${{ matrix.os }}${{ matrix.arch && format(' ({0})', matrix.arch) || '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
@@ -199,6 +209,9 @@ jobs:
   # Rust: Feature combinations
   # ===========================================================================
   rust-features:
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     name: Features / ${{ matrix.features }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -234,6 +247,9 @@ jobs:
   # Rust: Documentation build
   # ===========================================================================
   docs:
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     name: Documentation
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -275,6 +291,8 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v6
@@ -363,6 +381,8 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v6
@@ -436,6 +456,8 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v6
@@ -547,6 +569,8 @@ jobs:
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v6
@@ -605,6 +629,8 @@ jobs:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       # NOT_CRAN is NOT set - simulates CRAN environment
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v6
@@ -679,6 +705,9 @@ jobs:
   # Minimum Supported Rust Version check
   # ===========================================================================
   msrv:
+    env:
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     name: MSRV Check (Rust 1.85)
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -713,6 +742,8 @@ jobs:
     if: needs.changes.outputs.rust == 'true'
     env:
       NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
     steps:
       - uses: actions/checkout@v6
 
