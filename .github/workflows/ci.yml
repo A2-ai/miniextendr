@@ -262,19 +262,14 @@ jobs:
     continue-on-error: ${{ matrix.allow_failure || false }}
     needs: changes
     if: needs.changes.outputs.r == 'true'
-    container:
-      image: ${{ matrix.container }}
     strategy:
       fail-fast: false
       matrix:
         include:
           - r: release
-            container: ghcr.io/r-lib/actions/setup-r-dependencies:2-latest
           - r: devel
-            container: ghcr.io/r-lib/actions/setup-r-dependencies:2-latest
             allow_failure: true  # R-devel may break for upstream reasons
           - r: oldrel-1
-            container: ghcr.io/r-lib/actions/setup-r-dependencies:2-latest
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -647,7 +642,7 @@ jobs:
         working-directory: rpkg/src/rust
         run: |
           mkdir -p ../vendor
-          cargo vendor ../vendor > /dev/null 2>&1 || true
+          cargo vendor --locked ../vendor
 
       - name: Configure
         working-directory: rpkg
@@ -762,6 +757,8 @@ jobs:
       - r-check-macos
       - r-check-windows
       - r-tests
+      - cran-check
+      - benchmarks
       - msrv
     runs-on: ubuntu-latest
     if: always()
@@ -779,6 +776,8 @@ jobs:
             "${{ needs.r-check-macos.result }}"
             "${{ needs.r-check-windows.result }}"
             "${{ needs.r-tests.result }}"
+            "${{ needs.cran-check.result }}"
+            "${{ needs.benchmarks.result }}"
             "${{ needs.msrv.result }}"
           )
           for result in "${results[@]}"; do
