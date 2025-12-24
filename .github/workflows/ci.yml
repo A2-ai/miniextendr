@@ -337,6 +337,11 @@ jobs:
           extra-packages: any::rcmdcheck
           needs: check
 
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -415,6 +420,10 @@ jobs:
         run: |
           brew install just
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+
+      - name: Install autoconf
+        run: |
+          brew install autoconf
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -620,6 +629,11 @@ jobs:
           extra-packages: any::testthat
           needs: check
 
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -676,6 +690,11 @@ jobs:
           working-directory: rpkg
           extra-packages: any::rcmdcheck
           needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -783,6 +802,11 @@ jobs:
         uses: r-lib/actions/setup-r@v2
         with:
           r-version: release
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
 
       - uses: dtolnay/rust-toolchain@stable
 
