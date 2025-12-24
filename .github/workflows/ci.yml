@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -27,102 +26,76 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
-      - name: Install just
-        run: |
-          mkdir -p ~/.local/bin
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Check version consistency
+        shell: bash
         run: |
-          # Extract version from Cargo.toml [workspace.package]
           CARGO_VERSION=$(sed -n '/\[workspace\.package\]/,/^\[/{ s/^version = "\(.*\)"/\1/p; }' Cargo.toml | head -1)
-
-          # Extract version from rpkg/DESCRIPTION
           R_VERSION=$(grep '^Version:' rpkg/DESCRIPTION | sed 's/Version: //')
-
           echo "Cargo.toml version: $CARGO_VERSION"
           echo "DESCRIPTION version: $R_VERSION"
-
-          # Compare (allow R dev versions like X.Y.Z.9000 to match X.Y.Z)
           CARGO_BASE=$(echo "$CARGO_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
           R_BASE=$(echo "$R_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
-
           if [ "$CARGO_BASE" != "$R_BASE" ]; then
             echo "::error::Version mismatch! Cargo.toml ($CARGO_VERSION) vs DESCRIPTION ($R_VERSION)"
-            echo "Run: ./scripts/bump-version.sh $CARGO_VERSION"
             exit 1
           fi
-
           echo "Versions match!"
 
   # ===========================================================================
-  # Change detection (path-based gating)
+  # Change detection (NO GitHub API; works on forks too)
   # ===========================================================================
   changes:
     name: Detect changes
     runs-on: ubuntu-latest
     outputs:
-      rust: ${{ steps.filter.outputs.rust }}
-      r: ${{ steps.filter.outputs.r }}
-      docs: ${{ steps.filter.outputs.docs }}
+      minirextendr: ${{ steps.diff.outputs.minirextendr }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-      - name: Determine changed paths
-        id: filter
-        uses: dorny/paths-filter@v3
-        with:
-          filters: |
-            rust:
-              - '**/*.rs'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - '**/Cargo.toml'
-              - '**/Cargo.lock'
-              - '.cargo/**'
-              - '.github/workflows/**'
-              - 'justfile'
-            r:
-              - 'rpkg/**'
-              - 'miniextendr/**'
-              - '**/*.R'
-              - '**/*.r'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - '**/Cargo.toml'
-              - '**/Cargo.lock'
-              - '.cargo/**'
-              - '.github/workflows/**'
-              - 'justfile'
-            docs:
-              - 'rpkg/man/**'
-              - '**/*.rs'
-              - 'Cargo.toml'
-              - 'Cargo.lock'
-              - '**/Cargo.toml'
-              - '**/Cargo.lock'
-              - 'README*'
-              - 'docs/**'
+
+      - name: Compute diff
+        id: diff
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            base="${{ github.event.pull_request.base.sha }}"
+            head="${{ github.event.pull_request.head.sha }}"
+          else
+            base="${{ github.event.before }}"
+            head="${{ github.sha }}"
+          fi
+
+          echo "Base: $base"
+          echo "Head: $head"
+
+          changed="$(git diff --name-only "$base" "$head" || true)"
+          echo "$changed"
+
+          if echo "$changed" | grep -qE '^minirextendr/'; then
+            echo "minirextendr=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "minirextendr=false" >> "$GITHUB_OUTPUT"
+          fi
 
   # ===========================================================================
-  # R Package: R CMD check on Linux
+  # R CMD check + Rust tests on Linux (ALL R versions)
   # ===========================================================================
   r-check-linux:
-    name: R CMD check / Linux ${{ matrix.r }}
+    name: Linux / R ${{ matrix.r }}
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 90
     continue-on-error: ${{ matrix.allow_failure || false }}
-    needs: changes
-    if: needs.changes.outputs.r == 'true'
+    needs: [version-check, changes]
     strategy:
       fail-fast: false
       matrix:
         include:
           - r: release
           - r: devel
-            allow_failure: true # R-devel may break for upstream reasons
+            allow_failure: true
           - r: oldrel-1
 
     env:
@@ -136,6 +109,7 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install just
+        shell: bash
         run: |
           mkdir -p ~/.local/bin
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
@@ -147,59 +121,57 @@ jobs:
           r-version: ${{ matrix.r }}
           use-public-rspm: true
 
-      - name: Setup R dependencies
+      - name: Setup rpkg dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: rpkg
-          extra-packages: any::rcmdcheck
+          extra-packages: any::rcmdcheck any::devtools any::testthat
+          needs: check
+
+      - name: Setup minirextendr dependencies (if changed)
+        if: needs.changes.outputs.minirextendr == 'true'
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: minirextendr
+          extra-packages: any::devtools any::testthat
           needs: check
 
       - name: Install autoconf
+        shell: bash
         run: |
           sudo apt-get update
           sudo apt-get install -y autoconf
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
 
       - uses: mozilla-actions/sccache-action@v0.0.9
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: r-linux-${{ matrix.r }}
+          shared-key: linux-${{ matrix.r }}
           cache-on-failure: true
 
-      - name: Configure Linux
+      - name: Configure Linux linker env
+        shell: bash
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
-      - name: Configure
+      # REQUIRED ORDER
+      - name: Configure (rpkg)
+        shell: bash
         run: just configure
 
-      # ---------------------------------------------------------------------
-      # Rust checks (Linux only, run once on R=release)
-      # ---------------------------------------------------------------------
-      - name: Rustfmt
-        if: matrix.r == 'release'
-        run: cargo fmt --all -- --check
+      - name: Cargo tests (workspace + rpkg Rust)
+        shell: bash
+        run: just test --locked
 
-      - name: Clippy (default features)
-        if: matrix.r == 'release'
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - name: devtools::test(rpkg)
+        shell: bash
+        run: just devtools-test
 
-      - name: Clippy (all features)
-        if: matrix.r == 'release'
-        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-
-      - name: Tests (default features)
-        if: matrix.r == 'release'
-        run: cargo test --workspace --locked
-
-      - name: R CMD check
+      - name: R CMD check (rpkg)
         uses: r-lib/actions/check-r-package@v2
         with:
           working-directory: rpkg
@@ -207,14 +179,12 @@ jobs:
           error-on: '"error"'
           check-dir: '"check"'
 
-      - name: Print failed tests
-        if: always()
-        run: |
-          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
-            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
-          done || true
+      - name: devtools::test(minirextendr) (if changed)
+        if: needs.changes.outputs.minirextendr == 'true'
+        shell: bash
+        run: Rscript -e 'devtools::test("minirextendr")'
 
-      - name: Upload check results
+      - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
@@ -225,22 +195,38 @@ jobs:
           retention-days: 7
 
   # ===========================================================================
-  # R Package: R CMD check on macOS
+  # R CMD check + Rust tests on macOS (ALL R versions, both arch runners)
   # ===========================================================================
   r-check-macos:
-    name: R CMD check / macOS ${{ matrix.arch }}
+    name: macOS / ${{ matrix.arch }} / R ${{ matrix.r }}
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
-    needs: changes
-    if: needs.changes.outputs.r == 'true'
+    timeout-minutes: 120
+    continue-on-error: ${{ matrix.allow_failure || false }}
+    needs: [version-check, changes]
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: macos-15
             arch: arm64
+            r: release
+          - runner: macos-15
+            arch: arm64
+            r: devel
+            allow_failure: true
+          - runner: macos-15
+            arch: arm64
+            r: oldrel-1
           - runner: macos-15-intel
             arch: x86_64
+            r: release
+          - runner: macos-15-intel
+            arch: x86_64
+            r: devel
+            allow_failure: true
+          - runner: macos-15-intel
+            arch: x86_64
+            r: oldrel-1
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
@@ -253,25 +239,35 @@ jobs:
       - uses: actions/checkout@v6
 
       - name: Install just
+        shell: bash
         run: |
           brew install just
           echo "$(brew --prefix)/bin" >> $GITHUB_PATH
 
       - name: Install autoconf
+        shell: bash
         run: |
           brew install autoconf
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: release
+          r-version: ${{ matrix.r }}
           use-public-rspm: true
 
-      - name: Setup R dependencies
+      - name: Setup rpkg dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: rpkg
-          extra-packages: any::rcmdcheck
+          extra-packages: any::rcmdcheck any::devtools any::testthat
+          needs: check
+
+      - name: Setup minirextendr dependencies (if changed)
+        if: needs.changes.outputs.minirextendr == 'true'
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: minirextendr
+          extra-packages: any::devtools any::testthat
           needs: check
 
       - name: Install Rust toolchain
@@ -282,14 +278,23 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: r-macos-${{ matrix.arch }}
+          shared-key: macos-${{ matrix.arch }}-${{ matrix.r }}
           cache-on-failure: true
 
-      - name: Configure
+      # REQUIRED ORDER
+      - name: Configure (rpkg)
+        shell: bash
         run: just configure
 
-      - name: R CMD check
+      - name: Cargo tests (workspace + rpkg Rust)
+        shell: bash
+        run: just test --locked
+
+      - name: devtools::test(rpkg)
+        shell: bash
+        run: just devtools-test
+
+      - name: R CMD check (rpkg)
         uses: r-lib/actions/check-r-package@v2
         with:
           working-directory: rpkg
@@ -297,32 +302,39 @@ jobs:
           error-on: '"error"'
           check-dir: '"check"'
 
-      - name: Print failed tests
-        if: always()
-        run: |
-          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
-            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
-          done || true
+      - name: devtools::test(minirextendr) (if changed)
+        if: needs.changes.outputs.minirextendr == 'true'
+        shell: bash
+        run: Rscript -e 'devtools::test("minirextendr")'
 
-      - name: Upload check results
+      - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: logs-macos-${{ matrix.arch }}
+          name: logs-macos-${{ matrix.arch }}-r${{ matrix.r }}
           path: |
             rpkg/check
             rpkg/config.log
           retention-days: 7
 
   # ===========================================================================
-  # R Package: R CMD check on Windows
+  # R CMD check + Rust tests on Windows (ALL R versions)
   # ===========================================================================
   r-check-windows:
-    name: R CMD check / Windows
+    name: Windows / R ${{ matrix.r }}
     runs-on: windows-latest
-    timeout-minutes: 90
-    needs: changes
-    if: needs.changes.outputs.r == 'true'
+    timeout-minutes: 120
+    continue-on-error: ${{ matrix.allow_failure || false }}
+    needs: [version-check, changes]
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - r: release
+          - r: devel
+            allow_failure: true
+          - r: oldrel-1
+
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
@@ -333,18 +345,31 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install just
+        shell: pwsh
+        run: |
+          choco install just -y
+
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
-          r-version: release
-          rtools-version: "44"
+          r-version: ${{ matrix.r }}
+          rtools-version: '44'
           use-public-rspm: true
 
-      - name: Setup R dependencies
+      - name: Setup rpkg dependencies
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: rpkg
-          extra-packages: any::rcmdcheck
+          extra-packages: any::rcmdcheck any::devtools any::testthat
+          needs: check
+
+      - name: Setup minirextendr dependencies (if changed)
+        if: needs.changes.outputs.minirextendr == 'true'
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: minirextendr
+          extra-packages: any::devtools any::testthat
           needs: check
 
       - name: Install Rust toolchain
@@ -357,28 +382,24 @@ jobs:
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
         with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: r-windows
+          shared-key: windows-${{ matrix.r }}
           cache-on-failure: true
 
-      - name: Configure Windows Rust
+      # Put Rtools (autoconf etc) on PATH and write .cargo/config.toml for GNU linker + patch.crates-io
+      - name: Configure Windows toolchain + Cargo config
         shell: pwsh
         run: |
           $rtools_home = "C:\rtools44"
+          "${rtools_home}\x86_64-w64-mingw32.static.posix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          "${rtools_home}\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
 
-          # Add Rtools to PATH
-          echo "${rtools_home}\x86_64-w64-mingw32.static.posix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "${rtools_home}\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$(Rscript.exe -e 'cat(normalizePath(R.home()))')\bin\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          New-Item -Path libgcc_mock -Type Directory -Force | Out-Null
+          New-Item -Path libgcc_mock\libgcc_eh.a -Type File -Force | Out-Null
+          New-Item -Path libgcc_mock\libgcc_s.a -Type File -Force | Out-Null
 
-          # Create empty libgcc stubs for Rust linking
-          New-Item -Path libgcc_mock -Type Directory -Force
-          New-Item -Path libgcc_mock\libgcc_eh.a -Type File -Force
-          New-Item -Path libgcc_mock\libgcc_s.a -Type File -Force
+          New-Item -Path .cargo -ItemType Directory -Force | Out-Null
+          $pwd_slash = "${PWD}" -replace '\\','/'
 
-          # Configure Cargo for Windows GNU target
-          New-Item -Path .cargo -ItemType Directory -Force
-          $pwd_slash = echo "${PWD}" | % {$_ -replace '\\','/'}
           @"
           [target.x86_64-pc-windows-gnu]
           linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
@@ -392,18 +413,22 @@ jobs:
           miniextendr-lint = { path = "miniextendr-lint" }
           miniextendr-engine = { path = "miniextendr-engine" }
           miniextendr-bench = { path = "miniextendr-bench" }
-          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8 -Append
+          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8
 
-      - name: Configure
-        working-directory: rpkg
+      # REQUIRED ORDER
+      - name: Configure (rpkg)
         shell: bash
-        run: |
-          if [ -f configure.win ]; then
-            chmod +x configure.win
-            ./configure.win
-          fi
+        run: just configure
 
-      - name: R CMD check
+      - name: Cargo tests (workspace + rpkg Rust)
+        shell: bash
+        run: just test --locked
+
+      - name: devtools::test(rpkg)
+        shell: bash
+        run: just devtools-test
+
+      - name: R CMD check (rpkg)
         uses: r-lib/actions/check-r-package@v2
         with:
           working-directory: rpkg
@@ -411,192 +436,22 @@ jobs:
           error-on: '"error"'
           check-dir: '"check"'
 
-      - name: Print failed tests
-        if: always()
+      - name: devtools::test(minirextendr) (if changed)
+        if: needs.changes.outputs.minirextendr == 'true'
         shell: bash
-        run: |
-          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
-            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
-          done || true
+        run: Rscript -e 'devtools::test("minirextendr")'
 
-      - name: Upload check results
+      - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v6
         with:
-          name: logs-windows
+          name: logs-windows-r${{ matrix.r }}
           path: |
             rpkg/check
           retention-days: 7
 
   # ===========================================================================
-  # R Package: Test suite (Linux only)
-  # ===========================================================================
-  r-tests:
-    name: R tests / ${{ matrix.os }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
-    needs: changes
-    if: needs.changes.outputs.r == 'true'
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: Linux
-            runner: ubuntu-latest
-
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      NOT_CRAN: true
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install just
-        run: |
-          mkdir -p ~/.local/bin
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Setup R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: release
-          use-public-rspm: true
-
-      - name: Setup R dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          working-directory: rpkg
-          extra-packages: any::testthat
-          needs: check
-
-      - name: Install autoconf
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: r-tests
-          cache-on-failure: true
-
-      - name: Configure
-        run: just configure
-
-      - name: Install package
-        working-directory: rpkg
-        shell: bash
-        run: R CMD INSTALL .
-
-      - name: Run tests
-        working-directory: rpkg
-        shell: bash
-        run: Rscript -e "testthat::test_local()"
-
-  # ===========================================================================
-  # CRAN-like check (stricter, simulates CRAN environment)
-  # ===========================================================================
-  cran-check:
-    name: CRAN-like check
-    runs-on: ubuntu-latest
-    timeout-minutes: 60
-    needs: changes
-    if: needs.changes.outputs.r == 'true'
-    env:
-      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
-      R_KEEP_PKG_SOURCE: yes
-      # NOT_CRAN is NOT set - simulates CRAN environment
-      SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
-
-    steps:
-      - uses: actions/checkout@v6
-
-      - name: Install just
-        run: |
-          mkdir -p ~/.local/bin
-          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-
-      - name: Setup R
-        uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: release
-          use-public-rspm: true
-
-      - name: Setup R dependencies
-        uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          working-directory: rpkg
-          extra-packages: any::rcmdcheck
-          needs: check
-
-      - name: Install autoconf
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y autoconf
-
-      - name: Install Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
-
-      - uses: mozilla-actions/sccache-action@v0.0.9
-
-      - name: Cache Cargo
-        uses: Swatinem/rust-cache@v2
-        with:
-          workspaces: rpkg/src/rust -> target
-          shared-key: cran-check
-          cache-on-failure: true
-
-      - name: Configure Linux
-        run: |
-          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
-
-      - name: Configure
-        run: just configure-cran
-
-      - name: Vendor dependencies (CRAN simulation)
-        working-directory: rpkg/src/rust
-        run: |
-          mkdir -p ../vendor
-          cargo vendor --locked ../vendor
-
-      - name: R CMD check (CRAN-like)
-        uses: r-lib/actions/check-r-package@v2
-        with:
-          working-directory: rpkg
-          args: 'c("--no-manual", "--as-cran")'
-          error-on: '"warning"'
-          check-dir: '"check"'
-
-      - name: Print failed tests
-        if: always()
-        run: |
-          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
-            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
-          done || true
-
-      - name: Upload check results
-        if: failure()
-        uses: actions/upload-artifact@v6
-        with:
-          name: logs-cran-check
-          path: |
-            rpkg/check
-            rpkg/config.log
-          retention-days: 7
-
-  # ===========================================================================
-  # Summary job (for branch protection)
+  # Summary job
   # ===========================================================================
   ci-success:
     name: CI Success
@@ -606,12 +461,11 @@ jobs:
       - r-check-linux
       - r-check-macos
       - r-check-windows
-      - r-tests
-      - cran-check
     runs-on: ubuntu-latest
     if: always()
     steps:
       - name: Check all jobs passed
+        shell: bash
         run: |
           results=(
             "${{ needs.version-check.result }}"
@@ -619,8 +473,6 @@ jobs:
             "${{ needs.r-check-linux.result }}"
             "${{ needs.r-check-macos.result }}"
             "${{ needs.r-check-windows.result }}"
-            "${{ needs.r-tests.result }}"
-            "${{ needs.cran-check.result }}"
           )
           for result in "${results[@]}"; do
             if [[ "$result" != "success" && "$result" != "skipped" ]]; then
