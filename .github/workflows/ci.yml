@@ -32,6 +32,11 @@ jobs:
           mkdir -p ~/.local/bin
           curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
           echo "$HOME/.local/bin" >> $GITHUB_PATH
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Check version consistency
         run: |
@@ -83,9 +88,11 @@ jobs:
               - '**/Cargo.toml'
               - '**/Cargo.lock'
               - '.cargo/**'
+              - '.github/workflows/**'
+              - 'justfile'
             r:
               - 'rpkg/**'
-              - 'minirextendr/**'
+              - 'miniextendr/**'
               - '**/*.R'
               - '**/*.r'
               - 'Cargo.toml'
@@ -93,8 +100,10 @@ jobs:
               - '**/Cargo.toml'
               - '**/Cargo.lock'
               - '.cargo/**'
+              - '.github/workflows/**'
+              - 'justfile'
             docs:
-              - '**/man/'
+              - 'rpkg/man/**'
               - '**/*.rs'
               - 'Cargo.toml'
               - 'Cargo.lock'
@@ -824,6 +833,7 @@ jobs:
         run: |
           results=(
             "${{ needs.version-check.result }}"
+            "${{ needs.changes.result }}"
             "${{ needs.fmt.result }}"
             "${{ needs.clippy.result }}"
             "${{ needs.rust-test.result }}"
