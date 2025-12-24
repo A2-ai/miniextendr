@@ -7,6 +7,7 @@
 #
 # This updates:
 #   - Cargo.toml (workspace.package.version)
+#   - minirextendr/DESCRIPTION (Version:)
 #   - rpkg/DESCRIPTION (Version:)
 #
 set -euo pipefail
@@ -51,6 +52,15 @@ else
     echo "  Warning: $DESCRIPTION not found"
 fi
 
+DESCRIPTION="$ROOT_DIR/minirextendr"
+if [ -f "$DESCRIPTION" ]; then
+    sed -i.bak -E 's/^(Version: )[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?/\1'"$VERSION"'/' "$DESCRIPTION"
+    rm -f "$DESCRIPTION.bak"
+    echo "  Updated: $DESCRIPTION"
+else
+    echo "  Warning: $DESCRIPTION not found"
+fi
+
 echo ""
 echo "Done! Verify changes with:"
-echo "  git diff Cargo.toml rpkg/DESCRIPTION"
+echo "  git diff Cargo.toml rpkg/DESCRIPTION minirextendr/DESCRIPTION"
