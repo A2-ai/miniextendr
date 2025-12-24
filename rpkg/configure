@@ -2462,126 +2462,6 @@ VENDOR_OUT="$abs_rpkg_src/vendor"
 : ${FORCE_VENDOR="0"}
 
 
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for miniextendr source crates" >&5
-printf %s "checking for miniextendr source crates... " >&6; }
-if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && \
-   test -d "$MINIEXTENDR_LINT_SRC" && test -d "$MINIEXTENDR_ENGINE_SRC"; then
-
-    if test "x$RSYNC" = "xno"
-then :
-
-    as_fn_error $? "\`rsync\` not found (required for syncing miniextendr crates from monorepo)" "$LINENO" 5
-
-fi
-
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found, syncing to vendor" >&5
-printf "%s\n" "found, syncing to vendor" >&6; }
-
-    ROOT_CARGO_TOML="$root_miniextendr_repo/Cargo.toml"
-
-    WS_VERSION=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^version = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_EDITION=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^edition = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_LICENSE=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^license = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_REPOSITORY=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^repository = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_HOMEPAGE=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^homepage = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-
-    WS_KEYWORDS=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^keywords = //p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_CATEGORIES=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^categories = //p; }' "$ROOT_CARGO_TOML" | head -1`
-
-    WS_DEP_PROC_MACRO2=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^proc-macro2 = //p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_DEP_QUOTE=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^quote = //p; }' "$ROOT_CARGO_TOML" | head -1`
-  WS_DEP_SYN=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^syn = //p; }' "$ROOT_CARGO_TOML" | head -1`
-
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&5
-printf "%s\n" "$as_me: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&6;}
-
-    as_dir="$VENDOR_OUT/miniextendr-api"; as_fn_mkdir_p
-  as_dir="$VENDOR_OUT/miniextendr-macros"; as_fn_mkdir_p
-  as_dir="$VENDOR_OUT/miniextendr-lint"; as_fn_mkdir_p
-  as_dir="$VENDOR_OUT/miniextendr-engine"; as_fn_mkdir_p
-
-    _rsync_exclude="--exclude=target --exclude=.git --exclude=Cargo.toml --exclude=.DS_Store --exclude=.gitignore --exclude=.github"
-
-  $RSYNC -a --delete $_rsync_exclude \
-    "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
-
-  $RSYNC -a --delete $_rsync_exclude \
-    "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
-
-  $RSYNC -a --delete $_rsync_exclude \
-    "$MINIEXTENDR_LINT_SRC/" "$VENDOR_OUT/miniextendr-lint/"
-
-  $RSYNC -a --delete $_rsync_exclude \
-    "$MINIEXTENDR_ENGINE_SRC/" "$VENDOR_OUT/miniextendr-engine/"
-
-      escape_sed_repl () {
-    printf '%s' "$1" | $SED 's/\[&|\]/\\&/g'
-  }
-  WS_REPOSITORY_ESC=`escape_sed_repl "$WS_REPOSITORY"`
-  WS_HOMEPAGE_ESC=`escape_sed_repl "$WS_HOMEPAGE"`
-  WS_KEYWORDS_ESC=`escape_sed_repl "$WS_KEYWORDS"`
-  WS_CATEGORIES_ESC=`escape_sed_repl "$WS_CATEGORIES"`
-  WS_DEP_PROC_MACRO2_ESC=`escape_sed_repl "$WS_DEP_PROC_MACRO2"`
-  WS_DEP_QUOTE_ESC=`escape_sed_repl "$WS_DEP_QUOTE"`
-  WS_DEP_SYN_ESC=`escape_sed_repl "$WS_DEP_SYN"`
-
-      $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-       -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
-       -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
-       -e "s|miniextendr-macros = { workspace = true }|miniextendr-macros = { version = \"$WS_VERSION\", path = \"../miniextendr-macros\" }|" \
-       -e "s|miniextendr-engine = { workspace = true }|miniextendr-engine = { version = \"$WS_VERSION\", path = \"../miniextendr-engine\" }|" \
-       "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
-
-  $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-       -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
-       -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
-       -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
-       -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
-       -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
-       "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
-
-  $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-       -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
-       -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
-       -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
-       "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
-
-    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-       -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-       -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-       -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-       -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-       "$MINIEXTENDR_ENGINE_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-engine/Cargo.toml"
-
-    for _crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
-    _cargo_toml="$VENDOR_OUT/$_crate/Cargo.toml"
-    if grep -q '\.workspace = true' "$_cargo_toml" 2>/dev/null; then
-      as_fn_error $? "$_crate/Cargo.toml still contains '.workspace = true' after patching; incomplete workspace inheritance removal" "$LINENO" 5
-    fi
-  done
-
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: miniextendr crates synced to $VENDOR_OUT" >&5
-printf "%s\n" "$as_me: miniextendr crates synced to $VENDOR_OUT" >&6;}
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: not found, using existing vendor" >&5
-printf "%s\n" "not found, using existing vendor" >&6; }
-    if test ! -d "$VENDOR_OUT/miniextendr-api"; then
-    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: vendor/miniextendr-api not found - build may fail" >&5
-printf "%s\n" "$as_me: WARNING: vendor/miniextendr-api not found - build may fail" >&2;}
-  fi
-fi
 
 if test "$NOT_CRAN" = "true"
 then :
@@ -2610,6 +2490,10 @@ ac_config_commands="$ac_config_commands cargo-lockfile-compat"
 
 
 ac_config_commands="$ac_config_commands cargo-vendor"
+
+
+
+ac_config_commands="$ac_config_commands sync-miniextendr-crates"
 
 
 ac_config_commands="$ac_config_commands patch-staticlib-name"
@@ -3317,6 +3201,9 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
+RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
+ MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
+ MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
 
 _ACEOF
@@ -3334,6 +3221,7 @@ do
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
+    "sync-miniextendr-crates") CONFIG_COMMANDS="$CONFIG_COMMANDS sync-miniextendr-crates" ;;
     "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
@@ -3780,9 +3668,50 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "cargo-vendor":C)
-    if test "$NOT_CRAN" != "true"; then
+      if test "$NOT_CRAN" != "true"; then
+    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
+      echo "configure:        Either build from a release tarball that includes src/vendor, or rerun configure with NOT_CRAN=true (and optionally FORCE_VENDOR=1)." >&2
+      exit 1
+    fi
     echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
   else
+            ROOT_PATCH_DIR="$ROOT_MINIEXTENDR_REPO/.cargo"
+    ROOT_PATCH_CFG="$ROOT_PATCH_DIR/config.toml"
+    mkdir -p "$ROOT_PATCH_DIR"
+    : > /dev/null 2>&1 || true
+    test -f "$ROOT_PATCH_CFG" || : > "$ROOT_PATCH_CFG"
+
+        if ! grep -q '^miniextendr-macros = { path = ' "$ROOT_PATCH_CFG" 2>/dev/null; then
+      cat >> "$ROOT_PATCH_CFG" <<EOF
+
+# BEGIN MINIEXTENDR PATCH (autogenerated by rpkg/configure)
+[patch.crates-io]
+miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-api" }
+miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-macros" }
+miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-lint" }
+miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-engine" }
+miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-bench" }
+# END MINIEXTENDR PATCH
+EOF
+    fi
+
+        PATCH_CFG="src/rust/.cargo/config.toml"
+    if test -f "$PATCH_CFG"; then
+            if ! grep -q '^miniextendr-macros = { path = ' "$PATCH_CFG" 2>/dev/null; then
+        cat >> "$PATCH_CFG" <<EOF
+
+# BEGIN MINIEXTENDR PATCH (autogenerated by rpkg/configure)
+[patch.crates-io]
+miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-api" }
+miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-macros" }
+miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-lint" }
+miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-engine" }
+miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-bench" }
+# END MINIEXTENDR PATCH
+EOF
+      fi
+    fi
     MANIFEST="src/rust/Cargo.toml"
     LOCKFILE="src/rust/Cargo.lock"
     STAMP="$VENDOR_OUT/.vendor.lock.cksum"
@@ -3804,6 +3733,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       _need=1
     elif test ! -f "$STAMP"; then
       _need=1
+    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      _need=1
     elif test "x$_new" != "x$_old"; then
       _need=1
     fi
@@ -3815,6 +3746,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         --manifest-path "$MANIFEST" \
         --sync "$ROOT_MINIEXTENDR_REPO/Cargo.toml" \
         --sync "$ROOT_MINIEXTENDR_REPO/miniextendr-bench/Cargo.toml" \
+        --sync "$ROOT_MINIEXTENDR_REPO/rpkg/src/rust/Cargo.toml" \
         "$VENDOR_OUT"
       if test $? -ne 0; then
         echo "configure: error: cargo vendor failed" >&2
@@ -3824,6 +3756,119 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
     else
       echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
     fi
+  fi
+ ;;
+    "sync-miniextendr-crates":C)
+    echo "configure: checking for miniextendr source crates" >&2
+
+  if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && \
+     test -d "$MINIEXTENDR_LINT_SRC" && test -d "$MINIEXTENDR_ENGINE_SRC"; then
+
+        if test "x$RSYNC" = "xno"; then
+      echo "configure: error: rsync not found (required for syncing miniextendr crates from monorepo)" >&2
+      exit 1
+    fi
+
+    echo "configure: found miniextendr crates; syncing to $VENDOR_OUT" >&2
+
+        ROOT_CARGO_TOML="$ROOT_MINIEXTENDR_REPO/Cargo.toml"
+
+        WS_VERSION=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^version = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_EDITION=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^edition = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_LICENSE=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^license = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_REPOSITORY=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^repository = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_HOMEPAGE=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^homepage = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+
+        WS_KEYWORDS=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^keywords = //p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_CATEGORIES=`$SED -n '/\[workspace\.package\]/,/^\[/{ s/^categories = //p; }' "$ROOT_CARGO_TOML" | head -1`
+
+        WS_DEP_PROC_MACRO2=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^proc-macro2 = //p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_DEP_QUOTE=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^quote = //p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_DEP_SYN=`$SED -n '/\[workspace\.dependencies\]/,/^\[/{ s/^syn = //p; }' "$ROOT_CARGO_TOML" | head -1`
+
+    echo "configure: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&2
+
+        mkdir -p "$VENDOR_OUT/miniextendr-api" \
+             "$VENDOR_OUT/miniextendr-macros" \
+             "$VENDOR_OUT/miniextendr-lint" \
+             "$VENDOR_OUT/miniextendr-engine"
+
+        _rsync_exclude="--exclude=target --exclude=.git --exclude=Cargo.toml --exclude=.DS_Store --exclude=.gitignore --exclude=.github"
+
+    $RSYNC -a --delete $_rsync_exclude \
+      "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
+
+    $RSYNC -a --delete $_rsync_exclude \
+      "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
+
+    $RSYNC -a --delete $_rsync_exclude \
+      "$MINIEXTENDR_LINT_SRC/" "$VENDOR_OUT/miniextendr-lint/"
+
+    $RSYNC -a --delete $_rsync_exclude \
+      "$MINIEXTENDR_ENGINE_SRC/" "$VENDOR_OUT/miniextendr-engine/"
+
+            escape_sed_repl () {
+      printf '%s' "" | $SED 's/\[&|\]/\\&/g'
+    }
+    WS_REPOSITORY_ESC=`escape_sed_repl "$WS_REPOSITORY"`
+    WS_HOMEPAGE_ESC=`escape_sed_repl "$WS_HOMEPAGE"`
+    WS_KEYWORDS_ESC=`escape_sed_repl "$WS_KEYWORDS"`
+    WS_CATEGORIES_ESC=`escape_sed_repl "$WS_CATEGORIES"`
+    WS_DEP_PROC_MACRO2_ESC=`escape_sed_repl "$WS_DEP_PROC_MACRO2"`
+    WS_DEP_QUOTE_ESC=`escape_sed_repl "$WS_DEP_QUOTE"`
+    WS_DEP_SYN_ESC=`escape_sed_repl "$WS_DEP_SYN"`
+
+            $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+         -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
+         -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
+         -e "s|miniextendr-macros = { workspace = true }|miniextendr-macros = { version = \"$WS_VERSION\", path = \"../miniextendr-macros\" }|" \
+         -e "s|miniextendr-engine = { workspace = true }|miniextendr-engine = { version = \"$WS_VERSION\", path = \"../miniextendr-engine\" }|" \
+         "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
+
+    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+         -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
+         -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
+         -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
+         -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
+         -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
+         "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
+
+    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+         -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
+         -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
+         -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
+         "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
+
+        $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
+         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
+         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
+         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
+         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
+         "$MINIEXTENDR_ENGINE_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-engine/Cargo.toml"
+
+        for _crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+      _cargo_toml="$VENDOR_OUT/$_crate/Cargo.toml"
+      if grep -q '\\.workspace = true' "$_cargo_toml" 2>/dev/null; then
+        echo "configure: error: $_crate/Cargo.toml still contains '.workspace = true' after patching" >&2
+        exit 1
+      fi
+    done
+
+    echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
+  else
+    echo "configure: miniextendr source crates not found; using existing vendor" >&2
   fi
  ;;
     "patch-staticlib-name":C)

@@ -3,9 +3,23 @@
 default:
     @just --list
 
+clean:
+    -just configure
+    -just cargo-clean
+    rm -f  .cargo/config.toml
+    rm -f  rpkg/src/.cargo/config.toml
+    rm -rf rpkg/src/vendor
+    rm -f  rpkg/src/Makevars
+    rm -rf rpkg/src/rust/target
+    # rm -rf rpkg/src/rust/ra_target
+    rm -rf rpkg/src/rust/.cargo
+    rm -f  rpkg/src/rust/Cargo.toml
+    rm -f  rpkg/src/rust/document.rs
+    rm -f  rpkg/src/entrypoint.c
+    rm -f  rpkg/src/miniextendr_wrappers.R
+
 # Clean build artifacts
-alias cargo-clean := clean
-clean *cargo_flags:
+cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
     cargo clean -p miniextendr-bench {{cargo_flags}}
@@ -108,7 +122,7 @@ expand *cargo_flags:
 # This is the only vendoring needed - R packages must be self-contained for CRAN.
 # Workspace crates use normal cargo dependency resolution (no vendoring needed).
 configure:
-    cd rpkg && autoconf && ./configure
+    cd rpkg && autoconf && NOT_CRAN=true ./configure
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": configure
