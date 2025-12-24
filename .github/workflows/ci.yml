@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -84,13 +85,16 @@ jobs:
               - '.cargo/**'
             r:
               - 'rpkg/**'
-              - '**/*.rs'
+              - 'minirextendr/**'
+              - '**/*.R'
+              - '**/*.r'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '**/Cargo.toml'
               - '**/Cargo.lock'
               - '.cargo/**'
             docs:
+              - '**/man/'
               - '**/*.rs'
               - 'Cargo.toml'
               - 'Cargo.lock'
