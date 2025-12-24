@@ -6,17 +6,7 @@ default:
 clean:
     -just configure
     -just cargo-clean
-    rm -f  .cargo/config.toml
-    rm -f  rpkg/src/.cargo/config.toml
-    rm -rf rpkg/src/vendor
-    rm -f  rpkg/src/Makevars
-    rm -rf rpkg/src/rust/target
-    # rm -rf rpkg/src/rust/ra_target
-    rm -rf rpkg/src/rust/.cargo
-    rm -f  rpkg/src/rust/Cargo.toml
-    rm -f  rpkg/src/rust/document.rs
-    rm -f  rpkg/src/entrypoint.c
-    rm -f  rpkg/src/miniextendr_wrappers.R
+    -NOT_CRAN=true cd rpkg && sh -c ./cleanup
 
 # Clean build artifacts
 cargo-clean *cargo_flags:
