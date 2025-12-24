@@ -253,6 +253,7 @@ dnl Create .cargo directory (it's a hidden dir not included in tarball)
 AS_MKDIR_P([.cargo])
 AS_MKDIR_P([src/rust/.cargo])
 
+
 AC_CONFIG_FILES([
   .cargo/config.toml:src/rust/cargo-config.toml.in
   src/rust/Cargo.toml
@@ -260,6 +261,20 @@ AC_CONFIG_FILES([
   src/Makevars
   src/entrypoint.c
 ])
+
+dnl 2a) Ensure the monorepo root has a cargo config (needed for workspace resolution)
+AC_CONFIG_COMMANDS([sync-root-cargo-config],
+[
+  ROOT_CFG_SRC=".cargo/config.toml"
+  ROOT_CFG_DIR="$ROOT_MINIEXTENDR_REPO/.cargo"
+  ROOT_CFG_DST="$ROOT_CFG_DIR/config.toml"
+
+  if test -f "$ROOT_CFG_SRC"; then
+    mkdir -p "$ROOT_CFG_DIR"
+    cp "$ROOT_CFG_SRC" "$ROOT_CFG_DST"
+  fi
+],
+[ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name

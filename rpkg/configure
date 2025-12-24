@@ -2492,7 +2492,11 @@ fi
 as_dir=.cargo; as_fn_mkdir_p
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
+
 ac_config_files="$ac_config_files .cargo/config.toml:src/rust/cargo-config.toml.in src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c"
+
+
+ac_config_commands="$ac_config_commands sync-root-cargo-config"
 
 
 
@@ -3209,6 +3213,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
+ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
 RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
@@ -3230,6 +3235,7 @@ do
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
+    "sync-root-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS sync-root-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
     "sync-miniextendr-crates") CONFIG_COMMANDS="$CONFIG_COMMANDS sync-miniextendr-crates" ;;
@@ -3652,6 +3658,16 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
 
   case $ac_file$ac_mode in
+    "sync-root-cargo-config":C)
+  ROOT_CFG_SRC=".cargo/config.toml"
+  ROOT_CFG_DIR="$ROOT_MINIEXTENDR_REPO/.cargo"
+  ROOT_CFG_DST="$ROOT_CFG_DIR/config.toml"
+
+  if test -f "$ROOT_CFG_SRC"; then
+    mkdir -p "$ROOT_CFG_DIR"
+    cp "$ROOT_CFG_SRC" "$ROOT_CFG_DST"
+  fi
+ ;;
     "cargo-lockfile-compat":C)
   LOCKFILE_PATH="src/rust/Cargo.lock"
   if test -f "$LOCKFILE_PATH"; then
