@@ -6,7 +6,7 @@ default:
 clean:
     -just configure
     -just cargo-clean
-    -NOT_CRAN=true cd rpkg && sh -c ./cleanup
+    -cd rpkg && NOT_CRAN=false ./cleanup
 
 # Clean build artifacts
 cargo-clean *cargo_flags:
@@ -113,6 +113,10 @@ expand *cargo_flags:
 # Workspace crates use normal cargo dependency resolution (no vendoring needed).
 configure:
     cd rpkg && autoconf && NOT_CRAN=true ./configure
+
+# Configure in CRAN/offline mode (do NOT force NOT_CRAN=true)
+configure-cran:
+    cd rpkg && autoconf && ./configure
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": configure

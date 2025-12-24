@@ -26,6 +26,11 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
 
       - name: Check version consistency
         run: |
@@ -682,11 +687,7 @@ jobs:
           cargo vendor --locked ../vendor
 
       - name: Configure
-        working-directory: rpkg
-        run: |
-          autoconf
-          chmod +x configure
-          ./configure
+        run: just configure-cran
 
       - name: R CMD check (CRAN-like)
         uses: r-lib/actions/check-r-package@v2
