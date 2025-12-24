@@ -24,7 +24,7 @@ jobs:
     name: Version Check
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Check version consistency
         run: |
@@ -49,14 +49,54 @@ jobs:
 
           echo "Versions match!"
 
+
+  # ===========================================================================
+  # Change detection (path-based gating)
+  # ===========================================================================
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      r: ${{ steps.filter.outputs.r }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Determine changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - '**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '.cargo/**'
+            r:
+              - 'rpkg/**'
+            docs:
+              - '**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - 'README*'
+              - 'docs/**'
+
   # ===========================================================================
   # Rust: Format check
   # ===========================================================================
   fmt:
     name: Rustfmt
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt
@@ -68,8 +108,10 @@ jobs:
   clippy:
     name: Clippy
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: clippy
@@ -79,11 +121,11 @@ jobs:
           shared-key: clippy
           cache-on-failure: true
       - name: Clippy (default features)
-        run: cargo clippy --workspace --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - name: Clippy (all features)
-        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
       - name: Clippy (no default features)
-        run: cargo clippy --workspace --all-targets --no-default-features -- -D warnings
+        run: cargo clippy --workspace --all-targets --no-default-features --locked -- -D warnings
 
   # ===========================================================================
   # Rust: Test matrix (multiple platforms and Rust versions)
@@ -93,6 +135,8 @@ jobs:
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
     continue-on-error: ${{ matrix.allow_failure || false }}
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -111,7 +155,7 @@ jobs:
             allow_failure: true
           # macOS ARM: default features only
           - os: macOS
-            runner: macos-latest
+            runner: macos-15
             rust: stable
             arch: arm64
           # macOS Intel: default features only
@@ -126,7 +170,7 @@ jobs:
             arch: x86_64
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: dtolnay/rust-toolchain@master
         with:
@@ -141,15 +185,15 @@ jobs:
 
       # Tests already build, no need for separate cargo build steps
       - name: Test (default features)
-        run: cargo test --workspace
+        run: cargo test --workspace --locked
 
       - name: Test (all features)
         if: matrix.full_features
-        run: cargo test --workspace --all-features
+        run: cargo test --workspace --all-features --locked
 
       - name: Test (no default features)
         if: matrix.full_features
-        run: cargo test --workspace --no-default-features
+        run: cargo test --workspace --no-default-features --locked
 
   # ===========================================================================
   # Rust: Feature combinations
@@ -158,6 +202,8 @@ jobs:
     name: Features / ${{ matrix.features }}
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -166,7 +212,7 @@ jobs:
           - "nonapi,rayon,connections,doc-lint"
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.9
       - name: Sanitize cache key
@@ -179,10 +225,10 @@ jobs:
           cache-on-failure: true
 
       - name: Build
-        run: cargo build -p miniextendr-api --no-default-features --features "${{ matrix.features }}"
+        run: cargo build -p miniextendr-api --locked --no-default-features --features "${{ matrix.features }}"
 
       - name: Test
-        run: cargo test -p miniextendr-api --no-default-features --features "${{ matrix.features }}"
+        run: cargo test -p miniextendr-api --locked --no-default-features --features "${{ matrix.features }}"
 
   # ===========================================================================
   # Rust: Documentation build
@@ -191,8 +237,10 @@ jobs:
     name: Documentation
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.docs == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
       - uses: dtolnay/rust-toolchain@stable
       - uses: mozilla-actions/sccache-action@v0.0.9
       - uses: Swatinem/rust-cache@v2
@@ -200,7 +248,7 @@ jobs:
           shared-key: docs
           cache-on-failure: true
       - name: Build docs
-        run: cargo doc --workspace --no-deps --all-features
+        run: cargo doc --workspace --no-deps --all-features --locked
         env:
           RUSTDOCFLAGS: -D warnings
 
@@ -212,6 +260,8 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 60
     continue-on-error: ${{ matrix.allow_failure || false }}
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
     container:
       image: ${{ matrix.container }}
     strategy:
@@ -232,7 +282,7 @@ jobs:
       NOT_CRAN: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -286,7 +336,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: logs-linux-r${{ matrix.r }}
           path: |
@@ -301,12 +351,14 @@ jobs:
     name: R CMD check / macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 90
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           # macOS ARM (Apple Silicon)
-          - runner: macos-latest
+          - runner: macos-15
             arch: arm64
           # macOS Intel
           - runner: macos-15-intel
@@ -318,7 +370,7 @@ jobs:
       NOT_CRAN: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -368,7 +420,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: logs-macos-${{ matrix.arch }}
           path: |
@@ -383,13 +435,15 @@ jobs:
     name: R CMD check / Windows
     runs-on: windows-latest
     timeout-minutes: 90
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -472,7 +526,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: logs-windows
           path: |
@@ -486,27 +540,21 @@ jobs:
     name: R tests / ${{ matrix.os }}${{ matrix.arch && format(' ({0})', matrix.arch) || '' }}
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
     strategy:
       fail-fast: false
       matrix:
         include:
           - os: Linux
             runner: ubuntu-latest
-          - os: macOS
-            runner: macos-latest
-            arch: arm64
-          - os: macOS
-            runner: macos-15-intel
-            arch: x86_64
-          - os: Windows
-            runner: windows-latest
 
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       NOT_CRAN: true
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -533,22 +581,11 @@ jobs:
           shared-key: r-tests-${{ matrix.os }}-${{ matrix.arch || 'default' }}
           cache-on-failure: true
 
-      - name: Configure (Unix)
-        if: runner.os != 'Windows'
+      - name: Configure
         working-directory: rpkg
         run: |
           chmod +x configure
           ./configure
-
-      - name: Configure (Windows)
-        if: runner.os == 'Windows'
-        working-directory: rpkg
-        shell: bash
-        run: |
-          if [ -f configure.win ]; then
-            chmod +x configure.win
-            ./configure.win
-          fi
 
       - name: Install package
         working-directory: rpkg
@@ -567,13 +604,15 @@ jobs:
     name: CRAN-like check
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
     env:
       GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
       R_KEEP_PKG_SOURCE: yes
       # NOT_CRAN is NOT set - simulates CRAN environment
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -633,7 +672,7 @@ jobs:
 
       - name: Upload check results
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: logs-cran-check
           path: |
@@ -648,8 +687,10 @@ jobs:
     name: MSRV Check (Rust 1.85)
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Install MSRV Rust
         uses: dtolnay/rust-toolchain@master
@@ -664,7 +705,7 @@ jobs:
           cache-on-failure: true
 
       - name: Check MSRV
-        run: cargo check --workspace --all-features
+        run: cargo check --workspace --all-features --locked
 
   # ===========================================================================
   # Benchmarks (run but don't fail on regression)
@@ -673,10 +714,12 @@ jobs:
     name: Benchmarks
     runs-on: ubuntu-latest
     timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.rust == 'true'
     env:
       NOT_CRAN: true
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
@@ -697,7 +740,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
       - name: Build benchmarks
-        run: cargo build --release -p miniextendr-bench
+        run: cargo build --release -p miniextendr-bench --locked
 
       # Note: Actually running benchmarks requires R to be embedded,
       # which needs the package installed. We just verify they compile.
@@ -709,6 +752,7 @@ jobs:
     name: CI Success
     needs:
       - version-check
+      - changes
       - fmt
       - clippy
       - rust-test
