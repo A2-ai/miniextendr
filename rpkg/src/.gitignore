@@ -18,6 +18,7 @@ Makevars
 entrypoint.c
 rust/Cargo.toml
 rust/document.rs
+rust/.cargo/config.toml
 
 # Vendored dependencies (generated during configure)
 vendor/
