@@ -5,7 +5,7 @@ AC_CANONICAL_HOST
 
 dnl Ensure R_HOME is set and valid
 if test -z "$R_HOME"; then
-  R_HOME=`R RHOME 2>/dev/null`
+  R_HOME="$(R RHOME 2>/dev/null)"
   if test $? -ne 0 || test -z "$R_HOME"; then
     AC_MSG_ERROR([R not found. Please ensure R is installed and on PATH, or set R_HOME.])
   fi
@@ -76,13 +76,13 @@ dnl This allows rust-analyzer to see the full workspace during development.
 
 
 dnl ---- canonical paths ----
-abs_top_srcdir=`(cd "$srcdir" && pwd)`
+abs_top_srcdir="$(cd "$srcdir" && pwd)"
 AC_SUBST([ABS_TOP_SRCDIR], ["$abs_top_srcdir"])
 abs_rpkg_src="$abs_top_srcdir/src"
 AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
 
 dnl Canonical path two levels above src (rpkg/src → miniextendr)
-root_miniextendr_repo=`(cd "$abs_rpkg_src/../.." && pwd)`
+root_miniextendr_repo="$(cd "$abs_rpkg_src/../.." && pwd)"
 AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 
 dnl Miniextendr crate source paths (in monorepo)
@@ -106,12 +106,12 @@ AC_SUBST([RSYNC])
 AC_SUBST([SED])
 
 dnl Report rustc version (required by CRAN for Rust packages)
-RUSTC_VERSION=`$RUSTC --version`
+RUSTC_VERSION="$($RUSTC --version)"
 AC_MSG_NOTICE([using $RUSTC_VERSION])
 
 dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
 dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
-RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | sed 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
 RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
 RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
 MIN_RUSTC_MAJOR=1
@@ -181,7 +181,7 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
 AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
 
 dnl ---- package name → Rust-safe variants ----
-pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
+pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
@@ -194,9 +194,9 @@ dnl ---- enumerate Rust sources for Make dependencies (no make wildcards) ----
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 RUST_SOURCES=
 if test -d "$RUST_SRC_DIR"; then
-  RUST_SOURCES=`(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
-    | sed "s|^.|$RUST_SRC_DIR|" \
-    | tr '\012' ' ')`
+  RUST_SOURCES="$(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
+    | $SED "s|^.|$RUST_SRC_DIR|" \
+    | tr '\012' ' ')"
 fi
 AC_SUBST([RUST_SOURCES])
 
@@ -228,24 +228,37 @@ dnl Source replacement config: only use vendored sources on CRAN (offline builds
 dnl Dev mode uses local path overrides for miniextendr-*
 AS_IF([test "$NOT_CRAN" = "true"], [
   dnl Dev mode: use local path overrides for miniextendr crates
-  CARGO_SOURCE_REPLACE=`cat <<EOF
+  CARGO_SOURCE_REPLACE="$(cat <<EOF
 @<:@patch.crates-io@:>@
 miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-api" }
 miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-macros" }
 miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-lint" }
 miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-engine" }
 miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-bench" }
-EOF`
+EOF
+)"
 ], [
   dnl CRAN/offline mode: use vendored sources only
-  CARGO_SOURCE_REPLACE=`cat <<EOF
+  CARGO_SOURCE_REPLACE="$(cat <<EOF
 @<:@source.crates-io@:>@
 replace-with = "vendored-sources"
 
 @<:@source.vendored-sources@:>@
 directory = "$VENDOR_OUT"
-EOF`
+EOF
+)"
 ])
+
+dnl Sanity check CARGO_SOURCE_REPLACE before AC_SUBST
+if test -z "$CARGO_SOURCE_REPLACE"; then
+  AC_MSG_ERROR([CARGO_SOURCE_REPLACE is empty; Cargo config templates will be missing source/patch directives])
+fi
+case "$CARGO_SOURCE_REPLACE" in
+  *patch.crates-io*|*source.crates-io*) ;;
+  *)
+    AC_MSG_ERROR([CARGO_SOURCE_REPLACE does not contain expected [patch.crates-io] or [source.crates-io] header; check bracket escaping and quoting])
+    ;;
+esac
 AC_SUBST([CARGO_SOURCE_REPLACE])
 
 dnl ---- output files ----
@@ -269,12 +282,13 @@ AC_CONFIG_COMMANDS([sync-root-cargo-config],
   ROOT_CFG_DIR="$ROOT_MINIEXTENDR_REPO/.cargo"
   ROOT_CFG_DST="$ROOT_CFG_DIR/config.toml"
 
-  if test -f "$ROOT_CFG_SRC"; then
+  if test -f "$ROOT_CFG_SRC" && test "$NOT_CRAN" = "true" && \
+     test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
     mkdir -p "$ROOT_CFG_DIR"
     cp "$ROOT_CFG_SRC" "$ROOT_CFG_DST"
   fi
 ],
-[ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"])
+[ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
@@ -285,12 +299,12 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 [
   LOCKFILE_PATH="src/rust/Cargo.lock"
   if test -f "$LOCKFILE_PATH"; then
-    LOCKFILE_VERSION=`"$SED" -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
+    LOCKFILE_VERSION="$("$SED" -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1)"
   else
     LOCKFILE_VERSION=""
   fi
 
-  CARGO_VERSION=`$CARGO_CMD --version | "$SED" 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+  CARGO_VERSION="$( $CARGO_CMD --version | "$SED" 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/' )"
   CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
   CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
 
@@ -338,8 +352,8 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
 
     dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-    _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
-    _old=`cat "$STAMP" 2>/dev/null || true`
+    _new="$(cksum < "$LOCKFILE" | awk '{print $1":"$2}')"
+    _old="$(cat "$STAMP" 2>/dev/null || true)"
 
     _need=0
     if test "$FORCE_VENDOR" = "1"; then
@@ -396,20 +410,20 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     ROOT_CARGO_TOML="$ROOT_MINIEXTENDR_REPO/Cargo.toml"
 
     dnl Extract simple string values from [workspace.package]
-    WS_VERSION=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^version = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_EDITION=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^edition = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_LICENSE=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^license = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_REPOSITORY=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^repository = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_HOMEPAGE=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^homepage = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_VERSION="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^version = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_EDITION="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^edition = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_LICENSE="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^license = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_REPOSITORY="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^repository = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_HOMEPAGE="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^homepage = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
 
     dnl For arrays, extract the whole value (keep brackets)
-    WS_KEYWORDS=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^keywords = //p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_CATEGORIES=`$SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^categories = //p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_KEYWORDS="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^keywords = //p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_CATEGORIES="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^categories = //p; }' "$ROOT_CARGO_TOML" | head -1)"
 
     dnl Extract workspace.dependencies
-    WS_DEP_PROC_MACRO2=`$SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^proc-macro2 = //p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_DEP_QUOTE=`$SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^quote = //p; }' "$ROOT_CARGO_TOML" | head -1`
-    WS_DEP_SYN=`$SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^syn = //p; }' "$ROOT_CARGO_TOML" | head -1`
+    WS_DEP_PROC_MACRO2="$($SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^proc-macro2 = //p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_DEP_QUOTE="$($SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^quote = //p; }' "$ROOT_CARGO_TOML" | head -1)"
+    WS_DEP_SYN="$($SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^syn = //p; }' "$ROOT_CARGO_TOML" | head -1)"
 
     echo "configure: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&2
 
@@ -434,18 +448,18 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     $RSYNC -a --delete $_rsync_exclude \
       "$MINIEXTENDR_ENGINE_SRC/" "$VENDOR_OUT/miniextendr-engine/"
 
-    dnl Escape special chars for sed replacement using | delimiter (handles URLs with /)
+    dnl Escape special chars for `sed` replacement using | delimiter (handles URLs with /)
     dnl Escape & and | characters
     escape_sed_repl () {
-      printf '%s' "$1" | $SED 's/\@<:@&|\@:>@/\\&/g'
+      printf '%s' "$1" | $SED 's/@<:@&|@:>@/\\&/g'
     }
-    WS_REPOSITORY_ESC=`escape_sed_repl "$WS_REPOSITORY"`
-    WS_HOMEPAGE_ESC=`escape_sed_repl "$WS_HOMEPAGE"`
-    WS_KEYWORDS_ESC=`escape_sed_repl "$WS_KEYWORDS"`
-    WS_CATEGORIES_ESC=`escape_sed_repl "$WS_CATEGORIES"`
-    WS_DEP_PROC_MACRO2_ESC=`escape_sed_repl "$WS_DEP_PROC_MACRO2"`
-    WS_DEP_QUOTE_ESC=`escape_sed_repl "$WS_DEP_QUOTE"`
-    WS_DEP_SYN_ESC=`escape_sed_repl "$WS_DEP_SYN"`
+    WS_REPOSITORY_ESC="$(escape_sed_repl "$WS_REPOSITORY")"
+    WS_HOMEPAGE_ESC="$(escape_sed_repl "$WS_HOMEPAGE")"
+    WS_KEYWORDS_ESC="$(escape_sed_repl "$WS_KEYWORDS")"
+    WS_CATEGORIES_ESC="$(escape_sed_repl "$WS_CATEGORIES")"
+    WS_DEP_PROC_MACRO2_ESC="$(escape_sed_repl "$WS_DEP_PROC_MACRO2")"
+    WS_DEP_QUOTE_ESC="$(escape_sed_repl "$WS_DEP_QUOTE")"
+    WS_DEP_SYN_ESC="$(escape_sed_repl "$WS_DEP_SYN")"
 
     dnl Patch Cargo.toml to remove workspace inheritance
     dnl Use | as delimiter to handle URLs with /
@@ -520,14 +534,14 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
   else
     _pkgid_flags="--offline --color=never"
   fi
-  _pkgid_output=`$CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
+  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
     echo "configure: cargo pkgid output: $_pkgid_output" >&2
     exit 1
   fi
-  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_'`
+  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
   if test -z "$REAL_STATICLIB_NAME"; then
     echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
     exit 1
