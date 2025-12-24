@@ -202,15 +202,14 @@ test-r-build: configure
     tar -xf "$tarball" -C "$out_dir" --strip-components=1
     echo "Extracted to: $out_dir"
 
-# Templates vendoring / drift check
+# Templates / drift check
 #
 # Pattern:
-# - vendor/templates/** : upstream snapshot (pulled from various places)
+# - upstream snapshot   : built from sources within this repo (see templates-sources)
 # - inst/templates/**   : your edited copies
 # - patches/templates.patch : the *approved* delta
 #
 # Workflow:
-#   just templates-vendor-sync   # refresh vendor snapshot from upstream sources
 #   just templates-check         # fails if inst/templates drift beyond approved patch
 #   just templates-approve       # accept current delta as approved (regen patch)
 
@@ -222,21 +221,17 @@ patch_file  := "patches/templates.patch"
 # Use TAB-separated pairs: <relative/path/in/templates>\t<source/path>
 # - For a directory source, end BOTH sides with a trailing slash.
 # - Paths with spaces are OK (TAB is the separator).
-#
-# Example:
-#   foo/bar.mustache<TAB>/abs/path/to/upstream/bar.mustache
-#   qux/<TAB>../otherrepo/templates/qux/
 
 templates-sources:
     #!/usr/bin/env bash
     set -euo pipefail
 
     cat <<'EOF'
-    # rel\tsrc
-    # add lines below (TAB-separated). Lines starting with # are ignored.
-    # foo/bar.mustache\tpath/to/upstream/foo/bar.mustache
-    # baz/\tpath/to/upstream/baz/
-    EOF
+# rel\tsrc
+# add lines below (TAB-separated). Lines starting with # are ignored.
+# foo/bar.mustache\tpath/to/upstream/foo/bar.mustache
+# baz/\tpath/to/upstream/baz/
+EOF
 
 # Internal helper: populate an upstream snapshot into DEST.
 # The snapshot is a tree laid out to match inst/templates.
@@ -278,11 +273,17 @@ _templates-upstream-populate dest:
         exit 2
       fi
 
+      # Disallow absolute paths to keep this repo-portable
+      if [[ "$src" = /* ]]; then
+        echo "_templates-upstream-populate: absolute paths are not allowed (got: $src)" >&2
+        exit 2
+      fi
+
       add "$rel" "$src"
     done <<<"$manifest"
 
 # Accept the current delta as approved by regenerating patches/templates.patch
-# (Runs templates-vendor-sync first so the patch is relative to the latest upstream snapshot.)
+# (Builds an upstream snapshot from templates-sources before diffing.)
 templates-approve:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -300,7 +301,7 @@ templates-approve:
     (cd "$tmp" && diff -ruN a b) > "{{patch_file}}" || true
     echo "Wrote {{patch_file}}"
 
-# Verify: vendor snapshot + approved patch == inst/templates
+# Verify: upstream snapshot + approved patch == inst/templates
 # - exits nonzero on drift
 # - exits nonzero if the patch no longer applies cleanly
 templates-check:
