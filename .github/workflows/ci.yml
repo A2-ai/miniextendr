@@ -6,6 +6,9 @@ on:
     branches: [main]
     tags: ["v*"]
 
+permissions:
+  contents: read
+
 concurrency:
   group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
@@ -297,6 +300,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -327,10 +336,7 @@ jobs:
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
       - name: Configure
-        working-directory: rpkg
-        run: |
-          chmod +x configure
-          ./configure
+        run: just configure
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -387,6 +393,11 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install just
+        run: |
+          brew install just
+          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -413,10 +424,7 @@ jobs:
           cache-on-failure: true
 
       - name: Configure
-        working-directory: rpkg
-        run: |
-          chmod +x configure
-          ./configure
+        run: just configure
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -575,6 +583,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -601,10 +615,7 @@ jobs:
           cache-on-failure: true
 
       - name: Configure
-        working-directory: rpkg
-        run: |
-          chmod +x configure
-          ./configure
+        run: just configure
 
       - name: Install package
         working-directory: rpkg
@@ -673,6 +684,7 @@ jobs:
       - name: Configure
         working-directory: rpkg
         run: |
+          autoconf
           chmod +x configure
           ./configure
 
@@ -747,6 +759,12 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
       - name: Setup R
         uses: r-lib/actions/setup-r@v2
         with:
@@ -764,6 +782,9 @@ jobs:
       - name: Configure Linux
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+
+      - name: Configure
+        run: just configure
 
       - name: Build benchmarks
         run: cargo build --release -p miniextendr-bench --locked
