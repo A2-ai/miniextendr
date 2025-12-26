@@ -77,11 +77,13 @@
 //!
 //! Methods must follow these constraints:
 //!
-//! - **Receiver**: `&self` or `&mut self` only (no `self`, no generics)
+//! - **Receiver**: `&self` or `&mut self` for instance methods, or none for static methods
 //! - **Arguments**: Types that implement `TryFromSexp`
 //! - **Return**: Types that implement `IntoR`, or `()`
 //! - **No generics**: Methods cannot have generic type parameters
 //! - **No async**: Async methods are not supported
+//! - **Static methods**: Methods without a receiver are allowed and resolved at compile time
+//!   (they don't go through the vtable)
 //!
 //! ## Default Methods
 //!
@@ -211,23 +213,32 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
         ));
     }
 
-    // Check receiver - must be &self or &mut self
-    let has_valid_receiver = method.sig.inputs.first().is_some_and(|arg| {
-        matches!(
-            arg,
-            syn::FnArg::Receiver(r) if r.reference.is_some() && r.colon_token.is_none()
-        )
-    });
-
-    if !has_valid_receiver {
-        return Err(syn::Error::new_spanned(
-            &method.sig,
-            format!(
-                "#[miniextendr] trait method `{}::{}` must have `&self` or `&mut self` receiver",
-                trait_name, method_name
-            ),
-        ));
+    // Check receiver - must be &self, &mut self, or no receiver (static method)
+    // Static methods are allowed but won't be included in the vtable
+    // (they're resolved at compile time via <Type as Trait>::method())
+    let receiver = method.sig.inputs.first();
+    if let Some(syn::FnArg::Receiver(r)) = receiver {
+        // If there's a receiver, it must be &self or &mut self (not self by value)
+        if r.reference.is_none() {
+            return Err(syn::Error::new_spanned(
+                &method.sig,
+                format!(
+                    "#[miniextendr] trait method `{}::{}` receiver must be `&self` or `&mut self`, not `self` by value",
+                    trait_name, method_name
+                ),
+            ));
+        }
+        if r.colon_token.is_some() {
+            return Err(syn::Error::new_spanned(
+                &method.sig,
+                format!(
+                    "#[miniextendr] trait method `{}::{}` receiver cannot have explicit type annotation",
+                    trait_name, method_name
+                ),
+            ));
+        }
     }
+    // If receiver is None or FnArg::Typed (no self), it's a static method - allowed
 
     Ok(())
 }
@@ -254,12 +265,20 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     );
 
     // Collect method information
+    // Filter to only include instance methods (with &self or &mut self) for vtable
+    // Static methods are resolved at compile time and don't need vtable dispatch
     let methods: Vec<_> = trait_item
         .items
         .iter()
         .filter_map(|item| {
             if let syn::TraitItem::Fn(method) = item {
-                Some(extract_method_info(method))
+                let info = extract_method_info(method);
+                // Only include instance methods in vtable
+                if info.has_self {
+                    Some(info)
+                } else {
+                    None
+                }
             } else {
                 None
             }
@@ -450,7 +469,9 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
 struct MethodInfo {
     /// Method name
     name: syn::Ident,
-    /// Whether receiver is `&mut self` (vs `&self`)
+    /// Whether the method has a self receiver (instance method)
+    has_self: bool,
+    /// Whether receiver is `&mut self` (vs `&self`) - only meaningful if has_self is true
     is_mut: bool,
     /// Parameter types (excluding self)
     param_types: Vec<syn::Type>,
@@ -467,15 +488,23 @@ struct MethodInfo {
 fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
     let name = method.sig.ident.clone();
 
-    // Check if receiver is &mut self
-    let is_mut = method.sig.inputs.first().is_some_and(|arg| {
-        matches!(arg, syn::FnArg::Receiver(r) if r.mutability.is_some())
-    });
+    // Check for receiver
+    let (has_self, is_mut) = method.sig.inputs.first().map_or(
+        (false, false),
+        |arg| {
+            if let syn::FnArg::Receiver(r) = arg {
+                (true, r.mutability.is_some())
+            } else {
+                (false, false)
+            }
+        },
+    );
 
-    // Extract parameters (skip self)
+    // Extract parameters (skip self if present)
+    let skip_count = if has_self { 1 } else { 0 };
     let mut param_types = Vec::new();
     let mut param_names = Vec::new();
-    for (i, arg) in method.sig.inputs.iter().skip(1).enumerate() {
+    for (i, arg) in method.sig.inputs.iter().skip(skip_count).enumerate() {
         if let syn::FnArg::Typed(pat_type) = arg {
             param_types.push((*pat_type.ty).clone());
             if let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() {
@@ -504,6 +533,7 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
 
     MethodInfo {
         name,
+        has_self,
         is_mut,
         param_types,
         param_names,

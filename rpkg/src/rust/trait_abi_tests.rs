@@ -27,6 +27,9 @@ pub trait Counter {
 
     /// Add n to the counter.
     fn add(&mut self, n: i32);
+
+    /// Static method: Returns the default initial value for this counter type.
+    fn default_initial() -> i32;
 }
 
 // =============================================================================
@@ -61,6 +64,10 @@ impl Counter for SimpleCounter {
 
     fn add(&mut self, n: i32) {
         self.value += n;
+    }
+
+    fn default_initial() -> i32 {
+        0  // SimpleCounter defaults to 0
     }
 }
 
@@ -121,6 +128,10 @@ impl Counter for PanickyCounter {
             );
         }
         self.value += n;
+    }
+
+    fn default_initial() -> i32 {
+        100  // PanickyCounter defaults to 100 (safe margin above 0)
     }
 }
 

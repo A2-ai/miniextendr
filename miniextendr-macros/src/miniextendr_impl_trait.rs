@@ -112,7 +112,9 @@ struct TraitMethod {
     ident: syn::Ident,
     /// Method signature (including self)
     sig: syn::Signature,
-    /// Is this &mut self (vs &self)?
+    /// Does this method have a receiver (&self, &mut self, self)?
+    has_self: bool,
+    /// Is this &mut self (vs &self)? Only meaningful if has_self is true.
     is_mut: bool,
 }
 
@@ -310,17 +312,21 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
         .filter_map(|item| {
             if let syn::ImplItem::Fn(method) = item {
                 // Check receiver type
-                let is_mut = method.sig.inputs.first().is_some_and(|arg| {
-                    if let syn::FnArg::Receiver(r) = arg {
-                        r.mutability.is_some()
-                    } else {
-                        false
-                    }
-                });
+                let (has_self, is_mut) = method.sig.inputs.first().map_or(
+                    (false, false),
+                    |arg| {
+                        if let syn::FnArg::Receiver(r) = arg {
+                            (true, r.mutability.is_some())
+                        } else {
+                            (false, false)
+                        }
+                    },
+                );
 
                 Some(TraitMethod {
                     ident: method.sig.ident.clone(),
                     sig: method.sig.clone(),
+                    has_self,
                     is_mut,
                 })
             } else {
@@ -343,7 +349,7 @@ fn generate_trait_method_c_wrapper(
     let c_ident = method.c_wrapper_ident(type_ident, trait_name);
     let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
 
-    // Trait methods with &self or &mut self must run on main thread
+    // All trait methods run on main thread (static or instance)
     let thread_strategy = ThreadStrategy::MainThread;
 
     // Build rust argument names from the signature (excluding self)
@@ -373,41 +379,6 @@ fn generate_trait_method_c_wrapper(
         .cloned()
         .collect();
 
-    // Generate self extraction with detailed error message
-    let trait_method_name = format!("{}::{}()", trait_name, method_ident);
-    let self_extraction = if method.is_mut {
-        quote::quote! {
-            let mut self_ptr = unsafe {
-                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
-            };
-            let self_ref = self_ptr.downcast_mut::<#type_ident>()
-                .unwrap_or_else(|| panic!(
-                    "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
-                     This can happen if you pass an object of a different type to a trait method.",
-                    #trait_method_name,
-                    stringify!(#type_ident)
-                ));
-        }
-    } else {
-        quote::quote! {
-            let self_ptr = unsafe {
-                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
-            };
-            let self_ref = self_ptr.downcast_ref::<#type_ident>()
-                .unwrap_or_else(|| panic!(
-                    "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
-                     This can happen if you pass an object of a different type to a trait method.",
-                    #trait_method_name,
-                    stringify!(#type_ident)
-                ));
-        }
-    };
-
-    // Generate call expression - call through the trait
-    let call_expr = quote::quote! {
-        #trait_path::#method_ident(self_ref, #(#rust_args),*)
-    };
-
     // Determine return handling
     let return_handling = crate::c_wrapper_builder::detect_return_handling(&method.sig.output);
 
@@ -420,17 +391,63 @@ fn generate_trait_method_c_wrapper(
 
     // Build the wrapper using the builder infrastructure
     // Use custom call_method_def_ident to avoid collisions with inherent impl methods
-    let builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+    let mut builder = CWrapperContext::builder(method_ident.clone(), c_ident)
         .r_wrapper_const(r_wrappers_const)
         .inputs(filtered_inputs)
         .output(method.sig.output.clone())
-        .pre_call(vec![self_extraction])
-        .call_expr(call_expr)
         .thread_strategy(thread_strategy)
         .return_handling(return_handling)
-        .has_self()
         .type_context(type_ident.clone())
         .call_method_def_ident(call_method_def_ident);
+
+    if method.has_self {
+        // Instance method: generate self extraction and call with self_ref
+        let trait_method_name = format!("{}::{}()", trait_name, method_ident);
+        let self_extraction = if method.is_mut {
+            quote::quote! {
+                let mut self_ptr = unsafe {
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                };
+                let self_ref = self_ptr.downcast_mut::<#type_ident>()
+                    .unwrap_or_else(|| panic!(
+                        "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
+                         This can happen if you pass an object of a different type to a trait method.",
+                        #trait_method_name,
+                        stringify!(#type_ident)
+                    ));
+            }
+        } else {
+            quote::quote! {
+                let self_ptr = unsafe {
+                    ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+                };
+                let self_ref = self_ptr.downcast_ref::<#type_ident>()
+                    .unwrap_or_else(|| panic!(
+                        "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
+                         This can happen if you pass an object of a different type to a trait method.",
+                        #trait_method_name,
+                        stringify!(#type_ident)
+                    ));
+            }
+        };
+
+        // Call expression with self_ref
+        let call_expr = quote::quote! {
+            #trait_path::#method_ident(self_ref, #(#rust_args),*)
+        };
+
+        builder = builder
+            .pre_call(vec![self_extraction])
+            .call_expr(call_expr)
+            .has_self();
+    } else {
+        // Static method: call directly without self
+        let call_expr = quote::quote! {
+            <#type_ident as #trait_path>::#method_ident(#(#rust_args),*)
+        };
+
+        builder = builder.call_expr(call_expr);
+    }
 
     // The builder generates both the C wrapper and the R_CallMethodDef
     builder.build().generate()
@@ -482,15 +499,21 @@ fn generate_trait_r_wrapper(
             .collect();
 
         let param_str = params.join(", ");
-        let args_str = if params.is_empty() {
-            "self".to_string()
+
+        // For instance methods, we need `self` in the args; for static methods, just the params
+        let args_str = if method.has_self {
+            if params.is_empty() {
+                "self".to_string()
+            } else {
+                format!("self, {}", params.join(", "))
+            }
         } else {
-            format!("self, {}", params.join(", "))
+            param_str.clone()
         };
 
         // Generate method wrapper in trait namespace
         // Uses nested naming: Type$Trait$method
-        // The $.Type dispatch handles binding `self` for environments
+        // The $.Type dispatch handles binding `self` for environments (instance methods)
         output.push_str(&format!(
             "#' @name {}${}${}\n",
             type_ident, trait_name, method_name
@@ -501,16 +524,20 @@ fn generate_trait_r_wrapper(
             type_ident,
             trait_name,
             method_name,
-            if param_str.is_empty() {
-                String::new()
-            } else {
-                param_str
-            }
+            param_str  // Static methods have no self in params; instance methods get self via environment
         ));
-        output.push_str(&format!(
-            "    .Call(C_{}__{}__{}, .call = match.call(), {})\n",
-            type_ident, trait_name, method_name, args_str
-        ));
+        // Generate .Call() - handle empty args properly to avoid trailing comma
+        if args_str.is_empty() {
+            output.push_str(&format!(
+                "    .Call(C_{}__{}__{}, .call = match.call())\n",
+                type_ident, trait_name, method_name
+            ));
+        } else {
+            output.push_str(&format!(
+                "    .Call(C_{}__{}__{}, .call = match.call(), {})\n",
+                type_ident, trait_name, method_name, args_str
+            ));
+        }
         output.push_str("}\n\n");
     }
 

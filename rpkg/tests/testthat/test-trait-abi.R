@@ -82,3 +82,14 @@ test_that("trait methods via inherent and via trait namespace return same result
   expect_equal(val_after_inherent, 50L)
   expect_equal(val_after_trait, 58L)
 })
+
+test_that("static trait methods work", {
+  # Static trait methods can be called without an instance
+  # They are accessed via Type$Trait$static_method()
+
+  # SimpleCounter::default_initial() returns 0
+  expect_equal(SimpleCounter$Counter$default_initial(), 0L)
+
+  # PanickyCounter::default_initial() returns 100
+  expect_equal(PanickyCounter$Counter$default_initial(), 100L)
+})

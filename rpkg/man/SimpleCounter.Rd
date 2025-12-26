@@ -11,6 +11,7 @@
 \alias{SimpleCounter$Counter$value}
 \alias{SimpleCounter$Counter$increment}
 \alias{SimpleCounter$Counter$add}
+\alias{SimpleCounter$Counter$default_initial}
 \title{SimpleCounter Class}
 \format{
 An object of class \code{environment} of length 4.
