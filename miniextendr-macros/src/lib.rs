@@ -74,6 +74,63 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
+/// Export Rust items to R.
+///
+/// `#[miniextendr]` can be applied to:
+/// - `fn` items (generate C + R wrappers)
+/// - `impl` blocks (generate R class methods)
+/// - `trait` items (generate trait ABI metadata)
+/// - ALTREP wrapper structs (generate `RegisterAltrep` impls)
+///
+/// # Functions
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, miniextendr_module};
+///
+/// #[miniextendr]
+/// fn add(a: i32, b: i32) -> i32 { a + b }
+///
+/// miniextendr_module! {
+///     mod mypkg;
+///     fn add;
+/// }
+/// ```
+///
+/// This produces a C wrapper `C_add` and an R wrapper `add()`.
+///
+/// ## `extern "C-unwind"`
+///
+/// If the function is declared `extern "C-unwind"` and `#[unsafe(no_mangle)]`,
+/// the function itself is the C symbol and the R wrapper is prefixed with
+/// `unsafe_` to signal bypassed safety (no worker isolation or conversion).
+///
+/// ## Variadics
+///
+/// Use `...` as the last argument. The Rust parameter becomes `&Dots` and is
+/// renamed to `_dots` in the generated R wrapper.
+///
+/// ## Attributes
+///
+/// - `#[miniextendr(unsafe(main_thread))]`
+/// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]`
+/// - `#[miniextendr(check_interrupt)]`
+/// - `#[miniextendr(coerce)]` (also usable per-parameter)
+///
+/// # Impl blocks (class systems)
+///
+/// Apply `#[miniextendr(receiver|r6|s7|s3|s4)]` to an `impl Type` block and list
+/// `impl Type;` in `miniextendr_module!`.
+///
+/// # Traits (ABI)
+///
+/// Apply `#[miniextendr]` to a trait to generate ABI metadata, then use
+/// `#[miniextendr] impl Trait for Type` and list `impl Trait for Type;` in
+/// `miniextendr_module!`.
+///
+/// # ALTREP
+///
+/// Apply `#[miniextendr(class = "...", pkg = "...", base = "...")]` to a
+/// one-field wrapper struct and list `struct Type;` in `miniextendr_module!`.
 #[proc_macro_attribute]
 #[cfg_attr(feature = "doc-lint", proc_macro_error::proc_macro_error)]
 pub fn miniextendr(
@@ -637,9 +694,16 @@ pub fn miniextendr(
 ///
 ///     // Functions annotated with #[miniextendr]
 ///     fn my_function;
+///     extern "C-unwind" fn C_my_raw_function;
 ///
 ///     // ALTREP types (registers the class with R)
 ///     struct MyAltrepClass;
+///
+///     // Impl blocks (class systems)
+///     impl MyType;
+///
+///     // Trait impls (ABI dispatch)
+///     impl Counter for MyType;
 ///
 ///     // Re-export from submodules
 ///     use submodule;
@@ -656,7 +720,8 @@ pub fn miniextendr(
 /// `#[miniextendr]` at the function definition site, not in this module declaration:
 ///
 /// - **Rust ABI** (`fn foo(...)`): `#[miniextendr]` generates a `C_foo` wrapper
-/// - **C ABI** (`extern "C-unwind" fn foo(...)`): `#[miniextendr]` uses the function directly
+/// - **C ABI** (`extern "C-unwind" fn foo(...)`): `#[miniextendr]` uses the function directly,
+///   and the R wrapper is prefixed with `unsafe_`
 ///
 /// Both are listed the same way in `miniextendr_module!`:
 ///
@@ -673,6 +738,11 @@ pub fn miniextendr(
 /// Structs listed are registered as ALTREP classes during `R_init_*`.
 /// The struct must implement the appropriate ALTREP traits.
 ///
+/// # Impl and trait impl registration
+///
+/// - `impl Type;` registers a `#[miniextendr(...)] impl Type` block (receiver/S3/S4/S7/R6).
+/// - `impl Trait for Type;` registers ABI wrappers for cross-package trait dispatch.
+///
 /// # Example
 ///
 /// ```ignore
@@ -680,12 +750,13 @@ pub fn miniextendr(
 /// fn add(a: i32, b: i32) -> i32 { a + b }
 ///
 /// #[miniextendr]
-/// extern "C-unwind" fn fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
+/// #[unsafe(no_mangle)]
+/// extern "C-unwind" fn C_fast_add(a: SEXP, b: SEXP) -> SEXP { /* ... */ }
 ///
 /// miniextendr_module! {
 ///     mod mypackage;
 ///     fn add;
-///     fn fast_add;
+///     extern "C-unwind" fn C_fast_add;
 /// }
 /// ```
 #[proc_macro]
@@ -1468,13 +1539,15 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// When you want cross-package trait dispatch, specify the implemented traits:
 ///
 /// ```ignore
+/// use miniextendr_api::miniextendr;
+///
 /// #[derive(ExternalPtr)]
 /// #[externalptr(traits = [Counter])]
 /// struct MyCounter {
 ///     value: i32,
 /// }
 ///
-/// #[miniextendr_impl_trait]
+/// #[miniextendr]
 /// impl Counter for MyCounter {
 ///     fn value(&self) -> i32 { self.value }
 ///     fn increment(&mut self) { self.value += 1; }
@@ -1564,6 +1637,7 @@ pub fn derive_altrep_integer(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Derive macro for ALTREP real vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltRealData` traits.
+/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
 #[proc_macro_derive(AltrepReal, attributes(altrep))]
 pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -1575,6 +1649,7 @@ pub fn derive_altrep_real(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 /// Derive macro for ALTREP logical vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltLogicalData` traits.
+/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
 #[proc_macro_derive(AltrepLogical, attributes(altrep))]
 pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -1586,6 +1661,7 @@ pub fn derive_altrep_logical(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Derive macro for ALTREP raw vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltRawData` traits.
+/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
 #[proc_macro_derive(AltrepRaw, attributes(altrep))]
 pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -1597,6 +1673,7 @@ pub fn derive_altrep_raw(input: proc_macro::TokenStream) -> proc_macro::TokenStr
 /// Derive macro for ALTREP string vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltStringData` traits.
+/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
 #[proc_macro_derive(AltrepString, attributes(altrep))]
 pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -1608,6 +1685,7 @@ pub fn derive_altrep_string(input: proc_macro::TokenStream) -> proc_macro::Token
 /// Derive macro for ALTREP complex vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltComplexData` traits.
+/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
 #[proc_macro_derive(AltrepComplex, attributes(altrep))]
 pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
@@ -1619,6 +1697,7 @@ pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::Toke
 /// Derive macro for ALTREP list vector data types.
 ///
 /// Auto-implements `AltrepLen` and `AltListData` traits.
+/// Supports the same `#[altrep(...)]` attributes as `AltrepInteger`.
 #[proc_macro_derive(AltrepList, attributes(altrep))]
 pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
