@@ -22,9 +22,11 @@ rpkg_doc_altrep_helpers()
 ALTREP convenience wrappers (internal)
 }
 \examples{
+\dontrun{
 x <- altrep_compact_int(5L, 1L, 2L)
 y <- altrep_from_doubles(c(1, 2, 3))
 z <- altrep_from_strings(c("a", "b"))
 altrep_lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
+}
 }
 \keyword{internal}

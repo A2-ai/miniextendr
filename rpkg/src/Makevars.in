@@ -13,6 +13,7 @@ CARGO_BUILD_TARGET = @CARGO_BUILD_TARGET@
 CARGO_LIBDIR = @CARGO_LIBDIR@
 VENDOR_OUT = @VENDOR_OUT@
 CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
+CARGO_LOCKED_FLAG = @CARGO_LOCKED_FLAG@
 NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
 RUST_SOURCES = @RUST_SOURCES@
@@ -47,12 +48,12 @@ PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 # FORCE_CARGO: phony target to ensure Cargo is invoked every time make runs,
 # letting Cargo's own incremental compilation decide what to rebuild.
 .PHONY: all clean FORCE_CARGO
-FORCE_CARGO:
 
+# all must be defined FIRST to be the default target
 all: $(SHLIB)
-	@# Dev mode: touch sentinel so pkgbuild always thinks sources changed
+	@# Dev mode: touch Cargo.toml so pkgbuild always thinks sources changed
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
-	  touch "$(DEV_REBUILD_SENTINEL)"; \
+	  touch "$(CARGO_TOML)"; \
 	fi
 	@# CRAN mode: cleanup vendor and target to save space
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
@@ -65,6 +66,9 @@ all: $(SHLIB)
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
 	fi
 
+# Phony target to force Cargo invocation (no recipe - just triggers dependents)
+FORCE_CARGO:
+
 $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 # Build the Rust static library
@@ -76,8 +80,8 @@ $(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/doc
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
-	  --locked --lib --profile $(CARGO_PROFILE) \
+	$(CARGO) $(RUST_TOOLCHAIN) build $(CARGO_OFFLINE_FLAG) $(CARGO_LOCKED_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	  --lib --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \
 	test -f "$(CARGO_AR)"
@@ -89,8 +93,8 @@ $(R_WRAPPERS_GENERATED): FORCE_CARGO $(CARGO_AR) $(CARGO_TOML) $(CARGO_LOCK)
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \
 	RUSTFLAGS="$(ENV_RUSTFLAGS)" \
-	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
-	  --locked --bin document --profile $(CARGO_PROFILE) \
+	$(CARGO) $(RUST_TOOLCHAIN) run $(CARGO_OFFLINE_FLAG) $(CARGO_LOCKED_FLAG) $(CARGO_FEATURES_FLAG) $$TARGET_OPT \
+	  --bin document --profile $(CARGO_PROFILE) \
 	  --manifest-path $(CARGO_TOML) \
 	  --target-dir $(CARGO_TARGET_DIR); \
 	test -f "$(R_WRAPPERS_GENERATED)"

@@ -1,5 +1,16 @@
 AC_INIT([rpkg], [1.0])
 
+dnl Verify we're running from the R package directory (not the monorepo root)
+dnl This prevents accidental creation of src/, config.log, etc. in the wrong place
+if test ! -f "DESCRIPTION" || test ! -f "NAMESPACE"; then
+  AC_MSG_ERROR([configure must be run from the rpkg directory (where DESCRIPTION exists).
+
+  If you're in the monorepo root, run:
+    cd rpkg && ./configure
+  Or use:
+    just configure])
+fi
+
 dnl Canonicalize build/host triples for cross-compilation support
 AC_CANONICAL_HOST
 
@@ -30,10 +41,14 @@ dnl - NOT_CRAN=true (dev): no --offline
 dnl - NOT_CRAN=false (CRAN): use --offline (pre-vendored tarball)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
+  CARGO_LOCKED_FLAG="--locked"
 else
   CARGO_OFFLINE_FLAG="--offline"
+  dnl CRAN build may need to regenerate lockfile with vendored paths
+  CARGO_LOCKED_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
+AC_SUBST([CARGO_LOCKED_FLAG])
 AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
@@ -367,18 +382,30 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
 
     if test $_need -eq 1; then
-      echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
-      mkdir -p "$VENDOR_OUT"
-      $CARGO_CMD vendor \
-        --manifest-path "$MANIFEST" \
-        --sync "$ROOT_MINIEXTENDR_REPO/Cargo.toml" \
-        --sync "$ROOT_MINIEXTENDR_REPO/miniextendr-bench/Cargo.toml" \
-        "$VENDOR_OUT"
-      if test $? -ne 0; then
-        echo "configure: error: cargo vendor failed" >&2
-        exit 1
+      dnl Check if monorepo Cargo.toml exists (won't exist during R CMD check)
+      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
+        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
+        mkdir -p "$VENDOR_OUT"
+        $CARGO_CMD vendor \
+          --manifest-path "$MANIFEST" \
+          --sync "$ROOT_MINIEXTENDR_REPO/Cargo.toml" \
+          --sync "$ROOT_MINIEXTENDR_REPO/miniextendr-bench/Cargo.toml" \
+          "$VENDOR_OUT"
+        if test $? -ne 0; then
+          echo "configure: error: cargo vendor failed" >&2
+          exit 1
+        fi
+        echo "$_new" > "$STAMP"
+      else
+        dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
+        if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+        else
+          echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
+          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
+          exit 1
+        fi
       fi
-      echo "$_new" > "$STAMP"
     else
       echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
     fi
@@ -450,8 +477,9 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
 
     dnl Escape special chars for `sed` replacement using | delimiter (handles URLs with /)
     dnl Escape & and | characters
+    dnl Note: @S|@1 is m4 quadrigraph for $1
     escape_sed_repl () {
-      printf '%s' "$1" | $SED 's/@<:@&|@:>@/\\&/g'
+      printf '%s' "@S|@1" | $SED 's/@<:@&|@:>@/\\&/g'
     }
     WS_REPOSITORY_ESC="$(escape_sed_repl "$WS_REPOSITORY")"
     WS_HOMEPAGE_ESC="$(escape_sed_repl "$WS_HOMEPAGE")"
@@ -460,6 +488,10 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     WS_DEP_PROC_MACRO2_ESC="$(escape_sed_repl "$WS_DEP_PROC_MACRO2")"
     WS_DEP_QUOTE_ESC="$(escape_sed_repl "$WS_DEP_QUOTE")"
     WS_DEP_SYN_ESC="$(escape_sed_repl "$WS_DEP_SYN")"
+
+    dnl If keywords/categories are empty, set to empty array to avoid TOML parse error
+    test -z "$WS_KEYWORDS_ESC" && WS_KEYWORDS_ESC="@<:@@:>@"
+    test -z "$WS_CATEGORIES_ESC" && WS_CATEGORIES_ESC="@<:@@:>@"
 
     dnl Patch Cargo.toml to remove workspace inheritance
     dnl Use | as delimiter to handle URLs with /
@@ -511,6 +543,8 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
         echo "configure: error: $_crate/Cargo.toml still contains '.workspace = true' after patching" >&2
         exit 1
       fi
+      dnl Create .cargo-checksum.json for vendored crates (required by cargo)
+      echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
     done
 
     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
@@ -526,27 +560,69 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
       exit 1
     fi
 
-    dnl Rewrite cargo config to use vendored sources
-    cat > "src/rust/.cargo/config.toml" <<VENDORED_CONFIG_EOF
+    dnl Force CARGO_TARGET_DIR to be local when source crates aren't found.
+    dnl This prevents using a stale target directory from a previous build.
+    CARGO_TARGET_DIR="$ABS_RPKG_SRC/rust/target"
+    CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
+    echo "configure: forcing local CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >&2
+
+    dnl Update Makevars with the new paths (it was generated before we knew crates were missing)
+    dnl Also clear CARGO_LOCKED_FLAG since we need to regenerate lockfile with vendored paths
+    $SED -i.bak \
+      -e "s|^CARGO_TARGET_DIR = .*|CARGO_TARGET_DIR = $CARGO_TARGET_DIR|" \
+      -e "s|^CARGO_LIBDIR = .*|CARGO_LIBDIR = $CARGO_LIBDIR|" \
+      -e "s|^CARGO_LOCKED_FLAG = .*|CARGO_LOCKED_FLAG = |" \
+      src/Makevars && rm -f src/Makevars.bak
+    echo "configure: updated src/Makevars with local target dir and cleared CARGO_LOCKED_FLAG" >&2
+    echo "configure: CARGO_TARGET_DIR in Makevars: $(grep '^CARGO_TARGET_DIR' src/Makevars | head -1)" >&2
+    echo "configure: CARGO_LIBDIR in Makevars: $(grep '^CARGO_LIBDIR' src/Makevars | head -1)" >&2
+    echo "configure: CARGO_AR would be: $CARGO_LIBDIR/librpkg.a" >&2
+    echo "configure: checking if $CARGO_LIBDIR exists: $(test -d "$CARGO_LIBDIR" && echo yes || echo no)" >&2
+
+    dnl Clear checksum files to avoid "file not found" errors from R CMD build exclusions
+    dnl R CMD build excludes .gitignore files etc, but cargo-checksum.json references them
+    for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
+      if test -f "$_cksum"; then
+        echo '{"files":{}}' > "$_cksum"
+      fi
+    done
+    echo "configure: cleared vendor checksum files" >&2
+
+    dnl Also strip checksums from Cargo.lock to avoid verification mismatch
+    if test -f "src/rust/Cargo.lock"; then
+      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
+      echo "configure: stripped checksums from Cargo.lock" >&2
+    fi
+
+    dnl Rewrite cargo config to use vendored sources (both locations)
+    for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
+      mkdir -p "$(dirname "$_cfg")"
+      cat > "$_cfg" <<VENDORED_CONFIG_EOF
 # Autogenerated by configure -- DO NOT EDIT
 
-[[source.crates-io]]
+@<:@source.crates-io@:>@
 replace-with = "vendored-sources"
 
-[[source.vendored-sources]]
+@<:@source.vendored-sources@:>@
 directory = "$VENDOR_OUT"
 
-[[build]]
+@<:@build@:>@
 target-dir = "$CARGO_TARGET_DIR"
 VENDORED_CONFIG_EOF
-
-    echo "configure: rewrote src/rust/.cargo/config.toml for vendored sources" >&2
+      echo "configure: rewrote $_cfg for vendored sources" >&2
+    done
   fi
+
+  dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
+  dnl This is necessary because CARGO_TARGET_DIR may point to a shared location
+  dnl where the staticlib already exists (e.g., during R CMD check).
+  touch "$ABS_RPKG_SRC/rust/Cargo.toml"
+  echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 ],
 [RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
- CARGO_TARGET_DIR="$CARGO_TARGET_DIR"])
+ CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
 
 dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 AC_CONFIG_COMMANDS([patch-staticlib-name],

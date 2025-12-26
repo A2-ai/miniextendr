@@ -144,8 +144,10 @@ devtools-build: configure
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
+# NOT_CRAN=true ensures vendor directory is preserved during R CMD build
+# error_on = "error" matches CI behavior (ignore warnings/notes)
 devtools-check: configure
-    Rscript -e 'devtools::check("rpkg")'
+    NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error")'
 
 # Document rpkg with devtools::document
 devtools-document: configure

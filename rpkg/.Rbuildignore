@@ -5,6 +5,7 @@
 ^src/rust/target$
 ^src/rust/ra_target$
 ^src/rust/\.cargo$
+^\.cargo$
 ^config\.log$
 ^config\.status$
 ^configure~$
