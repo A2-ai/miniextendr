@@ -1008,40 +1008,50 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     .into()
 }
 
-/// Generate thread-routed wrappers for R FFI functions.
+/// Generate thread-safe wrappers for R FFI functions.
 ///
-/// Apply this to an `extern "C-unwind"` block to generate wrappers
-/// that run on R's main thread (routing via `with_r_thread` if called
-/// from another thread).
+/// Apply this to an `extern "C-unwind"` block to generate wrappers that ensure
+/// R API calls happen on R's main thread.
 ///
-/// **Limitations:**
-/// - Variadic functions and statics are passed through unchanged
-/// - Only non-variadic functions get routed wrappers
-/// - Calling from a non-main thread without worker context will panic
+/// # Behavior by Return Type
+///
+/// The wrapper behavior depends on the return type:
+///
+/// ## Value-returning functions
+/// Functions returning values (SEXP, i32, etc.) are automatically routed to
+/// the main thread via `with_r_thread` when called from a worker thread.
+///
+/// ## Pointer-returning functions
+/// Functions returning raw pointers (`*const T`, `*mut T`) **cannot be routed**
+/// and will **panic** if called from a non-main thread. This is because the
+/// pointer could become invalid when R's garbage collector runs on the main thread.
+///
+/// For pointer-returning APIs (like `INTEGER`, `REAL`), you must:
+/// - Call them from the main thread, OR
+/// - Use `with_r_thread(|| { ... })` to execute pointer operations on main thread
+///   and process results before returning
+///
+/// # Initialization Requirement
+///
+/// `miniextendr_worker_init()` must be called before using any wrapped function.
+/// Calling before initialization will panic with a descriptive error message.
+///
+/// # Limitations
+///
+/// - Variadic functions are passed through unchanged (no wrapper)
+/// - Statics are passed through unchanged
+/// - Functions with `#[link_name]` are passed through unchanged
 ///
 /// # Example
 ///
 /// ```ignore
 /// #[r_ffi_checked]
 /// unsafe extern "C-unwind" {
+///     // Value-returning: automatically routed from worker threads
 ///     pub fn Rf_ScalarInteger(arg1: i32) -> SEXP;
-/// }
-/// ```
 ///
-/// Generates:
-/// ```ignore
-/// unsafe extern "C-unwind" {
-///     #[link_name = "Rf_ScalarInteger"]
-///     pub fn Rf_ScalarInteger_unchecked(arg1: i32) -> SEXP;
-/// }
-///
-/// #[inline(always)]
-/// pub unsafe fn Rf_ScalarInteger(arg1: i32) -> SEXP {
-///     if is_r_main_thread() {
-///         Rf_ScalarInteger_unchecked(arg1)
-///     } else {
-///         with_r_thread(move || unsafe { Rf_ScalarInteger_unchecked(arg1) })
-///     }
+///     // Pointer-returning: panics if called from worker thread
+///     pub fn INTEGER(x: SEXP) -> *mut i32;
 /// }
 /// ```
 #[proc_macro_attribute]
@@ -1109,7 +1119,12 @@ pub fn r_ffi_checked(
 
                     let is_never = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Never(_)));
 
+                    // Check if return type is a raw pointer (*const T or *mut T)
+                    // These MUST NOT be routed - the pointer would be invalid on the worker thread
+                    let returns_raw_pointer = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Ptr(_)));
+
                     let wrapper = if is_never {
+                        // Never-returning functions (like Rf_error)
                         quote::quote! {
                             #(#attrs)*
                             #[inline(always)]
@@ -1120,7 +1135,22 @@ pub fn r_ffi_checked(
                                 })
                             }
                         }
+                    } else if returns_raw_pointer {
+                        // Pointer-returning functions MUST be called on main thread.
+                        // Routing would return a pointer that could become invalid when
+                        // R's GC runs on the main thread.
+                        let fn_name_str = fn_name.to_string();
+                        quote::quote! {
+                            #(#attrs)*
+                            #[inline(always)]
+                            #[allow(non_snake_case)]
+                            #vis unsafe fn #fn_name(#inputs) #output {
+                                ::miniextendr_api::worker::assert_r_main_thread_for_pointer_api(#fn_name_str);
+                                #unchecked_name(#(#arg_names),*)
+                            }
+                        }
                     } else {
+                        // Normal functions - route via with_r_thread
                         quote::quote! {
                             #(#attrs)*
                             #[inline(always)]
