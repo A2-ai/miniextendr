@@ -242,7 +242,7 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
 /// - Vtable builder
 fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let trait_name = &trait_item.ident;
-    let _vis = &trait_item.vis;
+    let vis = &trait_item.vis;
 
     // Generate names for generated items
     let tag_name = quote::format_ident!("TAG_{}", trait_name.to_string().to_uppercase());
@@ -253,54 +253,185 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         trait_name.to_string().to_lowercase()
     );
 
-    // TODO: Implement full code generation
-    //
-    // For now, generate a compile_error! to indicate this is scaffolding.
-    // The actual implementation will:
-    //
-    // 1. Generate TAG constant using mx_tag_from_path or hash
-    // 2. Generate VTable struct with mx_meth fields for each method
-    // 3. Generate View struct with data pointer and vtable pointer
-    // 4. Generate shim functions for each method
-    // 5. Generate build_vtable function
+    // Collect method information
+    let methods: Vec<_> = trait_item
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::TraitItem::Fn(method) = item {
+                Some(extract_method_info(method))
+            } else {
+                None
+            }
+        })
+        .collect();
 
-    let trait_name_str = trait_name.to_string();
+    // Generate tag path string for hashing
+    // Use module_path!() at expansion site for proper namespacing
+    let tag_path = format!("{{}}::{}", trait_name);
+
+    // Generate vtable fields
+    let vtable_fields: Vec<_> = methods
+        .iter()
+        .map(|m| {
+            let name = &m.name;
+            quote::quote! {
+                pub #name: ::miniextendr_api::abi::mx_meth
+            }
+        })
+        .collect();
+
+    // Generate shim functions and vtable field initializers
+    let shim_fns: Vec<_> = methods
+        .iter()
+        .map(|m| generate_method_shim(trait_name, m))
+        .collect();
+
+    let vtable_inits: Vec<_> = methods
+        .iter()
+        .map(|m| {
+            let name = &m.name;
+            let shim_name = quote::format_ident!(
+                "__{}__{}_shim",
+                trait_name.to_string().to_lowercase(),
+                name
+            );
+            quote::quote! {
+                #name: #shim_name::<T>
+            }
+        })
+        .collect();
 
     quote::quote! {
         // Pass through the original trait
         #trait_item
 
-        // Scaffolding - not yet implemented
-        //
-        // TODO: Generate these items:
-        //
-        // #vis const #tag_name: ::miniextendr_api::abi::mx_tag = ...;
-        //
-        // #[repr(C)]
-        // #vis struct #vtable_name { ... }
-        //
-        // #[repr(C)]
-        // #vis struct #view_name { ... }
-        //
-        // #vis const fn #build_vtable_fn<T: #trait_name>() -> #vtable_name { ... }
+        /// Type tag for runtime identification of the `#trait_name` trait.
+        #vis const #tag_name: ::miniextendr_api::abi::mx_tag =
+            ::miniextendr_api::abi::mx_tag_from_path(concat!(module_path!(), #tag_path));
 
-        compile_error!(concat!(
-            "#[miniextendr] on traits is not yet implemented.\n",
-            "Trait: ", #trait_name_str, "\n",
-            "This is scaffolding for the trait ABI system.\n",
-            "\n",
-            "Expected generated items:\n",
-            "  - const ", stringify!(#tag_name), ": mx_tag\n",
-            "  - struct ", stringify!(#vtable_name), "\n",
-            "  - struct ", stringify!(#view_name), "\n",
-            "  - fn ", stringify!(#build_vtable_fn), "<T>()\n",
-        ));
+        /// Vtable for the `#trait_name` trait.
+        ///
+        /// Contains one `mx_meth` function pointer per trait method.
+        #[repr(C)]
+        #vis struct #vtable_name {
+            #(#vtable_fields),*
+        }
+
+        /// Runtime view for objects implementing `#trait_name`.
+        ///
+        /// Combines a data pointer with a vtable pointer for method dispatch.
+        #[repr(C)]
+        #vis struct #view_name {
+            /// Pointer to the concrete object data.
+            pub data: *mut ::std::os::raw::c_void,
+            /// Pointer to the vtable for this trait.
+            pub vtable: *const #vtable_name,
+        }
+
+        // Method shims
+        #(#shim_fns)*
+
+        /// Build a vtable for a concrete type implementing `#trait_name`.
+        #vis const fn #build_vtable_fn<T: #trait_name>() -> #vtable_name {
+            #vtable_name {
+                #(#vtable_inits),*
+            }
+        }
+    }
+}
+
+/// Generate a method shim function for a trait method.
+///
+/// The shim is an `extern "C"` function that:
+/// 1. Checks argument arity
+/// 2. Converts SEXP arguments to Rust types
+/// 3. Calls the actual method on the concrete type
+/// 4. Converts the result back to SEXP
+fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenStream {
+    let method_name = &method.name;
+    let shim_name = quote::format_ident!(
+        "__{}__{}_shim",
+        trait_name.to_string().to_lowercase(),
+        method_name
+    );
+
+    let param_count = method.param_types.len();
+    let expected_argc = param_count as i32;
+
+    // Generate argument extraction
+    let arg_extractions: Vec<_> = method
+        .param_names
+        .iter()
+        .zip(method.param_types.iter())
+        .enumerate()
+        .map(|(i, (name, ty))| {
+            let name_str = name.to_string();
+            quote::quote! {
+                let #name: #ty = unsafe {
+                    ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                };
+            }
+        })
+        .collect();
+
+    // Generate method call
+    let param_names = &method.param_names;
+    let method_call = if method.is_mut {
+        quote::quote! {
+            let self_ref = unsafe { &mut *(data as *mut T) };
+            self_ref.#method_name(#(#param_names),*)
+        }
+    } else {
+        quote::quote! {
+            let self_ref = unsafe { &*(data as *const T) };
+            self_ref.#method_name(#(#param_names),*)
+        }
+    };
+
+    // Generate result conversion
+    let result_conversion = if method.return_type.is_some() {
+        quote::quote! {
+            unsafe { ::miniextendr_api::trait_abi::to_sexp(result) }
+        }
+    } else {
+        quote::quote! {
+            let _ = result;
+            unsafe { ::miniextendr_api::trait_abi::nil() }
+        }
+    };
+
+    let method_name_str = format!("{}::{}", trait_name, method_name);
+
+    quote::quote! {
+        /// Method shim for `#trait_name::#method_name`.
+        ///
+        /// Converts SEXP arguments, calls the method, and returns SEXP result.
+        #[doc(hidden)]
+        unsafe extern "C" fn #shim_name<T: #trait_name>(
+            data: *mut ::std::os::raw::c_void,
+            argc: i32,
+            argv: *const ::miniextendr_api::ffi::SEXP,
+        ) -> ::miniextendr_api::ffi::SEXP {
+            // Check arity
+            unsafe {
+                ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
+            }
+
+            // Extract arguments
+            #(#arg_extractions)*
+
+            // Call method
+            let result = { #method_call };
+
+            // Convert result
+            #result_conversion
+        }
     }
 }
 
 /// Information extracted from a trait method for code generation.
 #[derive(Debug)]
-#[allow(dead_code)]
 struct MethodInfo {
     /// Method name
     name: syn::Ident,
@@ -313,11 +444,11 @@ struct MethodInfo {
     /// Return type (None for `()`)
     return_type: Option<syn::Type>,
     /// Whether method has a default implementation
+    #[allow(dead_code)]
     has_default: bool,
 }
 
 /// Extract method information from a trait method.
-#[allow(dead_code)]
 fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
     let name = method.sig.ident.clone();
 
