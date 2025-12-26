@@ -20,6 +20,7 @@ mod roxygen;
 // Trait ABI support modules
 mod miniextendr_trait;
 mod miniextendr_impl_trait;
+mod externalptr_derive;
 
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
@@ -1299,12 +1300,12 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///
 /// This makes the type compatible with `ExternalPtr<T>` for storing in R's external pointers.
 ///
-/// # Example
+/// # Basic Usage
 ///
 /// ```ignore
 /// use miniextendr_api::TypedExternal;
 ///
-/// #[derive(TypedExternal)]
+/// #[derive(ExternalPtr)]
 /// struct MyData {
 ///     value: i32,
 /// }
@@ -1313,9 +1314,32 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// let ptr = ExternalPtr::new(MyData { value: 42 });
 /// ```
 ///
-/// # Generated Code
+/// # With Trait Support
 ///
-/// For a type `MyData`, this generates:
+/// When you want cross-package trait dispatch, specify the implemented traits:
+///
+/// ```ignore
+/// #[derive(ExternalPtr)]
+/// #[externalptr(traits = [Counter])]
+/// struct MyCounter {
+///     value: i32,
+/// }
+///
+/// #[miniextendr_impl_trait]
+/// impl Counter for MyCounter {
+///     fn value(&self) -> i32 { self.value }
+///     fn increment(&mut self) { self.value += 1; }
+/// }
+/// ```
+///
+/// This generates additional infrastructure for type-erased trait dispatch:
+/// - `__MxWrapperMyCounter` - Type-erased wrapper struct
+/// - `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
+/// - `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
+///
+/// # Generated Code (Basic)
+///
+/// For a type `MyData` without traits:
 ///
 /// ```ignore
 /// impl TypedExternal for MyData {
@@ -1323,25 +1347,13 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///     const TYPE_NAME_CSTR: &'static [u8] = b"MyData\0";
 /// }
 /// ```
-#[proc_macro_derive(ExternalPtr)]
+#[proc_macro_derive(ExternalPtr, attributes(externalptr))]
 pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
-    let name = &input.ident;
-    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
-    // Create string literal from type name
-    let name_str = name.to_string();
-    let name_lit = syn::LitStr::new(&name_str, name.span());
-    let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
-
-    let expanded = quote::quote! {
-        impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
-            const TYPE_NAME: &'static str = #name_lit;
-            const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
-        }
-    };
-
-    expanded.into()
+    externalptr_derive::derive_external_ptr(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
 }
 
 /// Derive macro for ALTREP integer vector data types.

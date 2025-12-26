@@ -37,6 +37,7 @@ mod s3_tests;
 mod s4_tests;
 mod s7_tests;
 mod thread_tests;
+mod trait_abi_tests;
 mod unwind_protect_tests;
 mod visibility_tests;
 mod worker_tests;
@@ -1033,6 +1034,7 @@ miniextendr_module! {
     use visibility_tests;
     use thread_tests;
     use misc_tests;
+    use trait_abi_tests;
     use nonapi;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R

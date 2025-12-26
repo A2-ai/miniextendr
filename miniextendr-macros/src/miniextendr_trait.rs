@@ -292,7 +292,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         .map(|m| {
             let name = &m.name;
             let shim_name = quote::format_ident!(
-                "__{}__{}_shim",
+                "__{}_{}_shim",
                 trait_name.to_string().to_lowercase(),
                 name
             );
@@ -345,13 +345,15 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
 ///
 /// The shim is an `extern "C"` function that:
 /// 1. Checks argument arity
-/// 2. Converts SEXP arguments to Rust types
-/// 3. Calls the actual method on the concrete type
-/// 4. Converts the result back to SEXP
+/// 2. Wraps everything in `catch_unwind` to prevent unwinding across FFI
+/// 3. Converts SEXP arguments to Rust types
+/// 4. Calls the actual method on the concrete type
+/// 5. Converts the result back to SEXP
+/// 6. On panic, converts to R error via `r_stop`
 fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenStream {
     let method_name = &method.name;
     let shim_name = quote::format_ident!(
-        "__{}__{}_shim",
+        "__{}_{}_shim",
         trait_name.to_string().to_lowercase(),
         method_name
     );
@@ -407,25 +409,38 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
         /// Method shim for `#trait_name::#method_name`.
         ///
         /// Converts SEXP arguments, calls the method, and returns SEXP result.
+        /// Panics are caught via `catch_unwind` and converted to R errors.
         #[doc(hidden)]
         unsafe extern "C" fn #shim_name<T: #trait_name>(
             data: *mut ::std::os::raw::c_void,
             argc: i32,
             argv: *const ::miniextendr_api::ffi::SEXP,
         ) -> ::miniextendr_api::ffi::SEXP {
-            // Check arity
+            // Check arity (before catch_unwind - uses r_stop which doesn't return)
             unsafe {
                 ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
             }
 
-            // Extract arguments
-            #(#arg_extractions)*
+            // Wrap everything in catch_unwind to prevent unwinding across FFI
+            let panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                // Extract arguments
+                #(#arg_extractions)*
 
-            // Call method
-            let result = { #method_call };
+                // Call method
+                let result = { #method_call };
 
-            // Convert result
-            #result_conversion
+                // Convert result
+                #result_conversion
+            }));
+
+            match panic_result {
+                Ok(sexp) => sexp,
+                Err(payload) => {
+                    // Convert panic to R error
+                    let msg = ::miniextendr_api::worker::panic_payload_to_string(&payload);
+                    ::miniextendr_api::worker::panic_message_to_r_error(msg)
+                }
+            }
         }
     }
 }

@@ -138,15 +138,15 @@ pub struct mx_erased {
 - [x] Implement `conv.rs` conversion helpers
 - [x] Implement C-callables in `mx_abi.c.in`
 
-### M1: Code Generation
-- [ ] `#[miniextendr]` on trait: generate TAG, VTable, View, shims
-- [ ] `#[miniextendr]` on impl: generate vtable static
+### M1: Code Generation (Complete)
+- [x] `#[miniextendr]` on trait: generate TAG, VTable, View, shims
+- [x] `#[miniextendr]` on impl: generate vtable static
 
-### M2: Integration
-- [ ] Extend `ExternalPtr` derive for traits (`#[externalptr(traits = [...])]`)
-- [ ] `.Call` wrapper generation
-- [ ] Panic handling in shims (catch_unwind)
-- [ ] Tests and examples
+### M2: Integration (Complete)
+- [x] Extend `ExternalPtr` derive for traits (`#[externalptr(traits = [...])]`)
+- [x] `.Call` wrapper generation (via existing miniextendr_module! + impl blocks)
+- [x] Panic handling in shims (catch_unwind)
+- [x] Tests and examples (see `rpkg/src/rust/trait_abi_tests.rs`)
 
 ### M3: Polish
 - [ ] Cross-package example
