@@ -242,6 +242,10 @@ impl<T: RNativeType> TryFromSexp for T {
 
 /// Pass-through conversion for raw SEXP values.
 ///
+/// This allows SEXP to be used directly in `#[miniextendr]` function signatures.
+/// A blanket impl `impl<T: From<SEXP>> TryFromSexp for T` would conflict with
+/// the existing `impl<T: RNativeType> TryFromSexp for T`, so we use an explicit impl.
+///
 /// # Safety
 ///
 /// SEXP handles are only valid on R's main thread. Use with
