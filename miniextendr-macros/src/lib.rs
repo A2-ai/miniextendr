@@ -737,6 +737,26 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Generate trait impl call defs for registration
+    let trait_impl_call_defs: Vec<syn::Expr> = parsed_module
+        .trait_impls
+        .iter()
+        .map(|ti| {
+            let call_defs_static = ti.call_defs_const_ident();
+            syn::parse_quote!(#call_defs_static)
+        })
+        .collect();
+
+    // Generate trait impl R wrapper refs
+    let trait_impl_r_wrappers: Vec<syn::Expr> = parsed_module
+        .trait_impls
+        .iter()
+        .map(|ti| {
+            let r_wrapper_const = ti.r_wrappers_const_ident();
+            syn::parse_quote!(#r_wrapper_const)
+        })
+        .collect();
+
     // Get CALL_ENTRIES const arrays from child modules (via `use`)
     let use_module_call_entries_consts: Vec<syn::Expr> = parsed_module
         .uses
@@ -860,7 +880,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Generate ALTREP registration function name
     let altrep_reg_fn_ident = quote::format_ident!("{module}_register_altrep");
 
-    // Build const call entries array, including impl call defs if present.
+    // Build const call entries array, including impl call defs and trait impl call defs.
     let call_entries_len_lit = syn::LitInt::new(
         &call_entries_len.to_string(),
         proc_macro2::Span::call_site(),
@@ -873,14 +893,24 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             quote::quote!(#call_defs_static.len())
         })
         .collect();
-    let total_len_expr = if call_entries_len == 0 && impl_call_defs_len_exprs.is_empty() {
+    let trait_impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
+        .trait_impls
+        .iter()
+        .map(|ti| {
+            let call_defs_static = ti.call_defs_const_ident();
+            quote::quote!(#call_defs_static.len())
+        })
+        .collect();
+
+    // Calculate total length expression
+    let all_len_exprs: Vec<proc_macro2::TokenStream> = std::iter::once(quote::quote!(#call_entries_len_lit))
+        .chain(impl_call_defs_len_exprs.iter().cloned())
+        .chain(trait_impl_call_defs_len_exprs.iter().cloned())
+        .collect();
+    let total_len_expr = if all_len_exprs.is_empty() || (call_entries_len == 0 && impl_call_defs_len_exprs.is_empty() && trait_impl_call_defs_len_exprs.is_empty()) {
         quote::quote!(0usize)
-    } else if call_entries_len == 0 {
-        quote::quote!(#(#impl_call_defs_len_exprs)+*)
-    } else if impl_call_defs_len_exprs.is_empty() {
-        quote::quote!(#call_entries_len_lit)
     } else {
-        quote::quote!(#call_entries_len_lit + #(#impl_call_defs_len_exprs)+*)
+        quote::quote!(#(#all_len_exprs)+*)
     };
 
     let call_entries_storage = quote::quote! {
@@ -898,6 +928,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#impl_call_defs;
+                while j < slice.len() {
+                    entries[idx] = slice[j];
+                    idx += 1;
+                    j += 1;
+                }
+            )*
+            #(
+                let mut j: usize = 0;
+                let slice = &#trait_impl_call_defs;
                 while j < slice.len() {
                     entries[idx] = slice[j];
                     idx += 1;
@@ -968,10 +1007,13 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         };
     };
 
-    // Generate R wrapper impls constant - empty if no impl blocks
-    let r_wrappers_impls_const = if has_impls {
+    // Check if we have trait impl blocks to register
+    let has_trait_impls = !parsed_module.trait_impls.is_empty();
+
+    // Generate R wrapper impls constant - includes both impl and trait impl wrappers
+    let r_wrappers_impls_const = if has_impls || has_trait_impls {
         quote::quote! {
-            pub const #r_wrappers_impls_ident: &[&str] = &[#(#impl_r_wrappers),*];
+            pub const #r_wrappers_impls_ident: &[&str] = &[#(#impl_r_wrappers),* #(, #trait_impl_r_wrappers)*];
         }
     } else {
         quote::quote! {

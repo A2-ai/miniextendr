@@ -174,6 +174,34 @@ impl syn::parse::Parse for MiniextendrModuleTraitImpl {
     }
 }
 
+impl MiniextendrModuleTraitImpl {
+    /// Returns the identifier for the call defs const.
+    /// Format: `{TYPE}_{TRAIT}_CALL_DEFS`
+    pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        let trait_name = self
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string().to_uppercase())
+            .unwrap_or_default();
+        quote::format_ident!("{}_{}_CALL_DEFS", type_upper, trait_name)
+    }
+
+    /// Returns the identifier for the R wrappers const.
+    /// Format: `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
+    pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        let trait_name = self
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string().to_uppercase())
+            .unwrap_or_default();
+        quote::format_ident!("R_WRAPPERS_{}_{}_IMPL", type_upper, trait_name)
+    }
+}
+
 impl MiniextendrModuleImpl {
     /// Returns the identifier for the call defs const function.
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {

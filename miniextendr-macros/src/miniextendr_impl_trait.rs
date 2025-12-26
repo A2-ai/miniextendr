@@ -1,7 +1,8 @@
 //! # `#[miniextendr_impl_trait]` - Trait Implementation Registration
 //!
 //! This module handles `#[miniextendr_impl_trait]` applied to trait implementations,
-//! generating the vtable static for cross-package trait dispatch.
+//! generating the vtable static for cross-package trait dispatch, plus optional
+//! R-callable wrappers for direct method access.
 //!
 //! ## Overview
 //!
@@ -9,7 +10,9 @@
 //!
 //! 1. **Detects the trait** from the impl syntax (no attribute args needed)
 //! 2. **Generates vtable static** using the trait's `__<trait>_build_vtable` function
-//! 3. **Passes through** the original impl block unchanged
+//! 3. **Generates C wrappers** for each trait method (for R `.Call` access)
+//! 4. **Generates R wrapper code** for the trait methods
+//! 5. **Passes through** the original impl block unchanged
 //!
 //! ## Usage
 //!
@@ -99,7 +102,36 @@
 //! However, the methods themselves are main-thread only (shims don't route).
 
 use proc_macro2::TokenStream;
+use quote::format_ident;
 use syn::ItemImpl;
+
+/// Parsed method from a trait impl block.
+#[derive(Debug)]
+struct TraitMethod {
+    /// Method identifier
+    ident: syn::Ident,
+    /// Method signature (including self)
+    sig: syn::Signature,
+    /// Is this &mut self (vs &self)?
+    is_mut: bool,
+}
+
+impl TraitMethod {
+    /// C wrapper identifier: `C_{Type}__{Trait}__{method}`
+    fn c_wrapper_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
+        format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
+    }
+
+    /// R_CallMethodDef identifier
+    fn call_method_def_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
+        format_ident!(
+            "call_method_def_{}__{}_{}",
+            type_ident,
+            trait_name,
+            self.ident
+        )
+    }
+}
 
 /// Expand `#[miniextendr_impl_trait]` applied to a trait implementation.
 ///
@@ -157,7 +189,7 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
     Ok((trait_path.clone(), concrete_type))
 }
 
-/// Generate the vtable static for a trait implementation.
+/// Generate the vtable static and R-callable wrappers for a trait implementation.
 fn generate_vtable_static(
     impl_item: &ItemImpl,
     trait_path: &syn::Path,
@@ -170,6 +202,17 @@ fn generate_vtable_static(
         .map(|s| &s.ident)
         .expect("trait path has at least one segment");
 
+    // Extract type identifier (for simple types)
+    let type_ident = match concrete_type {
+        syn::Type::Path(type_path) => type_path
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident.clone())
+            .expect("type path has at least one segment"),
+        _ => format_ident!("Unknown"),
+    };
+
     // Extract type name for naming (simplified - handles Path types)
     let type_name_str = type_to_uppercase_name(concrete_type);
     let trait_name_upper = trait_name.to_string().to_uppercase();
@@ -177,14 +220,14 @@ fn generate_vtable_static(
 
     // Generate names
     let vtable_static_name =
-        quote::format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
-    let vtable_type_name = quote::format_ident!("{}VTable", trait_name);
+        format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
+    let vtable_type_name = format_ident!("{}VTable", trait_name);
 
     // Build path to vtable builder function
     // If trait is `foo::Counter`, builder is `foo::__counter_build_vtable`
     let mut builder_path = trait_path.clone();
     if let Some(last) = builder_path.segments.last_mut() {
-        last.ident = quote::format_ident!("__{}_build_vtable", trait_name_lower);
+        last.ident = format_ident!("__{}_build_vtable", trait_name_lower);
     }
 
     // Build the vtable type path (same module as trait)
@@ -192,6 +235,47 @@ fn generate_vtable_static(
     if let Some(last) = vtable_type_path.segments.last_mut() {
         last.ident = vtable_type_name.clone();
     }
+
+    // Parse methods from the impl block
+    let methods = extract_methods(impl_item);
+
+    // Generate C wrappers and call defs for each method
+    let c_wrappers: Vec<TokenStream> = methods
+        .iter()
+        .map(|m| generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path))
+        .collect();
+
+    // Generate R wrapper code string
+    let r_wrapper_string = generate_trait_r_wrapper(&type_ident, trait_name, &methods);
+
+    // Generate constant names for module registration
+    let call_defs_const = format_ident!(
+        "{}_{}_CALL_DEFS",
+        type_ident.to_string().to_uppercase(),
+        trait_name_upper
+    );
+    let r_wrappers_const = format_ident!(
+        "R_WRAPPERS_{}_{}_IMPL",
+        type_ident.to_string().to_uppercase(),
+        trait_name_upper
+    );
+
+    // Collect call method def identifiers
+    let call_def_idents: Vec<syn::Ident> = methods
+        .iter()
+        .map(|m| m.call_method_def_ident(&type_ident, trait_name))
+        .collect();
+    let call_defs_len = call_def_idents.len();
+    let call_defs_len_lit =
+        syn::LitInt::new(&call_defs_len.to_string(), proc_macro2::Span::call_site());
+
+    // Format R wrapper as raw string literal
+    let r_wrapper_str: TokenStream = {
+        use std::str::FromStr;
+        let indented = r_wrapper_string.replace('\n', "\n    ");
+        let raw = format!("r#\"\n    {}\n\"#", indented);
+        TokenStream::from_str(&raw).expect("valid raw string literal")
+    };
 
     quote::quote! {
         // Pass through the original impl block
@@ -203,7 +287,216 @@ fn generate_vtable_static(
         #[doc(hidden)]
         pub static #vtable_static_name: #vtable_type_path =
             #builder_path::<#concrete_type>();
+
+        // C wrappers and call method defs for trait methods
+        #(#c_wrappers)*
+
+        /// R wrapper code for `#type_ident` implementing `#trait_name`.
+        #[doc(hidden)]
+        pub const #r_wrappers_const: &str = #r_wrapper_str;
+
+        /// Call method def array for `#type_ident` implementing `#trait_name`.
+        #[doc(hidden)]
+        pub const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
+            [#(#call_def_idents),*];
     }
+}
+
+/// Extract methods from a trait impl block.
+fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
+    impl_item
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::ImplItem::Fn(method) = item {
+                // Check receiver type
+                let is_mut = method.sig.inputs.first().is_some_and(|arg| {
+                    if let syn::FnArg::Receiver(r) = arg {
+                        r.mutability.is_some()
+                    } else {
+                        false
+                    }
+                });
+
+                Some(TraitMethod {
+                    ident: method.sig.ident.clone(),
+                    sig: method.sig.clone(),
+                    is_mut,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Generate a C wrapper for a trait method.
+fn generate_trait_method_c_wrapper(
+    method: &TraitMethod,
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    trait_path: &syn::Path,
+) -> TokenStream {
+    use crate::c_wrapper_builder::{CWrapperContext, ThreadStrategy};
+
+    let method_ident = &method.ident;
+    let c_ident = method.c_wrapper_ident(type_ident, trait_name);
+    let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
+
+    // Trait methods with &self or &mut self must run on main thread
+    let thread_strategy = ThreadStrategy::MainThread;
+
+    // Build rust argument names from the signature (excluding self)
+    let rust_args: Vec<syn::Ident> = method
+        .sig
+        .inputs
+        .iter()
+        .filter_map(|arg| {
+            if let syn::FnArg::Typed(pt) = arg {
+                if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
+                    Some(pat_ident.ident.clone())
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        })
+        .collect();
+
+    // Filter inputs to exclude the receiver (builder handles self separately with has_self())
+    let filtered_inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> = method
+        .sig
+        .inputs
+        .iter()
+        .filter(|arg| !matches!(arg, syn::FnArg::Receiver(_)))
+        .cloned()
+        .collect();
+
+    // Generate self extraction
+    let self_extraction = if method.is_mut {
+        quote::quote! {
+            let mut self_ptr = unsafe {
+                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+            };
+            let self_ref = self_ptr.downcast_mut::<#type_ident>()
+                .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+        }
+    } else {
+        quote::quote! {
+            let self_ptr = unsafe {
+                ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
+            };
+            let self_ref = self_ptr.downcast_ref::<#type_ident>()
+                .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+        }
+    };
+
+    // Generate call expression - call through the trait
+    let call_expr = quote::quote! {
+        #trait_path::#method_ident(self_ref, #(#rust_args),*)
+    };
+
+    // Determine return handling
+    let return_handling = crate::c_wrapper_builder::detect_return_handling(&method.sig.output);
+
+    // Generate R wrapper const name (not actually used but needed by builder)
+    let r_wrappers_const = format_ident!(
+        "R_WRAPPERS_{}_{}_IMPL",
+        type_ident.to_string().to_uppercase(),
+        trait_name.to_string().to_uppercase()
+    );
+
+    // Build the wrapper using the builder infrastructure
+    // Use custom call_method_def_ident to avoid collisions with inherent impl methods
+    let builder = CWrapperContext::builder(method_ident.clone(), c_ident)
+        .r_wrapper_const(r_wrappers_const)
+        .inputs(filtered_inputs)
+        .output(method.sig.output.clone())
+        .pre_call(vec![self_extraction])
+        .call_expr(call_expr)
+        .thread_strategy(thread_strategy)
+        .return_handling(return_handling)
+        .has_self()
+        .type_context(type_ident.clone())
+        .call_method_def_ident(call_method_def_ident);
+
+    // The builder generates both the C wrapper and the R_CallMethodDef
+    builder.build().generate()
+}
+
+/// Generate R wrapper code for trait methods.
+fn generate_trait_r_wrapper(
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    methods: &[TraitMethod],
+) -> String {
+    let mut output = String::new();
+
+    // Header comment
+    output.push_str(&format!(
+        "# Trait methods for {} implementing {}\n",
+        type_ident, trait_name
+    ));
+    output.push_str(&format!(
+        "# Generated by #[miniextendr] impl {} for {}\n\n",
+        trait_name, type_ident
+    ));
+
+    for method in methods {
+        let method_name = &method.ident;
+
+        // Collect parameter names (excluding self)
+        let params: Vec<String> = method
+            .sig
+            .inputs
+            .iter()
+            .filter_map(|arg| {
+                if let syn::FnArg::Typed(pt) = arg {
+                    if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
+                        Some(pat_ident.ident.to_string())
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            })
+            .collect();
+
+        let param_str = params.join(", ");
+        let args_str = if params.is_empty() {
+            "self".to_string()
+        } else {
+            format!("self, {}", params.join(", "))
+        };
+
+        // Generate method wrapper
+        // Uses naming: Type$Trait$method (nested environments)
+        output.push_str(&format!(
+            "#' @name {}${}${}\n",
+            type_ident, trait_name, method_name
+        ));
+        output.push_str(&format!("#' @rdname {}\n", type_ident));
+        output.push_str(&format!(
+            "{}${}${} <- function({}) {{\n",
+            type_ident,
+            trait_name,
+            method_name,
+            if param_str.is_empty() {
+                String::new()
+            } else {
+                param_str
+            }
+        ));
+        output.push_str(&format!(
+            "    .Call(C_{}__{}__{}, .call = match.call(), {})\n",
+            type_ident, trait_name, method_name, args_str
+        ));
+        output.push_str("}\n\n");
+    }
+
+    output
 }
 
 /// Convert a type to an uppercase identifier-safe name.

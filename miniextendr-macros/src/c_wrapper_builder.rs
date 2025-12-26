@@ -115,6 +115,8 @@ pub struct CWrapperContext {
     pub type_context: Option<syn::Ident>,
     /// Whether this is an instance method (has self parameter)
     pub has_self: bool,
+    /// Custom call_method_def identifier (if None, uses default naming)
+    pub call_method_def_ident: Option<syn::Ident>,
 }
 
 impl CWrapperContext {
@@ -136,6 +138,7 @@ impl CWrapperContext {
             cfg_attrs: Vec::new(),
             type_context: None,
             has_self: false,
+            call_method_def_ident: None,
         }
     }
 
@@ -546,11 +549,14 @@ impl CWrapperContext {
             c_ident.span(),
         );
 
-        let call_method_def_ident = if let Some(ref type_ident) = self.type_context {
-            format_ident!("call_method_def_{}_{}", type_ident, fn_ident)
-        } else {
-            format_ident!("call_method_def_{}", fn_ident)
-        };
+        // Use custom call_method_def_ident if set, otherwise use default naming
+        let call_method_def_ident = self.call_method_def_ident.clone().unwrap_or_else(|| {
+            if let Some(ref type_ident) = self.type_context {
+                format_ident!("call_method_def_{}_{}", type_ident, fn_ident)
+            } else {
+                format_ident!("call_method_def_{}", fn_ident)
+            }
+        });
 
         // Build func_ptr_def for transmute
         let func_ptr_def: Vec<syn::Type> = (0..num_args)
@@ -617,6 +623,8 @@ pub struct CWrapperContextBuilder {
     cfg_attrs: Vec<syn::Attribute>,
     type_context: Option<syn::Ident>,
     has_self: bool,
+    /// Custom call_method_def identifier (if not set, uses default naming)
+    call_method_def_ident: Option<syn::Ident>,
 }
 
 impl CWrapperContextBuilder {
@@ -702,6 +710,16 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Set a custom call_method_def identifier.
+    ///
+    /// If not set, the default naming is used:
+    /// - With type_context: `call_method_def_{type}_{method}`
+    /// - Without: `call_method_def_{method}`
+    pub fn call_method_def_ident(mut self, ident: syn::Ident) -> Self {
+        self.call_method_def_ident = Some(ident);
+        self
+    }
+
     /// Build the CWrapperContext.
     ///
     /// # Panics
@@ -739,6 +757,7 @@ impl CWrapperContextBuilder {
             cfg_attrs: self.cfg_attrs,
             type_context: self.type_context,
             has_self: self.has_self,
+            call_method_def_ident: self.call_method_def_ident,
         }
     }
 }
