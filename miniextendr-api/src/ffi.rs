@@ -851,6 +851,19 @@ unsafe extern "C-unwind" {
     pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
     pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
 
+    // R_ext/Rdynload.h - C-callable interface
+    /// Register a C-callable function for cross-package access.
+    pub fn R_RegisterCCallable(
+        package: *const ::std::os::raw::c_char,
+        name: *const ::std::os::raw::c_char,
+        fptr: DL_FUNC,
+    );
+    /// Get a C-callable function from another package.
+    pub fn R_GetCCallable(
+        package: *const ::std::os::raw::c_char,
+        name: *const ::std::os::raw::c_char,
+    ) -> DL_FUNC;
+
     // Rinternals.h
     pub fn R_PreserveObject(object: SEXP);
     pub fn R_ReleaseObject(object: SEXP);

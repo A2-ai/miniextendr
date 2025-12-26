@@ -5,8 +5,6 @@
  * These functions are registered with R_RegisterCCallable and loaded
  * by other packages via R_GetCCallable.
  *
- * STATUS: Scaffolding only - implementations are stubs (TODO).
- *
  * NOTE: This file is generated from mx_abi.c.in by configure.
  *       Do not edit mx_abi.c directly.
  */
@@ -52,20 +50,11 @@ static void init_tag(void) {
  * @param ptr The external pointer being finalized
  */
 static void mx_externalptr_finalizer(SEXP ptr) {
-    /* TODO: Implement finalizer
-     *
-     * 1. Extract mx_erased* from external pointer
-     * 2. Call erased->base->drop(erased) if non-null
-     * 3. Clear the external pointer
-     *
-     * Example:
-     *   mx_erased *erased = R_ExternalPtrAddr(ptr);
-     *   if (erased != NULL && erased->base != NULL) {
-     *       erased->base->drop(erased);
-     *   }
-     *   R_ClearExternalPtr(ptr);
-     */
-    (void)ptr;  /* Suppress unused warning for now */
+    mx_erased *erased = (mx_erased *)R_ExternalPtrAddr(ptr);
+    if (erased != NULL && erased->base != NULL) {
+        erased->base->drop(erased);
+    }
+    R_ClearExternalPtr(ptr);
 }
 
 /* ============================================================================
@@ -78,21 +67,10 @@ static void mx_externalptr_finalizer(SEXP ptr) {
  * @see mx_abi.h for full documentation
  */
 SEXP mx_wrap(mx_erased *ptr) {
-    /* TODO: Implement mx_wrap
-     *
-     * 1. Create external pointer with ptr as address
-     * 2. Set tag to MX_EXTERNALPTR_TAG
-     * 3. Register finalizer
-     *
-     * Example:
-     *   SEXP sexp = PROTECT(R_MakeExternalPtr(ptr, MX_EXTERNALPTR_TAG, R_NilValue));
-     *   R_RegisterCFinalizerEx(sexp, mx_externalptr_finalizer, TRUE);
-     *   UNPROTECT(1);
-     *   return sexp;
-     */
-    (void)ptr;  /* Suppress unused warning */
-    Rf_error("mx_wrap: not yet implemented");
-    return R_NilValue;  /* Never reached */
+    SEXP sexp = PROTECT(R_MakeExternalPtr(ptr, MX_EXTERNALPTR_TAG, R_NilValue));
+    R_RegisterCFinalizerEx(sexp, mx_externalptr_finalizer, TRUE);
+    UNPROTECT(1);
+    return sexp;
 }
 
 /**
@@ -101,24 +79,13 @@ SEXP mx_wrap(mx_erased *ptr) {
  * @see mx_abi.h for full documentation
  */
 mx_erased *mx_get(SEXP sexp) {
-    /* TODO: Implement mx_get
-     *
-     * 1. Check sexp is an external pointer
-     * 2. Check tag matches MX_EXTERNALPTR_TAG
-     * 3. Return the address
-     *
-     * Example:
-     *   if (TYPEOF(sexp) != EXTPTRSXP) {
-     *       return NULL;
-     *   }
-     *   if (R_ExternalPtrTag(sexp) != MX_EXTERNALPTR_TAG) {
-     *       return NULL;
-     *   }
-     *   return (mx_erased *)R_ExternalPtrAddr(sexp);
-     */
-    (void)sexp;  /* Suppress unused warning */
-    Rf_error("mx_get: not yet implemented");
-    return NULL;  /* Never reached */
+    if (TYPEOF(sexp) != EXTPTRSXP) {
+        return NULL;
+    }
+    if (R_ExternalPtrTag(sexp) != MX_EXTERNALPTR_TAG) {
+        return NULL;
+    }
+    return (mx_erased *)R_ExternalPtrAddr(sexp);
 }
 
 /**
@@ -127,23 +94,11 @@ mx_erased *mx_get(SEXP sexp) {
  * @see mx_abi.h for full documentation
  */
 const void *mx_query(SEXP sexp, mx_tag tag) {
-    /* TODO: Implement mx_query
-     *
-     * 1. Call mx_get to extract erased pointer
-     * 2. If null, return null
-     * 3. Call erased->base->query(erased, tag)
-     *
-     * Example:
-     *   mx_erased *erased = mx_get(sexp);
-     *   if (erased == NULL || erased->base == NULL) {
-     *       return NULL;
-     *   }
-     *   return erased->base->query(erased, tag);
-     */
-    (void)sexp;  /* Suppress unused warning */
-    (void)tag;   /* Suppress unused warning */
-    Rf_error("mx_query: not yet implemented");
-    return NULL;  /* Never reached */
+    mx_erased *erased = mx_get(sexp);
+    if (erased == NULL || erased->base == NULL) {
+        return NULL;
+    }
+    return erased->base->query(erased, tag);
 }
 
 /* ============================================================================

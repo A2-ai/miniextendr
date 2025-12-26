@@ -55,10 +55,8 @@ use crate::ffi::SEXP;
 /// }
 /// ```
 #[inline]
-pub unsafe fn rf_error(_msg: &str) -> ! {
-    // TODO: Implement using crate::r_stop
-    // crate::r_stop(msg)
-    todo!("rf_error: not yet implemented")
+pub unsafe fn rf_error(msg: &str) -> ! {
+    crate::error::r_stop(msg)
 }
 
 /// Return R's `NULL` value.
@@ -74,9 +72,7 @@ pub unsafe fn rf_error(_msg: &str) -> ! {
 /// R's `NULL` value (`R_NilValue`)
 #[inline]
 pub unsafe fn nil() -> SEXP {
-    // TODO: Implement
-    // crate::ffi::R_NilValue
-    todo!("nil: not yet implemented")
+    unsafe { crate::ffi::R_NilValue }
 }
 
 /// Convert an R SEXP to a Rust type.
@@ -116,16 +112,15 @@ pub unsafe fn nil() -> SEXP {
 ///
 /// [`TryFromSexp`]: crate::TryFromSexp
 #[inline]
-pub unsafe fn from_sexp<T>(_x: SEXP) -> T
+pub unsafe fn from_sexp<T>(x: SEXP) -> T
 where
     T: crate::TryFromSexp,
+    T::Error: std::fmt::Display,
 {
-    // TODO: Implement
-    // match T::try_from_sexp(x) {
-    //     Ok(val) => val,
-    //     Err(e) => rf_error(&e.to_string()),
-    // }
-    todo!("from_sexp: not yet implemented")
+    match T::try_from_sexp(x) {
+        Ok(val) => val,
+        Err(e) => unsafe { rf_error(&e.to_string()) },
+    }
 }
 
 /// Convert a Rust value to an R SEXP.
@@ -159,13 +154,11 @@ where
 ///
 /// [`IntoR`]: crate::IntoR
 #[inline]
-pub unsafe fn to_sexp<T>(_x: T) -> SEXP
+pub unsafe fn to_sexp<T>(x: T) -> SEXP
 where
     T: crate::IntoR,
 {
-    // TODO: Implement
-    // x.into_r()
-    todo!("to_sexp: not yet implemented")
+    x.into_sexp()
 }
 
 /// Convert an R SEXP to a Rust type, returning a Result.
@@ -204,13 +197,11 @@ where
 ///
 /// [`TryFromSexp`]: crate::TryFromSexp
 #[inline]
-pub unsafe fn try_from_sexp<T>(_x: SEXP) -> Result<T, T::Error>
+pub unsafe fn try_from_sexp<T>(x: SEXP) -> Result<T, T::Error>
 where
     T: crate::TryFromSexp,
 {
-    // TODO: Implement
-    // T::try_from_sexp(x)
-    todo!("try_from_sexp: not yet implemented")
+    T::try_from_sexp(x)
 }
 
 // =============================================================================
@@ -258,16 +249,15 @@ where
 ///
 /// [`TryFromSexp`]: crate::TryFromSexp
 #[inline]
-pub unsafe fn extract_arg<T>(_argc: i32, _argv: *const SEXP, _index: usize, _name: &str) -> T
+pub unsafe fn extract_arg<T>(argc: i32, argv: *const SEXP, index: usize, name: &str) -> T
 where
     T: crate::TryFromSexp,
+    T::Error: std::fmt::Display,
 {
-    // TODO: Implement
-    // if index as i32 >= argc {
-    //     rf_error(&format!("missing argument: {name}"));
-    // }
-    // from_sexp(*argv.add(index))
-    todo!("extract_arg: not yet implemented")
+    if index as i32 >= argc {
+        unsafe { rf_error(&format!("missing argument: {name}")) };
+    }
+    unsafe { from_sexp(*argv.add(index)) }
 }
 
 /// Check that the number of arguments matches expected arity.
@@ -286,12 +276,12 @@ where
 ///
 /// Calls [`rf_error`] if `argc != expected`.
 #[inline]
-pub unsafe fn check_arity(_argc: i32, _expected: i32, _method_name: &str) {
-    // TODO: Implement
-    // if argc != expected {
-    //     rf_error(&format!(
-    //         "{method_name}: expected {expected} arguments, got {argc}"
-    //     ));
-    // }
-    todo!("check_arity: not yet implemented")
+pub unsafe fn check_arity(argc: i32, expected: i32, method_name: &str) {
+    if argc != expected {
+        unsafe {
+            rf_error(&format!(
+                "{method_name}: expected {expected} arguments, got {argc}"
+            ))
+        };
+    }
 }

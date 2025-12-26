@@ -127,20 +127,20 @@ pub struct mx_erased {
 
 ## Implementation Milestones
 
-### MVP (Current Scaffolding)
+### MVP (Complete)
 - [x] `abi.rs` with type definitions
 - [x] `trait_abi/` module structure
 - [x] C header and source stubs
 - [x] `#[miniextendr]` routing for traits
 - [x] `#[miniextendr]` routing for trait impls
-- [ ] Implement `mx_tag_from_path()` hash function
-- [ ] Implement `init_ccallables()` loader
-- [ ] Implement `conv.rs` conversion helpers
+- [x] Implement `mx_tag_from_path()` hash function (FNV-1a, const-compatible)
+- [x] Implement `init_ccallables()` loader
+- [x] Implement `conv.rs` conversion helpers
+- [x] Implement C-callables in `mx_abi.c.in`
 
 ### M1: Code Generation
 - [ ] `#[miniextendr]` on trait: generate TAG, VTable, View, shims
 - [ ] `#[miniextendr]` on impl: generate vtable static
-- [ ] Implement C-callables in `mx_abi.c`
 
 ### M2: Integration
 - [ ] Extend `ExternalPtr` derive for traits (`#[externalptr(traits = [...])]`)

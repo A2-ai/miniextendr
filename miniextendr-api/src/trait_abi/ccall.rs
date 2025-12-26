@@ -103,15 +103,46 @@ static P_MX_QUERY: OnceLock<MxQueryFn> = OnceLock::new();
 /// }
 /// ```
 pub fn init_ccallables() {
-    // TODO: Implement using R_GetCCallable
-    //
-    // Implementation outline:
-    // 1. Check we're on main thread (use is_r_main_thread or similar)
-    // 2. Call R_GetCCallable("miniextendr", "mx_wrap")
-    // 3. Cast to MxWrapFn and store in P_MX_WRAP
-    // 4. Repeat for mx_get, mx_query
-    // 5. Panic if any pointer is null (package not loaded)
-    todo!("init_ccallables: not yet implemented")
+    // Check we're on main thread
+    if !crate::worker::is_r_main_thread() {
+        panic!("init_ccallables must be called from R's main thread");
+    }
+
+    // Load mx_wrap
+    let wrap_ptr = unsafe {
+        crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_wrap".as_ptr())
+    };
+    if wrap_ptr.is_none() {
+        panic!("init_ccallables: mx_wrap not found - is miniextendr package loaded?");
+    }
+    let wrap_fn: MxWrapFn = unsafe { std::mem::transmute(wrap_ptr) };
+    P_MX_WRAP
+        .set(wrap_fn)
+        .expect("init_ccallables called multiple times");
+
+    // Load mx_get
+    let get_ptr = unsafe {
+        crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_get".as_ptr())
+    };
+    if get_ptr.is_none() {
+        panic!("init_ccallables: mx_get not found - is miniextendr package loaded?");
+    }
+    let get_fn: MxGetFn = unsafe { std::mem::transmute(get_ptr) };
+    P_MX_GET
+        .set(get_fn)
+        .expect("init_ccallables called multiple times");
+
+    // Load mx_query
+    let query_ptr = unsafe {
+        crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_query".as_ptr())
+    };
+    if query_ptr.is_none() {
+        panic!("init_ccallables: mx_query not found - is miniextendr package loaded?");
+    }
+    let query_fn: MxQueryFn = unsafe { std::mem::transmute(query_ptr) };
+    P_MX_QUERY
+        .set(query_fn)
+        .expect("init_ccallables called multiple times");
 }
 
 // =============================================================================
@@ -274,20 +305,12 @@ pub unsafe fn mx_query(sexp: SEXP, tag: mx_tag) -> *const c_void {
 /// }
 /// ```
 #[inline]
-pub unsafe fn mx_query_as<V>(_sexp: SEXP, _tag: mx_tag) -> Option<&'static V> {
-    // TODO: Implement
-    // 1. Call mx_query(sexp, tag)
-    // 2. If null, return None
-    // 3. Cast to *const V and return Some(&*ptr)
-    todo!("mx_query_as: not yet implemented")
+pub unsafe fn mx_query_as<V>(sexp: SEXP, tag: mx_tag) -> Option<&'static V> {
+    let vtable = unsafe { mx_query(sexp, tag) };
+    if vtable.is_null() {
+        None
+    } else {
+        Some(unsafe { &*(vtable as *const V) })
+    }
 }
 
-// =============================================================================
-// FFI binding for R_GetCCallable
-// =============================================================================
-
-// Note: R_GetCCallable binding should be added to ffi.rs:
-//
-// extern "C" {
-//     pub fn R_GetCCallable(package: *const c_char, name: *const c_char) -> *mut c_void;
-// }
