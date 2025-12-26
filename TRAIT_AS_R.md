@@ -157,7 +157,7 @@ pub struct mx_erased {
 - [x] `#[miniextendr]` on impl: generate vtable static
 
 ### M2: Integration (Complete)
-- [x] Extend `ExternalPtr` derive for traits (`#[externalptr(traits = [...])]`)
+- [x] `impl Trait for Type;` syntax in `miniextendr_module!` for trait registration
 - [x] `.Call` wrapper generation (via existing miniextendr_module! + impl blocks)
 - [x] Panic handling in shims (catch_unwind)
 - [x] Tests and examples (see `rpkg/src/rust/trait_abi_tests.rs`)
@@ -166,7 +166,8 @@ pub struct mx_erased {
 - [ ] Cross-package example
 - [ ] Documentation
 - [ ] Error diagnostics
-- [ ] Update `miniextendr-lint` with trait ABI lints (missing vtable, tag collisions, etc.)
+- [x] miniextendr-lint: missing `impl Trait for Type;` registration detection
+- [ ] miniextendr-lint: tag collision detection (future)
 
 ## Design Decisions
 
@@ -176,9 +177,12 @@ pub struct mx_erased {
 2. **Auto-detection**: Macro detects item type (fn, impl, trait, struct)
 3. **Familiarity**: Users already know `#[miniextendr]`
 
-### Why ExternalPtr handles wrapper generation?
+### Why `impl Trait for Type;` in miniextendr_module?
 
-`ExternalPtr` already handles the "traitless" case (type-erased Rust objects in R). The trait ABI is an extension that adds vtable dispatch. This keeps the mental model simple: ExternalPtr = R-visible Rust object.
+The trait ABI wrapper generation is triggered by `impl Trait for Type;` in `miniextendr_module!` rather than a derive attribute because:
+1. **Explicit registration**: Only traits listed in the module are exposed to R
+2. **Single location**: All R-facing declarations in one place
+3. **Lint-friendly**: Easy to verify matching `#[miniextendr]` annotations
 
 ### Why C-callables instead of direct linking?
 

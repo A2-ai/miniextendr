@@ -168,6 +168,7 @@ enum LintKind {
     Function,
     Impl,
     Struct,
+    TraitImpl,
 }
 
 #[derive(Clone, Debug)]
@@ -198,12 +199,12 @@ impl LintItem {
     }
 
     fn display(&self) -> String {
-        let prefix = match self.kind {
-            LintKind::Function => "fn",
-            LintKind::Impl => "impl",
-            LintKind::Struct => "struct",
-        };
-        format!("{prefix} {}", self.name)
+        match self.kind {
+            LintKind::Function => format!("fn {}", self.name),
+            LintKind::Impl => format!("impl {}", self.name),
+            LintKind::Struct => format!("struct {}", self.name),
+            LintKind::TraitImpl => format!("impl {}", self.name), // "impl Trait for Type"
+        }
     }
 }
 
@@ -338,8 +339,21 @@ fn collect_items(
                 if has_miniextendr_attr(&item_impl.attrs) {
                     let line = item_impl.self_ty.span().start().line;
                     match impl_type_name(&item_impl.self_ty) {
-                        Some(name) => {
-                            miniextendr_items.insert(LintItem::new(LintKind::Impl, name, line));
+                        Some(type_name) => {
+                            // Check if this is a trait impl (impl Trait for Type)
+                            if let Some((_, trait_path, _)) = &item_impl.trait_ {
+                                // Get trait name from path
+                                if let Some(trait_seg) = trait_path.segments.last() {
+                                    let trait_name = trait_seg.ident.to_string();
+                                    let full_name = format!("{} for {}", trait_name, type_name);
+                                    miniextendr_items
+                                        .insert(LintItem::new(LintKind::TraitImpl, full_name, line));
+                                }
+                            } else {
+                                // Regular impl block
+                                miniextendr_items
+                                    .insert(LintItem::new(LintKind::Impl, type_name, line));
+                            }
                         }
                         None => errors.push(format!(
                             "{}:{}: #[miniextendr] impl type not supported by lint",
@@ -429,6 +443,20 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
             impl_block.ident.to_string(),
             line,
         ));
+    }
+
+    // Trait implementations (impl Trait for Type;)
+    for trait_impl in parsed.trait_impls {
+        let line = trait_impl.type_ident.span().start().line;
+        // Get trait name from path
+        let trait_name = trait_impl
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string())
+            .unwrap_or_default();
+        let full_name = format!("{} for {}", trait_name, trait_impl.type_ident);
+        items.push(LintItem::new(LintKind::TraitImpl, full_name, line));
     }
 
     Ok(items)
