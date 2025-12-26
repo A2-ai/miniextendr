@@ -288,6 +288,7 @@ AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars
   src/entrypoint.c
+  src/mx_abi.c
 ])
 
 dnl 2a) Ensure the monorepo root has a cargo config (needed for workspace resolution)

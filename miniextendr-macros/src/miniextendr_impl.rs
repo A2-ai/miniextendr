@@ -494,15 +494,10 @@ impl ParsedMethod {
 
 impl ParsedImpl {
     /// Parse an impl block with class system attribute.
+    ///
+    /// Note: Trait impls (`impl Trait for Type`) are handled by `expand_impl`
+    /// before this function is called, so we only handle inherent impls here.
     pub fn parse(attrs: ImplAttrs, item_impl: syn::ItemImpl) -> syn::Result<Self> {
-        // Reject trait impls
-        if item_impl.trait_.is_some() {
-            return Err(syn::Error::new_spanned(
-                &item_impl,
-                "trait impls are not supported, use inherent impl blocks",
-            ));
-        }
-
         // Extract type identifier
         let type_ident = match item_impl.self_ty.as_ref() {
             syn::Type::Path(p) => p
@@ -1770,17 +1765,28 @@ fn build_r_call_args(sig: &syn::Signature) -> String {
 }
 
 /// Expand a #[miniextendr(receiver|r6|s7|s3|s4)] impl block.
+///
+/// This handles two cases:
+/// 1. **Inherent impls** (`impl Type`): Generate class-system wrappers
+/// 2. **Trait impls** (`impl Trait for Type`): Generate vtable static for trait ABI
 pub fn expand_impl(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
-    let attrs = match syn::parse::<ImplAttrs>(attr) {
-        Ok(a) => a,
+    let item_impl = match syn::parse::<syn::ItemImpl>(item.clone()) {
+        Ok(i) => i,
         Err(e) => return e.into_compile_error().into(),
     };
 
-    let item_impl = match syn::parse::<syn::ItemImpl>(item) {
-        Ok(i) => i,
+    // Check if this is a trait impl (impl Trait for Type)
+    if item_impl.trait_.is_some() {
+        // Delegate to trait ABI vtable generator
+        return crate::miniextendr_impl_trait::expand_miniextendr_impl_trait(attr, item);
+    }
+
+    // Otherwise, this is an inherent impl - parse class system attrs
+    let attrs = match syn::parse::<ImplAttrs>(attr) {
+        Ok(a) => a,
         Err(e) => return e.into_compile_error().into(),
     };
 

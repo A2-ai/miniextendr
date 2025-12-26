@@ -2518,7 +2518,7 @@ as_dir=.cargo; as_fn_mkdir_p
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
 
-ac_config_files="$ac_config_files .cargo/config.toml:src/rust/cargo-config.toml.in src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c"
+ac_config_files="$ac_config_files .cargo/config.toml:src/rust/cargo-config.toml.in src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c src/mx_abi.c"
 
 
 ac_config_commands="$ac_config_commands sync-root-cargo-config"
@@ -3261,6 +3261,7 @@ do
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
+    "src/mx_abi.c") CONFIG_FILES="$CONFIG_FILES src/mx_abi.c" ;;
     "sync-root-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS sync-root-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;

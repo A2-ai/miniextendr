@@ -335,6 +335,28 @@ pub mod preserve;
 pub mod allocator;
 pub use allocator::RAllocator;
 
+// =============================================================================
+// Trait ABI Support
+// =============================================================================
+//
+// Cross-package trait dispatch using a stable C ABI.
+// See `trait_abi` module docs for details.
+
+/// ABI types for cross-package trait dispatch.
+///
+/// This module defines the stable, C-compatible types used for runtime trait
+/// dispatch across R package boundaries.
+pub mod abi;
+
+/// Runtime support for trait ABI operations.
+///
+/// Provides C-callable loading, type conversion helpers, and the `r_object!` macro.
+pub mod trait_abi;
+
+// Re-export key ABI types at crate root for convenience
+pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};
+
+
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`
 #[doc(hidden)]

@@ -17,6 +17,10 @@ mod altrep_derive;
 mod return_type_analysis;
 mod roxygen;
 
+// Trait ABI support modules
+mod miniextendr_trait;
+mod miniextendr_impl_trait;
+
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
@@ -81,6 +85,9 @@ pub fn miniextendr(
     } else if syn::parse::<syn::ItemImpl>(item.clone()).is_ok() {
         // Delegate to impl block parser
         return miniextendr_impl::expand_impl(attr, item);
+    } else if syn::parse::<syn::ItemTrait>(item.clone()).is_ok() {
+        // Delegate to trait ABI generator
+        return miniextendr_trait::expand_trait(attr, item);
     } else {
         // Delegate to ALTREP path (structs/enums)
         return altrep::expand_altrep_struct(attr, item);
