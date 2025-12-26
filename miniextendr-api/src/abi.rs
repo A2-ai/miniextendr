@@ -236,13 +236,31 @@ pub struct mx_erased {
 }
 
 // =============================================================================
-// Functions to be implemented
+// Tag generation
 // =============================================================================
+
+/// FNV-1a 64-bit offset basis.
+const FNV1A_64_OFFSET: u64 = 0xcbf29ce484222325;
+
+/// FNV-1a 64-bit prime.
+const FNV1A_64_PRIME: u64 = 0x00000100000001b3;
+
+/// Compute FNV-1a 64-bit hash of a byte slice (const-compatible).
+const fn fnv1a_64(bytes: &[u8], seed: u64) -> u64 {
+    let mut hash = seed;
+    let mut i = 0;
+    while i < bytes.len() {
+        hash ^= bytes[i] as u64;
+        hash = hash.wrapping_mul(FNV1A_64_PRIME);
+        i += 1;
+    }
+    hash
+}
 
 /// Create a new type tag from a string path.
 ///
 /// This is a helper for generating deterministic tags from type/trait paths.
-/// Uses a hash function to produce a 128-bit tag.
+/// Uses FNV-1a hash to produce a 128-bit tag (two independent 64-bit hashes).
 ///
 /// # Arguments
 ///
@@ -254,17 +272,31 @@ pub struct mx_erased {
 ///
 /// # Example
 ///
-/// ```ignore
-/// const TAG_FOO: mx_tag = mx_tag_from_path("mypackage::Foo");
+/// ```
+/// use miniextendr_api::abi::mx_tag_from_path;
+///
+/// const TAG_FOO: miniextendr_api::abi::mx_tag = mx_tag_from_path("mypackage::Foo");
+/// const TAG_BAR: miniextendr_api::abi::mx_tag = mx_tag_from_path("mypackage::Bar");
+///
+/// // Same path produces same tag
+/// assert_eq!(TAG_FOO, mx_tag_from_path("mypackage::Foo"));
+///
+/// // Different paths produce different tags
+/// assert_ne!(TAG_FOO, TAG_BAR);
 /// ```
 ///
 /// # Note
 ///
 /// This function is `const` to enable compile-time tag generation.
+/// The hash is deterministic across compilations.
 #[inline]
-pub const fn mx_tag_from_path(_path: &str) -> mx_tag {
-    // TODO: Implement using const-compatible hash (e.g., FNV-1a or similar)
-    panic!("mx_tag_from_path: not yet implemented")
+pub const fn mx_tag_from_path(path: &str) -> mx_tag {
+    let bytes = path.as_bytes();
+    // Use different seeds for lo and hi to get independent hash values
+    let lo = fnv1a_64(bytes, FNV1A_64_OFFSET);
+    // XOR with a different constant for the second hash to avoid correlation
+    let hi = fnv1a_64(bytes, FNV1A_64_OFFSET ^ 0x5555555555555555);
+    mx_tag::new(lo, hi)
 }
 
 #[cfg(test)]

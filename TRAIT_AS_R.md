@@ -32,14 +32,22 @@ The trait ABI enables:
 | `src/trait_abi/mod.rs` | Module entry point, re-exports |
 | `src/trait_abi/ccall.rs` | C-callable loading via `R_GetCCallable` |
 | `src/trait_abi/conv.rs` | Type conversion helpers for shims |
-| `src/trait_abi/r_object.rs` | `r_object!` macro for wrapper generation |
+| `src/externalptr.rs` | `ExternalPtr<T>` + `TypedExternal` (integrates trait ABI wrapper generation) |
 
 ### Rust (miniextendr-macros)
 
 | File | Purpose |
 |------|---------|
 | `src/miniextendr_trait.rs` | `#[miniextendr]` on traits → TAG, VTable, View, shims |
-| `src/r_impl.rs` | `#[miniextendr]` on `impl Trait for Type` → vtable static |
+| `src/miniextendr_impl_trait.rs` | `#[miniextendr]` on `impl Trait for Type` → vtable static |
+
+### Rust (miniextendr-lint)
+
+| Future Lints | Purpose |
+|--------------|---------|
+| `missing_vtable` | Trait impl without `#[miniextendr]` when type has `#[externalptr(traits = [...])]` |
+| `tag_collision` | Duplicate `mx_tag` values across traits |
+| `unused_trait_impl` | Vtable generated but type not exposed via ExternalPtr |
 
 ### C (rpkg)
 
@@ -132,11 +140,10 @@ pub struct mx_erased {
 ### M1: Code Generation
 - [ ] `#[miniextendr]` on trait: generate TAG, VTable, View, shims
 - [ ] `#[miniextendr]` on impl: generate vtable static
-- [ ] `r_object!` macro: generate wrapper struct
 - [ ] Implement C-callables in `mx_abi.c`
 
 ### M2: Integration
-- [ ] Extend `ExternalPtr` derive for traits
+- [ ] Extend `ExternalPtr` derive for traits (`#[externalptr(traits = [...])]`)
 - [ ] `.Call` wrapper generation
 - [ ] Panic handling in shims (catch_unwind)
 - [ ] Tests and examples
@@ -145,6 +152,7 @@ pub struct mx_erased {
 - [ ] Cross-package example
 - [ ] Documentation
 - [ ] Error diagnostics
+- [ ] Update `miniextendr-lint` with trait ABI lints (missing vtable, tag collisions, etc.)
 
 ## Design Decisions
 
@@ -241,5 +249,8 @@ This is why the ABI types in `abi.rs` are frozen and append-only.
 
 - `miniextendr-api/src/abi.rs` - Type definitions
 - `miniextendr-api/src/trait_abi/` - Runtime support
+- `miniextendr-api/src/externalptr.rs` - ExternalPtr (integrates trait ABI wrapper generation)
 - `miniextendr-macros/src/miniextendr_trait.rs` - Trait code generation
+- `miniextendr-macros/src/miniextendr_impl_trait.rs` - Trait impl vtable generation
+- `miniextendr-lint/` - Lints for trait ABI correctness (future)
 - `rpkg/inst/include/mx_abi.h` - C header
