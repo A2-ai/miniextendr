@@ -398,7 +398,13 @@ jobs:
           shared-key: r-windows
           cache-on-failure: true
 
-      - name: Configure Windows Rust
+      - name: Install just
+        shell: pwsh
+        run: |
+          # Install just using cargo
+          cargo install just
+
+      - name: Configure Windows Rust environment
         shell: pwsh
         run: |
           $rtools_home = "C:\rtools44"
@@ -413,32 +419,21 @@ jobs:
           New-Item -Path libgcc_mock\libgcc_eh.a -Type File -Force
           New-Item -Path libgcc_mock\libgcc_s.a -Type File -Force
 
-          # Configure Cargo for Windows GNU target
+          # Configure Cargo target for Windows GNU
+          # Note: patch.crates-io is handled by just configure
           New-Item -Path .cargo -ItemType Directory -Force
-          $pwd_slash = echo "${PWD}" | % {$_ -replace '\\','/'}
+          $pwd_slash = (Get-Location).Path -replace '\\','/'
           @"
           [target.x86_64-pc-windows-gnu]
           linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
 
           [env]
           LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
-
-          [patch.crates-io]
-          miniextendr-api = { path = "miniextendr-api" }
-          miniextendr-macros = { path = "miniextendr-macros" }
-          miniextendr-lint = { path = "miniextendr-lint" }
-          miniextendr-engine = { path = "miniextendr-engine" }
-          miniextendr-bench = { path = "miniextendr-bench" }
-          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8 -Append
+          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8
 
       - name: Configure
-        working-directory: rpkg
         shell: bash
-        run: |
-          if [ -f configure.win ]; then
-            chmod +x configure.win
-            ./configure.win
-          fi
+        run: just configure
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -606,6 +601,15 @@ jobs:
         run: |
           mkdir -p ../vendor
           cargo vendor --locked ../vendor
+
+      - name: Clean vendor directory for CRAN
+        run: |
+          # Remove files that cause CRAN check notes
+          find rpkg/src/vendor -name '.cargo*' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '.travis*' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '.gitlab*' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '*.a' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '*.lib' -delete 2>/dev/null || true
 
       - name: R CMD check (CRAN-like)
         uses: r-lib/actions/check-r-package@v2
