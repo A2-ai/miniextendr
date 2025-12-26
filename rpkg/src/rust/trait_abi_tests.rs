@@ -161,6 +161,62 @@ impl PanickyCounter {
 }
 
 // =============================================================================
+// S3 trait impl test - uses S3 dispatch for trait methods
+// =============================================================================
+
+/// A counter that uses S3 dispatch for its trait methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S3TraitCounter {
+    value: i32,
+}
+
+impl S3TraitCounter {
+    fn new(initial: i32) -> Self {
+        Self { value: initial }
+    }
+}
+
+/// S3 trait implementation - generates S3 generics + methods.
+///
+/// This generates:
+/// - `value(x)` S3 generic (if not exists)
+/// - `value.S3TraitCounter` S3 method
+/// - etc. for each instance method
+#[miniextendr(s3)]
+impl Counter for S3TraitCounter {
+    const MAX_VALUE: i32 = 500;
+
+    fn value(&self) -> i32 {
+        self.value
+    }
+
+    fn increment(&mut self) {
+        self.value += 1;
+    }
+
+    fn add(&mut self, n: i32) {
+        self.value += n;
+    }
+
+    fn default_initial() -> i32 {
+        50  // S3TraitCounter defaults to 50
+    }
+}
+
+#[miniextendr]
+impl S3TraitCounter {
+    /// Create a new S3 trait counter.
+    fn new_s3trait(initial: i32) -> Self {
+        Self::new(initial)
+    }
+
+    /// Get value via inherent method.
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -169,8 +225,11 @@ miniextendr_module! {
 
     impl SimpleCounter;
     impl PanickyCounter;
+    impl S3TraitCounter;
 
     // Register trait implementations for cross-package dispatch
+    // The class system is determined by the #[miniextendr(s3)] on the impl block
     impl Counter for SimpleCounter;
     impl Counter for PanickyCounter;
+    impl Counter for S3TraitCounter;
 }
