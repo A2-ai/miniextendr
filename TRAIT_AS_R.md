@@ -165,7 +165,7 @@ pub struct mx_erased {
 ### M3: Polish
 - [x] Cross-package example (documented in "Cross-Package Example" section)
 - [x] Documentation (TRAIT_AS_R.md updated with usage examples)
-- [ ] Error diagnostics
+- [x] Error diagnostics (improved runtime error messages for type mismatches)
 - [x] miniextendr-lint: missing `impl Trait for Type;` registration detection
 - [ ] miniextendr-lint: tag collision detection (future)
 - [x] R tests for trait method `.Call` wrappers (`rpkg/tests/testthat/test-trait-abi.R`)

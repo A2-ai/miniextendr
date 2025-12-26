@@ -373,14 +373,20 @@ fn generate_trait_method_c_wrapper(
         .cloned()
         .collect();
 
-    // Generate self extraction
+    // Generate self extraction with detailed error message
+    let trait_method_name = format!("{}::{}()", trait_name, method_ident);
     let self_extraction = if method.is_mut {
         quote::quote! {
             let mut self_ptr = unsafe {
                 ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
             };
             let self_ref = self_ptr.downcast_mut::<#type_ident>()
-                .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+                .unwrap_or_else(|| panic!(
+                    "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
+                     This can happen if you pass an object of a different type to a trait method.",
+                    #trait_method_name,
+                    stringify!(#type_ident)
+                ));
         }
     } else {
         quote::quote! {
@@ -388,7 +394,12 @@ fn generate_trait_method_c_wrapper(
                 ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
             };
             let self_ref = self_ptr.downcast_ref::<#type_ident>()
-                .expect(concat!("expected ExternalPtr<", stringify!(#type_ident), ">"));
+                .unwrap_or_else(|| panic!(
+                    "type mismatch in {}: expected ExternalPtr<{}>, got different type. \
+                     This can happen if you pass an object of a different type to a trait method.",
+                    #trait_method_name,
+                    stringify!(#type_ident)
+                ));
         }
     };
 
