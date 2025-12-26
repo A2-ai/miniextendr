@@ -1233,11 +1233,13 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         if !skip_generic_creation {
             // Create the S3 generic (only for custom generics, not base R overrides)
-            // Define directly (not conditionally) so roxygen2 can recognize it for @export
+            // Use conditional definition to avoid overwriting existing generics.
+            // @name is required because roxygen2 can't parse conditional definitions.
             lines.push(format!(
                 "#' S3 generic for `{}`",
                 generic_name
             ));
+            lines.push(format!("#' @name {}", generic_name));
             lines.push("#' @param x An object".to_string());
             lines.push("#' @param ... Additional arguments passed to methods".to_string());
             lines.push(format!(
@@ -1246,7 +1248,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ));
             lines.push("#' @export".to_string());
             lines.push(format!(
-                "{generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")"
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {{
+    {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
+}}"
             ));
             lines.push(String::new());
         }
