@@ -307,11 +307,12 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             })
             .collect();
 
-        let invalid_params: Vec<String> = per_param_defaults
+        let mut invalid_params: Vec<String> = per_param_defaults
             .keys()
             .filter(|key| !param_names.contains(*key))
             .cloned()
             .collect();
+        invalid_params.sort();
 
         if !invalid_params.is_empty() {
             return Err(syn::Error::new(

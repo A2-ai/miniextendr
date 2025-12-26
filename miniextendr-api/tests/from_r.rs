@@ -1,5 +1,7 @@
 //! Integration tests for TryFromSexp conversions.
 
+mod r_test_utils;
+
 use miniextendr_api::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use miniextendr_api::coerce::Coerced;
 use miniextendr_api::ffi::{
@@ -9,26 +11,6 @@ use miniextendr_api::ffi::{
 use miniextendr_api::from_r::{CoercedSexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::CString;
-use std::sync::Once;
-
-static INIT: Once = Once::new();
-
-fn initialize_r() {
-    INIT.call_once(|| unsafe {
-        let engine = miniextendr_engine::REngine::build()
-            .with_args(&["R", "--quiet", "--vanilla"])
-            .init()
-            .expect("Failed to initialize R");
-        // Initialize in same order as rpkg/src/entrypoint.c.in
-        miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
-        assert!(
-            miniextendr_engine::r_initialized_sentinel(),
-            "Rf_initialize_R did not set C stack sentinels"
-        );
-        std::mem::forget(engine);
-    });
-}
 
 #[derive(Default)]
 struct ProtectCount(i32);
@@ -100,15 +82,15 @@ unsafe fn make_str_vec(values: &[Option<&str>], guard: &mut ProtectCount) -> SEX
 
 #[test]
 fn from_r_suite() {
-    initialize_r();
-
-    test_scalar_conversions();
-    test_option_scalars();
-    test_slice_and_sets();
-    test_vec_option_conversions();
-    test_string_conversions();
-    test_coerced_conversions();
-    test_error_cases();
+    r_test_utils::with_r_thread(|| {
+        test_scalar_conversions();
+        test_option_scalars();
+        test_slice_and_sets();
+        test_vec_option_conversions();
+        test_string_conversions();
+        test_coerced_conversions();
+        test_error_cases();
+    });
 }
 
 fn test_scalar_conversions() {

@@ -111,6 +111,7 @@ AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
 AC_PATH_PROG([RSYNC],[rsync],[no])
 AC_PATH_PROG([SED],[sed],[no])
+AC_PATH_PROG([CYGPATH],[cygpath],[no])
 AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 dnl rsync is only required when syncing from monorepo sources
@@ -119,6 +120,18 @@ AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
 AC_SUBST([RSYNC])
 AC_SUBST([SED])
+AC_SUBST([CYGPATH])
+
+dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
+root_miniextendr_repo_cargo="$root_miniextendr_repo"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+    fi
+    ;;
+esac
+AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
 
 dnl Report rustc version (required by CRAN for Rust packages)
 RUSTC_VERSION="$($RUSTC --version)"
@@ -245,11 +258,11 @@ AS_IF([test "$NOT_CRAN" = "true"], [
   dnl Dev mode: use local path overrides for miniextendr crates
   CARGO_SOURCE_REPLACE="$(cat <<EOF
 @<:@patch.crates-io@:>@
-miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-api" }
-miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-macros" }
-miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-lint" }
-miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-engine" }
-miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-bench" }
+miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-api" }
+miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-macros" }
+miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-lint" }
+miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-engine" }
+miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench" }
 EOF
 )"
 ], [
@@ -389,8 +402,8 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         mkdir -p "$VENDOR_OUT"
         $CARGO_CMD vendor \
           --manifest-path "$MANIFEST" \
-          --sync "$ROOT_MINIEXTENDR_REPO/Cargo.toml" \
-          --sync "$ROOT_MINIEXTENDR_REPO/miniextendr-bench/Cargo.toml" \
+          --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
+          --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
           "$VENDOR_OUT"
         if test $? -ne 0; then
           echo "configure: error: cargo vendor failed" >&2
@@ -412,7 +425,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"])
+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo"])
 
 dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
 

@@ -1,5 +1,7 @@
 //! Integration tests for IntoR conversions that require an embedded R runtime.
 
+mod r_test_utils;
+
 use miniextendr_api::altrep_traits::NA_LOGICAL;
 use miniextendr_api::ffi::{
     LOGICAL, R_NaString, R_xlen_t, RLogical, Rboolean, Rf_translateCharUTF8, Rf_xlength, SEXP,
@@ -7,26 +9,6 @@ use miniextendr_api::ffi::{
 };
 use miniextendr_api::into_r::IntoR;
 use std::ffi::CStr;
-use std::sync::Once;
-
-static INIT: Once = Once::new();
-
-fn initialize_r() {
-    INIT.call_once(|| unsafe {
-        let engine = miniextendr_engine::REngine::build()
-            .with_args(&["R", "--quiet", "--vanilla"])
-            .init()
-            .expect("Failed to initialize R");
-        // Initialize in same order as rpkg/src/entrypoint.c.in
-        miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
-        assert!(
-            miniextendr_engine::r_initialized_sentinel(),
-            "Rf_initialize_R did not set C stack sentinels"
-        );
-        std::mem::forget(engine);
-    });
-}
 
 unsafe fn scalar_logical(sexp: SEXP) -> i32 {
     unsafe { *LOGICAL(sexp) }
@@ -46,12 +28,12 @@ unsafe fn string_elt(sexp: SEXP, idx: usize) -> Option<String> {
 
 #[test]
 fn into_r_suite() {
-    initialize_r();
-
-    test_option_rlogical_scalar();
-    test_vec_option_rlogical();
-    test_vec_option_rboolean();
-    test_string_slice();
+    r_test_utils::with_r_thread(|| {
+        test_option_rlogical_scalar();
+        test_vec_option_rlogical();
+        test_vec_option_rboolean();
+        test_string_slice();
+    });
 }
 
 fn test_option_rlogical_scalar() {

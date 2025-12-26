@@ -623,6 +623,8 @@ CARGO_PROFILE
 CARGO_TARGET_DIR
 CARGO_CMD
 RUST_TOOLCHAIN
+ROOT_MINIEXTENDR_REPO_CARGO
+CYGPATH
 SED
 RSYNC
 RUSTC
@@ -2346,6 +2348,53 @@ printf "%s\n" "no" >&6; }
 fi
 
 
+# Extract the first word of "cygpath", so it can be a program name with args.
+set dummy cygpath; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_CYGPATH+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $CYGPATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_CYGPATH="$CYGPATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_CYGPATH="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_CYGPATH" && ac_cv_path_CYGPATH="no"
+  ;;
+esac ;;
+esac
+fi
+CYGPATH=$ac_cv_path_CYGPATH
+if test -n "$CYGPATH"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $CYGPATH" >&5
+printf "%s\n" "$CYGPATH" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
 if test "x$CARGO" = "xno"
 then :
   as_fn_error $? "\`cargo\` not found" "$LINENO" 5
@@ -2361,6 +2410,18 @@ fi
 
 
 
+
+
+
+root_miniextendr_repo_cargo="$root_miniextendr_repo"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+    fi
+    ;;
+esac
+ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo"
 
 
 RUSTC_VERSION="$($RUSTC --version)"
@@ -2481,11 +2542,11 @@ then :
 
     CARGO_SOURCE_REPLACE="$(cat <<EOF
 [patch.crates-io]
-miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-api" }
-miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-macros" }
-miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-lint" }
-miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-engine" }
-miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO/miniextendr-bench" }
+miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-api" }
+miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-macros" }
+miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-lint" }
+miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-engine" }
+miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench" }
 EOF
 )"
 
@@ -3240,7 +3301,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo"
 RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
@@ -3764,8 +3825,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         mkdir -p "$VENDOR_OUT"
         $CARGO_CMD vendor \
           --manifest-path "$MANIFEST" \
-          --sync "$ROOT_MINIEXTENDR_REPO/Cargo.toml" \
-          --sync "$ROOT_MINIEXTENDR_REPO/miniextendr-bench/Cargo.toml" \
+          --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
+          --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
           "$VENDOR_OUT"
         if test $? -ne 0; then
           echo "configure: error: cargo vendor failed" >&2

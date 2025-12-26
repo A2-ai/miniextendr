@@ -7,29 +7,11 @@
 
 #![cfg(feature = "rayon")]
 
+mod r_test_utils;
+
 use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
 use miniextendr_api::rayon_bridge::{RVec, with_r_vec};
 use rayon::prelude::*;
-use std::sync::Once;
-
-static INIT: Once = Once::new();
-
-fn initialize_r() {
-    INIT.call_once(|| unsafe {
-        let engine = miniextendr_engine::REngine::build()
-            .with_args(&["R", "--quiet", "--vanilla"])
-            .init()
-            .expect("Failed to initialize R");
-        // Initialize in same order as rpkg/src/entrypoint.c.in
-        miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
-        assert!(
-            miniextendr_engine::r_initialized_sentinel(),
-            "Rf_initialize_R did not set C stack sentinels"
-        );
-        std::mem::forget(engine);
-    });
-}
 
 /// Helper to read f64 values from an R REALSXP vector.
 unsafe fn read_real_vec(sexp: SEXP) -> Vec<f64> {
@@ -45,15 +27,15 @@ unsafe fn read_real_vec(sexp: SEXP) -> Vec<f64> {
 
 #[test]
 fn rayon_suite() {
-    initialize_r();
-
-    test_with_r_vec_basic();
-    test_with_r_vec_parallel_write();
-    test_with_r_vec_i32();
-    test_with_r_vec_empty();
-    test_with_r_vec_large();
-    test_rvec_parallel_collect();
-    test_rvec_into_sexp();
+    r_test_utils::with_r_thread(|| {
+        test_with_r_vec_basic();
+        test_with_r_vec_parallel_write();
+        test_with_r_vec_i32();
+        test_with_r_vec_empty();
+        test_with_r_vec_large();
+        test_rvec_parallel_collect();
+        test_rvec_into_sexp();
+    });
 }
 
 fn test_with_r_vec_basic() {

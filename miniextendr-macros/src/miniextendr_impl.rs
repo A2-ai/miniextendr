@@ -397,12 +397,13 @@ impl ParsedMethod {
             })
             .collect();
 
-        let invalid_params: Vec<String> = method_attrs
+        let mut invalid_params: Vec<String> = method_attrs
             .defaults
             .keys()
             .filter(|key| *key != "self" && !param_names.contains(*key))
             .cloned()
             .collect();
+        invalid_params.sort();
 
         if !invalid_params.is_empty() {
             return Err(syn::Error::new(

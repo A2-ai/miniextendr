@@ -432,7 +432,7 @@ jobs:
           "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8
 
       - name: Configure
-        shell: bash
+        shell: C:\rtools44\usr\bin\bash.exe --login -e -o pipefail {0}
         run: just configure
 
       - name: R CMD check
@@ -605,7 +605,7 @@ jobs:
       - name: Clean vendor directory for CRAN
         run: |
           # Remove files that cause CRAN check notes
-          find rpkg/src/vendor -name '.cargo*' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '.cargo_vcs_info.json' -delete 2>/dev/null || true
           find rpkg/src/vendor -name '.travis*' -delete 2>/dev/null || true
           find rpkg/src/vendor -name '.gitlab*' -delete 2>/dev/null || true
           find rpkg/src/vendor -name '*.a' -delete 2>/dev/null || true

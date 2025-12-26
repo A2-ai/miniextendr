@@ -112,11 +112,15 @@ expand *cargo_flags:
 # This is the only vendoring needed - R packages must be self-contained for CRAN.
 # Workspace crates use normal cargo dependency resolution (no vendoring needed).
 configure:
-    cd rpkg && autoconf && NOT_CRAN=true ./configure
+    cd rpkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=true ./configure
 
 # Configure in CRAN/offline mode (do NOT force NOT_CRAN=true)
 configure-cran:
-    cd rpkg && autoconf && ./configure
+    cd rpkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    ./configure
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": configure
