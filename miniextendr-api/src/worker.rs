@@ -136,6 +136,23 @@ where
     F: FnOnce() -> R + 'static,
     R: Send + 'static,
 {
+    // Check if worker system has been initialized
+    if R_MAIN_THREAD_ID.get().is_none() {
+        panic!(
+            "miniextendr_worker_init() must be called before using R FFI APIs.\n\
+             \n\
+             This is typically done in R_init_<pkgname>() via:\n\
+             \n\
+             void R_init_pkgname(DllInfo *dll) {{\n\
+             miniextendr_worker_init();\n\
+             R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);\n\
+             }}\n\
+             \n\
+             If you're embedding R in Rust, call miniextendr_worker_init() from the main thread \
+             before any R API calls."
+        );
+    }
+
     if is_r_main_thread() {
         // Already on main thread, just run it
         return f();
