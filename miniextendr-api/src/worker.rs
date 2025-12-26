@@ -383,9 +383,7 @@ where
                             if buf.is_null() {
                                 "R error occurred".to_string()
                             } else {
-                                std::ffi::CStr::from_ptr(buf)
-                                    .to_string_lossy()
-                                    .into_owned()
+                                std::ffi::CStr::from_ptr(buf).to_string_lossy().into_owned()
                             }
                         };
                         #[cfg(not(feature = "nonapi"))]

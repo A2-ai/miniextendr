@@ -13,8 +13,8 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// greetings_last_as_named_dots(1L, x = 1, y = 2)
 /// }
 /// @aliases greetings_with_named_dots greetings_with_named_and_unused_dots
-/// @aliases greetings_with_nameless_dots greetings_last_as_named_dots
-/// @aliases greetings_last_as_named_and_unused_dots greetings_last_as_nameless_dots
+///   greetings_with_nameless_dots greetings_last_as_named_dots
+///   greetings_last_as_named_and_unused_dots greetings_last_as_nameless_dots
 pub fn greetings_with_named_dots(dots: ...) {
     let _ = dots;
 }

@@ -1,5 +1,5 @@
-use std::panic::{catch_unwind, AssertUnwindSafe};
-use std::sync::{mpsc, OnceLock};
+use std::panic::{AssertUnwindSafe, catch_unwind};
+use std::sync::{OnceLock, mpsc};
 
 use miniextendr_api::thread::RThreadBuilder;
 

@@ -418,11 +418,11 @@ pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SE
 /// unsafe_rpkg_lazy_int_seq_is_materialized(x)
 /// }
 /// @aliases unsafe_rpkg_altrep_compact_int unsafe_rpkg_altrep_from_doubles
-/// @aliases unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
-/// @aliases unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
-/// @aliases unsafe_rpkg_constant_int unsafe_rpkg_constant_real
-/// @aliases unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
-/// @aliases unsafe_rpkg_lazy_int_seq_is_materialized
+///   unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
+///   unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
+///   unsafe_rpkg_constant_int unsafe_rpkg_constant_real
+///   unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
+///   unsafe_rpkg_lazy_int_seq_is_materialized
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

@@ -16,15 +16,12 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// test_u8_identity(as.raw(255))
 /// test_i32_slice_sum(1:5)
 /// test_f64_slice_mean(c(1, 2, 3))
-/// @aliases test_i32_identity test_i32_add_one test_i32_sum
-/// @aliases test_f64_identity test_f64_add_one test_f64_multiply
-/// @aliases test_u8_identity test_u8_add_one
-/// @aliases test_logical_identity test_logical_not test_logical_and
-/// @aliases test_i32_to_f64 test_f64_to_i32
-/// @aliases test_i32_slice_len test_i32_slice_sum test_i32_slice_first test_i32_slice_last
-/// @aliases test_f64_slice_len test_f64_slice_sum test_f64_slice_mean
-/// @aliases test_u8_slice_len test_u8_slice_sum
-/// @aliases test_logical_slice_len test_logical_slice_any_true test_logical_slice_all_true
+/// @aliases test_i32_identity test_i32_add_one test_i32_sum test_f64_identity test_f64_add_one
+///   test_f64_multiply test_u8_identity test_u8_add_one test_logical_identity test_logical_not
+///   test_logical_and test_i32_to_f64 test_f64_to_i32 test_i32_slice_len test_i32_slice_sum
+///   test_i32_slice_first test_i32_slice_last test_f64_slice_len test_f64_slice_sum
+///   test_f64_slice_mean test_u8_slice_len test_u8_slice_sum test_logical_slice_len
+///   test_logical_slice_any_true test_logical_slice_all_true
 pub fn test_i32_identity(x: i32) -> i32 {
     x
 }

@@ -15,10 +15,9 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// \dontrun{
 /// unsafe_C_check_interupt_after()
 /// }
-/// @aliases invisibly_return_no_arrow invisibly_return_arrow
-/// @aliases invisibly_option_return_none invisibly_option_return_some
-/// @aliases invisibly_result_return_ok force_invisible_i32 force_visible_unit
-/// @aliases with_interrupt_check unsafe_C_check_interupt_after unsafe_C_check_interupt_unwind
+/// @aliases invisibly_return_no_arrow invisibly_return_arrow invisibly_option_return_none
+///   invisibly_option_return_some invisibly_result_return_ok force_invisible_i32 force_visible_unit
+///   with_interrupt_check unsafe_C_check_interupt_after unsafe_C_check_interupt_unwind
 pub fn invisibly_return_no_arrow() {}
 
 #[miniextendr]

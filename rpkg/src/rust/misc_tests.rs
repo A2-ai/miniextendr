@@ -26,9 +26,8 @@ pub fn underscore_it_all(_: i32, _: f64) {}
 /// z <- altrep_from_strings(c("a", "b"))
 /// altrep_lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
 /// }
-/// @aliases altrep_compact_int altrep_from_doubles altrep_from_strings
-/// @aliases altrep_from_logicals altrep_from_raw altrep_from_list
-/// @aliases altrep_constant_int altrep_lazy_int_seq_is_materialized
+/// @aliases altrep_compact_int altrep_from_doubles altrep_from_strings altrep_from_logicals
+///   altrep_from_raw altrep_from_list altrep_constant_int altrep_lazy_int_seq_is_materialized
 #[miniextendr]
 fn rpkg_doc_altrep_helpers() {}
 
