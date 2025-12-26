@@ -240,6 +240,26 @@ impl<T: RNativeType> TryFromSexp for T {
     }
 }
 
+/// Pass-through conversion for raw SEXP values.
+///
+/// # Safety
+///
+/// SEXP handles are only valid on R's main thread. Use with
+/// `#[miniextendr(unsafe(main_thread))]` functions.
+impl TryFromSexp for SEXP {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        Ok(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Ok(sexp)
+    }
+}
+
 // =============================================================================
 // Logical conversions
 // =============================================================================
