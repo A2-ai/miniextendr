@@ -893,12 +893,26 @@ pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // $ dispatch - export as S3 methods
+    // Handles both functions (inherent methods) and environments (trait namespaces)
     lines.push(format!("#' @rdname {}", class_name));
     lines.push("#' @export".to_string());
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
-    lines.push(format!("    func <- {}[[name]]", class_name));
-    lines.push("    environment(func) <- environment()".to_string());
-    lines.push("    func".to_string());
+    lines.push(format!("    obj <- {}[[name]]", class_name));
+    lines.push("    if (is.environment(obj)) {".to_string());
+    lines.push("        # Trait namespace - bind self to all methods".to_string());
+    lines.push("        bound <- new.env(parent = emptyenv())".to_string());
+    lines.push("        for (method_name in names(obj)) {".to_string());
+    lines.push("            method <- obj[[method_name]]".to_string());
+    lines.push("            if (is.function(method)) {".to_string());
+    lines.push("                environment(method) <- environment()".to_string());
+    lines.push("                bound[[method_name]] <- method".to_string());
+    lines.push("            }".to_string());
+    lines.push("        }".to_string());
+    lines.push("        bound".to_string());
+    lines.push("    } else {".to_string());
+    lines.push("        environment(obj) <- environment()".to_string());
+    lines.push("        obj".to_string());
+    lines.push("    }".to_string());
     lines.push("}".to_string());
     lines.push(format!("#' @rdname {}", class_name));
     lines.push("#' @export".to_string());

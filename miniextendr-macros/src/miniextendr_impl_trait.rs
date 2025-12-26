@@ -443,6 +443,12 @@ fn generate_trait_r_wrapper(
         trait_name, type_ident
     ));
 
+    // Create trait namespace environment
+    output.push_str(&format!(
+        "{}${} <- new.env(parent = emptyenv())\n\n",
+        type_ident, trait_name
+    ));
+
     for method in methods {
         let method_name = &method.ident;
 
@@ -471,8 +477,9 @@ fn generate_trait_r_wrapper(
             format!("self, {}", params.join(", "))
         };
 
-        // Generate method wrapper
-        // Uses naming: Type$Trait$method (nested environments)
+        // Generate method wrapper in trait namespace
+        // Uses nested naming: Type$Trait$method
+        // The $.Type dispatch handles binding `self` for environments
         output.push_str(&format!(
             "#' @name {}${}${}\n",
             type_ident, trait_name, method_name

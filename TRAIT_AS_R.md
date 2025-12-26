@@ -163,11 +163,12 @@ pub struct mx_erased {
 - [x] Tests and examples (see `rpkg/src/rust/trait_abi_tests.rs`)
 
 ### M3: Polish
-- [ ] Cross-package example
-- [ ] Documentation
+- [x] Cross-package example (documented in "Cross-Package Example" section)
+- [x] Documentation (TRAIT_AS_R.md updated with usage examples)
 - [ ] Error diagnostics
 - [x] miniextendr-lint: missing `impl Trait for Type;` registration detection
 - [ ] miniextendr-lint: tag collision detection (future)
+- [x] R tests for trait method `.Call` wrappers (`rpkg/tests/testthat/test-trait-abi.R`)
 
 ## Design Decisions
 
@@ -255,6 +256,146 @@ miniextendr_api::trait_abi::init_ccallables();
 > - Consumer packages check at runtime that the loaded version matches what they compiled against
 
 This is why the ABI types in `abi.rs` are frozen and append-only.
+
+## Cross-Package Example
+
+This example shows how package B (consumer) can use trait-based objects from package A (producer).
+
+### Package A: Producer (defines trait and implementation)
+
+**Rust code (`producer/src/rust/lib.rs`):**
+
+```rust
+use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+
+// Define the trait
+#[miniextendr]
+pub trait Counter {
+    fn value(&self) -> i32;
+    fn increment(&mut self);
+}
+
+// Implement for a concrete type
+#[derive(ExternalPtr)]
+pub struct SimpleCounter { value: i32 }
+
+#[miniextendr]
+impl Counter for SimpleCounter {
+    fn value(&self) -> i32 { self.value }
+    fn increment(&mut self) { self.value += 1; }
+}
+
+#[miniextendr]
+impl SimpleCounter {
+    fn new(initial: i32) -> Self { Self { value: initial } }
+}
+
+miniextendr_module! {
+    mod producer;
+    impl SimpleCounter;
+    impl Counter for SimpleCounter;  // Registers trait dispatch
+}
+```
+
+**Generated R wrappers (`producer/R/miniextendr_wrappers.R`):**
+
+```r
+# Type environment
+SimpleCounter <- new.env(parent = emptyenv())
+SimpleCounter$new <- function(initial) { ... }
+
+# Trait namespace
+SimpleCounter$Counter <- new.env(parent = emptyenv())
+SimpleCounter$Counter$value <- function() { ... }
+SimpleCounter$Counter$increment <- function() { ... }
+
+# $ dispatch handles both inherent methods and trait namespaces
+`$.SimpleCounter` <- function(self, name) {
+    obj <- SimpleCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+```
+
+### Package B: Consumer (uses producer's objects)
+
+**DESCRIPTION:**
+```
+Package: consumer
+Imports: producer
+```
+
+**R code (`consumer/R/use_counter.R`):**
+
+```r
+#' Double a counter's value using trait methods
+#' @param counter A SimpleCounter from the producer package
+#' @export
+double_counter <- function(counter) {
+  # Access trait methods via $Counter$ namespace
+  current <- counter$Counter$value()
+  for (i in seq_len(current)) {
+    counter$Counter$increment()
+  }
+  counter$Counter$value()
+}
+```
+
+**Usage from R:**
+
+```r
+library(producer)
+library(consumer)
+
+# Create counter from producer
+c <- SimpleCounter$new(5L)
+
+# Use trait methods directly
+c$Counter$value()      # 5
+c$Counter$increment()
+c$Counter$value()      # 6
+
+# Use consumer function that calls trait methods
+double_counter(c)      # 12
+```
+
+### How It Works
+
+1. **Producer** generates `.Call` wrappers for trait methods (`C_SimpleCounter__Counter__value`, etc.)
+2. **Producer** registers these in `R_init_producer_miniextendr`
+3. **Consumer** imports `producer`, ensuring the DLL is loaded
+4. **Consumer** calls trait methods via the `$Trait$method` syntax
+5. The `$.SimpleCounter` dispatch binds `self` and returns trait methods with proper scope
+
+### Cross-Package Vtable Dispatch (Future)
+
+For true cross-package dispatch where consumer doesn't know the concrete type:
+
+```r
+# Future: consumer receives any object implementing Counter
+increment_any_counter <- function(obj) {
+  # Query for Counter vtable at runtime
+  vtable <- mx_query(obj, TAG_COUNTER)
+  if (!is.null(vtable)) {
+    vtable$increment(obj)
+  }
+}
+```
+
+This requires the C-callable infrastructure (`mx_wrap`, `mx_get`, `mx_query`) which is scaffolded but not fully implemented.
 
 ## Non-Goals
 
