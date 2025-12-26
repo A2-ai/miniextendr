@@ -1,7 +1,7 @@
 //! Shared utilities for handling method return values in R wrapper generation.
 //!
 //! This module provides helpers for generating consistent return value handling
-//! across all class systems (Receiver, R6, S7, S3, S4).
+//! across all class systems (Env, R6, S7, S3, S4).
 
 use crate::miniextendr_impl::{ParsedMethod, ReceiverKind};
 
@@ -21,7 +21,7 @@ impl ReturnStrategy {
     pub fn for_method(method: &ParsedMethod) -> Self {
         if method.returns_self() {
             ReturnStrategy::ReturnSelf
-        } else if method.receiver == ReceiverKind::RefMut && method.returns_unit() {
+        } else if method.env == ReceiverKind::RefMut && method.returns_unit() {
             ReturnStrategy::ChainableMutation
         } else {
             ReturnStrategy::Direct

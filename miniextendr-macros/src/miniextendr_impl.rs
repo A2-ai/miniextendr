@@ -1,13 +1,13 @@
 //! Impl-block parsing and wrapper generation for class-like Rust structs.
 //!
 //! This module provides shared infrastructure for all class system support:
-//! - Receiver (env-style with `$`/`[[` dispatch)
+//! - Env (environment-style with `$`/`[[` dispatch)
 //! - R6 (`R6::R6Class`)
 //! - S7 (`S7::new_class`)
 //! - S3 (`structure()` with class attr)
 //! - S4 (`setClass`)
 //!
-//! The impl-block parser extracts methods and categorizes them by receiver type,
+//! The impl-block parser extracts methods and categorizes them by env type,
 //! then class-system adapters generate appropriate R wrapper code.
 
 use proc_macro2::TokenStream;
@@ -55,7 +55,7 @@ fn strip_miniextendr_attrs_from_impl(mut item_impl: syn::ItemImpl) -> syn::ItemI
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ClassSystem {
     /// Environment-style with `$`/`[[` dispatch
-    Receiver,
+    Env,
     /// R6::R6Class
     R6,
     /// S7::new_class
@@ -71,7 +71,7 @@ impl std::str::FromStr for ClassSystem {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.to_lowercase().as_str() {
-            "receiver" => Ok(ClassSystem::Receiver),
+            "env" => Ok(ClassSystem::Env),
             "r6" => Ok(ClassSystem::R6),
             "s7" => Ok(ClassSystem::S7),
             "s3" => Ok(ClassSystem::S3),
@@ -84,7 +84,7 @@ impl std::str::FromStr for ClassSystem {
 /// Receiver kind for methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReceiverKind {
-    /// No receiver - static/associated function
+    /// No env - static/associated function
     None,
     /// `&self` - immutable borrow
     Ref,
@@ -123,8 +123,8 @@ pub struct ParsedMethod {
     /// Method identifier
     pub ident: syn::Ident,
     /// Receiver kind
-    pub receiver: ReceiverKind,
-    /// Method signature (without receiver)
+    pub env: ReceiverKind,
+    /// Method signature (without env)
     pub sig: syn::Signature,
     /// Visibility
     pub vis: syn::Visibility,
@@ -194,7 +194,7 @@ pub struct ImplAttrs {
 
 impl syn::parse::Parse for ImplAttrs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut class_system = ClassSystem::Receiver;
+        let mut class_system = ClassSystem::Env;
         let mut class_name = None;
 
         // Parse the first identifier (class system)
@@ -282,7 +282,7 @@ impl ParsedMethod {
 
             // Parse the nested content: miniextendr(class_system(options...)) or miniextendr(defaults(...))
             attr.parse_nested_meta(|meta| {
-                let is_class_meta = meta.path.is_ident("receiver")
+                let is_class_meta = meta.path.is_ident("env")
                     || meta.path.is_ident("r6")
                     || meta.path.is_ident("s7")
                     || meta.path.is_ident("s3")
@@ -339,8 +339,8 @@ impl ParsedMethod {
         Ok(method_attrs)
     }
 
-    /// Detect receiver kind from function signature.
-    fn detect_receiver(sig: &syn::Signature) -> ReceiverKind {
+    /// Detect env kind from function signature.
+    fn detect_env(sig: &syn::Signature) -> ReceiverKind {
         match sig.inputs.first() {
             Some(syn::FnArg::Receiver(r)) => {
                 if r.reference.is_some() {
@@ -357,8 +357,8 @@ impl ParsedMethod {
         }
     }
 
-    /// Create signature without receiver (for C wrapper generation).
-    fn sig_without_receiver(sig: &syn::Signature) -> syn::Signature {
+    /// Create signature without env (for C wrapper generation).
+    fn sig_without_env(sig: &syn::Signature) -> syn::Signature {
         let mut sig = sig.clone();
         if let Some(syn::FnArg::Receiver(_)) = sig.inputs.first() {
             sig.inputs = sig.inputs.into_iter().skip(1).collect();
@@ -370,11 +370,11 @@ impl ParsedMethod {
     ///
     /// Regular doc comments are auto-converted to `@description` for all class systems.
     pub fn from_impl_item(item: syn::ImplItemFn, _class_system: ClassSystem) -> syn::Result<Self> {
-        let receiver = Self::detect_receiver(&item.sig);
+        let env = Self::detect_env(&item.sig);
         let method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
         // Validate: no defaults on self parameter (any kind: &self, &mut self, self)
-        if receiver != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
+        if env != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
             return Err(syn::Error::new(
                 item.sig.ident.span(),
                 "cannot specify default for self parameter in defaults(...)",
@@ -426,8 +426,8 @@ impl ParsedMethod {
 
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
-            receiver,
-            sig: Self::sig_without_receiver(&item.sig),
+            env,
+            sig: Self::sig_without_env(&item.sig),
             vis: item.vis,
             doc_tags,
             method_attrs,
@@ -453,16 +453,16 @@ impl ParsedMethod {
     }
 
     /// Returns true if this is likely a constructor.
-    /// Inferred from: no receiver + named "new" + returns Self.
+    /// Inferred from: no env + named "new" + returns Self.
     pub fn is_constructor(&self) -> bool {
         self.method_attrs.constructor
-            || (self.receiver == ReceiverKind::None && self.ident == "new" && self.returns_self())
+            || (self.env == ReceiverKind::None && self.ident == "new" && self.returns_self())
     }
 
     /// Returns true if this is likely a finalizer.
     /// Inferred from: consumes self (by value) + doesn't return Self.
     pub fn is_finalizer(&self) -> bool {
-        self.method_attrs.finalize || (self.receiver == ReceiverKind::Value && !self.returns_self())
+        self.method_attrs.finalize || (self.env == ReceiverKind::Value && !self.returns_self())
     }
 
     /// C wrapper identifier for this method.
@@ -593,43 +593,43 @@ impl ParsedImpl {
             .find(|m| m.should_include() && m.is_constructor())
     }
 
-    /// Get public instance methods (have receiver, not private).
+    /// Get public instance methods (have env, not private).
     pub fn public_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
-                && m.receiver.is_instance()
+                && m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && !m.is_private()
         })
     }
 
-    /// Get private instance methods (have receiver, private visibility).
+    /// Get private instance methods (have env, private visibility).
     pub fn private_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
-                && m.receiver.is_instance()
+                && m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_private()
         })
     }
 
-    /// Get instance methods (have receiver) - includes both public and private.
+    /// Get instance methods (have env) - includes both public and private.
     pub fn instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
-                && m.receiver.is_instance()
+                && m.env.is_instance()
                 && !m.is_constructor()
                 && !m.is_finalizer()
         })
     }
 
-    /// Get static methods (no receiver, not constructor, not finalizer).
+    /// Get static methods (no env, not constructor, not finalizer).
     pub fn static_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
-                && m.receiver == ReceiverKind::None
+                && m.env == ReceiverKind::None
                 && !m.is_constructor()
                 && !m.is_finalizer()
         })
@@ -671,7 +671,7 @@ pub fn generate_method_c_wrapper(
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
     // Static methods use worker thread by default, main thread only when explicitly requested
-    let thread_strategy = if method.method_attrs.unsafe_main_thread || method.receiver.is_instance()
+    let thread_strategy = if method.method_attrs.unsafe_main_thread || method.env.is_instance()
     {
         ThreadStrategy::MainThread
     } else {
@@ -696,8 +696,8 @@ pub fn generate_method_c_wrapper(
 
     // Generate self extraction for instance methods
     // SEXP is now Send+Sync, so this works for both main and worker threads
-    let pre_call = if method.receiver.is_instance() {
-        let self_extraction = if method.receiver == ReceiverKind::RefMut {
+    let pre_call = if method.env.is_instance() {
+        let self_extraction = if method.env == ReceiverKind::RefMut {
             quote! {
                 let mut self_ptr = unsafe {
                     ::miniextendr_api::externalptr::ErasedExternalPtr::from_sexp(self_sexp)
@@ -720,7 +720,7 @@ pub fn generate_method_c_wrapper(
     };
 
     // Generate call expression
-    let call_expr = if method.receiver.is_instance() {
+    let call_expr = if method.env.is_instance() {
         quote! { self_ref.#method_ident(#(#rust_args),*) }
     } else {
         quote! { #type_ident::#method_ident(#(#rust_args),*) }
@@ -745,7 +745,7 @@ pub fn generate_method_c_wrapper(
         .cfg_attrs(parsed_impl.cfg_attrs.clone())
         .type_context(type_ident.clone());
 
-    if method.receiver.is_instance() {
+    if method.env.is_instance() {
         builder = builder.has_self();
     }
 
@@ -760,8 +760,8 @@ pub fn generate_method_c_wrapper(
     builder.build().generate()
 }
 
-/// Generate R wrapper string for receiver-style class.
-pub fn generate_receiver_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+/// Generate R wrapper string for env-style class.
+pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
@@ -1776,7 +1776,7 @@ fn build_r_call_args(sig: &syn::Signature) -> String {
     builder.build_call_args()
 }
 
-/// Expand a #[miniextendr(receiver|r6|s7|s3|s4)] impl block.
+/// Expand a #[miniextendr(env|r6|s7|s3|s4)] impl block.
 ///
 /// This handles two cases:
 /// 1. **Inherent impls** (`impl Type`): Generate class-system wrappers
@@ -1820,7 +1820,7 @@ pub fn expand_impl(
 
     // Generate R wrapper string based on class system
     let r_wrapper_string = match parsed.class_system {
-        ClassSystem::Receiver => generate_receiver_r_wrapper(&parsed),
+        ClassSystem::Env => generate_env_r_wrapper(&parsed),
         ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
         ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
         ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
@@ -1878,9 +1878,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn receiver_wrappers_preserve_static_params() {
+    fn env_wrappers_preserve_static_params() {
         let attrs = ImplAttrs {
-            class_system: ClassSystem::Receiver,
+            class_system: ClassSystem::Env,
             class_name: None,
         };
 
@@ -1901,7 +1901,7 @@ mod tests {
         };
 
         let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
-        let wrapper = generate_receiver_r_wrapper(&parsed);
+        let wrapper = generate_env_r_wrapper(&parsed);
 
         assert!(wrapper.contains("ReceiverCounter$new <- function(initial)"));
         assert!(wrapper.contains("ReceiverCounter$add <- function(amount)"));

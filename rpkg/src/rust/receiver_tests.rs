@@ -1,8 +1,8 @@
-//! Tests for receiver-style impl blocks (e.g., `#[miniextendr(receiver)] impl Foo`).
+//! Tests for env-style impl blocks (e.g., `#[miniextendr(env)] impl Foo`).
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-/// A simple counter that demonstrates receiver-style impl block support.
+/// A simple counter that demonstrates env-style impl block support.
 /// This gets exported as an R class with `$new()`, `$value()`, `$inc()`, `$add()` methods.
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct ReceiverCounter {
@@ -18,7 +18,7 @@ pub struct ReceiverCounter {
 /// rc$inc()
 /// rc$add(5L)
 /// ReceiverCounter$default_counter()$value()
-#[miniextendr(receiver)]
+#[miniextendr(env)]
 impl ReceiverCounter {
     /// Creates a new counter with the given initial value.
     pub fn new(initial: i32) -> Self {
