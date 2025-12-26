@@ -19,6 +19,9 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// - Method shims for each method
 #[miniextendr]
 pub trait Counter {
+    /// Associated constant: Maximum value for this counter type.
+    const MAX_VALUE: i32;
+
     /// Get the current value.
     fn value(&self) -> i32;
 
@@ -54,6 +57,8 @@ impl SimpleCounter {
 /// - `__VTABLE_COUNTER_FOR_SIMPLECOUNTER`: Static vtable constant
 #[miniextendr]
 impl Counter for SimpleCounter {
+    const MAX_VALUE: i32 = i32::MAX;
+
     fn value(&self) -> i32 {
         self.value
     }
@@ -112,6 +117,8 @@ impl PanickyCounter {
 
 #[miniextendr]
 impl Counter for PanickyCounter {
+    const MAX_VALUE: i32 = 1000;  // PanickyCounter has a lower max
+
     fn value(&self) -> i32 {
         self.value
     }

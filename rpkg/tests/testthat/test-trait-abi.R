@@ -93,3 +93,14 @@ test_that("static trait methods work", {
   # PanickyCounter::default_initial() returns 100
   expect_equal(PanickyCounter$Counter$default_initial(), 100L)
 })
+
+test_that("trait associated constants work", {
+  # Trait associated constants can be accessed without an instance
+  # They are accessed via Type$Trait$CONST_NAME()
+
+  # SimpleCounter::MAX_VALUE is i32::MAX
+  expect_equal(SimpleCounter$Counter$MAX_VALUE(), .Machine$integer.max)
+
+  # PanickyCounter::MAX_VALUE is 1000
+  expect_equal(PanickyCounter$Counter$MAX_VALUE(), 1000L)
+})

@@ -12,6 +12,7 @@
 \alias{PanickyCounter$Counter$increment}
 \alias{PanickyCounter$Counter$add}
 \alias{PanickyCounter$Counter$default_initial}
+\alias{PanickyCounter$Counter$MAX_VALUE}
 \title{PanickyCounter Class}
 \format{
 An object of class \code{environment} of length 4.

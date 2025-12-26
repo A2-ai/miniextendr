@@ -135,6 +135,32 @@ impl TraitMethod {
     }
 }
 
+/// Parsed const from a trait impl block.
+#[derive(Debug)]
+struct TraitConst {
+    /// Const identifier
+    ident: syn::Ident,
+    /// Const type
+    ty: syn::Type,
+}
+
+impl TraitConst {
+    /// C wrapper identifier: `C_{Type}__{Trait}__{CONST}`
+    fn c_wrapper_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
+        format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
+    }
+
+    /// R_CallMethodDef identifier
+    fn call_method_def_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
+        format_ident!(
+            "call_method_def_{}__{}_{}",
+            type_ident,
+            trait_name,
+            self.ident
+        )
+    }
+}
+
 /// Expand `#[miniextendr_impl_trait]` applied to a trait implementation.
 ///
 /// # Arguments
@@ -238,17 +264,30 @@ fn generate_vtable_static(
         last.ident = vtable_type_name.clone();
     }
 
-    // Parse methods from the impl block
+    // Parse methods and consts from the impl block
     let methods = extract_methods(impl_item);
+    let consts = extract_consts(impl_item);
 
     // Generate C wrappers and call defs for each method
-    let c_wrappers: Vec<TokenStream> = methods
+    let method_c_wrappers: Vec<TokenStream> = methods
         .iter()
         .map(|m| generate_trait_method_c_wrapper(m, &type_ident, trait_name, trait_path))
         .collect();
 
+    // Generate C wrappers for consts
+    let const_c_wrappers: Vec<TokenStream> = consts
+        .iter()
+        .map(|c| generate_trait_const_c_wrapper(c, &type_ident, trait_name, trait_path))
+        .collect();
+
+    // Combine C wrappers
+    let c_wrappers: Vec<TokenStream> = method_c_wrappers
+        .into_iter()
+        .chain(const_c_wrappers)
+        .collect();
+
     // Generate R wrapper code string
-    let r_wrapper_string = generate_trait_r_wrapper(&type_ident, trait_name, &methods);
+    let r_wrapper_string = generate_trait_r_wrapper(&type_ident, trait_name, &methods, &consts);
 
     // Generate constant names for module registration
     let call_defs_const = format_ident!(
@@ -262,10 +301,18 @@ fn generate_vtable_static(
         trait_name_upper
     );
 
-    // Collect call method def identifiers
-    let call_def_idents: Vec<syn::Ident> = methods
+    // Collect call method def identifiers (methods + consts)
+    let method_call_def_idents: Vec<syn::Ident> = methods
         .iter()
         .map(|m| m.call_method_def_ident(&type_ident, trait_name))
+        .collect();
+    let const_call_def_idents: Vec<syn::Ident> = consts
+        .iter()
+        .map(|c| c.call_method_def_ident(&type_ident, trait_name))
+        .collect();
+    let call_def_idents: Vec<syn::Ident> = method_call_def_idents
+        .into_iter()
+        .chain(const_call_def_idents)
         .collect();
     let call_defs_len = call_def_idents.len();
     let call_defs_len_lit =
@@ -328,6 +375,24 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     sig: method.sig.clone(),
                     has_self,
                     is_mut,
+                })
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// Extract const items from a trait impl block.
+fn extract_consts(impl_item: &ItemImpl) -> Vec<TraitConst> {
+    impl_item
+        .items
+        .iter()
+        .filter_map(|item| {
+            if let syn::ImplItem::Const(const_item) = item {
+                Some(TraitConst {
+                    ident: const_item.ident.clone(),
+                    ty: const_item.ty.clone(),
                 })
             } else {
                 None
@@ -453,17 +518,63 @@ fn generate_trait_method_c_wrapper(
     builder.build().generate()
 }
 
-/// Generate R wrapper code for trait methods.
+/// Generate a C wrapper for a trait const.
+fn generate_trait_const_c_wrapper(
+    trait_const: &TraitConst,
+    type_ident: &syn::Ident,
+    trait_name: &syn::Ident,
+    trait_path: &syn::Path,
+) -> TokenStream {
+    use crate::c_wrapper_builder::{CWrapperContext, ThreadStrategy};
+
+    let const_ident = &trait_const.ident;
+    let c_ident = trait_const.c_wrapper_ident(type_ident, trait_name);
+    let call_method_def_ident = trait_const.call_method_def_ident(type_ident, trait_name);
+    let const_ty = &trait_const.ty;
+
+    // Generate R wrapper const name
+    let r_wrappers_const = format_ident!(
+        "R_WRAPPERS_{}_{}_IMPL",
+        type_ident.to_string().to_uppercase(),
+        trait_name.to_string().to_uppercase()
+    );
+
+    // Build the call expression to access the const
+    let call_expr = quote::quote! {
+        <#type_ident as #trait_path>::#const_ident
+    };
+
+    // Determine return type handling - we need to convert the const to SEXP
+    // The return type is `-> Type` not just `Type`
+    let return_type: syn::ReturnType = syn::parse_quote!(-> #const_ty);
+    let return_handling = crate::c_wrapper_builder::detect_return_handling(&return_type);
+
+    // Build wrapper - no inputs, just returns the const value
+    let builder = CWrapperContext::builder(const_ident.clone(), c_ident)
+        .r_wrapper_const(r_wrappers_const)
+        .inputs(Default::default()) // no inputs
+        .output(return_type)
+        .call_expr(call_expr)
+        .thread_strategy(ThreadStrategy::MainThread)
+        .return_handling(return_handling)
+        .type_context(type_ident.clone())
+        .call_method_def_ident(call_method_def_ident);
+
+    builder.build().generate()
+}
+
+/// Generate R wrapper code for trait methods and consts.
 fn generate_trait_r_wrapper(
     type_ident: &syn::Ident,
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
+    consts: &[TraitConst],
 ) -> String {
     let mut output = String::new();
 
     // Header comment
     output.push_str(&format!(
-        "# Trait methods for {} implementing {}\n",
+        "# Trait methods and consts for {} implementing {}\n",
         type_ident, trait_name
     ));
     output.push_str(&format!(
@@ -538,6 +649,26 @@ fn generate_trait_r_wrapper(
                 type_ident, trait_name, method_name, args_str
             ));
         }
+        output.push_str("}\n\n");
+    }
+
+    // Generate const wrappers
+    for trait_const in consts {
+        let const_name = &trait_const.ident;
+
+        output.push_str(&format!(
+            "#' @name {}${}${}\n",
+            type_ident, trait_name, const_name
+        ));
+        output.push_str(&format!("#' @rdname {}\n", type_ident));
+        output.push_str(&format!(
+            "{}${}${} <- function() {{\n",
+            type_ident, trait_name, const_name
+        ));
+        output.push_str(&format!(
+            "    .Call(C_{}__{}__{}, .call = match.call())\n",
+            type_ident, trait_name, const_name
+        ));
         output.push_str("}\n\n");
     }
 

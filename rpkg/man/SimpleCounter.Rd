@@ -12,6 +12,7 @@
 \alias{SimpleCounter$Counter$increment}
 \alias{SimpleCounter$Counter$add}
 \alias{SimpleCounter$Counter$default_initial}
+\alias{SimpleCounter$Counter$MAX_VALUE}
 \title{SimpleCounter Class}
 \format{
 An object of class \code{environment} of length 4.
