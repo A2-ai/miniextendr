@@ -151,11 +151,11 @@ pub(crate) fn find_tag_value<'a>(tags: &'a [String], tag_name: &str) -> Option<&
         let trimmed = tag.trim_start();
         if let Some(rest) = trimmed.strip_prefix('@') {
             let mut parts = rest.splitn(2, |c: char| c.is_whitespace());
-            if let Some(name) = parts.next() {
-                if name == tag_name {
-                    // Get the value (everything after the tag name)
-                    return parts.next().map(|s| s.trim());
-                }
+            if let Some(name) = parts.next()
+                && name == tag_name
+            {
+                // Get the value (everything after the tag name)
+                return parts.next().map(|s| s.trim());
             }
         }
     }
@@ -287,33 +287,31 @@ pub(crate) fn warn_on_doc_conflicts(attrs: &[syn::Attribute], span: proc_macro2:
     let tags = roxygen_tags_from_attrs(attrs);
 
     // Check @title conflict
-    if let Some(explicit) = find_tag_value(&tags, "title") {
-        if let Some(implicit) = implicit_title_from_attrs(attrs) {
-            if normalize_for_comparison(explicit) != normalize_for_comparison(&implicit) {
-                emit_warning!(
-                    span,
-                    "explicit @title differs from first doc line";
-                    note = "R's roxygen2 uses the first line as the title";
-                    help = "implicit title: \"{}\"", implicit;
-                    help = "explicit @title: \"{}\"", explicit
-                );
-            }
-        }
+    if let Some(explicit) = find_tag_value(&tags, "title")
+        && let Some(implicit) = implicit_title_from_attrs(attrs)
+        && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
+    {
+        emit_warning!(
+            span,
+            "explicit @title differs from first doc line";
+            note = "R's roxygen2 uses the first line as the title";
+            help = "implicit title: \"{}\"", implicit;
+            help = "explicit @title: \"{}\"", explicit
+        );
     }
 
     // Check @description conflict
-    if let Some(explicit) = find_tag_value(&tags, "description") {
-        if let Some(implicit) = implicit_description_from_attrs(attrs) {
-            if normalize_for_comparison(explicit) != normalize_for_comparison(&implicit) {
-                emit_warning!(
-                    span,
-                    "explicit @description differs from first paragraph";
-                    note = "R's roxygen2 uses the first paragraph as the description";
-                    help = "implicit description: \"{}\"", implicit;
-                    help = "explicit @description: \"{}\"", explicit
-                );
-            }
-        }
+    if let Some(explicit) = find_tag_value(&tags, "description")
+        && let Some(implicit) = implicit_description_from_attrs(attrs)
+        && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
+    {
+        emit_warning!(
+            span,
+            "explicit @description differs from first paragraph";
+            note = "R's roxygen2 uses the first paragraph as the description";
+            help = "implicit description: \"{}\"", implicit;
+            help = "explicit @description: \"{}\"", explicit
+        );
     }
 }
 
