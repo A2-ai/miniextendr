@@ -35,7 +35,6 @@ pub trait Counter {
 
 /// A simple counter implementation.
 #[derive(miniextendr_api::ExternalPtr)]
-#[externalptr(traits = [Counter])]
 pub struct SimpleCounter {
     value: i32,
 }
@@ -94,7 +93,6 @@ impl SimpleCounter {
 
 /// A counter that panics when you try to decrement below zero.
 #[derive(miniextendr_api::ExternalPtr)]
-#[externalptr(traits = [Counter])]
 pub struct PanickyCounter {
     value: i32,
 }
@@ -153,4 +151,8 @@ miniextendr_module! {
 
     impl SimpleCounter;
     impl PanickyCounter;
+
+    // Register trait implementations for cross-package dispatch
+    impl Counter for SimpleCounter;
+    impl Counter for PanickyCounter;
 }

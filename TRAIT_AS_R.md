@@ -89,17 +89,31 @@ impl Counter for MyCounter {
 Generates:
 - `__VTABLE_COUNTER_FOR_MYCOUNTER: CounterVTable`
 
-### 3. Generate R-Exposed Wrapper
+### 3. Register in Module
 
-The `ExternalPtr` derive (existing) will be extended to include trait interfaces:
+Register trait implementations in `miniextendr_module!` for cross-package dispatch:
 
 ```rust
 #[derive(ExternalPtr)]
-#[externalptr(traits = [Counter])]
 struct MyCounter { value: i32 }
+
+#[miniextendr]
+impl MyCounter {
+    fn new(initial: i32) -> Self { Self { value: initial } }
+}
+
+miniextendr_module! {
+    mod mypackage;
+
+    impl MyCounter;                   // Register impl block methods
+    impl Counter for MyCounter;       // Generate trait dispatch wrapper
+}
 ```
 
-This extends the existing `ExternalPtr` functionality (which is essentially a "traitless" `Any`-like wrapper) with trait dispatch support.
+The `impl Trait for Type;` line generates:
+- `__MxWrapperMyCounter` - Type-erased wrapper struct
+- `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
+- `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
 
 ## ABI Types (Frozen)
 

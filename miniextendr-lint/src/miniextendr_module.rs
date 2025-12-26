@@ -15,20 +15,25 @@
 //! treated identically to `fn <name>;`. The ABI distinction is handled by
 //! `#[miniextendr]` at the function definition site.
 //!
-//! # IMPORTANT: Shared Parser
+//! # IMPORTANT: Duplicated in miniextendr-lint
 //!
-//! **This file is included by `miniextendr-lint` via `#[path]`.**
+//! **This file is copied to `miniextendr-lint/src/miniextendr_module.rs`.**
 //!
-//! Changes to this file affect both:
-//! 1. The `miniextendr_module!` macro in this crate
-//! 2. The build-time linter in `miniextendr-lint`
+//! Changes to this file should be manually copied to the lint crate to keep
+//! the parser in sync. The duplication exists to allow independent publishing
+//! to crates.io (cross-crate `#[path]` includes don't work in published packages).
 //!
-//! **Constraints when modifying:**
-//! - Don't add new imports from `crate::` without updating lint stubs
-//! - Don't move this file without updating the `#[path]` in lint
-//! - Keep parser self-contained where possible
+//! **When modifying this file:**
+//! 1. Make your changes here (in miniextendr-macros)
+//! 2. Copy the updated file to `miniextendr-lint/src/miniextendr_module.rs`
+//! 3. Update lint's helper functions if you add new imports from `crate::`
+//! 4. Test both crates build successfully
 //!
-//! See `miniextendr-lint/src/lib.rs` module docs for coupling details.
+//! **Constraints:**
+//! - Keep imports from `crate::` minimal (lint must provide stubs)
+//! - Parser should be as self-contained as possible
+//!
+//! See `miniextendr-lint/src/lib.rs` module docs for more details.
 
 use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
@@ -138,6 +143,37 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
     }
 }
 
+/// An `impl <Trait> for <Type>;` line inside `miniextendr_module! { ... }`.
+///
+/// Registers a trait implementation for cross-package trait dispatch.
+/// This generates the type-erased wrapper infrastructure (vtable, query function, etc.).
+///
+/// ```text
+/// impl Counter for SimpleCounter;
+/// ```
+///
+/// Requirements:
+/// - The trait must have `#[miniextendr]` applied (generates TAG, VTable, etc.)
+/// - The type must have `#[miniextendr] impl Trait for Type` (generates vtable static)
+/// - The type should have `#[derive(ExternalPtr)]`
+pub(crate) struct MiniextendrModuleTraitImpl {
+    pub _impl_token: syn::Token![impl],
+    pub trait_path: syn::Path,
+    pub _for_token: syn::Token![for],
+    pub type_ident: syn::Ident,
+}
+
+impl syn::parse::Parse for MiniextendrModuleTraitImpl {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _impl_token: input.parse()?,
+            trait_path: input.parse()?,
+            _for_token: input.parse()?,
+            type_ident: input.parse()?,
+        })
+    }
+}
+
 impl MiniextendrModuleImpl {
     /// Returns the identifier for the call defs const function.
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
@@ -196,6 +232,7 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// fn exported_fn;
 /// struct MyAltrep;
 /// impl Counter;
+/// impl MyTrait for Counter;
 /// ```
 pub(crate) struct MiniextendrModule {
     pub(crate) module_name: MiniextendrModuleName,
@@ -203,6 +240,7 @@ pub(crate) struct MiniextendrModule {
     pub(crate) functions: Vec<MiniextendrModuleFunction>,
     pub(crate) structs: Vec<MiniextendrModuleStruct>,
     pub(crate) impls: Vec<MiniextendrModuleImpl>,
+    pub(crate) trait_impls: Vec<MiniextendrModuleTraitImpl>,
 }
 
 /// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
@@ -212,6 +250,7 @@ enum MiniextendrModuleItem {
     Struct(MiniextendrModuleStruct),
     Func(MiniextendrModuleFunction),
     Impl(MiniextendrModuleImpl),
+    TraitImpl(MiniextendrModuleTraitImpl),
 }
 
 impl syn::parse::Parse for MiniextendrModuleItem {
@@ -229,7 +268,18 @@ impl syn::parse::Parse for MiniextendrModuleItem {
         } else if look_ahead.peek(syn::Token![struct]) {
             Ok(Self::Struct(input.parse()?))
         } else if look_ahead.peek(syn::Token![impl]) {
-            Ok(Self::Impl(input.parse()?))
+            // Distinguish between `impl Type;` and `impl Trait for Type;`
+            // Fork to look ahead: parse `impl Path` and check for `for`
+            let fork2 = input.fork();
+            let _: syn::Token![impl] = fork2.parse()?;
+            let _: syn::Path = fork2.parse()?;
+            if fork2.peek(syn::Token![for]) {
+                // This is `impl Trait for Type;`
+                Ok(Self::TraitImpl(input.parse()?))
+            } else {
+                // This is `impl Type;`
+                Ok(Self::Impl(input.parse()?))
+            }
         } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
             Ok(Self::Func(input.parse()?))
         } else {
@@ -251,6 +301,7 @@ impl syn::parse::Parse for MiniextendrModule {
         let mut funs = Vec::new();
         let mut structs = Vec::new();
         let mut impls = Vec::new();
+        let mut trait_impls = Vec::new();
 
         for it in items {
             match it {
@@ -264,6 +315,7 @@ impl syn::parse::Parse for MiniextendrModule {
                 MiniextendrModuleItem::Struct(s) => structs.push(s),
                 MiniextendrModuleItem::Func(f) => funs.push(f),
                 MiniextendrModuleItem::Impl(i) => impls.push(i),
+                MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(ti),
             }
         }
 
@@ -276,6 +328,7 @@ impl syn::parse::Parse for MiniextendrModule {
             functions: funs,
             structs,
             impls,
+            trait_impls,
         })
     }
 }
