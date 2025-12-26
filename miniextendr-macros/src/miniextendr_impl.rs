@@ -149,7 +149,25 @@ pub struct MethodAttrs {
     pub private: bool,
     /// Mark as active binding (R6)
     pub active: bool,
-    /// Override generic name (S3/S4/S7)
+    /// Override generic name for S3/S4/S7 methods.
+    ///
+    /// Use this to implement methods for existing generics (like `print`, `format`, `length`)
+    /// without creating a new generic. When set, the generated code:
+    /// - Uses the specified generic name instead of the method name
+    /// - Skips creating a new generic (assumes it already exists)
+    /// - Creates only the method implementation (e.g., `print.MyClass`)
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s3)]
+    /// impl MyType {
+    ///     #[miniextendr(generic = "print")]
+    ///     fn show(&self) -> String {
+    ///         format!("MyType: {}", self.value)
+    ///     }
+    /// }
+    /// ```
+    /// This generates `print.MyType` that calls the `show` method.
     pub generic: Option<String>,
     /// Worker thread execution (default: auto-detect based on types)
     pub worker: bool,

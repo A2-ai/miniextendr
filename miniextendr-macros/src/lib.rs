@@ -488,7 +488,7 @@ pub fn miniextendr(
     // Add user-specified parameter defaults
     arg_builder = arg_builder.with_defaults(parsed.param_defaults().clone());
 
-    let r_formals = arg_builder.build_formals_tokens();
+    let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();
 
     // Prepend .call parameter if using internal C wrapper
@@ -515,11 +515,8 @@ pub fn miniextendr(
         rust_ident
     };
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
-    let formals_joined = r_formals
-        .iter()
-        .map(|t| t.to_string())
-        .collect::<Vec<_>>()
-        .join(", ");
+    // r_formals is already a joined string from build_formals()
+    let formals_joined = r_formals;
     let roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
