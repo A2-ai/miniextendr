@@ -88,7 +88,6 @@
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
-//! #[externalptr(traits = [Counter, Display])]
 //! struct MyCounter { value: i32 }
 //! ```
 //!

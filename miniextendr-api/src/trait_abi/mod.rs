@@ -37,17 +37,24 @@
 //!
 //! Trait ABI support is integrated with the [`ExternalPtr`] and [`TypedExternal`]
 //! system. `ExternalPtr<T>` serves as the "traitless" case (equivalent to `Any`
-//! in dynamic typing), while types that implement traits for cross-package
-//! dispatch use extended attributes:
+//! in dynamic typing). To enable trait dispatch wrappers, list trait impls in
+//! `miniextendr_module!`:
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
-//! #[externalptr(traits = [Shape, Display])]
 //! struct Circle { radius: f64 }
+//!
+//! #[miniextendr]
+//! impl Shape for Circle { /* ... */ }
+//!
+//! miniextendr_module! {
+//!     mod shapes;
+//!     impl Shape for Circle;
+//! }
 //! ```
 //!
-//! This will generate the necessary wrapper structures, vtable references,
-//! and query implementations for cross-package trait dispatch.
+//! This generates the wrapper structures, vtable references, and query
+//! implementations for cross-package trait dispatch.
 //!
 //! ## Initialization
 //!
@@ -84,13 +91,17 @@
 //! }
 //!
 //! #[derive(ExternalPtr)]
-//! #[externalptr(traits = [Shape])]  // Enables trait ABI support
 //! pub struct Circle { radius: f64 }
 //!
 //! #[miniextendr]
 //! impl Shape for Circle {
 //!     fn area(&self) -> f64 { std::f64::consts::PI * self.radius * self.radius }
 //!     fn perimeter(&self) -> f64 { 2.0 * std::f64::consts::PI * self.radius }
+//! }
+//!
+//! miniextendr_module! {
+//!     mod shapes;
+//!     impl Shape for Circle;
 //! }
 //! ```
 //!

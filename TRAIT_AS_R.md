@@ -32,7 +32,7 @@ The trait ABI enables:
 | `src/trait_abi/mod.rs` | Module entry point, re-exports |
 | `src/trait_abi/ccall.rs` | C-callable loading via `R_GetCCallable` |
 | `src/trait_abi/conv.rs` | Type conversion helpers for shims |
-| `src/externalptr.rs` | `ExternalPtr<T>` + `TypedExternal` (integrates trait ABI wrapper generation) |
+| `src/externalptr.rs` | `ExternalPtr<T>` + `TypedExternal` |
 
 ### Rust (miniextendr-macros)
 
@@ -45,7 +45,7 @@ The trait ABI enables:
 
 | Future Lints | Purpose |
 |--------------|---------|
-| `missing_vtable` | Trait impl without `#[miniextendr]` when type has `#[externalptr(traits = [...])]` |
+| `missing_vtable` | `impl Trait for Type;` listed in `miniextendr_module!` without `#[miniextendr]` on the impl |
 | `tag_collision` | Duplicate `mx_tag` values across traits |
 | `unused_trait_impl` | Vtable generated but type not exposed via ExternalPtr |
 

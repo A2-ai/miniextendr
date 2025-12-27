@@ -930,11 +930,21 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Check if we have impl blocks to register (affects wrapper lists)
     let has_impls = !parsed_module.impls.is_empty();
 
-    // Generate trait ABI wrapper infrastructure for each `impl Trait for Type;`
-    let trait_impl_wrappers: Vec<proc_macro2::TokenStream> = parsed_module
-        .trait_impls
+    // Generate trait ABI wrapper infrastructure grouped by concrete type.
+    let mut trait_impl_groups: Vec<(syn::Ident, Vec<syn::Path>)> = Vec::new();
+    for ti in &parsed_module.trait_impls {
+        if let Some((_, traits)) = trait_impl_groups
+            .iter_mut()
+            .find(|(ty, _)| ty == &ti.type_ident)
+        {
+            traits.push(ti.trait_path.clone());
+        } else {
+            trait_impl_groups.push((ti.type_ident.clone(), vec![ti.trait_path.clone()]));
+        }
+    }
+    let trait_impl_wrappers: Vec<proc_macro2::TokenStream> = trait_impl_groups
         .iter()
-        .map(|ti| generate_trait_impl_wrapper(&ti.trait_path, &ti.type_ident))
+        .map(|(type_ident, trait_paths)| generate_trait_impl_wrapper(trait_paths, type_ident))
         .collect();
 
     // R wrapper parts const (includes both functions and impl wrappers)
@@ -1143,16 +1153,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 /// - `__MxWrapperSimpleCounter` - Type-erased wrapper struct
 /// - `__MX_BASE_VTABLE_SIMPLECOUNTER` - Base vtable
 /// - `__mx_wrap_simplecounter()` - Constructor
-fn generate_trait_impl_wrapper(trait_path: &syn::Path, type_ident: &syn::Ident) -> proc_macro2::TokenStream {
+///
+/// If multiple `impl Trait for Type;` entries exist for the same concrete type,
+/// the generated query function includes all listed traits.
+fn generate_trait_impl_wrapper(
+    trait_paths: &[syn::Path],
+    type_ident: &syn::Ident,
+) -> proc_macro2::TokenStream {
     let type_upper = type_ident.to_string().to_uppercase();
     let type_lower = type_ident.to_string().to_lowercase();
-
-    let trait_name = trait_path
-        .segments
-        .last()
-        .map(|s| &s.ident)
-        .expect("trait path has at least one segment");
-    let trait_name_upper = trait_name.to_string().to_uppercase();
 
     // Generate identifiers
     let wrapper_name = quote::format_ident!("__MxWrapper{}", type_ident);
@@ -1165,14 +1174,34 @@ fn generate_trait_impl_wrapper(trait_path: &syn::Path, type_ident: &syn::Ident) 
     // Generate tag path string for hashing
     let tag_path = format!("{{}}::{}", type_ident);
 
-    // Build TAG path - same module as trait
-    let mut trait_tag_path = trait_path.clone();
-    if let Some(last) = trait_tag_path.segments.last_mut() {
-        last.ident = quote::format_ident!("TAG_{}", trait_name_upper);
-    }
+    // Generate query branches for each trait
+    let query_branches: Vec<proc_macro2::TokenStream> = trait_paths
+        .iter()
+        .map(|trait_path| {
+            let trait_name = trait_path
+                .segments
+                .last()
+                .map(|s| &s.ident)
+                .expect("trait path has at least one segment");
+            let trait_name_upper = trait_name.to_string().to_uppercase();
 
-    // Build vtable static name: __VTABLE_{TRAIT}_FOR_{TYPE}
-    let vtable_name = quote::format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_upper);
+            // Build TAG path - same module as trait
+            let mut trait_tag_path = trait_path.clone();
+            if let Some(last) = trait_tag_path.segments.last_mut() {
+                last.ident = quote::format_ident!("TAG_{}", trait_name_upper);
+            }
+
+            // Build vtable static name: __VTABLE_{TRAIT}_FOR_{TYPE}
+            let vtable_name =
+                quote::format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_upper);
+
+            quote::quote! {
+                if trait_tag == #trait_tag_path {
+                    return &#vtable_name as *const _ as *const ::std::os::raw::c_void;
+                }
+            }
+        })
+        .collect();
 
     quote::quote! {
         /// Type-erased wrapper for `#type_ident` with trait dispatch support.
@@ -1208,9 +1237,7 @@ fn generate_trait_impl_wrapper(trait_path: &syn::Path, type_ident: &syn::Ident) 
             _ptr: *mut ::miniextendr_api::abi::mx_erased,
             trait_tag: ::miniextendr_api::abi::mx_tag,
         ) -> *const ::std::os::raw::c_void {
-            if trait_tag == #trait_tag_path {
-                return &#vtable_name as *const _ as *const ::std::os::raw::c_void;
-            }
+            #(#query_branches)*
             ::std::ptr::null()
         }
 
@@ -1535,15 +1562,14 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// let ptr = ExternalPtr::new(MyData { value: 42 });
 /// ```
 ///
-/// # With Trait Support
+/// # Trait ABI
 ///
-/// When you want cross-package trait dispatch, specify the implemented traits:
+/// To enable trait dispatch wrappers, list trait impls in `miniextendr_module!`:
 ///
 /// ```ignore
-/// use miniextendr_api::miniextendr;
+/// use miniextendr_api::{miniextendr, miniextendr_module};
 ///
 /// #[derive(ExternalPtr)]
-/// #[externalptr(traits = [Counter])]
 /// struct MyCounter {
 ///     value: i32,
 /// }
@@ -1552,6 +1578,11 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 /// impl Counter for MyCounter {
 ///     fn value(&self) -> i32 { self.value }
 ///     fn increment(&mut self) { self.value += 1; }
+/// }
+///
+/// miniextendr_module! {
+///     mod mypkg;
+///     impl Counter for MyCounter;
 /// }
 /// ```
 ///

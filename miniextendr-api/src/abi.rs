@@ -30,11 +30,12 @@
 //! ## Usage Flow
 //!
 //! 1. Trait is declared with `#[miniextendr]`, impl uses `#[miniextendr] impl Trait for Type`
-//! 2. `#[derive(ExternalPtr)]` (recommended) or `r_object!` (manual) generates erased wrapper with vtables
-//! 3. Constructor returns `*mut mx_erased`
-//! 4. `mx_wrap()` wraps pointer in R's EXTPTRSXP
-//! 5. Method calls use `mx_query()` to get interface vtable
-//! 6. Vtable entry receives `(data, argc, argv)` and returns SEXP
+//! 2. Type derives `ExternalPtr`
+//! 3. `miniextendr_module!` lists `impl Trait for Type;` (generates wrapper + vtables)
+//! 4. Constructor returns `*mut mx_erased`
+//! 5. `mx_wrap()` wraps pointer in R's EXTPTRSXP
+//! 6. Method calls use `mx_query()` to get interface vtable
+//! 7. Vtable entry receives `(data, argc, argv)` and returns SEXP
 //!
 //! ## Example
 //!
@@ -49,11 +50,10 @@
 //! #[miniextendr]
 //! impl Foo for MyType { /* ... */ }
 //!
-//! // Generate runtime wrapper
-//! r_object! {
-//!     type MyType;
-//!     concrete_tag = MY_TYPE_TAG;
-//!     interfaces = [Foo { vtable = VTABLE_FOO_MYTYPE, tag = TAG_FOO }];
+//! // Register trait impl for wrapper generation
+//! miniextendr_module! {
+//!     mod mypkg;
+//!     impl Foo for MyType;
 //! }
 //! ```
 //!
