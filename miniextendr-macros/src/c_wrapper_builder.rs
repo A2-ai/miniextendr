@@ -563,9 +563,14 @@ impl CWrapperContext {
             .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
             .collect();
 
+        let item_label = if let Some(ref type_ident) = self.type_context {
+            format!("`{}::{}`", type_ident, fn_ident)
+        } else {
+            format!("`{}`", fn_ident)
+        };
         let doc = format!(
-            "R call method definition for [`{}`] (C wrapper: [`{}`]).",
-            fn_ident, c_ident
+            "R call method definition for {} (C wrapper: [`{}`]).",
+            item_label, c_ident
         );
         let doc_example = format!(
             "Value: `R_CallMethodDef {{ name: \"{}\", numArgs: {}, fun: <DL_FUNC> }}`",

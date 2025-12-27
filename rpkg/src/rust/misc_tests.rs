@@ -11,8 +11,8 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// @description Miscellaneous test helpers
 /// @examples
 /// underscore_it_all(1L, 2)
-/// r6_standalone_add(1L, 2L)
-/// @aliases underscore_it_all r6_standalone_add
+/// do_nothing()
+/// @aliases underscore_it_all do_nothing
 pub fn underscore_it_all(_: i32, _: f64) {}
 
 // Simple SEXP return

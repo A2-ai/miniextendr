@@ -1027,6 +1027,16 @@ mod nonapi {
 
     /// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
     #[miniextendr]
+    /// @title Non-API Thread Tests
+    /// @name rpkg_nonapi
+    /// @keywords internal
+    /// @description Non-API thread tests (requires nonapi feature).
+    /// @examples
+    /// \dontrun{
+    /// unsafe_C_test_spawn_with_r_lean_stack()
+    /// unsafe_C_test_stack_check_guard_lean()
+    /// }
+    /// @aliases unsafe_C_test_spawn_with_r_lean_stack unsafe_C_test_stack_check_guard_lean
     #[unsafe(no_mangle)]
     #[allow(non_snake_case)]
     pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
