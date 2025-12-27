@@ -337,7 +337,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         ///
         /// Contains one `mx_meth` function pointer per trait method.
         #[repr(C)]
-        #vis struct #vtable_name {
+        struct #vtable_name {
             #(#vtable_fields),*
         }
 
