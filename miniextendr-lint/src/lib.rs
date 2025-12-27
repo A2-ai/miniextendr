@@ -27,8 +27,13 @@
 //! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
 // Parser module (copied from miniextendr-macros for independent publishing).
-#[allow(dead_code)]
 mod miniextendr_module;
+
+// TODO: Check how many miniextendr_module! calls there is in a module
+// atmost 1
+
+// TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
+// is it altrep? is it too much?
 
 use std::collections::HashSet;
 use std::env;
