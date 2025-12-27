@@ -328,7 +328,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         ///
         /// Contains one `mx_meth` function pointer per trait method.
         #[repr(C)]
-        struct #vtable_name {
+        #[doc(hidden)]
+        #vis struct #vtable_name {
             #(#vtable_fields),*
         }
 
@@ -340,6 +341,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         ///
         /// Combines a data pointer with a vtable pointer for method dispatch.
         #[repr(C)]
+        #[doc(hidden)]
         #vis struct #view_name {
             /// Pointer to the concrete object data.
             pub data: *mut ::std::os::raw::c_void,
