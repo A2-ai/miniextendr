@@ -67,9 +67,9 @@ pub enum ReturnHandling {
     IntoR,
     /// Returns Option<()> - check for None, return R_NilValue
     OptionUnit,
-    /// Returns Option<SEXP> - check for None, pass through
+    /// Returns `Option<SEXP>` - check for None, pass through
     OptionSexp,
-    /// Returns Option<T> - check for None, use IntoR
+    /// Returns `Option<T>` - check for None, use IntoR
     OptionIntoR,
     /// Returns Result<(), E> - check for Err, return R_NilValue
     ResultUnit,

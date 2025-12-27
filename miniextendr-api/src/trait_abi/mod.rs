@@ -121,6 +121,9 @@
 //! }
 //! ```
 //!
+//! [`ccall`]: crate::trait_abi::ccall
+//! [`conv`]: crate::trait_abi::conv
+//! [`init_ccallables`]: crate::trait_abi::init_ccallables
 //! [`mx_tag`]: crate::abi::mx_tag
 //! [`ExternalPtr`]: crate::externalptr::ExternalPtr
 //! [`TypedExternal`]: crate::externalptr::TypedExternal

@@ -113,7 +113,7 @@ pub(crate) fn analyze_return_type(
     }
 }
 
-/// Analyze Option<T> return type.
+/// Analyze `Option<T>` return type.
 fn analyze_option_type(
     type_path: &syn::TypePath,
     rust_result_ident: &syn::Ident,

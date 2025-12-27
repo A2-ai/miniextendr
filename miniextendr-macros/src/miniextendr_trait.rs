@@ -26,7 +26,7 @@
 //!
 //! Generates (conceptually):
 //!
-//! ```ignore
+//! ```text
 //! // Original trait (passed through)
 //! pub trait Counter {
 //!     fn value(&self) -> i32;
@@ -325,11 +325,15 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         // Pass through the original trait
         #trait_item
 
-        /// Type tag for runtime identification of the `#trait_name` trait.
+        #[doc = concat!(
+            "Type tag for runtime identification of the `",
+            stringify!(#trait_name),
+            "` trait."
+        )]
         #vis const #tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(concat!(module_path!(), #tag_path));
 
-        /// Vtable for the `#trait_name` trait.
+        #[doc = concat!("Vtable for the `", stringify!(#trait_name), "` trait.")]
         ///
         /// Contains one `mx_meth` function pointer per trait method.
         #[repr(C)]
@@ -337,7 +341,11 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             #(#vtable_fields),*
         }
 
-        /// Runtime view for objects implementing `#trait_name`.
+        #[doc = concat!(
+            "Runtime view for objects implementing `",
+            stringify!(#trait_name),
+            "`."
+        )]
         ///
         /// Combines a data pointer with a vtable pointer for method dispatch.
         #[repr(C)]
@@ -351,7 +359,11 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         // Method shims
         #(#shim_fns)*
 
-        /// Build a vtable for a concrete type implementing `#trait_name`.
+        #[doc = concat!(
+            "Build a vtable for a concrete type implementing `",
+            stringify!(#trait_name),
+            "`."
+        )]
         #vis const fn #build_vtable_fn<T: #trait_name>() -> #vtable_name {
             #vtable_name {
                 #(#vtable_inits),*
@@ -425,7 +437,13 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
     let method_name_str = format!("{}::{}", trait_name, method_name);
 
     quote::quote! {
-        /// Method shim for `#trait_name::#method_name`.
+        #[doc = concat!(
+            "Method shim for `",
+            stringify!(#trait_name),
+            "::",
+            stringify!(#method_name),
+            "`."
+        )]
         ///
         /// Converts SEXP arguments, calls the method, and returns SEXP result.
         /// Panics are caught via `catch_unwind` and converted to R errors.

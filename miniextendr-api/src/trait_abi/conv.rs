@@ -76,7 +76,7 @@ pub unsafe fn nil() -> SEXP {
 
 /// Convert an R SEXP to a Rust type.
 ///
-/// Wrapper around [`TryFromSexp::try_from_sexp`] that calls [`rf_error`]
+/// Wrapper around [`crate::TryFromSexp::try_from_sexp`] that calls [`rf_error`]
 /// on conversion failure.
 ///
 /// # Type Parameters
@@ -124,7 +124,7 @@ where
 
 /// Convert a Rust value to an R SEXP.
 ///
-/// Wrapper around [`IntoR::into_r`] for use in method shims.
+/// Wrapper around [`crate::IntoR::into_sexp`] for use in method shims.
 ///
 /// # Type Parameters
 ///
