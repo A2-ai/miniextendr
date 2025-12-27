@@ -1879,12 +1879,12 @@ pub fn expand_impl(
 
         // R wrapper constant
         #(#cfg_attrs)*
-        pub const #r_wrappers_const: &str = #r_wrapper_str;
+        const #r_wrappers_const: &str = #r_wrapper_str;
 
         // Call method def array for module registration
         #(#cfg_attrs)*
         #[doc(hidden)]
-        pub const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
+        const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
             [#(#call_def_idents),*];
     };
 

@@ -228,7 +228,7 @@ impl CWrapperContext {
         quote! {
             #[doc = #doc]
             #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                     || {
                         #pre_call_checks
@@ -265,7 +265,7 @@ impl CWrapperContext {
         quote! {
             #[doc = #doc]
             #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #pre_call_checks
                     #(#pre_call)*
