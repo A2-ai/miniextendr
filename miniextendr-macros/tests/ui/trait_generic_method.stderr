@@ -1,0 +1,5 @@
+error: #[miniextendr] trait method `BadGeneric::foo` cannot have generic parameters
+ --> tests/ui/trait_generic_method.rs:7:11
+  |
+7 |     fn foo<T>(&self, _x: T);
+  |           ^^^
