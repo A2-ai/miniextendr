@@ -1,7 +1,7 @@
 //! Trait ABI tests for cross-package trait dispatch.
 //!
-//! This module tests the `#[miniextendr]` on traits, on trait implementations,
-//! and `#[derive(ExternalPtr)]` with `traits = [...]` attribute.
+//! This module tests `#[miniextendr]` on traits and trait implementations,
+//! plus `miniextendr_module! { impl Trait for Type; }` wiring.
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 

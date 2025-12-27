@@ -83,17 +83,21 @@
 //!
 //! ## Integration with ExternalPtr / TypedExternal
 //!
-//! The generated vtable static is referenced by the `ExternalPtr` derive
-//! when generating the type-erased wrapper. Users list which traits are implemented:
+//! The generated vtable static is referenced by the wrapper emitted from
+//! `miniextendr_module! { impl Trait for Type; }`.
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
 //! struct MyCounter { value: i32 }
+//!
+//! miniextendr_module! {
+//!     mod mypkg;
+//!     impl Counter for MyCounter;
+//! }
 //! ```
 //!
-//! This tells ExternalPtr to include Counter and Display in the query function.
-//! `ExternalPtr<T>` without trait attributes serves as the "traitless" case,
-//! equivalent to `Any` in dynamic typing.
+//! `ExternalPtr<T>` provides the type identity for the external pointer,
+//! while the module entry wires trait dispatch.
 //!
 //! ## Thread Safety
 //!

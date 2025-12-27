@@ -150,7 +150,7 @@ pub mod abi;
 
 /// Runtime support for trait ABI operations.
 ///
-/// Provides C-callable loading, type conversion helpers, and the `r_object!` macro.
+/// Provides C-callable loading and type conversion helpers for trait ABI support.
 pub mod trait_abi;
 
 // Re-export key ABI types at crate root for convenience

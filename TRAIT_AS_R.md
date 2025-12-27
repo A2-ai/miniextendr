@@ -408,7 +408,7 @@ This requires the C-callable infrastructure (`mx_wrap`, `mx_get`, `mx_query`) wh
 
 - `miniextendr-api/src/abi.rs` - Type definitions
 - `miniextendr-api/src/trait_abi/` - Runtime support
-- `miniextendr-api/src/externalptr.rs` - ExternalPtr (integrates trait ABI wrapper generation)
+- `miniextendr-api/src/externalptr.rs` - ExternalPtr (`TypedExternal`)
 - `miniextendr-macros/src/miniextendr_trait.rs` - Trait code generation
 - `miniextendr-macros/src/miniextendr_impl_trait.rs` - Trait impl vtable generation
 - `miniextendr-lint/` - Lints for trait ABI correctness (future)

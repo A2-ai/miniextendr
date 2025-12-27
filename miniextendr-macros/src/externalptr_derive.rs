@@ -1,4 +1,4 @@
-//! # `#[derive(ExternalPtr)]` - ExternalPtr and Trait ABI Generation
+//! # `#[derive(ExternalPtr)]` - ExternalPtr Support
 //!
 //! This module implements the `#[derive(ExternalPtr)]` macro which generates
 //! a `TypedExternal` impl for use with `ExternalPtr<T>`.
