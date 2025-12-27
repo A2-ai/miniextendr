@@ -100,7 +100,8 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
 ///
 /// ## `extern "C-unwind"`
 ///
-/// If the function is declared `extern "C-unwind"` and `#[unsafe(no_mangle)]`,
+/// If the function is declared `extern "C-unwind"` and exported with
+/// `#[no_mangle]` (2021), `#[unsafe(no_mangle)]` (2024), or `#[export_name = "..."]`,
 /// the function itself is the C symbol and the R wrapper is prefixed with
 /// `unsafe_` to signal bypassed safety (no worker isolation or conversion).
 ///
@@ -118,7 +119,7 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
 ///
 /// # Impl blocks (class systems)
 ///
-/// Apply `#[miniextendr(receiver|r6|s7|s3|s4)]` to an `impl Type` block and list
+/// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block and list
 /// `impl Type;` in `miniextendr_module!`.
 ///
 /// # Traits (ABI)
@@ -240,7 +241,7 @@ pub fn miniextendr(
                 syn::Error::new(
                     receiver.span(),
                     "self parameter not allowed in standalone functions; \
-                     use #[miniextendr(receiver|r6|s3|s4|s7)] on impl blocks instead"
+                     use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead"
                 ).to_compile_error()
             }
             syn::FnArg::Typed(pt) => {
@@ -740,7 +741,7 @@ pub fn miniextendr(
 ///
 /// # Impl and trait impl registration
 ///
-/// - `impl Type;` registers a `#[miniextendr(...)] impl Type` block (receiver/S3/S4/S7/R6).
+/// - `impl Type;` registers a `#[miniextendr(...)] impl Type` block (env/S3/S4/S7/R6).
 /// - `impl Trait for Type;` registers ABI wrappers for cross-package trait dispatch.
 ///
 /// # Example

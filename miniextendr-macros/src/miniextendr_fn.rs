@@ -216,7 +216,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         for arg in &mut item.sig.inputs {
             let syn::FnArg::Typed(pat_type) = arg else {
                 // Self parameters are not allowed in standalone functions.
-                // Users should use #[miniextendr(receiver|r6|s3|s4|s7)] on impl blocks instead.
+                // Users should use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead.
                 // The error is raised in lib.rs c_wrapper_inputs generation.
                 continue;
             };

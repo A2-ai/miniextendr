@@ -42,7 +42,7 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
 /// If `auto_description = true` and no explicit `@tag` is found, the first
 /// paragraph of regular doc comments is converted to `@description`.
 ///
-/// Used for all class systems (R6, S3, S4, S7, Receiver) to automatically
+/// Used for all class systems (R6, S3, S4, S7, Env) to automatically
 /// convert Rust doc comments into roxygen `@description` tags.
 pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) -> Vec<String> {
     roxygen_tags_from_attrs_impl(attrs, true)

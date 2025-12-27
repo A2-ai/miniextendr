@@ -42,7 +42,7 @@
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
-//! #[externalptr(traits = [Shape, Display])]  // Future: trait ABI support
+//! #[externalptr(traits = [Shape, Display])]
 //! struct Circle { radius: f64 }
 //! ```
 //!

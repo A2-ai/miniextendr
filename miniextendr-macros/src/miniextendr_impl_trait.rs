@@ -1,12 +1,12 @@
-//! # `#[miniextendr_impl_trait]` - Trait Implementation Registration
+//! # `#[miniextendr]` on trait impls - Trait Implementation Registration
 //!
-//! This module handles `#[miniextendr_impl_trait]` applied to trait implementations,
+//! This module handles `#[miniextendr]` applied to trait implementations,
 //! generating the vtable static for cross-package trait dispatch, plus optional
 //! R-callable wrappers for direct method access.
 //!
 //! ## Overview
 //!
-//! When `#[miniextendr_impl_trait]` is applied to an `impl Trait for Type` block, it:
+//! When `#[miniextendr]` is applied to an `impl Trait for Type` block, it:
 //!
 //! 1. **Detects the trait** from the impl syntax (no attribute args needed)
 //! 2. **Generates vtable static** using the trait's `__<trait>_build_vtable` function
@@ -17,14 +17,14 @@
 //! ## Usage
 //!
 //! ```ignore
-//! use miniextendr_macros::miniextendr_impl_trait;
+//! use miniextendr_api::miniextendr;
 //!
 //! // The trait must have been defined with #[miniextendr]
 //! // which generates __counter_build_vtable::<T>()
 //!
 //! struct MyCounter { value: i32 }
 //!
-//! #[miniextendr_impl_trait]
+//! #[miniextendr]
 //! impl Counter for MyCounter {
 //!     fn value(&self) -> i32 {
 //!         self.value
@@ -65,12 +65,12 @@
 //! The macro reads the trait directly from the impl syntax:
 //!
 //! ```ignore
-//! #[miniextendr_impl_trait]
+//! #[miniextendr]
 //! impl path::to::Counter for MyType { ... }
 //! //   ^^^^^^^^^^^^^^^^^ detected automatically
 //! ```
 //!
-//! No need for `#[miniextendr_impl_trait(trait = "...")]` - the trait is always explicit in Rust's impl syntax.
+//! No extra arguments are needed; the trait path is explicit in the impl syntax.
 //!
 //! ## Name Generation
 //!
@@ -88,7 +88,7 @@
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
-//! #[externalptr(traits = [Counter, Display])]  // Future: trait ABI support
+//! #[externalptr(traits = [Counter, Display])]
 //! struct MyCounter { value: i32 }
 //! ```
 //!
@@ -163,7 +163,7 @@ impl TraitConst {
     }
 }
 
-/// Expand `#[miniextendr_impl_trait]` applied to a trait implementation.
+/// Expand `#[miniextendr]` applied to a trait implementation.
 ///
 /// # Arguments
 ///
@@ -216,7 +216,7 @@ fn extract_trait_and_type(impl_item: &ItemImpl) -> syn::Result<(syn::Path, syn::
     let (_, trait_path, _) = impl_item.trait_.as_ref().ok_or_else(|| {
         syn::Error::new_spanned(
             impl_item,
-            "#[miniextendr_impl_trait] must be applied to a trait implementation (impl Trait for Type), \
+            "#[miniextendr] must be applied to a trait implementation (impl Trait for Type), \
              not an inherent impl (impl Type)",
         )
     })?;

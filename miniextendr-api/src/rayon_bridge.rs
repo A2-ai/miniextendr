@@ -16,16 +16,13 @@
 //! # Quick Start
 //!
 //! ```ignore
-//! use miniextendr_api::prelude::*;
+//! use miniextendr_api::miniextendr;
 //! use rayon::prelude::*;
 //!
 //! #[miniextendr]
-//! fn parallel_sqrt(x: &[f64]) -> SEXP {
+//! fn parallel_sqrt(x: &[f64]) -> Vec<f64> {
 //!     // Pure Rust parallel computation - no R calls inside!
-//!     x.par_iter()
-//!         .map(|&v| v.sqrt())
-//!         .collect::<Vec<f64>>()
-//!         .into_sexp()  // Convert to R AFTER parallel work
+//!     x.par_iter().map(|&v| v.sqrt()).collect()
 //! }
 //! ```
 //!

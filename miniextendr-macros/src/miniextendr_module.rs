@@ -8,7 +8,7 @@
 //! - `mod <name>;` - Required module name (determines `R_init_<name>_miniextendr` symbol)
 //! - `fn <name>;` - Register a `#[miniextendr]` function
 //! - `struct <name>;` - Register an ALTREP class
-//! - `impl <name>;` - Register a `#[miniextendr(receiver|r6|s7|s3|s4)]` impl block
+//! - `impl <name>;` - Register a `#[miniextendr(env|r6|s7|s3|s4)]` impl block
 //! - `use <submodule>;` - Re-export from a submodule
 //!
 //! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
@@ -124,7 +124,7 @@ impl syn::parse::Parse for MiniextendrModuleName {
 
 /// An `impl <Type>;` line inside `miniextendr_module! { ... }`.
 ///
-/// Registers an impl block that has `#[miniextendr(receiver|r6|s7|s3|s4)]` attribute.
+/// Registers an impl block that has `#[miniextendr(env|r6|s7|s3|s4)]` attribute.
 ///
 /// ```text
 /// impl Counter;

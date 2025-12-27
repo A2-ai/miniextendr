@@ -7,7 +7,7 @@
 //! - Properly handle panics and R errors
 //!
 //! The same infrastructure is used by both `#[miniextendr]` on standalone functions
-//! and `#[miniextendr(r6|s3|s4|s7|receiver)]` on impl blocks.
+//! and `#[miniextendr(env|r6|s3|s4|s7)]` on impl blocks.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

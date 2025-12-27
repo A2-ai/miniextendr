@@ -41,8 +41,8 @@ miniextendr_module! {
 - **Iterators as ALTREP** – built‑in iterator‑backed ALTREP data types with
   caching and optional coercion.
 - **Connections** – experimental R connection framework (feature‑gated).
-- **Class systems** – S3, S4, S7, and R6 impl‑block methods plus a plain
-  receiver impl‑block for `$`/`[[` dispatch.
+- **Class systems** – S3, S4, S7, and R6 impl‑block methods plus an env
+  impl‑block for `$`/`[[` dispatch.
 - **Coerce** – infallible and fallible numeric coercion with clear errors.
 - **Generated R wrappers** – R functions and class methods are generated from
   Rust signatures and doc comments/roxygen tags.
@@ -63,8 +63,7 @@ committed to `R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
 
 miniextendr supports multiple class systems from Rust impl blocks:
 
-- **Plain receiver** – environment‑style `$`/`[[` dispatch for methods on a
-  receiver object.
+- **Env** – environment‑style `$`/`[[` dispatch for methods on an object.
 - **S3** – constructors use `structure(..., class = "Class")`, methods are
   `generic.class` with optional generic creation.
 - **S4** – uses `methods::setClass` and `methods::setMethod` with an external
