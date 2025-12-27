@@ -194,7 +194,7 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
     // Check for async
     if method.sig.asyncness.is_some() {
         return Err(syn::Error::new_spanned(
-            &method.sig.asyncness,
+            method.sig.asyncness,
             format!(
                 "#[miniextendr] trait `{}::{}` cannot be async",
                 trait_name, method_name

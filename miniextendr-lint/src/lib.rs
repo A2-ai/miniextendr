@@ -27,6 +27,7 @@
 //! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
 // Parser module (copied from miniextendr-macros for independent publishing).
+#[allow(dead_code)]
 mod miniextendr_module;
 
 // TODO: Check how many miniextendr_module! calls there is in a module
@@ -44,11 +45,13 @@ use syn::spanned::Spanned;
 use syn::{Attribute, Item, Macro};
 
 /// Required by `miniextendr_module.rs` shared parser (not called by lint).
+#[allow(dead_code)]
 fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     quote::format_ident!("call_method_def_{rust_ident}")
 }
 
 /// Required by `miniextendr_module.rs` shared parser (not called by lint).
+#[allow(dead_code)]
 fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
     let rust_ident_upper = rust_ident.to_string().to_uppercase();
     quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
