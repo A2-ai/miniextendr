@@ -181,6 +181,57 @@ impl<'a> RArgumentBuilder<'a> {
     }
 }
 
+/// Build R formal parameters from a Rust signature, with optional defaults.
+pub(crate) fn build_r_formals_from_sig(
+    sig: &syn::Signature,
+    defaults: &std::collections::HashMap<String, String>,
+) -> String {
+    let mut builder = RArgumentBuilder::new(&sig.inputs);
+    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        builder = builder.skip_first();
+    }
+    builder = builder.with_defaults(defaults.clone());
+    builder.build_formals()
+}
+
+/// Build R .Call arguments from a Rust signature.
+pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {
+    let mut builder = RArgumentBuilder::new(&sig.inputs);
+    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        builder = builder.skip_first();
+    }
+    builder.build_call_args()
+}
+
+/// Collect parameter identifiers from a function signature.
+///
+/// Skips receivers and optionally the first argument. Optionally normalizes
+/// identifiers for R-friendly names.
+pub(crate) fn collect_param_idents(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    skip_first: bool,
+    normalize: bool,
+) -> Vec<String> {
+    let mut params = Vec::new();
+    for (idx, arg) in inputs.iter().enumerate() {
+        if skip_first && idx == 0 {
+            continue;
+        }
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        if normalize {
+            params.push(normalize_r_arg_ident(&pat_ident.ident).to_string());
+        } else {
+            params.push(pat_ident.ident.to_string());
+        }
+    }
+    params
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

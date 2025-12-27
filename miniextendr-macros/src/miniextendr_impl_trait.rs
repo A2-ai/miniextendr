@@ -643,23 +643,11 @@ fn generate_trait_env_r_wrapper(
     for method in methods {
         let method_name = &method.ident;
 
-        // Collect parameter names (excluding self)
-        let params: Vec<String> = method
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|arg| {
-                if let syn::FnArg::Typed(pt) = arg {
-                    if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                        Some(pat_ident.ident.to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let params = crate::r_wrapper_builder::collect_param_idents(
+            &method.sig.inputs,
+            false,
+            false,
+        );
 
         let param_str = params.join(", ");
 
@@ -756,23 +744,11 @@ fn generate_trait_s3_r_wrapper(
         let generic_name = method_name.to_string();
         let s3_method_name = format!("{}.{}", generic_name, class_name);
 
-        // Collect parameter names (excluding self)
-        let params: Vec<String> = method
-            .sig
-            .inputs
-            .iter()
-            .filter_map(|arg| {
-                if let syn::FnArg::Typed(pt) = arg {
-                    if let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() {
-                        Some(pat_ident.ident.to_string())
-                    } else {
-                        None
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect();
+        let params = crate::r_wrapper_builder::collect_param_idents(
+            &method.sig.inputs,
+            false,
+            false,
+        );
 
         // For instance methods (has_self), generate S3 generic + method
         // For static methods (!has_self), generate standalone function in Type$Trait$ namespace

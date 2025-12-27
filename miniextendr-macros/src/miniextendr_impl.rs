@@ -810,8 +810,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Constructor
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&ctor.sig, &ctor.param_defaults);
-        let args = build_r_call_args(&ctor.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -838,8 +838,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods
     for method in parsed_impl.instance_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call(), self)", c_ident)
         } else {
@@ -874,8 +874,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods
     for method in parsed_impl.static_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -996,8 +996,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Note: has_self_returning_methods was calculated above for @param .ptr documentation
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&ctor.sig, &ctor.param_defaults);
-        let args = build_r_call_args(&ctor.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1035,8 +1035,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let public_methods: Vec<_> = parsed_impl.public_instance_methods().collect();
     for (i, method) in public_methods.iter().enumerate() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call(), private$.ptr)", c_ident)
         } else {
@@ -1083,8 +1083,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let private_methods: Vec<_> = parsed_impl.private_instance_methods().collect();
     for method in &private_methods {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call(), private$.ptr)", c_ident)
         } else {
@@ -1130,8 +1130,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods as separate functions on the class object
     for method in parsed_impl.static_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1182,8 +1182,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Constructor
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&ctor.sig, &ctor.param_defaults);
-        let args = build_r_call_args(&ctor.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1225,8 +1225,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S3 generics + methods
     for method in parsed_impl.instance_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
 
         // Use generic override if provided, otherwise use method name
         let generic_name = method
@@ -1307,8 +1307,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods as regular functions
     for method in parsed_impl.static_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1403,8 +1403,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&ctor.sig, &ctor.param_defaults);
-        let args = build_r_call_args(&ctor.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1445,8 +1445,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S7 generics + methods
     for method in parsed_impl.instance_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
 
         // Use generic override if provided, otherwise use method name
         let generic_name = method
@@ -1537,8 +1537,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods as regular functions
     for method in parsed_impl.static_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1624,8 +1624,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Constructor function
     if let Some(ctor) = parsed_impl.constructor() {
         let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&ctor.sig, &ctor.param_defaults);
-        let args = build_r_call_args(&ctor.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1661,8 +1661,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         } else {
             format!("s4_{}", method.ident)
         };
-        let params = build_r_formals(&method.sig);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(
+            &method.sig,
+            &std::collections::HashMap::new(),
+        );
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
 
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call(), x@ptr)", c_ident)
@@ -1720,8 +1723,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods as regular functions
     for method in parsed_impl.static_methods() {
         let c_ident = method.c_wrapper_ident(type_ident);
-        let params = build_r_formals_with_defaults(&method.sig, &method.param_defaults);
-        let args = build_r_call_args(&method.sig);
+        let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call())", c_ident)
         } else {
@@ -1758,36 +1761,6 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     lines.join("\n")
-}
-
-/// Build R formal parameters from a Rust signature.
-/// For impl methods, this skips the self parameter.
-fn build_r_formals(sig: &syn::Signature) -> String {
-    build_r_formals_with_defaults(sig, &std::collections::HashMap::new())
-}
-
-/// Build R formal parameters from a Rust signature with default values.
-/// For impl methods, this skips the self parameter.
-fn build_r_formals_with_defaults(
-    sig: &syn::Signature,
-    defaults: &std::collections::HashMap<String, String>,
-) -> String {
-    let mut builder = crate::RArgumentBuilder::new(&sig.inputs);
-    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
-        builder = builder.skip_first(); // Skip self parameter for instance methods
-    }
-    builder = builder.with_defaults(defaults.clone());
-    builder.build_formals()
-}
-
-/// Build R .Call arguments from a Rust signature.
-/// For impl methods, this skips the self parameter.
-fn build_r_call_args(sig: &syn::Signature) -> String {
-    let mut builder = crate::RArgumentBuilder::new(&sig.inputs);
-    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
-        builder = builder.skip_first(); // Skip self parameter for instance methods
-    }
-    builder.build_call_args()
 }
 
 /// Expand a #[miniextendr(env|r6|s7|s3|s4)] impl block.
