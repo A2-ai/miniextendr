@@ -109,9 +109,8 @@ pub fn init_ccallables() {
     }
 
     // Load mx_wrap
-    let wrap_ptr = unsafe {
-        crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_wrap".as_ptr())
-    };
+    let wrap_ptr =
+        unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_wrap".as_ptr()) };
     if wrap_ptr.is_none() {
         panic!("init_ccallables: mx_wrap not found - is miniextendr package loaded?");
     }
@@ -121,9 +120,8 @@ pub fn init_ccallables() {
         .expect("init_ccallables called multiple times");
 
     // Load mx_get
-    let get_ptr = unsafe {
-        crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_get".as_ptr())
-    };
+    let get_ptr =
+        unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_get".as_ptr()) };
     if get_ptr.is_none() {
         panic!("init_ccallables: mx_get not found - is miniextendr package loaded?");
     }
@@ -133,9 +131,8 @@ pub fn init_ccallables() {
         .expect("init_ccallables called multiple times");
 
     // Load mx_query
-    let query_ptr = unsafe {
-        crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_query".as_ptr())
-    };
+    let query_ptr =
+        unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_query".as_ptr()) };
     if query_ptr.is_none() {
         panic!("init_ccallables: mx_query not found - is miniextendr package loaded?");
     }
@@ -313,4 +310,3 @@ pub unsafe fn mx_query_as<V>(sexp: SEXP, tag: mx_tag) -> Option<&'static V> {
         Some(unsafe { &*(vtable as *const V) })
     }
 }
-

@@ -156,7 +156,6 @@ pub mod trait_abi;
 // Re-export key ABI types at crate root for convenience
 pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};
 
-
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`
 #[doc(hidden)]

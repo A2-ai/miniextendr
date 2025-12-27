@@ -72,7 +72,7 @@ impl Counter for SimpleCounter {
     }
 
     fn default_initial() -> i32 {
-        0  // SimpleCounter defaults to 0
+        0 // SimpleCounter defaults to 0
     }
 }
 
@@ -117,7 +117,7 @@ impl PanickyCounter {
 
 #[miniextendr]
 impl Counter for PanickyCounter {
-    const MAX_VALUE: i32 = 1000;  // PanickyCounter has a lower max
+    const MAX_VALUE: i32 = 1000; // PanickyCounter has a lower max
 
     fn value(&self) -> i32 {
         self.value
@@ -138,7 +138,7 @@ impl Counter for PanickyCounter {
     }
 
     fn default_initial() -> i32 {
-        100  // PanickyCounter defaults to 100 (safe margin above 0)
+        100 // PanickyCounter defaults to 100 (safe margin above 0)
     }
 }
 
@@ -199,7 +199,7 @@ impl Counter for S3TraitCounter {
     }
 
     fn default_initial() -> i32 {
-        50  // S3TraitCounter defaults to 50
+        50 // S3TraitCounter defaults to 50
     }
 }
 

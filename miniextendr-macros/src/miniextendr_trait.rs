@@ -259,10 +259,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let tag_name = quote::format_ident!("TAG_{}", trait_name.to_string().to_uppercase());
     let vtable_name = quote::format_ident!("{}VTable", trait_name);
     let view_name = quote::format_ident!("{}View", trait_name);
-    let build_vtable_fn = quote::format_ident!(
-        "__{}_build_vtable",
-        trait_name.to_string().to_lowercase()
-    );
+    let build_vtable_fn =
+        quote::format_ident!("__{}_build_vtable", trait_name.to_string().to_lowercase());
 
     // Collect method information
     // Filter to only include instance methods (with &self or &mut self) for vtable
@@ -274,11 +272,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             if let syn::TraitItem::Fn(method) = item {
                 let info = extract_method_info(method);
                 // Only include instance methods in vtable
-                if info.has_self {
-                    Some(info)
-                } else {
-                    None
-                }
+                if info.has_self { Some(info) } else { None }
             } else {
                 None
             }
@@ -310,11 +304,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         .iter()
         .map(|m| {
             let name = &m.name;
-            let shim_name = quote::format_ident!(
-                "__{}_{}_shim",
-                trait_name.to_string().to_lowercase(),
-                name
-            );
+            let shim_name =
+                quote::format_ident!("__{}_{}_shim", trait_name.to_string().to_lowercase(), name);
             quote::quote! {
                 #name: #shim_name::<T>
             }
@@ -507,16 +498,13 @@ fn extract_method_info(method: &syn::TraitItemFn) -> MethodInfo {
     let name = method.sig.ident.clone();
 
     // Check for receiver
-    let (has_self, is_mut) = method.sig.inputs.first().map_or(
-        (false, false),
-        |arg| {
-            if let syn::FnArg::Receiver(r) = arg {
-                (true, r.mutability.is_some())
-            } else {
-                (false, false)
-            }
-        },
-    );
+    let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
+        if let syn::FnArg::Receiver(r) = arg {
+            (true, r.mutability.is_some())
+        } else {
+            (false, false)
+        }
+    });
 
     // Extract parameters (skip self if present)
     let skip_count = if has_self { 1 } else { 0 };

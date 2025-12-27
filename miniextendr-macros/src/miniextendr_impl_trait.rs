@@ -130,7 +130,11 @@ impl TraitMethod {
     }
 
     /// R_CallMethodDef identifier
-    fn call_method_def_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
+    fn call_method_def_ident(
+        &self,
+        type_ident: &syn::Ident,
+        trait_name: &syn::Ident,
+    ) -> syn::Ident {
         format_ident!(
             "call_method_def_{}__{}_{}",
             type_ident,
@@ -156,7 +160,11 @@ impl TraitConst {
     }
 
     /// R_CallMethodDef identifier
-    fn call_method_def_ident(&self, type_ident: &syn::Ident, trait_name: &syn::Ident) -> syn::Ident {
+    fn call_method_def_ident(
+        &self,
+        type_ident: &syn::Ident,
+        trait_name: &syn::Ident,
+    ) -> syn::Ident {
         format_ident!(
             "call_method_def_{}__{}_{}",
             type_ident,
@@ -260,8 +268,7 @@ fn generate_vtable_static(
     let trait_name_lower = trait_name.to_string().to_lowercase();
 
     // Generate names
-    let vtable_static_name =
-        format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
+    let vtable_static_name = format_ident!("__VTABLE_{}_FOR_{}", trait_name_upper, type_name_str);
     let vtable_type_name = format_ident!("{}VTable", trait_name);
 
     // Build path to vtable builder function
@@ -300,13 +307,8 @@ fn generate_vtable_static(
         .collect();
 
     // Generate R wrapper code string based on class system
-    let r_wrapper_string = generate_trait_r_wrapper(
-        &type_ident,
-        trait_name,
-        &methods,
-        &consts,
-        class_system,
-    );
+    let r_wrapper_string =
+        generate_trait_r_wrapper(&type_ident, trait_name, &methods, &consts, class_system);
 
     // Generate constant names for module registration
     let call_defs_const = format_ident!(
@@ -395,16 +397,13 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
         .filter_map(|item| {
             if let syn::ImplItem::Fn(method) = item {
                 // Check receiver type
-                let (has_self, is_mut) = method.sig.inputs.first().map_or(
-                    (false, false),
-                    |arg| {
-                        if let syn::FnArg::Receiver(r) = arg {
-                            (true, r.mutability.is_some())
-                        } else {
-                            (false, false)
-                        }
-                    },
-                );
+                let (has_self, is_mut) = method.sig.inputs.first().map_or((false, false), |arg| {
+                    if let syn::FnArg::Receiver(r) = arg {
+                        (true, r.mutability.is_some())
+                    } else {
+                        (false, false)
+                    }
+                });
 
                 Some(TraitMethod {
                     ident: method.sig.ident.clone(),
@@ -688,7 +687,7 @@ fn generate_trait_env_r_wrapper(
             type_ident,
             trait_name,
             method_name,
-            param_str  // Static methods have no self in params; instance methods get self via environment
+            param_str // Static methods have no self in params; instance methods get self via environment
         ));
         // Generate .Call() - handle empty args properly to avoid trailing comma
         if args_str.is_empty() {
@@ -809,7 +808,10 @@ fn generate_trait_s3_r_wrapper(
             output.push_str(&format!("#' @rdname {}\n", class_name));
             output.push_str("#' @export\n");
             output.push_str(&format!("#' @method {} {}\n", generic_name, class_name));
-            output.push_str(&format!("{} <- function({}) {{\n", s3_method_name, full_params));
+            output.push_str(&format!(
+                "{} <- function({}) {{\n",
+                s3_method_name, full_params
+            ));
             output.push_str(&format!(
                 "    .Call(C_{}__{}__{}, .call = match.call(), {})\n",
                 type_ident, trait_name, method_name, call_args
@@ -822,7 +824,10 @@ fn generate_trait_s3_r_wrapper(
                 "#' Static trait method {}::{}()\n",
                 trait_name, method_name
             ));
-            output.push_str(&format!("#' @name {}${}${}\n", type_ident, trait_name, method_name));
+            output.push_str(&format!(
+                "#' @name {}${}${}\n",
+                type_ident, trait_name, method_name
+            ));
             output.push_str(&format!("#' @rdname {}\n", type_ident));
             output.push_str(&format!(
                 "{}${}${} <- function({}) {{\n",
@@ -884,7 +889,9 @@ fn generate_trait_s4_r_wrapper(
     // TODO: Implement proper S4 support
     let mut output = String::new();
     output.push_str("# TODO: S4 trait impl not yet fully supported, using Env style\n");
-    output.push_str(&generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts));
+    output.push_str(&generate_trait_env_r_wrapper(
+        type_ident, trait_name, methods, consts,
+    ));
     output
 }
 
@@ -899,7 +906,9 @@ fn generate_trait_s7_r_wrapper(
     // TODO: Implement proper S7 support
     let mut output = String::new();
     output.push_str("# TODO: S7 trait impl not yet fully supported, using Env style\n");
-    output.push_str(&generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts));
+    output.push_str(&generate_trait_env_r_wrapper(
+        type_ident, trait_name, methods, consts,
+    ));
     output
 }
 
@@ -914,7 +923,9 @@ fn generate_trait_r6_r_wrapper(
     // TODO: Implement proper R6 support (may need different approach since R6 is OOP)
     let mut output = String::new();
     output.push_str("# TODO: R6 trait impl not yet fully supported, using Env style\n");
-    output.push_str(&generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts));
+    output.push_str(&generate_trait_env_r_wrapper(
+        type_ident, trait_name, methods, consts,
+    ));
     output
 }
 

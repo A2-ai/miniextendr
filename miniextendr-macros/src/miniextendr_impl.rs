@@ -636,10 +636,7 @@ impl ParsedImpl {
     /// Get instance methods (have env) - includes both public and private.
     pub fn instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
-            m.should_include()
-                && m.env.is_instance()
-                && !m.is_constructor()
-                && !m.is_finalizer()
+            m.should_include() && m.env.is_instance() && !m.is_constructor() && !m.is_finalizer()
         })
     }
 
@@ -689,8 +686,7 @@ pub fn generate_method_c_wrapper(
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
     // Static methods use worker thread by default, main thread only when explicitly requested
-    let thread_strategy = if method.method_attrs.unsafe_main_thread || method.env.is_instance()
-    {
+    let thread_strategy = if method.method_attrs.unsafe_main_thread || method.env.is_instance() {
         ThreadStrategy::MainThread
     } else {
         ThreadStrategy::WorkerThread

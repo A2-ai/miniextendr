@@ -351,13 +351,19 @@ fn collect_items(
                                 if let Some(trait_seg) = trait_path.segments.last() {
                                     let trait_name = trait_seg.ident.to_string();
                                     let full_name = format!("{} for {}", trait_name, type_name);
-                                    miniextendr_items
-                                        .insert(LintItem::new(LintKind::TraitImpl, full_name, line));
+                                    miniextendr_items.insert(LintItem::new(
+                                        LintKind::TraitImpl,
+                                        full_name,
+                                        line,
+                                    ));
                                 }
                             } else {
                                 // Regular impl block
-                                miniextendr_items
-                                    .insert(LintItem::new(LintKind::Impl, type_name, line));
+                                miniextendr_items.insert(LintItem::new(
+                                    LintKind::Impl,
+                                    type_name,
+                                    line,
+                                ));
                             }
                         }
                         None => errors.push(format!(

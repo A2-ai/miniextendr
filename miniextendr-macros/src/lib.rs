@@ -18,9 +18,9 @@ mod return_type_analysis;
 mod roxygen;
 
 // Trait ABI support modules
-mod miniextendr_trait;
-mod miniextendr_impl_trait;
 mod externalptr_derive;
+mod miniextendr_impl_trait;
+mod miniextendr_trait;
 
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
@@ -982,11 +982,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect();
 
     // Calculate total length expression
-    let all_len_exprs: Vec<proc_macro2::TokenStream> = std::iter::once(quote::quote!(#call_entries_len_lit))
-        .chain(impl_call_defs_len_exprs.iter().cloned())
-        .chain(trait_impl_call_defs_len_exprs.iter().cloned())
-        .collect();
-    let total_len_expr = if all_len_exprs.is_empty() || (call_entries_len == 0 && impl_call_defs_len_exprs.is_empty() && trait_impl_call_defs_len_exprs.is_empty()) {
+    let all_len_exprs: Vec<proc_macro2::TokenStream> =
+        std::iter::once(quote::quote!(#call_entries_len_lit))
+            .chain(impl_call_defs_len_exprs.iter().cloned())
+            .chain(trait_impl_call_defs_len_exprs.iter().cloned())
+            .collect();
+    let total_len_expr = if all_len_exprs.is_empty()
+        || (call_entries_len == 0
+            && impl_call_defs_len_exprs.is_empty()
+            && trait_impl_call_defs_len_exprs.is_empty())
+    {
         quote::quote!(0usize)
     } else {
         quote::quote!(#(#all_len_exprs)+*)
