@@ -1,14 +1,112 @@
-//! Impl-block parsing and wrapper generation for class-like Rust structs.
+//! # Impl-block Parsing and Wrapper Generation
 //!
-//! This module provides shared infrastructure for all class system support:
-//! - Env (environment-style with `$`/`[[` dispatch)
-//! - R6 (`R6::R6Class`)
-//! - S7 (`S7::new_class`)
-//! - S3 (`structure()` with class attr)
-//! - S4 (`setClass`)
+//! This module handles `#[miniextendr]` applied to inherent impl blocks,
+//! generating R wrappers for different class systems.
 //!
-//! The impl-block parser extracts methods and categorizes them by env type,
-//! then class-system adapters generate appropriate R wrapper code.
+//! ## Architecture Overview
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                         #[miniextendr(r6)]                              │
+//! │                         impl MyType { ... }                             │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                                    │
+//!                                    ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                           PARSING PHASE                                 │
+//! │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐ │
+//! │  │   ImplAttrs     │    │  ParsedMethod   │    │    ParsedImpl       │ │
+//! │  │ - class_system  │    │ - ident         │───▶│ - type_ident        │ │
+//! │  │ - class_name    │    │ - receiver      │    │ - class_system      │ │
+//! │  └─────────────────┘    │ - sig           │    │ - methods[]         │ │
+//! │                         │ - doc_tags      │    │ - doc_tags          │ │
+//! │                         │ - method_attrs  │    └─────────────────────┘ │
+//! │                         └─────────────────┘                             │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                                    │
+//!                                    ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                        CODE GENERATION PHASE                            │
+//! │                                                                         │
+//! │  For each method:                                                       │
+//! │  ┌─────────────────────────────────────────────────────────────────┐   │
+//! │  │ generate_c_wrapper_for_method()                                 │   │
+//! │  │   └─▶ CWrapperContext (shared builder from c_wrapper_builder)   │   │
+//! │  │         - thread strategy (main vs worker)                      │   │
+//! │  │         - SEXP→Rust conversion                                  │   │
+//! │  │         - return handling                                       │   │
+//! │  └─────────────────────────────────────────────────────────────────┘   │
+//! │                                                                         │
+//! │  For the whole impl:                                                    │
+//! │  ┌─────────────────────────────────────────────────────────────────┐   │
+//! │  │ generate_{class_system}_r_wrapper()                             │   │
+//! │  │   - generate_env_r_wrapper()   → Type$method(self, ...)         │   │
+//! │  │   - generate_r6_r_wrapper()    → R6Class with methods           │   │
+//! │  │   - generate_s3_r_wrapper()    → generic + method.Type          │   │
+//! │  │   - generate_s4_r_wrapper()    → setClass + setMethod           │   │
+//! │  │   - generate_s7_r_wrapper()    → new_class + method<-           │   │
+//! │  └─────────────────────────────────────────────────────────────────┘   │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                                    │
+//!                                    ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                              OUTPUTS                                    │
+//! │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
+//! │  │ C wrapper fns   │  │ R wrapper code  │  │  R_CallMethodDef       │ │
+//! │  │ C_Type__method  │  │ (as const str)  │  │  registration entries  │ │
+//! │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## Supported Class Systems
+//!
+//! | System | Syntax | R Pattern | Use Case |
+//! |--------|--------|-----------|----------|
+//! | **Env** | `#[miniextendr]` | `obj$method()` | Simple, environment-based dispatch |
+//! | **R6** | `#[miniextendr(r6)]` | `R6Class` with `$new()` | OOP with encapsulation |
+//! | **S3** | `#[miniextendr(s3)]` | `generic(obj)` dispatch | Idiomatic R generics |
+//! | **S4** | `#[miniextendr(s4)]` | `setClass`/`setMethod` | Formal OOP, multiple dispatch |
+//! | **S7** | `#[miniextendr(s7)]` | `new_class`/`new_generic` | Modern R OOP |
+//!
+//! ## Method Categorization
+//!
+//! Methods are categorized by their receiver type:
+//!
+//! | Receiver | [`ReceiverKind`] | Generated as |
+//! |----------|------------------|--------------|
+//! | `&self` | `Ref` | Instance method (immutable) |
+//! | `&mut self` | `RefMut` | Instance method (mutable, chainable) |
+//! | `self` | `Value` | Consuming method (not supported in v1) |
+//! | (none) | `None` | Static method or constructor |
+//!
+//! Special methods:
+//! - **Constructor**: Returns `Self`, marked with `#[miniextendr(constructor)]` or named `new`
+//! - **Finalizer**: R6 only, marked with `#[miniextendr(r6(finalize))]`
+//! - **Private**: R6 only, marked with `#[miniextendr(r6(private))]`
+//!
+//! ## Shared Builders
+//!
+//! This module uses shared infrastructure from:
+//! - [`crate::c_wrapper_builder`]: C wrapper generation with thread strategy
+//! - [`crate::r_wrapper_builder`]: R function signatures and `.Call()` args
+//! - [`crate::method_return_builder`]: Return value handling per class system
+//! - [`crate::roxygen`]: Documentation extraction from Rust doc comments
+//!
+//! ## Example
+//!
+//! ```ignore
+//! #[miniextendr(r6)]
+//! impl Counter {
+//!     fn new(value: i32) -> Self { Counter { value } }
+//!     fn get(&self) -> i32 { self.value }
+//!     fn increment(&mut self) { self.value += 1; }
+//! }
+//! ```
+//!
+//! Generates:
+//! - C wrappers: `C_Counter__new`, `C_Counter__get`, `C_Counter__increment`
+//! - R6Class with `initialize`, `get`, `increment` methods
+//! - Registration entries for R's `.Call()` interface
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};

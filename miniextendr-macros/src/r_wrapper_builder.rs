@@ -2,6 +2,33 @@
 //!
 //! This module provides builders for constructing R function signatures and call arguments
 //! consistently across both standalone functions and impl methods.
+//!
+//! ## Key Components
+//!
+//! - [`RArgumentBuilder`]: Builds R formals and `.Call()` arguments from Rust signatures
+//! - [`DotCallBuilder`]: Formats `.Call()` invocations with proper argument handling
+//! - [`RoxygenBuilder`]: Generates roxygen2 documentation tags
+//!
+//! ## Usage
+//!
+//! ```ignore
+//! // Build R function signature
+//! let formals = build_r_formals_from_sig(&method.sig, &defaults);
+//! let call_args = build_r_call_args_from_sig(&method.sig);
+//!
+//! // Build .Call() invocation
+//! let call = DotCallBuilder::new("C_MyType__method")
+//!     .with_self("self")
+//!     .with_args(&["x", "y"])
+//!     .build();
+//!
+//! // Build roxygen tags
+//! let tags = RoxygenBuilder::new("MyType")
+//!     .name("method")
+//!     .rdname("MyType")
+//!     .export()
+//!     .build();
+//! ```
 
 /// Normalizes Rust argument identifiers for R.
 ///
@@ -232,6 +259,236 @@ pub(crate) fn collect_param_idents(
     params
 }
 
+// =============================================================================
+// DotCallBuilder - .Call() invocation formatting
+// =============================================================================
+
+/// Builder for formatting `.Call()` invocations in R wrapper code.
+///
+/// Handles the common pattern of `.Call(C_ident, .call = match.call(), args...)`.
+///
+/// # Example
+///
+/// ```ignore
+/// let call = DotCallBuilder::new("C_Counter__increment")
+///     .with_self("self")
+///     .build();
+/// // => ".Call(C_Counter__increment, .call = match.call(), self)"
+///
+/// let call = DotCallBuilder::new("C_Counter__add")
+///     .with_self("x")
+///     .with_args(&["n"])
+///     .build();
+/// // => ".Call(C_Counter__add, .call = match.call(), x, n)"
+/// ```
+pub struct DotCallBuilder {
+    c_ident: String,
+    self_var: Option<String>,
+    args: Vec<String>,
+}
+
+impl DotCallBuilder {
+    /// Create a new builder with the C function identifier.
+    pub fn new(c_ident: impl Into<String>) -> Self {
+        Self {
+            c_ident: c_ident.into(),
+            self_var: None,
+            args: Vec::new(),
+        }
+    }
+
+    /// Add a self/x parameter (prepended to args).
+    pub fn with_self(mut self, var: impl Into<String>) -> Self {
+        self.self_var = Some(var.into());
+        self
+    }
+
+    /// Add arguments after self (if any).
+    pub fn with_args(mut self, args: &[impl AsRef<str>]) -> Self {
+        self.args = args.iter().map(|s| s.as_ref().to_string()).collect();
+        self
+    }
+
+    /// Add a single argument.
+    pub fn with_arg(mut self, arg: impl Into<String>) -> Self {
+        self.args.push(arg.into());
+        self
+    }
+
+    /// Build the `.Call()` string.
+    pub fn build(&self) -> String {
+        let mut all_args = Vec::new();
+
+        if let Some(ref self_var) = self.self_var {
+            all_args.push(self_var.clone());
+        }
+        all_args.extend(self.args.clone());
+
+        if all_args.is_empty() {
+            format!(".Call({}, .call = match.call())", self.c_ident)
+        } else {
+            format!(
+                ".Call({}, .call = match.call(), {})",
+                self.c_ident,
+                all_args.join(", ")
+            )
+        }
+    }
+}
+
+// =============================================================================
+// RoxygenBuilder - roxygen2 documentation tag generation
+// =============================================================================
+
+/// Builder for generating roxygen2 documentation tags.
+///
+/// Provides a fluent API for building common roxygen tag patterns used
+/// across all class systems.
+///
+/// # Example
+///
+/// ```ignore
+/// let tags = RoxygenBuilder::new()
+///     .name("Counter$increment")
+///     .rdname("Counter")
+///     .export()
+///     .build();
+/// // => vec!["#' @name Counter$increment", "#' @rdname Counter", "#' @export"]
+/// ```
+pub struct RoxygenBuilder {
+    name: Option<String>,
+    rdname: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    source: Option<String>,
+    export: bool,
+    export_method: Option<String>,
+    method: Option<(String, String)>, // (generic, class)
+    custom_tags: Vec<String>,
+}
+
+impl RoxygenBuilder {
+    /// Create a new empty builder.
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            rdname: None,
+            title: None,
+            description: None,
+            source: None,
+            export: false,
+            export_method: None,
+            method: None,
+            custom_tags: Vec::new(),
+        }
+    }
+
+    /// Set the `@name` tag.
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Set the `@rdname` tag (groups docs into one page).
+    pub fn rdname(mut self, rdname: impl Into<String>) -> Self {
+        self.rdname = Some(rdname.into());
+        self
+    }
+
+    /// Set the `@title` tag.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Set the `@description` tag.
+    #[allow(dead_code)]
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    /// Set the `@source` tag (typically "Generated by miniextendr...").
+    pub fn source(mut self, source: impl Into<String>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
+    /// Add `@export` tag.
+    pub fn export(mut self) -> Self {
+        self.export = true;
+        self
+    }
+
+    /// Add `@exportMethod` tag (for S4).
+    pub fn export_method(mut self, method: impl Into<String>) -> Self {
+        self.export_method = Some(method.into());
+        self
+    }
+
+    /// Add `@method` tag (for S3).
+    pub fn method(mut self, generic: impl Into<String>, class: impl Into<String>) -> Self {
+        self.method = Some((generic.into(), class.into()));
+        self
+    }
+
+    /// Add a custom tag line (without the `#' ` prefix).
+    pub fn custom(mut self, tag: impl Into<String>) -> Self {
+        self.custom_tags.push(tag.into());
+        self
+    }
+
+    /// Build the roxygen tag lines (each prefixed with `#' `).
+    pub fn build(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+
+        if let Some(ref title) = self.title {
+            lines.push(format!("#' @title {}", title));
+        }
+        if let Some(ref desc) = self.description {
+            lines.push(format!("#' @description {}", desc));
+        }
+        if let Some(ref name) = self.name {
+            lines.push(format!("#' @name {}", name));
+        }
+        if let Some(ref rdname) = self.rdname {
+            lines.push(format!("#' @rdname {}", rdname));
+        }
+        if let Some(ref source) = self.source {
+            lines.push(format!("#' @source {}", source));
+        }
+        if let Some((ref generic, ref class)) = self.method {
+            lines.push(format!("#' @method {} {}", generic, class));
+        }
+        for tag in &self.custom_tags {
+            lines.push(format!("#' {}", tag));
+        }
+        if self.export {
+            lines.push("#' @export".to_string());
+        }
+        if let Some(ref method) = self.export_method {
+            lines.push(format!("#' @exportMethod {}", method));
+        }
+
+        lines
+    }
+
+    /// Build and join with newlines.
+    pub fn build_string(&self) -> String {
+        self.build().join("\n")
+    }
+}
+
+impl Default for RoxygenBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -299,5 +556,97 @@ mod tests {
         let inputs = parse_inputs("_x: i32, __private: String");
         let builder = RArgumentBuilder::new(&inputs);
         assert_eq!(builder.build_formals(), "unused_x, private__private");
+    }
+
+    // DotCallBuilder tests
+    #[test]
+    fn test_dot_call_no_args() {
+        let call = DotCallBuilder::new("C_Counter__new").build();
+        assert_eq!(call, ".Call(C_Counter__new, .call = match.call())");
+    }
+
+    #[test]
+    fn test_dot_call_with_self() {
+        let call = DotCallBuilder::new("C_Counter__value")
+            .with_self("self")
+            .build();
+        assert_eq!(
+            call,
+            ".Call(C_Counter__value, .call = match.call(), self)"
+        );
+    }
+
+    #[test]
+    fn test_dot_call_with_self_and_args() {
+        let call = DotCallBuilder::new("C_Counter__add")
+            .with_self("x")
+            .with_args(&["n"])
+            .build();
+        assert_eq!(call, ".Call(C_Counter__add, .call = match.call(), x, n)");
+    }
+
+    #[test]
+    fn test_dot_call_static_with_args() {
+        let call = DotCallBuilder::new("C_Counter__from_parts")
+            .with_args(&["a", "b", "c"])
+            .build();
+        assert_eq!(
+            call,
+            ".Call(C_Counter__from_parts, .call = match.call(), a, b, c)"
+        );
+    }
+
+    // RoxygenBuilder tests
+    #[test]
+    fn test_roxygen_basic() {
+        let tags = RoxygenBuilder::new()
+            .name("Counter$increment")
+            .rdname("Counter")
+            .export()
+            .build();
+        assert_eq!(
+            tags,
+            vec![
+                "#' @name Counter$increment",
+                "#' @rdname Counter",
+                "#' @export"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_roxygen_s3_method() {
+        let tags = RoxygenBuilder::new()
+            .name("value")
+            .source("Generated by miniextendr from `impl Counter for MyType`")
+            .method("value", "MyType")
+            .export()
+            .build();
+        assert_eq!(
+            tags,
+            vec![
+                "#' @name value",
+                "#' @source Generated by miniextendr from `impl Counter for MyType`",
+                "#' @method value MyType",
+                "#' @export"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_roxygen_s4_method() {
+        let tags = RoxygenBuilder::new()
+            .name("s4_trait_Counter_value")
+            .source("Generated by miniextendr")
+            .export_method("s4_trait_Counter_value")
+            .build();
+        assert_eq!(
+            tags,
+            vec![
+                "#' @name s4_trait_Counter_value",
+                "#' @source Generated by miniextendr",
+                "#' @exportMethod s4_trait_Counter_value"
+            ]
+        );
     }
 }
