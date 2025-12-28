@@ -18,6 +18,9 @@ crate-type = ["lib"]
 
 [build-dependencies]
 
+[dev-dependencies]
+tempfile = "3.12"
+
 [features]
 default = []
 # Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
