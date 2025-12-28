@@ -22,6 +22,71 @@ get_template_type <- function() {
   .template_type$current
 }
 
+#' Detect project type from directory structure
+#'
+#' Auto-detects whether the current project is:
+#' - "monorepo": Has a root Cargo.toml with [workspace] section
+#' - "rpkg": Is an R package (has DESCRIPTION)
+#'
+#' @param path Path to check (default: current project)
+#' @return "monorepo" or "rpkg", or NULL if can't detect
+#' @noRd
+detect_project_type <- function(path = usethis::proj_get()) {
+  # Check if we're in a monorepo (has root Cargo.toml with [workspace])
+  cargo_toml <- file.path(path, "Cargo.toml")
+  if (file.exists(cargo_toml)) {
+    cargo_content <- readLines(cargo_toml, warn = FALSE)
+    if (any(grepl("^\\[workspace\\]", cargo_content))) {
+      return("monorepo")
+    }
+  }
+
+  # Check if we're in an R package directory
+  if (file.exists(file.path(path, "DESCRIPTION"))) {
+    # Check if this rpkg is embedded in a monorepo (parent has Cargo.toml workspace)
+    parent_cargo <- file.path(dirname(path), "Cargo.toml")
+    if (file.exists(parent_cargo)) {
+      parent_content <- readLines(parent_cargo, warn = FALSE)
+      if (any(grepl("^\\[workspace\\]", parent_content))) {
+        # This is an rpkg inside a monorepo
+        return("monorepo")
+      }
+    }
+    return("rpkg")
+  }
+
+  NULL
+}
+
+#' Check if project is inside a Rust workspace
+#'
+#' Looks for a Cargo.toml with [workspace] in the current directory or parent.
+#'
+#' @param path Path to check
+#' @return TRUE if inside a workspace, FALSE otherwise
+#' @noRd
+is_in_rust_workspace <- function(path = usethis::proj_get()) {
+  # Check current directory
+  cargo_toml <- file.path(path, "Cargo.toml")
+  if (file.exists(cargo_toml)) {
+    cargo_content <- readLines(cargo_toml, warn = FALSE)
+    if (any(grepl("^\\[workspace\\]", cargo_content))) {
+      return(TRUE)
+    }
+  }
+
+  # Check parent (for rpkg/ inside monorepo)
+  parent_cargo <- file.path(dirname(path), "Cargo.toml")
+  if (file.exists(parent_cargo)) {
+    parent_content <- readLines(parent_cargo, warn = FALSE)
+    if (any(grepl("^\\[workspace\\]", parent_content))) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
 #' Get path to package template
 #'
 #' For "rpkg" templates, returns templates from `templates/rpkg/`.

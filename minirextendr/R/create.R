@@ -172,12 +172,27 @@ create_rpkg_subdirectory <- function(data) {
 #' an all-in-one function that calls all the individual `use_miniextendr_*()`
 #' functions.
 #'
-#' @param template_type Template type: "rpkg" for standalone R package (default)
-#' @param miniextendr_version Version of miniextendr to vendor (default: "latest")
+#' @param template_type Template type: "auto" (detect from directory structure),
+#'   "rpkg" for standalone R package, or "monorepo" for Rust workspace.
+#'   Default is "auto" which detects based on presence of parent Cargo.toml workspace.
+#' @param miniextendr_version Version of miniextendr to vendor (default: "latest").
+#'   For monorepo projects, vendoring is only needed for CRAN submission.
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr <- function(template_type = "rpkg", miniextendr_version = "latest") {
+use_miniextendr <- function(template_type = "auto", miniextendr_version = "latest") {
   cli::cli_h1("Setting up miniextendr")
+
+  # Auto-detect template type if requested
+  if (template_type == "auto") {
+    detected <- detect_project_type()
+    if (is.null(detected)) {
+      cli::cli_alert_info("Could not auto-detect project type, defaulting to 'rpkg'")
+      template_type <- "rpkg"
+    } else {
+      template_type <- detected
+      cli::cli_alert_info("Detected project type: {.val {template_type}}")
+    }
+  }
 
   # Set template type for this session
   set_template_type(template_type)
