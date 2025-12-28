@@ -1255,10 +1255,15 @@ unsafe extern "C-unwind" {
     pub fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // Attribute access
+    /// Read an attribute from an object by symbol (e.g. `R_NamesSymbol`).
+    ///
+    /// Returns `R_NilValue` if the attribute is not set.
     #[doc(alias = "getAttrib")]
     pub fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
+    /// Set the `names` attribute; returns the updated object.
     #[doc(alias = "namesgets")]
     pub fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
+    /// Set the `dim` attribute; returns the updated object.
     #[doc(alias = "dimgets")]
     pub fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
 

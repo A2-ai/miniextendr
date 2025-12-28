@@ -102,8 +102,7 @@ fn test_slice_try_coerce_via_blanket() {
 fn test_fallible_slice_coerce_manual() {
     // For types with only TryCoerce (not Coerce), use manual iteration
     let slice: &[u32] = &[1, u32::MAX, 3];
-    let result: Result<Vec<i32>, _> =
-        slice.iter().copied().map(TryCoerce::try_coerce).collect();
+    let result: Result<Vec<i32>, _> = slice.iter().copied().map(TryCoerce::try_coerce).collect();
     assert_eq!(result, Err(CoerceError::Overflow));
 }
 
@@ -127,14 +126,12 @@ fn test_i32_to_u16() {
 fn test_i32_slice_to_u16_vec() {
     // Using manual iteration for fallible element-wise coercion
     let slice: &[i32] = &[1, 100, 1000];
-    let result: Result<Vec<u16>, _> =
-        slice.iter().copied().map(TryCoerce::try_coerce).collect();
+    let result: Result<Vec<u16>, _> = slice.iter().copied().map(TryCoerce::try_coerce).collect();
     assert_eq!(result, Ok(vec![1u16, 100, 1000]));
 
     // Failure case
     let slice2: &[i32] = &[1, -5, 1000];
-    let result2: Result<Vec<u16>, _> =
-        slice2.iter().copied().map(TryCoerce::try_coerce).collect();
+    let result2: Result<Vec<u16>, _> = slice2.iter().copied().map(TryCoerce::try_coerce).collect();
     assert_eq!(result2, Err(CoerceError::Overflow));
 }
 
@@ -228,8 +225,7 @@ fn test_i32_to_usize() {
 #[test]
 fn test_i32_slice_to_bool_vec() {
     let slice: &[i32] = &[1, 0, 1, 0];
-    let result: Result<Vec<bool>, _> =
-        slice.iter().copied().map(TryCoerce::try_coerce).collect();
+    let result: Result<Vec<bool>, _> = slice.iter().copied().map(TryCoerce::try_coerce).collect();
     assert_eq!(result, Ok(vec![true, false, true, false]));
 
     // With NA

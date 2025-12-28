@@ -8,8 +8,8 @@ use std::sync::OnceLock;
 use crate::ffi::SEXP;
 
 use super::{
-    fill_region, AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData,
-    AltRealData, AltStringData, AltrepLen, InferBase, Logical,
+    AltComplexData, AltIntegerData, AltListData, AltLogicalData, AltRawData, AltRealData,
+    AltStringData, AltrepLen, InferBase, Logical, fill_region,
 };
 
 /// Core state for iterator-backed ALTREP vectors.

@@ -17,6 +17,7 @@ mod method_return_builder;
 /// Helpers for shaping method return handling (R vs Rust wrapper code).
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
+mod list_derive;
 mod return_type_analysis;
 mod roxygen;
 
@@ -170,7 +171,7 @@ pub fn miniextendr(
             &parsed.item().sig.generics,
             "#[miniextendr] functions cannot have generic type parameters. \
              Generic functions are incompatible with `extern \"C-unwind\"` and `#[no_mangle]` \
-             required for R FFI. Consider using trait objects or monomorphization instead."
+             required for R FFI. Consider using trait objects or monomorphization instead.",
         );
         return err.into_compile_error().into();
     }
@@ -1808,6 +1809,15 @@ pub fn derive_altrep_complex(input: proc_macro::TokenStream) -> proc_macro::Toke
 pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     altrep_derive::derive_altrep_list(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `IntoList` and `TryIntoList` for a struct.
+#[proc_macro_derive(IntoList)]
+pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_into_list(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

@@ -1,6 +1,8 @@
 #![cfg(feature = "connections")]
 
-use miniextendr_api::connection::{check_connections_version, RCustomConnection, EXPECTED_CONNECTIONS_VERSION};
+use miniextendr_api::connection::{
+    EXPECTED_CONNECTIONS_VERSION, RCustomConnection, check_connections_version,
+};
 use miniextendr_api::ffi::R_CONNECTIONS_VERSION;
 
 #[test]

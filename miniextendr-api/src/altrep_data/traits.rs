@@ -1,5 +1,5 @@
+use super::{AltrepLen, Logical, Sortedness, fill_region};
 use crate::ffi::{Rcomplex, SEXP};
-use super::{fill_region, AltrepLen, Logical, Sortedness};
 
 // =============================================================================
 // Integer ALTREP

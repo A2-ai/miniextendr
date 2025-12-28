@@ -122,9 +122,10 @@ fn method_rejects_self_by_value() {
         }
     });
     let err = result.unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("receiver must be `&self` or `&mut self`"));
+    assert!(
+        err.to_string()
+            .contains("receiver must be `&self` or `&mut self`")
+    );
 }
 
 #[test]
@@ -146,9 +147,7 @@ fn method_rejects_generic_parameters() {
         }
     });
     let err = result.unwrap_err();
-    assert!(err
-        .to_string()
-        .contains("cannot have generic parameters"));
+    assert!(err.to_string().contains("cannot have generic parameters"));
 }
 
 #[test]
@@ -181,7 +180,8 @@ fn method_rejects_box_self() {
     let err = result.unwrap_err();
     // Should reject due to self by value (reference.is_none())
     assert!(
-        err.to_string().contains("receiver must be `&self` or `&mut self`")
+        err.to_string()
+            .contains("receiver must be `&self` or `&mut self`")
             || err.to_string().contains("explicit type annotation"),
         "unexpected error: {}",
         err

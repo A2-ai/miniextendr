@@ -1,8 +1,8 @@
-use crate::ffi::SEXP;
 use crate::altrep_traits::{
     KNOWN_UNSORTED, SORTED_DECR, SORTED_DECR_NA_1ST, SORTED_INCR, SORTED_INCR_NA_1ST,
     UNKNOWN_SORTEDNESS,
 };
+use crate::ffi::SEXP;
 
 /// Helper for ALTREP `get_region` implementations.
 ///

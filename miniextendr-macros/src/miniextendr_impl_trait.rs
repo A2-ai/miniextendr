@@ -651,7 +651,8 @@ fn generate_trait_env_r_wrapper(
         let method_str = method_name.to_string();
 
         // Collect parameters (excluding self), normalizing underscore prefixes
-        let params = crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
+        let params =
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // For instance methods, include 'x' as first parameter
         let function_params = if method.has_self {
@@ -808,7 +809,10 @@ fn generate_trait_s3_r_wrapper(
             .with_args(&params)
             .build();
 
-        lines.push(format!("{} <- function({}) {{", s3_method_name, full_params));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            s3_method_name, full_params
+        ));
         lines.push(format!("    {}", call));
         lines.push("}".to_string());
         lines.push(String::new());

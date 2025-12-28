@@ -34,16 +34,18 @@
 //! they auto-implement `AltrepLen` and the matching `Alt*Data` trait, and can
 //! optionally call the low-level `impl_alt*_from_data!` helpers.
 
-mod core;
-mod traits;
-mod iter;
 mod builtins;
+mod core;
+mod iter;
 pub mod macros;
+mod traits;
 
-pub use core::{AltrepDataptr, AltrepExtractSubset, AltrepLen, AltrepSerialize, InferBase, Logical, Sortedness};
 pub(crate) use core::fill_region;
-pub use traits::*;
+pub use core::{
+    AltrepDataptr, AltrepExtractSubset, AltrepLen, AltrepSerialize, InferBase, Logical, Sortedness,
+};
 pub use iter::*;
+pub use traits::*;
 
 #[cfg(test)]
 mod tests;

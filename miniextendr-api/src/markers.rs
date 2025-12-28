@@ -18,6 +18,7 @@
 //! | `#[derive(AltrepString)]` | [`IsAltrepStringData`] |
 //! | `#[derive(AltrepComplex)]` | [`IsAltrepComplexData`] |
 //! | `#[derive(AltrepList)]` | [`IsAltrepListData`] |
+//! | `#[derive(IntoList)]` | [`IsIntoList`] |
 
 /// Marker trait for types derived with `#[derive(RNativeType)]`.
 ///
@@ -77,6 +78,11 @@ pub trait IsAltrepComplexData: crate::altrep_data::AltComplexData {}
 /// via the derive macro.
 pub trait IsAltrepListData: crate::altrep_data::AltListData {}
 
+/// Marker trait for types derived with `#[derive(IntoList)]`.
+///
+/// Indicates that a struct derives list conversion helpers.
+pub trait IsIntoList: crate::list::IntoList {}
+
 // Blanket implementations: any type satisfying the underlying data trait
 // automatically gets the marker trait. This keeps derived and manual impls
 // consistent without requiring an explicit marker impl.
@@ -88,3 +94,4 @@ impl<T: crate::altrep_data::AltRawData> IsAltrepRawData for T {}
 impl<T: crate::altrep_data::AltStringData> IsAltrepStringData for T {}
 impl<T: crate::altrep_data::AltComplexData> IsAltrepComplexData for T {}
 impl<T: crate::altrep_data::AltListData> IsAltrepListData for T {}
+impl<T: crate::list::IntoList> IsIntoList for T {}

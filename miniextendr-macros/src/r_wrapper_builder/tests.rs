@@ -77,10 +77,7 @@ fn test_dot_call_with_self() {
     let call = DotCallBuilder::new("C_Counter__value")
         .with_self("self")
         .build();
-    assert_eq!(
-        call,
-        ".Call(C_Counter__value, .call = match.call(), self)"
-    );
+    assert_eq!(call, ".Call(C_Counter__value, .call = match.call(), self)");
 }
 
 #[test]
