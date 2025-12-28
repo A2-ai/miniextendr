@@ -4,8 +4,8 @@
 //! - Inherent impl: Always Env (standard pattern using ExternalPtr)
 //! - Trait impls: Env, S3, S4, S7, R6
 //!
-//! Each type is named: Counter_Trait{Style}
-//! For example: Counter_TraitS3 has Env inherent impl and S3 trait impl.
+//! Each type is named: CounterTrait{Style}
+//! For example: CounterTraitS3 has Env inherent impl and S3 trait impl.
 //!
 //! Note: The inherent impl class system (S3, S4, S7, R6) controls how the
 //! constructor and methods are exposed. The trait impl class system controls
@@ -32,16 +32,16 @@ pub trait MatrixCounter {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct Counter_TraitEnv { value: i32 }
+pub struct CounterTraitEnv { value: i32 }
 
 #[miniextendr]
-impl Counter_TraitEnv {
+impl CounterTraitEnv {
     fn new(v: i32) -> Self { Self { value: v } }
     fn get_value(&self) -> i32 { self.value }
 }
 
 #[miniextendr]
-impl MatrixCounter for Counter_TraitEnv {
+impl MatrixCounter for CounterTraitEnv {
     fn custom_get(&self) -> i32 { self.value }
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 1 }
@@ -52,16 +52,16 @@ impl MatrixCounter for Counter_TraitEnv {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct Counter_TraitS3 { value: i32 }
+pub struct CounterTraitS3 { value: i32 }
 
 #[miniextendr]
-impl Counter_TraitS3 {
+impl CounterTraitS3 {
     fn new(v: i32) -> Self { Self { value: v } }
     fn get_value(&self) -> i32 { self.value }
 }
 
 #[miniextendr(s3)]
-impl MatrixCounter for Counter_TraitS3 {
+impl MatrixCounter for CounterTraitS3 {
     fn custom_get(&self) -> i32 { self.value }
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 2 }
@@ -72,16 +72,16 @@ impl MatrixCounter for Counter_TraitS3 {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct Counter_TraitS4 { value: i32 }
+pub struct CounterTraitS4 { value: i32 }
 
 #[miniextendr]
-impl Counter_TraitS4 {
+impl CounterTraitS4 {
     fn new(v: i32) -> Self { Self { value: v } }
     fn get_value(&self) -> i32 { self.value }
 }
 
 #[miniextendr(s4)]
-impl MatrixCounter for Counter_TraitS4 {
+impl MatrixCounter for CounterTraitS4 {
     fn custom_get(&self) -> i32 { self.value }
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 3 }
@@ -92,16 +92,16 @@ impl MatrixCounter for Counter_TraitS4 {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct Counter_TraitS7 { value: i32 }
+pub struct CounterTraitS7 { value: i32 }
 
 #[miniextendr]
-impl Counter_TraitS7 {
+impl CounterTraitS7 {
     fn new(v: i32) -> Self { Self { value: v } }
     fn get_value(&self) -> i32 { self.value }
 }
 
 #[miniextendr(s7)]
-impl MatrixCounter for Counter_TraitS7 {
+impl MatrixCounter for CounterTraitS7 {
     fn custom_get(&self) -> i32 { self.value }
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 4 }
@@ -112,16 +112,16 @@ impl MatrixCounter for Counter_TraitS7 {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct Counter_TraitR6 { value: i32 }
+pub struct CounterTraitR6 { value: i32 }
 
 #[miniextendr]
-impl Counter_TraitR6 {
+impl CounterTraitR6 {
     fn new(v: i32) -> Self { Self { value: v } }
     fn get_value(&self) -> i32 { self.value }
 }
 
 #[miniextendr(r6)]
-impl MatrixCounter for Counter_TraitR6 {
+impl MatrixCounter for CounterTraitR6 {
     fn custom_get(&self) -> i32 { self.value }
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 5 }
@@ -135,16 +135,16 @@ miniextendr_module! {
     mod class_system_matrix;
 
     // Inherent impls (all Env style)
-    impl Counter_TraitEnv;
-    impl Counter_TraitS3;
-    impl Counter_TraitS4;
-    impl Counter_TraitS7;
-    impl Counter_TraitR6;
+    impl CounterTraitEnv;
+    impl CounterTraitS3;
+    impl CounterTraitS4;
+    impl CounterTraitS7;
+    impl CounterTraitR6;
 
     // Trait implementations (different styles)
-    impl MatrixCounter for Counter_TraitEnv;
-    impl MatrixCounter for Counter_TraitS3;
-    impl MatrixCounter for Counter_TraitS4;
-    impl MatrixCounter for Counter_TraitS7;
-    impl MatrixCounter for Counter_TraitR6;
+    impl MatrixCounter for CounterTraitEnv;
+    impl MatrixCounter for CounterTraitS3;
+    impl MatrixCounter for CounterTraitS4;
+    impl MatrixCounter for CounterTraitS7;
+    impl MatrixCounter for CounterTraitR6;
 }

@@ -450,27 +450,26 @@ fn collect_items(
         let trait_style = trait_class_system.as_deref().unwrap_or("env");
 
         // Env trait impl requires Env inherent impl
-        if trait_style == "env" {
-            if let Some((inherent_style, _inherent_line)) =
+        if trait_style == "env"
+            && let Some((inherent_style, _inherent_line)) =
                 inherent_impl_class_systems.get(&type_name)
-            {
-                if !inherent_style.is_empty() && inherent_style != "env" {
-                    errors.push(format!(
-                        "{}:{}: #[miniextendr] impl {} for {} uses Env-style (default) which requires \
-                        Env-style inherent impl, but {} uses #[miniextendr({})]. \
-                        Env-style trait impls generate Type$Trait$method() patterns that need \
-                        the type to be an environment. Either change the trait impl to use \
-                        #[miniextendr({})] or change the inherent impl to #[miniextendr].",
-                        path.display(),
-                        line,
-                        trait_name,
-                        type_name,
-                        type_name,
-                        inherent_style,
-                        inherent_style
-                    ));
-                }
-            }
+            && !inherent_style.is_empty()
+            && inherent_style != "env"
+        {
+            errors.push(format!(
+                "{}:{}: #[miniextendr] impl {} for {} uses Env-style (default) which requires \
+                Env-style inherent impl, but {} uses #[miniextendr({})]. \
+                Env-style trait impls generate Type$Trait$method() patterns that need \
+                the type to be an environment. Either change the trait impl to use \
+                #[miniextendr({})] or change the inherent impl to #[miniextendr].",
+                path.display(),
+                line,
+                trait_name,
+                type_name,
+                type_name,
+                inherent_style,
+                inherent_style
+            ));
         }
 
         // S3/S4/S7/R6 trait impls are compatible with Env inherent impls
