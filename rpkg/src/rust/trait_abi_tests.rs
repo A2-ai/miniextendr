@@ -217,6 +217,162 @@ impl S3TraitCounter {
 }
 
 // =============================================================================
+// S4 trait impl test - uses S4 dispatch for trait methods
+// =============================================================================
+
+/// A counter that uses S4 dispatch for its trait methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S4TraitCounter {
+    value: i32,
+}
+
+impl S4TraitCounter {
+    fn new(initial: i32) -> Self {
+        Self { value: initial }
+    }
+}
+
+/// S4 trait implementation - generates S4 generics + setMethod.
+#[miniextendr(s4)]
+impl Counter for S4TraitCounter {
+    const MAX_VALUE: i32 = 400;
+
+    fn value(&self) -> i32 {
+        self.value
+    }
+
+    fn increment(&mut self) {
+        self.value += 1;
+    }
+
+    fn checked_add(&mut self, n: i32) {
+        self.value += n;
+    }
+
+    fn default_initial() -> i32 {
+        40 // S4TraitCounter defaults to 40
+    }
+}
+
+/// Inherent impl uses plain #[miniextendr] (Env style).
+#[miniextendr]
+impl S4TraitCounter {
+    /// Create a new S4 trait counter.
+    fn new_s4trait(initial: i32) -> Self {
+        Self::new(initial)
+    }
+
+    /// Get value via inherent method.
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+}
+
+// =============================================================================
+// S7 trait impl test - uses S7 dispatch for trait methods
+// =============================================================================
+
+/// A counter that uses S7 dispatch for its trait methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7TraitCounter {
+    value: i32,
+}
+
+impl S7TraitCounter {
+    fn new(initial: i32) -> Self {
+        Self { value: initial }
+    }
+}
+
+/// S7 trait implementation - generates S7 generics + method<-.
+#[miniextendr(s7)]
+impl Counter for S7TraitCounter {
+    const MAX_VALUE: i32 = 300;
+
+    fn value(&self) -> i32 {
+        self.value
+    }
+
+    fn increment(&mut self) {
+        self.value += 1;
+    }
+
+    fn checked_add(&mut self, n: i32) {
+        self.value += n;
+    }
+
+    fn default_initial() -> i32 {
+        30 // S7TraitCounter defaults to 30
+    }
+}
+
+/// Inherent impl uses plain #[miniextendr] (Env style).
+#[miniextendr]
+impl S7TraitCounter {
+    /// Create a new S7 trait counter.
+    fn new_s7trait(initial: i32) -> Self {
+        Self::new(initial)
+    }
+
+    /// Get value via inherent method.
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+}
+
+// =============================================================================
+// R6 trait impl test - uses R6 dispatch for trait methods
+// =============================================================================
+
+/// A counter that uses R6 dispatch (standalone functions) for its trait methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6TraitCounter {
+    value: i32,
+}
+
+impl R6TraitCounter {
+    fn new(initial: i32) -> Self {
+        Self { value: initial }
+    }
+}
+
+/// R6 trait implementation - generates standalone functions for trait methods.
+#[miniextendr(r6)]
+impl Counter for R6TraitCounter {
+    const MAX_VALUE: i32 = 200;
+
+    fn value(&self) -> i32 {
+        self.value
+    }
+
+    fn increment(&mut self) {
+        self.value += 1;
+    }
+
+    fn checked_add(&mut self, n: i32) {
+        self.value += n;
+    }
+
+    fn default_initial() -> i32 {
+        20 // R6TraitCounter defaults to 20
+    }
+}
+
+/// Inherent impl uses plain #[miniextendr] (Env style).
+#[miniextendr]
+impl R6TraitCounter {
+    /// Create a new R6 trait counter.
+    fn new_r6trait(initial: i32) -> Self {
+        Self::new(initial)
+    }
+
+    /// Get value via inherent method.
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -226,10 +382,16 @@ miniextendr_module! {
     impl SimpleCounter;
     impl PanickyCounter;
     impl S3TraitCounter;
+    impl S4TraitCounter;
+    impl S7TraitCounter;
+    impl R6TraitCounter;
 
     // Register trait implementations for cross-package dispatch
-    // The class system is determined by the #[miniextendr(s3)] on the impl block
+    // The class system is determined by the #[miniextendr(...)] on the impl block
     impl Counter for SimpleCounter;
     impl Counter for PanickyCounter;
     impl Counter for S3TraitCounter;
+    impl Counter for S4TraitCounter;
+    impl Counter for S7TraitCounter;
+    impl Counter for R6TraitCounter;
 }

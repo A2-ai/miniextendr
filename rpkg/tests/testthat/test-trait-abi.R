@@ -154,3 +154,102 @@ test_that("S3 trait static methods and associated constants work", {
   # S3TraitCounter::MAX_VALUE is 500
   expect_equal(S3TraitCounter$Counter$MAX_VALUE(), 500L)
 })
+
+# =============================================================================
+# S4 trait impl tests
+# =============================================================================
+
+test_that("S4TraitCounter trait methods work via S4 dispatch", {
+  # Create an S4TraitCounter using inherent method (Env style)
+  counter <- S4TraitCounter$new_s4trait(10L)
+  expect_true(inherits(counter, "S4TraitCounter"))
+
+  # Test S4 trait method: s4_trait_Counter_value
+  expect_equal(s4_trait_Counter_value(counter), 10L)
+
+  # Test S4 trait method: s4_trait_Counter_increment
+  s4_trait_Counter_increment(counter)
+  expect_equal(s4_trait_Counter_value(counter), 11L)
+
+  # Test S4 trait method: s4_trait_Counter_checked_add
+  s4_trait_Counter_checked_add(counter, 5L)
+  expect_equal(s4_trait_Counter_value(counter), 16L)
+
+  # Verify inherent method and S4 trait method return same value
+  expect_equal(counter$get_value(), s4_trait_Counter_value(counter))
+})
+
+test_that("S4 trait static methods and associated constants work", {
+  # S4 static trait methods are standalone functions: Type_Trait_method()
+  # S4TraitCounter::default_initial() returns 40
+  expect_equal(S4TraitCounter_Counter_default_initial(), 40L)
+
+  # S4TraitCounter::MAX_VALUE is 400
+  expect_equal(S4TraitCounter_Counter_MAX_VALUE(), 400L)
+})
+
+# =============================================================================
+# S7 trait impl tests
+# =============================================================================
+
+test_that("S7TraitCounter trait methods work via S7 dispatch", {
+  # Create an S7TraitCounter using inherent method (Env style)
+  counter <- S7TraitCounter$new_s7trait(10L)
+  expect_true(inherits(counter, "S7TraitCounter"))
+
+  # Test S7 trait method: s7_trait_Counter_value
+  expect_equal(s7_trait_Counter_value(counter), 10L)
+
+  # Test S7 trait method: s7_trait_Counter_increment
+  s7_trait_Counter_increment(counter)
+  expect_equal(s7_trait_Counter_value(counter), 11L)
+
+  # Test S7 trait method: s7_trait_Counter_checked_add
+  s7_trait_Counter_checked_add(counter, 5L)
+  expect_equal(s7_trait_Counter_value(counter), 16L)
+
+  # Verify inherent method and S7 trait method return same value
+  expect_equal(counter$get_value(), s7_trait_Counter_value(counter))
+})
+
+test_that("S7 trait static methods and associated constants work", {
+  # S7 static trait methods use Type$Trait$method() (Env style)
+  # S7TraitCounter::default_initial() returns 30
+  expect_equal(S7TraitCounter$Counter$default_initial(), 30L)
+
+  # S7TraitCounter::MAX_VALUE is 300
+  expect_equal(S7TraitCounter$Counter$MAX_VALUE(), 300L)
+})
+
+# =============================================================================
+# R6 trait impl tests
+# =============================================================================
+
+test_that("R6TraitCounter trait methods work via standalone functions", {
+  # Create an R6TraitCounter using inherent method (Env style)
+  counter <- R6TraitCounter$new_r6trait(10L)
+  expect_true(inherits(counter, "R6TraitCounter"))
+
+  # Test R6 trait method: r6_trait_Counter_value
+  expect_equal(r6_trait_Counter_value(counter), 10L)
+
+  # Test R6 trait method: r6_trait_Counter_increment
+  r6_trait_Counter_increment(counter)
+  expect_equal(r6_trait_Counter_value(counter), 11L)
+
+  # Test R6 trait method: r6_trait_Counter_checked_add
+  r6_trait_Counter_checked_add(counter, 5L)
+  expect_equal(r6_trait_Counter_value(counter), 16L)
+
+  # Verify inherent method and R6 trait method return same value
+  expect_equal(counter$get_value(), r6_trait_Counter_value(counter))
+})
+
+test_that("R6 trait static methods and associated constants work", {
+  # R6 static trait methods use Type$Trait$method() (Env style)
+  # R6TraitCounter::default_initial() returns 20
+  expect_equal(R6TraitCounter$Counter$default_initial(), 20L)
+
+  # R6TraitCounter::MAX_VALUE is 200
+  expect_equal(R6TraitCounter$Counter$MAX_VALUE(), 200L)
+})
