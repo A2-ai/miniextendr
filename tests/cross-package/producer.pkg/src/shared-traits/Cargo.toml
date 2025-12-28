@@ -1,0 +1,15 @@
+[package]
+name = "shared-traits"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
+[lib]
+path = "src/lib.rs"
+
+[dependencies]
+# Use local vendor symlink (points to producer.pkg/src/vendor)
+miniextendr-api = { path = "vendor/miniextendr-api" }

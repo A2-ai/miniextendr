@@ -1,22 +1,21 @@
 // Producer package: Creates Counter objects and exposes them to R
 //
 // This demonstrates cross-package trait dispatch:
-// - Defines the Counter trait with #[miniextendr]
+// - Uses shared Counter trait from shared-traits crate
 // - Implements Counter for SimpleCounter
 // - Objects can be passed to consumer package
 
 use miniextendr_api::{miniextendr, miniextendr_module, ffi::SEXP, trait_abi::ccall, ExternalPtr};
 
-// ============================================================================
-// Shared trait definition
-// ============================================================================
-
-#[miniextendr]
-pub trait Counter {
-    fn value(&self) -> i32;
-    fn increment(&mut self);
-    fn add(&mut self, n: i32);
-}
+// Import the shared Counter trait and its generated ABI types
+// The #[miniextendr] macro on the trait generates these items in shared-traits
+pub use shared_traits::{
+    Counter,
+    CounterView,
+    CounterVTable,
+    TAG_COUNTER,
+    __counter_build_vtable,
+};
 
 // ============================================================================
 // SharedData: A simple type for cross-package ExternalPtr testing

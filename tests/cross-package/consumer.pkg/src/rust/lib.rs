@@ -1,23 +1,22 @@
 // Consumer package: Works with Counter objects from other packages
 //
 // This demonstrates cross-package trait dispatch:
-// - Has the same Counter trait definition (ABI-compatible with producer)
+// - Uses shared Counter trait from shared-traits crate (ABI-compatible with producer)
 // - Provides generic functions that work with any Counter implementation
 // - Can operate on objects created by producer package
 // - Defines its OWN Counter implementation (DoubleCounter) that producer can use
 
 use miniextendr_api::{miniextendr, miniextendr_module, ffi::SEXP, trait_abi::ccall, ExternalPtr};
 
-// ============================================================================
-// Shared trait definition (must match producer exactly)
-// ============================================================================
-
-#[miniextendr]
-pub trait Counter {
-    fn value(&self) -> i32;
-    fn increment(&mut self);
-    fn add(&mut self, n: i32);
-}
+// Import the shared Counter trait and its generated ABI types
+// The #[miniextendr] macro on the trait generates these items in shared-traits
+pub use shared_traits::{
+    Counter,
+    CounterView,
+    CounterVTable,
+    TAG_COUNTER,
+    __counter_build_vtable,
+};
 
 // ============================================================================
 // Cross-package ExternalPtr pass-through test
