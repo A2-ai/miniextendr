@@ -363,30 +363,37 @@ impl MiniextendrFunctionParsed {
     // Accessors for signature components
     // -------------------------------------------------------------------------
 
+    /// Original attributes on the function item (doc comments, cfgs, etc.).
     pub(crate) fn attrs(&self) -> &[syn::Attribute] {
         &self.item.attrs
     }
 
+    /// Visibility of the function (`pub`, `pub(crate)`, or private).
     pub(crate) fn vis(&self) -> &syn::Visibility {
         &self.item.vis
     }
 
+    /// Explicit ABI, if the function was declared `extern "C-unwind"`.
     pub(crate) fn abi(&self) -> Option<&syn::Abi> {
         self.item.sig.abi.as_ref()
     }
 
+    /// Function identifier after normalization.
     pub(crate) fn ident(&self) -> &syn::Ident {
         &self.item.sig.ident
     }
 
+    /// Generic parameters on the function signature.
     pub(crate) fn generics(&self) -> &syn::Generics {
         &self.item.sig.generics
     }
 
+    /// Function inputs after normalization (dots rewritten, wildcards renamed).
     pub(crate) fn inputs(&self) -> &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> {
         &self.item.sig.inputs
     }
 
+    /// Function return type.
     pub(crate) fn output(&self) -> &syn::ReturnType {
         &self.item.sig.output
     }
