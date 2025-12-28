@@ -6,6 +6,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 // region: MsgOnDrop for testing drop behavior
 
 #[derive(Debug)]
+/// RAII helper that logs a message when dropped, used to verify destructor paths.
 pub(crate) struct MsgOnDrop;
 
 impl Drop for MsgOnDrop {

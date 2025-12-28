@@ -8,10 +8,13 @@ mod miniextendr_impl;
 mod miniextendr_module;
 use crate::miniextendr_module::MiniextendrModule;
 mod r_wrapper_builder;
+/// Builder utilities for formatting R wrapper arguments and calls.
 pub(crate) use r_wrapper_builder::RArgumentBuilder;
 mod rust_conversion_builder;
+/// Helper for generating Rust→R conversion code for return values.
 pub(crate) use rust_conversion_builder::RustConversionBuilder;
 mod method_return_builder;
+/// Helpers for shaping method return handling (R vs Rust wrapper code).
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
 mod return_type_analysis;

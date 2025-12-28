@@ -51,9 +51,13 @@ use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 /// To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
 /// on the function definition itself, not in this module declaration.
 pub(crate) struct MiniextendrModuleFunction {
+    /// Attributes attached to the module entry (e.g., cfg/doc mirrors from the function).
     pub attrs: Vec<syn::Attribute>,
+    /// Optional extern ABI when the declaration uses `extern "C-unwind"`.
     pub _abi: Option<syn::Abi>,
+    /// Token for the `fn` keyword kept for accurate span reporting.
     _fn_token: syn::Token![fn],
+    /// Identifier of the `#[miniextendr]` function being registered.
     pub ident: syn::Ident,
 }
 
@@ -98,6 +102,7 @@ impl MiniextendrModuleFunction {
 pub(crate) struct MiniextendrModuleStruct {
     _struct_token: syn::Token![struct],
     #[allow(dead_code)]
+    /// Name of the ALTREP struct to register.
     pub ident: syn::Ident,
 }
 
@@ -115,6 +120,7 @@ impl syn::parse::Parse for MiniextendrModuleStruct {
 /// This determines the generated init symbol: `R_init_<name>_miniextendr`.
 pub(crate) struct MiniextendrModuleName {
     _mod_token: syn::Token![mod],
+    /// Base name that drives `R_init_<name>_miniextendr` symbol generation.
     pub ident: syn::Ident,
 }
 
@@ -135,8 +141,10 @@ impl syn::parse::Parse for MiniextendrModuleName {
 /// impl Counter;
 /// ```
 pub(crate) struct MiniextendrModuleImpl {
+    /// Attributes on the impl entry (passed through for cfg/doc parity).
     pub attrs: Vec<syn::Attribute>,
     _impl_token: syn::Token![impl],
+    /// Type that has a `#[miniextendr(...)]` impl block.
     pub ident: syn::Ident,
 }
 
@@ -165,10 +173,15 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
 /// - The type must have `#[miniextendr] impl Trait for Type` (generates vtable static)
 /// - The type should have `#[derive(ExternalPtr)]`
 pub(crate) struct MiniextendrModuleTraitImpl {
+    /// Attributes on the trait impl entry (for cfg propagation).
     pub attrs: Vec<syn::Attribute>,
+    /// Token span for `impl` retained for diagnostics.
     pub _impl_token: syn::Token![impl],
+    /// Trait being exposed for cross-package dispatch.
     pub trait_path: syn::Path,
+    /// Token span for `for` retained for diagnostics.
     pub _for_token: syn::Token![for],
+    /// Concrete type providing the trait implementation.
     pub type_ident: syn::Ident,
 }
 
@@ -233,6 +246,7 @@ impl MiniextendrModuleImpl {
 /// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
 pub(crate) struct MiniextendrModuleUse {
     _use_token: syn::Token![use],
+    /// Target module to re-export wrappers from.
     pub use_name: syn::UseName,
 }
 

@@ -49,8 +49,10 @@
 /// To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
 /// on the function definition itself, not in this module declaration.
 pub(crate) struct MiniextendrModuleFunction {
+    /// Optional extern ABI when the declaration uses `extern \"C-unwind\"`.
     pub _abi: Option<syn::Abi>,
     _fn_token: syn::Token![fn],
+    /// Identifier of the `#[miniextendr]` function being registered.
     pub ident: syn::Ident,
 }
 
@@ -81,6 +83,7 @@ impl syn::parse::Parse for MiniextendrModuleFunction {
 pub(crate) struct MiniextendrModuleStruct {
     _struct_token: syn::Token![struct],
     #[allow(dead_code)]
+    /// Name of the ALTREP struct to register.
     pub ident: syn::Ident,
 }
 
@@ -98,6 +101,7 @@ impl syn::parse::Parse for MiniextendrModuleStruct {
 /// This determines the generated init symbol: `R_init_<name>_miniextendr`.
 pub(crate) struct MiniextendrModuleName {
     _mod_token: syn::Token![mod],
+    /// Base name that drives `R_init_<name>_miniextendr` symbol generation.
     pub ident: syn::Ident,
 }
 
@@ -119,6 +123,7 @@ impl syn::parse::Parse for MiniextendrModuleName {
 /// ```
 pub(crate) struct MiniextendrModuleImpl {
     _impl_token: syn::Token![impl],
+    /// Type that has a `#[miniextendr(...)]` impl block.
     pub ident: syn::Ident,
 }
 
@@ -145,9 +150,13 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
 /// - The type must have `#[miniextendr] impl Trait for Type` (generates vtable static)
 /// - The type should have `#[derive(ExternalPtr)]`
 pub(crate) struct MiniextendrModuleTraitImpl {
+    /// Token span for `impl` retained for diagnostics.
     pub _impl_token: syn::Token![impl],
+    /// Trait being exposed for cross-package dispatch.
     pub trait_path: syn::Path,
+    /// Token span for `for` retained for diagnostics.
     pub _for_token: syn::Token![for],
+    /// Concrete type providing the trait implementation.
     pub type_ident: syn::Ident,
 }
 
@@ -182,6 +191,7 @@ impl MiniextendrModuleImpl {
 /// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
 pub(crate) struct MiniextendrModuleUse {
     _use_token: syn::Token![use],
+    /// Target module to re-export wrappers from.
     pub use_name: syn::UseName,
 }
 
