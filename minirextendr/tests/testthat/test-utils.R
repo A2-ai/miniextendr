@@ -53,8 +53,22 @@ test_that("set_template_type and get_template_type work", {
   expect_error(set_template_type("invalid"), "should be one of")
 })
 
-test_that("detect_project_type identifies monorepo from workspace Cargo.toml", {
+test_that("detect_project_type identifies monorepo from any Cargo.toml", {
   tmp <- tempfile("monorepo-detect-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  dir.create(tmp)
+
+  # Create a simple Cargo.toml (not a workspace, just a regular crate)
+  cargo_content <- "[package]\nname = \"my-crate\"\nversion = \"0.1.0\"\n"
+  writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
+
+  usethis::proj_set(tmp, force = TRUE)
+  expect_equal(detect_project_type(tmp), "monorepo")
+})
+
+test_that("detect_project_type identifies monorepo from workspace Cargo.toml", {
+  tmp <- tempfile("monorepo-workspace-detect-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   dir.create(tmp)
@@ -73,7 +87,7 @@ test_that("detect_project_type identifies standalone rpkg", {
 
   dir.create(tmp)
 
-  # Create DESCRIPTION (R package)
+  # Create DESCRIPTION (R package) - no Cargo.toml
   desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n"
   writeLines(desc_content, file.path(tmp, "DESCRIPTION"))
 
@@ -81,11 +95,31 @@ test_that("detect_project_type identifies standalone rpkg", {
   expect_equal(detect_project_type(tmp), "rpkg")
 })
 
-test_that("detect_project_type identifies rpkg inside monorepo", {
-  tmp <- tempfile("monorepo-rpkg-detect-")
+test_that("detect_project_type identifies rpkg inside monorepo (simple crate)", {
+  tmp <- tempfile("monorepo-rpkg-simple-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  # Create monorepo structure
+  # Create monorepo structure with simple crate (not workspace)
+  dir.create(file.path(tmp, "rpkg"), recursive = TRUE)
+
+  # Create simple Cargo.toml at root (just a crate, not workspace)
+  cargo_content <- "[package]\nname = \"my-crate\"\nversion = \"0.1.0\"\n"
+  writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
+
+  # Create DESCRIPTION in rpkg/
+  desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n"
+  writeLines(desc_content, file.path(tmp, "rpkg", "DESCRIPTION"))
+
+  # When in rpkg/ subdirectory, should detect as monorepo
+  usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
+  expect_equal(detect_project_type(file.path(tmp, "rpkg")), "monorepo")
+})
+
+test_that("detect_project_type identifies rpkg inside monorepo (workspace)", {
+  tmp <- tempfile("monorepo-rpkg-workspace-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  # Create monorepo structure with workspace
   dir.create(file.path(tmp, "rpkg"), recursive = TRUE)
 
   # Create workspace Cargo.toml at root
@@ -96,12 +130,38 @@ test_that("detect_project_type identifies rpkg inside monorepo", {
   desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n"
   writeLines(desc_content, file.path(tmp, "rpkg", "DESCRIPTION"))
 
-  # When in rpkg/ subdirectory, should still detect as monorepo
+  # When in rpkg/ subdirectory, should detect as monorepo
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
   expect_equal(detect_project_type(file.path(tmp, "rpkg")), "monorepo")
 })
 
-test_that("is_in_rust_workspace returns TRUE for monorepo", {
+test_that("is_in_rust_project returns TRUE for any Cargo.toml", {
+  tmp <- tempfile("rust-project-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  dir.create(tmp)
+
+  # Create simple Cargo.toml (not a workspace)
+  cargo_content <- "[package]\nname = \"my-crate\"\nversion = \"0.1.0\"\n"
+  writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
+
+  expect_true(is_in_rust_project(tmp))
+})
+
+test_that("is_in_rust_project returns FALSE for standalone rpkg", {
+  tmp <- tempfile("no-rust-project-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  dir.create(tmp)
+
+  # Just a DESCRIPTION, no Cargo.toml
+  desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n"
+  writeLines(desc_content, file.path(tmp, "DESCRIPTION"))
+
+  expect_false(is_in_rust_project(tmp))
+})
+
+test_that("is_in_rust_workspace returns TRUE only for workspace Cargo.toml", {
   tmp <- tempfile("workspace-check-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
@@ -114,15 +174,16 @@ test_that("is_in_rust_workspace returns TRUE for monorepo", {
   expect_true(is_in_rust_workspace(tmp))
 })
 
-test_that("is_in_rust_workspace returns FALSE for standalone rpkg", {
-  tmp <- tempfile("no-workspace-")
+test_that("is_in_rust_workspace returns FALSE for simple crate", {
+  tmp <- tempfile("simple-crate-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   dir.create(tmp)
 
-  # Just a DESCRIPTION, no Cargo.toml
-  desc_content <- "Package: testpkg\nTitle: Test\nVersion: 0.1.0\n"
-  writeLines(desc_content, file.path(tmp, "DESCRIPTION"))
+  # Create simple Cargo.toml (not a workspace)
+  cargo_content <- "[package]\nname = \"my-crate\"\nversion = \"0.1.0\"\n"
+  writeLines(cargo_content, file.path(tmp, "Cargo.toml"))
 
+  # Has Cargo.toml but not a workspace
   expect_false(is_in_rust_workspace(tmp))
 })
