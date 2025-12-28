@@ -9,7 +9,7 @@
 \alias{[[.S3TraitCounter}
 \alias{value.S3TraitCounter}
 \alias{increment.S3TraitCounter}
-\alias{add.S3TraitCounter}
+\alias{checked_add.S3TraitCounter}
 \alias{S3TraitCounter$Counter$default_initial}
 \alias{S3TraitCounter$Counter$MAX_VALUE}
 \title{S3TraitCounter Class}
@@ -30,7 +30,7 @@ S3TraitCounter
 
 \method{increment}{S3TraitCounter}(x, ...)
 
-\method{add}{S3TraitCounter}(x, n, ...)
+\method{checked_add}{S3TraitCounter}(x, n, ...)
 }
 \description{
 Get value via inherent method.

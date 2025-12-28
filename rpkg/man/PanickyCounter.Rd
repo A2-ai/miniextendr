@@ -10,7 +10,7 @@
 \alias{[[.PanickyCounter}
 \alias{PanickyCounter$Counter$value}
 \alias{PanickyCounter$Counter$increment}
-\alias{PanickyCounter$Counter$add}
+\alias{PanickyCounter$Counter$checked_add}
 \alias{PanickyCounter$Counter$default_initial}
 \alias{PanickyCounter$Counter$MAX_VALUE}
 \title{PanickyCounter Class}

@@ -28,8 +28,8 @@ pub trait Counter {
     /// Increment the counter by 1.
     fn increment(&mut self);
 
-    /// Add n to the counter.
-    fn add(&mut self, n: i32);
+    /// Add n to the counter (checked - may panic on overflow).
+    fn checked_add(&mut self, n: i32);
 
     /// Static method: Returns the default initial value for this counter type.
     fn default_initial() -> i32;
@@ -67,7 +67,7 @@ impl Counter for SimpleCounter {
         self.value += 1;
     }
 
-    fn add(&mut self, n: i32) {
+    fn checked_add(&mut self, n: i32) {
         self.value += n;
     }
 
@@ -95,7 +95,7 @@ impl SimpleCounter {
     /// Add to the counter using the trait method.
     fn trait_add(&mut self, n: i32) {
         // Call the trait method
-        Counter::add(self, n);
+        Counter::checked_add(self, n);
     }
 }
 
@@ -127,7 +127,7 @@ impl Counter for PanickyCounter {
         self.value += 1;
     }
 
-    fn add(&mut self, n: i32) {
+    fn checked_add(&mut self, n: i32) {
         if self.value + n < 0 {
             panic!(
                 "PanickyCounter: cannot go below zero! (value={}, n={})",
@@ -156,7 +156,7 @@ impl PanickyCounter {
 
     /// Add (may panic).
     fn try_add(&mut self, n: i32) {
-        Counter::add(self, n);
+        Counter::checked_add(self, n);
     }
 }
 
@@ -194,7 +194,7 @@ impl Counter for S3TraitCounter {
         self.value += 1;
     }
 
-    fn add(&mut self, n: i32) {
+    fn checked_add(&mut self, n: i32) {
         self.value += n;
     }
 

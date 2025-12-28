@@ -10,7 +10,7 @@
 \alias{[[.SimpleCounter}
 \alias{SimpleCounter$Counter$value}
 \alias{SimpleCounter$Counter$increment}
-\alias{SimpleCounter$Counter$add}
+\alias{SimpleCounter$Counter$checked_add}
 \alias{SimpleCounter$Counter$default_initial}
 \alias{SimpleCounter$Counter$MAX_VALUE}
 \title{SimpleCounter Class}

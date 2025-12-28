@@ -530,6 +530,7 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
          -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
          -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
          -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
+         -e "/miniextendr-api = { workspace = true }/d" \
          "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
 
     $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
