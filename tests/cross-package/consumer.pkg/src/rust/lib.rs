@@ -20,6 +20,35 @@ pub trait Counter {
 }
 
 // ============================================================================
+// Cross-package ExternalPtr pass-through test
+// ============================================================================
+
+/// Pass an ExternalPtr through consumer without knowing its type.
+///
+/// This tests that ExternalPtr can cross package boundaries as opaque SEXP.
+/// Consumer has NO knowledge of what type the ExternalPtr holds.
+///
+/// @param ptr An ExternalPtr from any package
+/// @return The same ExternalPtr (pass-through)
+/// @export
+#[miniextendr]
+fn passthrough_ptr(ptr: SEXP) -> SEXP {
+    // Consumer doesn't know or care what type this is - just passes it through
+    ptr
+}
+
+/// Check if a SEXP is an ExternalPtr (type-agnostic check)
+///
+/// @param sexp Any R object
+/// @return TRUE if it's an ExternalPtr
+/// @export
+#[miniextendr]
+fn is_external_ptr(sexp: SEXP) -> bool {
+    use miniextendr_api::ffi::{TYPEOF, SEXPTYPE};
+    unsafe { TYPEOF(sexp) == SEXPTYPE::EXTPTRSXP }
+}
+
+// ============================================================================
 // Consumer's own Counter implementation: DoubleCounter
 // Increments by 2 instead of 1, to prove it's a different implementation
 // ============================================================================
@@ -154,6 +183,8 @@ fn debug_consumer_tag_counter() -> String {
 
 miniextendr_module! {
     mod consumer_pkg;
+    fn passthrough_ptr;
+    fn is_external_ptr;
     impl DoubleCounter;
     impl Counter for DoubleCounter;
     fn new_double_counter;

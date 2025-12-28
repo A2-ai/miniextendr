@@ -19,6 +19,44 @@ pub trait Counter {
 }
 
 // ============================================================================
+// SharedData: A simple type for cross-package ExternalPtr testing
+// ============================================================================
+
+/// A simple data container for testing cross-package ExternalPtr dispatch.
+/// Consumer.pkg will define the SAME struct, and if the TAG matches,
+/// an ExternalPtr created here can be read by consumer.pkg.
+#[derive(ExternalPtr)]
+pub struct SharedData {
+    pub x: f64,
+    pub y: f64,
+    pub label: String,
+}
+
+#[miniextendr]
+impl SharedData {
+    /// Create a new SharedData
+    fn create(x: f64, y: f64, label: String) -> Self {
+        Self { x, y, label }
+    }
+
+    /// Get the x coordinate
+    fn get_x(&self) -> f64 {
+        self.x
+    }
+
+    /// Get the y coordinate
+    fn get_y(&self) -> f64 {
+        self.y
+    }
+
+    /// Get the label
+    fn get_label(&self) -> String {
+        self.label.clone()
+    }
+}
+
+
+// ============================================================================
 // SimpleCounter implementation
 // ============================================================================
 
@@ -91,8 +129,18 @@ fn debug_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
 }
 
+/// Debug: Get the ExternalPtr type name for SharedData
+/// @export
+#[miniextendr]
+fn debug_shared_data_type_name() -> String {
+    use miniextendr_api::externalptr::TypedExternal;
+    SharedData::TYPE_NAME.to_string()
+}
+
 miniextendr_module! {
     mod producer_pkg;
+    impl SharedData;
+    fn debug_shared_data_type_name;
     impl SimpleCounter;
     impl Counter for SimpleCounter;
     fn new_counter;

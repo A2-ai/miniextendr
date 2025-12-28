@@ -115,6 +115,7 @@ pub use externalptr::{
     ErasedExternalPtr,
     ExternalPtr,
     ExternalSlice,
+    IntoExternalPtr,
     TypedExternal,
     // ALTREP helpers (checked)
     altrep_data1_as,
@@ -156,6 +157,20 @@ pub mod trait_abi;
 // Re-export key ABI types at crate root for convenience
 pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};
 pub use trait_abi::TraitView;
+
+// =============================================================================
+// Marker Traits
+// =============================================================================
+//
+// Marker traits for types derived with proc-macros.
+// These enable compile-time identification and blanket implementations.
+
+/// Marker traits for proc-macro derived types.
+pub mod markers;
+pub use markers::{
+    IsAltrepComplexData, IsAltrepIntegerData, IsAltrepListData, IsAltrepLogicalData,
+    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType,
+};
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`

@@ -121,3 +121,45 @@ test_that("SimpleCounter and DoubleCounter behave differently", {
   result_double <- increment_twice(double)
   expect_equal(result_double, 4L)  # 0 + 2 + 2 = 4
 })
+
+# =============================================================================
+# Cross-Package ExternalPtr Pass-Through Tests
+# =============================================================================
+# These tests verify that ExternalPtr objects can be passed through consumer.pkg
+# without consumer knowing the type - true opaque cross-package ExternalPtr usage.
+
+test_that("ExternalPtr can pass through consumer opaquely", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # Create SharedData in producer.pkg
+  data <- SharedData$create(3.0, 4.0, "test point")
+
+  # Consumer checks it's an ExternalPtr (type-agnostic)
+  expect_true(is_external_ptr(data))
+
+  # Consumer passes it through without knowing the type
+  returned <- passthrough_ptr(data)
+
+  # Producer can still use it after round-trip through consumer
+  expect_equal(data$get_x(), 3.0)
+  expect_equal(returned$get_x(), 3.0)
+  expect_equal(data$get_label(), "test point")
+})
+
+test_that("is_external_ptr works correctly", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # ExternalPtr types
+  data <- SharedData$create(1.0, 2.0, "test")
+  counter <- new_counter(5L)
+
+  expect_true(is_external_ptr(data))
+  expect_true(is_external_ptr(counter))
+
+  # Non-ExternalPtr types
+  expect_false(is_external_ptr(42L))
+  expect_false(is_external_ptr("hello"))
+  expect_false(is_external_ptr(list(a = 1)))
+})

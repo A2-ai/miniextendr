@@ -105,13 +105,28 @@ fn generate_typed_external(input: &DeriveInput) -> TokenStream {
     }
 }
 
+/// Generate the `IntoExternalPtr` marker trait impl.
+///
+/// This marker trait enables the blanket `impl<T: IntoExternalPtr> IntoR for T`
+/// in miniextendr-api, allowing the type to be returned directly from functions.
+fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    quote::quote! {
+        impl #impl_generics ::miniextendr_api::externalptr::IntoExternalPtr for #name #ty_generics #where_clause {}
+    }
+}
+
 /// Main entry point for `#[derive(ExternalPtr)]`.
 pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
     ensure_no_externalptr_attrs(&input)?;
 
     let typed_external = generate_typed_external(&input);
+    let into_external_ptr = generate_into_external_ptr(&input);
 
     Ok(quote::quote! {
         #typed_external
+        #into_external_ptr
     })
 }

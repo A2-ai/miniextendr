@@ -224,6 +224,22 @@ impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::Externa
     }
 }
 
+/// Blanket impl: Types marked with `IntoExternalPtr` get automatic `IntoR`.
+///
+/// This wraps the value in `ExternalPtr<T>` automatically, so you can return
+/// `MyType` directly from `#[miniextendr]` functions instead of `ExternalPtr<MyType>`.
+impl<T: crate::externalptr::IntoExternalPtr> IntoR for T {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        crate::externalptr::ExternalPtr::new(self).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { crate::externalptr::ExternalPtr::new_unchecked(self).into_sexp() }
+    }
+}
+
 /// Helper to convert a string slice to R CHARSXP.
 /// Uses UTF-8 encoding. Empty strings return R_BlankString (static, no allocation).
 #[inline]

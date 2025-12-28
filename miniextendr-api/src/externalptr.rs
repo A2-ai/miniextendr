@@ -135,6 +135,24 @@ pub trait TypedExternal: 'static {
     const TYPE_NAME_CSTR: &'static [u8];
 }
 
+/// Marker trait for types that should be converted to R as ExternalPtr.
+///
+/// When a type implements this trait (via `#[derive(ExternalPtr)]`), it gets a
+/// blanket `IntoR` implementation that wraps the value in `ExternalPtr<T>`.
+///
+/// This allows returning the type directly from `#[miniextendr]` functions:
+///
+/// ```ignore
+/// #[derive(ExternalPtr)]
+/// struct MyData { value: i32 }
+///
+/// #[miniextendr]
+/// fn create_data(v: i32) -> MyData {
+///     MyData { value: v }  // Automatically wrapped in ExternalPtr
+/// }
+/// ```
+pub trait IntoExternalPtr: TypedExternal {}
+
 /// Implement TypedExternal for a type.
 ///
 /// This macro generates the type name as both a Rust string and a null-terminated
