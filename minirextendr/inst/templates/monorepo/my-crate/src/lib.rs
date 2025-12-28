@@ -1,6 +1,6 @@
 //! {{crate_name}} - A Rust library with R bindings
 //!
-//! This crate provides the core functionality. The R package in `rpkg/`
+//! This crate provides the core functionality. The R package in `{{rpkg_name}}/`
 //! exposes this functionality to R users.
 
 /// Example function that can be called from R

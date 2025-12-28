@@ -247,13 +247,46 @@ to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
 }
 
+#' Get package name from Cargo.toml
+#'
+#' @param cargo_path Path to Cargo.toml file
+#' @return Package name from Cargo.toml, with hyphens replaced by dots for R
+#' @noRd
+get_package_name_from_cargo <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml")) {
+  if (!file.exists(cargo_path)) {
+    abort("Cargo.toml not found")
+  }
+
+  lines <- readLines(cargo_path, warn = FALSE)
+
+  # Look for: name = "package-name"
+  name_line <- grep('^name\\s*=\\s*"', lines, value = TRUE)[1]
+  if (is.na(name_line)) {
+    abort("Could not find package name in Cargo.toml")
+  }
+
+  # Extract name from: name = "my-crate"
+  name <- sub('^name\\s*=\\s*"([^"]+)".*$', '\\1', name_line)
+
+  # Convert Rust naming (hyphens) to R naming (dots)
+  gsub("-", ".", name)
+}
+
 #' Standard template data for current project
 #'
 #' @param crate_name Optional crate name for monorepo template
+#' @param package Optional package name override (for when DESCRIPTION doesn't exist yet)
+#' @param rpkg_name Optional R package subdirectory name for monorepo template
 #' @return Named list with package, package_rs, crate_name, year, etc.
 #' @noRd
-template_data <- function(crate_name = NULL) {
-  pkg <- get_package_name()
+template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
+  # Get package name: use provided, or read from DESCRIPTION
+  if (is.null(package)) {
+    pkg <- get_package_name()
+  } else {
+    pkg <- package
+  }
+
   data <- list(
     package = pkg,
     package_rs = to_rust_name(pkg),
@@ -267,6 +300,13 @@ template_data <- function(crate_name = NULL) {
   } else if (get_template_type() == "monorepo") {
     # Default crate name is package name with dashes
     data$crate_name <- gsub("\\.", "-", pkg)
+  }
+
+  if (!is.null(rpkg_name)) {
+    data$rpkg_name <- rpkg_name
+  } else if (get_template_type() == "monorepo") {
+    # Default rpkg directory name
+    data$rpkg_name <- "rpkg"
   }
 
   data

@@ -5,7 +5,7 @@
 #   just test          - Run cargo tests
 #   just clippy        - Run lints
 #   just fmt           - Format Rust code
-#   just configure     - Configure R package build
+#   just configure     - Configure R package build (in {{rpkg_name}}/)
 #   just rcmdinstall   - Build and install R package
 
 set shell := ["bash", "-euo", "pipefail", "-c"]
@@ -44,23 +44,23 @@ build:
 
 # Configure the R package (vendor dependencies, generate Makevars)
 configure:
-    cd rpkg && NOT_CRAN=true ./configure
+    cd {{rpkg_name}} && NOT_CRAN=true ./configure
 
 # Build and install R package
 rcmdinstall:
-    cd rpkg && NOT_CRAN=true R CMD INSTALL .
+    cd {{rpkg_name}} && NOT_CRAN=true R CMD INSTALL .
 
 # Run R package tests
 rtest:
-    cd rpkg && Rscript -e 'devtools::test()'
+    cd {{rpkg_name}} && Rscript -e 'devtools::test()'
 
 # Generate R documentation
 rdoc:
-    cd rpkg && Rscript -e 'devtools::document()'
+    cd {{rpkg_name}} && Rscript -e 'devtools::document()'
 
 # Run R CMD check
 rcheck:
-    cd rpkg && R CMD check .
+    cd {{rpkg_name}} && R CMD check .
 
 # ============================================================================
 # Development workflow
@@ -72,5 +72,5 @@ dev: check test rcmdinstall
 # Clean build artifacts
 clean:
     cargo clean
-    rm -rf rpkg/src/rust/target
-    rm -rf rpkg/src/vendor
+    rm -rf {{rpkg_name}}/src/rust/target
+    rm -rf {{rpkg_name}}/src/vendor

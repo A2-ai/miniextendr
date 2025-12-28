@@ -2,17 +2,17 @@
 /target/
 
 # R package build artifacts
-rpkg/src/rust/target/
-rpkg/src/vendor/
-rpkg/src/rust/.cargo/
-rpkg/src/Makevars
-rpkg/src/entrypoint.c
-rpkg/src/rust/document.rs
-rpkg/src/miniextendr_wrappers.R
-rpkg/config.log
-rpkg/config.status
-rpkg/configure~
-rpkg/autom4te.cache/
+{{rpkg_name}}/src/rust/target/
+{{rpkg_name}}/src/vendor/
+{{rpkg_name}}/src/rust/.cargo/
+{{rpkg_name}}/src/Makevars
+{{rpkg_name}}/src/entrypoint.c
+{{rpkg_name}}/src/rust/document.rs
+{{rpkg_name}}/src/miniextendr_wrappers.R
+{{rpkg_name}}/config.log
+{{rpkg_name}}/config.status
+{{rpkg_name}}/configure~
+{{rpkg_name}}/autom4te.cache/
 
 # IDE
 .vscode/
