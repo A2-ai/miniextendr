@@ -512,9 +512,13 @@ impl MiniextendrFunctionParsed {
 ///
 /// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
 pub(crate) struct MiniextendrFnAttrs {
+    /// Force execution on R's main thread (set by `unsafe(main_thread)`).
     pub(crate) force_main_thread: bool,
+    /// Override visibility; `Some(true)` makes the wrapper return invisibly, `Some(false)` forces visibility.
     pub(crate) force_invisible: Option<bool>,
+    /// Insert `R_CheckUserInterrupt()` before calling the Rust function.
     pub(crate) check_interrupt: bool,
+    /// Enable automatic coercion for all parameters that support it.
     pub(crate) coerce_all: bool,
 }
 

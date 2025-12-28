@@ -223,11 +223,17 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// impl MyTrait for Counter;
 /// ```
 pub(crate) struct MiniextendrModule {
+    /// The module header (`mod <name>;`) that drives symbol generation.
     pub(crate) module_name: MiniextendrModuleName,
+    /// Submodules to re-export wrappers from (`use foo;`).
     pub(crate) uses: Vec<MiniextendrModuleUse>,
+    /// Functions registered via `fn name;`.
     pub(crate) functions: Vec<MiniextendrModuleFunction>,
+    /// ALTREP structs registered via `struct Name;`.
     pub(crate) structs: Vec<MiniextendrModuleStruct>,
+    /// Impl blocks registered via `impl Type;`.
     pub(crate) impls: Vec<MiniextendrModuleImpl>,
+    /// Trait impls registered via `impl Trait for Type;`.
     pub(crate) trait_impls: Vec<MiniextendrModuleTraitImpl>,
 }
 
