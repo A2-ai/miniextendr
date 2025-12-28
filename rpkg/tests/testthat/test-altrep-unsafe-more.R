@@ -11,6 +11,6 @@ test_that("unsafe_rpkg_lazy_int_seq_is_materialized reflects state", {
   lazy <- rpkg:::lazy_int_seq(1L, 5L, 1L)
   expect_false(unsafe_rpkg_lazy_int_seq_is_materialized(lazy))
   # force materialization
-  _ <- lazy + 0L
+  tmp <- lazy + 0L
   expect_true(unsafe_rpkg_lazy_int_seq_is_materialized(lazy))
 })

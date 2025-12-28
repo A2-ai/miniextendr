@@ -68,12 +68,12 @@ pub trait Counter {
 // ============================================================================
 
 #[derive(ExternalPtr)]
-pub struct SimpleCounter {
+pub struct SharedSimpleCounter {
     value: i32,
 }
 
 #[miniextendr]
-impl SimpleCounter {
+impl SharedSimpleCounter {
     fn new(initial: i32) -> Self {
         Self { value: initial }
     }
@@ -84,7 +84,7 @@ impl SimpleCounter {
 }
 
 #[miniextendr]
-impl Counter for SimpleCounter {
+impl Counter for SharedSimpleCounter {
     fn value(&self) -> i32 {
         self.value
     }
@@ -147,8 +147,8 @@ miniextendr_module! {
     mod shared_trait_test;
 
     // Register implementations
-    impl SimpleCounter;
-    impl Counter for SimpleCounter;
+    impl SharedSimpleCounter;
+    impl Counter for SharedSimpleCounter;
     impl AtomicCounter;
     impl Counter for AtomicCounter;
 }
