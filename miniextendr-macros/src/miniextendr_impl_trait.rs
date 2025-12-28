@@ -650,8 +650,8 @@ fn generate_trait_env_r_wrapper(
         let method_name = &method.ident;
         let method_str = method_name.to_string();
 
-        // Collect parameters (excluding self)
-        let params = crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+        // Collect parameters (excluding self), normalizing underscore prefixes
+        let params = crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // For instance methods, include 'x' as first parameter
         let function_params = if method.has_self {
@@ -760,7 +760,7 @@ fn generate_trait_s3_r_wrapper(
         let s3_method_name = format!("{}.{}", generic_name, type_str);
 
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // S3 generic roxygen (only create if doesn't exist)
         let generic_roxygen = RoxygenBuilder::new()
@@ -828,7 +828,7 @@ fn generate_trait_s3_r_wrapper(
         let method_name = &method.ident;
         let method_str = method_name.to_string();
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Static method roxygen
         lines.push(format!(
@@ -926,7 +926,7 @@ fn generate_trait_s4_r_wrapper(
         let generic_name = format!("s4_trait_{}_{}", trait_name, method_name);
 
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Build full parameter list (x first, then others, then ...)
         let full_params = if params.is_empty() {
@@ -981,7 +981,7 @@ fn generate_trait_s4_r_wrapper(
         let method_name = &method.ident;
         let fn_name = format!("{}_{}_{}", type_str, trait_str, method_name);
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Static method roxygen
         lines.push(format!(
@@ -1076,7 +1076,7 @@ fn generate_trait_s7_r_wrapper(
         let generic_name = format!("s7_trait_{}_{}", trait_name, method_name);
 
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Build full parameter list (x first, then others, then ...)
         let full_params = if params.is_empty() {
@@ -1138,7 +1138,7 @@ fn generate_trait_s7_r_wrapper(
         let method_name = &method.ident;
         let method_str = method_name.to_string();
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
@@ -1234,7 +1234,7 @@ fn generate_trait_r6_r_wrapper(
         let fn_name = format!("r6_trait_{}_{}", trait_name, method_name);
 
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Build parameter list (x first, then others)
         let full_params = if params.is_empty() {
@@ -1287,7 +1287,7 @@ fn generate_trait_r6_r_wrapper(
         let method_name = &method.ident;
         let method_str = method_name.to_string();
         let params =
-            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, false);
+            crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         lines.push(format!(
             "#' Static trait method {}::{}()",
