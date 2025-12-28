@@ -8,6 +8,11 @@ src/rust/Cargo.toml
 src/rust/document.rs
 src/entrypoint.c
 
+# Built artifacts
+src/*.o
+src/*.so
+src/*.dll
+
 # rust
 src/rust/ra_target
 src/rust/target

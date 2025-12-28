@@ -128,11 +128,13 @@ vendor_miniextendr <- function(version = "main",
     # Copy crate (excluding target, .git)
     fs::dir_copy(src_path, dest_path)
 
-    # Remove unwanted files
+    # Remove unwanted files and directories
     unwanted <- c("target", ".git", ".gitignore", ".DS_Store")
     for (u in unwanted) {
       u_path <- fs::path(dest_path, u)
-      if (fs::file_exists(u_path) || fs::dir_exists(u_path)) {
+      if (fs::dir_exists(u_path)) {
+        fs::dir_delete(u_path)
+      } else if (fs::file_exists(u_path)) {
         fs::file_delete(u_path)
       }
     }

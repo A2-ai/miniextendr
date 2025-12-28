@@ -57,9 +57,9 @@ unsafe extern "C" {
     fn setup_Rmainloop();
 
     // Global state from Rinterface.h (non-API)
-    // Declared as immutable static; written via raw pointer
-    static R_Interactive: c_int;
-    static R_SignalHandlers: c_int;
+    // Declared as mutable static because we write to them during initialization
+    static mut R_Interactive: c_int;
+    static mut R_SignalHandlers: c_int;
     static R_CStackStart: usize;
     static R_CStackDir: c_int;
 }
@@ -71,8 +71,7 @@ unsafe extern "C" {
 #[inline]
 unsafe fn set_r_interactive(value: c_int) {
     unsafe {
-        let ptr = &raw const R_Interactive as *mut c_int;
-        ptr.write(value);
+        R_Interactive = value;
     }
 }
 
@@ -83,8 +82,7 @@ unsafe fn set_r_interactive(value: c_int) {
 #[inline]
 unsafe fn set_r_signal_handlers(value: c_int) {
     unsafe {
-        let ptr = &raw const R_SignalHandlers as *mut c_int;
-        ptr.write(value);
+        R_SignalHandlers = value;
     }
 }
 
@@ -176,6 +174,11 @@ impl REngineBuilder {
     ///
     /// Returns an error if R initialization fails.
     pub unsafe fn init(self) -> Result<REngine, REngineError> {
+        // Guard against re-initialization
+        if r_initialized_sentinel() {
+            return Err(REngineError::AlreadyInitialized);
+        }
+
         ensure_r_home_env()?;
 
         // Convert args to C strings
@@ -315,6 +318,8 @@ pub enum REngineError {
     RHomeNotFound,
     /// R initialization failed.
     InitializationFailed,
+    /// R is already initialized. Re-initialization is not supported.
+    AlreadyInitialized,
 }
 
 impl std::fmt::Display for REngineError {
@@ -324,6 +329,9 @@ impl std::fmt::Display for REngineError {
                 write!(f, "R_HOME is not set and `R RHOME` could not be resolved")
             }
             REngineError::InitializationFailed => write!(f, "R initialization failed"),
+            REngineError::AlreadyInitialized => {
+                write!(f, "R is already initialized. Multiple calls to REngineBuilder::init() are not supported.")
+            }
         }
     }
 }

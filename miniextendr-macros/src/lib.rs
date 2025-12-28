@@ -160,6 +160,18 @@ pub fn miniextendr(
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
+
+    // Validate: reject generic functions (extern "C-unwind" + #[no_mangle] incompatible with generics)
+    if !parsed.item().sig.generics.params.is_empty() {
+        let err = syn::Error::new_spanned(
+            &parsed.item().sig.generics,
+            "#[miniextendr] functions cannot have generic type parameters. \
+             Generic functions are incompatible with `extern \"C-unwind\"` and `#[no_mangle]` \
+             required for R FFI. Consider using trait objects or monomorphization instead."
+        );
+        return err.into_compile_error().into();
+    }
+
     parsed.add_track_caller_if_needed();
     parsed.add_inline_never_if_needed();
 
@@ -766,13 +778,19 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     let module = &parsed_module.module_name.ident;
     let module_entrypoint_ident = quote::format_ident!("R_init_{module}_miniextendr");
-    let call_entries: Vec<syn::Expr> = parsed_module
+    // Build call entries with their cfg attributes preserved
+    let call_entries_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .functions
         .iter()
         .map(|f| {
             let call_method_def = f.call_method_def_ident();
-            syn::parse_quote!(#call_method_def)
+            let cfg_attrs = extract_cfg_attrs(&f.attrs);
+            (cfg_attrs, syn::parse_quote!(#call_method_def))
         })
+        .collect();
+    let call_entries: Vec<syn::Expr> = call_entries_with_attrs
+        .iter()
+        .map(|(_, expr)| expr.clone())
         .collect();
     let call_entries_len = call_entries.len();
 
@@ -786,14 +804,19 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
-    // Generate impl block call defs for registration
-    let impl_call_defs: Vec<syn::Expr> = parsed_module
+    // Generate impl block call defs for registration with cfg attributes
+    let impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .impls
         .iter()
         .map(|i| {
             let call_defs_static = i.call_defs_const_ident();
-            syn::parse_quote!(#call_defs_static)
+            let cfg_attrs = extract_cfg_attrs(&i.attrs);
+            (cfg_attrs, syn::parse_quote!(#call_defs_static))
         })
+        .collect();
+    let impl_call_defs: Vec<syn::Expr> = impl_call_defs_with_attrs
+        .iter()
+        .map(|(_, expr)| expr.clone())
         .collect();
 
     // Generate impl R wrapper refs
@@ -806,14 +829,19 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
-    // Generate trait impl call defs for registration
-    let trait_impl_call_defs: Vec<syn::Expr> = parsed_module
+    // Generate trait impl call defs for registration with cfg attributes
+    let trait_impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .trait_impls
         .iter()
         .map(|ti| {
             let call_defs_static = ti.call_defs_const_ident();
-            syn::parse_quote!(#call_defs_static)
+            let cfg_attrs = extract_cfg_attrs(&ti.attrs);
+            (cfg_attrs, syn::parse_quote!(#call_defs_static))
         })
+        .collect();
+    let trait_impl_call_defs: Vec<syn::Expr> = trait_impl_call_defs_with_attrs
+        .iter()
+        .map(|(_, expr)| expr.clone())
         .collect();
 
     // Generate trait impl R wrapper refs
@@ -997,6 +1025,20 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         quote::quote!(#(#all_len_exprs)+*)
     };
 
+    // Generate conditional call entry assignment statements
+    let call_entry_assignments: Vec<proc_macro2::TokenStream> = call_entries_with_attrs
+        .iter()
+        .map(|(cfg_attrs, expr)| {
+            quote::quote! {
+                #(#cfg_attrs)*
+                {
+                    entries[idx] = #expr;
+                    idx += 1;
+                }
+            }
+        })
+        .collect();
+
     let call_entries_storage = quote::quote! {
         /// This module's call entries (excluding children).
         #[doc(hidden)]
@@ -1008,7 +1050,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             };
             let mut entries = [EMPTY; #total_len_expr];
             let mut idx: usize = 0;
-            #(entries[idx] = #call_entries; idx += 1;)*
+            #(#call_entry_assignments)*
             #(
                 let mut j: usize = 0;
                 let slice = &#impl_call_defs;

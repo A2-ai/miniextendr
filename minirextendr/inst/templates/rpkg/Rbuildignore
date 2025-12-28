@@ -5,6 +5,9 @@
 ^src/rust/target$
 ^src/rust/ra_target$
 ^src/rust/\.cargo$
+^src/.*\.o$
+^src/.*\.so$
+^src/.*\.dll$
 ^config\.log$
 ^config\.status$
 ^configure~$

@@ -51,6 +51,7 @@ use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
 /// To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
 /// on the function definition itself, not in this module declaration.
 pub(crate) struct MiniextendrModuleFunction {
+    pub attrs: Vec<syn::Attribute>,
     pub _abi: Option<syn::Abi>,
     _fn_token: syn::Token![fn],
     pub ident: syn::Ident,
@@ -58,12 +59,14 @@ pub(crate) struct MiniextendrModuleFunction {
 
 impl syn::parse::Parse for MiniextendrModuleFunction {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
         let _abi = if input.peek(syn::Token![extern]) {
             Some(input.parse()?)
         } else {
             None
         };
         Ok(Self {
+            attrs,
             _abi,
             _fn_token: input.parse()?,
             ident: input.parse()?,
@@ -130,13 +133,16 @@ impl syn::parse::Parse for MiniextendrModuleName {
 /// impl Counter;
 /// ```
 pub(crate) struct MiniextendrModuleImpl {
+    pub attrs: Vec<syn::Attribute>,
     _impl_token: syn::Token![impl],
     pub ident: syn::Ident,
 }
 
 impl syn::parse::Parse for MiniextendrModuleImpl {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
         Ok(Self {
+            attrs,
             _impl_token: input.parse()?,
             ident: input.parse()?,
         })
@@ -157,6 +163,7 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
 /// - The type must have `#[miniextendr] impl Trait for Type` (generates vtable static)
 /// - The type should have `#[derive(ExternalPtr)]`
 pub(crate) struct MiniextendrModuleTraitImpl {
+    pub attrs: Vec<syn::Attribute>,
     pub _impl_token: syn::Token![impl],
     pub trait_path: syn::Path,
     pub _for_token: syn::Token![for],
@@ -165,7 +172,9 @@ pub(crate) struct MiniextendrModuleTraitImpl {
 
 impl syn::parse::Parse for MiniextendrModuleTraitImpl {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
         Ok(Self {
+            attrs,
             _impl_token: input.parse()?,
             trait_path: input.parse()?,
             _for_token: input.parse()?,
