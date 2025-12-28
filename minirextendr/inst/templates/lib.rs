@@ -1,4 +1,4 @@
-use miniextendr_api::prelude::*;
+use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// A simple function that adds two integers
 ///

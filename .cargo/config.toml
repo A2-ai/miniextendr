@@ -1,6 +1,0 @@
-[patch.crates-io]
-miniextendr-macros = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-macros" }
-miniextendr-engine = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-engine" }
-miniextendr-api = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-api" }
-miniextendr-lint = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-lint" }
-# miniextendr-bench = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-bench" }

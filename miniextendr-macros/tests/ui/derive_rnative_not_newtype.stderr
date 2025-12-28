@@ -1,0 +1,5 @@
+error: #[derive(RNativeType)] requires a newtype struct with exactly one field
+ --> tests/ui/derive_rnative_not_newtype.rs:6:8
+  |
+6 | struct Bad {
+  |        ^^^

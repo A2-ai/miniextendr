@@ -11,9 +11,16 @@ extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 
+// Trait ABI C-callable registration (defined in mx_abi.c)
+extern void mx_abi_register(void);
+
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
+
+    // Register trait ABI C-callables (mx_wrap, mx_get, mx_query)
+    // These are loaded by consumer packages via R_GetCCallable()
+    mx_abi_register();
 
     // Main module's R_init calls nonapi's R_init via "use nonapi;" statement
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);

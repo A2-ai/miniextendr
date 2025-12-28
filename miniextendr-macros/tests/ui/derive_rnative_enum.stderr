@@ -1,0 +1,5 @@
+error: #[derive(RNativeType)] only works on structs
+ --> tests/ui/derive_rnative_enum.rs:6:6
+  |
+6 | enum Bad {
+  |      ^^^

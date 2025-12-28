@@ -5,14 +5,17 @@
 # Sys.setenv(R_LIBRARY_DIR = dirname(pkgdir))
 
 # Only clean when on CRAN or during R CMD check
-if [ "$NOT_CRAN" != "true" ]; then
+if [ "${NOT_CRAN:-false}" = "false" ]; then
+  rm -rf ../.cargo
+  rm -rf .cargo
+  rm -rf src/.cargo
+  rm -rf src/vendor
   rm -f  src/Makevars
-  # rm -rf src/target
   rm -rf src/rust/target
-  rm -rf src/rust/ra_target
+  # rm -rf src/rust/ra_target
   rm -rf src/rust/.cargo
-  rm     src/rust/Cargo.toml
-  rm -rf src/rust/document.rs # we now produce this in configure.ac
-  rm -rf src/entrypoint.c # we now produce this in configure.ac
-  rm -rf src/miniextendr_wrappers.R
+  rm -f  src/rust/Cargo.toml
+  rm -f  src/rust/document.rs
+  rm -f  src/entrypoint.c
+  rm -f  src/miniextendr_wrappers.R
 fi

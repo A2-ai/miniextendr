@@ -9,6 +9,13 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// A standalone function in an impl-block module.
 /// Tests that standalone fns work alongside impl blocks.
 #[miniextendr]
+/// @title R6 Standalone Function
+/// @name rpkg_r6_standalone
+/// @keywords internal
+/// @description Standalone helper in the R6 test module.
+/// @examples
+/// r6_standalone_add(1L, 2L)
+/// @aliases r6_standalone_add
 pub fn r6_standalone_add(a: i32, b: i32) -> i32 {
     a + b
 }

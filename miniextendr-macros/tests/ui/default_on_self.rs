@@ -4,7 +4,7 @@ use miniextendr_macros::miniextendr;
 
 struct Foo;
 
-#[miniextendr(receiver)]
+#[miniextendr(env)]
 impl Foo {
     #[miniextendr(defaults(self = "NULL"))]
     pub fn method(&self) {}

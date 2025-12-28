@@ -1,10 +1,10 @@
-//! Tests for Coerce, TryCoerce, and RNativeType traits.
+//! Tests for [`Coerce`], [`TryCoerce`], and [`RNativeType`] traits.
 
 use miniextendr_api::{
     Coerce, CoerceError, RNativeType, TryCoerce, miniextendr, miniextendr_module,
 };
 
-// Test 6: RNativeType derive macro - newtype wrappers (both tuple and named field)
+// Test 6: `RNativeType` derive macro - newtype wrappers (both tuple and named field)
 #[derive(Clone, Copy, RNativeType)]
 struct UserId(i32); // Tuple struct
 
@@ -17,7 +17,7 @@ struct Temperature {
     celsius: f64,
 } // Named single-field struct
 
-// Verify the derived RNativeType works with Coerce
+// Verify the derived `RNativeType` works with `Coerce`
 impl Coerce<UserId> for i32 {
     fn coerce(self) -> UserId {
         UserId(self)
@@ -46,7 +46,7 @@ pub fn test_rnative_named_field(temp: f64) -> f64 {
 
 // NOTE: Generic functions like `fn foo<T: Coerce<i32>>(x: T)` DON'T work with miniextendr
 // because the macro generates `TryFromSexp::try_from_sexp(x)` which needs to know the
-// concrete type T at compile time, but T can't be inferred from just the trait bound.
+// concrete type `T` at compile time, but T can't be inferred from just the trait bound.
 //
 // What DOES work:
 // 1. Concrete functions that use Coerce internally
@@ -64,13 +64,11 @@ pub fn test_rnative_named_field(temp: f64) -> f64 {
 /// test_try_coerce_f64_to_i32(1.2)
 /// test_coerce_attr_u16(10L)
 /// test_per_arg_coerce_first(10L, 5L)
-/// @aliases test_coerce_identity test_coerce_widen test_coerce_bool_to_int
-/// @aliases test_coerce_via_helper test_try_coerce_f64_to_i32
-/// @aliases test_rnative_newtype test_rnative_named_field
-/// @aliases test_coerce_attr_u16 test_coerce_attr_i16 test_coerce_attr_vec_u16
-/// @aliases test_coerce_attr_f32 test_coerce_attr_with_invisible
-/// @aliases test_per_arg_coerce_first test_per_arg_coerce_second
-/// @aliases test_per_arg_coerce_both test_per_arg_coerce_vec
+/// @aliases test_coerce_identity test_coerce_widen test_coerce_bool_to_int test_coerce_via_helper
+///   test_try_coerce_f64_to_i32 test_rnative_newtype test_rnative_named_field test_coerce_attr_u16
+///   test_coerce_attr_i16 test_coerce_attr_vec_u16 test_coerce_attr_f32
+///   test_coerce_attr_with_invisible test_per_arg_coerce_first test_per_arg_coerce_second
+///   test_per_arg_coerce_both test_per_arg_coerce_vec
 pub fn test_coerce_identity(x: i32) -> i32 {
     Coerce::<i32>::coerce(x)
 }

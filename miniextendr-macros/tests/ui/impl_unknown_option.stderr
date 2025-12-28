@@ -1,0 +1,5 @@
+error: unknown option: bogus
+ --> tests/ui/impl_unknown_option.rs:7:20
+  |
+7 | #[miniextendr(env, bogus = "x")]
+  |                    ^^^^^

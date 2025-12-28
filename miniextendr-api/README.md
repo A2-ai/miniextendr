@@ -3,6 +3,7 @@
 Core runtime crate for Rust ↔ R interop.
 
 This crate provides:
+
 - FFI bindings to R’s C API.
 - Safe(ish) conversions between Rust and R types.
 - The worker‑thread pattern for panic isolation and Drop safety.
@@ -40,8 +41,8 @@ miniextendr_module! {
 - **Iterators as ALTREP** – built‑in iterator‑backed ALTREP data types with
   caching and optional coercion.
 - **Connections** – experimental R connection framework (feature‑gated).
-- **Class systems** – S3, S4, S7, and R6 impl‑block methods plus a plain
-  receiver impl‑block for `$`/`[[` dispatch.
+- **Class systems** – S3, S4, S7, and R6 impl‑block methods plus an env
+  impl‑block for `$`/`[[` dispatch.
 - **Coerce** – infallible and fallible numeric coercion with clear errors.
 - **Generated R wrappers** – R functions and class methods are generated from
   Rust signatures and doc comments/roxygen tags.
@@ -49,6 +50,7 @@ miniextendr_module! {
 ## R wrapper generation
 
 `#[miniextendr]` and `miniextendr_module!` generate:
+
 - C‑ABI wrappers (`C_<name>` symbols)
 - R functions that call `.Call(...)` with the original argument names
 - Class constructors and methods for impl‑block types
@@ -61,8 +63,7 @@ committed to `R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
 
 miniextendr supports multiple class systems from Rust impl blocks:
 
-- **Plain receiver** – environment‑style `$`/`[[` dispatch for methods on a
-  receiver object.
+- **Env** – environment‑style `$`/`[[` dispatch for methods on an object.
 - **S3** – constructors use `structure(..., class = "Class")`, methods are
   `generic.class` with optional generic creation.
 - **S4** – uses `methods::setClass` and `methods::setMethod` with an external
@@ -132,11 +133,14 @@ R is still **not thread‑safe**; you must serialize all R API access.
 
 Rayon helpers allow parallel Rust computation with R‑safe boundaries:
 
-- `run_r` routes R API calls back to the main thread.
-- `with_r_real_vec`, `with_r_int_vec`, `with_r_logical_vec` pre‑allocate and
-  fill R vectors (zero‑copy).
-- `collect_r` and `RVec<T>` support parallel collection into R vectors.
-- `RVecBuilder` provides a fluent API for parallel fill patterns.
+- `with_r_vec<T>` pre‑allocates and fills R vectors (zero‑copy).
+- `RVec<T>` collects in parallel (`FromParallelIterator`) and converts via `IntoR`.
+- `reduce::*` provides parallel sum/min/max/mean helpers that return R scalars.
+- `perf::*` exposes Rayon pool info (thread count, thread index).
+- `rayon_bridge::rayon` re‑exports Rayon to avoid version mismatches.
+
+R API calls must be outside parallel closures. Use `with_r_thread` before/after
+parallel work when you need to touch R.
 
 ## Connections (`connections` feature)
 
