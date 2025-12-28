@@ -1,4 +1,27 @@
 # https://just.systems
+#
+# Quick reference:
+#   Rust:
+#     just check              - Run cargo check
+#     just test               - Run cargo tests
+#     just clippy             - Run lints
+#     just fmt                - Format Rust code
+#
+#   rpkg (example R package):
+#     just configure          - Configure R package build
+#     just devtools-test      - Run R package tests
+#     just devtools-document  - Generate R documentation
+#     just rcmdinstall        - Build and install R package
+#
+#   minirextendr (helper R package):
+#     just minirextendr-document  - Generate documentation
+#     just minirextendr-test      - Run tests
+#     just minirextendr-check     - Run R CMD check
+#     just minirextendr-install   - Install package
+#
+#   Templates:
+#     just templates-check    - Verify templates haven't drifted
+#     just templates-approve  - Accept template changes
 
 default:
     @just --list
@@ -208,7 +231,50 @@ test-r-build: configure
     tar -xf "$tarball" -C "$out_dir" --strip-components=1
     echo "Extracted to: $out_dir"
 
+# ============================================================================
+# minirextendr R package development
+# ============================================================================
+
+# Generate documentation for minirextendr R package
+minirextendr-document:
+    Rscript -e 'devtools::document("minirextendr")'
+
+# Run tests for minirextendr R package
+minirextendr-test FILTER="":
+    #!/usr/bin/env bash
+    if [ -z "{{FILTER}}" ]; then
+      Rscript -e 'devtools::test("minirextendr")'
+    else
+      Rscript -e 'devtools::test("minirextendr", filter = "{{FILTER}}")'
+    fi
+
+# Check minirextendr R package with devtools::check
+minirextendr-check:
+    Rscript -e 'devtools::check("minirextendr", error_on = "error")'
+
+# Install minirextendr R package with devtools::install
+minirextendr-install:
+    Rscript -e 'devtools::install("minirextendr")'
+
+# Load minirextendr with devtools::load_all (for interactive development)
+minirextendr-load:
+    Rscript -e 'devtools::load_all("minirextendr")'
+
+# Build minirextendr R package tarball
+minirextendr-build:
+    R CMD build --no-manual minirextendr
+
+# Run R CMD check on minirextendr package
+minirextendr-rcmdcheck:
+    #!/usr/bin/env bash
+    Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
+
+# Full development cycle for minirextendr: document, test, check
+minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
+
+# ============================================================================
 # Templates / drift check
+# ============================================================================
 #
 # Pattern:
 # - upstream snapshot   : built from sources within this repo (see templates-sources)

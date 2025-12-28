@@ -4,12 +4,19 @@
 \alias{use_miniextendr}
 \title{Add miniextendr to an existing package}
 \usage{
-use_miniextendr(template_type = "auto", miniextendr_version = "latest")
+use_miniextendr(
+  template_type = "auto",
+  rpkg_name = "rpkg",
+  miniextendr_version = "latest"
+)
 }
 \arguments{
 \item{template_type}{Template type: "auto" (detect from directory structure),
 "rpkg" for standalone R package, or "monorepo" for Rust workspace.
-Default is "auto" which detects based on presence of parent Cargo.toml workspace.}
+Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.}
+
+\item{rpkg_name}{Name of the R package subdirectory for monorepo template (default: "rpkg").
+Only used when template_type is "monorepo".}
 
 \item{miniextendr_version}{Version of miniextendr to vendor (default: "latest").
 For monorepo projects, vendoring is only needed for CRAN submission.}
@@ -18,7 +25,15 @@ For monorepo projects, vendoring is only needed for CRAN submission.}
 Invisibly returns TRUE
 }
 \description{
-Sets up all miniextendr scaffolding in the current R package. This is
-an all-in-one function that calls all the individual \verb{use_miniextendr_*()}
+Sets up all miniextendr scaffolding. Automatically detects whether to use
+the standalone R package template or the monorepo template based on context:
+}
+\details{
+\itemize{
+\item \strong{In an R package} (has DESCRIPTION): Adds Rust scaffolding to current directory
+\item \strong{In a Rust crate} (has Cargo.toml): Creates \verb{rpkg/} subdirectory with R package
+}
+
+This is an all-in-one function that calls all the individual \verb{use_miniextendr_*()}
 functions.
 }

@@ -8,6 +8,7 @@ create_miniextendr_monorepo(
   path,
   package = basename(path),
   crate_name = gsub("\\\\.", "-", package),
+  rpkg_name = "rpkg",
   open = rlang::is_interactive()
 )
 }
@@ -17,6 +18,8 @@ create_miniextendr_monorepo(
 \item{package}{R package name (default: derived from path)}
 
 \item{crate_name}{Main Rust crate name (default: derived from package name)}
+
+\item{rpkg_name}{Name of the R package subdirectory (default: "rpkg")}
 
 \item{open}{Whether to open the new project in RStudio/IDE}
 }
