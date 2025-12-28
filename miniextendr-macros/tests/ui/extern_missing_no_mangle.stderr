@@ -1,0 +1,5 @@
+error: missing #[no_mangle] (edition 2021), #[unsafe(no_mangle)] (edition 2024), or #[export_name = "..."]
+ --> tests/ui/extern_missing_no_mangle.rs:5:1
+  |
+5 | extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> miniextendr_api::ffi::SEXP {
+  | ^^^^^^

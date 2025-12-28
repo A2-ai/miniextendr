@@ -29,6 +29,10 @@
 //!     }
 //! }
 //! ```
+//!
+//! For simple field-based types, the `Altrep*` derive macros provide a shorter path:
+//! they auto-implement `AltrepLen` and the matching `Alt*Data` trait, and can
+//! optionally call the low-level `impl_alt*_from_data!` helpers.
 
 use crate::ffi::{Rcomplex, SEXP};
 

@@ -1,0 +1,25 @@
+error[E0277]: the trait bound `NotIntoR: IntoR` is not satisfied
+ --> tests/ui/non_into_r_return.rs:7:1
+  |
+7 | #[miniextendr]
+  | ^^^^^^^^^^^^^^
+  | |
+  | unsatisfied trait bound
+  | required by a bound introduced by this call
+  |
+help: the trait `IntoR` is not implemented for `NotIntoR`
+ --> tests/ui/non_into_r_return.rs:5:1
+  |
+5 | struct NotIntoR;
+  | ^^^^^^^^^^^^^^^
+  = help: the following other types implement trait `IntoR`:
+            &[&str]
+            &[T]
+            &[std::string::String]
+            &str
+            ()
+            (A, B)
+            (A, B, C)
+            (A, B, C, D)
+          and $N others
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

@@ -19,7 +19,9 @@ greetings_with_named_dots(dots = ...)
 Dots (\code{...}) handling tests
 }
 \examples{
+\dontrun{
 greetings_with_named_dots(a = 1, b = 2)
 greetings_with_nameless_dots(1, 2, 3)
 greetings_last_as_named_dots(1L, x = 1, y = 2)
+}
 }

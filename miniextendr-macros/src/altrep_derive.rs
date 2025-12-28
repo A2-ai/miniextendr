@@ -145,19 +145,17 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
     };
 
     // Generate impl_altinteger_from_data! call if requested
-    let lowlevel_impl = if attrs.generate_lowlevel {
-        if attrs.lowlevel_options.is_empty() {
-            quote! {
-                ::miniextendr_api::impl_altinteger_from_data!(#name);
-            }
-        } else {
-            let options = &attrs.lowlevel_options;
-            quote! {
-                ::miniextendr_api::impl_altinteger_from_data!(#name, #(#options),*);
-            }
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
+        quote! {
+            ::miniextendr_api::impl_altinteger_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altinteger_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {
@@ -197,19 +195,17 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
-        if attrs.lowlevel_options.is_empty() {
-            quote! {
-                ::miniextendr_api::impl_altreal_from_data!(#name);
-            }
-        } else {
-            let options = &attrs.lowlevel_options;
-            quote! {
-                ::miniextendr_api::impl_altreal_from_data!(#name, #(#options),*);
-            }
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
+        quote! {
+            ::miniextendr_api::impl_altreal_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altreal_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {
@@ -249,19 +245,17 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
-        if attrs.lowlevel_options.is_empty() {
-            quote! {
-                ::miniextendr_api::impl_altlogical_from_data!(#name);
-            }
-        } else {
-            let options = &attrs.lowlevel_options;
-            quote! {
-                ::miniextendr_api::impl_altlogical_from_data!(#name, #(#options),*);
-            }
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
+        quote! {
+            ::miniextendr_api::impl_altlogical_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altlogical_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {
@@ -301,19 +295,17 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
-        if attrs.lowlevel_options.is_empty() {
-            quote! {
-                ::miniextendr_api::impl_altraw_from_data!(#name);
-            }
-        } else {
-            let options = &attrs.lowlevel_options;
-            quote! {
-                ::miniextendr_api::impl_altraw_from_data!(#name, #(#options),*);
-            }
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
+        quote! {
+            ::miniextendr_api::impl_altraw_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altraw_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {
@@ -355,19 +347,17 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
-        if attrs.lowlevel_options.is_empty() {
-            quote! {
-                ::miniextendr_api::impl_altstring_from_data!(#name);
-            }
-        } else {
-            let options = &attrs.lowlevel_options;
-            quote! {
-                ::miniextendr_api::impl_altstring_from_data!(#name, #(#options),*);
-            }
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
+        quote! {
+            ::miniextendr_api::impl_altstring_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altstring_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {

@@ -1,0 +1,5 @@
+error: extern function parameters must be SEXP - .Call passes all arguments as SEXP
+ --> tests/ui/extern_non_sexp_param.rs:6:32
+  |
+6 | extern "C-unwind" fn C_bad(_x: i32) -> miniextendr_api::ffi::SEXP {
+  |                                ^^^

@@ -1,0 +1,5 @@
+error: #[r6(active)] active bindings are not yet implemented
+  --> tests/ui/impl_r6_active_unimplemented.rs:11:8
+   |
+11 |     fn value(&self) -> i32 {
+   |        ^^^^^

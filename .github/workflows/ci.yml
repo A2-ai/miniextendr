@@ -1,0 +1,676 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ["v*"]
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ===========================================================================
+  # Version consistency check
+  # ===========================================================================
+  version-check:
+    name: Version Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Check version consistency
+        run: |
+          # Extract version from Cargo.toml [workspace.package]
+          CARGO_VERSION=$(sed -n '/\[workspace\.package\]/,/^\[/{ s/^version = "\(.*\)"/\1/p; }' Cargo.toml | head -1)
+
+          # Extract version from rpkg/DESCRIPTION
+          R_VERSION=$(grep '^Version:' rpkg/DESCRIPTION | sed 's/Version: //')
+
+          echo "Cargo.toml version: $CARGO_VERSION"
+          echo "DESCRIPTION version: $R_VERSION"
+
+          # Compare (allow R dev versions like X.Y.Z.9000 to match X.Y.Z)
+          CARGO_BASE=$(echo "$CARGO_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+          R_BASE=$(echo "$R_VERSION" | grep -oE '^[0-9]+\.[0-9]+\.[0-9]+')
+
+          if [ "$CARGO_BASE" != "$R_BASE" ]; then
+            echo "::error::Version mismatch! Cargo.toml ($CARGO_VERSION) vs DESCRIPTION ($R_VERSION)"
+            echo "Run: ./scripts/bump-version.sh $CARGO_VERSION"
+            exit 1
+          fi
+
+          echo "Versions match!"
+
+  # ===========================================================================
+  # Change detection (path-based gating)
+  # ===========================================================================
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      rust: ${{ steps.filter.outputs.rust }}
+      r: ${{ steps.filter.outputs.r }}
+      docs: ${{ steps.filter.outputs.docs }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - name: Determine changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            rust:
+              - '**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '.cargo/**'
+              - '.github/workflows/**'
+              - 'justfile'
+            r:
+              - 'rpkg/**'
+              - 'miniextendr/**'
+              - '**/*.R'
+              - '**/*.r'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - '.cargo/**'
+              - '.github/workflows/**'
+              - 'justfile'
+            docs:
+              - 'rpkg/man/**'
+              - '**/*.rs'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '**/Cargo.toml'
+              - '**/Cargo.lock'
+              - 'README*'
+              - 'docs/**'
+
+  # ===========================================================================
+  # R Package: R CMD check on Linux
+  # ===========================================================================
+  r-check-linux:
+    name: R CMD check / Linux ${{ matrix.r }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    continue-on-error: ${{ matrix.allow_failure || false }}
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - r: release
+          - r: devel
+            allow_failure: true # R-devel may break for upstream reasons
+          - r: oldrel-1
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: ${{ matrix.r }}
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: r-linux-${{ matrix.r }}
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+
+      - name: Configure
+        run: just configure
+
+      # ---------------------------------------------------------------------
+      # Rust checks (Linux only, run once on R=release)
+      # - run all checks even if some fail
+      # - fail the job afterwards if any of them failed
+      # ---------------------------------------------------------------------
+      - name: Rustfmt
+        id: rustfmt
+        if: matrix.r == 'release'
+        continue-on-error: true
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (default features)
+        id: clippy_default
+        if: matrix.r == 'release'
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Clippy (all features)
+        id: clippy_all
+        if: matrix.r == 'release'
+        continue-on-error: true
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Tests (default features)
+        id: cargo_tests
+        if: matrix.r == 'release'
+        continue-on-error: true
+        run: cargo test --workspace --locked
+
+      - name: R CMD check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: rpkg
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          check-dir: '"check"'
+
+      - name: Fail if Rust checks failed
+        if: always() && matrix.r == 'release'
+        shell: bash
+        run: |
+          set -euo pipefail
+          failed=0
+
+          rustfmt="${{ steps.rustfmt.outcome }}"
+          clippy_default="${{ steps.clippy_default.outcome }}"
+          clippy_all="${{ steps.clippy_all.outcome }}"
+          cargo_tests="${{ steps.cargo_tests.outcome }}"
+
+          echo "rustfmt:         $rustfmt"
+          echo "clippy_default:  $clippy_default"
+          echo "clippy_all:      $clippy_all"
+          echo "cargo_tests:     $cargo_tests"
+
+          if [[ "$rustfmt" != "success" ]]; then failed=1; fi
+          if [[ "$clippy_default" != "success" ]]; then failed=1; fi
+          if [[ "$clippy_all" != "success" ]]; then failed=1; fi
+          if [[ "$cargo_tests" != "success" ]]; then failed=1; fi
+
+          if [[ "$failed" -ne 0 ]]; then
+            echo "::error::One or more Rust checks failed (see logs above)"
+            exit 1
+          fi
+
+      - name: Print failed tests
+        if: always()
+        run: |
+          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
+            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
+          done || true
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: logs-linux-r${{ matrix.r }}
+          path: |
+            rpkg/check
+            rpkg/config.log
+          retention-days: 7
+
+  # ===========================================================================
+  # R Package: R CMD check on macOS
+  # ===========================================================================
+  r-check-macos:
+    name: R CMD check / macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            arch: arm64
+          - runner: macos-15-intel
+            arch: x86_64
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        run: |
+          brew install just
+          echo "$(brew --prefix)/bin" >> $GITHUB_PATH
+
+      - name: Install autoconf
+        run: |
+          brew install autoconf
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: r-macos-${{ matrix.arch }}
+          cache-on-failure: true
+
+      - name: Configure
+        run: just configure
+
+      - name: R CMD check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: rpkg
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          check-dir: '"check"'
+
+      - name: Print failed tests
+        if: always()
+        run: |
+          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
+            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
+          done || true
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: logs-macos-${{ matrix.arch }}
+          path: |
+            rpkg/check
+            rpkg/config.log
+          retention-days: 7
+
+  # ===========================================================================
+  # R Package: R CMD check on Windows
+  # ===========================================================================
+  r-check-windows:
+    name: R CMD check / Windows
+    runs-on: windows-latest
+    timeout-minutes: 90
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          rtools-version: "44"
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-gnu
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: r-windows
+          cache-on-failure: true
+
+      - name: Install just
+        shell: pwsh
+        run: |
+          # Install just using cargo
+          cargo install just
+
+      - name: Configure Windows Rust environment
+        shell: pwsh
+        run: |
+          $rtools_home = "C:\rtools44"
+
+          # Add Rtools to PATH
+          echo "${rtools_home}\x86_64-w64-mingw32.static.posix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "${rtools_home}\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          echo "$(Rscript.exe -e 'cat(normalizePath(R.home()))')\bin\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+          # Create empty libgcc stubs for Rust linking
+          New-Item -Path libgcc_mock -Type Directory -Force
+          New-Item -Path libgcc_mock\libgcc_eh.a -Type File -Force
+          New-Item -Path libgcc_mock\libgcc_s.a -Type File -Force
+
+          # Configure Cargo target for Windows GNU
+          # Note: patch.crates-io is handled by just configure
+          New-Item -Path .cargo -ItemType Directory -Force
+          $pwd_slash = (Get-Location).Path -replace '\\','/'
+          @"
+          [target.x86_64-pc-windows-gnu]
+          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+
+          [env]
+          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
+          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8
+
+      - name: Configure
+        shell: C:\rtools44\usr\bin\bash.exe --login -e -o pipefail {0}
+        run: |
+          if [ -n "${CARGO_HOME:-}" ]; then
+            export PATH="$(cygpath -u "$CARGO_HOME")/bin:$PATH"
+          fi
+          just configure
+
+      - name: R CMD check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: rpkg
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          check-dir: '"check"'
+
+      - name: Print failed tests
+        if: always()
+        shell: bash
+        run: |
+          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
+            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
+          done || true
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: logs-windows
+          path: |
+            rpkg/check
+          retention-days: 7
+
+  # ===========================================================================
+  # R Package: Test suite (Linux only)
+  # ===========================================================================
+  r-tests:
+    name: R tests / ${{ matrix.os }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: Linux
+            runner: ubuntu-latest
+
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::testthat
+          needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: r-tests
+          cache-on-failure: true
+
+      - name: Configure
+        run: just configure
+
+      - name: Install package
+        working-directory: rpkg
+        shell: bash
+        run: R CMD INSTALL .
+
+      - name: Run tests
+        working-directory: rpkg
+        shell: bash
+        run: Rscript -e "testthat::test_local()"
+
+  # ===========================================================================
+  # CRAN-like check (stricter, simulates CRAN environment)
+  # ===========================================================================
+  cran-check:
+    name: CRAN-like check
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+      # NOT_CRAN is NOT set - simulates CRAN environment
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::rcmdcheck
+          needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: rpkg/src/rust -> target
+          shared-key: cran-check
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+
+      - name: Configure
+        run: just configure-cran
+
+      - name: Vendor dependencies (CRAN simulation)
+        working-directory: rpkg/src/rust
+        run: |
+          mkdir -p ../vendor
+          cargo vendor --locked ../vendor
+
+      - name: Clean vendor directory for CRAN
+        run: |
+          # Remove files that cause CRAN check notes
+          find rpkg/src/vendor -name '.cargo_vcs_info.json' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '.travis*' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '.gitlab*' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '*.a' -delete 2>/dev/null || true
+          find rpkg/src/vendor -name '*.lib' -delete 2>/dev/null || true
+
+      - name: R CMD check (CRAN-like)
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: rpkg
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"warning"'
+          check-dir: '"check"'
+
+      - name: Print failed tests
+        if: always()
+        run: |
+          for f in rpkg/check/*.Rcheck/tests/*.Rout.fail; do
+            [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
+          done || true
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: logs-cran-check
+          path: |
+            rpkg/check
+            rpkg/config.log
+          retention-days: 7
+
+  # ===========================================================================
+  # Summary job (for branch protection)
+  # ===========================================================================
+  ci-success:
+    name: CI Success
+    needs:
+      - version-check
+      - changes
+      - r-check-linux
+      - r-check-macos
+      - r-check-windows
+      - r-tests
+      - cran-check
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Check all jobs passed
+        run: |
+          results=(
+            "${{ needs.version-check.result }}"
+            "${{ needs.changes.result }}"
+            "${{ needs.r-check-linux.result }}"
+            "${{ needs.r-check-macos.result }}"
+            "${{ needs.r-check-windows.result }}"
+            "${{ needs.r-tests.result }}"
+            "${{ needs.cran-check.result }}"
+          )
+          for result in "${results[@]}"; do
+            if [[ "$result" != "success" && "$result" != "skipped" ]]; then
+              echo "One or more jobs failed: $result"
+              exit 1
+            fi
+          done
+          echo "All CI jobs passed!"

@@ -4,11 +4,48 @@
 //! `catch_unwind` catches it and the stack unwinds naturally, running all Drops.
 //! The main thread then converts the result to SEXP or raises an R error.
 //!
+//! ## Initialization
+//!
+//! Before using any R FFI APIs, [`miniextendr_worker_init`] must be called from R's
+//! main thread. This is typically done in `R_init_<pkgname>()`:
+//!
+//! ```c
+//! void R_init_pkgname(DllInfo *dll) {
+//!     miniextendr_worker_init();
+//!     R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);
+//! }
+//! ```
+//!
+//! Calling R FFI APIs before initialization will panic with a descriptive error.
+//!
 //! ## Bidirectional Communication
 //!
 //! The worker can call R APIs via [`with_r_thread`], which sends work back to the
 //! main thread. The main thread processes these requests while waiting for the
 //! worker's final result.
+//!
+//! ## API Categories
+//!
+//! R FFI functions wrapped with `#[r_ffi_checked]` fall into two categories:
+//!
+//! 1. **Value-returning functions** (e.g., `Rf_ScalarInteger`, `Rf_allocVector`):
+//!    These are automatically routed to the main thread via [`with_r_thread`] when
+//!    called from a worker thread. The result is sent back to the worker.
+//!
+//! 2. **Pointer-returning functions** (e.g., `INTEGER`, `REAL`, `DATAPTR`):
+//!    These MUST be called from the main thread and will panic if called from a
+//!    worker thread. Raw pointers cannot be safely routed because the pointed-to
+//!    memory could be garbage collected before the worker uses it.
+//!
+//! ## R Error Handling
+//!
+//! When R errors occur during routed calls, the error is sent to the worker thread,
+//! which then panics with the error message.
+//!
+//! With the `nonapi` feature enabled, the actual R error message is captured via
+//! `R_curErrorBuf()`, preserving diagnostic information across the thread boundary.
+//! Without this feature (CRAN-compatible builds), a generic "R error occurred"
+//! message is used instead.
 
 use std::any::Any;
 use std::cell::RefCell;
@@ -89,6 +126,53 @@ pub fn is_r_main_thread() -> bool {
         .unwrap_or(false) // Safe default: assume NOT main thread until initialized
 }
 
+/// Assert that the current thread is R's main thread, for pointer-returning APIs.
+///
+/// This is used by `#[r_ffi_checked]` for functions that return raw pointers.
+/// These functions cannot be routed to the main thread because the pointer
+/// could become invalid when R's GC runs.
+///
+/// # Panics
+///
+/// Panics with a descriptive message if:
+/// - The worker system hasn't been initialized yet
+/// - Called from a thread that is not R's main thread
+#[inline(always)]
+#[doc(hidden)]
+pub fn assert_r_main_thread_for_pointer_api(fn_name: &str) {
+    match R_MAIN_THREAD_ID.get() {
+        None => {
+            panic!(
+                "miniextendr_worker_init() must be called before using R FFI APIs.\n\
+                 \n\
+                 {fn_name}() was called before initialization.\n\
+                 \n\
+                 This is typically done in R_init_<pkgname>() via:\n\
+                 \n\
+                 void R_init_pkgname(DllInfo *dll) {{\n\
+                 miniextendr_worker_init();\n\
+                 R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);\n\
+                 }}"
+            );
+        }
+        Some(&main_id) if main_id != std::thread::current().id() => {
+            panic!(
+                "{fn_name}() returns a raw pointer and must be called on R's main thread.\n\
+                 \n\
+                 Raw pointers cannot be safely routed to worker threads because:\n\
+                 - The pointed-to memory could be garbage collected on the main thread\n\
+                 - SEXP objects are not protected outside of R's stack\n\
+                 \n\
+                 Use with_r_thread(|| {{ ... }}) to execute pointer-returning \
+                 operations on the main thread and process results before returning."
+            );
+        }
+        Some(_) => {
+            // On main thread, all good
+        }
+    }
+}
+
 /// Extract a message from a panic payload.
 pub fn panic_payload_to_string(payload: &Box<dyn Any + Send>) -> String {
     if let Some(&s) = payload.downcast_ref::<&str>() {
@@ -136,6 +220,23 @@ where
     F: FnOnce() -> R + 'static,
     R: Send + 'static,
 {
+    // Check if worker system has been initialized
+    if R_MAIN_THREAD_ID.get().is_none() {
+        panic!(
+            "miniextendr_worker_init() must be called before using R FFI APIs.\n\
+             \n\
+             This is typically done in R_init_<pkgname>() via:\n\
+             \n\
+             void R_init_pkgname(DllInfo *dll) {{\n\
+             miniextendr_worker_init();\n\
+             R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);\n\
+             }}\n\
+             \n\
+             If you're embedding R in Rust, call miniextendr_worker_init() from the main thread \
+             before any R API calls."
+        );
+    }
+
     if is_r_main_thread() {
         // Already on main thread, just run it
         return f();
@@ -274,8 +375,22 @@ where
                         let data = unsafe { data.cast::<CallData>().as_ref().unwrap() };
                         let response_tx = unsafe { &*data.response_tx_ptr };
 
+                        // Try to capture R's actual error message before sending.
+                        // R_curErrorBuf is non-API, so only available with `nonapi` feature.
+                        #[cfg(feature = "nonapi")]
+                        let error_msg = unsafe {
+                            let buf = ffi::R_curErrorBuf();
+                            if buf.is_null() {
+                                "R error occurred".to_string()
+                            } else {
+                                std::ffi::CStr::from_ptr(buf).to_string_lossy().into_owned()
+                            }
+                        };
+                        #[cfg(not(feature = "nonapi"))]
+                        let error_msg = "R error occurred".to_string();
+
                         // Send error response - ignore send errors since we're about to unwind anyway
-                        let _ = response_tx.send(Err("R error occurred".to_string()));
+                        let _ = response_tx.send(Err(error_msg));
 
                         // Now trigger a Rust panic so catch_unwind below can catch it
                         // and we can properly continue R's unwind

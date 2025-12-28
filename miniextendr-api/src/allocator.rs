@@ -43,7 +43,7 @@ use core::{
 ///
 /// # Safety
 ///
-/// Same safety model as `SendableSexp` and `SendablePtr`:
+/// Same safety model as `Sendable<T>` and `SendablePtr`:
 /// - The pointer value (memory address) is safely transmitted between threads
 /// - The pointer is only dereferenced on R's main thread
 /// - This is guaranteed by the `with_r_thread_or_inline` routing mechanism

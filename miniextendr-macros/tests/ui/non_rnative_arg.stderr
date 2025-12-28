@@ -1,0 +1,19 @@
+error[E0277]: the trait bound `NotRNative: TryFromSexp` is not satisfied
+ --> tests/ui/non_rnative_arg.rs:7:1
+  |
+7 | #[miniextendr]
+  | ^^^^^^^^^^^^^^ unsatisfied trait bound
+  |
+help: the trait `RNativeType` is not implemented for `NotRNative`
+ --> tests/ui/non_rnative_arg.rs:5:1
+  |
+5 | struct NotRNative;
+  | ^^^^^^^^^^^^^^^^^
+  = help: the following other types implement trait `RNativeType`:
+            RLogical
+            Rcomplex
+            f64
+            i32
+            u8
+  = note: required for `NotRNative` to implement `TryFromSexp`
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

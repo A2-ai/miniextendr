@@ -30,7 +30,7 @@ impl Drop for SimpleDropMsg {
 /// unsafe_C_unwind_protect_lowlevel_test()
 /// }
 /// @aliases unsafe_C_unwind_protect_normal unsafe_C_unwind_protect_r_error
-/// @aliases unsafe_C_unwind_protect_lowlevel_test
+///   unsafe_C_unwind_protect_lowlevel_test
 pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
     with_r_unwind_protect(
         || {

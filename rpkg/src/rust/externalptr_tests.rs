@@ -30,11 +30,11 @@ pub struct Point {
 /// unsafe_C_extptr_counter_increment(ptr)
 /// p <- extptr_point_new(0.1, 0.2)
 /// unsafe_C_extptr_point_get_x(p)
-/// @aliases extptr_counter_new extptr_point_new
-/// @aliases unsafe_C_extptr_counter_get unsafe_C_extptr_counter_increment
-/// @aliases unsafe_C_extptr_point_get_x unsafe_C_extptr_point_get_y
-/// @aliases unsafe_C_extptr_type_mismatch_test unsafe_C_extptr_null_test
-/// @aliases unsafe_C_extptr_is_counter unsafe_C_extptr_is_point
+/// test_extptr_on_main_thread()
+/// @aliases extptr_counter_new extptr_point_new unsafe_C_extptr_counter_get
+///   unsafe_C_extptr_counter_increment unsafe_C_extptr_point_get_x unsafe_C_extptr_point_get_y
+///   unsafe_C_extptr_type_mismatch_test unsafe_C_extptr_null_test unsafe_C_extptr_is_counter
+///   unsafe_C_extptr_is_point test_extptr_on_main_thread
 pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
     miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }

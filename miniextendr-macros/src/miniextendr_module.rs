@@ -8,7 +8,7 @@
 //! - `mod <name>;` - Required module name (determines `R_init_<name>_miniextendr` symbol)
 //! - `fn <name>;` - Register a `#[miniextendr]` function
 //! - `struct <name>;` - Register an ALTREP class
-//! - `impl <name>;` - Register a `#[miniextendr(receiver|r6|s7|s3|s4)]` impl block
+//! - `impl <name>;` - Register a `#[miniextendr(env|r6|s7|s3|s4)]` impl block
 //! - `use <submodule>;` - Re-export from a submodule
 //!
 //! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
@@ -124,7 +124,7 @@ impl syn::parse::Parse for MiniextendrModuleName {
 
 /// An `impl <Type>;` line inside `miniextendr_module! { ... }`.
 ///
-/// Registers an impl block that has `#[miniextendr(receiver|r6|s7|s3|s4)]` attribute.
+/// Registers an impl block that has `#[miniextendr(env|r6|s7|s3|s4)]` attribute.
 ///
 /// ```text
 /// impl Counter;
@@ -140,6 +140,65 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
             _impl_token: input.parse()?,
             ident: input.parse()?,
         })
+    }
+}
+
+/// An `impl <Trait> for <Type>;` line inside `miniextendr_module! { ... }`.
+///
+/// Registers a trait implementation for cross-package trait dispatch.
+/// This generates the type-erased wrapper infrastructure (vtable, query function, etc.).
+///
+/// ```text
+/// impl Counter for SimpleCounter;
+/// ```
+///
+/// Requirements:
+/// - The trait must have `#[miniextendr]` applied (generates TAG, VTable, etc.)
+/// - The type must have `#[miniextendr] impl Trait for Type` (generates vtable static)
+/// - The type should have `#[derive(ExternalPtr)]`
+pub(crate) struct MiniextendrModuleTraitImpl {
+    pub _impl_token: syn::Token![impl],
+    pub trait_path: syn::Path,
+    pub _for_token: syn::Token![for],
+    pub type_ident: syn::Ident,
+}
+
+impl syn::parse::Parse for MiniextendrModuleTraitImpl {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        Ok(Self {
+            _impl_token: input.parse()?,
+            trait_path: input.parse()?,
+            _for_token: input.parse()?,
+            type_ident: input.parse()?,
+        })
+    }
+}
+
+impl MiniextendrModuleTraitImpl {
+    /// Returns the identifier for the call defs const.
+    /// Format: `{TYPE}_{TRAIT}_CALL_DEFS`
+    pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        let trait_name = self
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string().to_uppercase())
+            .unwrap_or_default();
+        quote::format_ident!("{}_{}_CALL_DEFS", type_upper, trait_name)
+    }
+
+    /// Returns the identifier for the R wrappers const.
+    /// Format: `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
+    pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        let trait_name = self
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string().to_uppercase())
+            .unwrap_or_default();
+        quote::format_ident!("R_WRAPPERS_{}_{}_IMPL", type_upper, trait_name)
     }
 }
 
@@ -201,6 +260,7 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// fn exported_fn;
 /// struct MyAltrep;
 /// impl Counter;
+/// impl MyTrait for Counter;
 /// ```
 pub(crate) struct MiniextendrModule {
     pub(crate) module_name: MiniextendrModuleName,
@@ -208,6 +268,7 @@ pub(crate) struct MiniextendrModule {
     pub(crate) functions: Vec<MiniextendrModuleFunction>,
     pub(crate) structs: Vec<MiniextendrModuleStruct>,
     pub(crate) impls: Vec<MiniextendrModuleImpl>,
+    pub(crate) trait_impls: Vec<MiniextendrModuleTraitImpl>,
 }
 
 /// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
@@ -217,6 +278,7 @@ enum MiniextendrModuleItem {
     Struct(MiniextendrModuleStruct),
     Func(MiniextendrModuleFunction),
     Impl(MiniextendrModuleImpl),
+    TraitImpl(MiniextendrModuleTraitImpl),
 }
 
 impl syn::parse::Parse for MiniextendrModuleItem {
@@ -234,7 +296,18 @@ impl syn::parse::Parse for MiniextendrModuleItem {
         } else if look_ahead.peek(syn::Token![struct]) {
             Ok(Self::Struct(input.parse()?))
         } else if look_ahead.peek(syn::Token![impl]) {
-            Ok(Self::Impl(input.parse()?))
+            // Distinguish between `impl Type;` and `impl Trait for Type;`
+            // Fork to look ahead: parse `impl Path` and check for `for`
+            let fork2 = input.fork();
+            let _: syn::Token![impl] = fork2.parse()?;
+            let _: syn::Path = fork2.parse()?;
+            if fork2.peek(syn::Token![for]) {
+                // This is `impl Trait for Type;`
+                Ok(Self::TraitImpl(input.parse()?))
+            } else {
+                // This is `impl Type;`
+                Ok(Self::Impl(input.parse()?))
+            }
         } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
             Ok(Self::Func(input.parse()?))
         } else {
@@ -256,6 +329,7 @@ impl syn::parse::Parse for MiniextendrModule {
         let mut funs = Vec::new();
         let mut structs = Vec::new();
         let mut impls = Vec::new();
+        let mut trait_impls = Vec::new();
 
         for it in items {
             match it {
@@ -269,6 +343,7 @@ impl syn::parse::Parse for MiniextendrModule {
                 MiniextendrModuleItem::Struct(s) => structs.push(s),
                 MiniextendrModuleItem::Func(f) => funs.push(f),
                 MiniextendrModuleItem::Impl(i) => impls.push(i),
+                MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(ti),
             }
         }
 
@@ -281,6 +356,7 @@ impl syn::parse::Parse for MiniextendrModule {
             functions: funs,
             structs,
             impls,
+            trait_impls,
         })
     }
 }

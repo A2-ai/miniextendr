@@ -1,37 +1,19 @@
 //! Integration tests for ExternalPtr.
 
+mod r_test_utils;
+
 use miniextendr_api::externalptr::ExternalPtr;
 use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_install, SEXP};
 use std::ffi::CString;
-use std::sync::Once;
-
-static INIT: Once = Once::new();
-
-fn initialize_r() {
-    INIT.call_once(|| unsafe {
-        let engine = miniextendr_engine::REngine::build()
-            .with_args(&["R", "--quiet", "--vanilla"])
-            .init()
-            .expect("Failed to initialize R");
-        // Initialize in same order as rpkg/src/entrypoint.c.in
-        miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
-        assert!(
-            miniextendr_engine::r_initialized_sentinel(),
-            "Rf_initialize_R did not set C stack sentinels"
-        );
-        std::mem::forget(engine);
-    });
-}
 
 #[test]
 fn externalptr_suite() {
-    initialize_r();
-
-    test_basic_access();
-    test_tag_and_protected();
-    test_try_from_sexp();
-    test_into_raw();
+    r_test_utils::with_r_thread(|| {
+        test_basic_access();
+        test_tag_and_protected();
+        test_try_from_sexp();
+        test_into_raw();
+    });
 }
 
 fn test_basic_access() {

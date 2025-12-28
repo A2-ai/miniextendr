@@ -60,7 +60,7 @@ pub fn take_and_return_nothing() -> () {}
 /// add_left_mut(1L, 2L)
 /// take_and_return_nothing()
 /// @aliases add add2 add3 add4 add_left_mut add_right_mut add_left_right_mut
-/// @aliases take_and_return_nothing
+///   take_and_return_nothing
 pub fn add(left: i32, right: i32) -> i32 {
     left + right
 }
@@ -116,9 +116,9 @@ pub fn nested_panic() {
 /// unsafe_C_r_error_in_thread()
 /// }
 /// @aliases nested_panic add_panic add_panic_heap add_r_error add_r_error_heap
-/// @aliases drop_message_on_success drop_on_panic drop_on_panic_with_move
-/// @aliases unsafe_C_just_panic unsafe_C_panic_and_catch unsafe_C_r_error
-/// @aliases unsafe_C_r_error_in_catch unsafe_C_r_error_in_thread unsafe_C_r_print_in_thread
+///   drop_message_on_success drop_on_panic drop_on_panic_with_move unsafe_C_just_panic
+///   unsafe_C_panic_and_catch unsafe_C_r_error unsafe_C_r_error_in_catch unsafe_C_r_error_in_thread
+///   unsafe_C_r_print_in_thread
 pub fn add_panic(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
     panic!("we cannot add right now! ");
