@@ -1,0 +1,76 @@
+# {{package}} - Rust workspace with R package
+#
+# Quick reference:
+#   just check         - Run cargo check
+#   just test          - Run cargo tests
+#   just clippy        - Run lints
+#   just fmt           - Format Rust code
+#   just configure     - Configure R package build
+#   just rcmdinstall   - Build and install R package
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# Default recipe
+default:
+    @just --list
+
+# ============================================================================
+# Rust development
+# ============================================================================
+
+# Run cargo check
+check:
+    cargo check --workspace
+
+# Run cargo test
+test:
+    cargo test --workspace
+
+# Run cargo clippy
+clippy:
+    cargo clippy --workspace --benches --tests --examples
+
+# Format Rust code
+fmt:
+    cargo fmt --all
+
+# Build release
+build:
+    cargo build --release
+
+# ============================================================================
+# R package development
+# ============================================================================
+
+# Configure the R package (vendor dependencies, generate Makevars)
+configure:
+    cd rpkg && NOT_CRAN=true ./configure
+
+# Build and install R package
+rcmdinstall:
+    cd rpkg && NOT_CRAN=true R CMD INSTALL .
+
+# Run R package tests
+rtest:
+    cd rpkg && Rscript -e 'devtools::test()'
+
+# Generate R documentation
+rdoc:
+    cd rpkg && Rscript -e 'devtools::document()'
+
+# Run R CMD check
+rcheck:
+    cd rpkg && R CMD check .
+
+# ============================================================================
+# Development workflow
+# ============================================================================
+
+# Full development cycle: check, test, install R package
+dev: check test rcmdinstall
+
+# Clean build artifacts
+clean:
+    cargo clean
+    rm -rf rpkg/src/rust/target
+    rm -rf rpkg/src/vendor

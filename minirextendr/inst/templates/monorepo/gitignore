@@ -1,0 +1,22 @@
+# Rust build artifacts
+/target/
+
+# R package build artifacts
+rpkg/src/rust/target/
+rpkg/src/vendor/
+rpkg/src/rust/.cargo/
+rpkg/src/Makevars
+rpkg/src/entrypoint.c
+rpkg/src/rust/document.rs
+rpkg/src/miniextendr_wrappers.R
+rpkg/config.log
+rpkg/config.status
+rpkg/configure~
+rpkg/autom4te.cache/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store

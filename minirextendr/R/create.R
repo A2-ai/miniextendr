@@ -25,7 +25,7 @@ create_miniextendr_package <- function(path, open = rlang::is_interactive(),
   usethis::proj_set(path)
 
   # Add miniextendr scaffolding
-  use_miniextendr()
+  use_miniextendr(template_type = "rpkg")
 
   # Open if requested
   if (open) {
@@ -35,17 +35,153 @@ create_miniextendr_package <- function(path, open = rlang::is_interactive(),
   invisible(path)
 }
 
+#' Create a new miniextendr monorepo
+#'
+#' Creates a new Rust workspace with an embedded R package. This is the
+#' "monorepo" template where Rust is the primary project and the R package
+#' lives inside it (similar to how miniextendr itself is organized).
+#'
+#' @param path Path where to create the monorepo
+#' @param package R package name (default: derived from path)
+#' @param crate_name Main Rust crate name (default: derived from package name)
+#' @param open Whether to open the new project in RStudio/IDE
+#' @return Path to the created monorepo (invisibly)
+#' @export
+create_miniextendr_monorepo <- function(path, package = basename(path),
+                                         crate_name = gsub("\\.", "-", package),
+                                         open = rlang::is_interactive()) {
+  cli::cli_h1("Creating miniextendr monorepo")
+
+  # Check prerequisites
+  check_rust()
+
+  # Create root directory and normalize path
+  fs::dir_create(path)
+  path <- normalizePath(path, mustWork = TRUE)
+
+  # Set project without checking for package structure
+  usethis::proj_set(path, force = TRUE)
+
+  set_template_type("monorepo")
+  on.exit(set_template_type("rpkg"), add = TRUE)
+
+  data <- list(
+    package = package,
+    package_rs = to_rust_name(package),
+    Package = tools::toTitleCase(package),
+    crate_name = crate_name,
+    year = format(Sys.Date(), "%Y")
+  )
+
+  # Root workspace files
+  cli::cli_h2("Creating workspace root")
+  use_template("Cargo.toml", data = data)
+  use_template("justfile", data = data)
+  use_template("CLAUDE.md", data = data)
+  use_template("gitignore", save_as = ".gitignore", data = data)
+
+  # Create main Rust crate
+  cli::cli_h2("Creating main Rust crate")
+  ensure_dir(usethis::proj_path(crate_name, "src"))
+  use_template("Cargo.toml", save_as = file.path(crate_name, "Cargo.toml"),
+               subdir = "my-crate", data = data)
+  use_template("lib.rs", save_as = file.path(crate_name, "src", "lib.rs"),
+               subdir = file.path("my-crate", "src"), data = data)
+
+  # Create R package in rpkg/
+  cli::cli_h2("Creating R package")
+  create_rpkg_subdirectory(data)
+
+  # Initialize git
+  if (!fs::file_exists(usethis::proj_path(".git"))) {
+    withr::with_dir(path, {
+      system2("git", c("init", "-q"))
+    })
+    cli::cli_alert_success("Initialized git repository")
+  }
+
+  cli::cli_h1("Monorepo created!")
+  cli::cli_alert_info("Next steps:")
+  cli::cli_bullets(c(
+    " " = "1. Edit {.path {crate_name}/src/lib.rs} for your main Rust library",
+    " " = "2. Edit {.path rpkg/src/rust/lib.rs} for R-exposed functions",
+    " " = "3. Run {.code just configure} to set up build system",
+    " " = "4. Run {.code just rcmdinstall} to build and install"
+  ))
+
+  if (open) {
+    usethis::proj_activate(path)
+  }
+
+  invisible(path)
+}
+
+#' Create rpkg subdirectory for monorepo template
+#'
+#' @param data Template data list
+#' @noRd
+create_rpkg_subdirectory <- function(data) {
+  # Create directory structure
+  ensure_dir(usethis::proj_path("rpkg", "R"))
+  ensure_dir(usethis::proj_path("rpkg", "src", "rust"))
+  ensure_dir(usethis::proj_path("rpkg", "src", "vendor"))
+
+  # Create DESCRIPTION manually (not from template)
+  desc_path <- usethis::proj_path("rpkg", "DESCRIPTION")
+  desc_content <- sprintf(
+    "Package: %s\nTitle: What the Package Does (One Line, Title Case)\nVersion: 0.0.0.9000\nAuthors@R:\n    person(\"First\", \"Last\", , \"first.last@example.com\", role = c(\"aut\", \"cre\"))\nDescription: What the package does (one paragraph).\nLicense: MIT + file LICENSE\nEncoding: UTF-8\nRoxygen: list(markdown = TRUE)\nRoxygenNote: 7.3.2\nSystemRequirements: Rust (>= 1.85)\nConfig/build/bootstrap: TRUE\nConfig/build/never-clean: true\nConfig/build/extra-sources: src/rust/Cargo.lock\n",
+    data$package
+  )
+  writeLines(desc_content, desc_path)
+  bullet_created("rpkg/DESCRIPTION")
+
+  # R package files (from rpkg subdir of monorepo template)
+  use_template("package.R", save_as = file.path("rpkg", "R", paste0(data$package, "-package.R")),
+               subdir = "rpkg", data = data)
+
+  # Build system files
+  use_template("configure.ac", save_as = "rpkg/configure.ac", subdir = "rpkg", data = data)
+  use_template("bootstrap.R", save_as = "rpkg/bootstrap.R", subdir = "rpkg")
+  use_template("cleanup", save_as = "rpkg/cleanup", subdir = "rpkg")
+  use_template("cleanup.win", save_as = "rpkg/cleanup.win", subdir = "rpkg")
+  use_template("cleanup.ucrt", save_as = "rpkg/cleanup.ucrt", subdir = "rpkg")
+  use_template("configure.win", save_as = "rpkg/configure.win", subdir = "rpkg")
+  use_template("configure.ucrt", save_as = "rpkg/configure.ucrt", subdir = "rpkg")
+
+  # src/ files
+  use_template("Makevars.in", save_as = "rpkg/src/Makevars.in", subdir = "rpkg")
+  use_template("entrypoint.c.in", save_as = "rpkg/src/entrypoint.c.in", subdir = "rpkg")
+
+  # Rust project files
+  use_template("Cargo.toml.in", save_as = "rpkg/src/rust/Cargo.toml.in", subdir = "rpkg", data = data)
+  use_template("build.rs", save_as = "rpkg/src/rust/build.rs", subdir = "rpkg")
+  use_template("lib.rs", save_as = "rpkg/src/rust/lib.rs", subdir = "rpkg", data = data)
+  use_template("document.rs.in", save_as = "rpkg/src/rust/document.rs.in", subdir = "rpkg")
+  use_template("cargo-config.toml.in", save_as = "rpkg/src/rust/cargo-config.toml.in", subdir = "rpkg")
+
+  # Ignore files
+  use_template("Rbuildignore", save_as = "rpkg/.Rbuildignore", subdir = "rpkg")
+  use_template("gitignore", save_as = "rpkg/.gitignore", subdir = "rpkg")
+
+  invisible(TRUE)
+}
+
 #' Add miniextendr to an existing package
 #'
 #' Sets up all miniextendr scaffolding in the current R package. This is
 #' an all-in-one function that calls all the individual `use_miniextendr_*()`
 #' functions.
 #'
+#' @param template_type Template type: "rpkg" for standalone R package (default)
 #' @param miniextendr_version Version of miniextendr to vendor (default: "latest")
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr <- function(miniextendr_version = "latest") {
+use_miniextendr <- function(template_type = "rpkg", miniextendr_version = "latest") {
   cli::cli_h1("Setting up miniextendr")
+
+  # Set template type for this session
+  set_template_type(template_type)
+  on.exit(set_template_type("rpkg"), add = TRUE)
 
   # Check prerequisites
   check_rust()

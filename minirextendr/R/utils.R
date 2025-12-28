@@ -1,12 +1,44 @@
 # Internal utility functions for minirextendr
 
+# Template type for current session (used by template functions)
+.template_type <- new.env(parent = emptyenv())
+.template_type$current <- "rpkg"
+
+#' Set template type for scaffolding
+#'
+#' @param type Either "rpkg" (standalone R package) or "monorepo" (Rust workspace)
+#' @noRd
+set_template_type <- function(type = c("rpkg", "monorepo")) {
+  type <- match.arg(type)
+  .template_type$current <- type
+  invisible(type)
+}
+
+#' Get current template type
+#'
+#' @return Current template type
+#' @noRd
+get_template_type <- function() {
+  .template_type$current
+}
+
 #' Get path to package template
 #'
-#' @param name Name of the template file
+#' For "rpkg" templates, returns templates from `templates/rpkg/`.
+#' For "monorepo" templates, returns templates from `templates/monorepo/`.
+#'
+#' @param name Name of the template file (relative to template type directory)
+#' @param subdir Optional subdirectory within the template type
 #' @return Full path to the template
 #' @noRd
-template_path <- function(name) {
-  system.file("templates", name, package = "minirextendr", mustWork = TRUE)
+template_path <- function(name, subdir = NULL) {
+  type <- get_template_type()
+  if (!is.null(subdir)) {
+    path <- file.path("templates", type, subdir, name)
+  } else {
+    path <- file.path("templates", type, name)
+  }
+  system.file(path, package = "minirextendr", mustWork = TRUE)
 }
 
 #' Get path to bundled script
@@ -20,22 +52,45 @@ script_path <- function(name) {
 
 #' Use a minirextendr template
 #'
-#' Wrapper around usethis::use_template that defaults to minirextendr package.
+#' Reads a template from the current template type directory, performs
+#' mustache-style variable substitution, and writes to the target location.
 #'
-#' @param template Name of template file in inst/templates
+#' @param template Name of template file (relative to template type directory)
 #' @param save_as Path to save the file (relative to project root)
-#' @param data Named list of template variables
+#' @param data Named list of template variables for {{variable}} substitution
+#' @param subdir Optional subdirectory within the template type (e.g., "rpkg" for monorepo)
 #' @param open Whether to open the file after creation
 #' @return Invisibly returns TRUE if file was created
 #' @noRd
-use_template <- function(template, save_as = template, data = list(), open = FALSE) {
-  usethis::use_template(
-    template = template,
-    save_as = save_as,
-    data = data,
-    open = open,
-    package = "minirextendr"
-  )
+use_template <- function(template, save_as = template, data = list(),
+                         subdir = NULL, open = FALSE) {
+  # Get full path to template
+  src_path <- template_path(template, subdir = subdir)
+
+  # Read template content
+  content <- readLines(src_path, warn = FALSE)
+  content <- paste(content, collapse = "\n")
+
+  # Perform mustache-style substitution for {{variable}}
+  for (nm in names(data)) {
+    pattern <- paste0("\\{\\{", nm, "\\}\\}")
+    content <- gsub(pattern, data[[nm]], content)
+  }
+
+  # Ensure target directory exists
+  target_path <- usethis::proj_path(save_as)
+  ensure_dir(dirname(target_path))
+
+  # Write file
+  writeLines(content, target_path)
+  bullet_created(save_as)
+
+  # Open if requested
+  if (open && rlang::is_interactive()) {
+    usethis::edit_file(target_path)
+  }
+
+  invisible(TRUE)
 }
 
 #' Check if a system command is available
@@ -107,16 +162,27 @@ to_rust_name <- function(name) {
 
 #' Standard template data for current project
 #'
-#' @return Named list with package, package_rs, year, etc.
+#' @param crate_name Optional crate name for monorepo template
+#' @return Named list with package, package_rs, crate_name, year, etc.
 #' @noRd
-template_data <- function() {
- pkg <- get_package_name()
-  list(
+template_data <- function(crate_name = NULL) {
+  pkg <- get_package_name()
+  data <- list(
     package = pkg,
     package_rs = to_rust_name(pkg),
     Package = tools::toTitleCase(pkg),
     year = format(Sys.Date(), "%Y")
   )
+
+  # Add monorepo-specific data
+  if (!is.null(crate_name)) {
+    data$crate_name <- crate_name
+  } else if (get_template_type() == "monorepo") {
+    # Default crate name is package name with dashes
+    data$crate_name <- gsub("\\.", "-", pkg)
+  }
+
+  data
 }
 
 #' Ensure directory exists

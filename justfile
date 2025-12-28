@@ -236,15 +236,25 @@ templates-sources:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # Two template types exist:
+    #   - rpkg/          : Standalone R package template
+    #   - monorepo/      : Rust workspace with embedded R package
+    #
     # Only include files where rpkg is the source of truth.
     # Templates with @PLACEHOLDER@ markers (document.rs.in, entrypoint.c.in)
     # are NOT compared - they are the source, rpkg has expanded versions.
     cat <<'EOF'
     # rel	src
-    # Build system files (rpkg is source of truth)
-    Makevars.in	rpkg/src/Makevars.in
-    configure.ac	rpkg/configure.ac
-    build.rs	rpkg/src/rust/build.rs
+    # === R Package Template (rpkg/) ===
+    rpkg/Makevars.in	rpkg/src/Makevars.in
+    rpkg/configure.ac	rpkg/configure.ac
+    rpkg/build.rs	rpkg/src/rust/build.rs
+    # === Monorepo Template (monorepo/) ===
+    # Monorepo root files are template-only (no rpkg source)
+    # The embedded R package uses same sources as rpkg/ template
+    monorepo/rpkg/Makevars.in	rpkg/src/Makevars.in
+    monorepo/rpkg/configure.ac	rpkg/configure.ac
+    monorepo/rpkg/build.rs	rpkg/src/rust/build.rs
     EOF
 
 # Internal helper: populate an upstream snapshot into DEST.
