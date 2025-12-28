@@ -101,6 +101,7 @@ impl syn::parse::Parse for MiniextendrModuleStruct {
 /// This determines the generated init symbol: `R_init_<name>_miniextendr`.
 pub(crate) struct MiniextendrModuleName {
     _mod_token: syn::Token![mod],
+    #[allow(dead_code)]
     /// Base name that drives `R_init_<name>_miniextendr` symbol generation.
     pub ident: syn::Ident,
 }
@@ -173,11 +174,13 @@ impl syn::parse::Parse for MiniextendrModuleTraitImpl {
 
 impl MiniextendrModuleImpl {
     /// Returns the identifier for the call defs const function.
+    #[allow(dead_code)]
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
         quote::format_ident!("{}_CALL_DEFS", self.ident.to_string().to_uppercase())
     }
 
     /// Returns the identifier for the R wrappers const.
+    #[allow(dead_code)]
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
         quote::format_ident!("R_WRAPPERS_IMPL_{}", self.ident.to_string().to_uppercase())
     }
@@ -191,6 +194,7 @@ impl MiniextendrModuleImpl {
 /// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
 pub(crate) struct MiniextendrModuleUse {
     _use_token: syn::Token![use],
+    #[allow(dead_code)]
     /// Target module to re-export wrappers from.
     pub use_name: syn::UseName,
 }
@@ -234,8 +238,10 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// ```
 pub(crate) struct MiniextendrModule {
     /// The module header (`mod <name>;`) that drives symbol generation.
+    #[allow(dead_code)]
     pub(crate) module_name: MiniextendrModuleName,
     /// Submodules to re-export wrappers from (`use foo;`).
+    #[allow(dead_code)]
     pub(crate) uses: Vec<MiniextendrModuleUse>,
     /// Functions registered via `fn name;`.
     pub(crate) functions: Vec<MiniextendrModuleFunction>,

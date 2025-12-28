@@ -317,7 +317,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     // Generate method wrappers for the View struct
     let view_methods: Vec<_> = methods
         .iter()
-        .map(|m| generate_view_method(m))
+        .map(generate_view_method)
         .collect();
 
     let trait_name_str = trait_name.to_string();

@@ -470,10 +470,15 @@ fn collect_items(
                 } else {
                     // File module: mod foo;
                     // Resolve and parse the file, then recursively collect
-                    if let Some(mod_path) = resolve_file_module(path, &item_mod.ident) {
-                        if let Err(e) = collect_items_from_file(&mod_path, miniextendr_items, module_items, errors) {
-                            errors.push(format!("{}: failed to process module {}: {}", path.display(), item_mod.ident, e));
-                        }
+                    if let Some(mod_path) = resolve_file_module(path, &item_mod.ident)
+                        && let Err(e) = collect_items_from_file(&mod_path, miniextendr_items, module_items, errors)
+                    {
+                        errors.push(format!(
+                            "{}: failed to process module {}: {}",
+                            path.display(),
+                            item_mod.ident,
+                            e
+                        ));
                     }
                     // Silently skip if module file can't be resolved (might be cfg'd out or generated)
                 }

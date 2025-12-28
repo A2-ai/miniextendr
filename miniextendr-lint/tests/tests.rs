@@ -1,4 +1,9 @@
-use super::*;
+use miniextendr_lint::{lint_enabled, run};
+use std::fs;
+use std::path::PathBuf;
+use std::sync::Mutex;
+
+static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn lint_enabled_respects_env() {
