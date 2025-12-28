@@ -1613,8 +1613,6 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
             }
         }
 
-        // Marker trait for types derived with #[derive(RNativeType)]
-        impl #impl_generics ::miniextendr_api::markers::IsRNativeType for #name #ty_generics #where_clause {}
     };
 
     expanded.into()

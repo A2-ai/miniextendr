@@ -158,16 +158,10 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    // Marker trait for types derived with #[derive(AltrepInteger)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepIntegerData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_integer_impl
         #lowlevel_impl
-        #marker_impl
     })
 }
 
@@ -214,16 +208,10 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    // Marker trait for types derived with #[derive(AltrepReal)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepRealData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_real_impl
         #lowlevel_impl
-        #marker_impl
     })
 }
 
@@ -270,16 +258,10 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    // Marker trait for types derived with #[derive(AltrepLogical)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepLogicalData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_logical_impl
         #lowlevel_impl
-        #marker_impl
     })
 }
 
@@ -326,16 +308,10 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    // Marker trait for types derived with #[derive(AltrepRaw)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepRawData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_raw_impl
         #lowlevel_impl
-        #marker_impl
     })
 }
 
@@ -384,16 +360,10 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         }
     };
 
-    // Marker trait for types derived with #[derive(AltrepString)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepStringData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_string_impl
         #lowlevel_impl
-        #marker_impl
     })
 }
 
@@ -438,16 +408,10 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         quote! {}
     };
 
-    // Marker trait for types derived with #[derive(AltrepComplex)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepComplexData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_complex_impl
         #lowlevel_impl
-        #marker_impl
     })
 }
 
@@ -490,15 +454,9 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         quote! {}
     };
 
-    // Marker trait for types derived with #[derive(AltrepList)]
-    let marker_impl = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsAltrepListData for #name #ty_generics #where_clause {}
-    };
-
     Ok(quote! {
         #altrep_len_impl
         #alt_list_impl
         #lowlevel_impl
-        #marker_impl
     })
 }

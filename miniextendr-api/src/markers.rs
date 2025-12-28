@@ -76,3 +76,15 @@ pub trait IsAltrepComplexData: crate::altrep_data::AltComplexData {}
 /// This marker indicates that a type implements [`AltListData`](crate::altrep_data::AltListData)
 /// via the derive macro.
 pub trait IsAltrepListData: crate::altrep_data::AltListData {}
+
+// Blanket implementations: any type satisfying the underlying data trait
+// automatically gets the marker trait. This keeps derived and manual impls
+// consistent without requiring an explicit marker impl.
+impl<T: crate::ffi::RNativeType> IsRNativeType for T {}
+impl<T: crate::altrep_data::AltIntegerData> IsAltrepIntegerData for T {}
+impl<T: crate::altrep_data::AltRealData> IsAltrepRealData for T {}
+impl<T: crate::altrep_data::AltLogicalData> IsAltrepLogicalData for T {}
+impl<T: crate::altrep_data::AltRawData> IsAltrepRawData for T {}
+impl<T: crate::altrep_data::AltStringData> IsAltrepStringData for T {}
+impl<T: crate::altrep_data::AltComplexData> IsAltrepComplexData for T {}
+impl<T: crate::altrep_data::AltListData> IsAltrepListData for T {}
