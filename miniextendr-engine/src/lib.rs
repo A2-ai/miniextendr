@@ -57,9 +57,9 @@ unsafe extern "C" {
     fn setup_Rmainloop();
 
     // Global state from Rinterface.h (non-API)
-    // Declared as mutable static because we write to them during initialization
-    static mut R_Interactive: c_int;
-    static mut R_SignalHandlers: c_int;
+    // Use UnsafeCell for interior mutability without static mut
+    static R_Interactive: std::cell::UnsafeCell<c_int>;
+    static R_SignalHandlers: std::cell::UnsafeCell<c_int>;
     static R_CStackStart: usize;
     static R_CStackDir: c_int;
 }
@@ -71,7 +71,7 @@ unsafe extern "C" {
 #[inline]
 unsafe fn set_r_interactive(value: c_int) {
     unsafe {
-        R_Interactive = value;
+        *R_Interactive.get() = value;
     }
 }
 
@@ -82,7 +82,7 @@ unsafe fn set_r_interactive(value: c_int) {
 #[inline]
 unsafe fn set_r_signal_handlers(value: c_int) {
     unsafe {
-        R_SignalHandlers = value;
+        *R_SignalHandlers.get() = value;
     }
 }
 

@@ -314,6 +314,49 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
     }
 }
 
+/// Resolve file path for an out-of-line module declaration.
+///
+/// For `mod foo;` in `/path/to/bar.rs`, tries:
+/// - `/path/to/foo.rs`
+/// - `/path/to/foo/mod.rs`
+///
+/// Returns None if neither exists.
+fn resolve_file_module(parent_path: &Path, mod_ident: &syn::Ident) -> Option<PathBuf> {
+    let parent_dir = parent_path.parent()?;
+    let mod_name = mod_ident.to_string();
+
+    // Try foo.rs
+    let sibling = parent_dir.join(format!("{}.rs", mod_name));
+    if sibling.exists() {
+        return Some(sibling);
+    }
+
+    // Try foo/mod.rs
+    let subdir_mod = parent_dir.join(&mod_name).join("mod.rs");
+    if subdir_mod.exists() {
+        return Some(subdir_mod);
+    }
+
+    None
+}
+
+/// Parse a module file and collect items from it.
+fn collect_items_from_file(
+    mod_path: &Path,
+    miniextendr_items: &mut HashSet<LintItem>,
+    module_items: &mut HashSet<LintItem>,
+    errors: &mut Vec<String>,
+) -> Result<(), String> {
+    let src = fs::read_to_string(mod_path)
+        .map_err(|e| format!("failed to read: {}", e))?;
+
+    let parsed = syn::parse_file(&src)
+        .map_err(|e| format!("failed to parse: {}", e))?;
+
+    collect_items(&parsed.items, mod_path, miniextendr_items, module_items, errors);
+    Ok(())
+}
+
 /// Parse the class system from #[miniextendr(...)] attribute.
 /// Returns Some("s3"), Some("s4"), etc. or None for default (env).
 fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
@@ -436,7 +479,17 @@ fn collect_items(
             }
             Item::Mod(item_mod) => {
                 if let Some((_, items)) = &item_mod.content {
+                    // Inline module: mod foo { ... }
                     collect_items(items, path, miniextendr_items, module_items, errors);
+                } else {
+                    // File module: mod foo;
+                    // Resolve and parse the file, then recursively collect
+                    if let Some(mod_path) = resolve_file_module(path, &item_mod.ident) {
+                        if let Err(e) = collect_items_from_file(&mod_path, miniextendr_items, module_items, errors) {
+                            errors.push(format!("{}: failed to process module {}: {}", path.display(), item_mod.ident, e));
+                        }
+                    }
+                    // Silently skip if module file can't be resolved (might be cfg'd out or generated)
                 }
             }
             _ => {}
