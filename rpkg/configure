@@ -3775,13 +3775,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "cargo-vendor":C)
-      if test "$NOT_CRAN" != "true"; then
-    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-      echo "configure:        Either build from a release tarball that includes src/vendor, or rerun configure with NOT_CRAN=true (and optionally FORCE_VENDOR=1)." >&2
-      exit 1
-    fi
-    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+      if test "$NOT_CRAN" != "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    echo "configure: CRAN build - using pre-vendored tarball"
   else
     MANIFEST="src/rust/Cargo.toml"
     LOCKFILE="src/rust/Cargo.lock"
@@ -3825,13 +3820,14 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         fi
         echo "$_new" > "$STAMP"
       else
-                if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
-        else
-          echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
-          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
+                echo "configure: monorepo not found; running standalone cargo vendor"
+        mkdir -p "$VENDOR_OUT"
+        $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
+        if test $? -ne 0; then
+          echo "configure: error: cargo vendor failed (standalone)" >&2
           exit 1
         fi
+        echo "$_new" > "$STAMP"
       fi
     else
       echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
@@ -4072,5 +4068,3 @@ if test -n "$ac_unrecognized_opts" && test "$enable_option_checking" != no; then
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: unrecognized options: $ac_unrecognized_opts" >&5
 printf "%s\n" "$as_me: WARNING: unrecognized options: $ac_unrecognized_opts" >&2;}
 fi
-
-

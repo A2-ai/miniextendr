@@ -35,8 +35,6 @@
 //!
 //! See `miniextendr-lint/src/lib.rs` module docs for more details.
 
-use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
-
 /// A single `fn ...;` line inside `miniextendr_module! { ... }`.
 ///
 /// Registers a function that has the `#[miniextendr]` attribute.
@@ -68,16 +66,6 @@ impl syn::parse::Parse for MiniextendrModuleFunction {
             _fn_token: input.parse()?,
             ident: input.parse()?,
         })
-    }
-}
-
-impl MiniextendrModuleFunction {
-    pub(crate) fn call_method_def_ident(&self) -> syn::Ident {
-        call_method_def_ident_for(&self.ident)
-    }
-
-    pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
-        r_wrapper_const_ident_for(&self.ident)
     }
 }
 

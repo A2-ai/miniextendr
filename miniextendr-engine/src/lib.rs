@@ -390,7 +390,7 @@ mod tests {
         // Save and clear the current R_HOME/PATH so we can restore them after the test.
         let original_r_home = std::env::var_os("R_HOME");
         let original_path = std::env::var("PATH").unwrap_or_default();
-        std::env::remove_var("R_HOME");
+        unsafe { std::env::remove_var("R_HOME") };
 
         // Create a fake `R` executable that responds to `R RHOME`.
         let tmp = tempfile::tempdir().expect("tempdir");
@@ -408,17 +408,17 @@ mod tests {
 
         // Prepend the temp dir to PATH so Command::new("R") finds our stub.
         let new_path = format!("{}:{}", tmp.path().display(), original_path);
-        std::env::set_var("PATH", &new_path);
+        unsafe { std::env::set_var("PATH", &new_path) };
 
         ensure_r_home_env().expect("fake R should set R_HOME");
         assert_eq!(std::env::var("R_HOME").unwrap(), "/fake/r/home");
 
         // Restore environment
         match original_r_home {
-            Some(val) => std::env::set_var("R_HOME", val),
-            None => std::env::remove_var("R_HOME"),
+            Some(val) => unsafe { std::env::set_var("R_HOME", val) },
+            None => unsafe { std::env::remove_var("R_HOME") },
         }
-        std::env::set_var("PATH", original_path);
+        unsafe { std::env::set_var("PATH", original_path) };
     }
 
     #[test]
@@ -427,19 +427,19 @@ mod tests {
 
         let original_r_home = std::env::var_os("R_HOME");
         let original_path = std::env::var("PATH").unwrap_or_default();
-        std::env::remove_var("R_HOME");
+        unsafe { std::env::remove_var("R_HOME") };
 
         // Use an empty temp dir so `R` cannot be found.
         let tmp = tempfile::tempdir().expect("tempdir");
-        std::env::set_var("PATH", tmp.path());
+        unsafe { std::env::set_var("PATH", tmp.path()) };
 
         let err = ensure_r_home_env().expect_err("should fail when R is missing");
         assert!(matches!(err, REngineError::RHomeNotFound));
 
         match original_r_home {
-            Some(val) => std::env::set_var("R_HOME", val),
-            None => std::env::remove_var("R_HOME"),
+            Some(val) => unsafe { std::env::set_var("R_HOME", val) },
+            None => unsafe { std::env::remove_var("R_HOME") },
         }
-        std::env::set_var("PATH", original_path);
+        unsafe { std::env::set_var("PATH", original_path) };
     }
 }

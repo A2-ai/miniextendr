@@ -754,7 +754,6 @@ pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
-    #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
     #[doc(alias = "NA_STRING")]
