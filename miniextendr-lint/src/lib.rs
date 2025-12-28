@@ -27,7 +27,6 @@
 //! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
 // Parser module (copied from miniextendr-macros for independent publishing).
-#[allow(dead_code)]
 mod miniextendr_module;
 
 // TODO: Check how many miniextendr_module! calls there is in a module

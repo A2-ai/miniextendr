@@ -612,7 +612,6 @@ CARGO_SOURCE_REPLACE
 FORCE_VENDOR
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
-RUST_SOURCES
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
 CARGO_LIBDIR
@@ -2508,14 +2507,6 @@ PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
 ac_config_files="$ac_config_files src/rust/document.rs"
 
-
-RUST_SRC_DIR="$abs_rpkg_src/rust"
-RUST_SOURCES=
-if test -d "$RUST_SRC_DIR"; then
-  RUST_SOURCES="$(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
-    | $SED "s|^.|$RUST_SRC_DIR|" \
-    | tr '\012' ' ')"
-fi
 
 
 OPTIONAL_CARGO_DEPS=

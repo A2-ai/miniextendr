@@ -16,7 +16,6 @@ CARGO_OFFLINE_FLAG = @CARGO_OFFLINE_FLAG@
 CARGO_LOCKED_FLAG = @CARGO_LOCKED_FLAG@
 NOT_CRAN_FLAG = @NOT_CRAN@
 CARGO_FEATURES_FLAG = @CARGO_FEATURES_FLAG@
-RUST_SOURCES = @RUST_SOURCES@
 OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
@@ -75,7 +74,7 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
 # Note: Dependencies are vendored by configure script, not by this Makefile.
 # You must run `./configure` (or `just configure`) before building.
-$(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS) $(RUST_SOURCES)
+$(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS)
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \

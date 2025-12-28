@@ -218,15 +218,8 @@ dnl Generate files from .in templates (templates must be committed)
 AC_CONFIG_FILES([src/rust/document.rs])
 AC_CONFIG_SRCDIR([src/entrypoint.c.in])  dnl safety check
 
-dnl ---- enumerate Rust sources for Make dependencies (no make wildcards) ----
-RUST_SRC_DIR="$abs_rpkg_src/rust"
-RUST_SOURCES=
-if test -d "$RUST_SRC_DIR"; then
-  RUST_SOURCES="$(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
-    | $SED "s|^.|$RUST_SRC_DIR|" \
-    | tr '\012' ' ')"
-fi
-AC_SUBST([RUST_SOURCES])
+dnl Note: R CMD build already tracks .rs files for rebuild detection via pkgbuild,
+dnl so we don't need to enumerate RUST_SOURCES for Make dependencies.
 
 dnl ---- optional cargo deps: include if present ----
 OPTIONAL_CARGO_DEPS=
