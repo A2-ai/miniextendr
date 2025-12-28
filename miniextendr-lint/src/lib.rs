@@ -314,6 +314,29 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
     }
 }
 
+/// Parse the class system from #[miniextendr(...)] attribute.
+/// Returns Some("s3"), Some("s4"), etc. or None for default (env).
+fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
+    for attr in attrs {
+        if attr
+            .path()
+            .segments
+            .last()
+            .is_some_and(|seg| seg.ident == "miniextendr")
+        {
+            // Try to parse the attribute arguments
+            if let syn::Meta::List(meta_list) = &attr.meta {
+                let tokens = meta_list.tokens.to_string();
+                let tokens = tokens.trim();
+                if !tokens.is_empty() {
+                    return Some(tokens.to_string());
+                }
+            }
+        }
+    }
+    None
+}
+
 fn collect_items(
     items: &[Item],
     path: &Path,
@@ -321,6 +344,12 @@ fn collect_items(
     module_items: &mut HashSet<LintItem>,
     errors: &mut Vec<String>,
 ) {
+    // Track inherent impl class systems for compatibility checking
+    let mut inherent_impl_class_systems: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+    // Track trait impls to check compatibility after all items are processed
+    let mut trait_impls_to_check: Vec<(String, String, Option<String>, usize)> = Vec::new();
+
     for item in items {
         match item {
             Item::Fn(item_fn) => {
@@ -346,6 +375,8 @@ fn collect_items(
             Item::Impl(item_impl) => {
                 if has_miniextendr_attr(&item_impl.attrs) {
                     let line = item_impl.self_ty.span().start().line;
+                    let class_system = parse_class_system(&item_impl.attrs);
+
                     match impl_type_name(&item_impl.self_ty) {
                         Some(type_name) => {
                             // Check if this is a trait impl (impl Trait for Type)
@@ -359,9 +390,22 @@ fn collect_items(
                                         full_name,
                                         line,
                                     ));
+
+                                    // Store for compatibility checking
+                                    trait_impls_to_check.push((
+                                        type_name.clone(),
+                                        trait_name,
+                                        class_system,
+                                        line,
+                                    ));
                                 }
                             } else {
-                                // Regular impl block
+                                // Regular impl block - track its class system
+                                inherent_impl_class_systems.insert(
+                                    type_name.clone(),
+                                    (class_system.unwrap_or_default(), line),
+                                );
+
                                 miniextendr_items.insert(LintItem::new(
                                     LintKind::Impl,
                                     type_name,
@@ -397,6 +441,40 @@ fn collect_items(
             }
             _ => {}
         }
+    }
+
+    // Check class system compatibility for trait impls
+    // Env-style trait impls (default) require Env-style inherent impls
+    // because they use Type$Trait$method() patterns that need an environment
+    for (type_name, trait_name, trait_class_system, line) in trait_impls_to_check {
+        let trait_style = trait_class_system.as_deref().unwrap_or("env");
+
+        // Env trait impl requires Env inherent impl
+        if trait_style == "env" {
+            if let Some((inherent_style, _inherent_line)) =
+                inherent_impl_class_systems.get(&type_name)
+            {
+                if !inherent_style.is_empty() && inherent_style != "env" {
+                    errors.push(format!(
+                        "{}:{}: #[miniextendr] impl {} for {} uses Env-style (default) which requires \
+                        Env-style inherent impl, but {} uses #[miniextendr({})]. \
+                        Env-style trait impls generate Type$Trait$method() patterns that need \
+                        the type to be an environment. Either change the trait impl to use \
+                        #[miniextendr({})] or change the inherent impl to #[miniextendr].",
+                        path.display(),
+                        line,
+                        trait_name,
+                        type_name,
+                        type_name,
+                        inherent_style,
+                        inherent_style
+                    ));
+                }
+            }
+        }
+
+        // S3/S4/S7/R6 trait impls are compatible with Env inherent impls
+        // because they use their own dispatch mechanisms (generics, methods, etc.)
     }
 }
 

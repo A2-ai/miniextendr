@@ -992,6 +992,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Public list
     lines.push("    public = list(".to_string());
 
+    // Public instance methods (collect first to know if we need trailing comma on initialize)
+    let public_methods: Vec<_> = parsed_impl.public_instance_methods().collect();
+    let has_public_methods = !public_methods.is_empty();
+
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr
     // Note: has_self_returning_methods was calculated above for @param .ptr documentation
     if let Some(ctor) = parsed_impl.constructor() {
@@ -1011,6 +1015,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
         }
 
+        // Only add trailing comma if there are public methods after initialize
+        let comma = if has_public_methods { "," } else { "" };
+
         if has_self_returning_methods {
             let full_params = if params.is_empty() {
                 ".ptr = NULL".to_string()
@@ -1023,16 +1030,15 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("            } else {".to_string());
             lines.push(format!("                private$.ptr <- {}", call));
             lines.push("            }".to_string());
-            lines.push("        },".to_string());
+            lines.push(format!("        }}{}", comma));
         } else {
             lines.push(format!("        initialize = function({}) {{", params));
             lines.push(format!("            private$.ptr <- {}", call));
-            lines.push("        },".to_string());
+            lines.push(format!("        }}{}", comma));
         }
     }
 
     // Public instance methods
-    let public_methods: Vec<_> = parsed_impl.public_instance_methods().collect();
     for (i, method) in public_methods.iter().enumerate() {
         let c_ident = method.c_wrapper_ident(type_ident);
         let params = crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
@@ -1343,6 +1349,15 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("}".to_string());
         lines.push(String::new());
     }
+
+    // Create class environment for static methods and trait namespace compatibility
+    // This allows Env-style trait impls to attach Type$Trait$method() patterns
+    lines.push(format!(
+        "#' @rdname {}
+{} <- new.env(parent = emptyenv())",
+        class_name, class_name
+    ));
+    lines.push(String::new());
 
     lines.join("\n")
 }

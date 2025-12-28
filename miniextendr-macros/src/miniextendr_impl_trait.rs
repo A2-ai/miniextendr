@@ -651,20 +651,31 @@ fn generate_trait_env_r_wrapper(
 
         let param_str = params.join(", ");
 
-        // For instance methods, we need `self` in the args; for static methods, just the params
+        // For instance methods, include 'x' as first parameter
+        // For static methods, just use the params
+        let function_params = if method.has_self {
+            if params.is_empty() {
+                "x".to_string()
+            } else {
+                format!("x, {}", params.join(", "))
+            }
+        } else {
+            param_str.clone()
+        };
+
+        // For .Call(), use the same pattern
         let args_str = if method.has_self {
             if params.is_empty() {
-                "self".to_string()
+                "x".to_string()
             } else {
-                format!("self, {}", params.join(", "))
+                format!("x, {}", params.join(", "))
             }
         } else {
             param_str.clone()
         };
 
         // Generate method wrapper in trait namespace
-        // Uses nested naming: Type$Trait$method
-        // The $.Type dispatch handles binding `self` for environments (instance methods)
+        // Uses nested naming: Type$Trait$method(x, ...)
         output.push_str(&format!(
             "#' @name {}${}${}\n",
             type_ident, trait_name, method_name
@@ -672,10 +683,7 @@ fn generate_trait_env_r_wrapper(
         output.push_str(&format!("#' @rdname {}\n", type_ident));
         output.push_str(&format!(
             "{}${}${} <- function({}) {{\n",
-            type_ident,
-            trait_name,
-            method_name,
-            param_str // Static methods have no self in params; instance methods get self via environment
+            type_ident, trait_name, method_name, function_params
         ));
         // Generate .Call() - handle empty args properly to avoid trailing comma
         if args_str.is_empty() {
