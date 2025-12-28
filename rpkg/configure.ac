@@ -1,4 +1,4 @@
-AC_INIT([rpkg], [1.0])
+AC_INIT([miniextendr], [1.0])
 
 dnl Verify we're running from the R package directory (not the monorepo root)
 dnl This prevents accidental creation of src/, config.log, etc. in the wrong place

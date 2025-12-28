@@ -1,0 +1,44 @@
+# Cross-package trait dispatch testing
+
+# Build both packages in sequence
+build-all: configure-producer build-producer configure-consumer build-consumer
+
+# Configure producer.pkg
+configure-producer:
+    cd producer.pkg && NOT_CRAN=true ./configure
+
+# Build and install producer.pkg
+build-producer:
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
+
+# Configure consumer.pkg
+configure-consumer:
+    cd consumer.pkg && NOT_CRAN=true ./configure
+
+# Build and install consumer.pkg
+build-consumer:
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
+
+# Test producer.pkg
+test-producer:
+    cd producer.pkg && Rscript -e 'devtools::test()'
+
+# Test consumer.pkg (includes cross-package tests)
+test-consumer:
+    cd consumer.pkg && Rscript -e 'devtools::test()'
+
+# Run all tests
+test-all: test-producer test-consumer
+
+# Clean build artifacts from both packages
+clean:
+    cd producer.pkg && ./cleanup
+    cd consumer.pkg && ./cleanup
+    rm -rf producer.pkg/src/rust/target
+    rm -rf consumer.pkg/src/rust/target
+
+# Full development cycle
+dev: clean build-all test-all
+
+# Quick rebuild (assumes configure already run)
+rebuild: build-producer build-consumer

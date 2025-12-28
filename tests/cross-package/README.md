@@ -11,6 +11,82 @@ Two R packages interact via trait dispatch:
 
 The key insight: Objects created in producer can be passed to consumer's generic functions, which dispatch via vtables without consumer needing to depend on producer's concrete types.
 
+## Building the Packages
+
+This directory contains two complete R packages: `producer.pkg` and `consumer.pkg`.
+
+### Quick Start
+
+```bash
+cd tests/cross-package
+just build-all
+```
+
+This will:
+1. Configure producer.pkg (vendor dependencies)
+2. Build and install producer.pkg
+3. Configure consumer.pkg (vendor dependencies)
+4. Build and install consumer.pkg
+
+### Manual Build
+
+If you don't have `just`, you can build manually:
+
+```bash
+# Build producer.pkg
+cd producer.pkg
+NOT_CRAN=true ./configure
+NOT_CRAN=true R CMD INSTALL .
+cd ..
+
+# Build consumer.pkg
+cd consumer.pkg
+NOT_CRAN=true ./configure
+NOT_CRAN=true R CMD INSTALL .
+cd ..
+```
+
+### Running Tests
+
+```bash
+# Test both packages
+just test-all
+
+# Or individually
+just test-producer
+just test-consumer
+```
+
+### Cleaning Build Artifacts
+
+```bash
+just clean
+```
+
+## Package Structure
+
+Each package is a complete R package with Rust backend:
+
+```
+producer.pkg/
+├── DESCRIPTION          # R package metadata
+├── NAMESPACE            # R exports
+├── configure.ac         # Build system configuration
+├── configure            # Generated build script
+├── bootstrap.R          # Pre-build setup
+├── cleanup*             # Post-build cleanup
+├── R/                   # R source files (generated wrappers)
+├── src/
+│   ├── Makevars.in      # Make configuration template
+│   ├── entrypoint.c.in  # C initialization template
+│   └── rust/
+│       ├── Cargo.toml.in  # Cargo manifest template
+│       ├── lib.rs         # Rust implementation
+│       ├── build.rs       # Build script
+│       └── document.rs.in # R wrapper generator
+└── tests/testthat/      # R test suite
+```
+
 ## How It Works
 
 ### 1. Producer Package (`producer/lib.rs`)

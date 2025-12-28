@@ -280,8 +280,10 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         .collect();
 
     // Generate tag path string for hashing
-    // Use module_path!() at expansion site for proper namespacing
-    let tag_path = format!("{{}}::{}", trait_name);
+    // IMPORTANT: For cross-package trait dispatch, the tag must NOT include module_path!()
+    // Different packages defining the same trait signature should get the same tag.
+    // We use just the trait name - in practice, trait names + methods should be unique enough.
+    let tag_path = trait_name.to_string();
 
     // Generate vtable fields
     let vtable_fields: Vec<_> = methods
@@ -312,6 +314,14 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         })
         .collect();
 
+    // Generate method wrappers for the View struct
+    let view_methods: Vec<_> = methods
+        .iter()
+        .map(|m| generate_view_method(m))
+        .collect();
+
+    let trait_name_str = trait_name.to_string();
+
     quote::quote! {
         // Pass through the original trait
         #trait_item
@@ -322,7 +332,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             "` trait."
         )]
         #vis const #tag_name: ::miniextendr_api::abi::mx_tag =
-            ::miniextendr_api::abi::mx_tag_from_path(concat!(module_path!(), #tag_path));
+            ::miniextendr_api::abi::mx_tag_from_path(#tag_path);
 
         #[doc = concat!("Vtable for the `", stringify!(#trait_name), "` trait.")]
         ///
@@ -340,13 +350,60 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         )]
         ///
         /// Combines a data pointer with a vtable pointer for method dispatch.
+        /// Use `try_from_sexp` to create a view from an R external pointer.
         #[repr(C)]
-        #[doc(hidden)]
         #vis struct #view_name {
             /// Pointer to the concrete object data.
             pub data: *mut ::std::os::raw::c_void,
             /// Pointer to the vtable for this trait.
             pub vtable: *const #vtable_name,
+        }
+
+        // TraitView implementation
+        impl ::miniextendr_api::TraitView for #view_name {
+            const TAG: ::miniextendr_api::abi::mx_tag = #tag_name;
+
+            #[inline]
+            unsafe fn from_raw_parts(
+                data: *mut ::std::os::raw::c_void,
+                vtable: *const ::std::os::raw::c_void,
+            ) -> Self {
+                Self {
+                    data,
+                    vtable: vtable as *const #vtable_name,
+                }
+            }
+        }
+
+        // Method wrappers on View
+        impl #view_name {
+            /// Try to create a view from an R SEXP.
+            ///
+            /// Returns `Some(Self)` if the object implements this trait,
+            /// `None` otherwise.
+            ///
+            /// # Safety
+            ///
+            /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
+            /// - Must be called on R's main thread
+            /// - Must call `init_ccallables()` first
+            #[inline]
+            pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Option<Self> {
+                <Self as ::miniextendr_api::TraitView>::try_from_sexp(sexp)
+            }
+
+            /// Try to create a view, panicking with error message on failure.
+            ///
+            /// # Safety
+            ///
+            /// Same as `try_from_sexp`.
+            #[inline]
+            pub unsafe fn from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Self {
+                Self::try_from_sexp(sexp)
+                    .expect(concat!("Object does not implement ", #trait_name_str, " trait"))
+            }
+
+            #(#view_methods)*
         }
 
         // Method shims
@@ -360,6 +417,83 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         #vis const fn #build_vtable_fn<T: #trait_name>() -> #vtable_name {
             #vtable_name {
                 #(#vtable_inits),*
+            }
+        }
+    }
+}
+
+/// Generate a method wrapper for the View struct.
+///
+/// This creates a method on the View that calls through the vtable.
+fn generate_view_method(method: &MethodInfo) -> TokenStream {
+    let method_name = &method.name;
+    let param_names = &method.param_names;
+    let param_types = &method.param_types;
+
+    // Generate function parameters
+    let params: Vec<_> = param_names
+        .iter()
+        .zip(param_types.iter())
+        .map(|(name, ty)| {
+            quote::quote! { #name: #ty }
+        })
+        .collect();
+
+    // Generate self receiver
+    let self_param = if method.is_mut {
+        quote::quote! { &mut self }
+    } else {
+        quote::quote! { &self }
+    };
+
+    // Generate argument array for vtable call
+    let argc = param_types.len() as i32;
+    let arg_conversions: Vec<_> = param_names
+        .iter()
+        .map(|name| {
+            quote::quote! {
+                ::miniextendr_api::trait_abi::to_sexp(#name)
+            }
+        })
+        .collect();
+
+    // Generate vtable call
+    let vtable_call = if argc > 0 {
+        quote::quote! {
+            let args: [::miniextendr_api::ffi::SEXP; #argc as usize] = [#(#arg_conversions),*];
+            ((*self.vtable).#method_name)(self.data, #argc, args.as_ptr())
+        }
+    } else {
+        quote::quote! {
+            ((*self.vtable).#method_name)(self.data, 0, ::std::ptr::null())
+        }
+    };
+
+    // Generate return type handling
+    let return_type = &method.return_type;
+    let (return_sig, result_conversion) = if let Some(ret_ty) = return_type {
+        (
+            quote::quote! { -> #ret_ty },
+            quote::quote! {
+                ::miniextendr_api::trait_abi::from_sexp::<#ret_ty>(result)
+            },
+        )
+    } else {
+        (
+            quote::quote! {},
+            quote::quote! {
+                let _ = result;
+            },
+        )
+    };
+
+    quote::quote! {
+        #[doc = concat!("Call `", stringify!(#method_name), "` through the vtable.")]
+        #[inline]
+        pub fn #method_name(#self_param #(, #params)*) #return_sig {
+            unsafe {
+                let result = { #vtable_call };
+                #result_conversion
             }
         }
     }

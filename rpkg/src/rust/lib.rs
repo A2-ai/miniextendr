@@ -1086,7 +1086,7 @@ mod nonapi {
 // endregion
 
 miniextendr_module! {
-    mod rpkg;
+    mod miniextendr;
 
     // Aggregate all test modules
     use panic_tests;

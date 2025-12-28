@@ -167,6 +167,16 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("Rbuildignore", save_as = file.path(rpkg_name, ".Rbuildignore"), subdir = "rpkg")
   use_template("gitignore", save_as = file.path(rpkg_name, ".gitignore"), subdir = "rpkg")
 
+  # Copy config.guess and config.sub (required for autoconf)
+  for (script in c("config.guess", "config.sub")) {
+    fs::file_copy(
+      script_path(script),
+      usethis::proj_path(rpkg_name, script),
+      overwrite = TRUE
+    )
+    bullet_created(file.path(rpkg_name, script), "Copied")
+  }
+
   invisible(TRUE)
 }
 
