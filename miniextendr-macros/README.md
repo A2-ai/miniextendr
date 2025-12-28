@@ -54,7 +54,7 @@ thread when invoked from a non-main thread (requires a worker context).
 - Attributes like `#[miniextendr(unsafe(main_thread))]` and
   `#[miniextendr(coerce)]` control wrapper behavior and safety.
 - R wrapper generation is driven by doc comments and roxygen tags.
-- Impl‑block support covers S3/S4/S7/R6 methods plus receiver‑style dispatch.
+- Impl‑block support covers S3/S4/S7/R6 methods plus env‑style dispatch.
 
 ## Publishing to CRAN
 

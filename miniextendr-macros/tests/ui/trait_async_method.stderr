@@ -1,0 +1,5 @@
+error: #[miniextendr] trait `BadAsync::foo` cannot be async
+ --> tests/ui/trait_async_method.rs:7:5
+  |
+7 |     async fn foo(&self);
+  |     ^^^^^

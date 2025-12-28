@@ -42,7 +42,7 @@ pub(crate) fn roxygen_tags_from_attrs(attrs: &[syn::Attribute]) -> Vec<String> {
 /// If `auto_description = true` and no explicit `@tag` is found, the first
 /// paragraph of regular doc comments is converted to `@description`.
 ///
-/// Used for all class systems (R6, S3, S4, S7, Receiver) to automatically
+/// Used for all class systems (R6, S3, S4, S7, Env) to automatically
 /// convert Rust doc comments into roxygen `@description` tags.
 pub(crate) fn roxygen_tags_from_attrs_for_r6_method(attrs: &[syn::Attribute]) -> Vec<String> {
     roxygen_tags_from_attrs_impl(attrs, true)
@@ -141,6 +141,183 @@ fn tag_names(tags: &[String]) -> HashSet<&str> {
     }
     names
 }
+
+/// Find the value of a specific roxygen tag (e.g., "title" for `@title ...`).
+///
+/// Returns `None` if the tag is not present or has no value.
+#[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
+pub(crate) fn find_tag_value<'a>(tags: &'a [String], tag_name: &str) -> Option<&'a str> {
+    for tag in tags {
+        let trimmed = tag.trim_start();
+        if let Some(rest) = trimmed.strip_prefix('@') {
+            let mut parts = rest.splitn(2, |c: char| c.is_whitespace());
+            if let Some(name) = parts.next()
+                && name == tag_name
+            {
+                // Get the value (everything after the tag name)
+                return parts.next().map(|s| s.trim());
+            }
+        }
+    }
+    None
+}
+
+/// Normalize text for comparison: lowercase, collapse whitespace, strip trailing punctuation.
+#[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
+fn normalize_for_comparison(s: &str) -> String {
+    s.to_lowercase()
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_end_matches(|c: char| c.is_ascii_punctuation())
+        .to_string()
+}
+
+/// Extract the implicit title from doc attributes (first sentence, up to first `.` or newline).
+///
+/// Returns `None` if there are no doc comments or if docs start with a `@tag`.
+#[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
+pub(crate) fn implicit_title_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut lines = Vec::new();
+
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &nv.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit) = &expr_lit.lit else {
+            continue;
+        };
+
+        let content = lit.value();
+        let trimmed = content.trim();
+
+        // If we hit a @tag before any content, there's no implicit title
+        if trimmed.starts_with('@') {
+            if lines.is_empty() {
+                return None;
+            }
+            break;
+        }
+
+        // Empty line ends first sentence for title extraction
+        if trimmed.is_empty() {
+            break;
+        }
+
+        // Check if this line contains a sentence-ending period
+        if let Some(pos) = trimmed.find(". ") {
+            lines.push(trimmed[..pos].to_string());
+            break;
+        } else if trimmed.ends_with('.') {
+            lines.push(trimmed.trim_end_matches('.').to_string());
+            break;
+        } else {
+            lines.push(trimmed.to_string());
+        }
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join(" "))
+    }
+}
+
+/// Extract the implicit description from doc attributes (first paragraph, up to blank line).
+///
+/// Returns `None` if there are no doc comments or if docs start with a `@tag`.
+#[cfg_attr(not(feature = "doc-lint"), allow(dead_code))]
+pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Option<String> {
+    let mut lines = Vec::new();
+
+    for attr in attrs {
+        if !attr.path().is_ident("doc") {
+            continue;
+        }
+        let syn::Meta::NameValue(nv) = &attr.meta else {
+            continue;
+        };
+        let syn::Expr::Lit(expr_lit) = &nv.value else {
+            continue;
+        };
+        let syn::Lit::Str(lit) = &expr_lit.lit else {
+            continue;
+        };
+
+        let content = lit.value();
+        let trimmed = content.trim();
+
+        // If we hit a @tag before any content, there's no implicit description
+        if trimmed.starts_with('@') {
+            if lines.is_empty() {
+                return None;
+            }
+            break;
+        }
+
+        // Empty line ends the first paragraph
+        if trimmed.is_empty() {
+            break;
+        }
+
+        lines.push(trimmed.to_string());
+    }
+
+    if lines.is_empty() {
+        None
+    } else {
+        Some(lines.join(" "))
+    }
+}
+
+/// Check for conflicts between explicit `@title`/`@description` tags and implicit values.
+///
+/// When the `doc-lint` feature is enabled, emits compile-time warnings if explicit
+/// roxygen tags differ from the implicit values derived from the doc comment structure.
+#[cfg(feature = "doc-lint")]
+pub(crate) fn warn_on_doc_conflicts(attrs: &[syn::Attribute], span: proc_macro2::Span) {
+    use proc_macro_error::emit_warning;
+
+    let tags = roxygen_tags_from_attrs(attrs);
+
+    // Check @title conflict
+    if let Some(explicit) = find_tag_value(&tags, "title")
+        && let Some(implicit) = implicit_title_from_attrs(attrs)
+        && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
+    {
+        emit_warning!(
+            span,
+            "explicit @title differs from first doc line";
+            note = "R's roxygen2 uses the first line as the title";
+            help = "implicit title: \"{}\"", implicit;
+            help = "explicit @title: \"{}\"", explicit
+        );
+    }
+
+    // Check @description conflict
+    if let Some(explicit) = find_tag_value(&tags, "description")
+        && let Some(implicit) = implicit_description_from_attrs(attrs)
+        && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
+    {
+        emit_warning!(
+            span,
+            "explicit @description differs from first paragraph";
+            note = "R's roxygen2 uses the first paragraph as the description";
+            help = "implicit description: \"{}\"", implicit;
+            help = "explicit @description: \"{}\"", explicit
+        );
+    }
+}
+
+/// No-op when doc-lint feature is disabled.
+#[cfg(not(feature = "doc-lint"))]
+pub(crate) fn warn_on_doc_conflicts(_attrs: &[syn::Attribute], _span: proc_macro2::Span) {}
 
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
 ///
@@ -252,5 +429,37 @@ mod tests {
         let tags = vec!["@description First\nSecond".to_string()];
         assert!(has_roxygen_tag(&tags, "description"));
         assert!(!has_roxygen_tag(&tags, "param"));
+    }
+
+    #[test]
+    fn test_find_tag_value() {
+        let tags = vec![
+            "@title My Title".to_string(),
+            "@description A longer description".to_string(),
+            "@param x An input".to_string(),
+        ];
+        assert_eq!(find_tag_value(&tags, "title"), Some("My Title"));
+        assert_eq!(
+            find_tag_value(&tags, "description"),
+            Some("A longer description")
+        );
+        assert_eq!(find_tag_value(&tags, "param"), Some("x An input"));
+        assert_eq!(find_tag_value(&tags, "return"), None);
+    }
+
+    #[test]
+    fn test_normalize_for_comparison() {
+        // Basic normalization
+        assert_eq!(normalize_for_comparison("Hello World"), "hello world");
+        // Collapse whitespace
+        assert_eq!(normalize_for_comparison("Hello    World"), "hello world");
+        // Strip trailing punctuation
+        assert_eq!(normalize_for_comparison("Hello World."), "hello world");
+        assert_eq!(normalize_for_comparison("Hello World!"), "hello world");
+        // Combined
+        assert_eq!(
+            normalize_for_comparison("  Hello    World.  "),
+            "hello world"
+        );
     }
 }

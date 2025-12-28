@@ -7,12 +7,14 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// @name rpkg_dots
 /// @description Dots (`...`) handling tests
 /// @examples
+/// \dontrun{
 /// greetings_with_named_dots(a = 1, b = 2)
 /// greetings_with_nameless_dots(1, 2, 3)
 /// greetings_last_as_named_dots(1L, x = 1, y = 2)
+/// }
 /// @aliases greetings_with_named_dots greetings_with_named_and_unused_dots
-/// @aliases greetings_with_nameless_dots greetings_last_as_named_dots
-/// @aliases greetings_last_as_named_and_unused_dots greetings_last_as_nameless_dots
+///   greetings_with_nameless_dots greetings_last_as_named_dots
+///   greetings_last_as_named_and_unused_dots greetings_last_as_nameless_dots
 pub fn greetings_with_named_dots(dots: ...) {
     let _ = dots;
 }

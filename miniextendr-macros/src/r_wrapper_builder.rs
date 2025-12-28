@@ -3,10 +3,6 @@
 //! This module provides builders for constructing R function signatures and call arguments
 //! consistently across both standalone functions and impl methods.
 
-use proc_macro2::TokenStream;
-use quote::ToTokens;
-use syn::spanned::Spanned;
-
 /// Normalizes Rust argument identifiers for R.
 ///
 /// - Leading `_` → prepends "unused"
@@ -83,16 +79,10 @@ impl<'a> RArgumentBuilder<'a> {
     ///
     /// # Returns
     /// Comma-separated parameter list, e.g., `"x, y = NULL, ..."`
+    ///
+    /// This method handles R-style defaults (like `1L`, `c(1,2,3)`) that aren't
+    /// valid Rust syntax by outputting them directly as strings.
     pub fn build_formals(&self) -> String {
-        self.build_formals_tokens()
-            .iter()
-            .map(|t| t.to_string())
-            .collect::<Vec<_>>()
-            .join(", ")
-    }
-
-    /// Build R formal parameters as TokenStream (for macro generation).
-    pub fn build_formals_tokens(&self) -> Vec<TokenStream> {
         let mut formals = Vec::new();
         let last_idx = self.inputs.len().saturating_sub(1);
 
@@ -102,17 +92,17 @@ impl<'a> RArgumentBuilder<'a> {
                 continue;
             }
 
-            let syn::FnArg::Typed(pat_type) = input else {
-                continue;
+            let pat_type = match input {
+                syn::FnArg::Typed(pt) => pt,
+                syn::FnArg::Receiver(_) => continue, // Skip self receivers
             };
 
-            // Handle dots special case
+            // Handle dots (must be last)
             if self.has_dots && idx == last_idx {
                 if let Some(ref named) = self.named_dots {
-                    let named_ident = syn::Ident::new(named, pat_type.span());
-                    formals.push(syn::parse_quote!(#named_ident = ...));
+                    formals.push(format!("{} = ...", named));
                 } else {
-                    formals.push(syn::parse_quote!(...));
+                    formals.push("...".to_string());
                 }
                 continue;
             }
@@ -126,26 +116,23 @@ impl<'a> RArgumentBuilder<'a> {
             // Check for user-specified default value
             if let Some(default_val) = self.defaults.get(&arg_ident.to_string()) {
                 // User provided default via #[miniextendr(default = "...")]
-                let default_tokens: TokenStream = default_val.parse().unwrap_or_else(|_| {
-                    // Fallback: treat as raw identifier if not valid tokens
-                    syn::Ident::new(default_val, arg_ident.span()).into_token_stream()
-                });
-                formals.push(syn::parse_quote!(#arg_ident = #default_tokens));
+                // Output directly as string - supports R-style defaults like "1L", "c(1,2,3)"
+                formals.push(format!("{} = {}", arg_ident, default_val));
                 continue;
             }
 
             // Add default for unit types
             match pat_type.ty.as_ref() {
                 syn::Type::Tuple(t) if t.elems.is_empty() => {
-                    formals.push(syn::parse_quote!(#arg_ident = NULL));
+                    formals.push(format!("{} = NULL", arg_ident));
                 }
                 _ => {
-                    formals.push(arg_ident.into_token_stream());
+                    formals.push(arg_ident.to_string());
                 }
             }
         }
 
-        formals
+        formals.join(", ")
     }
 
     /// Build R call arguments string (for `.Call()` invocation).
@@ -192,6 +179,57 @@ impl<'a> RArgumentBuilder<'a> {
 
         call_args
     }
+}
+
+/// Build R formal parameters from a Rust signature, with optional defaults.
+pub(crate) fn build_r_formals_from_sig(
+    sig: &syn::Signature,
+    defaults: &std::collections::HashMap<String, String>,
+) -> String {
+    let mut builder = RArgumentBuilder::new(&sig.inputs);
+    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        builder = builder.skip_first();
+    }
+    builder = builder.with_defaults(defaults.clone());
+    builder.build_formals()
+}
+
+/// Build R .Call arguments from a Rust signature.
+pub(crate) fn build_r_call_args_from_sig(sig: &syn::Signature) -> String {
+    let mut builder = RArgumentBuilder::new(&sig.inputs);
+    if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
+        builder = builder.skip_first();
+    }
+    builder.build_call_args()
+}
+
+/// Collect parameter identifiers from a function signature.
+///
+/// Skips receivers and optionally the first argument. Optionally normalizes
+/// identifiers for R-friendly names.
+pub(crate) fn collect_param_idents(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    skip_first: bool,
+    normalize: bool,
+) -> Vec<String> {
+    let mut params = Vec::new();
+    for (idx, arg) in inputs.iter().enumerate() {
+        if skip_first && idx == 0 {
+            continue;
+        }
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+        if normalize {
+            params.push(normalize_r_arg_ident(&pat_ident.ident).to_string());
+        } else {
+            params.push(pat_ident.ident.to_string());
+        }
+    }
+    params
 }
 
 #[cfg(test)]

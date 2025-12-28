@@ -37,6 +37,7 @@ mod s3_tests;
 mod s4_tests;
 mod s7_tests;
 mod thread_tests;
+mod trait_abi_tests;
 mod unwind_protect_tests;
 mod visibility_tests;
 mod worker_tests;
@@ -417,11 +418,11 @@ pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SE
 /// unsafe_rpkg_lazy_int_seq_is_materialized(x)
 /// }
 /// @aliases unsafe_rpkg_altrep_compact_int unsafe_rpkg_altrep_from_doubles
-/// @aliases unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
-/// @aliases unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
-/// @aliases unsafe_rpkg_constant_int unsafe_rpkg_constant_real
-/// @aliases unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
-/// @aliases unsafe_rpkg_lazy_int_seq_is_materialized
+///   unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
+///   unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
+///   unsafe_rpkg_constant_int unsafe_rpkg_constant_real
+///   unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
+///   unsafe_rpkg_lazy_int_seq_is_materialized
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -448,6 +449,68 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, st
         materialized: None,
     };
     LazyIntSeqClass(data).into_sexp()
+}
+
+// -----------------------------------------------------------------------------
+// ALTREP helpers (internal R-facing wrappers)
+// -----------------------------------------------------------------------------
+
+/// @title ALTREP Helpers
+/// @name rpkg_altrep_helpers
+/// @keywords internal
+/// @description ALTREP convenience wrappers (internal)
+/// @examples
+/// \dontrun{
+/// x <- altrep_compact_int(5L, 1L, 2L)
+/// y <- altrep_from_doubles(c(1, 2, 3))
+/// z <- altrep_from_strings(c("a", "b"))
+/// altrep_lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
+/// }
+#[miniextendr(unsafe(main_thread))]
+fn altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
+    unsafe { rpkg_altrep_compact_int(n, start, step) }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_from_doubles(x: SEXP) -> SEXP {
+    unsafe { rpkg_altrep_from_doubles(x) }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_from_strings(x: SEXP) -> SEXP {
+    unsafe { rpkg_altrep_from_strings(x) }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_from_logicals(x: SEXP) -> SEXP {
+    unsafe { rpkg_altrep_from_logicals(x) }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_from_raw(x: SEXP) -> SEXP {
+    unsafe { rpkg_altrep_from_raw(x) }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_from_list(x: SEXP) -> SEXP {
+    unsafe { rpkg_altrep_from_list(x) }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_constant_int() -> SEXP {
+    unsafe { rpkg_constant_int() }
+}
+
+/// @rdname rpkg_altrep_helpers
+#[miniextendr(unsafe(main_thread))]
+fn altrep_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
+    unsafe { rpkg_lazy_int_seq_is_materialized(x) }
 }
 
 // -----------------------------------------------------------------------------
@@ -964,6 +1027,16 @@ mod nonapi {
 
     /// Test spawn_with_r with lean stack (8 MiB) enabled by StackCheckGuard.
     #[miniextendr]
+    /// @title Non-API Thread Tests
+    /// @name rpkg_nonapi
+    /// @keywords internal
+    /// @description Non-API thread tests (requires nonapi feature).
+    /// @examples
+    /// \dontrun{
+    /// unsafe_C_test_spawn_with_r_lean_stack()
+    /// unsafe_C_test_stack_check_guard_lean()
+    /// }
+    /// @aliases unsafe_C_test_spawn_with_r_lean_stack unsafe_C_test_stack_check_guard_lean
     #[unsafe(no_mangle)]
     #[allow(non_snake_case)]
     pub unsafe extern "C-unwind" fn C_test_spawn_with_r_lean_stack() -> SEXP {
@@ -1033,6 +1106,7 @@ miniextendr_module! {
     use visibility_tests;
     use thread_tests;
     use misc_tests;
+    use trait_abi_tests;
     use nonapi;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
@@ -1042,6 +1116,16 @@ miniextendr_module! {
     extern "C-unwind" fn rpkg_altrep_from_logicals;
     extern "C-unwind" fn rpkg_altrep_from_raw;
     extern "C-unwind" fn rpkg_altrep_from_list;
+
+    // ALTREP helper wrappers (internal)
+    fn altrep_compact_int;
+    fn altrep_from_doubles;
+    fn altrep_from_strings;
+    fn altrep_from_logicals;
+    fn altrep_from_raw;
+    fn altrep_from_list;
+    fn altrep_constant_int;
+    fn altrep_lazy_int_seq_is_materialized;
 
     // Proc-macro ALTREP test: struct registers the class, fn creates instances
     struct ConstantIntClass;

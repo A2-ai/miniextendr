@@ -91,4 +91,8 @@ harness = false
 name = "wrappers"
 harness = false
 
+[[bench]]
+name = "native_vs_coerce"
+harness = false
+
 # Note: Profile is defined in workspace root Cargo.toml

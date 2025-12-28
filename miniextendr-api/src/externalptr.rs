@@ -33,6 +33,7 @@ use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
+use std::rc::Rc;
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
@@ -172,8 +173,9 @@ impl TypedExternal for () {
 // =============================================================================
 
 /// Marker type to make ExternalPtr !Send and !Sync without nightly features.
-/// Contains a raw pointer which is !Send and !Sync by default.
-type PhantomUnsend = PhantomData<*mut ()>;
+/// Uses Rc<()> because Rc has explicit negative impls for Send and Sync,
+/// making this more robust than relying on raw pointer auto-trait inference.
+type PhantomUnsend = PhantomData<Rc<()>>;
 
 /// An owned pointer stored in R's external pointer SEXP.
 ///

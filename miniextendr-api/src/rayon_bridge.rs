@@ -16,16 +16,13 @@
 //! # Quick Start
 //!
 //! ```ignore
-//! use miniextendr_api::prelude::*;
-//! use rayon::prelude::*;
+//! use miniextendr_api::miniextendr;
+//! use miniextendr_api::rayon_bridge::rayon::prelude::*;
 //!
 //! #[miniextendr]
-//! fn parallel_sqrt(x: &[f64]) -> SEXP {
+//! fn parallel_sqrt(x: &[f64]) -> Vec<f64> {
 //!     // Pure Rust parallel computation - no R calls inside!
-//!     x.par_iter()
-//!         .map(|&v| v.sqrt())
-//!         .collect::<Vec<f64>>()
-//!         .into_sexp()  // Convert to R AFTER parallel work
+//!     x.par_iter().map(|&v| v.sqrt()).collect()
 //! }
 //! ```
 //!
@@ -186,12 +183,23 @@ where
     T: RNativeType + Send + Sync,
     F: FnOnce(&mut [T]),
 {
+    struct UnprotectGuard;
+
+    impl Drop for UnprotectGuard {
+        fn drop(&mut self) {
+            with_r_thread(move || unsafe {
+                crate::ffi::Rf_unprotect(1);
+            });
+        }
+    }
+
     // Allocate and protect on the main/worker thread
     let sexp = with_r_thread(move || unsafe {
         let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(sexp);
         sexp
     });
+    let _guard = UnprotectGuard;
 
     // Get pointer and create slice (safe: vector is protected)
     // Note: dataptr_mut handles empty vectors by returning aligned dangling pointer
@@ -200,11 +208,6 @@ where
 
     // Run user's parallel work
     f(slice);
-
-    // Unprotect on main/worker thread (SEXP is now caller's responsibility)
-    with_r_thread(move || unsafe {
-        crate::ffi::Rf_unprotect(1);
-    });
 
     sexp
 }

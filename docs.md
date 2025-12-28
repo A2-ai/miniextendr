@@ -694,6 +694,6 @@ Demonstrates all features with test functions:
 
 ### Confirmed NOT Redundant
 
-1. **SendableSexp/SendablePtr** - Required for worker thread communication
+1. **Sendable<T>/SendablePtr** - Required for worker thread communication
 2. **macro_coverage.rs** - Intentional test infrastructure
 3. **dots.rs** - Intentionally minimal; `...` handling is macro-driven

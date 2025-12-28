@@ -7,7 +7,7 @@
 //! - Properly handle panics and R errors
 //!
 //! The same infrastructure is used by both `#[miniextendr]` on standalone functions
-//! and `#[miniextendr(r6|s3|s4|s7|receiver)]` on impl blocks.
+//! and `#[miniextendr(env|r6|s3|s4|s7)]` on impl blocks.
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -67,9 +67,9 @@ pub enum ReturnHandling {
     IntoR,
     /// Returns Option<()> - check for None, return R_NilValue
     OptionUnit,
-    /// Returns Option<SEXP> - check for None, pass through
+    /// Returns `Option<SEXP>` - check for None, pass through
     OptionSexp,
-    /// Returns Option<T> - check for None, use IntoR
+    /// Returns `Option<T>` - check for None, use IntoR
     OptionIntoR,
     /// Returns Result<(), E> - check for Err, return R_NilValue
     ResultUnit,
@@ -115,6 +115,8 @@ pub struct CWrapperContext {
     pub type_context: Option<syn::Ident>,
     /// Whether this is an instance method (has self parameter)
     pub has_self: bool,
+    /// Custom call_method_def identifier (if None, uses default naming)
+    pub call_method_def_ident: Option<syn::Ident>,
 }
 
 impl CWrapperContext {
@@ -136,6 +138,7 @@ impl CWrapperContext {
             cfg_attrs: Vec::new(),
             type_context: None,
             has_self: false,
+            call_method_def_ident: None,
         }
     }
 
@@ -225,7 +228,7 @@ impl CWrapperContext {
         quote! {
             #[doc = #doc]
             #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                 ::miniextendr_api::unwind_protect::with_r_unwind_protect(
                     || {
                         #pre_call_checks
@@ -262,7 +265,7 @@ impl CWrapperContext {
         quote! {
             #[doc = #doc]
             #[unsafe(no_mangle)]
-            pub extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #pre_call_checks
                     #(#pre_call)*
@@ -546,20 +549,28 @@ impl CWrapperContext {
             c_ident.span(),
         );
 
-        let call_method_def_ident = if let Some(ref type_ident) = self.type_context {
-            format_ident!("call_method_def_{}_{}", type_ident, fn_ident)
-        } else {
-            format_ident!("call_method_def_{}", fn_ident)
-        };
+        // Use custom call_method_def_ident if set, otherwise use default naming
+        let call_method_def_ident = self.call_method_def_ident.clone().unwrap_or_else(|| {
+            if let Some(ref type_ident) = self.type_context {
+                format_ident!("call_method_def_{}_{}", type_ident, fn_ident)
+            } else {
+                format_ident!("call_method_def_{}", fn_ident)
+            }
+        });
 
         // Build func_ptr_def for transmute
         let func_ptr_def: Vec<syn::Type> = (0..num_args)
             .map(|_| syn::parse_quote!(::miniextendr_api::ffi::SEXP))
             .collect();
 
+        let item_label = if let Some(ref type_ident) = self.type_context {
+            format!("`{}::{}`", type_ident, fn_ident)
+        } else {
+            format!("`{}`", fn_ident)
+        };
         let doc = format!(
-            "R call method definition for [`{}`] (C wrapper: [`{}`]).",
-            fn_ident, c_ident
+            "R call method definition for {} (C wrapper: [`{}`]).",
+            item_label, c_ident
         );
         let doc_example = format!(
             "Value: `R_CallMethodDef {{ name: \"{}\", numArgs: {}, fun: <DL_FUNC> }}`",
@@ -617,6 +628,8 @@ pub struct CWrapperContextBuilder {
     cfg_attrs: Vec<syn::Attribute>,
     type_context: Option<syn::Ident>,
     has_self: bool,
+    /// Custom call_method_def identifier (if not set, uses default naming)
+    call_method_def_ident: Option<syn::Ident>,
 }
 
 impl CWrapperContextBuilder {
@@ -702,6 +715,16 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Set a custom call_method_def identifier.
+    ///
+    /// If not set, the default naming is used:
+    /// - With type_context: `call_method_def_{type}_{method}`
+    /// - Without: `call_method_def_{method}`
+    pub fn call_method_def_ident(mut self, ident: syn::Ident) -> Self {
+        self.call_method_def_ident = Some(ident);
+        self
+    }
+
     /// Build the CWrapperContext.
     ///
     /// # Panics
@@ -739,6 +762,7 @@ impl CWrapperContextBuilder {
             cfg_attrs: self.cfg_attrs,
             type_context: self.type_context,
             has_self: self.has_self,
+            call_method_def_ident: self.call_method_def_ident,
         }
     }
 }

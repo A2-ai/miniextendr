@@ -3,36 +3,15 @@
 //! All scenarios are run inside a single test to ensure R API calls stay on the
 //! thread that initialized R (required for main-thread-only R APIs).
 
+mod r_test_utils;
+
 use miniextendr_api::allocator::RAllocator;
 use std::alloc::{GlobalAlloc, Layout};
-use std::sync::Once;
-
-static INIT: Once = Once::new();
-
-fn initialize_r() {
-    INIT.call_once(|| unsafe {
-        let engine = miniextendr_engine::REngine::build()
-            .with_args(&["R", "--quiet", "--vanilla"])
-            .init()
-            .expect("Failed to initialize R");
-        // Initialize in same order as rpkg/src/entrypoint.c.in
-        miniextendr_api::backtrace::miniextendr_panic_hook();
-        miniextendr_api::worker::miniextendr_worker_init();
-        assert!(
-            miniextendr_engine::r_initialized_sentinel(),
-            "Rf_initialize_R did not set C stack sentinels"
-        );
-        std::mem::forget(engine);
-    });
-}
 
 #[test]
 fn allocator_suite() {
-    initialize_r();
-
-    // SAFETY: R is initialized, we're on the main thread, and RAllocator
-    // routes R API calls appropriately via with_r_thread_or_inline.
-    unsafe {
+    r_test_utils::with_r_thread(|| unsafe {
+        // SAFETY: R is initialized on the R test thread.
         test_various_sizes();
         test_various_alignments();
         test_zero_size();
@@ -45,7 +24,7 @@ fn allocator_suite() {
         test_stress_realloc();
         test_multiple_threads_sequential();
         test_default_stack_threads_sequential();
-    }
+    });
 }
 
 unsafe fn test_various_sizes() {

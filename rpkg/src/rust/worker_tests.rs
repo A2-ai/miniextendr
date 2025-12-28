@@ -298,20 +298,20 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 /// unsafe_C_test_worker_simple()
 /// }
 /// @aliases test_worker_return_i32 test_worker_return_string test_worker_return_f64
-/// @aliases test_main_thread_r_api test_main_thread_r_error test_main_thread_r_error_with_drops
-/// @aliases unsafe_C_worker_drop_on_success unsafe_C_worker_drop_on_panic
-/// @aliases unsafe_C_test_worker_simple unsafe_C_test_worker_with_r_thread
-/// @aliases unsafe_C_test_worker_multiple_r_calls unsafe_C_test_worker_panic_simple
-/// @aliases unsafe_C_test_worker_panic_with_drops unsafe_C_test_worker_panic_in_r_thread
-/// @aliases unsafe_C_test_worker_panic_in_r_thread_with_drops
-/// @aliases unsafe_C_test_worker_r_error_in_r_thread unsafe_C_test_worker_r_error_with_drops
-/// @aliases unsafe_C_test_worker_r_calls_then_error unsafe_C_test_worker_r_calls_then_panic
-/// @aliases unsafe_C_test_extptr_from_worker unsafe_C_test_multiple_extptrs_from_worker
-/// @aliases unsafe_C_test_wrong_thread_r_api unsafe_C_test_call_worker_fn_from_main
-/// @aliases unsafe_C_test_nested_helper_from_worker unsafe_C_test_nested_multiple_helpers
-/// @aliases unsafe_C_test_nested_with_r_thread unsafe_C_test_nested_worker_calls
-/// @aliases unsafe_C_test_nested_with_error unsafe_C_test_nested_with_panic
-/// @aliases unsafe_C_test_deep_with_r_thread_sequence
+/// test_main_thread_r_api test_main_thread_r_error test_main_thread_r_error_with_drops
+/// unsafe_C_worker_drop_on_success unsafe_C_worker_drop_on_panic
+/// unsafe_C_test_worker_simple unsafe_C_test_worker_with_r_thread
+/// unsafe_C_test_worker_multiple_r_calls unsafe_C_test_worker_panic_simple
+/// unsafe_C_test_worker_panic_with_drops unsafe_C_test_worker_panic_in_r_thread
+/// unsafe_C_test_worker_panic_in_r_thread_with_drops
+/// unsafe_C_test_worker_r_error_in_r_thread unsafe_C_test_worker_r_error_with_drops
+/// unsafe_C_test_worker_r_calls_then_error unsafe_C_test_worker_r_calls_then_panic
+/// unsafe_C_test_extptr_from_worker unsafe_C_test_multiple_extptrs_from_worker
+/// unsafe_C_test_wrong_thread_r_api unsafe_C_test_call_worker_fn_from_main
+/// unsafe_C_test_nested_helper_from_worker unsafe_C_test_nested_multiple_helpers
+/// unsafe_C_test_nested_with_r_thread unsafe_C_test_nested_worker_calls
+/// unsafe_C_test_nested_with_error unsafe_C_test_nested_with_panic
+/// unsafe_C_test_deep_with_r_thread_sequence
 pub fn test_worker_return_i32() -> i32 {
     // This uses worker strategy automatically (returns non-SEXP)
     let x = 21;

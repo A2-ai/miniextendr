@@ -660,6 +660,27 @@ unsafe extern "C-unwind" {
     pub fn REprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
 }
 
+// Error message access (non-API, declared in Rinternals.h but flagged by R CMD check)
+#[cfg(feature = "nonapi")]
+unsafe extern "C-unwind" {
+    /// Get the current R error message buffer.
+    ///
+    /// Returns a pointer to R's internal error message buffer.
+    /// Used by Rserve and other embedding applications.
+    ///
+    /// # Safety
+    ///
+    /// - The returned pointer is only valid until the next R error
+    /// - Must not be modified
+    /// - Should be copied if needed beyond the immediate scope
+    ///
+    /// # Feature Gate
+    ///
+    /// This is a non-API function and requires the `nonapi` feature.
+    #[allow(non_snake_case)]
+    pub fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
+}
+
 /// Checked wrapper for `Rf_error` - panics if called from non-main thread.
 /// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
 ///
@@ -829,6 +850,19 @@ unsafe extern "C-unwind" {
     pub fn R_RegisterCFinalizer(s: SEXP, fun: R_CFinalizer_t);
     pub fn R_RegisterFinalizerEx(s: SEXP, fun: SEXP, onexit: Rboolean);
     pub fn R_RegisterCFinalizerEx(s: SEXP, fun: R_CFinalizer_t, onexit: Rboolean);
+
+    // R_ext/Rdynload.h - C-callable interface
+    /// Register a C-callable function for cross-package access.
+    pub fn R_RegisterCCallable(
+        package: *const ::std::os::raw::c_char,
+        name: *const ::std::os::raw::c_char,
+        fptr: DL_FUNC,
+    );
+    /// Get a C-callable function from another package.
+    pub fn R_GetCCallable(
+        package: *const ::std::os::raw::c_char,
+        name: *const ::std::os::raw::c_char,
+    ) -> DL_FUNC;
 
     // Rinternals.h
     pub fn R_PreserveObject(object: SEXP);

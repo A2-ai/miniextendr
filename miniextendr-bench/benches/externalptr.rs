@@ -21,14 +21,14 @@ struct SmallPayload {
 
 /// Medium payload type (~1KB).
 #[derive(miniextendr_api::ExternalPtr)]
-struct MediumPayload {
-    data: [u8; 1024],
+pub struct MediumPayload {
+    pub data: [u8; 1024],
 }
 
 /// Large payload type (~64KB).
 #[derive(miniextendr_api::ExternalPtr)]
-struct LargePayload {
-    data: Box<[u8; 65536]>,
+pub struct LargePayload {
+    pub data: Box<[u8; 65536]>,
 }
 
 // =============================================================================

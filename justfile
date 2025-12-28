@@ -3,9 +3,13 @@
 default:
     @just --list
 
+clean:
+    -just configure
+    -just cargo-clean
+    -cd rpkg && NOT_CRAN=false ./cleanup
+
 # Clean build artifacts
-alias cargo-clean := clean
-clean *cargo_flags:
+cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
     cargo clean -p miniextendr-bench {{cargo_flags}}
@@ -108,7 +112,15 @@ expand *cargo_flags:
 # This is the only vendoring needed - R packages must be self-contained for CRAN.
 # Workspace crates use normal cargo dependency resolution (no vendoring needed).
 configure:
-    cd rpkg && autoconf && ./configure
+    cd rpkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=true ./configure
+
+# Configure in CRAN/offline mode (do NOT force NOT_CRAN=true)
+configure-cran:
+    cd rpkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    ./configure
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": configure
@@ -136,8 +148,10 @@ devtools-build: configure
     Rscript -e 'devtools::build("rpkg")'
 
 # Check rpkg with devtools::check
+# NOT_CRAN=true ensures vendor directory is preserved during R CMD build
+# error_on = "error" matches CI behavior (ignore warnings/notes)
 devtools-check: configure
-    Rscript -e 'devtools::check("rpkg")'
+    NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error")'
 
 # Document rpkg with devtools::document
 devtools-document: configure
@@ -193,3 +207,144 @@ test-r-build: configure
     mkdir -p "$out_dir"
     tar -xf "$tarball" -C "$out_dir" --strip-components=1
     echo "Extracted to: $out_dir"
+
+# Templates / drift check
+#
+# Pattern:
+# - upstream snapshot   : built from sources within this repo (see templates-sources)
+# - inst/templates/**   : your edited copies
+# - patches/templates.patch : the *approved* delta
+#
+# Workflow:
+#   just templates-check         # fails if inst/templates drift beyond approved patch
+#   just templates-approve       # accept current delta as approved (regen patch)
+
+local_root  := "inst/templates"
+patch_file  := "patches/templates.patch"
+
+# Configure your upstream locations here.
+#
+# Use TAB-separated pairs: <relative/path/in/templates>\t<source/path>
+# - For a directory source, end BOTH sides with a trailing slash.
+# - Paths with spaces are OK (TAB is the separator).
+
+templates-sources:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    cat <<'EOF'
+    # rel\tsrc
+    # add lines below (TAB-separated). Lines starting with # are ignored.
+    # foo/bar.mustache\tpath/to/upstream/foo/bar.mustache
+    # baz/\tpath/to/upstream/baz/
+    EOF
+
+# Internal helper: populate an upstream snapshot into DEST.
+# The snapshot is a tree laid out to match inst/templates.
+_templates-upstream-populate dest:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    dest="{{dest}}"
+    mkdir -p "$dest"
+
+    manifest="$(just --quiet templates-sources)"
+
+    add() {
+      local rel="$1" src="$2" dst="$dest/$rel"
+      if [[ "$rel" == */ ]]; then
+        mkdir -p "$dst"
+        rsync -a "$src" "$dst"
+      else
+        mkdir -p "$(dirname "$dst")"
+        cp -a "$src" "$dst"
+      fi
+    }
+
+    while IFS=$'\t' read -r rel src; do
+      [[ -z "${rel:-}" ]] && continue
+
+      rel="$(printf '%s' "$rel" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      src="$(printf '%s' "$src" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+
+      [[ -z "$rel" ]] && continue
+      [[ "$rel" == \#* ]] && continue
+
+      if [[ -z "$src" ]]; then
+        echo "_templates-upstream-populate: missing source path for rel='$rel'" >&2
+        exit 2
+      fi
+      if [[ ! -e "$src" ]]; then
+        echo "_templates-upstream-populate: source not found: $src (for rel='$rel')" >&2
+        exit 2
+      fi
+
+      # Disallow absolute paths to keep this repo-portable
+      if [[ "$src" = /* ]]; then
+        echo "_templates-upstream-populate: absolute paths are not allowed (got: $src)" >&2
+        exit 2
+      fi
+
+      add "$rel" "$src"
+    done <<<"$manifest"
+
+# Accept the current delta as approved by regenerating patches/templates.patch
+# (Builds an upstream snapshot from templates-sources before diffing.)
+templates-approve:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    mkdir -p "$(dirname "{{patch_file}}")"
+
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+    mkdir -p "$tmp/a" "$tmp/b"
+
+    just _templates-upstream-populate "$tmp/a"
+    rsync -a "{{local_root}}/" "$tmp/b/"
+
+    # diff exits 1 when differences exist; that's expected here.
+    (cd "$tmp" && diff -ruN a b) > "{{patch_file}}" || true
+    echo "Wrote {{patch_file}}"
+
+# Verify: upstream snapshot + approved patch == inst/templates
+# - exits nonzero on drift
+# - exits nonzero if the patch no longer applies cleanly
+templates-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    test -f "{{patch_file}}"
+
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    just _templates-upstream-populate "$tmp"
+
+    # Apply approved delta (no-op if patch is empty)
+    if [[ -s "{{patch_file}}" ]]; then
+      patch -d "$tmp" -p1 --forward --batch < "{{patch_file}}" >/dev/null
+    fi
+
+    diff -ruN "$tmp" "{{local_root}}"
+
+# CI-friendly: only prints diff when failing
+templates-check-ci:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    test -f "{{patch_file}}"
+
+    tmp="$(mktemp -d)"
+    trap 'rm -rf "$tmp"' EXIT
+
+    just _templates-upstream-populate "$tmp"
+
+    if [[ -s "{{patch_file}}" ]]; then
+      patch -d "$tmp" -p1 --forward --batch < "{{patch_file}}" >/dev/null
+    fi
+
+    if ! diff -ruN "$tmp" "{{local_root}}" >/dev/null; then
+      diff -ruN "$tmp" "{{local_root}}"
+      exit 1
+    fi

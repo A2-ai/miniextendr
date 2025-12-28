@@ -1,0 +1,5 @@
+error: output must be SEXP
+ --> tests/ui/extern_non_sexp_return.rs:6:63
+  |
+6 | extern "C-unwind" fn C_bad(_x: miniextendr_api::ffi::SEXP) -> i32 {
+  |                                                               ^^^
