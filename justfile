@@ -219,7 +219,7 @@ test-r-build: configure
 #   just templates-check         # fails if inst/templates drift beyond approved patch
 #   just templates-approve       # accept current delta as approved (regen patch)
 
-local_root  := "inst/templates"
+local_root  := "minirextendr/inst/templates"
 patch_file  := "patches/templates.patch"
 
 # Configure your upstream locations here.
@@ -227,16 +227,24 @@ patch_file  := "patches/templates.patch"
 # Use TAB-separated pairs: <relative/path/in/templates>\t<source/path>
 # - For a directory source, end BOTH sides with a trailing slash.
 # - Paths with spaces are OK (TAB is the separator).
+#
+# The templates are scaffolding for new packages. The rpkg files are the
+# "upstream" source, and templates may have intentional differences like
+# {{package_rs}} placeholders. The patch file captures approved differences.
 
 templates-sources:
     #!/usr/bin/env bash
     set -euo pipefail
 
+    # Only include files where rpkg is the source of truth.
+    # Templates with @PLACEHOLDER@ markers (document.rs.in, entrypoint.c.in)
+    # are NOT compared - they are the source, rpkg has expanded versions.
     cat <<'EOF'
-    # rel\tsrc
-    # add lines below (TAB-separated). Lines starting with # are ignored.
-    # foo/bar.mustache\tpath/to/upstream/foo/bar.mustache
-    # baz/\tpath/to/upstream/baz/
+    # rel	src
+    # Build system files (rpkg is source of truth)
+    Makevars.in	rpkg/src/Makevars.in
+    configure.ac	rpkg/configure.ac
+    build.rs	rpkg/src/rust/build.rs
     EOF
 
 # Internal helper: populate an upstream snapshot into DEST.
