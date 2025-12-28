@@ -36,6 +36,27 @@
 
 use crate::ffi::{Rcomplex, SEXP};
 
+/// Helper for ALTREP `get_region` implementations.
+///
+/// R guarantees that the caller-provided buffer is at least `len` long. This
+/// helper clamps the requested range to the vector's total length and the
+/// actual buffer length, then fills `out` with values from the provided
+/// element accessor.
+#[inline]
+fn fill_region<T>(
+    start: usize,
+    len: usize,
+    total_len: usize,
+    out: &mut [T],
+    mut elt: impl FnMut(usize) -> T,
+) -> usize {
+    let n = len.min(out.len()).min(total_len.saturating_sub(start));
+    for i in 0..n {
+        out[i] = elt(start + i);
+    }
+    n
+}
+
 // =============================================================================
 // Core trait: length
 // =============================================================================
@@ -70,21 +91,10 @@ pub trait AltIntegerData: AltrepLen {
 
     /// Optional: bulk read into buffer. Returns number of elements read.
     ///
-    /// # Safety Contract
-    ///
-    /// R guarantees that `buf.len() >= len`. Implementations must validate
-    /// `start` and `len` against `self.len()` to prevent out-of-bounds access.
-    /// The default implementation safely clamps to available data.
-    ///
-    /// # Default Implementation
-    ///
-    /// Uses `elt()` in a loop with bounds checking.
+    /// Bounds are clamped to the vector length; see [`fill_region`] for the
+    /// shared safety contract.
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
-            *slot = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 
     /// Optional: sortedness hint. Default is unknown.
@@ -127,17 +137,9 @@ pub trait AltRealData: AltrepLen {
         None
     }
 
-    /// Optional: bulk read into buffer.
-    ///
-    /// # Safety Contract
-    ///
-    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
+    /// Optional: bulk read into buffer (clamped to available data).
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
-            *slot = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 
     /// Optional: sortedness hint.
@@ -237,17 +239,9 @@ pub trait AltLogicalData: AltrepLen {
         None
     }
 
-    /// Optional: bulk read into buffer.
-    ///
-    /// # Safety Contract
-    ///
-    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
+    /// Optional: bulk read into buffer (clamped to available data).
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
-            *slot = self.elt(start + i).to_r_int();
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx).to_r_int())
     }
 
     /// Optional: sortedness hint.
@@ -281,17 +275,9 @@ pub trait AltRawData: AltrepLen {
         None
     }
 
-    /// Optional: bulk read into buffer.
-    ///
-    /// # Safety Contract
-    ///
-    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
+    /// Optional: bulk read into buffer (clamped to available data).
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
-            *slot = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -309,17 +295,9 @@ pub trait AltComplexData: AltrepLen {
         None
     }
 
-    /// Optional: bulk read into buffer.
-    ///
-    /// # Safety Contract
-    ///
-    /// R guarantees that `buf.len() >= len`. Implementations must validate bounds.
+    /// Optional: bulk read into buffer (clamped to available data).
     fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, slot) in buf.iter_mut().enumerate().take(actual_len) {
-            *slot = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -593,11 +571,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -705,11 +679,7 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -816,11 +786,7 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i).to_r_int();
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx).to_r_int())
     }
 }
 
@@ -928,11 +894,7 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -1080,11 +1042,7 @@ where
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -1248,11 +1206,7 @@ where
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -1401,11 +1355,7 @@ where
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
@@ -1787,11 +1737,7 @@ where
     }
 
     fn get_region(&self, start: usize, len: usize, buf: &mut [crate::ffi::Rcomplex]) -> usize {
-        let actual_len = len.min(buf.len()).min(self.len().saturating_sub(start));
-        for (i, buf_i) in buf.iter_mut().enumerate().take(actual_len) {
-            *buf_i = self.elt(start + i);
-        }
-        actual_len
+        fill_region(start, len, self.len(), buf, |idx| self.elt(idx))
     }
 }
 
