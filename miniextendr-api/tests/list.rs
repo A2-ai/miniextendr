@@ -117,3 +117,17 @@ fn try_from_list_reports_field_name_on_type_error() {
         assert_eq!(err.0, "a");
     });
 }
+
+use miniextendr_api::ExternalPtr;
+
+#[derive(ExternalPtr, miniextendr_api::IntoList)]
+struct Dual(i32);
+
+#[test]
+fn into_r_prefers_externalptr_over_list() {
+    r_test_utils::with_r_thread(|| {
+        let dual = Dual(10);
+        let sexp = dual.into_sexp();
+        assert_eq!(unsafe { TYPEOF(sexp) }, SEXPTYPE::EXTPTRSXP);
+    });
+}

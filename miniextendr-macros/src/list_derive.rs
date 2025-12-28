@@ -74,8 +74,6 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let vars_for_into: Vec<_> = pair_exprs.iter().map(|(_, ident)| ident).collect();
 
     let expand = quote! {
-        impl #impl_generics ::miniextendr_api::markers::IsIntoList for #name #ty_generics #where_clause {}
-
         impl #impl_generics ::miniextendr_api::list::IntoList for #name #ty_generics #where_clause {
             fn into_list(self) -> ::miniextendr_api::list::List {
                 let Self #destructure_pat = self;
