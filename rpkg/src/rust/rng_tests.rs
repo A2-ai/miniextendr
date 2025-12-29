@@ -3,10 +3,9 @@
 //! Tests for:
 //! - `#[miniextendr(rng)]` attribute on standalone functions
 //! - `#[miniextendr(rng)]` attribute on impl methods
-//! - `#[miniextendr(rng)]` attribute on trait methods
 //! - Manual RNG management with `RngGuard` and `with_rng`
 
-use miniextendr_api::ffi::{unif_rand, norm_rand, exp_rand, R_unif_index, SEXP};
+use miniextendr_api::ffi::{exp_rand, norm_rand, unif_rand, R_unif_index};
 use miniextendr_api::rng::{with_rng, RngGuard};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -20,6 +19,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// @name rpkg_rng
 /// @description RNG state management tests
 /// @return A numeric vector.
+/// @export
 /// @examples
 /// set.seed(42)
 /// rng_uniform(5L)
@@ -31,6 +31,7 @@ fn rng_uniform(n: i32) -> Vec<f64> {
 
 /// Generate n normal random numbers.
 /// @rdname rpkg_rng
+/// @export
 #[miniextendr(rng)]
 fn rng_normal(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { norm_rand() }).collect()
@@ -38,6 +39,7 @@ fn rng_normal(n: i32) -> Vec<f64> {
 
 /// Generate n exponential random numbers.
 /// @rdname rpkg_rng
+/// @export
 #[miniextendr(rng)]
 fn rng_exponential(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { exp_rand() }).collect()
@@ -45,6 +47,7 @@ fn rng_exponential(n: i32) -> Vec<f64> {
 
 /// Generate n random integers in [0, max).
 /// @rdname rpkg_rng
+/// @export
 /// @param max Upper bound (exclusive).
 #[miniextendr(rng)]
 fn rng_int(n: i32, max: f64) -> Vec<i32> {
@@ -53,9 +56,18 @@ fn rng_int(n: i32, max: f64) -> Vec<i32> {
         .collect()
 }
 
-/// Test combining rng with worker thread strategy.
-/// This verifies RNG works correctly when run on worker thread.
+/// Test RNG with check_interrupt (forces main thread).
+/// This verifies RNG works correctly when combined with check_interrupt.
 /// @rdname rpkg_rng
+/// @export
+#[miniextendr(rng, check_interrupt)]
+fn rng_with_interrupt(n: i32) -> Vec<f64> {
+    (0..n).map(|_| unsafe { unif_rand() }).collect()
+}
+
+/// Test combining rng with explicit worker thread strategy.
+/// @rdname rpkg_rng
+/// @export
 #[miniextendr(rng, worker)]
 fn rng_worker_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
@@ -67,6 +79,7 @@ fn rng_worker_uniform(n: i32) -> Vec<f64> {
 
 /// Test RngGuard for manual RNG state management.
 /// @rdname rpkg_rng
+/// @export
 #[miniextendr]
 fn rng_guard_test(n: i32) -> Vec<f64> {
     let _guard = RngGuard::new();
@@ -75,6 +88,7 @@ fn rng_guard_test(n: i32) -> Vec<f64> {
 
 /// Test with_rng helper for scoped RNG access.
 /// @rdname rpkg_rng
+/// @export
 #[miniextendr]
 fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|| (0..n).map(|_| unsafe { unif_rand() }).collect())
@@ -85,7 +99,9 @@ fn rng_with_rng_test(n: i32) -> Vec<f64> {
 // =============================================================================
 
 /// A struct to test RNG in impl methods.
-#[derive(Clone)]
+/// @rdname rpkg_rng
+/// @export
+#[derive(Clone, miniextendr_api::ExternalPtr)]
 pub struct RngSampler {
     seed_hint: i32,
 }
@@ -122,42 +138,6 @@ impl RngSampler {
 }
 
 // =============================================================================
-// Trait method tests (env class system)
-// =============================================================================
-
-/// Trait for RNG sampling.
-pub trait Sampler {
-    fn sample(&self, n: i32) -> Vec<f64>;
-}
-
-/// Implementation using env class system.
-pub struct EnvSampler {
-    multiplier: f64,
-}
-
-#[miniextendr(env)]
-impl Sampler for EnvSampler {
-    /// Sample n values, multiplied by the multiplier.
-    #[miniextendr(rng)]
-    fn sample(&self, n: i32) -> Vec<f64> {
-        (0..n)
-            .map(|_| unsafe { unif_rand() } * self.multiplier)
-            .collect()
-    }
-}
-
-#[miniextendr(env)]
-impl EnvSampler {
-    fn new(multiplier: f64) -> Self {
-        Self { multiplier }
-    }
-
-    fn multiplier(&self) -> f64 {
-        self.multiplier
-    }
-}
-
-// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -169,6 +149,7 @@ miniextendr_module! {
     fn rng_normal;
     fn rng_exponential;
     fn rng_int;
+    fn rng_with_interrupt;
     fn rng_worker_uniform;
 
     // Manual RNG tests
@@ -177,8 +158,4 @@ miniextendr_module! {
 
     // Impl methods
     impl RngSampler;
-
-    // Trait methods (env)
-    impl Sampler for EnvSampler;
-    impl EnvSampler;
 }

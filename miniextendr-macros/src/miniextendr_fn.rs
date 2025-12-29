@@ -512,7 +512,9 @@ impl MiniextendrFunctionParsed {
 /// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
 /// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
+/// - `worker`: explicitly request worker thread execution (default for most functions)
 /// - `coerce`: enable automatic coercion for supported parameter types
+/// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
 /// - `return = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
 ///
 /// # Note
@@ -522,6 +524,8 @@ impl MiniextendrFunctionParsed {
 pub(crate) struct MiniextendrFnAttrs {
     /// Force execution on R's main thread (set by `unsafe(main_thread)`).
     pub(crate) force_main_thread: bool,
+    /// Force execution on worker thread (set by `worker`).
+    pub(crate) force_worker: bool,
     /// Override visibility; `Some(true)` makes the wrapper return invisibly, `Some(false)` forces visibility.
     pub(crate) force_invisible: Option<bool>,
     /// Insert `R_CheckUserInterrupt()` before calling the Rust function.
@@ -560,7 +564,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         for meta in metas {
             match meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce
+                // Simple identifiers: invisible, visible, check_interrupt, coerce, worker, rng
                 syn::Meta::Path(path) => {
                     if let Some(ident) = path.get_ident() {
                         if ident == "invisible" {
@@ -573,10 +577,12 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.coerce_all = true;
                         } else if ident == "rng" {
                             out.rng = true;
+                        } else if ident == "worker" {
+                            out.force_worker = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce, rng",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng",
                             ));
                         }
                     }

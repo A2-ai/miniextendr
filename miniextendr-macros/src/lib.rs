@@ -158,6 +158,7 @@ pub fn miniextendr(
 
     let MiniextendrFnAttrs {
         force_main_thread,
+        force_worker,
         force_invisible,
         check_interrupt,
         coerce_all,
@@ -385,8 +386,16 @@ pub fn miniextendr(
     // Note: ExternalPtr<T> returning functions use worker thread by default.
     // If they internally call R APIs, the debug FFI check will catch it at runtime.
     // Users should add #[miniextendr(unsafe(main_thread))] in that case.
-    let use_main_thread =
-        returns_sexp || has_sexp_inputs || has_dots || force_main_thread || check_interrupt;
+    //
+    // Thread strategy:
+    // - force_worker overrides the default, but cannot override hard requirements
+    // - Hard requirements for main thread: returns_sexp, has_sexp_inputs, has_dots, check_interrupt
+    // - force_main_thread is a user request (can be combined with force_worker, but main_thread wins)
+    let requires_main_thread = returns_sexp || has_sexp_inputs || has_dots || check_interrupt;
+    let use_main_thread = requires_main_thread || (force_main_thread && !force_worker);
+
+    // Suppress unused variable warning when force_worker doesn't affect strategy
+    let _ = force_worker;
     // RNG state management tokens
     let (rng_get, rng_put) = if rng {
         (
