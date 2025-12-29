@@ -1,7 +1,19 @@
 //! R-backed global allocator for Rust.
 //!
 //! Allocations are backed by R RAWSXP objects and protected from GC via the
-//! crate's preserve mechanism.
+//! crate's [`preserve`](crate::preserve) mechanism.
+//!
+//! # Protection Strategy
+//!
+//! This allocator uses the **preserve list** (not the PROTECT stack) because:
+//! - Allocations may need to survive across multiple `.Call` invocations
+//! - Deallocations can happen in any order (not LIFO like the PROTECT stack)
+//! - The preserve list supports arbitrary-order release
+//!
+//! See the [crate-level documentation](crate#gc-protection-strategies) for an
+//! overview of miniextendr's protection mechanisms.
+//!
+//! # Layout
 //!
 //! Layout inside the RAWSXP (bytes):
 //!   \[optional leading pad\]\[Header\]\[user bytes...\]

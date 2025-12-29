@@ -22,8 +22,12 @@
 //! ndarray's default is **row-major** (C style).
 //!
 //! When converting:
-//! - **R → ndarray**: Data is copied and the array is created in standard ndarray layout
-//! - **ndarray → R**: Data is copied into column-major R storage
+//! - **R → ndarray**: Data is copied and the array is created in **column-major**
+//!   (Fortran) layout to match R's storage. This preserves the element ordering
+//!   but means `array.is_standard_layout()` returns `false`.
+//! - **ndarray → R**: Data is copied into column-major R storage. If the array
+//!   is already column-major, this is a direct copy. If row-major, elements are
+//!   reordered via transpose.
 //!
 //! For zero-copy access, use `ArrayView` types (see [`from_r_slice`]).
 //!

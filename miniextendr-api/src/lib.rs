@@ -2,6 +2,47 @@
 //!
 //! Note: ALTREP trait methods receive raw SEXP pointers from R's runtime.
 //! These are safe to dereference because R guarantees valid SEXPs in ALTREP callbacks.
+//!
+//! # GC Protection Strategies
+//!
+//! R's garbage collector can reclaim any SEXP that isn't protected. miniextendr
+//! provides three complementary protection mechanisms for different scenarios:
+//!
+//! | Strategy | Module | Lifetime | Release Order | Use Case |
+//! |----------|--------|----------|---------------|----------|
+//! | **PROTECT stack** | [`gc_protect`] | Within `.Call` | LIFO (stack) | Temporary allocations |
+//! | **Preserve list** | [`preserve`] | Across `.Call`s | Any order | Long-lived R objects |
+//! | **R ownership** | [`ExternalPtr`](struct@ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
+//!
+//! ## Quick Guide
+//!
+//! **Temporary allocations during computation** → [`ProtectScope`]
+//! ```ignore
+//! unsafe fn compute(x: SEXP) -> SEXP {
+//!     let scope = ProtectScope::new();
+//!     let temp = scope.protect(Rf_allocVector(REALSXP, 100));
+//!     // ... work with temp ...
+//!     result.into_raw()
+//! } // UNPROTECT(n) called automatically
+//! ```
+//!
+//! **R objects surviving across `.Call`s** → [`preserve`]
+//! ```ignore
+//! // In RAllocator or similar long-lived context
+//! let cell = unsafe { preserve::insert(backing_vec) };
+//! // ... use across multiple .Calls ...
+//! unsafe { preserve::release(cell) };
+//! ```
+//!
+//! **Rust data owned by R** → [`ExternalPtr`](struct@ExternalPtr)
+//! ```ignore
+//! #[miniextendr]
+//! fn create_model() -> ExternalPtr<MyModel> {
+//!     ExternalPtr::new(MyModel::new())
+//! } // R owns it; Drop runs when R GCs
+//! ```
+//!
+//! See each module's documentation for detailed usage and safety requirements.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Procedural macros (re-exported from miniextendr-macros)
@@ -142,6 +183,10 @@ pub mod externalptr_std;
 // R object preservation and allocator
 pub mod preserve;
 
+// GC protection toolkit (PROTECT stack RAII wrappers)
+pub mod gc_protect;
+pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, ReprotectSlot, Root};
+
 pub mod allocator;
 pub use allocator::RAllocator;
 
@@ -236,8 +281,19 @@ pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
 pub use nalgebra_impl::{DMatrix, DVector};
 
-/// Re-export of `serde` for derive macros.
+/// Re-export of `serde` with derive macros enabled.
 ///
-/// Enable with `features = ["serde"]`.
+/// This allows using `#[derive(Serialize, Deserialize)]` on types stored in
+/// `ExternalPtr` or passed through R. Enable with `features = ["serde"]`.
+///
+/// ```ignore
+/// use miniextendr_api::serde::{Serialize, Deserialize};
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Config {
+///     name: String,
+///     count: i32,
+/// }
+/// ```
 #[cfg(feature = "serde")]
 pub use serde;

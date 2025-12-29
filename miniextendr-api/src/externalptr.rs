@@ -13,6 +13,49 @@
 //! `ptr_eq` when you care about pointer identity, and `as_ref()`/`as_mut()` for
 //! explicit by-value comparisons.
 //!
+//! # Protection Strategies in miniextendr
+//!
+//! miniextendr provides three complementary protection mechanisms for different scenarios:
+//!
+//! | Strategy | Module | Lifetime | Release Order | Use Case |
+//! |----------|--------|----------|---------------|----------|
+//! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
+//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **R ownership** | [`ExternalPtr`](struct@crate::externalptr::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
+//!
+//! ## When to Use ExternalPtr
+//!
+//! **Use `ExternalPtr` (this module) when:**
+//! - You want R to own a Rust value
+//! - The Rust value should be dropped when R garbage collects the pointer
+//! - You're exposing Rust structs to R code
+//!
+//! **Use [`gc_protect`](crate::gc_protect) instead when:**
+//! - You're allocating temporary R objects during computation
+//! - Protection is short-lived (within a single `.Call`)
+//!
+//! **Use [`preserve`](crate::preserve) instead when:**
+//! - You need R objects (not Rust values) to survive across `.Call`s
+//! - You need arbitrary-order release of protections
+//!
+//! ## How ExternalPtr Protection Works
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │  ExternalPtr<MyStruct>::new(value)                              │
+//! │  ├── Rf_protect() during construction (temporary)               │
+//! │  ├── R_MakeExternalPtr() creates EXTPTRSXP                      │
+//! │  ├── R_RegisterCFinalizerEx() registers cleanup callback        │
+//! │  └── Rf_unprotect() after construction complete                 │
+//! │                                                                 │
+//! │  Return to R → R now owns the EXTPTRSXP                         │
+//! │  ├── SEXP is live as long as R has references                   │
+//! │  └── Rust value is accessible via ExternalPtr::try_from_sexp()  │
+//! │                                                                 │
+//! │  R GC runs → finalizer called → Rust Drop executes              │
+//! └─────────────────────────────────────────────────────────────────┘
+//! ```
+//!
 //! # Type Identification
 //!
 //! Type identification uses R's interned symbols (`Rf_install`). Since R interns
