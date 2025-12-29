@@ -161,6 +161,7 @@ pub fn miniextendr(
         force_invisible,
         check_interrupt,
         coerce_all,
+        rng,
         return_pref,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
@@ -386,6 +387,16 @@ pub fn miniextendr(
     // Users should add #[miniextendr(unsafe(main_thread))] in that case.
     let use_main_thread =
         returns_sexp || has_sexp_inputs || has_dots || force_main_thread || check_interrupt;
+    // RNG state management tokens
+    let (rng_get, rng_put) = if rng {
+        (
+            quote::quote! { unsafe { ::miniextendr_api::ffi::GetRNGstate(); } },
+            quote::quote! { unsafe { ::miniextendr_api::ffi::PutRNGstate(); } },
+        )
+    } else {
+        (proc_macro2::TokenStream::new(), proc_macro2::TokenStream::new())
+    };
+
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else if use_main_thread {
@@ -394,21 +405,50 @@ pub fn miniextendr(
             "C wrapper for [`{}`] (main thread). See [`{}`] for R wrapper.",
             rust_ident, r_wrapper_generator
         );
-        quote::quote! {
-            #[doc = #c_wrapper_doc]
-            #[unsafe(no_mangle)]
-            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                #(#pre_call_statements)*
+        if rng {
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                        #(#pre_call_statements)*
+                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            || {
+                                #(#closure_statements)*
+                                let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                                #(#post_call_statements)*
+                                #return_expression
+                            },
+                            Some(#call_param_ident),
+                        )
+                    }));
+                    #rng_put
+                    match __result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => ::std::panic::resume_unwind(payload),
+                    }
+                }
+            }
+        } else {
+            // Non-RNG variant: direct call to with_r_unwind_protect
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #(#pre_call_statements)*
 
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                    || {
-                        #(#closure_statements)*
-                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                        #(#post_call_statements)*
-                        #return_expression
-                    },
-                    Some(#call_param_ident),
-                )
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        || {
+                            #(#closure_statements)*
+                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                            #(#post_call_statements)*
+                            #return_expression
+                        },
+                        Some(#call_param_ident),
+                    )
+                }
             }
         }
     } else {
@@ -429,6 +469,7 @@ pub fn miniextendr(
             #[doc = #c_wrapper_doc]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #(#pre_call_statements)*
                     #(#closure_statements)*
@@ -446,6 +487,8 @@ pub fn miniextendr(
                         None,
                     )
                 }));
+                // PutRNGstate runs after catch_unwind, before error conversion
+                #rng_put
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
                     Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(

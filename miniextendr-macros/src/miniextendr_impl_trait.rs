@@ -130,6 +130,8 @@ struct TraitMethod {
     coerce: bool,
     /// Check for R user interrupts before calling the method
     check_interrupt: bool,
+    /// Enable RNG state management (GetRNGstate/PutRNGstate)
+    rng: bool,
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`
     param_defaults: std::collections::HashMap<String, String>,
     /// Roxygen @param tags extracted from method doc comments
@@ -435,6 +437,7 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     unsafe_main_thread: attrs.unsafe_main_thread,
                     coerce: attrs.coerce,
                     check_interrupt: attrs.check_interrupt,
+                    rng: attrs.rng,
                     param_defaults: attrs.defaults,
                     param_tags,
                 })
@@ -451,6 +454,7 @@ struct TraitMethodAttrs {
     unsafe_main_thread: bool,
     coerce: bool,
     check_interrupt: bool,
+    rng: bool,
     defaults: std::collections::HashMap<String, String>,
 }
 
@@ -463,6 +467,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut unsafe_main_thread = false;
     let mut coerce = false;
     let mut check_interrupt = false;
+    let mut rng = false;
     let mut defaults = std::collections::HashMap::new();
 
     for attr in attrs {
@@ -487,6 +492,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                         coerce = true;
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
+                    } else if inner.path.is_ident("rng") {
+                        rng = true;
                     }
                     Ok(())
                 })?;
@@ -498,6 +505,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                 coerce = true;
             } else if meta.path.is_ident("check_interrupt") {
                 check_interrupt = true;
+            } else if meta.path.is_ident("rng") {
+                rng = true;
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
                 meta.parse_nested_meta(|inner| {
@@ -520,6 +529,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         unsafe_main_thread,
         coerce,
         check_interrupt,
+        rng,
         defaults,
     }
 }
@@ -669,6 +679,11 @@ fn generate_trait_method_c_wrapper(
     // Apply check_interrupt if the method has #[miniextendr(check_interrupt)]
     if method.check_interrupt {
         builder = builder.check_interrupt();
+    }
+
+    // Apply rng if the method has #[miniextendr(rng)]
+    if method.rng {
+        builder = builder.rng();
     }
 
     // The builder generates both the C wrapper and the R_CallMethodDef

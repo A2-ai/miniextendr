@@ -86,6 +86,10 @@ pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checkin
 pub mod error;
 pub use error::{r_print, r_println, r_stop, r_warning};
 
+// RNG (random number generation) utilities
+pub mod rng;
+pub use rng::{RngGuard, with_rng};
+
 // Re-export from_r
 pub use from_r::{
     CoercedSexpError, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp,

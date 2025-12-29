@@ -528,6 +528,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) check_interrupt: bool,
     /// Enable automatic coercion for all parameters that support it.
     pub(crate) coerce_all: bool,
+    /// Enable RNG state management (GetRNGstate/PutRNGstate).
+    pub(crate) rng: bool,
     /// Preferred return conversion.
     pub(crate) return_pref: ReturnPref,
 }
@@ -569,10 +571,12 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.check_interrupt = true;
                         } else if ident == "coerce" {
                             out.coerce_all = true;
+                        } else if ident == "rng" {
+                            out.rng = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce, rng",
                             ));
                         }
                     }

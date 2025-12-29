@@ -275,6 +275,8 @@ pub struct MethodAttrs {
     pub check_interrupt: bool,
     /// Enable coercion for this method's parameters
     pub coerce: bool,
+    /// Enable RNG state management (GetRNGstate/PutRNGstate)
+    pub rng: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
 }
@@ -425,6 +427,8 @@ impl ParsedMethod {
                             method_attrs.check_interrupt = true;
                         } else if inner.path.is_ident("coerce") {
                             method_attrs.coerce = true;
+                        } else if inner.path.is_ident("rng") {
+                            method_attrs.rng = true;
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -867,6 +871,10 @@ pub fn generate_method_c_wrapper(
 
     if method.method_attrs.check_interrupt {
         builder = builder.check_interrupt();
+    }
+
+    if method.method_attrs.rng {
+        builder = builder.rng();
     }
 
     builder.build().generate()

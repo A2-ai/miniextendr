@@ -109,6 +109,8 @@ pub struct CWrapperContext {
     pub coerce_params: Vec<String>,
     /// Check interrupt before call
     pub check_interrupt: bool,
+    /// Use RNG state management (GetRNGstate/PutRNGstate)
+    pub rng: bool,
     /// cfg attributes to propagate
     pub cfg_attrs: Vec<syn::Attribute>,
     /// Type identifier for method context (for doc generation)
@@ -135,6 +137,7 @@ impl CWrapperContext {
             coerce_all: false,
             coerce_params: Vec::new(),
             check_interrupt: false,
+            rng: false,
             cfg_attrs: Vec::new(),
             type_context: None,
             has_self: false,
@@ -225,19 +228,48 @@ impl CWrapperContext {
 
         let doc = self.generate_doc_comment("main thread");
 
-        quote! {
-            #[doc = #doc]
-            #[unsafe(no_mangle)]
-            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                    || {
-                        #pre_call_checks
-                        #(#pre_call)*
-                        #(#conversion_stmts)*
-                        #return_handling
-                    },
-                    Some(__miniextendr_call),
-                )
+        if self.rng {
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
+            quote! {
+                #[doc = #doc]
+                #[unsafe(no_mangle)]
+                extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                    unsafe { ::miniextendr_api::ffi::GetRNGstate(); }
+                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            || {
+                                #pre_call_checks
+                                #(#pre_call)*
+                                #(#conversion_stmts)*
+                                #return_handling
+                            },
+                            Some(__miniextendr_call),
+                        )
+                    }));
+                    // PutRNGstate runs after catch_unwind, before error handling
+                    unsafe { ::miniextendr_api::ffi::PutRNGstate(); }
+                    match __result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => ::std::panic::resume_unwind(payload),
+                    }
+                }
+            }
+        } else {
+            // Non-RNG variant: direct call to with_r_unwind_protect
+            quote! {
+                #[doc = #doc]
+                #[unsafe(no_mangle)]
+                extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        || {
+                            #pre_call_checks
+                            #(#pre_call)*
+                            #(#conversion_stmts)*
+                            #return_handling
+                        },
+                        Some(__miniextendr_call),
+                    )
+                }
             }
         }
     }
@@ -262,10 +294,21 @@ impl CWrapperContext {
 
         let doc = self.generate_doc_comment("worker thread");
 
+        // RNG state management: GetRNGstate at start, PutRNGstate before returning/error handling
+        let (rng_get, rng_put) = if self.rng {
+            (
+                quote! { unsafe { ::miniextendr_api::ffi::GetRNGstate(); } },
+                quote! { unsafe { ::miniextendr_api::ffi::PutRNGstate(); } },
+            )
+        } else {
+            (TokenStream::new(), TokenStream::new())
+        };
+
         quote! {
             #[doc = #doc]
             #[unsafe(no_mangle)]
             extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #pre_call_checks
                     #(#pre_call)*
@@ -277,6 +320,8 @@ impl CWrapperContext {
 
                     #return_conversion
                 }));
+                // PutRNGstate runs after catch_unwind, before error conversion
+                #rng_put
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
                     Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
@@ -625,6 +670,7 @@ pub struct CWrapperContextBuilder {
     coerce_all: bool,
     coerce_params: Vec<String>,
     check_interrupt: bool,
+    rng: bool,
     cfg_attrs: Vec<syn::Attribute>,
     type_context: Option<syn::Ident>,
     has_self: bool,
@@ -697,6 +743,12 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Enable RNG state management (GetRNGstate/PutRNGstate).
+    pub fn rng(mut self) -> Self {
+        self.rng = true;
+        self
+    }
+
     /// Set cfg attributes.
     pub fn cfg_attrs(mut self, attrs: Vec<syn::Attribute>) -> Self {
         self.cfg_attrs = attrs;
@@ -759,6 +811,7 @@ impl CWrapperContextBuilder {
             coerce_all: self.coerce_all,
             coerce_params: self.coerce_params,
             check_interrupt: self.check_interrupt,
+            rng: self.rng,
             cfg_attrs: self.cfg_attrs,
             type_context: self.type_context,
             has_self: self.has_self,
