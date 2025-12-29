@@ -18,6 +18,7 @@ mod method_return_builder;
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
 mod list_derive;
+mod r_class_formatter;
 mod return_type_analysis;
 mod roxygen;
 

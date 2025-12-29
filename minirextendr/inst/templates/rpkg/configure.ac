@@ -19,14 +19,17 @@ dnl Set NOT_CRAN=true if not already set (enables vendoring in Makevars)
 export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline
-dnl - NOT_CRAN not true (CRAN): use --offline
+dnl - NOT_CRAN=true (dev): no --offline, use --locked
+dnl - NOT_CRAN not true (CRAN): use --offline, no --locked (may need to regenerate lockfile)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
+  CARGO_LOCKED_FLAG="--locked"
 else
   CARGO_OFFLINE_FLAG="--offline"
+  CARGO_LOCKED_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
+AC_SUBST([CARGO_LOCKED_FLAG])
 AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
