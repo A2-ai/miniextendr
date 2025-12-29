@@ -565,11 +565,12 @@ fn generate_trait_method_c_wrapper(
     let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
 
     // Thread strategy: instance methods stay on main thread; static methods default to worker
+    // Note: `worker` flag is currently redundant since WorkerThread is already the default
+    // for static methods. It's kept for explicitness and potential future use.
     let thread_strategy = if method.has_self || method.unsafe_main_thread {
         ThreadStrategy::MainThread
-    } else if method.worker {
-        ThreadStrategy::WorkerThread
     } else {
+        // Static methods use worker thread (method.worker flag is the default behavior)
         ThreadStrategy::WorkerThread
     };
 

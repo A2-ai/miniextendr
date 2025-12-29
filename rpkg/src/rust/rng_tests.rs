@@ -25,7 +25,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// rng_uniform(5L)
 /// @param n Number of values to generate.
 #[miniextendr(rng)]
-fn rng_uniform(n: i32) -> Vec<f64> {
+pub fn rng_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
@@ -33,7 +33,7 @@ fn rng_uniform(n: i32) -> Vec<f64> {
 /// @rdname rpkg_rng
 /// @export
 #[miniextendr(rng)]
-fn rng_normal(n: i32) -> Vec<f64> {
+pub fn rng_normal(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { norm_rand() }).collect()
 }
 
@@ -41,7 +41,7 @@ fn rng_normal(n: i32) -> Vec<f64> {
 /// @rdname rpkg_rng
 /// @export
 #[miniextendr(rng)]
-fn rng_exponential(n: i32) -> Vec<f64> {
+pub fn rng_exponential(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { exp_rand() }).collect()
 }
 
@@ -50,7 +50,7 @@ fn rng_exponential(n: i32) -> Vec<f64> {
 /// @export
 /// @param max Upper bound (exclusive).
 #[miniextendr(rng)]
-fn rng_int(n: i32, max: f64) -> Vec<i32> {
+pub fn rng_int(n: i32, max: f64) -> Vec<i32> {
     (0..n)
         .map(|_| unsafe { R_unif_index(max) } as i32)
         .collect()
@@ -61,7 +61,7 @@ fn rng_int(n: i32, max: f64) -> Vec<i32> {
 /// @rdname rpkg_rng
 /// @export
 #[miniextendr(rng, check_interrupt)]
-fn rng_with_interrupt(n: i32) -> Vec<f64> {
+pub fn rng_with_interrupt(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
@@ -69,7 +69,7 @@ fn rng_with_interrupt(n: i32) -> Vec<f64> {
 /// @rdname rpkg_rng
 /// @export
 #[miniextendr(rng, worker)]
-fn rng_worker_uniform(n: i32) -> Vec<f64> {
+pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
