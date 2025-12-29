@@ -492,9 +492,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                         coerce = true;
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
-                    } else if inner.path.is_ident("rng") {
-                        rng = true;
                     }
+                    // Note: rng is NOT supported nested (env(rng)) - use #[miniextendr(rng)] instead
                     Ok(())
                 })?;
             } else if meta.path.is_ident("worker") {

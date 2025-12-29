@@ -4,22 +4,78 @@
 //! R's RNG must have its state loaded before generating random numbers, and
 //! the state must be saved back afterwards (even on error).
 //!
-//! # Usage
+//! # Background
 //!
-//! The simplest way is to use the `#[miniextendr(rng)]` attribute on functions
-//! that need to generate random numbers:
+//! R's random number generators maintain internal state that must be synchronized
+//! with R's `.Random.seed` variable. Before calling any RNG function like
+//! [`unif_rand()`][crate::ffi::unif_rand], you must call `GetRNGstate()` to load
+//! the state. After generating random numbers, you must call `PutRNGstate()` to
+//! save it back—even if an error occurs.
+//!
+//! # Available RNG Functions
+//!
+//! After initializing RNG state, you can use these functions from [`crate::ffi`]:
+//!
+//! - [`unif_rand()`][crate::ffi::unif_rand] - Uniform random on `[0, 1)`
+//! - [`norm_rand()`][crate::ffi::norm_rand] - Standard normal random
+//! - [`exp_rand()`][crate::ffi::exp_rand] - Standard exponential random
+//! - [`R_unif_index(n)`][crate::ffi::R_unif_index] - Uniform integer on `[0, n)`
+//!
+//! # Usage: The `#[miniextendr(rng)]` Attribute (Recommended)
+//!
+//! The simplest and safest way is to use the `#[miniextendr(rng)]` attribute on
+//! functions that need to generate random numbers:
 //!
 //! ```ignore
+//! use miniextendr_api::ffi::unif_rand;
+//!
 //! #[miniextendr(rng)]
 //! fn random_sample(n: i32) -> Vec<f64> {
 //!     (0..n).map(|_| unsafe { unif_rand() }).collect()
 //! }
 //! ```
 //!
-//! For manual control, use [`RngGuard`]:
+//! This also works on impl methods and trait methods:
+//!
+//! ```ignore
+//! #[miniextendr]
+//! impl MyStruct {
+//!     #[miniextendr(rng)]
+//!     fn sample(&self, n: i32) -> Vec<f64> {
+//!         (0..n).map(|_| unsafe { unif_rand() }).collect()
+//!     }
+//! }
+//!
+//! #[miniextendr(env)]
+//! impl MyTrait for MyStruct {
+//!     #[miniextendr(rng)]
+//!     fn random_value(&self) -> f64 {
+//!         unsafe { unif_rand() }
+//!     }
+//! }
+//! ```
+//!
+//! ## Generated Code Pattern
+//!
+//! The `#[miniextendr(rng)]` attribute generates code that:
+//!
+//! 1. Calls `GetRNGstate()` at the start
+//! 2. Wraps the function body in `catch_unwind`
+//! 3. Calls `PutRNGstate()` after `catch_unwind` (runs on both success AND panic)
+//! 4. Then handles the result (returns value or re-panics)
+//!
+//! This explicit placement ensures `PutRNGstate()` is called before any error
+//! handling, which is robust in the presence of R longjumps when combined with
+//! `with_r_unwind_protect`.
+//!
+//! # Usage: Manual Control with [`RngGuard`]
+//!
+//! For code that isn't directly exposed to R, or when you need finer control,
+//! use [`RngGuard`]:
 //!
 //! ```ignore
 //! use miniextendr_api::rng::RngGuard;
+//! use miniextendr_api::ffi::unif_rand;
 //!
 //! fn generate_random() -> f64 {
 //!     let _guard = RngGuard::new();
@@ -28,12 +84,28 @@
 //! }
 //! ```
 //!
+//! Or use the [`with_rng`] convenience function:
+//!
+//! ```ignore
+//! use miniextendr_api::rng::with_rng;
+//! use miniextendr_api::ffi::unif_rand;
+//!
+//! let value = with_rng(|| unsafe { unif_rand() });
+//! ```
+//!
 //! # Important: R Longjumps
 //!
-//! Note that [`RngGuard`] relies on Rust's drop semantics. If R triggers a
+//! [`RngGuard`] and [`with_rng`] rely on Rust's drop semantics. If R triggers a
 //! longjmp (via `Rf_error` etc.), the guard's destructor will NOT run unless
-//! the code is wrapped in `with_r_unwind_protect`. The `#[miniextendr(rng)]`
-//! attribute handles this correctly by using explicit placement.
+//! the code is wrapped in `with_r_unwind_protect`.
+//!
+//! **For functions exposed to R, always prefer `#[miniextendr(rng)]`** which
+//! handles this correctly by using explicit placement of `PutRNGstate()`.
+//!
+//! Use [`RngGuard`] for:
+//! - Internal helper functions not directly exposed to R
+//! - Code already wrapped in `with_r_unwind_protect`
+//! - Scoped RNG access within a larger function
 
 use crate::ffi::{GetRNGstate, PutRNGstate};
 

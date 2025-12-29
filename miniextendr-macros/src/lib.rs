@@ -394,7 +394,10 @@ pub fn miniextendr(
             quote::quote! { unsafe { ::miniextendr_api::ffi::PutRNGstate(); } },
         )
     } else {
-        (proc_macro2::TokenStream::new(), proc_macro2::TokenStream::new())
+        (
+            proc_macro2::TokenStream::new(),
+            proc_macro2::TokenStream::new(),
+        )
     };
 
     let c_wrapper = if abi.is_some() {
