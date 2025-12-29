@@ -19,13 +19,44 @@
 //! When converting an R value to `Either<L, R>`:
 //! 1. First attempts to convert to `L`
 //! 2. If that fails, attempts to convert to `R`
-//! 3. If both fail, returns the error from attempting `R`
+//! 3. If both fail, returns an error containing both failure reasons
 //!
 //! This "try left first" strategy means the order of type parameters matters!
 //!
 //! ## From Rust to R (`IntoR`)
 //!
 //! Each variant is converted to R using its inner type's `IntoR` implementation.
+//!
+//! # Avoiding Ambiguous Eithers
+//!
+//! The order of type parameters affects conversion behavior. For best results:
+//!
+//! - **Put the more specific type first** (as `L`)
+//! - **Put the more general type second** (as `R`)
+//!
+//! ## Good patterns
+//!
+//! ```ignore
+//! // Integer vs String - disjoint R types, unambiguous
+//! Either<i32, String>
+//!
+//! // ExternalPtr vs primitive - ExternalPtr is checked first
+//! Either<ExternalPtr<MyType>, i32>
+//! ```
+//!
+//! ## Potentially problematic patterns
+//!
+//! ```ignore
+//! // f64 vs i32 - R integers can coerce to doubles!
+//! // If you pass an integer, it converts to Left(f64) not Right(i32)
+//! Either<f64, i32>  // Consider: Either<i32, f64> instead
+//!
+//! // Vec<f64> vs Vec<i32> - same issue with coercion
+//! Either<Vec<f64>, Vec<i32>>  // Consider: Either<Vec<i32>, Vec<f64>>
+//! ```
+//!
+//! **Rule of thumb**: If `L` can successfully parse values intended for `R`,
+//! swap the order so the more restrictive type is tried first.
 //!
 //! # Example
 //!
@@ -50,6 +81,7 @@ use crate::into_r::IntoR;
 /// Implements `TryFromSexp` for `Either<L, R>`.
 ///
 /// Attempts to parse as `L` first, falling back to `R` if that fails.
+/// If both conversions fail, returns an error containing both failure reasons.
 impl<L, R> TryFromSexp for Either<L, R>
 where
     L: TryFromSexp,
@@ -62,25 +94,37 @@ where
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // Try L first
-        if let Ok(left) = L::try_from_sexp(sexp) {
-            return Ok(Either::Left(left));
-        }
+        let left_err = match L::try_from_sexp(sexp) {
+            Ok(left) => return Ok(Either::Left(left)),
+            Err(e) => e.into(),
+        };
+
         // Fall back to R
-        R::try_from_sexp(sexp)
-            .map(Either::Right)
-            .map_err(Into::into)
+        match R::try_from_sexp(sexp) {
+            Ok(right) => Ok(Either::Right(right)),
+            Err(right_err) => Err(SexpError::EitherConversion {
+                left_error: left_err.to_string(),
+                right_error: right_err.into().to_string(),
+            }),
+        }
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         // Try L first
-        if let Ok(left) = unsafe { L::try_from_sexp_unchecked(sexp) } {
-            return Ok(Either::Left(left));
-        }
+        let left_err = match unsafe { L::try_from_sexp_unchecked(sexp) } {
+            Ok(left) => return Ok(Either::Left(left)),
+            Err(e) => e.into(),
+        };
+
         // Fall back to R
-        unsafe { R::try_from_sexp_unchecked(sexp) }
-            .map(Either::Right)
-            .map_err(Into::into)
+        match unsafe { R::try_from_sexp_unchecked(sexp) } {
+            Ok(right) => Ok(Either::Right(right)),
+            Err(right_err) => Err(SexpError::EitherConversion {
+                left_error: left_err.to_string(),
+                right_error: right_err.into().to_string(),
+            }),
+        }
     }
 }
 

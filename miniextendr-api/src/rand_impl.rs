@@ -49,6 +49,33 @@
 //!
 //! [`RRng`] requires that R's RNG state has been initialized via `GetRNGstate()`.
 //! Use `#[miniextendr(rng)]` or [`RngGuard`][crate::RngGuard] to ensure this.
+//!
+//! # Performance Considerations
+//!
+//! **Thread-routing cost**: When `RRng` is used inside a `#[miniextendr]`-exported
+//! function running on the worker thread, each RNG call is routed back to the
+//! R main thread. This has implications:
+//!
+//! - **Small draws (tens to hundreds)**: Overhead is negligible
+//! - **Large draws (thousands+)**: Cross-thread roundtrips can dominate runtime
+//!
+//! For high-volume random number generation, consider:
+//!
+//! 1. **Batch generation**: Generate all needed random numbers in one call, then
+//!    process them on the worker thread
+//! 2. **Use Rust RNG**: For non-reproducibility-critical work, use `rand::thread_rng()`
+//!    which doesn't require R thread access
+//!
+//! ```ignore
+//! #[miniextendr(rng)]
+//! fn efficient_simulation(n: i32) -> f64 {
+//!     let mut rng = RRng::new();
+//!     // Generate all random numbers first
+//!     let samples: Vec<f64> = (0..n).map(|_| rng.uniform_f64()).collect();
+//!     // Then do expensive computation without RNG calls
+//!     samples.iter().map(|x| expensive_function(*x)).sum()
+//! }
+//! ```
 
 use rand::RngCore;
 

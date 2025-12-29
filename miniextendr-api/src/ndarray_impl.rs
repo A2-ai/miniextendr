@@ -151,18 +151,21 @@ impl<T: RNativeType + Clone> TryFromSexp for Array2<T> {
 /// Convert `Array2<T>` to R matrix.
 ///
 /// Creates a column-major R matrix from the ndarray.
+/// Data is always written in column-major order regardless of the array's internal layout.
 impl<T: RNativeType + Clone> IntoR for Array2<T> {
     fn into_sexp(self) -> SEXP {
         let (nrow, ncol) = self.dim();
 
-        // Get data in column-major order
-        let data: Vec<T> = if self.is_standard_layout() {
-            // Row-major: need to transpose
-            self.t().iter().cloned().collect()
-        } else {
-            // Already column-major (Fortran order)
-            self.iter().cloned().collect()
-        };
+        // Always produce column-major data by iterating column-by-column.
+        // This works correctly regardless of whether the array is row-major (standard)
+        // or column-major (Fortran order).
+        //
+        // Note: ndarray's `iter()` always visits in logical order (row-major iteration),
+        // NOT memory order. So we explicitly iterate by columns to get R's expected layout.
+        let mut data: Vec<T> = Vec::with_capacity(nrow * ncol);
+        for j in 0..ncol {
+            data.extend(self.column(j).iter().cloned());
+        }
 
         // Create R matrix
         unsafe {

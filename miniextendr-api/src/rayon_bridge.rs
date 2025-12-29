@@ -29,33 +29,107 @@
 //! # Architecture
 //!
 //! ```text
-//! ┌───────────────────────────────────────────────────────┐
-//! │                    R Main Thread                       │
-//! │  .Call("my_func") → miniextendr entry point           │
-//! └─────────────────────────┬─────────────────────────────┘
+//! ┌───────────────────────────────────────────────────────────┐
+//! │                    R Main Thread                          │
+//! │  .Call("my_func") → miniextendr entry point               │
+//! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
-//! ┌─────────────────────────┴─────────────────────────────┐
-//! │               Worker Thread (run_on_worker)           │
-//! │  1. Setup: with_r_vec() allocates R vectors           │
-//! │  2. Parallel: spawn Rayon work (pure Rust only!)      │
-//! │  3. Cleanup: convert results to R                     │
-//! └─────────────────────────┬─────────────────────────────┘
+//! ┌─────────────────────────┴─────────────────────────────────┐
+//! │               Worker Thread (run_on_worker)               │
+//! │  1. Setup: with_r_vec() allocates R vectors               │
+//! │  2. Parallel: spawn Rayon work (pure Rust only!)          │
+//! │  3. Cleanup: convert results to R                         │
+//! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
-//! ┌──────────────────────────────────────────────────────┐
-//! │              Rayon Thread Pool (2MB stacks)          │
-//! │   Thread 1    Thread 2    Thread 3    Thread N       │
-//! │      ↓           ↓           ↓           ↓           │
-//! │   Pure Rust  Pure Rust  Pure Rust  Pure Rust         │
-//! │   compute    compute    compute    compute           │
-//! │   (NO R API calls from within parallel iterators!)   │
-//! └──────────────────────────────────────────────────────┘
+//! ┌───────────────────────────────────────────────────────────┐
+//! │              Rayon Thread Pool (2MB stacks)               │
+//! │   Thread 1    Thread 2    Thread 3    Thread N            │
+//! │      ↓           ↓           ↓           ↓                │
+//! │   Pure Rust  Pure Rust  Pure Rust  Pure Rust              │
+//! │   compute    compute    compute    compute                │
+//! │   (NO R API calls from within parallel iterators!)        │
+//! └───────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! # Thread Context for `with_r_vec`
+//!
+//! [`with_r_vec`] can be called from **either** the worker thread or directly from
+//! an R-thread wrapper (SEXP-returning exported function). It works by:
+//!
+//! 1. **Allocation on R thread**: Uses [`with_r_thread`][crate::worker::with_r_thread]
+//!    to allocate and PROTECT the R vector on the R main thread.
+//! 2. **Pointer acquisition on R thread**: The raw pointer is obtained while the
+//!    object is protected, ensuring no GC can invalidate it.
+//! 3. **Parallel fill**: The closure receives a `&mut [T]` slice that Rayon threads
+//!    can safely write to (the underlying memory won't move while protected).
+//! 4. **Cleanup**: UNPROTECT is called via a guard, and the SEXP is returned.
+//!
+//! **Safety invariant**: The R vector is PROTECTED for the entire duration of
+//! parallel writes. No R allocations can occur during the parallel section
+//! (the closure must be pure Rust), so GC cannot run and the pointer remains valid.
+//!
+//! # What NOT To Do
+//!
+//! **Never call R APIs inside parallel iterators.** R is single-threaded and
+//! calling R functions from multiple threads simultaneously causes undefined behavior.
+//!
+//! ## Forbidden Patterns
+//!
+//! ```ignore
+//! // BAD: Calling ffi::Rf_* inside par_iter
+//! data.par_iter().map(|x| {
+//!     unsafe { ffi::Rf_ScalarReal(*x) }  // WRONG! R call from Rayon thread
+//! }).collect()
+//!
+//! // BAD: Using IntoR/into_sexp() inside parallel closure
+//! data.par_iter().map(|x| {
+//!     x.into_sexp()  // WRONG! This calls R internally
+//! }).collect()
+//!
+//! // BAD: Allocating R vectors inside parallel work
+//! data.par_iter().map(|chunk| {
+//!     let v: Vec<f64> = chunk.iter().copied().collect();
+//!     v.into_sexp()  // WRONG! R allocation from wrong thread
+//! }).collect()
+//!
+//! // BAD: Using RRng inside parallel iterators (with rand feature)
+//! data.par_iter().map(|x| {
+//!     let mut rng = RRng::new();
+//!     x + rng.random::<f64>()  // WRONG! R's RNG isn't thread-safe
+//! }).collect()
+//! ```
+//!
+//! ## Correct Patterns
+//!
+//! ```ignore
+//! // GOOD: Pure Rust computation, R conversion after
+//! let results: Vec<f64> = data.par_iter().map(|x| x.sqrt()).collect();
+//! results.into_sexp()  // R conversion happens on single thread
+//!
+//! // GOOD: Pre-allocate with with_r_vec, parallel fill
+//! with_r_vec(data.len(), |output: &mut [f64]| {
+//!     output.par_iter_mut()
+//!         .zip(data.par_iter())
+//!         .for_each(|(out, x)| *out = x.sqrt());
+//! })
+//!
+//! // GOOD: Use reduce::* for reductions
+//! rayon_bridge::reduce::sum(&data)
+//!
+//! // GOOD: Use Rust's thread_rng for parallel RNG (not R-reproducible)
+//! use rand::Rng;
+//! data.par_iter().map(|x| {
+//!     let mut rng = rand::thread_rng();
+//!     x + rng.random::<f64>()
+//! }).collect::<Vec<_>>()
 //! ```
 //!
 //! # Important Limitations
 //!
 //! **DO NOT call R APIs from within parallel iterators.** This includes:
-//! - Any direct FFI calls to R
+//! - Any direct FFI calls to R (`Rf_*`, `R_*` functions)
 //! - `IntoR::into_sexp()` inside `.map()` closures
+//! - `RRng` methods (they call R's RNG which isn't thread-safe)
 //!
 //! **DO** perform all R interactions before or after parallel work:
 //! - Use `with_r_vec::<T>()` to pre-allocate R vectors before parallel writes
@@ -160,6 +234,15 @@ impl<T: Send> FromParallelIterator<T> for RVec<T> {
 /// - `RLogical` → `LGLSXP`
 /// - `u8` → `RAWSXP`
 /// - `Rcomplex` → `CPLXSXP`
+///
+/// # Thread Safety
+///
+/// This function can be called from either the worker thread or directly from
+/// the R main thread. It uses [`with_r_thread`][crate::worker::with_r_thread]
+/// internally to ensure R allocation happens on the correct thread.
+///
+/// **Critical**: The closure `f` must contain only pure Rust code. Do not call
+/// any R APIs inside the closure - this would violate R's single-threaded model.
 ///
 /// # Example
 ///

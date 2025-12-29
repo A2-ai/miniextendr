@@ -113,6 +113,16 @@ pub enum SexpError {
     Na(SexpNaError),
     /// A required field was missing from a named list.
     MissingField(String),
+    /// Failed to convert to `Either<L, R>` - both branches failed.
+    ///
+    /// Contains the error messages from attempting both conversions.
+    #[cfg(feature = "either")]
+    EitherConversion {
+        /// Error from attempting to convert to the Left type
+        left_error: String,
+        /// Error from attempting to convert to the Right type
+        right_error: String,
+    },
 }
 
 impl std::fmt::Display for SexpError {
@@ -122,6 +132,15 @@ impl std::fmt::Display for SexpError {
             SexpError::Length(e) => write!(f, "{}", e),
             SexpError::Na(e) => write!(f, "{}", e),
             SexpError::MissingField(name) => write!(f, "missing field: {}", name),
+            #[cfg(feature = "either")]
+            SexpError::EitherConversion {
+                left_error,
+                right_error,
+            } => write!(
+                f,
+                "failed to convert to Either: Left failed ({}), Right failed ({})",
+                left_error, right_error
+            ),
         }
     }
 }
@@ -133,6 +152,8 @@ impl std::error::Error for SexpError {
             SexpError::Length(e) => Some(e),
             SexpError::Na(e) => Some(e),
             SexpError::MissingField(_) => None,
+            #[cfg(feature = "either")]
+            SexpError::EitherConversion { .. } => None,
         }
     }
 }

@@ -16,6 +16,28 @@
 //! miniextendr-api = { version = "0.1", features = ["nalgebra"] }
 //! ```
 //!
+//! # Dimension Handling
+//!
+//! When converting R objects to `DMatrix<T>`, the dimension (`dim`) attribute
+//! determines the matrix shape:
+//!
+//! | R Input | `dim` Attribute | Result |
+//! |---------|-----------------|--------|
+//! | `matrix(1:6, 2, 3)` | `c(2L, 3L)` | `DMatrix` with 2 rows, 3 cols |
+//! | `c(1, 2, 3)` | None | **Column vector**: `DMatrix` with 3 rows, 1 col |
+//! | `array(1:24, c(2,3,4))` | `c(2L, 3L, 4L)` | **Error**: only 2D supported |
+//!
+//! **Important**: Plain R vectors (without `dim`) are treated as **column vectors**
+//! with shape `(length, 1)`. This matches R's convention where vectors are
+//! implicitly single-column matrices in matrix operations.
+//!
+//! ```r
+//! # In R:
+//! v <- c(1, 2, 3)         # No dim attribute
+//! m <- matrix(v, 3, 1)    # Explicit column vector
+//! # Both convert to DMatrix with shape (3, 1)
+//! ```
+//!
 //! # Memory Layout
 //!
 //! Both R and nalgebra use **column-major** storage by default, which makes
