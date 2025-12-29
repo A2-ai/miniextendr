@@ -29,9 +29,6 @@
 // Parser module (copied from miniextendr-macros for independent publishing).
 mod miniextendr_module;
 
-// TODO: Check how many miniextendr_module! calls there is in a module
-// atmost 1
-
 // TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
 // is it altrep? is it too much?
 
@@ -240,6 +237,7 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
 
     let mut miniextendr_items = HashSet::new();
     let mut module_items = HashSet::new();
+    let mut module_macro_locations = Vec::new();
     let mut errors = Vec::new();
 
     collect_items(
@@ -247,11 +245,26 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
         path,
         &mut miniextendr_items,
         &mut module_items,
+        &mut module_macro_locations,
         &mut errors,
     );
 
     if !errors.is_empty() {
         return Err(errors);
+    }
+
+    // Check for multiple miniextendr_module! macros (at most 1 per file)
+    if module_macro_locations.len() > 1 {
+        errors.push(format!(
+            "{}: multiple miniextendr_module! macros found (at most 1 allowed per file). \
+             Found at lines: {}",
+            path.display(),
+            module_macro_locations
+                .iter()
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
 
     if !miniextendr_items.is_empty() && module_items.is_empty() {
@@ -331,6 +344,7 @@ fn collect_items_from_file(
     mod_path: &Path,
     miniextendr_items: &mut HashSet<LintItem>,
     module_items: &mut HashSet<LintItem>,
+    module_macro_locations: &mut Vec<usize>,
     errors: &mut Vec<String>,
 ) -> Result<(), String> {
     let src = fs::read_to_string(mod_path).map_err(|e| format!("failed to read: {}", e))?;
@@ -342,6 +356,7 @@ fn collect_items_from_file(
         mod_path,
         miniextendr_items,
         module_items,
+        module_macro_locations,
         errors,
     );
     Ok(())
@@ -375,6 +390,7 @@ fn collect_items(
     path: &Path,
     miniextendr_items: &mut HashSet<LintItem>,
     module_items: &mut HashSet<LintItem>,
+    module_macro_locations: &mut Vec<usize>,
     errors: &mut Vec<String>,
 ) {
     // Track inherent impl class systems for compatibility checking
@@ -456,6 +472,9 @@ fn collect_items(
             }
             Item::Macro(item_macro) => {
                 if is_miniextendr_module_macro(&item_macro.mac) {
+                    let line = item_macro.mac.path.span().start().line;
+                    module_macro_locations.push(line);
+
                     match parse_miniextendr_module_items(&item_macro.mac) {
                         Ok(items) => {
                             module_items.extend(items);
@@ -470,7 +489,14 @@ fn collect_items(
             Item::Mod(item_mod) => {
                 if let Some((_, items)) = &item_mod.content {
                     // Inline module: mod foo { ... }
-                    collect_items(items, path, miniextendr_items, module_items, errors);
+                    collect_items(
+                        items,
+                        path,
+                        miniextendr_items,
+                        module_items,
+                        module_macro_locations,
+                        errors,
+                    );
                 } else {
                     // File module: mod foo;
                     // Resolve and parse the file, then recursively collect
@@ -479,6 +505,7 @@ fn collect_items(
                             &mod_path,
                             miniextendr_items,
                             module_items,
+                            module_macro_locations,
                             errors,
                         )
                     {

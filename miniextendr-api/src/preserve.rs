@@ -234,7 +234,6 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 #[inline]
 pub unsafe fn release(cell: SEXP) {
     unsafe {
-        // TODO: compare pointer address
         if std::ptr::addr_eq(cell.0, R_NilValue.0) {
             return;
         }
