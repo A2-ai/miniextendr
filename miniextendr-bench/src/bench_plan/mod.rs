@@ -20,6 +20,7 @@
 //! - `altrep.rs`           ALTREP callbacks and data access patterns
 //! - `altrep_iter.rs`      Iterator-backed ALTREP performance
 //! - `externalptr.rs`      ExternalPtr creation, access, tagging
+//! - `trait_abi.rs`        mx_erased / trait vtable query and dispatch
 //! - `preserve.rs`         Preserve-list vs PROTECT/UNPROTECT patterns
 //! - `unwind_protect.rs`   with_r_unwind_protect overhead (normal and error)
 //! - `worker.rs`           worker-thread dispatch overhead vs direct calls
@@ -79,6 +80,7 @@
 //! - `altrep`: ALTREP class access and callbacks
 //! - `altrep_iter`: iterator-backed ALTREP
 //! - `externalptr`: ExternalPtr creation/access/protection
+//! - `trait_abi`: trait ABI dispatch (mx_erased query + vtable calls)
 //! - `preserve`: preserve list insert/release vs PROTECT
 //! - `unwind_protect`: with_r_unwind_protect overhead
 //! - `worker`: worker thread dispatch overhead
@@ -105,6 +107,7 @@ pub mod rayon;
 pub mod rffi_checked;
 pub mod sexp_ext;
 pub mod strings;
+pub mod trait_abi;
 pub mod unwind_protect;
 pub mod worker;
 pub mod wrappers;

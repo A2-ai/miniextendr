@@ -5,8 +5,8 @@
 //! - `#[miniextendr(rng)]` attribute on impl methods
 //! - Manual RNG management with `RngGuard` and `with_rng`
 
-use miniextendr_api::ffi::{exp_rand, norm_rand, unif_rand, R_unif_index};
-use miniextendr_api::rng::{with_rng, RngGuard};
+use miniextendr_api::ffi::{R_unif_index, exp_rand, norm_rand, unif_rand};
+use miniextendr_api::rng::{RngGuard, with_rng};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // =============================================================================

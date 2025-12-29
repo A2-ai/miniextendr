@@ -10,26 +10,25 @@ local development and performance investigations (not publishing).
 From the repo root:
 
 ```sh
-cd miniextendr-bench
-cargo bench --bench translate
+just bench --bench translate
+# or:
+cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench translate
 ```
 
 ## Notes
 
 - Requires R installed and available on PATH.
 - Uses `divan` as the benchmark harness.
+- See `miniextendr-bench/benches/` for the full target list (including `trait_abi`), and `miniextendr-bench/src/bench_plan/` for a high-level plan.
 
 ## What is measured
 
-The `translate` benchmark focuses on string extraction costs:
+Some selected targets:
 
-- `R_CHAR(charsxp)` fast path (UTF‑8/ASCII)
-- `Rf_translateCharUTF8(charsxp)` translation path
-- End‑to‑end conversions (`CHARSXP → CStr → String`)
-- `TryFromSexp<String>` for STRSXP inputs
+- `translate`: string extraction costs
+- `trait_abi`: mx_erased trait dispatch (vtable query + method calls)
 
-It includes both UTF‑8 and Latin‑1 fixtures to highlight the cost of always
-translating vs taking an encoding‑aware fast path.
+Many others cover conversions, FFI calls, ExternalPtr, ALTREP, worker routing, and more.
 
 ## Publishing to CRAN
 

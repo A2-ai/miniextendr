@@ -48,7 +48,7 @@
 // 2. Generated trait wrappers (Type$Trait$method) available in R
 // 3. Consumer can call producer's trait methods on the object
 
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 use std::sync::atomic::{AtomicI32, Ordering};
 
 // ============================================================================

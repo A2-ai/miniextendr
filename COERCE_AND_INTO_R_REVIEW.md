@@ -553,9 +553,9 @@ impl IntoR for Vec<Option<i32>> {
 
 **Needs:**
 
-- Unit tests for Vec<T> → R vector conversion
+- Unit tests for `Vec<T> → R` vector conversion
 - Tests for string conversions
-- Tests for RVec<T> integration
+- Tests for `RVec<T>` integration
 
 **Recommendation:** Add test module
 
@@ -605,9 +605,9 @@ The current state is production-ready. The additions I made (Vec/slice support, 
 
 If you want to expand later:
 
-1. **NA support:** Option<i32>, Option<f64>, Vec<Option<T>>
-2. **String vectors:** Vec<String> → STRSXP
-3. **More tests:** Unit tests for into_r.rs
-4. **Documentation:** More examples in into_r.rs
+1. **NA support:** `Option<i32>`, `Option<f64>`, `Vec<Option<T>>`
+2. **String vectors:** `Vec<String> → STRSXP`
+3. **More tests:** Unit tests for `into_r.rs`
+4. **Documentation:** More examples in `into_r.rs`
 
 The refactored Rayon integration using existing infrastructure is a significant improvement - removed 70% of the code while maintaining all functionality!

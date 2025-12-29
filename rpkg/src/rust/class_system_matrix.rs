@@ -32,19 +32,31 @@ pub trait MatrixCounter {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct CounterTraitEnv { value: i32 }
+pub struct CounterTraitEnv {
+    value: i32,
+}
 
 #[miniextendr]
 impl CounterTraitEnv {
-    fn new(v: i32) -> Self { Self { value: v } }
-    fn get_value(&self) -> i32 { self.value }
+    fn new(v: i32) -> Self {
+        Self { value: v }
+    }
+    fn get_value(&self) -> i32 {
+        self.value
+    }
 }
 
 #[miniextendr]
 impl MatrixCounter for CounterTraitEnv {
-    fn custom_get(&self) -> i32 { self.value }
-    fn custom_add(&mut self, n: i32) { self.value += n; }
-    fn default_value() -> i32 { 1 }
+    fn custom_get(&self) -> i32 {
+        self.value
+    }
+    fn custom_add(&mut self, n: i32) {
+        self.value += n;
+    }
+    fn default_value() -> i32 {
+        1
+    }
 }
 
 // =============================================================================
@@ -52,21 +64,33 @@ impl MatrixCounter for CounterTraitEnv {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct CounterTraitS3 { value: i32 }
+pub struct CounterTraitS3 {
+    value: i32,
+}
 
 #[miniextendr]
 impl CounterTraitS3 {
-    fn new(v: i32) -> Self { Self { value: v } }
-    fn get_value(&self) -> i32 { self.value }
+    fn new(v: i32) -> Self {
+        Self { value: v }
+    }
+    fn get_value(&self) -> i32 {
+        self.value
+    }
 }
 
 /// @rdname CounterTraitS3
 #[miniextendr(s3)]
 impl MatrixCounter for CounterTraitS3 {
-    fn custom_get(&self) -> i32 { self.value }
+    fn custom_get(&self) -> i32 {
+        self.value
+    }
     /// @param n Amount to add.
-    fn custom_add(&mut self, n: i32) { self.value += n; }
-    fn default_value() -> i32 { 2 }
+    fn custom_add(&mut self, n: i32) {
+        self.value += n;
+    }
+    fn default_value() -> i32 {
+        2
+    }
 }
 
 // =============================================================================
@@ -74,12 +98,18 @@ impl MatrixCounter for CounterTraitS3 {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct CounterTraitS4 { value: i32 }
+pub struct CounterTraitS4 {
+    value: i32,
+}
 
 #[miniextendr]
 impl CounterTraitS4 {
-    fn new(v: i32) -> Self { Self { value: v } }
-    fn get_value(&self) -> i32 { self.value }
+    fn new(v: i32) -> Self {
+        Self { value: v }
+    }
+    fn get_value(&self) -> i32 {
+        self.value
+    }
 }
 
 /// @rdname CounterTraitS4
@@ -87,10 +117,16 @@ impl CounterTraitS4 {
 /// @param x A CounterTraitS4 object.
 #[miniextendr(s4)]
 impl MatrixCounter for CounterTraitS4 {
-    fn custom_get(&self) -> i32 { self.value }
+    fn custom_get(&self) -> i32 {
+        self.value
+    }
     /// @param n Amount to add.
-    fn custom_add(&mut self, n: i32) { self.value += n; }
-    fn default_value() -> i32 { 3 }
+    fn custom_add(&mut self, n: i32) {
+        self.value += n;
+    }
+    fn default_value() -> i32 {
+        3
+    }
 }
 
 // =============================================================================
@@ -98,19 +134,31 @@ impl MatrixCounter for CounterTraitS4 {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct CounterTraitS7 { value: i32 }
+pub struct CounterTraitS7 {
+    value: i32,
+}
 
 #[miniextendr]
 impl CounterTraitS7 {
-    fn new(v: i32) -> Self { Self { value: v } }
-    fn get_value(&self) -> i32 { self.value }
+    fn new(v: i32) -> Self {
+        Self { value: v }
+    }
+    fn get_value(&self) -> i32 {
+        self.value
+    }
 }
 
 #[miniextendr(s7)]
 impl MatrixCounter for CounterTraitS7 {
-    fn custom_get(&self) -> i32 { self.value }
-    fn custom_add(&mut self, n: i32) { self.value += n; }
-    fn default_value() -> i32 { 4 }
+    fn custom_get(&self) -> i32 {
+        self.value
+    }
+    fn custom_add(&mut self, n: i32) {
+        self.value += n;
+    }
+    fn default_value() -> i32 {
+        4
+    }
 }
 
 // =============================================================================
@@ -118,21 +166,33 @@ impl MatrixCounter for CounterTraitS7 {
 // =============================================================================
 
 #[derive(miniextendr_api::ExternalPtr)]
-pub struct CounterTraitR6 { value: i32 }
+pub struct CounterTraitR6 {
+    value: i32,
+}
 
 #[miniextendr]
 impl CounterTraitR6 {
-    fn new(v: i32) -> Self { Self { value: v } }
-    fn get_value(&self) -> i32 { self.value }
+    fn new(v: i32) -> Self {
+        Self { value: v }
+    }
+    fn get_value(&self) -> i32 {
+        self.value
+    }
 }
 
 /// @rdname CounterTraitR6
 #[miniextendr(r6)]
 impl MatrixCounter for CounterTraitR6 {
-    fn custom_get(&self) -> i32 { self.value }
+    fn custom_get(&self) -> i32 {
+        self.value
+    }
     /// @param n Amount to add.
-    fn custom_add(&mut self, n: i32) { self.value += n; }
-    fn default_value() -> i32 { 5 }
+    fn custom_add(&mut self, n: i32) {
+        self.value += n;
+    }
+    fn default_value() -> i32 {
+        5
+    }
 }
 
 // =============================================================================

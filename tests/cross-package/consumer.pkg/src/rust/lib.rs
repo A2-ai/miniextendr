@@ -6,16 +6,10 @@
 // - Verifies trait dispatch works across package boundaries
 // - Implements its own Counter (DoubleCounter) for bidirectional testing
 
-use miniextendr_api::{miniextendr, miniextendr_module, ffi::SEXP, trait_abi::ccall, ExternalPtr};
+use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, miniextendr_module, trait_abi::ccall};
 
 // Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{
-    Counter,
-    CounterView,
-    CounterVTable,
-    TAG_COUNTER,
-    __counter_build_vtable,
-};
+pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
 
 // ============================================================================
 // Cross-package ExternalPtr pass-through utilities
@@ -37,7 +31,7 @@ fn passthrough_ptr(ptr: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 fn is_external_ptr(sexp: SEXP) -> bool {
-    use miniextendr_api::ffi::{TYPEOF, SEXPTYPE};
+    use miniextendr_api::ffi::{SEXPTYPE, TYPEOF};
     unsafe { TYPEOF(sexp) == SEXPTYPE::EXTPTRSXP }
 }
 
@@ -57,7 +51,9 @@ fn consumer_get_class(x: SEXP) -> SEXP {
 /// @export
 #[miniextendr]
 fn has_class(x: SEXP, class_name: String) -> bool {
-    use miniextendr_api::ffi::{Rf_getAttrib, R_ClassSymbol, Rf_xlength, STRING_ELT, R_CHAR, TYPEOF, SEXPTYPE};
+    use miniextendr_api::ffi::{
+        R_CHAR, R_ClassSymbol, Rf_getAttrib, Rf_xlength, SEXPTYPE, STRING_ELT, TYPEOF,
+    };
     unsafe {
         let class_attr = Rf_getAttrib(x, R_ClassSymbol);
         if TYPEOF(class_attr) != SEXPTYPE::STRSXP {

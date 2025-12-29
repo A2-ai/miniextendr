@@ -25,7 +25,9 @@ configure-all: configure-producer configure-consumer
 
 # Configure producer.pkg
 configure-producer:
-    cd producer.pkg && NOT_CRAN=true ./configure
+    cd producer.pkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=true ./configure
 
 # Build and install producer.pkg
 build-producer:
@@ -33,7 +35,9 @@ build-producer:
 
 # Configure consumer.pkg
 configure-consumer:
-    cd consumer.pkg && NOT_CRAN=true ./configure
+    cd consumer.pkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=true ./configure
 
 # Build and install consumer.pkg
 build-consumer:

@@ -8,16 +8,10 @@
 // - S7-style: S7Point
 // - Trait dispatch: SimpleCounter implements shared Counter trait
 
-use miniextendr_api::{miniextendr, miniextendr_module, ffi::SEXP, trait_abi::ccall, ExternalPtr};
+use miniextendr_api::{ExternalPtr, ffi::SEXP, miniextendr, miniextendr_module, trait_abi::ccall};
 
 // Import the shared Counter trait and its generated ABI types
-pub use shared_traits::{
-    Counter,
-    CounterView,
-    CounterVTable,
-    TAG_COUNTER,
-    __counter_build_vtable,
-};
+pub use shared_traits::{__counter_build_vtable, Counter, CounterVTable, CounterView, TAG_COUNTER};
 
 // ============================================================================
 // Env-style types (default class system)

@@ -2449,7 +2449,21 @@ do
 done
 
 
-VENDOR_OUT="$abs_rpkg_src/vendor"
+SHARED_VENDOR=0
+_repo_root=`(cd "$abs_top_srcdir/../../.." && pwd)`
+if test -d "$_repo_root/rpkg"; then
+  VENDOR_OUT="$_repo_root/rpkg/src/vendor"
+  SHARED_VENDOR=1
+  if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+    as_fn_error $? "shared vendor dir missing: $VENDOR_OUT/miniextendr-api
+Run from repo root:
+  just configure
+Or:
+  cd rpkg && NOT_CRAN=true ./configure" "$LINENO" 5
+  fi
+else
+  VENDOR_OUT="$abs_rpkg_src/vendor"
+fi
 
 
 
@@ -2475,63 +2489,74 @@ MANIFEST="$abs_rpkg_src/rust/Cargo.toml"
 if test "$NOT_CRAN" = "true"
 then :
 
-    if test ! -f "$LOCKFILE"
+      if test "$SHARED_VENDOR" = "1" || test -L "$VENDOR_OUT"
 then :
 
-    if test -f "$MANIFEST"
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: skipping cargo vendor (shared vendor dir)" >&5
+printf "%s\n" "$as_me: skipping cargo vendor (shared vendor dir)" >&6;}
+
+else case e in #(
+  e)
+        if test ! -f "$LOCKFILE"
 then :
 
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: generating Cargo.lock" >&5
+      if test -f "$MANIFEST"
+then :
+
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: generating Cargo.lock" >&5
 printf "%s\n" "$as_me: generating Cargo.lock" >&6;}
-      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
-        as_fn_error $? "cargo generate-lockfile failed" "$LINENO" 5
+        $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
+          as_fn_error $? "cargo generate-lockfile failed" "$LINENO" 5
 
 else case e in #(
   e)
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: no Cargo.toml yet; skipping cargo vendor" >&5
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: no Cargo.toml yet; skipping cargo vendor" >&5
 printf "%s\n" "$as_me: no Cargo.toml yet; skipping cargo vendor" >&6;}
-     ;;
+       ;;
 esac
 fi
 
 fi
 
-    if test -f "$LOCKFILE"
+        if test -f "$LOCKFILE"
 then :
 
-        _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
-    _old=`cat "$STAMP" 2>/dev/null || true`
+            _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
+      _old=`cat "$STAMP" 2>/dev/null || true`
 
-    _need=0
-    if test "$FORCE_VENDOR" = "1"; then
-      _need=1
-    elif test ! -d "$VENDOR_OUT"; then
-      _need=1
-    elif test ! -f "$STAMP"; then
-            _need=1
-    elif test "x$_new" != "x$_old"; then
-      _need=1
-    fi
+      _need=0
+      if test "$FORCE_VENDOR" = "1"; then
+        _need=1
+      elif test ! -d "$VENDOR_OUT"; then
+        _need=1
+      elif test ! -f "$STAMP"; then
+                _need=1
+      elif test "x$_new" != "x$_old"; then
+        _need=1
+      fi
 
-    if test $_need -eq 1
+      if test $_need -eq 1
 then :
 
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: cargo vendor (Cargo.lock changed or vendor missing)" >&5
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: cargo vendor (Cargo.lock changed or vendor missing)" >&5
 printf "%s\n" "$as_me: cargo vendor (Cargo.lock changed or vendor missing)" >&6;}
-      as_dir="$VENDOR_OUT"; as_fn_mkdir_p
-      $CARGO_CMD vendor \
-        --sync "$MANIFEST" \
-        "$VENDOR_OUT" || as_fn_error $? "\`cargo vendor\` failed" "$LINENO" 5
-      echo "$_new" > "$STAMP" || as_fn_error $? "failed to write vendor stamp" "$LINENO" 5
+        as_dir="$VENDOR_OUT"; as_fn_mkdir_p
+        $CARGO_CMD vendor \
+          --sync "$MANIFEST" \
+          "$VENDOR_OUT" || as_fn_error $? "\`cargo vendor\` failed" "$LINENO" 5
+        echo "$_new" > "$STAMP" || as_fn_error $? "failed to write vendor stamp" "$LINENO" 5
 
 else case e in #(
   e)
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: skipping cargo vendor (Cargo.lock unchanged)" >&5
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: skipping cargo vendor (Cargo.lock unchanged)" >&5
 printf "%s\n" "$as_me: skipping cargo vendor (Cargo.lock unchanged)" >&6;}
-     ;;
+       ;;
 esac
 fi
 
+fi
+   ;;
+esac
 fi
 
 fi

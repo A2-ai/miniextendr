@@ -194,8 +194,24 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (cached, in src/vendor) ----
-VENDOR_OUT="$abs_rpkg_src/vendor"
+dnl ---- vendoring ----
+dnl In the miniextendr monorepo, always use rpkg/src/vendor as the shared vendor
+dnl directory (single source of truth for vendoring).
+SHARED_VENDOR=0
+_repo_root=`(cd "$abs_top_srcdir/../../.." && pwd)`
+if test -d "$_repo_root/rpkg"; then
+  VENDOR_OUT="$_repo_root/rpkg/src/vendor"
+  SHARED_VENDOR=1
+  if test ! -d "$VENDOR_OUT/miniextendr-api"; then
+    AC_MSG_ERROR([shared vendor dir missing: $VENDOR_OUT/miniextendr-api
+Run from repo root:
+  just configure
+Or:
+  cd rpkg && NOT_CRAN=true ./configure])
+  fi
+else
+  VENDOR_OUT="$abs_rpkg_src/vendor"
+fi
 AC_SUBST([VENDOR_OUT])
 
 dnl Force refresh if you want
@@ -220,44 +236,50 @@ MANIFEST="$abs_rpkg_src/rust/Cargo.toml"
 dnl Run `cargo vendor` only in dev mode (NOT_CRAN=true) and only if needed.
 dnl CRAN/offline mode expects the vendor dir to already be present in the tarball.
 AS_IF([test "$NOT_CRAN" = "true"], [
-  dnl Generate Cargo.lock if missing (required for fingerprinting)
-  AS_IF([test ! -f "$LOCKFILE"], [
-    AS_IF([test -f "$MANIFEST"], [
-      AC_MSG_NOTICE([generating Cargo.lock])
-      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
-        AC_MSG_ERROR([cargo generate-lockfile failed])
-    ], [
-      AC_MSG_NOTICE([no Cargo.toml yet; skipping cargo vendor])
+  dnl Shared vendoring: when using rpkg's vendor directory, avoid running
+  dnl cargo vendor here.
+  AS_IF([test "$SHARED_VENDOR" = "1" || test -L "$VENDOR_OUT"], [
+    AC_MSG_NOTICE([skipping cargo vendor (shared vendor dir)])
+  ], [
+    dnl Generate Cargo.lock if missing (required for fingerprinting)
+    AS_IF([test ! -f "$LOCKFILE"], [
+      AS_IF([test -f "$MANIFEST"], [
+        AC_MSG_NOTICE([generating Cargo.lock])
+        $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
+          AC_MSG_ERROR([cargo generate-lockfile failed])
+      ], [
+        AC_MSG_NOTICE([no Cargo.toml yet; skipping cargo vendor])
+      ])
     ])
-  ])
 
-  dnl Now vendor if needed (lockfile should exist after above step)
-  AS_IF([test -f "$LOCKFILE"], [
-    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-    _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
-    _old=`cat "$STAMP" 2>/dev/null || true`
+    dnl Now vendor if needed (lockfile should exist after above step)
+    AS_IF([test -f "$LOCKFILE"], [
+      dnl POSIX fingerprint: checksum+size of Cargo.lock contents
+      _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
+      _old=`cat "$STAMP" 2>/dev/null || true`
 
-    _need=0
-    if test "$FORCE_VENDOR" = "1"; then
-      _need=1
-    elif test ! -d "$VENDOR_OUT"; then
-      _need=1
-    elif test ! -f "$STAMP"; then
-      dnl Stamp missing (vendor dir exists but wasn't tracked)
-      _need=1
-    elif test "x$_new" != "x$_old"; then
-      _need=1
-    fi
+      _need=0
+      if test "$FORCE_VENDOR" = "1"; then
+        _need=1
+      elif test ! -d "$VENDOR_OUT"; then
+        _need=1
+      elif test ! -f "$STAMP"; then
+        dnl Stamp missing (vendor dir exists but wasn't tracked)
+        _need=1
+      elif test "x$_new" != "x$_old"; then
+        _need=1
+      fi
 
-    AS_IF([test $_need -eq 1], [
-      AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
-      AS_MKDIR_P(["$VENDOR_OUT"])
-      $CARGO_CMD vendor \
-        --sync "$MANIFEST" \
-        "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
-      echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
-    ], [
-      AC_MSG_NOTICE([skipping cargo vendor (Cargo.lock unchanged)])
+      AS_IF([test $_need -eq 1], [
+        AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
+        AS_MKDIR_P(["$VENDOR_OUT"])
+        $CARGO_CMD vendor \
+          --sync "$MANIFEST" \
+          "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
+        echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
+      ], [
+        AC_MSG_NOTICE([skipping cargo vendor (Cargo.lock unchanged)])
+      ])
     ])
   ])
 ])

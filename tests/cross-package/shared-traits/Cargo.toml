@@ -11,5 +11,5 @@ publish = false
 path = "src/lib.rs"
 
 [dependencies]
-# Use same path as producer.pkg to avoid cargo lockfile collision
-miniextendr-api = { path = "../vendor/miniextendr-api" }
+# In the miniextendr monorepo, use rpkg's shared vendor dir.
+miniextendr-api = { path = "../../../rpkg/src/vendor/miniextendr-api" }

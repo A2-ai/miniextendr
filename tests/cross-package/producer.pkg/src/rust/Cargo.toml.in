@@ -22,10 +22,10 @@ nonapi = ["miniextendr-api/nonapi"]
 connections = ["miniextendr-api/connections"]
 
 [dependencies]
-# Use direct path to cross-package/vendor for path consistency with shared-traits
-miniextendr-api = { path = "../../../vendor/miniextendr-api" }
+# Use the configure-selected vendor dir (rpkg/src/vendor in this monorepo)
+miniextendr-api = { path = "@VENDOR_OUT@/miniextendr-api" }
 # Shared traits at cross-package root level for path consistency
 shared-traits = { path = "../../../shared-traits" }
 
 [build-dependencies]
-miniextendr-lint = { path = "../../../vendor/miniextendr-lint" }
+miniextendr-lint = { path = "@VENDOR_OUT@/miniextendr-lint" }

@@ -21,11 +21,12 @@ use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
+mod class_system_matrix;
 mod coerce_tests;
 mod conversion_tests;
+mod convert_pref_tests;
 mod default_tests;
 mod dots_tests;
-mod convert_pref_tests;
 mod externalptr_tests;
 mod identical_tests;
 mod interrupt_tests;
@@ -38,10 +39,9 @@ mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
+mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
-mod class_system_matrix;
-mod shared_trait_test;
 mod unwind_protect_tests;
 mod visibility_tests;
 mod worker_tests;

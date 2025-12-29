@@ -19,6 +19,13 @@
 #     just minirextendr-check     - Run R CMD check
 #     just minirextendr-install   - Install package
 #
+#   Cross-package trait ABI tests:
+#     just cross-document     - Regenerate docs for both packages
+#     just cross-install      - Build + install both packages
+#     just cross-test         - Run tests for both packages
+#     just cross-check        - Run checks for both packages
+#     just cross-clean        - Clean both packages
+#
 #   Templates:
 #     just templates-check    - Verify templates haven't drifted
 #     just templates-approve  - Accept template changes
@@ -30,61 +37,74 @@ clean:
     -just configure
     -just cargo-clean
     -cd rpkg && NOT_CRAN=false ./cleanup
+    -cd tests/cross-package && just clean
 
 # Clean build artifacts
 cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
     cargo clean -p miniextendr-bench {{cargo_flags}}
+    cargo clean -p miniextendr-lint {{cargo_flags}}
+    cargo clean -p miniextendr-engine {{cargo_flags}}
+    cargo clean --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo clean --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo clean --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:
     cargo check --benches --tests --examples --workspace {{cargo_flags}}
-    cargo check --benches --tests --examples -p miniextendr-bench {{cargo_flags}}
-    cargo check --benches --tests --examples --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo check --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo check --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo check --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build all crates
 alias cargo-build := build
 build *cargo_flags:
     cargo build --benches --tests --examples --workspace {{cargo_flags}}
-    cargo build --benches --tests --examples -p miniextendr-bench {{cargo_flags}}
-    cargo build --benches --tests --examples --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo build --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
+    cargo build --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo build --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo build --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
 clippy *cargo_flags:
     cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
-    cargo clippy --benches --tests --examples -p miniextendr-bench {{cargo_flags}}
-    cargo clippy --benches --tests --examples --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo clippy --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo clippy --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo clippy --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
-doc-check *cargo_flags: configure
-    cargo doc --no-deps --document-private-items -p miniextendr-bench {{cargo_flags}}
+doc-check *cargo_flags: configure-all
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
+    cargo doc --no-deps --document-private-items --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo doc --no-deps --document-private-items --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo doc --no-deps --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Build and open documentation
 alias cargo-doc := doc
-doc *cargo_flags: configure
-    cargo doc --document-private-items -p miniextendr-bench {{cargo_flags}}
+doc *cargo_flags: configure-all
     cargo doc --document-private-items --workspace {{cargo_flags}}
+    cargo doc --document-private-items --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo doc --document-private-items --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
 
 # Check formatting
 alias cargo-fmt-check := fmt-check
 fmt-check *cargo_flags:
     cargo fmt --all {{cargo_flags}} -- --check
-    cargo fmt -p miniextendr-bench {{cargo_flags}} -- --check
+    cargo fmt --all --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
+    cargo fmt --all --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
     cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
 
 # Format all code
 alias cargo-fmt := fmt
 fmt *cargo_flags:
     cargo fmt --all {{cargo_flags}}
-    cargo fmt -p miniextendr-bench {{cargo_flags}}
+    cargo fmt --all --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo fmt --all --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run tests
@@ -98,7 +118,9 @@ test *args:
       if [ "$sep" = "0" ]; then cargo_flags="$cargo_flags $arg"; else test_args="$test_args $arg"; fi; \
     done \
     && cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
-    && cargo test --manifest-path=rpkg/src/rust/Cargo.toml --no-fail-fast $cargo_flags -- --no-capture $test_args
+    && cargo test --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
+    && cargo test --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
+    && cargo test --manifest-path=rpkg/src/rust/Cargo.toml --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args
 
 # Run benchmarks (miniextendr-bench)
 alias cargo-bench := bench
@@ -112,8 +134,10 @@ bench-check *cargo_flags:
 # Show dependency tree
 alias cargo-tree := tree
 tree *cargo_flags:
-    cargo tree -p miniextendr-bench {{cargo_flags}}
     cargo tree --workspace {{cargo_flags}}
+    cargo tree --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
+    cargo tree --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo tree --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo tree --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Expand macros for rpkg (requires cargo-expand)
@@ -121,6 +145,8 @@ alias cargo-expand := expand
 expand *cargo_flags:
     cargo expand --lib -p miniextendr-api {{cargo_flags}}
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
+    cargo expand --lib --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
+    cargo expand --lib --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
 
 # Run ./configure and vendor rpkg dependencies
@@ -184,6 +210,10 @@ devtools-document: configure
 # This includes: rpkg, minirextendr, and cross-package test packages
 document-all: devtools-document minirextendr-document
     cd tests/cross-package && just document-all
+
+# Configure ALL R packages that need vendoring/configure
+# This includes: rpkg and cross-package test packages (minirextendr has no configure step)
+configure-all: configure cross-configure
 
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args: configure
@@ -276,6 +306,32 @@ minirextendr-rcmdcheck:
 
 # Full development cycle for minirextendr: document, test, check
 minirextendr-dev: minirextendr-document minirextendr-test minirextendr-check
+
+# ============================================================================
+# Cross-package trait dispatch testing (tests/cross-package)
+# ============================================================================
+
+cross-document:
+    cd tests/cross-package && just document-all
+
+cross-configure:
+    cd tests/cross-package && just configure-all
+
+alias cross-build := cross-install
+cross-install:
+    cd tests/cross-package && just install-all
+
+cross-test:
+    cd tests/cross-package && just test-all
+
+cross-check:
+    cd tests/cross-package && just check-all
+
+cross-clean:
+    cd tests/cross-package && just clean
+
+cross-dev:
+    cd tests/cross-package && just dev
 
 # ============================================================================
 # Templates / drift check

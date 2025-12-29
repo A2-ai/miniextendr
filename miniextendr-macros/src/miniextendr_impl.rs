@@ -626,7 +626,11 @@ impl ParsedMethod {
     /// Call method def identifier for registration.
     ///
     /// Format: `call_method_def_{type}_{method}` or `call_method_def_{type}_{label}_{method}` if labeled.
-    pub fn call_method_def_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
+    pub fn call_method_def_ident(
+        &self,
+        type_ident: &syn::Ident,
+        label: Option<&str>,
+    ) -> syn::Ident {
         if let Some(label) = label {
             format_ident!("call_method_def_{}_{}_{}", type_ident, label, self.ident)
         } else {

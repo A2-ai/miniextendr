@@ -7,7 +7,13 @@ members = [
     "miniextendr-bench",
     "miniextendr-lint",
 ]
-exclude = ["vendor", "rpkg/src/rust", "rpkg/src/vendor"]
+exclude = [
+    "vendor",
+    "rpkg/src/rust",
+    "rpkg/src/vendor",
+    "tests/cross-package/consumer.pkg/src/rust/",
+    "tests/cross-package/producer.pkg/src/rust/",
+]
 
 [workspace.dependencies]
 miniextendr-api = { version = "*" }
