@@ -649,24 +649,70 @@ VENDORED_CONFIG_EOF
 dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
 dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
 dnl compressed archive includes all vendored dependencies including miniextendr crates.
+dnl Only recompress if vendor contents have changed (based on Cargo.lock + miniextendr sources).
 AC_CONFIG_COMMANDS([compress-vendor],
 [
   dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
   if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-    echo "configure: compressing vendor directory to inst/vendor.tar.xz"
-    mkdir -p "$abs_rpkg_dir/inst"
-    dnl Exclude unnecessary files: tests, examples, benchmarks, CI files
-    tar -cJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$ABS_RPKG_SRC" \
-      --exclude='vendor/*/tests' \
-      --exclude='vendor/*/examples' \
-      --exclude='vendor/*/benches' \
-      --exclude='vendor/*/.github' \
-      --exclude='vendor/*/.travis.yml' \
-      --exclude='vendor/*/.gitlab-ci.yml' \
-      --exclude='vendor/*/.vim' \
-      vendor
-    if test $? -ne 0; then
-      echo "configure: warning: failed to compress vendor directory" >&2
+    VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
+    VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
+
+    dnl Calculate fingerprint based on inputs that affect vendor contents:
+    dnl - Cargo.lock checksum (third-party deps)
+    dnl - miniextendr crate Cargo.toml checksums (local deps)
+    _lock_ck=""
+    if test -f "src/rust/Cargo.lock"; then
+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print $1":"$2}')"
+    fi
+    _api_ck=""
+    if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
+      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print $1":"$2}')"
+    fi
+    _macros_ck=""
+    if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
+      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print $1":"$2}')"
+    fi
+    _lint_ck=""
+    if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
+      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print $1":"$2}')"
+    fi
+    _engine_ck=""
+    if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
+      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print $1":"$2}')"
+    fi
+
+    _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"
+    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
+
+    _need_compress=0
+    if test ! -f "$VENDOR_TARBALL"; then
+      _need_compress=1
+      echo "configure: vendor.tar.xz does not exist"
+    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
+      _need_compress=1
+      echo "configure: vendor contents changed (fingerprint mismatch)"
+    fi
+
+    if test $_need_compress -eq 1; then
+      echo "configure: compressing vendor directory to inst/vendor.tar.xz"
+      mkdir -p "$abs_rpkg_dir/inst"
+      dnl Exclude unnecessary files: tests, examples, benchmarks, CI files
+      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+        --exclude='vendor/*/tests' \
+        --exclude='vendor/*/examples' \
+        --exclude='vendor/*/benches' \
+        --exclude='vendor/*/.github' \
+        --exclude='vendor/*/.travis.yml' \
+        --exclude='vendor/*/.gitlab-ci.yml' \
+        --exclude='vendor/*/.vim' \
+        vendor
+      if test $? -ne 0; then
+        echo "configure: warning: failed to compress vendor directory" >&2
+      else
+        echo "$_new_fingerprint" > "$VENDOR_STAMP"
+      fi
+    else
+      echo "configure: skipping vendor compression (unchanged)"
     fi
   fi
 ],

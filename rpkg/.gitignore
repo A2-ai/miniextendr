@@ -16,3 +16,6 @@ src/*.dll
 # rust
 src/rust/ra_target
 src/rust/target
+
+# Vendor compression stamp file
+inst/.vendor.tar.xz.cksum
