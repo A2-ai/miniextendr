@@ -18,6 +18,8 @@ RoxygenNote: 7.3.2
 SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
 Imports:
     methods,
-    miniextendr
+    miniextendr,
+    R6
 Suggests:
+    S7,
     testthat (>= 3.0.0)

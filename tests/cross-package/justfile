@@ -1,7 +1,21 @@
 # Cross-package trait dispatch testing
 
+default:
+    @just --list
+
 # Build both packages in sequence
 build-all: configure-producer build-producer configure-consumer build-consumer
+
+# Document both packages (regenerate R wrappers)
+document-all: document-producer document-consumer
+
+# Document producer.pkg
+document-producer: configure-producer
+    cd producer.pkg && Rscript -e 'devtools::document()'
+
+# Document consumer.pkg
+document-consumer: configure-consumer
+    cd consumer.pkg && Rscript -e 'devtools::document()'
 
 # Configure producer.pkg
 configure-producer:

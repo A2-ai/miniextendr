@@ -500,21 +500,37 @@ fn collect_items(
                 } else {
                     // File module: mod foo;
                     // Resolve and parse the file, then recursively collect
-                    if let Some(mod_path) = resolve_file_module(path, &item_mod.ident)
-                        && let Err(e) = collect_items_from_file(
+                    // Note: Each file module gets its own module_macro_locations
+                    // because "at most 1 per file" applies per-file, not per-crate
+                    if let Some(mod_path) = resolve_file_module(path, &item_mod.ident) {
+                        let mut child_module_macro_locations = Vec::new();
+                        if let Err(e) = collect_items_from_file(
                             &mod_path,
                             miniextendr_items,
                             module_items,
-                            module_macro_locations,
+                            &mut child_module_macro_locations,
                             errors,
-                        )
-                    {
-                        errors.push(format!(
-                            "{}: failed to process module {}: {}",
-                            path.display(),
-                            item_mod.ident,
-                            e
-                        ));
+                        ) {
+                            errors.push(format!(
+                                "{}: failed to process module {}: {}",
+                                path.display(),
+                                item_mod.ident,
+                                e
+                            ));
+                        }
+                        // Check child file for multiple modules
+                        if child_module_macro_locations.len() > 1 {
+                            errors.push(format!(
+                                "{}: multiple miniextendr_module! macros found (at most 1 allowed per file). \
+                                 Found at lines: {}",
+                                mod_path.display(),
+                                child_module_macro_locations
+                                    .iter()
+                                    .map(|l| l.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ));
+                        }
                     }
                     // Silently skip if module file can't be resolved (might be cfg'd out or generated)
                 }

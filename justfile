@@ -25,7 +25,7 @@
 
 default:
     @just --list
-
+# TODO: add the vendor checksum file to this recipe!
 clean:
     -just configure
     -just cargo-clean
@@ -179,6 +179,11 @@ devtools-check: configure
 # Document rpkg with devtools::document
 devtools-document: configure
     Rscript -e 'devtools::document("rpkg")'
+
+# Document ALL R packages in the workspace
+# This includes: rpkg, minirextendr, and cross-package test packages
+document-all: devtools-document minirextendr-document
+    cd tests/cross-package && just document-all
 
 alias rcmdinstall := r-cmd-install
 r-cmd-install *args: configure
