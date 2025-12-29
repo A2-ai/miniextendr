@@ -15,6 +15,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// @aliases greetings_with_named_dots greetings_with_named_and_unused_dots
 ///   greetings_with_nameless_dots greetings_last_as_named_dots
 ///   greetings_last_as_named_and_unused_dots greetings_last_as_nameless_dots
+/// @param dots Additional arguments (captured as dots).
 pub fn greetings_with_named_dots(dots: ...) {
     let _ = dots;
 }

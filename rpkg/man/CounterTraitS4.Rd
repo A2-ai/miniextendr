@@ -8,7 +8,9 @@
 \alias{$.CounterTraitS4}
 \alias{[[.CounterTraitS4}
 \alias{s4_trait_MatrixCounter_custom_get}
+\alias{s4_trait_MatrixCounter_custom_get,CounterTraitS4-method}
 \alias{s4_trait_MatrixCounter_custom_add}
+\alias{s4_trait_MatrixCounter_custom_add,CounterTraitS4-method}
 \alias{CounterTraitS4_MatrixCounter_default_value}
 \title{CounterTraitS4 Class}
 \format{
@@ -30,7 +32,22 @@ CounterTraitS4
 
 \method{[[}{CounterTraitS4}(self, name)
 
+\S4method{s4_trait_MatrixCounter_custom_get}{CounterTraitS4}(x, ...)
+
+\S4method{s4_trait_MatrixCounter_custom_add}{CounterTraitS4}(x, n, ...)
+
 CounterTraitS4_MatrixCounter_default_value()
+}
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+
+\item{x}{A \code{CounterTraitS4} object}
+
+\item{...}{Additional arguments passed to methods}
+
+\item{n}{Amount to add.}
 }
 \description{
 CounterTraitS4 Class

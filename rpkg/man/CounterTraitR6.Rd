@@ -35,7 +35,13 @@ r6_trait_MatrixCounter_custom_get(x)
 r6_trait_MatrixCounter_custom_add(x, n)
 }
 \arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+
 \item{x}{A \code{CounterTraitR6} object}
+
+\item{n}{Amount to add.}
 }
 \description{
 CounterTraitR6 Class

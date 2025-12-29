@@ -764,6 +764,7 @@ pub struct UnitCircleClass(pub UnitCircleData);
 /// boxed_ints(3L)
 /// static_strings()
 /// @aliases unit_circle lazy_int_seq boxed_ints static_ints leaked_ints static_strings
+/// @param n Number of roots of unity (complex numbers on the unit circle).
 #[miniextendr]
 pub fn unit_circle(n: i32) -> SEXP {
     let data = UnitCircleData { n: n as usize };

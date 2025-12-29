@@ -5,7 +5,7 @@
 # =============================================================================
 
 test_that("proc-macro ALTREP (ConstantIntClass) works", {
-  c42 <- rpkg:::altrep_constant_int()
+  c42 <- miniextendr:::altrep_constant_int()
   expect_equal(length(c42), 10L)
   # Use element access instead of all() which requires dataptr
   expect_equal(c42[1], 42L)
@@ -19,7 +19,7 @@ test_that("proc-macro ALTREP (ConstantIntClass) works", {
 # =============================================================================
 
 test_that("complex ALTREP (UnitCircle) works", {
-  circle <- rpkg:::unit_circle(4L)  # 4th roots of unity
+  circle <- miniextendr:::unit_circle(4L)  # 4th roots of unity
   expect_equal(length(circle), 4L)
 
   # First root is 1+0i
@@ -50,10 +50,10 @@ test_that("complex ALTREP (UnitCircle) works", {
 # =============================================================================
 
 test_that("lazy materialization element access works", {
-  lazy <- rpkg:::lazy_int_seq(1L, 100L, 1L)
+  lazy <- miniextendr:::lazy_int_seq(1L, 100L, 1L)
 
   # Check initial state is NOT materialized
-  expect_false(rpkg:::altrep_lazy_int_seq_is_materialized(lazy))
+  expect_false(miniextendr:::altrep_lazy_int_seq_is_materialized(lazy))
 
   # Element access should work without materialization
   expect_equal(lazy[1], 1L)
@@ -61,30 +61,30 @@ test_that("lazy materialization element access works", {
   expect_equal(lazy[100], 100L)
 
   # Still should not be materialized after element access
-  expect_false(rpkg:::altrep_lazy_int_seq_is_materialized(lazy))
+  expect_false(miniextendr:::altrep_lazy_int_seq_is_materialized(lazy))
 })
 
 test_that("lazy materialization sum uses O(1) formula", {
-  big_lazy <- rpkg:::lazy_int_seq(1L, 1000000L, 1L)
+  big_lazy <- miniextendr:::lazy_int_seq(1L, 1000000L, 1L)
 
   # sum should be O(1) via formula, not materialize
   expect_equal(sum(big_lazy), 500000500000)
 
   # Still not materialized
-  expect_false(rpkg:::altrep_lazy_int_seq_is_materialized(big_lazy))
+  expect_false(miniextendr:::altrep_lazy_int_seq_is_materialized(big_lazy))
 })
 
 test_that("lazy materialization triggers on dataptr", {
-  lazy <- rpkg:::lazy_int_seq(1L, 10L, 1L)
+  lazy <- miniextendr:::lazy_int_seq(1L, 10L, 1L)
 
   # Not materialized initially
-  expect_false(rpkg:::altrep_lazy_int_seq_is_materialized(lazy))
+  expect_false(miniextendr:::altrep_lazy_int_seq_is_materialized(lazy))
 
   # Force materialization via arithmetic that requires dataptr
   y <- lazy + 0L
 
   # Now it should be materialized
-  expect_true(rpkg:::altrep_lazy_int_seq_is_materialized(lazy))
+  expect_true(miniextendr:::altrep_lazy_int_seq_is_materialized(lazy))
 
   # Check values are still correct
   expect_equal(y, 1:10)
@@ -95,7 +95,7 @@ test_that("lazy materialization triggers on dataptr", {
 # =============================================================================
 
 test_that("static slice ALTREP works", {
-  s <- rpkg:::static_ints()
+  s <- miniextendr:::static_ints()
 
   expect_equal(length(s), 5L)
   expect_equal(s[1], 10L)
@@ -113,7 +113,7 @@ test_that("static slice ALTREP works", {
 })
 
 test_that("leaked heap ALTREP works", {
-  leaked <- rpkg:::leaked_ints(10L)
+  leaked <- miniextendr:::leaked_ints(10L)
 
   expect_equal(length(leaked), 10L)
   expect_equal(leaked[1], 1L)
@@ -122,7 +122,7 @@ test_that("leaked heap ALTREP works", {
 })
 
 test_that("static string slice ALTREP works", {
-  s <- rpkg:::static_strings()
+  s <- miniextendr:::static_strings()
 
   expect_equal(length(s), 4L)
   expect_equal(s[1], "alpha")
@@ -136,7 +136,7 @@ test_that("static string slice ALTREP works", {
 # =============================================================================
 
 test_that("Box<[i32]> ALTREP works", {
-  boxed <- rpkg:::boxed_ints(5L)
+  boxed <- miniextendr:::boxed_ints(5L)
 
   expect_equal(length(boxed), 5L)
   expect_equal(boxed[1], 1L)
@@ -146,7 +146,7 @@ test_that("Box<[i32]> ALTREP works", {
 })
 
 test_that("Box<[i32]> has dataptr support", {
-  boxed <- rpkg:::boxed_ints(10L)
+  boxed <- miniextendr:::boxed_ints(10L)
 
   # Arithmetic should work via dataptr
   y <- boxed * 2L

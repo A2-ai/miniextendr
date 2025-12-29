@@ -24,6 +24,11 @@ AtomicCounter
 
 \method{[[}{AtomicCounter}(self, name)
 }
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+}
 \description{
 AtomicCounter Class
 }

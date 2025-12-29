@@ -35,6 +35,7 @@ pub struct Point {
 ///   unsafe_C_extptr_counter_increment unsafe_C_extptr_point_get_x unsafe_C_extptr_point_get_y
 ///   unsafe_C_extptr_type_mismatch_test unsafe_C_extptr_null_test unsafe_C_extptr_is_counter
 ///   unsafe_C_extptr_is_point test_extptr_on_main_thread
+/// @param initial Initial value for the counter.
 pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
     miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }

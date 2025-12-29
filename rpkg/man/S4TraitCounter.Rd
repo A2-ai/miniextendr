@@ -8,8 +8,11 @@
 \alias{$.S4TraitCounter}
 \alias{[[.S4TraitCounter}
 \alias{s4_trait_Counter_value}
+\alias{s4_trait_Counter_value,S4TraitCounter-method}
 \alias{s4_trait_Counter_increment}
+\alias{s4_trait_Counter_increment,S4TraitCounter-method}
 \alias{s4_trait_Counter_checked_add}
+\alias{s4_trait_Counter_checked_add,S4TraitCounter-method}
 \alias{S4TraitCounter_Counter_default_initial}
 \alias{S4TraitCounter_Counter_MAX_VALUE}
 \title{S4TraitCounter Class}
@@ -35,9 +38,26 @@ S4TraitCounter
 
 \method{[[}{S4TraitCounter}(self, name)
 
+\S4method{s4_trait_Counter_value}{S4TraitCounter}(x, ...)
+
+\S4method{s4_trait_Counter_increment}{S4TraitCounter}(x, ...)
+
+\S4method{s4_trait_Counter_checked_add}{S4TraitCounter}(x, n, ...)
+
 S4TraitCounter_Counter_default_initial()
 
 S4TraitCounter_Counter_MAX_VALUE()
+}
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+
+\item{x}{A \code{S4TraitCounter} object}
+
+\item{...}{Additional arguments passed to methods}
+
+\item{n}{Amount to add.}
 }
 \description{
 Get value via inherent method.

@@ -27,6 +27,11 @@ PanickyCounter
 
 \method{[[}{PanickyCounter}(self, name)
 }
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+}
 \description{
 Get value.
 

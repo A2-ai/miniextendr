@@ -60,9 +60,11 @@ impl CounterTraitS3 {
     fn get_value(&self) -> i32 { self.value }
 }
 
+/// @rdname CounterTraitS3
 #[miniextendr(s3)]
 impl MatrixCounter for CounterTraitS3 {
     fn custom_get(&self) -> i32 { self.value }
+    /// @param n Amount to add.
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 2 }
 }
@@ -80,9 +82,13 @@ impl CounterTraitS4 {
     fn get_value(&self) -> i32 { self.value }
 }
 
+/// @rdname CounterTraitS4
+/// @aliases s4_trait_MatrixCounter_custom_get,CounterTraitS4-method s4_trait_MatrixCounter_custom_add,CounterTraitS4-method
+/// @param x A CounterTraitS4 object.
 #[miniextendr(s4)]
 impl MatrixCounter for CounterTraitS4 {
     fn custom_get(&self) -> i32 { self.value }
+    /// @param n Amount to add.
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 3 }
 }
@@ -120,9 +126,11 @@ impl CounterTraitR6 {
     fn get_value(&self) -> i32 { self.value }
 }
 
+/// @rdname CounterTraitR6
 #[miniextendr(r6)]
 impl MatrixCounter for CounterTraitR6 {
     fn custom_get(&self) -> i32 { self.value }
+    /// @param n Amount to add.
     fn custom_add(&mut self, n: i32) { self.value += n; }
     fn default_value() -> i32 { 5 }
 }

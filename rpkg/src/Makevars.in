@@ -54,7 +54,7 @@ all: $(SHLIB)
 	@if [ "$(NOT_CRAN_FLAG)" = "true" ]; then \
 	  touch "$(CARGO_TOML)"; \
 	fi
-	@# CRAN mode: cleanup vendor and target to save space
+	@# CRAN mode: cleanup vendor and target directories to save space
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
@@ -63,6 +63,8 @@ all: $(SHLIB)
 	    *) echo "Skipping cleanup of CARGO_TARGET_DIR (outside package): $(CARGO_TARGET_DIR)" ;; \
 	  esac; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
+	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/target"; fi; \
+	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/ra_target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/ra_target"; fi; \
 	fi
 
 # Phony target to force Cargo invocation (no recipe - just triggers dependents)
@@ -74,7 +76,17 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
 # Note: Dependencies are vendored by configure script, not by this Makefile.
 # You must run `./configure` (or `just configure`) before building.
+#
+# CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
+# to avoid NOTEs about hidden files and long paths. We unpack it here.
+VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
+
 $(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS)
+	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
+	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
+	  echo "Unpacking vendor.tar.xz from inst/..."; \
+	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_RPKG_SRCDIR)"; \
+	fi
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \

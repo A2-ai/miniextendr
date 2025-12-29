@@ -35,6 +35,11 @@ S7TraitCounter
 
 \method{[[}{S7TraitCounter}(self, name)
 }
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+}
 \description{
 Get value via inherent method.
 

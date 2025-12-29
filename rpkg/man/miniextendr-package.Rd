@@ -8,8 +8,4 @@
 \description{
 What the package does (one paragraph).
 }
-\author{
-\strong{Maintainer}: First Last \email{first.last@example.com}
-
-}
 \keyword{internal}

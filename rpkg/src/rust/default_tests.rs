@@ -2,21 +2,37 @@
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-/// Test function with default parameter.
+/// @title Default Parameter Tests
+/// @name rpkg_default_tests
+/// @description Functions demonstrating default parameter support.
+/// @examples
+/// greet()
+/// greet("Claude")
+/// add_with_defaults(1L)
+/// add_with_defaults(1L, 2L, 3L)
+/// with_flag()
+/// @aliases greet greet_hidden add_with_defaults with_flag
+/// @param name Name to greet (default: "World").
+/// @return A greeting string or computed value.
+///
+/// Greets a person by name.
 #[miniextendr]
 pub fn greet(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }
 
-/// Test function with default parameter.
+/// @rdname rpkg_default_tests
 ///
+/// Internal greeting function (non-public).
 /// @export
 #[miniextendr]
 fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }
 
-/// Test function with multiple defaults.
+/// @rdname rpkg_default_tests
+///
+/// Adds three integers with defaults for y and z.
 /// @export
 #[miniextendr]
 pub fn add_with_defaults(
@@ -27,7 +43,9 @@ pub fn add_with_defaults(
     x + y + z
 }
 
-/// Test function with logical default.
+/// @rdname rpkg_default_tests
+///
+/// Returns the flag value.
 /// @export
 #[miniextendr]
 pub fn with_flag(#[miniextendr(default = "FALSE")] flag: bool) -> bool {

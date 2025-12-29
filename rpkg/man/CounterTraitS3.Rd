@@ -37,9 +37,15 @@ CounterTraitS3
 \method{custom_add}{CounterTraitS3}(x, n, ...)
 }
 \arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+
 \item{x}{An object}
 
 \item{...}{Additional arguments passed to methods}
+
+\item{n}{Amount to add.}
 }
 \description{
 CounterTraitS3 Class

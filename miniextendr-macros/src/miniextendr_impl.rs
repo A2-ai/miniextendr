@@ -1011,6 +1011,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
     lines.push(format!("#' @rdname {}", class_name));
+    lines.push("#' @param self The object instance.".to_string());
+    lines.push("#' @param name Method name for dispatch.".to_string());
     lines.push("#' @export".to_string());
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("    obj <- {}[[name]]", class_name));

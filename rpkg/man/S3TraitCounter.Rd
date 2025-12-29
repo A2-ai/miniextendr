@@ -45,9 +45,15 @@ S3TraitCounter
 \method{checked_add}{S3TraitCounter}(x, n, ...)
 }
 \arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+
 \item{x}{An object}
 
 \item{...}{Additional arguments passed to methods}
+
+\item{n}{Amount to add.}
 }
 \description{
 Get value via inherent method.

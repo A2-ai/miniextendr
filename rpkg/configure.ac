@@ -350,12 +350,23 @@ dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
   dnl Only vendor in dev mode (NOT_CRAN=true).
-  dnl In CRAN/offline mode we MUST already have a populated vendor dir (from the tarball).
+  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by R CMD build).
   if test "$NOT_CRAN" != "true"; then
+    dnl Check if vendor directory exists and is populated
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-      echo "configure:        Either build from a release tarball that includes src/vendor, or rerun configure with NOT_CRAN=true (and optionally FORCE_VENDOR=1)." >&2
-      exit 1
+      dnl Vendor missing - check for compressed vendor.tar.xz in inst/ (created by configure)
+      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
+        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+        if test $? -ne 0; then
+          echo "configure: error: failed to unpack vendor.tar.xz" >&2
+          exit 1
+        fi
+      else
+        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
+        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
+        exit 1
+      fi
     fi
     echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
   else
@@ -407,6 +418,9 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
         if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+        elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
+          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
         else
           echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
           echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
@@ -418,7 +432,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo"])
+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
 
 dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
 
@@ -631,6 +645,32 @@ VENDORED_CONFIG_EOF
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
  CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
+
+dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
+dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
+dnl compressed archive includes all vendored dependencies including miniextendr crates.
+AC_CONFIG_COMMANDS([compress-vendor],
+[
+  dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
+  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    echo "configure: compressing vendor directory to inst/vendor.tar.xz"
+    mkdir -p "$abs_rpkg_dir/inst"
+    dnl Exclude unnecessary files: tests, examples, benchmarks, CI files
+    tar -cJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$ABS_RPKG_SRC" \
+      --exclude='vendor/*/tests' \
+      --exclude='vendor/*/examples' \
+      --exclude='vendor/*/benches' \
+      --exclude='vendor/*/.github' \
+      --exclude='vendor/*/.travis.yml' \
+      --exclude='vendor/*/.gitlab-ci.yml' \
+      --exclude='vendor/*/.vim' \
+      vendor
+    if test $? -ne 0; then
+      echo "configure: warning: failed to compress vendor directory" >&2
+    fi
+  fi
+],
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
 
 dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 AC_CONFIG_COMMANDS([patch-staticlib-name],

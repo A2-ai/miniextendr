@@ -24,6 +24,11 @@ ReceiverCounter
 
 \method{[[}{ReceiverCounter}(self, name)
 }
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+}
 \description{
 Receiver-style counter with \verb{$new()}, \verb{$value()}, \verb{$inc()}, and \verb{$add()} methods.
 

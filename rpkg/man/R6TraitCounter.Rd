@@ -42,7 +42,13 @@ r6_trait_Counter_increment(x)
 r6_trait_Counter_checked_add(x, n)
 }
 \arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+
 \item{x}{A \code{R6TraitCounter} object}
+
+\item{n}{Amount to add.}
 }
 \description{
 Get value via inherent method.

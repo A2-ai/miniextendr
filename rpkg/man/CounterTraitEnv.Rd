@@ -24,6 +24,11 @@ CounterTraitEnv
 
 \method{[[}{CounterTraitEnv}(self, name)
 }
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+}
 \description{
 CounterTraitEnv Class
 }

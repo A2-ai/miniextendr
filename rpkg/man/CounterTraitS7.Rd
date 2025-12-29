@@ -30,6 +30,11 @@ CounterTraitS7
 
 \method{[[}{CounterTraitS7}(self, name)
 }
+\arguments{
+\item{self}{The object instance.}
+
+\item{name}{Method name for dispatch.}
+}
 \description{
 CounterTraitS7 Class
 

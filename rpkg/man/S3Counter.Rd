@@ -40,20 +40,20 @@ s3counter_default_counter()
 S3Counter
 }
 \arguments{
+\item{initial}{Initial value for the counter.}
+
 \item{x}{An object}
 
 \item{...}{Additional arguments passed to methods}
+
+\item{amount}{The amount to add to the counter.}
 }
 \description{
 S3 counter with \code{s3_value()}, \code{s3_inc()}, and \code{s3_add()} methods.
 
-Creates a new counter with the given initial value.
-
 Returns the current value (S3-specific method name to avoid conflicts).
 
 Increments the counter by 1 and returns the new value.
-
-Adds the given amount to the counter and returns the new value.
 
 A static method that returns a default counter (value = 0).
 }

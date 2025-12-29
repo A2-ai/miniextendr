@@ -15,6 +15,6 @@ test_that("with_interrupt_check doubles input", {
 })
 
 test_that("greet_hidden uses default and explicit names", {
-  expect_equal(rpkg:::greet_hidden(), "Hello, World!")
-  expect_equal(rpkg:::greet_hidden("Bob"), "Hello, Bob!")
+  expect_equal(miniextendr:::greet_hidden(), "Hello, World!")
+  expect_equal(miniextendr:::greet_hidden("Bob"), "Hello, Bob!")
 })
