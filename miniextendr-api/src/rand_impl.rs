@@ -26,6 +26,25 @@
 //! }
 //! ```
 //!
+//! # R's Native Distributions
+//!
+//! For maximum efficiency, this module also provides direct access to R's
+//! native distribution functions via the [`RDistributions`] trait:
+//!
+//! ```ignore
+//! use miniextendr_api::rand_impl::{RRng, RDistributions};
+//!
+//! #[miniextendr(rng)]
+//! fn efficient_normal(n: i32) -> Vec<f64> {
+//!     let mut rng = RRng::new();
+//!     // Uses R's norm_rand() directly - no Box-Muller overhead
+//!     (0..n).map(|_| rng.standard_normal()).collect()
+//! }
+//! ```
+//!
+//! These are faster than going through `rand`'s generic distribution machinery
+//! because they use R's optimized C implementations directly.
+//!
 //! # Safety
 //!
 //! [`RRng`] requires that R's RNG state has been initialized via `GetRNGstate()`.
@@ -117,6 +136,82 @@ impl RngCore for RRng {
             let bytes = val.to_le_bytes();
             remainder.copy_from_slice(&bytes[..remainder.len()]);
         }
+    }
+}
+
+// =============================================================================
+// R's Native Distribution Functions
+// =============================================================================
+
+/// Direct access to R's native distribution functions.
+///
+/// These methods bypass `rand`'s generic distribution machinery and call
+/// R's optimized C implementations directly. Use these when you need:
+///
+/// - **Standard normal**: `standard_normal()` uses `norm_rand()`
+/// - **Exponential(1)**: `standard_exp()` uses `exp_rand()`
+/// - **Uniform integer**: `uniform_index(n)` uses `R_unif_index()`
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rand_impl::{RRng, RDistributions};
+///
+/// #[miniextendr(rng)]
+/// fn sample_distributions() -> Vec<f64> {
+///     let mut rng = RRng::new();
+///     vec![
+///         rng.standard_normal(),  // N(0, 1)
+///         rng.standard_exp(),     // Exp(1)
+///         rng.uniform_index(100) as f64,  // Uniform integer in [0, 100)
+///     ]
+/// }
+/// ```
+pub trait RDistributions {
+    /// Generate a standard normal random value (mean 0, sd 1).
+    ///
+    /// Uses R's `norm_rand()` directly, which is typically faster than
+    /// `rand`'s Box-Muller or Ziggurat implementations because R's RNG
+    /// is already optimized for this.
+    fn standard_normal(&mut self) -> f64;
+
+    /// Generate a standard exponential random value (rate 1).
+    ///
+    /// Uses R's `exp_rand()` directly, which is typically faster than
+    /// using the inverse transform method through `rand`.
+    fn standard_exp(&mut self) -> f64;
+
+    /// Generate a uniform random integer in [0, n).
+    ///
+    /// Uses R's `R_unif_index()` directly, which handles edge cases
+    /// and provides good uniformity without rejection sampling overhead.
+    fn uniform_index(&mut self, n: usize) -> usize;
+
+    /// Generate a uniform random f64 in [0, 1).
+    ///
+    /// Uses R's `unif_rand()` directly with full f64 precision.
+    fn uniform_f64(&mut self) -> f64;
+}
+
+impl RDistributions for RRng {
+    #[inline]
+    fn standard_normal(&mut self) -> f64 {
+        unsafe { crate::ffi::norm_rand() }
+    }
+
+    #[inline]
+    fn standard_exp(&mut self) -> f64 {
+        unsafe { crate::ffi::exp_rand() }
+    }
+
+    #[inline]
+    fn uniform_index(&mut self, n: usize) -> usize {
+        unsafe { crate::ffi::R_unif_index(n as f64) as usize }
+    }
+
+    #[inline]
+    fn uniform_f64(&mut self) -> f64 {
+        unsafe { crate::ffi::unif_rand() }
     }
 }
 

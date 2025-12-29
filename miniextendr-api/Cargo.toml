@@ -25,6 +25,8 @@ connections = []
 doc-lint = ["miniextendr-macros/doc-lint"]
 ## Enable rand crate integration. Provides RRng which wraps R's RNG with rand traits.
 rand = ["dep:rand"]
+## Enable rand_distr for additional distributions (Normal, Exp, etc.). Requires `rand` feature.
+rand_distr = ["rand", "dep:rand_distr"]
 ## Enable either crate integration. Provides TryFromSexp/IntoR for Either<L, R>.
 either = ["dep:either"]
 ## Enable ndarray integration. Provides conversions for Array1, Array2, ArrayView1, ArrayView2.
@@ -38,6 +40,7 @@ serde = ["dep:serde"]
 miniextendr-macros = { workspace = true }
 rayon = { version = "1.11.0", optional = true }
 rand = { version = "0.9", optional = true }
+rand_distr = { version = "0.5", optional = true }
 either = { version = "1.15", optional = true }
 ndarray = { version = "0.17", optional = true }
 nalgebra = { version = "0.34", optional = true }

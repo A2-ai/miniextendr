@@ -247,7 +247,29 @@ pub mod macro_coverage;
 #[cfg(feature = "rand")]
 pub mod rand_impl;
 #[cfg(feature = "rand")]
-pub use rand_impl::RRng;
+pub use rand_impl::{RDistributions, RRng};
+
+/// Re-export of `rand_distr` for probability distributions.
+///
+/// Provides distributions like `Normal`, `Exp`, `Uniform`, etc. that work
+/// with [`RRng`]. Enable with `features = ["rand_distr"]`.
+///
+/// ```ignore
+/// use miniextendr_api::{RRng, rand_distr::Normal};
+/// use rand::distr::Distribution;
+///
+/// #[miniextendr(rng)]
+/// fn sample_normal(n: i32, mean: f64, sd: f64) -> Vec<f64> {
+///     let mut rng = RRng::new();
+///     let normal = Normal::new(mean, sd).unwrap();
+///     (0..n).map(|_| normal.sample(&mut rng)).collect()
+/// }
+/// ```
+///
+/// **Note:** For standard normal/exponential, [`RDistributions::standard_normal`]
+/// and [`RDistributions::standard_exp`] are faster as they use R's native functions.
+#[cfg(feature = "rand_distr")]
+pub use rand_distr;
 
 /// Integration with the `either` crate.
 ///
