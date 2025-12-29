@@ -11,6 +11,7 @@
 #   - rpkg/DESCRIPTION (Version:)
 #   - tests/cross-package/producer.pkg/DESCRIPTION (Version:)
 #   - tests/cross-package/consumer.pkg/DESCRIPTION (Version:)
+#   - tests/cross-package/shared-traits/Cargo.toml (version)
 #
 set -euo pipefail
 
@@ -56,12 +57,27 @@ update_description() {
     fi
 }
 
+# Function to update Cargo.toml version (for non-workspace crates)
+update_cargo_toml() {
+    local cargo_file="$1"
+    if [ -f "$cargo_file" ]; then
+        sed -i.bak -E 's/^(version = ")[0-9]+\.[0-9]+\.[0-9]+(")/\1'"$VERSION"'\2/' "$cargo_file"
+        rm -f "$cargo_file.bak"
+        echo "  Updated: $cargo_file"
+    else
+        echo "  Warning: $cargo_file not found"
+    fi
+}
+
 # Update all R package DESCRIPTION files
 update_description "$ROOT_DIR/rpkg/DESCRIPTION"
 update_description "$ROOT_DIR/minirextendr/DESCRIPTION"
 update_description "$ROOT_DIR/tests/cross-package/producer.pkg/DESCRIPTION"
 update_description "$ROOT_DIR/tests/cross-package/consumer.pkg/DESCRIPTION"
 
+# Update standalone Cargo.toml files (not part of workspace)
+update_cargo_toml "$ROOT_DIR/tests/cross-package/shared-traits/Cargo.toml"
+
 echo ""
 echo "Done! Verify changes with:"
-echo "  git diff Cargo.toml rpkg/DESCRIPTION minirextendr/DESCRIPTION tests/cross-package/*/DESCRIPTION"
+echo "  git diff Cargo.toml rpkg/DESCRIPTION minirextendr/DESCRIPTION tests/cross-package/*/DESCRIPTION tests/cross-package/shared-traits/Cargo.toml"

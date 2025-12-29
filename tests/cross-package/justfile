@@ -3,8 +3,11 @@
 default:
     @just --list
 
-# Build both packages in sequence
+# Build and install both packages in sequence
 build-all: configure-producer build-producer configure-consumer build-consumer
+
+# Alias for build-all
+install-all: build-all
 
 # Document both packages (regenerate R wrappers)
 document-all: document-producer document-consumer
@@ -16,6 +19,9 @@ document-producer: configure-producer
 # Document consumer.pkg
 document-consumer: configure-consumer
     cd consumer.pkg && Rscript -e 'devtools::document()'
+
+# Configure both packages
+configure-all: configure-producer configure-consumer
 
 # Configure producer.pkg
 configure-producer:
@@ -51,8 +57,25 @@ clean:
     rm -rf producer.pkg/src/rust/target
     rm -rf consumer.pkg/src/rust/target
 
+# Alias for clean
+clean-all: clean
+
 # Full development cycle
 dev: clean build-all test-all
 
 # Quick rebuild (assumes configure already run)
 rebuild: build-producer build-consumer
+
+# Alias for rebuild
+rebuild-all: rebuild
+
+# Run R CMD check on producer.pkg
+check-producer:
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::check()'
+
+# Run R CMD check on consumer.pkg
+check-consumer:
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::check()'
+
+# Run R CMD check on both packages
+check-all: check-producer check-consumer
