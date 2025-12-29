@@ -1818,11 +1818,26 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
         .into()
 }
 
-/// Derive `IntoList` and `TryIntoList` for a struct.
+/// Derive `IntoList` for a struct (Rust → R list).
+///
+/// - Named structs → named R list: `list(x = 1L, y = 2L)`
+/// - Tuple structs → unnamed R list: `list(1L, 2L)`
 #[proc_macro_derive(IntoList)]
 pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_into_list(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `TryFromList` for a struct (R list → Rust).
+///
+/// - Named structs: extract by field name
+/// - Tuple structs: extract by position (0, 1, 2, ...)
+#[proc_macro_derive(TryFromList)]
+pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_try_from_list(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

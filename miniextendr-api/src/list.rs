@@ -46,13 +46,53 @@ impl List {
         self.len() == 0
     }
 
-    /// Get element at 0-based index. Returns `None` if out of bounds.
+    /// Get raw SEXP element at 0-based index. Returns `None` if out of bounds.
     #[inline]
     pub fn get(self, idx: isize) -> Option<SEXP> {
         if idx < 0 || idx >= self.len() {
             return None;
         }
         Some(unsafe { ffi::VECTOR_ELT(self.0, idx) })
+    }
+
+    /// Get element at 0-based index and convert to type `T`.
+    ///
+    /// Returns `None` if index is out of bounds or conversion fails.
+    #[inline]
+    pub fn get_index<T>(self, idx: isize) -> Option<T>
+    where
+        T: TryFromSexp<Error = SexpError>,
+    {
+        let sexp = self.get(idx)?;
+        T::try_from_sexp(sexp).ok()
+    }
+
+    /// Get element by name and convert to type `T`.
+    ///
+    /// Returns `None` if name not found or conversion fails.
+    pub fn get_named<T>(self, name: &str) -> Option<T>
+    where
+        T: TryFromSexp<Error = SexpError>,
+    {
+        let names_sexp = self.names()?;
+        let n = self.len();
+
+        // Search for matching name
+        for i in 0..n {
+            let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
+            if name_sexp == unsafe { ffi::R_NaString } {
+                continue;
+            }
+            let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+            let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+            if let Ok(s) = name_cstr.to_str() {
+                if s == name {
+                    let elem = unsafe { ffi::VECTOR_ELT(self.0, i) };
+                    return T::try_from_sexp(elem).ok();
+                }
+            }
+        }
+        None
     }
 
     /// Read the `names` attribute if present.
@@ -142,6 +182,32 @@ impl List {
     {
         let raw: Vec<(N, SEXP)> = pairs.into_iter().map(|(n, v)| (n, v.into_sexp())).collect();
         Self::from_raw_pairs(raw)
+    }
+
+    /// Build an unnamed list from values.
+    ///
+    /// Use this for tuple-like structures where positional access is more natural.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let list = List::from_values(vec![1i32, 2i32, 3i32]);
+    /// // R: list(1L, 2L, 3L) - accessed as [[1]], [[2]], [[3]]
+    /// ```
+    pub fn from_values<T: IntoR>(values: Vec<T>) -> Self {
+        values.into_list()
+    }
+
+    /// Build an unnamed list from pre-converted SEXPs.
+    pub fn from_raw_values(values: Vec<SEXP>) -> Self {
+        let n = values.len() as isize;
+        unsafe {
+            let list = ffi::Rf_allocVector(VECSXP, n);
+            for (i, val) in values.into_iter().enumerate() {
+                ffi::SET_VECTOR_ELT(list, i as isize, val);
+            }
+            List(list)
+        }
     }
 
     /// Build a list from `(name, SEXP)` pairs (heterogeneous-friendly).

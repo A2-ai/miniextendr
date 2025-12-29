@@ -106,11 +106,13 @@ impl std::fmt::Display for SexpNaError {
 
 impl std::error::Error for SexpNaError {}
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum SexpError {
     Type(SexpTypeError),
     Length(SexpLengthError),
     Na(SexpNaError),
+    /// A required field was missing from a named list.
+    MissingField(String),
 }
 
 impl std::fmt::Display for SexpError {
@@ -119,6 +121,7 @@ impl std::fmt::Display for SexpError {
             SexpError::Type(e) => write!(f, "{}", e),
             SexpError::Length(e) => write!(f, "{}", e),
             SexpError::Na(e) => write!(f, "{}", e),
+            SexpError::MissingField(name) => write!(f, "missing field: {}", name),
         }
     }
 }
@@ -129,6 +132,7 @@ impl std::error::Error for SexpError {
             SexpError::Type(e) => Some(e),
             SexpError::Length(e) => Some(e),
             SexpError::Na(e) => Some(e),
+            SexpError::MissingField(_) => None,
         }
     }
 }

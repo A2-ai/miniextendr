@@ -18,7 +18,7 @@ pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList, PreferExternalPtr, PreferList, PreferRNativeType,
+    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, TryFromList,
 };
 
 pub mod altrep;
