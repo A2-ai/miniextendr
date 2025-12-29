@@ -77,11 +77,11 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
                 } else {
                     // Continuation line - append to last tag UNLESS it's @rdname
                     // (bare text after @rdname creates invalid roxygen topics)
-                    if let Some(last) = tags.last_mut() {
-                        if !last.starts_with("@rdname") {
-                            last.push('\n');
-                            last.push_str(trimmed);
-                        }
+                    if let Some(last) = tags.last_mut()
+                        && !last.starts_with("@rdname")
+                    {
+                        last.push('\n');
+                        last.push_str(trimmed);
                     }
                 }
             }

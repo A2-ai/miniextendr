@@ -123,7 +123,10 @@ struct TraitMethod {
     has_self: bool,
     /// Is this &mut self (vs &self)? Only meaningful if has_self is true.
     is_mut: bool,
-    /// Opt-in flags controlling thread strategy
+    /// Opt-in flags controlling thread strategy.
+    /// Note: This field is currently unused since WorkerThread is the default for static methods.
+    /// Kept for explicitness and potential future use (e.g., forcing main thread static methods).
+    #[allow(dead_code)]
     worker: bool,
     unsafe_main_thread: bool,
     /// Enable automatic type coercion for all parameters

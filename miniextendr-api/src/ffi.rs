@@ -2533,6 +2533,7 @@ unsafe extern "C-unwind" {
     ) -> ::std::os::raw::c_int;
 
     /// Extended interval finding with left-open option.
+    #[allow(clippy::too_many_arguments)]
     pub fn findInterval2(
         xt: *const f64,
         n: ::std::os::raw::c_int,
