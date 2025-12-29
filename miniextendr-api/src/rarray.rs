@@ -23,12 +23,25 @@
 //!
 //! The [`get`][RArray::get] method handles index translation automatically.
 //!
+//! # Thread Safety
+//!
+//! **`RArray` is `!Send` and `!Sync`** - it cannot be transferred to or accessed
+//! from other threads. This is because the underlying R APIs (`DATAPTR_RO`, etc.)
+//! must be called on the R main thread.
+//!
+//! For functions that use `RArray`/`RMatrix` parameters, you must use
+//! `#[miniextendr(unsafe(main_thread))]` to ensure execution on the main thread.
+//!
+//! For worker-thread usability, use [`to_vec()`][RArray::to_vec] to copy data
+//! on the main thread, then pass the owned `Vec` to worker threads.
+//!
 //! # Example
 //!
 //! ```ignore
 //! use miniextendr_api::rarray::{RMatrix, RArray};
 //!
-//! #[miniextendr]
+//! // Must run on main thread due to RMatrix parameter
+//! #[miniextendr(unsafe(main_thread))]
 //! fn matrix_sum(m: RMatrix<f64>) -> f64 {
 //!     unsafe { m.as_slice().iter().sum() }
 //! }
@@ -65,11 +78,17 @@ pub type RArray3D<T> = RArray<T, 3>;
 ///
 /// - `T`: The element type, must implement [`RNativeType`]
 /// - `NDIM`: The number of dimensions (compile-time constant)
+///
+/// # Thread Safety
+///
+/// This type is `!Send` and `!Sync` because its methods require access to
+/// R APIs that must run on the R main thread.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
 pub struct RArray<T: RNativeType, const NDIM: usize> {
     sexp: SEXP,
-    _marker: PhantomData<T>,
+    // PhantomData<*const T> keeps T in the type AND makes this !Send + !Sync
+    _marker: PhantomData<*const T>,
 }
 
 impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
@@ -198,6 +217,37 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
             let ptr = T::dataptr_mut(self.sexp);
             std::slice::from_raw_parts_mut(ptr, self.len())
         }
+    }
+
+    /// Copy array data to an owned `Vec<T>`.
+    ///
+    /// This method copies the data, making it safe to use in worker threads
+    /// or pass to parallel computation. The copy is performed on the current
+    /// thread (which must be the R main thread).
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be protected and valid.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use miniextendr_api::rarray::RMatrix;
+    ///
+    /// #[miniextendr(unsafe(main_thread))]
+    /// fn process_matrix(m: RMatrix<f64>) -> f64 {
+    ///     // Copy data - Vec<f64> is Send and can be used in worker threads
+    ///     let data: Vec<f64> = unsafe { m.to_vec() };
+    ///     // Now data can be passed to parallel computation
+    ///     data.iter().sum()
+    /// }
+    /// ```
+    #[inline]
+    pub unsafe fn to_vec(&self) -> Vec<T>
+    where
+        T: Copy,
+    {
+        unsafe { self.as_slice().to_vec() }
     }
 
     /// Convert N-dimensional indices to linear index (column-major).
@@ -651,11 +701,15 @@ mod tests {
     }
 
     #[test]
-    fn repr_transparent() {
-        // RArray should be same size as SEXP
+    fn size_equals_sexp() {
+        // RArray should be same size as SEXP (PhantomData is zero-sized)
         assert_eq!(
             std::mem::size_of::<RArray<f64, 2>>(),
             std::mem::size_of::<SEXP>()
         );
     }
+
+    // Note: RArray is !Send and !Sync due to PhantomData<*const ()>.
+    // This is verified by the compiler - attempting to send RArray across
+    // threads will fail to compile.
 }

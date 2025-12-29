@@ -97,10 +97,14 @@ fn generate_typed_external(input: &DeriveInput) -> TokenStream {
     let name_lit = syn::LitStr::new(&name_str, name.span());
     let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
 
+    // TYPE_ID_CSTR uses module_path!() which expands at the user's crate,
+    // giving us a namespaced identifier like "my_crate::my_module::MyType\0"
     quote::quote! {
         impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
             const TYPE_NAME: &'static str = #name_lit;
             const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
+            const TYPE_ID_CSTR: &'static [u8] =
+                concat!(module_path!(), "::", #name_lit, "\0").as_bytes();
         }
     }
 }

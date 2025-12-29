@@ -152,7 +152,9 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 pub mod convert;
 pub mod dots;
 pub mod list;
-pub use convert::{AsExternalPtr, AsList, AsRNative};
+pub use convert::{
+    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt,
+};
 pub use list::{IntoList, List, TryFromList};
 
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP

@@ -114,8 +114,8 @@ pub struct SEXPREC(::std::os::raw::c_void);
 ///
 /// ```ignore
 /// // Store by pointer identity (common pattern for R symbol lookups)
-/// let mut map: HashMap<usize, Value> = HashMap::new();
-/// map.insert(sexp.as_ptr() as usize, value);
+/// let mut map: HashMap<*mut SEXPREC, Value> = HashMap::new();
+/// map.insert(sexp.as_ptr(), value);
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

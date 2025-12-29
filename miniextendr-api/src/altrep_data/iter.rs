@@ -260,6 +260,7 @@ impl<I: Iterator<Item = i32>> AltIntegerData for IterIntData<I> {
 impl<I: Iterator<Item = i32> + 'static> crate::externalptr::TypedExternal for IterIntData<I> {
     const TYPE_NAME: &'static str = "IterIntData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterIntData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntData\0";
 }
 
 impl<I: Iterator<Item = i32> + 'static> InferBase for IterIntData<I> {
@@ -368,6 +369,7 @@ impl<I: Iterator<Item = f64>> AltRealData for IterRealData<I> {
 impl<I: Iterator<Item = f64> + 'static> crate::externalptr::TypedExternal for IterRealData<I> {
     const TYPE_NAME: &'static str = "IterRealData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterRealData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRealData\0";
 }
 
 impl<I: Iterator<Item = f64> + 'static> InferBase for IterRealData<I> {
@@ -475,6 +477,7 @@ impl<I: Iterator<Item = bool>> AltLogicalData for IterLogicalData<I> {
 impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal for IterLogicalData<I> {
     const TYPE_NAME: &'static str = "IterLogicalData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterLogicalData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterLogicalData\0";
 }
 
 impl<I: Iterator<Item = bool> + 'static> InferBase for IterLogicalData<I> {
@@ -583,6 +586,7 @@ impl<I: Iterator<Item = u8>> AltRawData for IterRawData<I> {
 impl<I: Iterator<Item = u8> + 'static> crate::externalptr::TypedExternal for IterRawData<I> {
     const TYPE_NAME: &'static str = "IterRawData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterRawData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRawData\0";
 }
 
 impl<I: Iterator<Item = u8> + 'static> InferBase for IterRawData<I> {
@@ -735,6 +739,7 @@ where
 {
     const TYPE_NAME: &'static str = "IterIntCoerceData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterIntCoerceData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntCoerceData\0";
 }
 
 impl<I, T> InferBase for IterIntCoerceData<I, T>
@@ -899,6 +904,7 @@ where
 {
     const TYPE_NAME: &'static str = "IterRealCoerceData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterRealCoerceData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterRealCoerceData\0";
 }
 
 impl<I, T> InferBase for IterRealCoerceData<I, T>
@@ -1046,6 +1052,7 @@ impl<I: Iterator<Item = bool> + 'static> crate::externalptr::TypedExternal
 {
     const TYPE_NAME: &'static str = "IterIntFromBoolData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterIntFromBoolData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterIntFromBoolData\0";
 }
 
 impl<I: Iterator<Item = bool> + 'static> InferBase for IterIntFromBoolData<I> {
@@ -1181,6 +1188,7 @@ where
 impl<I: Iterator<Item = String> + 'static> crate::externalptr::TypedExternal for IterStringData<I> {
     const TYPE_NAME: &'static str = "IterStringData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterStringData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterStringData\0";
 }
 
 impl<I: Iterator<Item = String> + 'static> InferBase for IterStringData<I> {
@@ -1309,6 +1317,7 @@ where
 impl<I: Iterator<Item = SEXP> + 'static> crate::externalptr::TypedExternal for IterListData<I> {
     const TYPE_NAME: &'static str = "IterListData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterListData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterListData\0";
 }
 
 impl<I: Iterator<Item = SEXP> + 'static> InferBase for IterListData<I> {
@@ -1428,6 +1437,7 @@ impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> crate::externalptr::Typ
 {
     const TYPE_NAME: &'static str = "IterComplexData";
     const TYPE_NAME_CSTR: &'static [u8] = b"IterComplexData\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"miniextendr_api::altrep::IterComplexData\0";
 }
 
 impl<I: Iterator<Item = crate::ffi::Rcomplex> + 'static> InferBase for IterComplexData<I> {

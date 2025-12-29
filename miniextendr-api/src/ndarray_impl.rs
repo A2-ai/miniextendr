@@ -262,59 +262,32 @@ pub unsafe fn from_r_slice<T: RNativeType>(
 use crate::externalptr::TypedExternal;
 use crate::ffi::{RLogical, Rcomplex};
 
+// Helper macro for implementing TypedExternal for ndarray types.
+// For these well-known library types, we use the descriptive name as both
+// the display name and the type ID (they're already unique as "ndarray::Array1<i32>").
+macro_rules! impl_te_ndarray {
+    ($ty:ty, $name:expr) => {
+        impl TypedExternal for $ty {
+            const TYPE_NAME: &'static str = $name;
+            const TYPE_NAME_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+        }
+    };
+}
+
 // --- Array1 TypedExternal (all R native types) ---
-
-impl TypedExternal for Array1<i32> {
-    const TYPE_NAME: &'static str = "ndarray::Array1<i32>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array1<i32>\0";
-}
-
-impl TypedExternal for Array1<f64> {
-    const TYPE_NAME: &'static str = "ndarray::Array1<f64>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array1<f64>\0";
-}
-
-impl TypedExternal for Array1<u8> {
-    const TYPE_NAME: &'static str = "ndarray::Array1<u8>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array1<u8>\0";
-}
-
-impl TypedExternal for Array1<RLogical> {
-    const TYPE_NAME: &'static str = "ndarray::Array1<RLogical>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array1<RLogical>\0";
-}
-
-impl TypedExternal for Array1<Rcomplex> {
-    const TYPE_NAME: &'static str = "ndarray::Array1<Rcomplex>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array1<Rcomplex>\0";
-}
+impl_te_ndarray!(Array1<i32>, "ndarray::Array1<i32>");
+impl_te_ndarray!(Array1<f64>, "ndarray::Array1<f64>");
+impl_te_ndarray!(Array1<u8>, "ndarray::Array1<u8>");
+impl_te_ndarray!(Array1<RLogical>, "ndarray::Array1<RLogical>");
+impl_te_ndarray!(Array1<Rcomplex>, "ndarray::Array1<Rcomplex>");
 
 // --- Array2 TypedExternal (all R native types) ---
-
-impl TypedExternal for Array2<i32> {
-    const TYPE_NAME: &'static str = "ndarray::Array2<i32>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array2<i32>\0";
-}
-
-impl TypedExternal for Array2<f64> {
-    const TYPE_NAME: &'static str = "ndarray::Array2<f64>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array2<f64>\0";
-}
-
-impl TypedExternal for Array2<u8> {
-    const TYPE_NAME: &'static str = "ndarray::Array2<u8>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array2<u8>\0";
-}
-
-impl TypedExternal for Array2<RLogical> {
-    const TYPE_NAME: &'static str = "ndarray::Array2<RLogical>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array2<RLogical>\0";
-}
-
-impl TypedExternal for Array2<Rcomplex> {
-    const TYPE_NAME: &'static str = "ndarray::Array2<Rcomplex>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"ndarray::Array2<Rcomplex>\0";
-}
+impl_te_ndarray!(Array2<i32>, "ndarray::Array2<i32>");
+impl_te_ndarray!(Array2<f64>, "ndarray::Array2<f64>");
+impl_te_ndarray!(Array2<u8>, "ndarray::Array2<u8>");
+impl_te_ndarray!(Array2<RLogical>, "ndarray::Array2<RLogical>");
+impl_te_ndarray!(Array2<Rcomplex>, "ndarray::Array2<Rcomplex>");
 
 #[cfg(test)]
 mod tests {

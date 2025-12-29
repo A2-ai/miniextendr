@@ -234,39 +234,26 @@ fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
 
 use crate::externalptr::TypedExternal;
 
+// Helper macro for implementing TypedExternal for nalgebra types.
+macro_rules! impl_te_nalgebra {
+    ($ty:ty, $name:expr) => {
+        impl TypedExternal for $ty {
+            const TYPE_NAME: &'static str = $name;
+            const TYPE_NAME_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+        }
+    };
+}
+
 // --- DVector TypedExternal ---
-
-impl TypedExternal for DVector<i32> {
-    const TYPE_NAME: &'static str = "nalgebra::DVector<i32>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"nalgebra::DVector<i32>\0";
-}
-
-impl TypedExternal for DVector<f64> {
-    const TYPE_NAME: &'static str = "nalgebra::DVector<f64>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"nalgebra::DVector<f64>\0";
-}
-
-impl TypedExternal for DVector<u8> {
-    const TYPE_NAME: &'static str = "nalgebra::DVector<u8>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"nalgebra::DVector<u8>\0";
-}
+impl_te_nalgebra!(DVector<i32>, "nalgebra::DVector<i32>");
+impl_te_nalgebra!(DVector<f64>, "nalgebra::DVector<f64>");
+impl_te_nalgebra!(DVector<u8>, "nalgebra::DVector<u8>");
 
 // --- DMatrix TypedExternal ---
-
-impl TypedExternal for DMatrix<i32> {
-    const TYPE_NAME: &'static str = "nalgebra::DMatrix<i32>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"nalgebra::DMatrix<i32>\0";
-}
-
-impl TypedExternal for DMatrix<f64> {
-    const TYPE_NAME: &'static str = "nalgebra::DMatrix<f64>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"nalgebra::DMatrix<f64>\0";
-}
-
-impl TypedExternal for DMatrix<u8> {
-    const TYPE_NAME: &'static str = "nalgebra::DMatrix<u8>";
-    const TYPE_NAME_CSTR: &'static [u8] = b"nalgebra::DMatrix<u8>\0";
-}
+impl_te_nalgebra!(DMatrix<i32>, "nalgebra::DMatrix<i32>");
+impl_te_nalgebra!(DMatrix<f64>, "nalgebra::DMatrix<f64>");
+impl_te_nalgebra!(DMatrix<u8>, "nalgebra::DMatrix<u8>");
 
 #[cfg(test)]
 mod tests {

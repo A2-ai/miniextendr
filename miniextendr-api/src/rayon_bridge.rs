@@ -32,7 +32,7 @@
 //! ┌───────────────────────────────────────────────────────────┐
 //! │                    R Main Thread                          │
 //! │  .Call("my_func") → miniextendr entry point               │
-//! │  (also handles routed R API calls from other threads)     │
+//! │  (handles routed R API calls from worker thread)          │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌─────────────────────────┴─────────────────────────────────┐
@@ -40,6 +40,7 @@
 //! │  1. Setup: with_r_vec() allocates R vectors               │
 //! │  2. Parallel: spawn Rayon work                            │
 //! │  3. Cleanup: convert results to R                         │
+//! │  (can route R API calls to main thread via with_r_thread) │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌───────────────────────────────────────────────────────────┐
@@ -47,46 +48,46 @@
 //! │   Thread 1    Thread 2    Thread 3    Thread N            │
 //! │      ↓           ↓           ↓           ↓                │
 //! │   Compute    Compute    Compute    Compute                │
-//! │   (R API calls route to main thread - safe but slow)      │
+//! │   ⚠️  PURE RUST ONLY - NO R API CALLS ⚠️                  │
 //! └───────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! # Thread Context for `with_r_vec`
 //!
-//! [`with_r_vec`] can be called from **any thread**. It works by:
+//! [`with_r_vec`] can be called from the **worker thread or main thread**. It works by:
 //!
 //! 1. **Allocation on R thread**: Uses [`with_r_thread`][crate::worker::with_r_thread]
 //!    to allocate and PROTECT the R vector on the R main thread.
-//! 2. **Pointer acquisition**: The raw pointer is obtained while the object is protected.
+//! 2. **Pointer acquisition**: The raw pointer is obtained on the main thread (inside
+//!    the `with_r_thread` call) while the object is protected.
 //! 3. **Parallel fill**: The closure receives a `&mut [T]` slice that Rayon threads
 //!    can safely write to. The PROTECTED vector cannot be collected by GC.
 //! 4. **Cleanup**: UNPROTECT is called via a guard, and the SEXP is returned.
 //!
 //! **Safety**: The R vector is PROTECTED for the entire duration of parallel writes.
-//! Even if R APIs are called from within the closure (which route to main thread),
 //! GC cannot collect the protected vector, so the slice remains valid.
 //!
-//! **Efficiency tip**: For best performance, keep the closure body as pure Rust.
-//! R API calls inside will work but serialize through the main thread.
+//! **Critical**: The closure **must contain only pure Rust code**. Do not call any
+//! R APIs from Rayon threads - they will panic (no routing available).
 //!
-//! # Performance: Avoid R Calls in Hot Loops
+//! # CRITICAL: No R API Calls from Rayon Threads
 //!
-//! **Non-`_unchecked` FFI calls are safe from any thread** - they automatically
-//! route to the R main thread via [`with_r_thread`][crate::worker::with_r_thread].
-//! However, this routing has overhead, so calling R APIs inside tight parallel
-//! loops defeats the purpose of parallelism.
+//! **R API calls from Rayon threads will panic.** The `with_r_thread` routing
+//! mechanism only works from the worker thread (inside `run_on_worker`), not from
+//! Rayon pool threads. Rayon threads do not have the thread-local channels needed
+//! for routing.
 //!
-//! ## Inefficient Patterns (safe but slow)
+//! ## Broken Patterns (will panic)
 //!
 //! ```ignore
-//! // SLOW: Each Rf_ScalarReal routes to main thread
+//! // PANIC: Rayon threads cannot call R APIs
 //! data.par_iter().map(|x| {
-//!     unsafe { ffi::Rf_ScalarReal(*x) }  // Works, but serializes on main thread
+//!     unsafe { ffi::Rf_ScalarReal(*x) }  // PANICS! with_r_thread not available
 //! }).collect()
 //!
-//! // SLOW: into_sexp() routes to main thread per element
+//! // PANIC: into_sexp() tries to route but fails on Rayon threads
 //! data.par_iter().map(|x| {
-//!     x.into_sexp()  // Works, but no parallelism benefit
+//!     x.into_sexp()  // PANICS! with_r_thread not available
 //! }).collect()
 //! ```
 //!
@@ -122,14 +123,14 @@
 //!
 //! # RNG in Parallel Code
 //!
-//! `RRng` (with `rand` feature) routes each call to R's RNG on the main thread.
-//! This is safe but serializes. For parallel RNG, use Rust's `thread_rng`:
+//! `RRng` (with `rand` feature) calls R's RNG APIs, which cannot be called from
+//! Rayon threads. For parallel RNG, use Rust's `thread_rng`:
 //!
 //! ```ignore
-//! // SLOW: RRng serializes on main thread
+//! // PANIC: RRng cannot be used from Rayon threads
 //! data.par_iter().map(|x| {
 //!     let mut rng = RRng::new();
-//!     x + rng.uniform_f64()  // Each call routes to main thread
+//!     x + rng.uniform_f64()  // PANICS! R API not available
 //! }).collect::<Vec<_>>()
 //!
 //! // FAST: thread_rng is thread-local, no routing (not R-reproducible)
@@ -146,7 +147,7 @@
 //! |---------|--------|-------------|
 //! | Pure Rust in `par_iter`, R at end | Safe | Fast |
 //! | `with_r_vec` + parallel fill | Safe | Fast |
-//! | R FFI (non-`_unchecked`) in `par_iter` | Safe | Slow (serialized) |
+//! | R FFI (any) in `par_iter` | **Panic** | N/A |
 //! | R FFI `_unchecked` in `par_iter` | **UB** | N/A |
 
 use crate::IntoR;
@@ -255,7 +256,7 @@ impl<T: Send> FromParallelIterator<T> for RVec<T> {
 /// internally to ensure R allocation happens on the correct thread.
 ///
 /// **Critical**: The closure `f` must contain only pure Rust code. Do not call
-/// any R APIs inside the closure - this would violate R's single-threaded model.
+/// any R APIs inside the closure - they will panic on Rayon threads.
 ///
 /// # Example
 ///
@@ -279,6 +280,20 @@ where
     T: RNativeType + Send + Sync,
     F: FnOnce(&mut [T]),
 {
+    // Validate length fits in R_xlen_t (i64 on 64-bit, i32 on 32-bit)
+    #[cfg(target_pointer_width = "64")]
+    assert!(
+        len <= i64::MAX as usize,
+        "with_r_vec: length {} exceeds R_xlen_t maximum",
+        len
+    );
+    #[cfg(target_pointer_width = "32")]
+    assert!(
+        len <= i32::MAX as usize,
+        "with_r_vec: length {} exceeds R_xlen_t maximum",
+        len
+    );
+
     struct UnprotectGuard;
 
     impl Drop for UnprotectGuard {
@@ -289,17 +304,17 @@ where
         }
     }
 
-    // Allocate and protect on the main/worker thread
-    let sexp = with_r_thread(move || unsafe {
+    // Allocate, protect, and get data pointer on the R main thread
+    use crate::worker::Sendable;
+    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(sexp);
-        sexp
+        let ptr = T::dataptr_mut(sexp);
+        (sexp, Sendable(ptr))
     });
     let _guard = UnprotectGuard;
 
-    // Get pointer and create slice (safe: vector is protected)
-    // Note: dataptr_mut handles empty vectors by returning aligned dangling pointer
-    let ptr = unsafe { T::dataptr_mut(sexp) };
+    // Create slice (safe: vector is protected, pointer acquired on main thread)
     let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
 
     // Run user's parallel work
@@ -320,7 +335,7 @@ where
 /// internally to ensure R allocation happens on the correct thread.
 ///
 /// **Critical**: The closure `f` must contain only pure Rust code. Do not call
-/// any R APIs inside the closure - this would serialize on the main thread.
+/// any R APIs inside the closure - they will panic on Rayon threads.
 ///
 /// # Example
 ///
@@ -351,6 +366,37 @@ where
     T: RNativeType + Send + Sync,
     F: FnOnce(&mut [T], usize, usize),
 {
+    // Validate dimensions fit in i32 (R uses int for matrix dims)
+    assert!(
+        nrow <= i32::MAX as usize,
+        "with_r_matrix: nrow {} exceeds i32 maximum",
+        nrow
+    );
+    assert!(
+        ncol <= i32::MAX as usize,
+        "with_r_matrix: ncol {} exceeds i32 maximum",
+        ncol
+    );
+
+    // Checked multiply for total length
+    let len = nrow
+        .checked_mul(ncol)
+        .expect("with_r_matrix: nrow * ncol overflow");
+
+    // Validate total length fits in R_xlen_t
+    #[cfg(target_pointer_width = "64")]
+    assert!(
+        len <= i64::MAX as usize,
+        "with_r_matrix: total length {} exceeds R_xlen_t maximum",
+        len
+    );
+    #[cfg(target_pointer_width = "32")]
+    assert!(
+        len <= i32::MAX as usize,
+        "with_r_matrix: total length {} exceeds R_xlen_t maximum",
+        len
+    );
+
     struct UnprotectGuard;
 
     impl Drop for UnprotectGuard {
@@ -361,16 +407,17 @@ where
         }
     }
 
-    // Allocate and protect on the main/worker thread
-    let sexp = with_r_thread(move || unsafe {
+    // Allocate, protect, and get data pointer on the R main thread
+    use crate::worker::Sendable;
+    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         let sexp = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
         crate::ffi::Rf_protect(sexp);
-        sexp
+        let ptr = T::dataptr_mut(sexp);
+        (sexp, Sendable(ptr))
     });
     let _guard = UnprotectGuard;
 
-    let len = nrow * ncol;
-    let ptr = unsafe { T::dataptr_mut(sexp) };
+    // Create slice (safe: matrix is protected, pointer acquired on main thread)
     let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
 
     // Run user's parallel work
@@ -391,7 +438,7 @@ where
 /// internally to ensure R allocation happens on the correct thread.
 ///
 /// **Critical**: The closure `f` must contain only pure Rust code. Do not call
-/// any R APIs inside the closure - this would serialize on the main thread.
+/// any R APIs inside the closure - they will panic on Rayon threads.
 ///
 /// # Example
 ///
@@ -419,6 +466,36 @@ where
     T: RNativeType + Send + Sync,
     F: FnOnce(&mut [T], [usize; NDIM]),
 {
+    // Validate each dimension fits in i32 (R uses int for dim attribute)
+    for (i, &d) in dims.iter().enumerate() {
+        assert!(
+            d <= i32::MAX as usize,
+            "with_r_array: dims[{}] = {} exceeds i32 maximum",
+            i,
+            d
+        );
+    }
+
+    // Checked multiply for total length
+    let total_len: usize = dims
+        .iter()
+        .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+        .expect("with_r_array: dimension product overflow");
+
+    // Validate total length fits in R_xlen_t
+    #[cfg(target_pointer_width = "64")]
+    assert!(
+        total_len <= i64::MAX as usize,
+        "with_r_array: total length {} exceeds R_xlen_t maximum",
+        total_len
+    );
+    #[cfg(target_pointer_width = "32")]
+    assert!(
+        total_len <= i32::MAX as usize,
+        "with_r_array: total length {} exceeds R_xlen_t maximum",
+        total_len
+    );
+
     use crate::ffi::SEXPTYPE;
 
     struct UnprotectGuard(i32);
@@ -432,10 +509,9 @@ where
         }
     }
 
-    let total_len: usize = dims.iter().product();
-
-    // Allocate vector, set dims, and protect on the main/worker thread
-    let sexp = with_r_thread(move || unsafe {
+    // Allocate, set dims, protect, and get data pointer on the R main thread
+    use crate::worker::Sendable;
+    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         // Allocate the vector
         let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect(sexp);
@@ -452,15 +528,126 @@ where
         crate::ffi::Rf_setAttrib(sexp, crate::ffi::R_DimSymbol, dim_sexp);
         crate::ffi::Rf_unprotect(1); // unprotect dim_sexp, sexp stays protected
 
-        sexp
+        let ptr = T::dataptr_mut(sexp);
+        (sexp, Sendable(ptr))
     });
     let _guard = UnprotectGuard(1);
 
-    let ptr = unsafe { T::dataptr_mut(sexp) };
+    // Create slice (safe: array is protected, pointer acquired on main thread)
     let slice = unsafe { std::slice::from_raw_parts_mut(ptr, total_len) };
 
     // Run user's parallel work
     f(slice, dims);
+
+    sexp
+}
+
+/// Pre-allocate an R matrix with column-wise mutable access.
+///
+/// Unlike [`with_r_matrix`] which gives a flat slice, this function provides
+/// an iterator over columns as disjoint mutable slices. This is optimal for
+/// parallel column-wise operations since R matrices are stored column-major.
+///
+/// # Thread Safety
+///
+/// This function can be called from either the worker thread or directly from
+/// the R main thread. It uses [`with_r_thread`][crate::worker::with_r_thread]
+/// internally to ensure R allocation happens on the correct thread.
+///
+/// **Critical**: The closure `f` must contain only pure Rust code. Do not call
+/// any R APIs inside the closure - they will panic on Rayon threads.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{with_r_matrix_cols, rayon::prelude::*};
+///
+/// // Create a 3x4 matrix, process columns in parallel
+/// let r_mat = with_r_matrix_cols::<f64, _>(3, 4, |cols| {
+///     cols.par_iter_mut()
+///         .enumerate()
+///         .for_each(|(col_idx, column)| {
+///             // Each column is a &mut [f64] of length nrow
+///             for (row_idx, val) in column.iter_mut().enumerate() {
+///                 *val = (row_idx + col_idx * 10) as f64;
+///             }
+///         });
+/// });
+/// ```
+///
+/// # Protection
+///
+/// The matrix is protected during the closure execution using `Rf_protect`.
+/// After the function returns, the SEXP is unprotected and becomes the caller's
+/// responsibility to protect.
+#[cfg(feature = "rayon")]
+pub fn with_r_matrix_cols<T, F>(nrow: usize, ncol: usize, f: F) -> SEXP
+where
+    T: RNativeType + Send + Sync,
+    F: FnOnce(std::slice::ChunksMut<'_, T>),
+{
+    // Validate dimensions fit in i32 (R uses int for matrix dims)
+    assert!(
+        nrow <= i32::MAX as usize,
+        "with_r_matrix_cols: nrow {} exceeds i32 maximum",
+        nrow
+    );
+    assert!(
+        ncol <= i32::MAX as usize,
+        "with_r_matrix_cols: ncol {} exceeds i32 maximum",
+        ncol
+    );
+
+    // Checked multiply for total length
+    let len = nrow
+        .checked_mul(ncol)
+        .expect("with_r_matrix_cols: nrow * ncol overflow");
+
+    // Validate total length fits in R_xlen_t
+    #[cfg(target_pointer_width = "64")]
+    assert!(
+        len <= i64::MAX as usize,
+        "with_r_matrix_cols: total length {} exceeds R_xlen_t maximum",
+        len
+    );
+    #[cfg(target_pointer_width = "32")]
+    assert!(
+        len <= i32::MAX as usize,
+        "with_r_matrix_cols: total length {} exceeds R_xlen_t maximum",
+        len
+    );
+
+    struct UnprotectGuard;
+
+    impl Drop for UnprotectGuard {
+        fn drop(&mut self) {
+            with_r_thread(move || unsafe {
+                crate::ffi::Rf_unprotect(1);
+            });
+        }
+    }
+
+    // Allocate, protect, and get data pointer on the R main thread
+    use crate::worker::Sendable;
+    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
+        let sexp = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
+        crate::ffi::Rf_protect(sexp);
+        let ptr = T::dataptr_mut(sexp);
+        (sexp, Sendable(ptr))
+    });
+    let _guard = UnprotectGuard;
+
+    // Create slice and split into column chunks
+    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+    let cols = if nrow == 0 {
+        // Edge case: empty matrix - create an empty chunks iterator
+        slice.chunks_mut(1) // Won't produce any chunks since len=0
+    } else {
+        slice.chunks_mut(nrow)
+    };
+
+    // Run user's parallel work with column iterator
+    f(cols);
 
     sexp
 }
@@ -490,6 +677,141 @@ where
     let sexp = with_r_matrix::<T, F>(nrow, ncol, f);
     // Safety: we just allocated this with correct type and dims
     unsafe { crate::rarray::RMatrix::from_sexp_unchecked(sexp) }
+}
+
+/// Pre-allocate an R array with slab-wise mutable access along the last dimension.
+///
+/// Unlike [`with_r_array`] which gives a flat slice, this function provides
+/// an iterator over "slabs" - contiguous slices along the last dimension.
+/// This is optimal for parallel operations that process each slab independently.
+///
+/// For an array with dims `[d0, d1, ..., dN]`, each slab has `d0 * d1 * ... * d(N-1)`
+/// elements and there are `dN` slabs total.
+///
+/// # Thread Safety
+///
+/// This function can be called from either the worker thread or directly from
+/// the R main thread. It uses [`with_r_thread`][crate::worker::with_r_thread]
+/// internally to ensure R allocation happens on the correct thread.
+///
+/// **Critical**: The closure `f` must contain only pure Rust code. Do not call
+/// any R APIs inside the closure - they will panic on Rayon threads.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{with_r_array_slabs, rayon::prelude::*};
+///
+/// // Create a 2x3x4 array, process each of the 4 slabs (2x3 matrices) in parallel
+/// let r_arr = with_r_array_slabs::<f64, 3, _>([2, 3, 4], |slabs, dims| {
+///     slabs.par_iter_mut()
+///         .enumerate()
+///         .for_each(|(slab_idx, slab)| {
+///             // Each slab is a &mut [f64] of length dims[0] * dims[1] = 6
+///             for (i, val) in slab.iter_mut().enumerate() {
+///                 *val = (slab_idx * 100 + i) as f64;
+///             }
+///         });
+/// });
+/// ```
+///
+/// # Protection
+///
+/// The array is protected during the closure execution using `Rf_protect`.
+/// After the function returns, the SEXP is unprotected and becomes the caller's
+/// responsibility to protect.
+#[cfg(feature = "rayon")]
+pub fn with_r_array_slabs<T, const NDIM: usize, F>(dims: [usize; NDIM], f: F) -> SEXP
+where
+    T: RNativeType + Send + Sync,
+    F: FnOnce(std::slice::ChunksMut<'_, T>, [usize; NDIM]),
+{
+    // Validate each dimension fits in i32 (R uses int for dim attribute)
+    for (i, &d) in dims.iter().enumerate() {
+        assert!(
+            d <= i32::MAX as usize,
+            "with_r_array_slabs: dims[{}] = {} exceeds i32 maximum",
+            i,
+            d
+        );
+    }
+
+    // Checked multiply for total length
+    let total_len: usize = dims
+        .iter()
+        .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+        .expect("with_r_array_slabs: dimension product overflow");
+
+    // Validate total length fits in R_xlen_t
+    #[cfg(target_pointer_width = "64")]
+    assert!(
+        total_len <= i64::MAX as usize,
+        "with_r_array_slabs: total length {} exceeds R_xlen_t maximum",
+        total_len
+    );
+    #[cfg(target_pointer_width = "32")]
+    assert!(
+        total_len <= i32::MAX as usize,
+        "with_r_array_slabs: total length {} exceeds R_xlen_t maximum",
+        total_len
+    );
+
+    use crate::ffi::SEXPTYPE;
+
+    struct UnprotectGuard(i32);
+
+    impl Drop for UnprotectGuard {
+        fn drop(&mut self) {
+            let n = self.0;
+            with_r_thread(move || unsafe {
+                crate::ffi::Rf_unprotect(n);
+            });
+        }
+    }
+
+    // Allocate, set dims, protect, and get data pointer on the R main thread
+    use crate::worker::Sendable;
+    let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
+        // Allocate the vector
+        let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(sexp);
+
+        // Create and set dim attribute
+        let dim_sexp = crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(dim_sexp);
+
+        let dim_ptr = crate::ffi::INTEGER(dim_sexp);
+        for (i, &d) in dims.iter().enumerate() {
+            *dim_ptr.add(i) = d as i32;
+        }
+
+        crate::ffi::Rf_setAttrib(sexp, crate::ffi::R_DimSymbol, dim_sexp);
+        crate::ffi::Rf_unprotect(1); // unprotect dim_sexp, sexp stays protected
+
+        let ptr = T::dataptr_mut(sexp);
+        (sexp, Sendable(ptr))
+    });
+    let _guard = UnprotectGuard(1);
+
+    // Calculate slab size (product of all dims except the last)
+    let slab_size: usize = if NDIM <= 1 {
+        total_len
+    } else {
+        dims[..NDIM - 1].iter().product()
+    };
+
+    // Create slice and split into slab chunks
+    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, total_len) };
+    let slabs = if slab_size == 0 {
+        slice.chunks_mut(1) // Edge case: won't produce chunks if total_len=0
+    } else {
+        slice.chunks_mut(slab_size)
+    };
+
+    // Run user's parallel work with slab iterator
+    f(slabs, dims);
+
+    sexp
 }
 
 /// Pre-allocate an N-dimensional R array and return it as [`RArray<T, NDIM>`][crate::rarray::RArray].

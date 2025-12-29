@@ -6,7 +6,7 @@ fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
     let mut ignored = false;
 
     for attr in &field.attrs {
-        if !attr.path().is_ident("list") {
+        if !attr.path().is_ident("into_list") {
             continue;
         }
 
@@ -16,7 +16,7 @@ fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
                 return Ok(());
             }
 
-            Err(meta.error("unknown #[list(...)] option; supported: ignore"))
+            Err(meta.error("unknown #[into_list(...)] option; supported: ignore"))
         })?;
     }
 

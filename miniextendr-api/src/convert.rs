@@ -187,3 +187,87 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
         }
     }
 }
+
+// =============================================================================
+// Extension traits for ergonomic wrapping
+// =============================================================================
+//
+// These extension traits provide method-style wrapping that works even when
+// the destination type isn't constrained (i.e., `value.as_list()` instead of
+// `value.into()` which requires type inference).
+//
+// ```ignore
+// // These all work without type annotations:
+// let wrapped = my_struct.as_list();
+// let ptr = my_value.as_external_ptr();
+// let native = my_num.as_r_native();
+// ```
+
+/// Extension trait for wrapping values as [`AsList`].
+///
+/// This trait is automatically implemented for all types that implement [`IntoList`].
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::convert::AsListExt;
+///
+/// #[derive(IntoList)]
+/// struct Point { x: f64, y: f64 }
+///
+/// let point = Point { x: 1.0, y: 2.0 };
+/// let wrapped: AsList<Point> = point.as_list();
+/// ```
+pub trait AsListExt: IntoList + Sized {
+    /// Wrap `self` in [`AsList`] for R list conversion.
+    fn as_list(self) -> AsList<Self> {
+        AsList(self)
+    }
+}
+
+impl<T: IntoList> AsListExt for T {}
+
+/// Extension trait for wrapping values as [`AsExternalPtr`].
+///
+/// This trait is automatically implemented for all types that implement [`IntoExternalPtr`].
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::convert::AsExternalPtrExt;
+///
+/// #[derive(ExternalPtr)]
+/// struct Connection { handle: u64 }
+///
+/// let conn = Connection { handle: 42 };
+/// let wrapped: AsExternalPtr<Connection> = conn.as_external_ptr();
+/// ```
+pub trait AsExternalPtrExt: IntoExternalPtr + Sized {
+    /// Wrap `self` in [`AsExternalPtr`] for R external pointer conversion.
+    fn as_external_ptr(self) -> AsExternalPtr<Self> {
+        AsExternalPtr(self)
+    }
+}
+
+impl<T: IntoExternalPtr> AsExternalPtrExt for T {}
+
+/// Extension trait for wrapping values as [`AsRNative`].
+///
+/// This trait is automatically implemented for all types that implement [`RNativeType`].
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::convert::AsRNativeExt;
+///
+/// let x: f64 = 42.5;
+/// let wrapped: AsRNative<f64> = x.as_r_native();
+/// ```
+pub trait AsRNativeExt: RNativeType + Sized {
+    /// Wrap `self` in [`AsRNative`] for native R scalar conversion.
+    fn as_r_native(self) -> AsRNative<Self> {
+        AsRNative(self)
+    }
+}
+
+impl<T: RNativeType> AsRNativeExt for T {}

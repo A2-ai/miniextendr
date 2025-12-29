@@ -239,28 +239,104 @@ impl IntoR for List {
     }
 }
 
+/// Error when a list has duplicate non-NA names.
+#[derive(Debug, Clone)]
+pub struct DuplicateNameError {
+    /// The duplicate name that was found.
+    pub name: String,
+}
+
+impl std::fmt::Display for DuplicateNameError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "list has duplicate name: {:?}", self.name)
+    }
+}
+
+impl std::error::Error for DuplicateNameError {}
+
+/// Error when converting SEXP to List fails.
+#[derive(Debug, Clone)]
+pub enum ListFromSexpError {
+    /// Wrong SEXP type.
+    Type(crate::from_r::SexpTypeError),
+    /// Duplicate non-NA name found.
+    DuplicateName(DuplicateNameError),
+}
+
+impl std::fmt::Display for ListFromSexpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ListFromSexpError::Type(e) => write!(f, "{}", e),
+            ListFromSexpError::DuplicateName(e) => write!(f, "{}", e),
+        }
+    }
+}
+
+impl std::error::Error for ListFromSexpError {}
+
+impl From<crate::from_r::SexpTypeError> for ListFromSexpError {
+    fn from(e: crate::from_r::SexpTypeError) -> Self {
+        ListFromSexpError::Type(e)
+    }
+}
+
 impl TryFromSexp for List {
-    type Error = crate::from_r::SexpTypeError;
+    type Error = ListFromSexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         // Use R's helper to ensure list semantics first
         let is_list = unsafe { ffi::Rf_isList(sexp) != Rboolean::FALSE };
         let actual = unsafe { ffi::TYPEOF(sexp) };
 
-        if is_list {
+        let list_sexp = if is_list {
             if actual == VECSXP {
-                return Ok(List(sexp));
+                sexp
+            } else if actual == LISTSXP {
+                // Accept pairlists by coercing to a VECSXP list.
+                unsafe { ffi::Rf_coerceVector(sexp, VECSXP) }
+            } else {
+                return Err(crate::from_r::SexpTypeError {
+                    expected: VECSXP,
+                    actual,
+                }
+                .into());
             }
-            // Accept pairlists by coercing to a VECSXP list.
-            if actual == LISTSXP {
-                let coerced = unsafe { ffi::Rf_coerceVector(sexp, VECSXP) };
-                return Ok(List(coerced));
+        } else {
+            return Err(crate::from_r::SexpTypeError {
+                expected: VECSXP,
+                actual,
+            }
+            .into());
+        };
+
+        // Check for duplicate non-NA names
+        let names_sexp = unsafe { ffi::Rf_getAttrib(list_sexp, ffi::R_NamesSymbol) };
+        if names_sexp != unsafe { ffi::R_NilValue } {
+            let n = unsafe { ffi::Rf_xlength(list_sexp) };
+            let mut seen = std::collections::HashSet::new();
+
+            for i in 0..n {
+                let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };
+                // Skip NA names
+                if name_sexp == unsafe { ffi::R_NaString } {
+                    continue;
+                }
+                // Skip empty names
+                let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+                if let Ok(s) = name_cstr.to_str() {
+                    if s.is_empty() {
+                        continue;
+                    }
+                    if !seen.insert(s) {
+                        return Err(ListFromSexpError::DuplicateName(DuplicateNameError {
+                            name: s.to_string(),
+                        }));
+                    }
+                }
             }
         }
 
-        Err(crate::from_r::SexpTypeError {
-            expected: VECSXP,
-            actual,
-        })
+        Ok(List(list_sexp))
     }
 }

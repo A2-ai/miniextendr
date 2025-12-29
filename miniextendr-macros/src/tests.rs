@@ -209,7 +209,7 @@ fn derive_into_list_skips_ignored_named_fields() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         struct Foo {
             a: i32,
-            #[list(ignore)]
+            #[into_list(ignore)]
             b: i32,
         }
     })
@@ -227,7 +227,7 @@ fn derive_try_from_list_defaults_ignored_named_fields() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         struct Foo {
             a: i32,
-            #[list(ignore)]
+            #[into_list(ignore)]
             b: i32,
         }
     })
@@ -244,7 +244,7 @@ fn derive_try_from_list_defaults_ignored_named_fields() {
 #[test]
 fn derive_into_list_skips_ignored_tuple_fields() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
-        struct Foo(i32, #[list(ignore)] i32, i32);
+        struct Foo(i32, #[into_list(ignore)] i32, i32);
     })
     .unwrap();
 
@@ -259,7 +259,7 @@ fn derive_into_list_skips_ignored_tuple_fields() {
 #[test]
 fn derive_try_from_list_defaults_ignored_tuple_fields() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
-        struct Foo(i32, #[list(ignore)] i32, i32);
+        struct Foo(i32, #[into_list(ignore)] i32, i32);
     })
     .unwrap();
 
@@ -277,14 +277,14 @@ fn derive_try_from_list_defaults_ignored_tuple_fields() {
 fn list_attrs_error_on_unknown_options() {
     let input: syn::DeriveInput = syn::parse2(quote::quote! {
         struct Foo {
-            #[list(typo)]
+            #[into_list(typo)]
             a: i32,
         }
     })
     .unwrap();
 
     let err = crate::list_derive::derive_into_list(input).unwrap_err();
-    assert!(err.to_string().contains("unknown #[list(...)] option"));
+    assert!(err.to_string().contains("unknown #[into_list(...)] option"));
 }
 
 // =============================================================================

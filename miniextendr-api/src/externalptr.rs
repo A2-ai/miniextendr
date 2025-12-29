@@ -147,6 +147,28 @@ unsafe fn type_symbol_unchecked<T: TypedExternal>() -> SEXP {
     unsafe { Rf_install_unchecked(T::TYPE_NAME_CSTR.as_ptr().cast()) }
 }
 
+/// Get the namespaced type ID symbol for type checking.
+///
+/// Uses `TYPE_ID_CSTR` which includes the module path for uniqueness.
+///
+/// # Safety
+///
+/// Must be called from R's main thread.
+#[inline]
+unsafe fn type_id_symbol<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install(T::TYPE_ID_CSTR.as_ptr().cast()) }
+}
+
+/// Unchecked version of [`type_id_symbol`].
+///
+/// # Safety
+///
+/// Must be called from R's main thread. No debug assertions.
+#[inline]
+unsafe fn type_id_symbol_unchecked<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install_unchecked(T::TYPE_ID_CSTR.as_ptr().cast()) }
+}
+
 /// Get the type name from a stored symbol SEXP.
 ///
 /// # Safety
@@ -170,12 +192,28 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
 /// This provides the type identification needed for runtime type checking.
 /// Type identification uses R's symbol interning (`Rf_install`) for fast
 /// pointer-based comparison.
+///
+/// # Type ID vs Type Name
+///
+/// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in prot[0]).
+///   Should be unique across packages to prevent cross-package type collisions.
+///   Format: `"crate_name::module::TypeName\0"`
+///
+/// - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
+///   Can be just the type identifier for readability.
 pub trait TypedExternal: 'static {
-    /// The type name as a static string (for debugging)
+    /// The type name as a static string (for debugging and display)
     const TYPE_NAME: &'static str;
 
-    /// The type name as a null-terminated C string (for R symbol creation)
+    /// The type name as a null-terminated C string (for R tag display)
     const TYPE_NAME_CSTR: &'static [u8];
+
+    /// Namespaced type ID as a null-terminated C string (for type checking).
+    ///
+    /// This should include the module path to prevent cross-package collisions.
+    /// Use `concat!(module_path!(), "::", stringify!(Type), "\0").as_bytes()`
+    /// when implementing manually, or use `#[derive(ExternalPtr)]`.
+    const TYPE_ID_CSTR: &'static [u8];
 }
 
 /// Marker trait for types that should be converted to R as ExternalPtr.
@@ -196,16 +234,20 @@ pub trait TypedExternal: 'static {
 /// ```
 pub trait IntoExternalPtr: TypedExternal {}
 
-/// Implement TypedExternal for a type.
+/// Implement TypedExternal for a type with automatic namespacing.
 ///
-/// This macro generates the type name as both a Rust string and a null-terminated
-/// C string for use with R's symbol interning (`Rf_install`).
+/// This macro generates:
+/// - `TYPE_NAME`: Short display name (just the type identifier)
+/// - `TYPE_NAME_CSTR`: Null-terminated display name for R tag
+/// - `TYPE_ID_CSTR`: Namespaced ID using `module_path!()` for type checking
 #[macro_export]
 macro_rules! impl_typed_external {
     ($ty:ty) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = stringify!($ty);
             const TYPE_NAME_CSTR: &'static [u8] = concat!(stringify!($ty), "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] =
+                concat!(module_path!(), "::", stringify!($ty), "\0").as_bytes();
         }
     };
 }
@@ -214,12 +256,16 @@ macro_rules! impl_typed_external {
 ///
 /// Use this when you want the R tag to display a specific name
 /// (e.g., without module path).
+///
+/// Note: The type ID is still namespaced using the tag + module_path!().
 #[macro_export]
 macro_rules! impl_typed_external_with_tag {
     ($ty:ty, $tag:expr) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = $tag;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] =
+                concat!(module_path!(), "::", $tag, "\0").as_bytes();
         }
     };
 }
@@ -227,6 +273,8 @@ macro_rules! impl_typed_external_with_tag {
 impl TypedExternal for () {
     const TYPE_NAME: &'static str = "()";
     const TYPE_NAME_CSTR: &'static [u8] = b"()\0";
+    // Unit type is special - same ID as name since it's only used for type-erased ptrs
+    const TYPE_ID_CSTR: &'static [u8] = b"()\0";
 }
 
 // =============================================================================
@@ -331,18 +379,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
     unsafe fn create_extptr_sexp(ptr: *mut T) -> SEXP {
         debug_assert!(!ptr.is_null(), "create_extptr_sexp received null pointer");
 
-        // Create the type symbol (R interns symbols, so same string = same pointer)
+        // Create two symbols:
+        // - type_sym (TYPE_NAME_CSTR): short name for display in R
+        // - type_id_sym (TYPE_ID_CSTR): namespaced ID for type checking
         let type_sym = unsafe { type_symbol::<T>() };
+        let type_id_sym = unsafe { type_id_symbol::<T>() };
 
-        // Create the prot VECSXP: [type_symbol, user_protected]
+        // Create the prot VECSXP: [type_id_symbol, user_protected]
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
 
-        // Store type symbol in slot 0 for fast pointer-based type checking
-        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_sym) };
+        // Store namespaced type ID in slot 0 for type checking
+        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
         // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with tag (same symbol) and prot
+        // Create the external pointer with short display tag and prot
         let sexp = unsafe { R_MakeExternalPtr(ptr.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
 
@@ -366,18 +417,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
             "create_extptr_sexp_unchecked received null pointer"
         );
 
-        // Create the type symbol (R interns symbols, so same string = same pointer)
+        // Create two symbols:
+        // - type_sym (TYPE_NAME_CSTR): short name for display in R
+        // - type_id_sym (TYPE_ID_CSTR): namespaced ID for type checking
         let type_sym = unsafe { type_symbol_unchecked::<T>() };
+        let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
 
-        // Create the prot VECSXP: [type_symbol, user_protected]
+        // Create the prot VECSXP: [type_id_symbol, user_protected]
         let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect_unchecked(prot) };
 
-        // Store type symbol in slot 0 for fast pointer-based type checking
-        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_sym) };
+        // Store namespaced type ID in slot 0 for type checking
+        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
         // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with tag (same symbol) and prot
+        // Create the external pointer with short display tag and prot
         let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
 
@@ -762,7 +816,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_symbol::<T>() };
+        let expected_sym = unsafe { type_id_symbol::<T>() };
         if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
@@ -810,7 +864,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_symbol::<T>() };
+        let expected_sym = unsafe { type_id_symbol::<T>() };
         if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
@@ -850,7 +904,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_symbol::<T>() };
+        let expected_sym = unsafe { type_id_symbol::<T>() };
         if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return Err(TypeMismatchError::Mismatch {
                 expected: T::TYPE_NAME,

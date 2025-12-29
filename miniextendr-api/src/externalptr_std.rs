@@ -13,27 +13,32 @@
 use crate::externalptr::TypedExternal;
 
 /// Implement TypedExternal for a concrete type.
+/// For standard library types, we use the simple name for both display and ID.
 macro_rules! impl_te {
     ($ty:ty, $name:literal) => {
         impl TypedExternal for $ty {
             const TYPE_NAME: &'static str = $name;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!("std::", $name, "\0").as_bytes();
         }
     };
 }
 
 /// Implement TypedExternal for a generic type with 'static bounds.
+/// For standard library types, we prefix the ID with "std::" for clarity.
 macro_rules! impl_te_generic {
     (<$($g:ident),+> $ty:ty, $name:literal) => {
         impl<$($g: 'static),+> TypedExternal for $ty {
             const TYPE_NAME: &'static str = $name;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!("std::", $name, "\0").as_bytes();
         }
     };
     (<$($g:ident : $bound:path),+> $ty:ty, $name:literal) => {
         impl<$($g: $bound + 'static),+> TypedExternal for $ty {
             const TYPE_NAME: &'static str = $name;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($name, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!("std::", $name, "\0").as_bytes();
         }
     };
 }
@@ -94,6 +99,7 @@ impl_te_generic!(<T> Box<T>, "Box");
 impl<T: 'static> TypedExternal for Box<[T]> {
     const TYPE_NAME: &'static str = "BoxSlice";
     const TYPE_NAME_CSTR: &'static [u8] = b"BoxSlice\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"std::BoxSlice\0";
 }
 
 impl_te_generic!(<T> std::rc::Rc<T>, "Rc");
@@ -105,12 +111,13 @@ impl_te_generic!(<T> std::sync::Mutex<T>, "Mutex");
 impl_te_generic!(<T> std::sync::RwLock<T>, "RwLock");
 impl_te_generic!(<T> std::sync::OnceLock<T>, "OnceLock");
 impl_te_generic!(<T> std::pin::Pin<T>, "Pin");
-// ManuallyDrop<T> shares T's type symbol, allowing ExternalPtr<ManuallyDrop<T>>
+// ManuallyDrop<T> shares T's type symbols, allowing ExternalPtr<ManuallyDrop<T>>
 // to interoperate with ExternalPtr<T>. This is safe because ManuallyDrop<T> is
 // #[repr(transparent)] and has identical memory layout to T.
 impl<T: TypedExternal> TypedExternal for std::mem::ManuallyDrop<T> {
     const TYPE_NAME: &'static str = T::TYPE_NAME;
     const TYPE_NAME_CSTR: &'static [u8] = T::TYPE_NAME_CSTR;
+    const TYPE_ID_CSTR: &'static [u8] = T::TYPE_ID_CSTR;
 }
 impl_te_generic!(<T> std::mem::MaybeUninit<T>, "MaybeUninit");
 impl_te_generic!(<T> std::marker::PhantomData<T>, "PhantomData");
@@ -236,6 +243,7 @@ impl_te_generic!(<A, B, C, D, E, F, G, H, I, J, K, L> (A, B, C, D, E, F, G, H, I
 impl<T: 'static, const N: usize> TypedExternal for [T; N] {
     const TYPE_NAME: &'static str = "Array";
     const TYPE_NAME_CSTR: &'static [u8] = b"Array\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"std::Array\0";
 }
 
 // =============================================================================
@@ -256,4 +264,5 @@ impl<T: 'static, const N: usize> TypedExternal for [T; N] {
 impl<T: 'static> TypedExternal for &'static [T] {
     const TYPE_NAME: &'static str = "StaticSlice";
     const TYPE_NAME_CSTR: &'static [u8] = b"StaticSlice\0";
+    const TYPE_ID_CSTR: &'static [u8] = b"std::StaticSlice\0";
 }

@@ -1884,8 +1884,8 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 ///
 /// - Named structs → named R list: `list(x = 1L, y = 2L)`
 /// - Tuple structs → unnamed R list: `list(1L, 2L)`
-/// - Fields annotated `#[list(ignore)]` are skipped
-#[proc_macro_derive(IntoList, attributes(list))]
+/// - Fields annotated `#[into_list(ignore)]` are skipped
+#[proc_macro_derive(IntoList, attributes(into_list))]
 pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_into_list(input)
@@ -1897,8 +1897,8 @@ pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStre
 ///
 /// - Named structs: extract by field name
 /// - Tuple structs: extract by position (0, 1, 2, ...)
-/// - Fields annotated `#[list(ignore)]` are not read and are initialized with `Default::default()`
-#[proc_macro_derive(TryFromList, attributes(list))]
+/// - Fields annotated `#[into_list(ignore)]` are not read and are initialized with `Default::default()`
+#[proc_macro_derive(TryFromList, attributes(into_list))]
 pub fn derive_try_from_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_try_from_list(input)
