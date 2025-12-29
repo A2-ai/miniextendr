@@ -188,3 +188,56 @@ extern crate self as miniextendr_api;
 
 #[doc(hidden)]
 pub mod macro_coverage;
+
+// =============================================================================
+// Optional integrations with external crates
+// =============================================================================
+
+/// Integration with the `rand` crate for R's RNG.
+///
+/// Provides [`RRng`][rand_impl::RRng], which wraps R's random number generator
+/// and implements `rand::RngCore`.
+///
+/// Enable with `features = ["rand"]`.
+#[cfg(feature = "rand")]
+pub mod rand_impl;
+#[cfg(feature = "rand")]
+pub use rand_impl::RRng;
+
+/// Integration with the `either` crate.
+///
+/// Provides [`TryFromSexp`] and [`IntoR`] for [`Either<L, R>`][either::Either].
+///
+/// Enable with `features = ["either"]`.
+#[cfg(feature = "either")]
+pub mod either_impl;
+#[cfg(feature = "either")]
+pub use either_impl::{Either, Left, Right};
+
+/// Integration with the `ndarray` crate.
+///
+/// Provides conversions between R vectors/matrices and ndarray types
+/// (`Array1`, `Array2`, `ArrayView1`, `ArrayView2`).
+///
+/// Enable with `features = ["ndarray"]`.
+#[cfg(feature = "ndarray")]
+pub mod ndarray_impl;
+#[cfg(feature = "ndarray")]
+pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2};
+
+/// Integration with the `nalgebra` crate.
+///
+/// Provides conversions between R vectors/matrices and nalgebra types
+/// (`DVector`, `DMatrix`).
+///
+/// Enable with `features = ["nalgebra"]`.
+#[cfg(feature = "nalgebra")]
+pub mod nalgebra_impl;
+#[cfg(feature = "nalgebra")]
+pub use nalgebra_impl::{DMatrix, DVector};
+
+/// Re-export of `serde` for derive macros.
+///
+/// Enable with `features = ["serde"]`.
+#[cfg(feature = "serde")]
+pub use serde;

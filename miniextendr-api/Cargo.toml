@@ -23,10 +23,25 @@ rayon = ["dep:rayon"]
 ## marked as unstable and may change between R versions without notice.
 connections = []
 doc-lint = ["miniextendr-macros/doc-lint"]
+## Enable rand crate integration. Provides RRng which wraps R's RNG with rand traits.
+rand = ["dep:rand"]
+## Enable either crate integration. Provides TryFromSexp/IntoR for Either<L, R>.
+either = ["dep:either"]
+## Enable ndarray integration. Provides conversions for Array1, Array2, ArrayView1, ArrayView2.
+ndarray = ["dep:ndarray"]
+## Enable nalgebra integration. Provides conversions for DVector, DMatrix.
+nalgebra = ["dep:nalgebra"]
+## Enable serde integration. Re-exports serde for derive macros.
+serde = ["dep:serde"]
 
 [dependencies]
 miniextendr-macros = { workspace = true }
 rayon = { version = "1.11.0", optional = true }
+rand = { version = "0.9", optional = true }
+either = { version = "1.15", optional = true }
+ndarray = { version = "0.17", optional = true }
+nalgebra = { version = "0.34", optional = true }
+serde = { version = "1.0", optional = true }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }
