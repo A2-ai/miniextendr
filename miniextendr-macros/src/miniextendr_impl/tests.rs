@@ -5,6 +5,7 @@ fn env_wrappers_preserve_static_params() {
     let attrs = ImplAttrs {
         class_system: ClassSystem::Env,
         class_name: None,
+        label: None,
     };
 
     let item_impl: syn::ItemImpl = syn::parse_quote! {
