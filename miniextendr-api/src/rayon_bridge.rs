@@ -308,6 +308,220 @@ where
     sexp
 }
 
+/// Pre-allocate an R matrix, fill in parallel, return the SEXP.
+///
+/// This is the most efficient pattern for parallel matrix output - it writes directly
+/// to R memory without intermediate copies.
+///
+/// # Thread Safety
+///
+/// This function can be called from either the worker thread or directly from
+/// the R main thread. It uses [`with_r_thread`][crate::worker::with_r_thread]
+/// internally to ensure R allocation happens on the correct thread.
+///
+/// **Critical**: The closure `f` must contain only pure Rust code. Do not call
+/// any R APIs inside the closure - this would serialize on the main thread.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{with_r_matrix, rayon::prelude::*};
+///
+/// // Create a 3x4 matrix, fill in parallel
+/// let r_mat = with_r_matrix::<f64, _>(3, 4, |slice, nrow, ncol| {
+///     // slice is in column-major order
+///     slice.par_iter_mut()
+///         .enumerate()
+///         .for_each(|(i, slot)| {
+///             let row = i % nrow;
+///             let col = i / nrow;
+///             *slot = (row * col) as f64;
+///         });
+/// });
+/// ```
+///
+/// # Protection
+///
+/// The matrix is protected during the closure execution using `Rf_protect`.
+/// After the function returns, the SEXP is unprotected and becomes the caller's
+/// responsibility to protect.
+#[cfg(feature = "rayon")]
+pub fn with_r_matrix<T, F>(nrow: usize, ncol: usize, f: F) -> SEXP
+where
+    T: RNativeType + Send + Sync,
+    F: FnOnce(&mut [T], usize, usize),
+{
+    struct UnprotectGuard;
+
+    impl Drop for UnprotectGuard {
+        fn drop(&mut self) {
+            with_r_thread(move || unsafe {
+                crate::ffi::Rf_unprotect(1);
+            });
+        }
+    }
+
+    // Allocate and protect on the main/worker thread
+    let sexp = with_r_thread(move || unsafe {
+        let sexp = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
+        crate::ffi::Rf_protect(sexp);
+        sexp
+    });
+    let _guard = UnprotectGuard;
+
+    let len = nrow * ncol;
+    let ptr = unsafe { T::dataptr_mut(sexp) };
+    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+
+    // Run user's parallel work
+    f(slice, nrow, ncol);
+
+    sexp
+}
+
+/// Pre-allocate an N-dimensional R array, fill in parallel, return the SEXP.
+///
+/// This is the most efficient pattern for parallel array output - it writes directly
+/// to R memory without intermediate copies.
+///
+/// # Thread Safety
+///
+/// This function can be called from either the worker thread or directly from
+/// the R main thread. It uses [`with_r_thread`][crate::worker::with_r_thread]
+/// internally to ensure R allocation happens on the correct thread.
+///
+/// **Critical**: The closure `f` must contain only pure Rust code. Do not call
+/// any R APIs inside the closure - this would serialize on the main thread.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{with_r_array, rayon::prelude::*};
+///
+/// // Create a 2x3x4 array, fill in parallel
+/// let r_arr = with_r_array::<f64, 3, _>([2, 3, 4], |slice, dims| {
+///     slice.par_iter_mut()
+///         .enumerate()
+///         .for_each(|(i, slot)| {
+///             *slot = i as f64;
+///         });
+/// });
+/// ```
+///
+/// # Protection
+///
+/// The array is protected during the closure execution using `Rf_protect`.
+/// After the function returns, the SEXP is unprotected and becomes the caller's
+/// responsibility to protect.
+#[cfg(feature = "rayon")]
+pub fn with_r_array<T, const NDIM: usize, F>(dims: [usize; NDIM], f: F) -> SEXP
+where
+    T: RNativeType + Send + Sync,
+    F: FnOnce(&mut [T], [usize; NDIM]),
+{
+    use crate::ffi::SEXPTYPE;
+
+    struct UnprotectGuard(i32);
+
+    impl Drop for UnprotectGuard {
+        fn drop(&mut self) {
+            let n = self.0;
+            with_r_thread(move || unsafe {
+                crate::ffi::Rf_unprotect(n);
+            });
+        }
+    }
+
+    let total_len: usize = dims.iter().product();
+
+    // Allocate vector, set dims, and protect on the main/worker thread
+    let sexp = with_r_thread(move || unsafe {
+        // Allocate the vector
+        let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(sexp);
+
+        // Create and set dim attribute
+        let dim_sexp = crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect(dim_sexp);
+
+        let dim_ptr = crate::ffi::INTEGER(dim_sexp);
+        for (i, &d) in dims.iter().enumerate() {
+            *dim_ptr.add(i) = d as i32;
+        }
+
+        crate::ffi::Rf_setAttrib(sexp, crate::ffi::R_DimSymbol, dim_sexp);
+        crate::ffi::Rf_unprotect(1); // unprotect dim_sexp, sexp stays protected
+
+        sexp
+    });
+    let _guard = UnprotectGuard(1);
+
+    let ptr = unsafe { T::dataptr_mut(sexp) };
+    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, total_len) };
+
+    // Run user's parallel work
+    f(slice, dims);
+
+    sexp
+}
+
+/// Pre-allocate an R matrix and return it as [`RMatrix<T>`][crate::rarray::RMatrix].
+///
+/// This is like [`with_r_matrix`] but returns a typed wrapper instead of raw SEXP.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{new_r_matrix, rayon::prelude::*};
+/// use miniextendr_api::rarray::RMatrix;
+///
+/// let matrix: RMatrix<f64> = new_r_matrix(3, 4, |slice, nrow, ncol| {
+///     slice.par_iter_mut()
+///         .enumerate()
+///         .for_each(|(i, slot)| *slot = i as f64);
+/// });
+/// ```
+#[cfg(feature = "rayon")]
+pub fn new_r_matrix<T, F>(nrow: usize, ncol: usize, f: F) -> crate::rarray::RMatrix<T>
+where
+    T: RNativeType + Send + Sync,
+    F: FnOnce(&mut [T], usize, usize),
+{
+    let sexp = with_r_matrix::<T, F>(nrow, ncol, f);
+    // Safety: we just allocated this with correct type and dims
+    unsafe { crate::rarray::RMatrix::from_sexp_unchecked(sexp) }
+}
+
+/// Pre-allocate an N-dimensional R array and return it as [`RArray<T, NDIM>`][crate::rarray::RArray].
+///
+/// This is like [`with_r_array`] but returns a typed wrapper instead of raw SEXP.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rayon_bridge::{new_r_array, rayon::prelude::*};
+/// use miniextendr_api::rarray::RArray;
+///
+/// let array: RArray<f64, 3> = new_r_array([2, 3, 4], |slice, dims| {
+///     slice.par_iter_mut()
+///         .enumerate()
+///         .for_each(|(i, slot)| *slot = i as f64);
+/// });
+/// ```
+#[cfg(feature = "rayon")]
+pub fn new_r_array<T, const NDIM: usize, F>(
+    dims: [usize; NDIM],
+    f: F,
+) -> crate::rarray::RArray<T, NDIM>
+where
+    T: RNativeType + Send + Sync,
+    F: FnOnce(&mut [T], [usize; NDIM]),
+{
+    let sexp = with_r_array::<T, NDIM, F>(dims, f);
+    // Safety: we just allocated this with correct type and dims
+    unsafe { crate::rarray::RArray::from_sexp_unchecked(sexp) }
+}
+
 // endregion
 
 // region: Parallel reduction
