@@ -281,26 +281,41 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
 
 /// Check for conflicts between explicit `@title`/`@description` tags and implicit values.
 ///
-/// When the `doc-lint` feature is enabled, emits compile-time warnings if explicit
-/// roxygen tags differ from the implicit values derived from the doc comment structure.
+/// When the `doc-lint` feature is enabled, returns tokens that generate compile-time
+/// deprecation warnings if explicit roxygen tags differ from the implicit values
+/// derived from the doc comment structure.
+///
+/// The returned tokens should be appended to the macro expansion output.
 #[cfg(feature = "doc-lint")]
-pub(crate) fn warn_on_doc_conflicts(attrs: &[syn::Attribute], span: proc_macro2::Span) {
-    use proc_macro_error::emit_warning;
+pub(crate) fn doc_conflict_warnings(
+    attrs: &[syn::Attribute],
+    _span: proc_macro2::Span,
+) -> proc_macro2::TokenStream {
+    use quote::quote;
 
     let tags = roxygen_tags_from_attrs(attrs);
+    let mut warnings = proc_macro2::TokenStream::new();
 
     // Check @title conflict
     if let Some(explicit) = find_tag_value(&tags, "title")
         && let Some(implicit) = implicit_title_from_attrs(attrs)
         && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
     {
-        emit_warning!(
-            span,
-            "explicit @title differs from first doc line";
-            note = "R's roxygen2 uses the first line as the title";
-            help = "implicit title: \"{}\"", implicit;
-            help = "explicit @title: \"{}\"", explicit
+        let msg = format!(
+            "miniextendr doc-lint: explicit @title differs from first doc line. \
+             R's roxygen2 uses the first line as the title. \
+             implicit: \"{}\", explicit @title: \"{}\"",
+            implicit, explicit
         );
+        warnings.extend(quote! {
+            const _: () = {
+                #[deprecated(note = #msg)]
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const MINIEXTENDR_DOC_LINT_TITLE: () = ();
+                let _ = MINIEXTENDR_DOC_LINT_TITLE;
+            };
+        });
     }
 
     // Check @description conflict
@@ -308,19 +323,34 @@ pub(crate) fn warn_on_doc_conflicts(attrs: &[syn::Attribute], span: proc_macro2:
         && let Some(implicit) = implicit_description_from_attrs(attrs)
         && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
     {
-        emit_warning!(
-            span,
-            "explicit @description differs from first paragraph";
-            note = "R's roxygen2 uses the first paragraph as the description";
-            help = "implicit description: \"{}\"", implicit;
-            help = "explicit @description: \"{}\"", explicit
+        let msg = format!(
+            "miniextendr doc-lint: explicit @description differs from first paragraph. \
+             R's roxygen2 uses the first paragraph as the description. \
+             implicit: \"{}\", explicit @description: \"{}\"",
+            implicit, explicit
         );
+        warnings.extend(quote! {
+            const _: () = {
+                #[deprecated(note = #msg)]
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const MINIEXTENDR_DOC_LINT_DESC: () = ();
+                let _ = MINIEXTENDR_DOC_LINT_DESC;
+            };
+        });
     }
+
+    warnings
 }
 
 /// No-op when doc-lint feature is disabled.
 #[cfg(not(feature = "doc-lint"))]
-pub(crate) fn warn_on_doc_conflicts(_attrs: &[syn::Attribute], _span: proc_macro2::Span) {}
+pub(crate) fn doc_conflict_warnings(
+    _attrs: &[syn::Attribute],
+    _span: proc_macro2::Span,
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
 
 /// Generate @param documentation for standard parameters that aren't already documented.
 ///

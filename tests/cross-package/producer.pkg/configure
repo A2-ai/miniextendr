@@ -619,7 +619,6 @@ CARGO_LIBDIR
 CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
-CARGO_LOCKED_FLAG
 CARGO_PROFILE
 CARGO_TARGET_DIR
 CARGO_CMD
@@ -634,6 +633,7 @@ CARGO_FEATURE_CPPFLAGS
 CARGO_FEATURES_FLAG
 MINIEXTENDR_FEATURES
 NOT_CRAN
+CARGO_LOCKED_FLAG
 CARGO_OFFLINE_FLAG
 host_os
 host_vendor
@@ -693,7 +693,6 @@ MINIEXTENDR_FEATURES
 RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
-CARGO_LOCKED_FLAG
 ENV_RUSTFLAGS
 CARGO_BUILD_TARGET
 FORCE_VENDOR'
@@ -1324,8 +1323,6 @@ Some influential environment variables:
               Cargo target directory (default: src/rust/target)
   CARGO_PROFILE
               Cargo build profile (debug or release)
-  CARGO_LOCKED_FLAG
-              Cargo locked flag (--locked or empty)
   ENV_RUSTFLAGS
               Rust compiler flags passed as RUSTFLAGS
   CARGO_BUILD_TARGET
@@ -1971,9 +1968,12 @@ export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
+  CARGO_LOCKED_FLAG="--locked"
 else
   CARGO_OFFLINE_FLAG="--offline"
+  CARGO_LOCKED_FLAG=""
 fi
+
 
 
 
@@ -2369,10 +2369,6 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 
 : ${CARGO_PROFILE="release"}
-
-
-
-: ${CARGO_LOCKED_FLAG=""}
 
 
 CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"

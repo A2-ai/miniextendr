@@ -12,10 +12,12 @@ documentation = "https://docs.rs/miniextendr-api"
 rust-version = "1.85"
 
 [features]
-default = ["doc-lint", "rayon"]
+default = ["doc-lint"]
 ## Enable non-API R functions. These may break with R updates and cause
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
+## Enable rayon integration for parallel iterators. Pulls in crossbeam-* crates.
+## Add `features = ["rayon"]` to your dependency if needed.
 rayon = ["dep:rayon"]
 ## Enable custom R connection framework. WARNING: R's connection API is explicitly
 ## marked as unstable and may change between R versions without notice.

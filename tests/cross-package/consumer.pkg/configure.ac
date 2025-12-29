@@ -252,7 +252,7 @@ AS_IF([test "$NOT_CRAN" = "true"], [
     dnl Now vendor if needed (lockfile should exist after above step)
     AS_IF([test -f "$LOCKFILE"], [
       dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-      _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
+      _new=`cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}'`
       _old=`cat "$STAMP" 2>/dev/null || true`
 
       _need=0

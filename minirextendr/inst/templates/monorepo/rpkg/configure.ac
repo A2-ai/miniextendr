@@ -375,7 +375,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
 
     dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-    _new="$(cksum < "$LOCKFILE" | awk '{print $1":"$2}')"
+    _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
     _old="$(cat "$STAMP" 2>/dev/null || true)"
 
     _need=0

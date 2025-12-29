@@ -29,6 +29,14 @@
 #   Templates:
 #     just templates-check    - Verify templates haven't drifted
 #     just templates-approve  - Accept template changes
+#
+#   Vendor sync:
+#     just vendor-sync-check  - Verify vendored crates match workspace
+#     just vendor-sync-diff   - Show diff between workspace and vendor
+#
+#   Lint sync:
+#     just lint-sync-check    - Check lint parser vs macros parser
+#     just lint-sync-diff     - Show diff between parsers
 
 default:
     @just --list
@@ -493,3 +501,93 @@ templates-check-ci:
       diff -ruN "$tmp" "{{local_root}}"
       exit 1
     fi
+
+# ==============================================================================
+# Vendor sync check (ensure vendored crates match workspace)
+# ==============================================================================
+# After `just configure`, rpkg/src/vendor/ should contain synced copies of:
+#   - miniextendr-api
+#   - miniextendr-macros
+#   - miniextendr-lint
+#   - miniextendr-engine
+#
+# This check verifies the vendored copies haven't drifted from the workspace.
+# Run `just configure` to refresh vendored copies if this check fails.
+
+# Check that vendored miniextendr crates match workspace sources
+vendor-sync-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    vendor_dir="rpkg/src/vendor"
+    drift_found=0
+
+    for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+      if [[ ! -d "$vendor_dir/$crate" ]]; then
+        echo "WARNING: $vendor_dir/$crate not found (run 'just configure' first)"
+        continue
+      fi
+
+      # Compare src directories (the actual code)
+      if ! diff -rq "$crate/src" "$vendor_dir/$crate/src" >/dev/null 2>&1; then
+        echo "DRIFT: $crate/src differs from $vendor_dir/$crate/src"
+        drift_found=1
+      fi
+    done
+
+    if [[ $drift_found -eq 1 ]]; then
+      echo ""
+      echo "Vendored crates have drifted from workspace sources."
+      echo "Run 'just configure' to refresh vendored copies."
+      exit 1
+    else
+      echo "Vendor sync check passed: all miniextendr crates match."
+    fi
+
+# Show diff between workspace and vendored crates
+vendor-sync-diff:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    vendor_dir="rpkg/src/vendor"
+
+    for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+      if [[ -d "$vendor_dir/$crate" ]]; then
+        echo "=== $crate ==="
+        diff -ruN "$crate/src" "$vendor_dir/$crate/src" || true
+        echo ""
+      fi
+    done
+
+# ==============================================================================
+# Lint file sync check (ensure lint crate parser matches macros)
+# ==============================================================================
+# The miniextendr-lint crate has a similar miniextendr_module.rs from miniextendr-macros.
+# The lint version omits codegen helpers (call_method_def_ident, r_wrapper_const_ident)
+# that depend on macros-only functions. This check helps identify parser changes that
+# need manual porting.
+
+# Check for significant drift between macros and lint parsers (informational)
+lint-sync-check:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    macros_file="miniextendr-macros/src/miniextendr_module.rs"
+    lint_file="miniextendr-lint/src/miniextendr_module.rs"
+
+    # Count differing lines (excluding known differences)
+    diff_lines=$(diff "$macros_file" "$lint_file" 2>/dev/null | grep -c "^[<>]" || echo "0")
+
+    if [[ "$diff_lines" -gt 30 ]]; then
+      echo "WARNING: $lint_file differs significantly from $macros_file ($diff_lines lines)"
+      echo ""
+      echo "The lint crate parser may have drifted from the macros parser."
+      echo "Review 'just lint-sync-diff' and manually port any parsing changes."
+      exit 1
+    else
+      echo "Lint sync check passed: parsers are in sync (minor expected differences)."
+    fi
+
+# Show diff between macros and lint parsers
+lint-sync-diff:
+    diff -u miniextendr-macros/src/miniextendr_module.rs miniextendr-lint/src/miniextendr_module.rs || true

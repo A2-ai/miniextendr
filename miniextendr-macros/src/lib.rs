@@ -138,7 +138,6 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
 /// Apply `#[miniextendr(class = "...", pkg = "...", base = "...")]` to a
 /// one-field wrapper struct and list `struct Type;` in `miniextendr_module!`.
 #[proc_macro_attribute]
-#[cfg_attr(feature = "doc-lint", proc_macro_error::proc_macro_error)]
 pub fn miniextendr(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -202,8 +201,8 @@ pub fn miniextendr(
     let has_dots = parsed.has_dots();
     let named_dots = parsed.named_dots().cloned();
 
-    // Check for @title/@description conflicts with implicit values
-    crate::roxygen::warn_on_doc_conflicts(attrs, rust_ident.span());
+    // Check for @title/@description conflicts with implicit values (doc-lint feature)
+    let doc_lint_warnings = crate::roxygen::doc_conflict_warnings(attrs, rust_ident.span());
 
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
@@ -753,6 +752,9 @@ pub fn miniextendr(
                 numArgs: #num_args,
             }
         };
+
+        // doc-lint warnings (if any)
+        #doc_lint_warnings
     }
     .into();
 
