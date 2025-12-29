@@ -501,7 +501,6 @@ impl MiniextendrFunctionParsed {
 // Attribute parsing
 // =============================================================================
 
-#[derive(Default)]
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
 /// This is intentionally a small, "data-only" struct that:
@@ -514,10 +513,12 @@ impl MiniextendrFunctionParsed {
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
 /// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
 /// - `coerce`: enable automatic coercion for supported parameter types
+/// - `return = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
 ///
 /// # Note
 ///
 /// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
+#[derive(Default)]
 pub(crate) struct MiniextendrFnAttrs {
     /// Force execution on R's main thread (set by `unsafe(main_thread)`).
     pub(crate) force_main_thread: bool,
@@ -527,6 +528,22 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) check_interrupt: bool,
     /// Enable automatic coercion for all parameters that support it.
     pub(crate) coerce_all: bool,
+    /// Preferred return conversion.
+    pub(crate) return_pref: ReturnPref,
+}
+
+#[derive(Clone, Copy, Default)]
+/// Preferred return-conversion path for `IntoR`.
+pub(crate) enum ReturnPref {
+    /// Use the default `IntoR` implementation for the type.
+    #[default]
+    Auto,
+    /// Force list conversion via the `AsList` wrapper.
+    List,
+    /// Force external pointer conversion via the `AsExternalPtr` wrapper.
+    ExternalPtr,
+    /// Force native vector/scalar conversion via the `AsRNative` wrapper.
+    Native,
 }
 
 impl syn::parse::Parse for MiniextendrFnAttrs {
@@ -560,12 +577,44 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         }
                     }
                 }
-                // Handle invisible(true) - should be rejected
                 syn::Meta::NameValue(nv) => {
-                    return Err(syn::Error::new_spanned(
-                        nv,
-                        "this option does not take any arguments",
-                    ));
+                    if nv.path.is_ident("return") {
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    let v = lit.value();
+                                    out.return_pref = match v.as_str() {
+                                        "list" => ReturnPref::List,
+                                        "externalptr" => ReturnPref::ExternalPtr,
+                                        "vector" | "native" => ReturnPref::Native,
+                                        "auto" => ReturnPref::Auto,
+                                        _ => {
+                                            return Err(syn::Error::new_spanned(
+                                                lit,
+                                                "return must be one of: auto, list, externalptr, vector/native",
+                                            ));
+                                        }
+                                    };
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "return expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "return expects a string literal",
+                                ));
+                            }
+                        }
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            nv,
+                            "this option does not take any arguments",
+                        ));
+                    }
                 }
                 // Nested: unsafe(main_thread)
                 syn::Meta::List(list) => {

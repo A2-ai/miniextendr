@@ -161,6 +161,7 @@ pub fn miniextendr(
         force_invisible,
         check_interrupt,
         coerce_all,
+        return_pref,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -322,8 +323,12 @@ pub fn miniextendr(
     // - Whether result should be invisible
     // - How to convert Rust → SEXP
     // - Post-call processing (unwrap Option/Result)
-    let return_analysis =
-        return_type_analysis::analyze_return_type(output, &rust_result_ident, rust_ident);
+    let return_analysis = return_type_analysis::analyze_return_type(
+        output,
+        &rust_result_ident,
+        rust_ident,
+        return_pref,
+    );
 
     let returns_sexp = return_analysis.returns_sexp;
     let is_invisible_return_type = return_analysis.is_invisible;
@@ -1818,6 +1823,33 @@ pub fn derive_altrep_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
 pub fn derive_into_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_into_list(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `PrefersList`: opt into list-first IntoR by implementing the marker and IntoR wrapper.
+#[proc_macro_derive(PreferList)]
+pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_prefer_list(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `PreferExternalPtr`: marks a type as preferring ExternalPtr conversion.
+#[proc_macro_derive(PreferExternalPtr)]
+pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_prefer_externalptr(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `PreferRNativeType`: marks a type as preferring native SEXP conversion.
+#[proc_macro_derive(PreferRNativeType)]
+pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_prefer_rnative(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

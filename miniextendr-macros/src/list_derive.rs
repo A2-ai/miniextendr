@@ -85,3 +85,51 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
 
     Ok(expand)
 }
+
+/// Derive `PrefersList`: add the marker and IntoR impl that routes through IntoList.
+pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let expand = quote! {
+        impl #impl_generics ::miniextendr_api::markers::PrefersList for #name #ty_generics #where_clause {}
+
+        impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            #[inline]
+            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::list::IntoList::into_list(self).into_sexp()
+            }
+        }
+    };
+
+    Ok(expand)
+}
+
+/// Derive `PrefersExternalPtr`: informational marker for external pointer preference.
+pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let expand = quote! {
+        impl #impl_generics ::miniextendr_api::markers::PrefersExternalPtr for #name #ty_generics #where_clause {}
+    };
+
+    Ok(expand)
+}
+
+/// Derive `PreferRNativeType`: informational marker for native SEXP preference.
+pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let expand = quote! {
+        impl #impl_generics ::miniextendr_api::markers::PrefersRNativeType for #name #ty_generics #where_clause {}
+    };
+
+    Ok(expand)
+}

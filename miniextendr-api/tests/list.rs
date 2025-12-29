@@ -131,3 +131,17 @@ fn into_r_prefers_externalptr_over_list() {
         assert_eq!(unsafe { TYPEOF(sexp) }, SEXPTYPE::EXTPTRSXP);
     });
 }
+
+#[derive(miniextendr_api::IntoList, miniextendr_api::PreferList)]
+struct ListFirst {
+    a: i32,
+}
+
+#[test]
+fn prefer_list_changes_intor() {
+    r_test_utils::with_r_thread(|| {
+        let lf = ListFirst { a: 5 };
+        let sexp = lf.into_sexp();
+        assert_eq!(unsafe { TYPEOF(sexp) }, SEXPTYPE::VECSXP);
+    });
+}

@@ -330,7 +330,10 @@ impl std::fmt::Display for REngineError {
             }
             REngineError::InitializationFailed => write!(f, "R initialization failed"),
             REngineError::AlreadyInitialized => {
-                write!(f, "R is already initialized. Multiple calls to REngineBuilder::init() are not supported.")
+                write!(
+                    f,
+                    "R is already initialized. Multiple calls to REngineBuilder::init() are not supported."
+                )
             }
         }
     }

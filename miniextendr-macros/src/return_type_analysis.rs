@@ -34,6 +34,7 @@ pub(crate) fn analyze_return_type(
     output: &syn::ReturnType,
     rust_result_ident: &syn::Ident,
     rust_ident: &syn::Ident,
+    return_pref: crate::miniextendr_fn::ReturnPref,
 ) -> ReturnTypeAnalysis {
     let mut returns_sexp = false;
     let mut is_invisible = false;
@@ -100,7 +101,34 @@ pub(crate) fn analyze_return_type(
             // -> T (any other type)
             _ => {
                 is_invisible = false;
-                quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+                match return_pref {
+                    crate::miniextendr_fn::ReturnPref::List => {
+                        quote::quote! {
+                            ::miniextendr_api::into_r::IntoR::into_sexp(
+                                ::miniextendr_api::convert::AsList(#rust_result_ident)
+                            )
+                        }
+                    }
+                    crate::miniextendr_fn::ReturnPref::ExternalPtr => {
+                        quote::quote! {
+                            ::miniextendr_api::into_r::IntoR::into_sexp(
+                                ::miniextendr_api::convert::AsExternalPtr(#rust_result_ident)
+                            )
+                        }
+                    }
+                    crate::miniextendr_fn::ReturnPref::Native => {
+                        quote::quote! {
+                            ::miniextendr_api::into_r::IntoR::into_sexp(
+                                ::miniextendr_api::convert::AsRNative(#rust_result_ident)
+                            )
+                        }
+                    }
+                    crate::miniextendr_fn::ReturnPref::Auto => {
+                        quote::quote! {
+                            ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident)
+                        }
+                    }
+                }
             }
         },
     };

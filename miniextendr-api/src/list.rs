@@ -18,6 +18,11 @@ impl List {
     }
 
     /// Wrap an existing `VECSXP` without additional checks.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `sexp` is a valid list object (typically a `VECSXP` or
+    /// a pairlist coerced to `VECSXP`) whose lifetime remains managed by R.
     #[inline]
     pub const unsafe fn from_raw(sexp: SEXP) -> Self {
         List(sexp)

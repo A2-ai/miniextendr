@@ -19,6 +19,10 @@
 //! | `#[derive(AltrepComplex)]` | [`IsAltrepComplexData`] |
 //! | `#[derive(AltrepList)]` | [`IsAltrepListData`] |
 //! | `#[derive(IntoList)]` | [`IsIntoList`] |
+//! | `#[derive(PreferList)]` | [`PrefersList`] |
+//! | `#[derive(PreferExternalPtr)]` | [`PrefersExternalPtr`] |
+//! | `#[derive(PreferRNativeType)]` | [`PrefersRNativeType`] |
+//! | `#[derive(PreferList)]` | [`PrefersList`] |
 
 /// Marker trait for types derived with `#[derive(RNativeType)]`.
 ///
@@ -82,6 +86,21 @@ pub trait IsAltrepListData: crate::altrep_data::AltListData {}
 ///
 /// Indicates that a struct derives list conversion helpers.
 pub trait IsIntoList: crate::list::IntoList {}
+
+/// Marker trait for types that should be converted to R lists via `IntoR`.
+///
+/// Implemented by the `PreferList` derive; you can also implement it manually.
+pub trait PrefersList: IsIntoList {}
+
+/// Marker trait for types that prefer `ExternalPtr` conversion.
+///
+/// Implemented by the `PreferExternalPtr` derive; currently informational.
+pub trait PrefersExternalPtr: crate::externalptr::IntoExternalPtr {}
+
+/// Marker trait for types that prefer native SEXP conversion.
+///
+/// Implemented by the `PreferRNativeType` derive; currently informational.
+pub trait PrefersRNativeType: IsRNativeType {}
 
 // Blanket implementations: any type satisfying the underlying data trait
 // automatically gets the marker trait. This keeps derived and manual impls

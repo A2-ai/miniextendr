@@ -9,7 +9,10 @@ static ENV_LOCK: Mutex<()> = Mutex::new(());
 
 #[test]
 fn sentinel_is_false_before_initialization() {
-    assert!(!r_initialized_sentinel(), "sentinel should be false before R is initialized");
+    assert!(
+        !r_initialized_sentinel(),
+        "sentinel should be false before R is initialized"
+    );
 }
 
 #[cfg(unix)]

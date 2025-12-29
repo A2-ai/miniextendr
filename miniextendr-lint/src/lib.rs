@@ -333,13 +333,17 @@ fn collect_items_from_file(
     module_items: &mut HashSet<LintItem>,
     errors: &mut Vec<String>,
 ) -> Result<(), String> {
-    let src = fs::read_to_string(mod_path)
-        .map_err(|e| format!("failed to read: {}", e))?;
+    let src = fs::read_to_string(mod_path).map_err(|e| format!("failed to read: {}", e))?;
 
-    let parsed = syn::parse_file(&src)
-        .map_err(|e| format!("failed to parse: {}", e))?;
+    let parsed = syn::parse_file(&src).map_err(|e| format!("failed to parse: {}", e))?;
 
-    collect_items(&parsed.items, mod_path, miniextendr_items, module_items, errors);
+    collect_items(
+        &parsed.items,
+        mod_path,
+        miniextendr_items,
+        module_items,
+        errors,
+    );
     Ok(())
 }
 
@@ -471,7 +475,12 @@ fn collect_items(
                     // File module: mod foo;
                     // Resolve and parse the file, then recursively collect
                     if let Some(mod_path) = resolve_file_module(path, &item_mod.ident)
-                        && let Err(e) = collect_items_from_file(&mod_path, miniextendr_items, module_items, errors)
+                        && let Err(e) = collect_items_from_file(
+                            &mod_path,
+                            miniextendr_items,
+                            module_items,
+                            errors,
+                        )
                     {
                         errors.push(format!(
                             "{}: failed to process module {}: {}",

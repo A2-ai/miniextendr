@@ -18,7 +18,7 @@ pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList,
+    IntoList, PreferExternalPtr, PreferList, PreferRNativeType,
 };
 
 pub mod altrep;
@@ -104,8 +104,10 @@ pub mod backtrace;
 pub mod coerce;
 pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 
+pub mod convert;
 pub mod dots;
 pub mod list;
+pub use convert::{AsExternalPtr, AsList, AsRNative};
 pub use list::{IntoList, List, TryFromList};
 
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
