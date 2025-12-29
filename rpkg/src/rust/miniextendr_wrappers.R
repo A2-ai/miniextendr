@@ -98,6 +98,41 @@ drop_on_panic_with_move <- function() {
 }
 
 #' @export
+hybrid_as_list <- function(x) {
+    .Call(C_hybrid_as_list, .call = match.call(), x)
+}
+
+#' @export
+hybrid_as_ptr <- function(x) {
+    .Call(C_hybrid_as_ptr, .call = match.call(), x)
+}
+
+#' @export
+hybrid_as_native <- function(x) {
+    .Call(C_hybrid_as_native, .call = match.call(), x)
+}
+
+#' @export
+ptr_list_as_list <- function(x) {
+    .Call(C_ptr_list_as_list, .call = match.call(), x)
+}
+
+#' @export
+ptr_list_as_ptr <- function(x) {
+    .Call(C_ptr_list_as_ptr, .call = match.call(), x)
+}
+
+#' @export
+native_list_as_list <- function(x) {
+    .Call(C_native_list_as_list, .call = match.call(), x)
+}
+
+#' @export
+native_list_as_native <- function(x) {
+    .Call(C_native_list_as_native, .call = match.call(), x)
+}
+
+#' @export
 greetings_with_named_dots <- function(dots = ...) {
     invisible(.Call(C_greetings_with_named_dots, .call = match.call(), list(dots)))
 }
@@ -710,4 +745,3 @@ ReceiverCounter$default_counter <- function() {
     func
 }
 `[[.ReceiverCounter` <- `$.ReceiverCounter`
-

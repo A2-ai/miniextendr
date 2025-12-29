@@ -39,7 +39,8 @@ impl<T: IntoExternalPtr> IntoR for AsExternalPtr<T> {
     }
 }
 
-/// Wrap a scalar `RNativeType` and convert using the native `IntoR`.
+/// Wrap a scalar `RNativeType` and force native vector/scalar conversion,
+/// even if the type also implements `IntoExternalPtr` or other `IntoR` paths.
 #[derive(Debug, Clone, Copy)]
 pub struct AsRNative<T: RNativeType>(pub T);
 
@@ -49,9 +50,11 @@ impl<T: RNativeType> From<T> for AsRNative<T> {
     }
 }
 
-impl<T: RNativeType + IntoR> IntoR for AsRNative<T> {
+impl<T: RNativeType> IntoR for AsRNative<T> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        self.0.into_sexp()
+        // TODO: this needs to be done differently.. maybe array?
+        // Convert via a length-1 vector to avoid picking up other `IntoR` impls
+        vec![self.0].into_sexp()
     }
 }

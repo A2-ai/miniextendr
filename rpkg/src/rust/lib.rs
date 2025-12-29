@@ -25,6 +25,7 @@ mod coerce_tests;
 mod conversion_tests;
 mod default_tests;
 mod dots_tests;
+mod convert_pref_tests;
 mod externalptr_tests;
 mod identical_tests;
 mod interrupt_tests;
@@ -1111,6 +1112,7 @@ miniextendr_module! {
     use trait_abi_tests;
     use class_system_matrix;
     use shared_trait_test;
+    use convert_pref_tests;
     use nonapi;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
