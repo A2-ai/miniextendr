@@ -98,19 +98,35 @@ where
 
         // Need to advance iterator to index i
         let mut iter_opt = self.iter.borrow_mut();
-        let iter = iter_opt.as_mut()?;
+        {
+            let iter = iter_opt.as_mut()?;
 
-        // Fill cache up to and including index i
-        while cache.len() <= i {
-            if let Some(elem) = iter.next() {
-                cache.push(elem);
-            } else {
-                // Iterator exhausted before reaching expected length
-                return None;
+            // Fill cache up to and including index i
+            while cache.len() <= i {
+                if let Some(elem) = iter.next() {
+                    cache.push(elem);
+                } else {
+                    // Iterator exhausted before reaching expected length
+                    return None;
+                }
             }
         }
 
-        Some(cache[i])
+        let value = cache[i];
+
+        // If we've generated the full vector via random-access, promote the cache
+        // to the materialized storage so `as_slice()` can expose it.
+        if cache.len() == self.len {
+            iter_opt.take();
+
+            let vec = std::mem::take(&mut *cache);
+            drop(cache);
+            drop(iter_opt);
+
+            let _ = self.materialized.set(vec);
+        }
+
+        Some(value)
     }
 
     /// Materialize all remaining elements from the iterator.

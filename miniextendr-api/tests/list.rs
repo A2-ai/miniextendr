@@ -3,8 +3,8 @@
 mod r_test_utils;
 
 use miniextendr_api::ffi::{
-    R_NamesSymbol, Rboolean, Rf_getAttrib, Rf_isList, Rf_translateCharUTF8, Rf_xlength, SEXPTYPE,
-    STRING_ELT, TYPEOF,
+    R_NamesSymbol, Rboolean, Rf_getAttrib, Rf_isNewList, Rf_translateCharUTF8, Rf_xlength,
+    SEXPTYPE, STRING_ELT, TYPEOF,
 };
 use miniextendr_api::from_r::{SexpLengthError, TryFromSexp};
 use miniextendr_api::into_r::IntoR;
@@ -83,7 +83,7 @@ fn derive_into_list_and_back() {
         let list = foo.into_list();
         unsafe {
             assert_eq!(TYPEOF(list.as_sexp()), SEXPTYPE::VECSXP);
-            assert_ne!(Rf_isList(list.as_sexp()), Rboolean::FALSE);
+            assert_ne!(Rf_isNewList(list.as_sexp()), Rboolean::FALSE);
             assert_eq!(Rf_xlength(list.as_sexp()), 2);
         }
         assert_eq!(names_as_vec(list), vec!["a", "b"]);

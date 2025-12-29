@@ -1020,7 +1020,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // endregion
 
     // Check if we have impl blocks to register (affects wrapper lists)
-    let has_impls = !parsed_module.impls.is_empty();
+    let _has_impls = !parsed_module.impls.is_empty();
 
     // Generate trait ABI wrapper infrastructure grouped by concrete type.
     let mut trait_impl_groups: Vec<(syn::Ident, Vec<syn::Path>)> = Vec::new();
@@ -1198,16 +1198,20 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     };
 
     // Check if we have trait impl blocks to register
-    let has_trait_impls = !parsed_module.trait_impls.is_empty();
+    let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
     // Generate R wrapper impls constant - includes both impl and trait impl wrappers
-    let r_wrappers_impls_const = if has_impls || has_trait_impls {
+    let mut all_impl_r_wrappers = Vec::new();
+    all_impl_r_wrappers.extend(impl_r_wrappers.clone());
+    all_impl_r_wrappers.extend(trait_impl_r_wrappers.clone());
+
+    let r_wrappers_impls_const = if all_impl_r_wrappers.is_empty() {
         quote::quote! {
-            pub const #r_wrappers_impls_ident: &[&str] = &[#(#impl_r_wrappers),* #(, #trait_impl_r_wrappers)*];
+            pub const #r_wrappers_impls_ident: &[&str] = &[];
         }
     } else {
         quote::quote! {
-            pub const #r_wrappers_impls_ident: &[&str] = &[];
+            pub const #r_wrappers_impls_ident: &[&str] = &[#(#all_impl_r_wrappers),*];
         }
     };
 
@@ -1283,7 +1287,7 @@ fn generate_trait_impl_wrapper(
     let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_lower);
 
     // Generate tag path string for hashing
-    let tag_path = format!("{{}}::{}", type_ident);
+    let tag_path = format!("::{}", type_ident);
 
     // Generate query branches for each trait
     let query_branches: Vec<proc_macro2::TokenStream> = trait_paths
