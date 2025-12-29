@@ -6,7 +6,7 @@
 mod r_test_utils;
 
 use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_ScalarReal, Rf_allocVector, SEXPTYPE};
-use miniextendr_api::gc_protect::{tls, OwnedProtect, ProtectScope};
+use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope, tls};
 
 // =============================================================================
 // Balance tests
@@ -285,11 +285,8 @@ fn protect3_convenience() {
     r_test_utils::with_r_thread(|| unsafe {
         let scope = ProtectScope::new();
 
-        let (a, b, c) = scope.protect3(
-            Rf_ScalarInteger(1),
-            Rf_ScalarReal(2.0),
-            Rf_ScalarInteger(3),
-        );
+        let (a, b, c) =
+            scope.protect3(Rf_ScalarInteger(1), Rf_ScalarReal(2.0), Rf_ScalarInteger(3));
 
         assert!(!a.get().is_null());
         assert!(!b.get().is_null());

@@ -303,6 +303,10 @@ pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
 pub use nalgebra_impl::{DMatrix, DVector};
 
+/// N-dimensional R arrays with const generic dimension count.
+pub mod rarray;
+pub use rarray::{RArray, RArray3D, RMatrix, RVector};
+
 /// Re-export of `serde` with derive macros enabled.
 ///
 /// This allows using `#[derive(Serialize, Deserialize)]` on types stored in
