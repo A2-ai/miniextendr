@@ -110,25 +110,55 @@ pub fn derive_prefer_list(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(expand)
 }
 
-/// Derive `PrefersExternalPtr`: informational marker for external pointer preference.
+/// Derive `PrefersExternalPtr`: marker and IntoR impl that routes through ExternalPtr.
 pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::markers::PrefersExternalPtr for #name #ty_generics #where_clause {}
+
+        impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            #[inline]
+            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::externalptr::ExternalPtr::new(self).into_sexp()
+            }
+        }
     };
 
     Ok(expand)
 }
 
-/// Derive `PreferRNativeType`: informational marker for native SEXP preference.
+/// Derive `PreferRNativeType`: marker and IntoR impl that routes through native R vector allocation.
+///
+/// The type must also derive `RNativeType` for this to work.
 pub fn derive_prefer_rnative(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     let expand = quote! {
         impl #impl_generics ::miniextendr_api::markers::PrefersRNativeType for #name #ty_generics #where_clause {}
+
+        impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            #[inline]
+            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::into_r::IntoR::into_sexp(
+                    ::miniextendr_api::convert::AsRNative(self)
+                )
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::into_r::IntoR::into_sexp_unchecked(
+                    ::miniextendr_api::convert::AsRNative(self)
+                )
+            }
+        }
     };
 
     Ok(expand)
