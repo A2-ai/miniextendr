@@ -39,6 +39,7 @@
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
+use std::path::PathBuf;
 use std::process::Command;
 
 // Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
@@ -114,6 +115,7 @@ pub struct REngineBuilder {
     args: Vec<String>,
     interactive: bool,
     signal_handlers: bool,
+    r_home: Option<PathBuf>,
 }
 
 impl Default for REngineBuilder {
@@ -135,6 +137,7 @@ impl REngineBuilder {
             ],
             interactive: false,
             signal_handlers: false,
+            r_home: None,
         }
     }
 
@@ -162,6 +165,25 @@ impl REngineBuilder {
         self
     }
 
+    /// Set the R_HOME directory explicitly.
+    ///
+    /// By default, R_HOME is auto-detected by running `R RHOME` or reading
+    /// the `R_HOME` environment variable. Use this method to override that
+    /// behavior with an explicit path.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let engine = REngine::build()
+    ///     .r_home("/opt/R/4.4.0/lib/R")
+    ///     .init()
+    ///     .expect("Failed to initialize R");
+    /// ```
+    pub fn r_home(mut self, path: impl Into<PathBuf>) -> Self {
+        self.r_home = Some(path.into());
+        self
+    }
+
     /// Initialize the R runtime with the configured settings.
     ///
     /// # Safety
@@ -179,7 +201,7 @@ impl REngineBuilder {
             return Err(REngineError::AlreadyInitialized);
         }
 
-        ensure_r_home_env()?;
+        ensure_r_home_env(self.r_home.as_ref())?;
 
         // Convert args to C strings
         let c_args: Vec<CString> = self
@@ -341,11 +363,23 @@ impl std::fmt::Display for REngineError {
 
 impl std::error::Error for REngineError {}
 
-fn ensure_r_home_env() -> Result<(), REngineError> {
+fn ensure_r_home_env(explicit_path: Option<&PathBuf>) -> Result<(), REngineError> {
+    // If an explicit path was provided, use it
+    if let Some(path) = explicit_path {
+        // SAFETY: We call this during single-threaded startup (before initializing
+        // R and before spawning any worker threads).
+        unsafe {
+            std::env::set_var("R_HOME", path);
+        }
+        return Ok(());
+    }
+
+    // If R_HOME is already set, use it
     if std::env::var_os("R_HOME").is_some() {
         return Ok(());
     }
 
+    // Auto-detect via `R RHOME`
     let output = Command::new("R")
         .args(["RHOME"])
         .output()

@@ -43,7 +43,7 @@ fn ensure_r_home_env_sets_env_with_fake_r() {
     let new_path = format!("{}:{}", tmp.path().display(), original_path);
     unsafe { std::env::set_var("PATH", &new_path) };
 
-    ensure_r_home_env().expect("fake R should set R_HOME");
+    ensure_r_home_env(None).expect("fake R should set R_HOME");
     assert_eq!(std::env::var("R_HOME").unwrap(), "/fake/r/home");
 
     // Restore environment
@@ -66,7 +66,7 @@ fn ensure_r_home_env_errors_when_r_missing() {
     let tmp = tempfile::tempdir().expect("tempdir");
     unsafe { std::env::set_var("PATH", tmp.path()) };
 
-    let err = ensure_r_home_env().expect_err("should fail when R is missing");
+    let err = ensure_r_home_env(None).expect_err("should fail when R is missing");
     assert!(matches!(err, REngineError::RHomeNotFound));
 
     match original_r_home {
@@ -74,4 +74,23 @@ fn ensure_r_home_env_errors_when_r_missing() {
         None => unsafe { std::env::remove_var("R_HOME") },
     }
     unsafe { std::env::set_var("PATH", original_path) };
+}
+
+#[test]
+fn ensure_r_home_env_uses_explicit_path() {
+    let _guard = ENV_LOCK.lock().unwrap();
+
+    let original_r_home = std::env::var_os("R_HOME");
+    unsafe { std::env::remove_var("R_HOME") };
+
+    let explicit_path = PathBuf::from("/explicit/r/home");
+    ensure_r_home_env(Some(&explicit_path)).expect("explicit path should succeed");
+
+    assert_eq!(std::env::var("R_HOME").unwrap(), "/explicit/r/home");
+
+    // Restore environment
+    match original_r_home {
+        Some(val) => unsafe { std::env::set_var("R_HOME", val) },
+        None => unsafe { std::env::remove_var("R_HOME") },
+    }
 }

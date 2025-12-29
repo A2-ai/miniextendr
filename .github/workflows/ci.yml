@@ -57,6 +57,35 @@ jobs:
           echo "Versions match!"
 
   # ===========================================================================
+  # Vendor sync check (ensure vendored crates match workspace)
+  # ===========================================================================
+  vendor-sync:
+    name: Vendor Sync Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Configure (vendor crates)
+        run: just configure
+
+      - name: Check vendor sync
+        run: just vendor-sync-check
+
+  # ===========================================================================
   # Change detection (path-based gating)
   # ===========================================================================
   changes:
@@ -539,6 +568,72 @@ jobs:
         run: Rscript -e "testthat::test_local()"
 
   # ===========================================================================
+  # Cross-package trait ABI tests
+  # ===========================================================================
+  cross-package-tests:
+    name: Cross-Package Trait ABI
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      NOT_CRAN: true
+      SCCACHE_GHA_ENABLED: "true"
+      RUSTC_WRAPPER: "sccache"
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        run: |
+          mkdir -p ~/.local/bin
+          curl --proto '=https' --tlsv1.2 -sSf https://just.systems/install.sh | bash -s -- --to ~/.local/bin
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: rpkg
+          extra-packages: any::testthat, any::devtools
+          needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - uses: mozilla-actions/sccache-action@v0.0.9
+
+      - name: Cache Cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            tests/cross-package/producer.pkg/src/rust -> target
+            tests/cross-package/consumer.pkg/src/rust -> target
+          shared-key: cross-package
+          cache-on-failure: true
+
+      - name: Configure Linux
+        run: |
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+
+      - name: Build and test cross-package packages
+        working-directory: tests/cross-package
+        run: |
+          just build-all
+          just test-all
+
+  # ===========================================================================
   # CRAN-like check (stricter, simulates CRAN environment)
   # ===========================================================================
   cran-check:
@@ -647,11 +742,13 @@ jobs:
     name: CI Success
     needs:
       - version-check
+      - vendor-sync
       - changes
       - r-check-linux
       - r-check-macos
       - r-check-windows
       - r-tests
+      - cross-package-tests
       - cran-check
     runs-on: ubuntu-latest
     if: always()
@@ -660,11 +757,13 @@ jobs:
         run: |
           results=(
             "${{ needs.version-check.result }}"
+            "${{ needs.vendor-sync.result }}"
             "${{ needs.changes.result }}"
             "${{ needs.r-check-linux.result }}"
             "${{ needs.r-check-macos.result }}"
             "${{ needs.r-check-windows.result }}"
             "${{ needs.r-tests.result }}"
+            "${{ needs.cross-package-tests.result }}"
             "${{ needs.cran-check.result }}"
           )
           for result in "${results[@]}"; do
