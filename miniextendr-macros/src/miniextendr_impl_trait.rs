@@ -126,6 +126,10 @@ struct TraitMethod {
     /// Opt-in flags controlling thread strategy
     worker: bool,
     unsafe_main_thread: bool,
+    /// Enable automatic type coercion for all parameters
+    coerce: bool,
+    /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`
+    param_defaults: std::collections::HashMap<String, String>,
     /// Roxygen @param tags extracted from method doc comments
     param_tags: Vec<String>,
 }
@@ -411,7 +415,7 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                         (false, false)
                     }
                 });
-                let (worker, unsafe_main_thread) = parse_trait_method_thread_attrs(&method.attrs);
+                let attrs = parse_trait_method_attrs(&method.attrs);
 
                 // Extract @param tags from method doc comments
                 let all_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
@@ -425,8 +429,10 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     sig: method.sig.clone(),
                     has_self,
                     is_mut,
-                    worker,
-                    unsafe_main_thread,
+                    worker: attrs.worker,
+                    unsafe_main_thread: attrs.unsafe_main_thread,
+                    coerce: attrs.coerce,
+                    param_defaults: attrs.defaults,
                     param_tags,
                 })
             } else {
@@ -436,13 +442,23 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
         .collect()
 }
 
-/// Parse thread hints for trait methods (worker / main_thread).
+/// Parsed attributes for a trait method.
+struct TraitMethodAttrs {
+    worker: bool,
+    unsafe_main_thread: bool,
+    coerce: bool,
+    defaults: std::collections::HashMap<String, String>,
+}
+
+/// Parse method attributes (worker, main_thread, coerce, defaults).
 ///
 /// Accepts both nested class-system style (e.g., #[miniextendr(env(worker))])
 /// and flat style (#[miniextendr(worker)]).
-fn parse_trait_method_thread_attrs(attrs: &[syn::Attribute]) -> (bool, bool) {
+fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut worker = false;
     let mut unsafe_main_thread = false;
+    let mut coerce = false;
+    let mut defaults = std::collections::HashMap::new();
 
     for attr in attrs {
         if !attr.path().is_ident("miniextendr") {
@@ -462,6 +478,8 @@ fn parse_trait_method_thread_attrs(attrs: &[syn::Attribute]) -> (bool, bool) {
                         worker = true;
                     } else if inner.path.is_ident("main_thread") {
                         unsafe_main_thread = true;
+                    } else if inner.path.is_ident("coerce") {
+                        coerce = true;
                     }
                     Ok(())
                 })?;
@@ -469,12 +487,31 @@ fn parse_trait_method_thread_attrs(attrs: &[syn::Attribute]) -> (bool, bool) {
                 worker = true;
             } else if meta.path.is_ident("main_thread") {
                 unsafe_main_thread = true;
+            } else if meta.path.is_ident("coerce") {
+                coerce = true;
+            } else if meta.path.is_ident("defaults") {
+                // Parse defaults(param = "value", param2 = "value2", ...)
+                meta.parse_nested_meta(|inner| {
+                    let param_name = inner
+                        .path
+                        .get_ident()
+                        .map(|i| i.to_string())
+                        .unwrap_or_default();
+                    let value: syn::LitStr = inner.value()?.parse()?;
+                    defaults.insert(param_name, value.value());
+                    Ok(())
+                })?;
             }
             Ok(())
         });
     }
 
-    (worker, unsafe_main_thread)
+    TraitMethodAttrs {
+        worker,
+        unsafe_main_thread,
+        coerce,
+        defaults,
+    }
 }
 
 /// Extract const items from a trait impl block.
@@ -614,6 +651,11 @@ fn generate_trait_method_c_wrapper(
         builder = builder.call_expr(call_expr);
     }
 
+    // Apply coerce_all if the method has #[miniextendr(coerce)]
+    if method.coerce {
+        builder = builder.coerce_all();
+    }
+
     // The builder generates both the C wrapper and the R_CallMethodDef
     builder.build().generate()
 }
@@ -715,19 +757,23 @@ fn generate_trait_env_r_wrapper(
         let method_name = &method.ident;
         let method_str = method_name.to_string();
 
-        // Collect parameters (excluding self), normalizing underscore prefixes
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // For instance methods, include 'x' as first parameter
         let function_params = if method.has_self {
-            if params.is_empty() {
+            if formals.is_empty() {
                 "x".to_string()
             } else {
-                format!("x, {}", params.join(", "))
+                format!("x, {}", formals)
             }
         } else {
-            params.join(", ")
+            formals
         };
 
         // Build roxygen tags
@@ -825,6 +871,10 @@ fn generate_trait_s3_r_wrapper(
         let generic_name = method_name.to_string();
         let s3_method_name = format!("{}.{}", generic_name, type_str);
 
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
@@ -865,10 +915,10 @@ fn generate_trait_s3_r_wrapper(
         lines.extend(method_roxygen.build());
 
         // S3 method: generic.class
-        let full_params = if params.is_empty() {
+        let full_params = if formals.is_empty() {
             "x, ...".to_string()
         } else {
-            format!("x, {}, ...", params.join(", "))
+            format!("x, {}, ...", formals)
         };
 
         // Build .Call() invocation
@@ -900,6 +950,10 @@ fn generate_trait_s3_r_wrapper(
     for method in &static_methods {
         let method_name = &method.ident;
         let method_str = method_name.to_string();
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
@@ -920,10 +974,7 @@ fn generate_trait_s3_r_wrapper(
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident,
-            trait_name,
-            method_name,
-            params.join(", ")
+            type_ident, trait_name, method_name, formals
         ));
         lines.push(format!("    {}", call));
         lines.push("}".to_string());
@@ -998,14 +1049,18 @@ fn generate_trait_s4_r_wrapper(
         let method_name = &method.ident;
         let generic_name = format!("s4_trait_{}_{}", trait_name, method_name);
 
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Build full parameter list (x first, then others, then ...)
-        let full_params = if params.is_empty() {
+        let full_params = if formals.is_empty() {
             "x, ...".to_string()
         } else {
-            format!("x, {}, ...", params.join(", "))
+            format!("x, {}, ...", formals)
         };
 
         // S4 generic roxygen (include @param tags from method doc comments)
@@ -1060,6 +1115,10 @@ fn generate_trait_s4_r_wrapper(
     for method in &static_methods {
         let method_name = &method.ident;
         let fn_name = format!("{}_{}_{}", type_str, trait_str, method_name);
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
@@ -1079,7 +1138,7 @@ fn generate_trait_s4_r_wrapper(
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
-        lines.push(format!("{} <- function({}) {{", fn_name, params.join(", ")));
+        lines.push(format!("{} <- function({}) {{", fn_name, formals));
         lines.push(format!("    {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -1155,14 +1214,18 @@ fn generate_trait_s7_r_wrapper(
         let method_name = &method.ident;
         let generic_name = format!("s7_trait_{}_{}", trait_name, method_name);
 
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Build full parameter list (x first, then others, then ...)
-        let full_params = if params.is_empty() {
+        let full_params = if formals.is_empty() {
             "x, ...".to_string()
         } else {
-            format!("x, {}, ...", params.join(", "))
+            format!("x, {}, ...", formals)
         };
 
         // S7 generic roxygen
@@ -1219,6 +1282,10 @@ fn generate_trait_s7_r_wrapper(
     for method in &static_methods {
         let method_name = &method.ident;
         let method_str = method_name.to_string();
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
@@ -1237,10 +1304,7 @@ fn generate_trait_s7_r_wrapper(
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident,
-            trait_name,
-            method_name,
-            params.join(", ")
+            type_ident, trait_name, method_name, formals
         ));
         lines.push(format!("    {}", call));
         lines.push("}".to_string());
@@ -1315,14 +1379,18 @@ fn generate_trait_r6_r_wrapper(
         let method_name = &method.ident;
         let fn_name = format!("r6_trait_{}_{}", trait_name, method_name);
 
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
         // Build parameter list (x first, then others)
-        let full_params = if params.is_empty() {
+        let full_params = if formals.is_empty() {
             "x".to_string()
         } else {
-            format!("x, {}", params.join(", "))
+            format!("x, {}", formals)
         };
 
         // R6 trait method roxygen (include @param tags from method doc comments)
@@ -1369,6 +1437,10 @@ fn generate_trait_r6_r_wrapper(
     for method in &static_methods {
         let method_name = &method.ident;
         let method_str = method_name.to_string();
+        // Build R formals with defaults applied
+        let formals =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        // Collect param names for .Call() (without defaults)
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
@@ -1387,10 +1459,7 @@ fn generate_trait_r6_r_wrapper(
 
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident,
-            trait_name,
-            method_name,
-            params.join(", ")
+            type_ident, trait_name, method_name, formals
         ));
         lines.push(format!("    {}", call));
         lines.push("}".to_string());
