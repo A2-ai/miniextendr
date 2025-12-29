@@ -9,11 +9,46 @@
 //! - `fn <name>;` - Register a `#[miniextendr]` function
 //! - `struct <name>;` - Register an ALTREP class
 //! - `impl <name>;` - Register a `#[miniextendr(env|r6|s7|s3|s4)]` impl block
+//! - `impl <name> as "label";` - Register a labeled impl block (see below)
+//! - `impl <Trait> for <Type>;` - Register a trait impl for cross-package dispatch
 //! - `use <submodule>;` - Re-export from a submodule
 //!
 //! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
 //! treated identically to `fn <name>;`. The ABI distinction is handled by
 //! `#[miniextendr]` at the function definition site.
+//!
+//! # Multiple impl blocks with labels
+//!
+//! When a type has multiple `#[miniextendr]` impl blocks (e.g., to organize methods
+//! into logical groups), each block must have a distinct label:
+//!
+//! ```rust,ignore
+//! #[miniextendr(label = "constructors")]
+//! impl MyType {
+//!     fn new() -> Self { ... }
+//!     fn from_value(x: i32) -> Self { ... }
+//! }
+//!
+//! #[miniextendr(label = "methods")]
+//! impl MyType {
+//!     fn get_value(&self) -> i32 { ... }
+//!     fn set_value(&mut self, x: i32) { ... }
+//! }
+//!
+//! miniextendr_module! {
+//!     mod mymod;
+//!     impl MyType as "constructors";
+//!     impl MyType as "methods";
+//! }
+//! ```
+//!
+//! **Rules for labeled impl blocks:**
+//! - If a type has only one impl block, no label is required
+//! - If a type has 2+ impl blocks, ALL must have distinct labels
+//! - Each labeled impl block must be registered separately in `miniextendr_module!`
+//! - Labels can be combined with class systems: `#[miniextendr(r6, label = "methods")]`
+//!
+//! The `miniextendr-lint` crate validates these rules at build time.
 //!
 //! # IMPORTANT: Duplicated in miniextendr-lint
 //!
@@ -133,28 +168,47 @@ impl syn::parse::Parse for MiniextendrModuleName {
     }
 }
 
-/// An `impl <Type>;` line inside `miniextendr_module! { ... }`.
+/// An `impl <Type>;` or `impl <Type> as "label";` line inside `miniextendr_module! { ... }`.
 ///
 /// Registers an impl block that has `#[miniextendr(env|r6|s7|s3|s4)]` attribute.
 ///
 /// ```text
-/// impl Counter;
+/// impl Counter;                    // Single impl block (no label)
+/// impl Counter as "constructors";  // Labeled impl block
 /// ```
+///
+/// When a type has multiple `#[miniextendr]` impl blocks, each must be registered
+/// with its distinct label using the `as "label"` syntax.
 pub(crate) struct MiniextendrModuleImpl {
     /// Attributes on the impl entry (passed through for cfg/doc parity).
     pub attrs: Vec<syn::Attribute>,
     _impl_token: syn::Token![impl],
     /// Type that has a `#[miniextendr(...)]` impl block.
     pub ident: syn::Ident,
+    /// Optional label for distinguishing multiple impl blocks of the same type.
+    pub label: Option<String>,
 }
 
 impl syn::parse::Parse for MiniextendrModuleImpl {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
+        let _impl_token = input.parse()?;
+        let ident = input.parse()?;
+
+        // Check for optional `as "label"` suffix
+        let label = if input.peek(syn::Token![as]) {
+            let _: syn::Token![as] = input.parse()?;
+            let label_lit: syn::LitStr = input.parse()?;
+            Some(label_lit.value())
+        } else {
+            None
+        };
+
         Ok(Self {
             attrs,
-            _impl_token: input.parse()?,
-            ident: input.parse()?,
+            _impl_token,
+            ident,
+            label,
         })
     }
 }
@@ -227,14 +281,36 @@ impl MiniextendrModuleTraitImpl {
 }
 
 impl MiniextendrModuleImpl {
-    /// Returns the identifier for the call defs const function.
+    /// Returns the identifier for the call defs const.
+    ///
+    /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
-        quote::format_ident!("{}_CALL_DEFS", self.ident.to_string().to_uppercase())
+        let type_upper = self.ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            quote::format_ident!("{}_{}_CALL_DEFS", type_upper, label_upper)
+        } else {
+            quote::format_ident!("{}_CALL_DEFS", type_upper)
+        }
     }
 
     /// Returns the identifier for the R wrappers const.
+    ///
+    /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
-        quote::format_ident!("R_WRAPPERS_IMPL_{}", self.ident.to_string().to_uppercase())
+        let type_upper = self.ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            quote::format_ident!("R_WRAPPERS_IMPL_{}_{}", type_upper, label_upper)
+        } else {
+            quote::format_ident!("R_WRAPPERS_IMPL_{}", type_upper)
+        }
+    }
+
+    /// Returns the label if present.
+    #[allow(dead_code)]
+    pub(crate) fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 

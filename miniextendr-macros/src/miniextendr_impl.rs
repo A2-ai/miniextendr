@@ -293,6 +293,8 @@ pub struct ParsedImpl {
     pub class_system: ClassSystem,
     /// Override class name (else type name)
     pub class_name: Option<String>,
+    /// Optional label for distinguishing multiple impl blocks of the same type.
+    pub label: Option<String>,
     /// Roxygen tag lines extracted from impl doc comments
     pub doc_tags: Vec<String>,
     /// All parsed methods
@@ -308,48 +310,73 @@ pub struct ParsedImpl {
 pub struct ImplAttrs {
     pub class_system: ClassSystem,
     pub class_name: Option<String>,
+    /// Optional label for distinguishing multiple impl blocks of the same type.
+    ///
+    /// When a type has multiple `#[miniextendr]` impl blocks, each must have a
+    /// distinct label. The label is used in:
+    /// - Generated wrapper names (e.g., `C_Type_label__method`)
+    /// - Module registration (e.g., `impl Type as "label"`)
+    ///
+    /// Single impl blocks don't require labels.
+    pub label: Option<String>,
 }
 
 impl syn::parse::Parse for ImplAttrs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut class_system = ClassSystem::Env;
         let mut class_name = None;
+        let mut label = None;
 
-        // Parse the first identifier (class system)
-        if !input.is_empty() {
-            let first: syn::Ident = input.parse()?;
-            class_system = first
-                .to_string()
-                .parse()
-                .map_err(|e| syn::Error::new(first.span(), e))?;
+        // Parse attributes. The first identifier can be either:
+        // - A class system (env, r6, s3, s4, s7)
+        // - A key in a key=value pair (class, label)
+        //
+        // Valid formats:
+        // - #[miniextendr]
+        // - #[miniextendr(r6)]
+        // - #[miniextendr(label = "foo")]
+        // - #[miniextendr(r6, label = "foo")]
+        // - #[miniextendr(r6, class = "CustomName", label = "foo")]
+        while !input.is_empty() {
+            let ident: syn::Ident = input.parse()?;
+            let ident_str = ident.to_string();
 
-            // Parse optional key=value pairs
-            while !input.is_empty() {
-                let _: syn::Token![,] = input.parse()?;
-                if input.is_empty() {
-                    break;
-                }
-                let key: syn::Ident = input.parse()?;
+            // Check if this is a key=value pair
+            if input.peek(syn::Token![=]) {
                 let _: syn::Token![=] = input.parse()?;
-
-                match key.to_string().as_str() {
+                match ident_str.as_str() {
                     "class" => {
                         let value: syn::LitStr = input.parse()?;
                         class_name = Some(value.value());
                     }
+                    "label" => {
+                        let value: syn::LitStr = input.parse()?;
+                        label = Some(value.value());
+                    }
                     _ => {
                         return Err(syn::Error::new(
-                            key.span(),
-                            format!("unknown option: {}", key),
+                            ident.span(),
+                            format!("unknown option: {}", ident_str),
                         ));
                     }
                 }
+            } else {
+                // This is a class system identifier
+                class_system = ident_str
+                    .parse()
+                    .map_err(|e| syn::Error::new(ident.span(), e))?;
+            }
+
+            // Consume trailing comma if present
+            if input.peek(syn::Token![,]) {
+                let _: syn::Token![,] = input.parse()?;
             }
         }
 
         Ok(ImplAttrs {
             class_system,
             class_name,
+            label,
         })
     }
 }
@@ -586,13 +613,25 @@ impl ParsedMethod {
     }
 
     /// C wrapper identifier for this method.
-    pub fn c_wrapper_ident(&self, type_ident: &syn::Ident) -> syn::Ident {
-        format_ident!("C_{}__{}", type_ident, self.ident)
+    ///
+    /// Format: `C_{Type}__{method}` or `C_{Type}_{label}__{method}` if labeled.
+    pub fn c_wrapper_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
+        if let Some(label) = label {
+            format_ident!("C_{}_{}_{}", type_ident, label, self.ident)
+        } else {
+            format_ident!("C_{}__{}", type_ident, self.ident)
+        }
     }
 
     /// Call method def identifier for registration.
-    pub fn call_method_def_ident(&self, type_ident: &syn::Ident) -> syn::Ident {
-        format_ident!("call_method_def_{}_{}", type_ident, self.ident)
+    ///
+    /// Format: `call_method_def_{type}_{method}` or `call_method_def_{type}_{label}_{method}` if labeled.
+    pub fn call_method_def_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
+        if let Some(label) = label {
+            format_ident!("call_method_def_{}_{}_{}", type_ident, label, self.ident)
+        } else {
+            format_ident!("call_method_def_{}_{}", type_ident, self.ident)
+        }
     }
 
     /// Returns true if this method returns Self.
@@ -685,6 +724,7 @@ impl ParsedImpl {
             generics: item_impl.generics.clone(),
             class_system: attrs.class_system,
             class_name: attrs.class_name,
+            label: attrs.label,
             doc_tags,
             methods,
             // Strip miniextendr attributes (and roxygen tags) before re-emitting.
@@ -760,16 +800,34 @@ impl ParsedImpl {
     }
 
     /// Module constant identifier for all call method defs.
+    ///
+    /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
     pub fn call_defs_const_ident(&self) -> syn::Ident {
-        format_ident!("{}_CALL_DEFS", self.type_ident.to_string().to_uppercase())
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            format_ident!("{}_{}_CALL_DEFS", type_upper, label_upper)
+        } else {
+            format_ident!("{}_CALL_DEFS", type_upper)
+        }
     }
 
     /// Module constant identifier for R wrapper parts.
+    ///
+    /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
     pub fn r_wrappers_const_ident(&self) -> syn::Ident {
-        format_ident!(
-            "R_WRAPPERS_IMPL_{}",
-            self.type_ident.to_string().to_uppercase()
-        )
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            format_ident!("R_WRAPPERS_IMPL_{}_{}", type_upper, label_upper)
+        } else {
+            format_ident!("R_WRAPPERS_IMPL_{}", type_upper)
+        }
+    }
+
+    /// Returns the label if present.
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 
@@ -783,7 +841,7 @@ pub fn generate_method_c_wrapper(
 
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
-    let c_ident = method.c_wrapper_ident(type_ident);
+    let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
 
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
@@ -915,7 +973,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor
     if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
+        let c_ident = ctor.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
@@ -944,7 +1002,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods
     for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -981,7 +1039,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods
     for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1110,7 +1168,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr
     // Note: has_self_returning_methods was calculated above for @param .ptr documentation
     if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
+        let c_ident = ctor.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
@@ -1152,7 +1210,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Public instance methods
     for (i, method) in public_methods.iter().enumerate() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1201,7 +1259,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Private instance methods
     let private_methods: Vec<_> = parsed_impl.private_instance_methods().collect();
     for method in &private_methods {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1230,7 +1288,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Finalizer (if any)
     if let Some(finalizer) = parsed_impl.finalizer() {
-        let c_ident = finalizer.c_wrapper_ident(type_ident);
+        let c_ident = finalizer.c_wrapper_ident(type_ident, parsed_impl.label());
         lines.push(format!(
             "        finalize = function() .Call({}, .call = match.call(), private$.ptr),",
             c_ident
@@ -1249,7 +1307,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as separate functions on the class object
     for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1302,7 +1360,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor
     if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
+        let c_ident = ctor.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
@@ -1346,7 +1404,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods as S3 generics + methods
     for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1431,7 +1489,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1537,7 +1595,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .any(|m| m.returns_self());
 
     if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
+        let c_ident = ctor.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
@@ -1580,7 +1638,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods as S7 generics + methods
     for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1673,7 +1731,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1761,7 +1819,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor function
     if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
+        let c_ident = ctor.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
@@ -1794,7 +1852,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods as S4 methods
     for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let method_name = if let Some(ref generic) = method.method_attrs.generic {
             generic.clone()
         } else {
@@ -1861,7 +1919,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Static methods as regular functions
     for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let params =
             crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
@@ -1955,9 +2013,10 @@ pub fn expand_impl(
     };
     let call_defs_const = parsed.call_defs_const_ident();
 
+    let label = parsed.label();
     let call_def_idents: Vec<syn::Ident> = parsed
         .included_methods()
-        .map(|m| m.call_method_def_ident(type_ident))
+        .map(|m| m.call_method_def_ident(type_ident, label))
         .collect();
     let call_defs_len = call_def_idents.len();
     let call_defs_len_lit =

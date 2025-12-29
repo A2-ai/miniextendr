@@ -166,12 +166,14 @@ enum LintKind {
 struct LintItem {
     kind: LintKind,
     name: String,
+    /// Optional label for impl blocks with multiple impl blocks for the same type.
+    label: Option<String>,
     line: usize,
 }
 
 impl PartialEq for LintItem {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind && self.name == other.name
+        self.kind == other.kind && self.name == other.name && self.label == other.label
     }
 }
 
@@ -181,18 +183,39 @@ impl std::hash::Hash for LintItem {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         self.name.hash(state);
+        self.label.hash(state);
     }
 }
 
 impl LintItem {
     fn new(kind: LintKind, name: String, line: usize) -> Self {
-        Self { kind, name, line }
+        Self {
+            kind,
+            name,
+            label: None,
+            line,
+        }
+    }
+
+    fn with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self {
+        Self {
+            kind,
+            name,
+            label,
+            line,
+        }
     }
 
     fn display(&self) -> String {
         match self.kind {
             LintKind::Function => format!("fn {}", self.name),
-            LintKind::Impl => format!("impl {}", self.name),
+            LintKind::Impl => {
+                if let Some(ref label) = self.label {
+                    format!("impl {} as \"{}\"", self.name, label)
+                } else {
+                    format!("impl {}", self.name)
+                }
+            }
             LintKind::Struct => format!("struct {}", self.name),
             LintKind::TraitImpl => format!("impl {}", self.name), // "impl Trait for Type"
         }
@@ -362,27 +385,77 @@ fn collect_items_from_file(
     Ok(())
 }
 
-/// Parse the class system from #[miniextendr(...)] attribute.
-/// Returns Some("s3"), Some("s4"), etc. or None for default (env).
-fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
+/// Parsed miniextendr attribute information for an impl block.
+#[derive(Debug, Default)]
+struct MiniextendrImplAttrs {
+    /// Class system (e.g., "r6", "s3", "s4", "s7", or empty for env)
+    class_system: Option<String>,
+    /// Optional label for distinguishing multiple impl blocks of the same type
+    label: Option<String>,
+}
+
+/// Parse the #[miniextendr(...)] attribute to extract class system and label.
+///
+/// Handles:
+/// - `#[miniextendr]` → default (env), no label
+/// - `#[miniextendr(env)]` → explicit env, no label
+/// - `#[miniextendr(r6)]` → r6 class system, no label
+/// - `#[miniextendr(label = "foo")]` → default (env), labeled
+/// - `#[miniextendr(env, label = "foo")]` → explicit env, labeled
+/// - `#[miniextendr(r6, label = "foo")]` → r6 class system, labeled
+fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs {
+    let mut result = MiniextendrImplAttrs::default();
+
     for attr in attrs {
-        if attr
+        if !attr
             .path()
             .segments
             .last()
             .is_some_and(|seg| seg.ident == "miniextendr")
         {
-            // Try to parse the attribute arguments
-            if let syn::Meta::List(meta_list) = &attr.meta {
-                let tokens = meta_list.tokens.to_string();
-                let tokens = tokens.trim();
-                if !tokens.is_empty() {
-                    return Some(tokens.to_string());
+            continue;
+        }
+
+        // Try to parse the attribute arguments
+        if let syn::Meta::List(meta_list) = &attr.meta {
+            let tokens = meta_list.tokens.to_string();
+            let tokens = tokens.trim();
+            if tokens.is_empty() {
+                continue;
+            }
+
+            // Parse tokens like: "r6, label = \"methods\"" or "label = \"foo\""
+            for part in tokens.split(',') {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
                 }
+
+                if part.starts_with("label") {
+                    // Extract label value: label = "..."
+                    if let Some(eq_pos) = part.find('=') {
+                        let value = part[eq_pos + 1..].trim();
+                        // Remove quotes
+                        let value = value.trim_matches('"').trim_matches('\'');
+                        result.label = Some(value.to_string());
+                    }
+                } else if !part.contains('=') {
+                    // This is a class system identifier (env, r6, s3, s4, s7)
+                    // Note: "env" is valid even though it's the default
+                    result.class_system = Some(part.to_string());
+                }
+                // Skip other key=value pairs (like class = "CustomName")
             }
         }
     }
-    None
+
+    result
+}
+
+/// Parse the class system from #[miniextendr(...)] attribute.
+/// Returns Some("s3"), Some("s4"), etc. or None for default (env).
+fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
+    parse_miniextendr_impl_attrs(attrs).class_system
 }
 
 fn collect_items(
@@ -398,6 +471,10 @@ fn collect_items(
         std::collections::HashMap::new();
     // Track trait impls to check compatibility after all items are processed
     let mut trait_impls_to_check: Vec<(String, String, Option<String>, usize)> = Vec::new();
+    // Track impl blocks per type for multiple impl block validation
+    // Maps type_name -> Vec<(label, line)>
+    let mut impl_blocks_per_type: std::collections::HashMap<String, Vec<(Option<String>, usize)>> =
+        std::collections::HashMap::new();
 
     for item in items {
         match item {
@@ -424,7 +501,9 @@ fn collect_items(
             Item::Impl(item_impl) => {
                 if has_miniextendr_attr(&item_impl.attrs) {
                     let line = item_impl.self_ty.span().start().line;
-                    let class_system = parse_class_system(&item_impl.attrs);
+                    let impl_attrs = parse_miniextendr_impl_attrs(&item_impl.attrs);
+                    let class_system = impl_attrs.class_system.clone();
+                    let label = impl_attrs.label.clone();
 
                     match impl_type_name(&item_impl.self_ty) {
                         Some(type_name) => {
@@ -455,9 +534,16 @@ fn collect_items(
                                     (class_system.unwrap_or_default(), line),
                                 );
 
-                                miniextendr_items.insert(LintItem::new(
+                                // Track for multiple impl block validation
+                                impl_blocks_per_type
+                                    .entry(type_name.clone())
+                                    .or_default()
+                                    .push((label.clone(), line));
+
+                                miniextendr_items.insert(LintItem::with_label(
                                     LintKind::Impl,
                                     type_name,
+                                    label,
                                     line,
                                 ));
                             }
@@ -571,6 +657,57 @@ fn collect_items(
         // S3/S4/S7/R6 trait impls are compatible with Env inherent impls
         // because they use their own dispatch mechanisms (generics, methods, etc.)
     }
+
+    // Validate multiple impl blocks: if a type has 2+ impl blocks, all must have labels
+    for (type_name, impl_blocks) in &impl_blocks_per_type {
+        if impl_blocks.len() > 1 {
+            // Check if any impl block is missing a label
+            let missing_labels: Vec<_> = impl_blocks
+                .iter()
+                .filter(|(label, _)| label.is_none())
+                .map(|(_, line)| *line)
+                .collect();
+
+            if !missing_labels.is_empty() {
+                errors.push(format!(
+                    "{}:{}: type `{}` has {} impl blocks but some are missing labels. \
+                     When a type has multiple #[miniextendr] impl blocks, all must have \
+                     distinct labels using #[miniextendr(label = \"...\")]. \
+                     Unlabeled impl blocks at lines: {}",
+                    path.display(),
+                    impl_blocks[0].1, // First occurrence line
+                    type_name,
+                    impl_blocks.len(),
+                    missing_labels
+                        .iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+
+            // Check for duplicate labels
+            let mut seen_labels: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
+            for (label, line) in impl_blocks {
+                if let Some(label) = label {
+                    if let Some(first_line) = seen_labels.get(label.as_str()) {
+                        errors.push(format!(
+                            "{}:{}: duplicate label \"{}\" for type `{}`. \
+                             First occurrence at line {}. Each impl block must have a unique label.",
+                            path.display(),
+                            line,
+                            label,
+                            type_name,
+                            first_line
+                        ));
+                    } else {
+                        seen_labels.insert(label.as_str(), *line);
+                    }
+                }
+            }
+        }
+    }
 }
 
 fn has_miniextendr_attr(attrs: &[Attribute]) -> bool {
@@ -625,9 +762,10 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
 
     for impl_block in parsed.impls {
         let line = impl_block.ident.span().start().line;
-        items.push(LintItem::new(
+        items.push(LintItem::with_label(
             LintKind::Impl,
             impl_block.ident.to_string(),
+            impl_block.label.clone(),
             line,
         ));
     }

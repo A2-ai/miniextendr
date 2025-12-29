@@ -9,11 +9,46 @@
 //! - `fn <name>;` - Register a `#[miniextendr]` function
 //! - `struct <name>;` - Register an ALTREP class
 //! - `impl <name>;` - Register a `#[miniextendr(env|r6|s7|s3|s4)]` impl block
+//! - `impl <name> as "label";` - Register a labeled impl block (see below)
+//! - `impl <Trait> for <Type>;` - Register a trait impl for cross-package dispatch
 //! - `use <submodule>;` - Re-export from a submodule
 //!
 //! Note: `extern "C-unwind" fn <name>;` syntax is accepted for parsing but
 //! treated identically to `fn <name>;`. The ABI distinction is handled by
 //! `#[miniextendr]` at the function definition site.
+//!
+//! # Multiple impl blocks with labels
+//!
+//! When a type has multiple `#[miniextendr]` impl blocks (e.g., to organize methods
+//! into logical groups), each block must have a distinct label:
+//!
+//! ```rust,ignore
+//! #[miniextendr(label = "constructors")]
+//! impl MyType {
+//!     fn new() -> Self { ... }
+//!     fn from_value(x: i32) -> Self { ... }
+//! }
+//!
+//! #[miniextendr(label = "methods")]
+//! impl MyType {
+//!     fn get_value(&self) -> i32 { ... }
+//!     fn set_value(&mut self, x: i32) { ... }
+//! }
+//!
+//! miniextendr_module! {
+//!     mod mymod;
+//!     impl MyType as "constructors";
+//!     impl MyType as "methods";
+//! }
+//! ```
+//!
+//! **Rules for labeled impl blocks:**
+//! - If a type has only one impl block, no label is required
+//! - If a type has 2+ impl blocks, ALL must have distinct labels
+//! - Each labeled impl block must be registered separately in `miniextendr_module!`
+//! - Labels can be combined with class systems: `#[miniextendr(r6, label = "methods")]`
+//!
+//! The `miniextendr-lint` crate validates these rules at build time.
 //!
 //! # IMPORTANT: Duplicated in miniextendr-lint
 //!
@@ -35,6 +70,8 @@
 //!
 //! See `miniextendr-lint/src/lib.rs` module docs for more details.
 
+use crate::{call_method_def_ident_for, r_wrapper_const_ident_for};
+
 /// A single `fn ...;` line inside `miniextendr_module! { ... }`.
 ///
 /// Registers a function that has the `#[miniextendr]` attribute.
@@ -49,8 +86,11 @@
 /// To conditionally compile functions, place `#[cfg(...)]` AFTER `#[miniextendr]`
 /// on the function definition itself, not in this module declaration.
 pub(crate) struct MiniextendrModuleFunction {
-    /// Optional extern ABI when the declaration uses `extern \"C-unwind\"`.
+    /// Attributes attached to the module entry (e.g., cfg/doc mirrors from the function).
+    pub attrs: Vec<syn::Attribute>,
+    /// Optional extern ABI when the declaration uses `extern "C-unwind"`.
     pub _abi: Option<syn::Abi>,
+    /// Token for the `fn` keyword kept for accurate span reporting.
     _fn_token: syn::Token![fn],
     /// Identifier of the `#[miniextendr]` function being registered.
     pub ident: syn::Ident,
@@ -58,16 +98,30 @@ pub(crate) struct MiniextendrModuleFunction {
 
 impl syn::parse::Parse for MiniextendrModuleFunction {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
         let _abi = if input.peek(syn::Token![extern]) {
             Some(input.parse()?)
         } else {
             None
         };
         Ok(Self {
+            attrs,
             _abi,
             _fn_token: input.parse()?,
             ident: input.parse()?,
         })
+    }
+}
+
+impl MiniextendrModuleFunction {
+    /// Identifier for the generated `R_CallMethodDef` entry for this function.
+    pub(crate) fn call_method_def_ident(&self) -> syn::Ident {
+        call_method_def_ident_for(&self.ident)
+    }
+
+    /// Identifier for the generated R wrapper source string const.
+    pub(crate) fn r_wrapper_const_ident(&self) -> syn::Ident {
+        r_wrapper_const_ident_for(&self.ident)
     }
 }
 
@@ -101,7 +155,6 @@ impl syn::parse::Parse for MiniextendrModuleStruct {
 /// This determines the generated init symbol: `R_init_<name>_miniextendr`.
 pub(crate) struct MiniextendrModuleName {
     _mod_token: syn::Token![mod],
-    #[allow(dead_code)]
     /// Base name that drives `R_init_<name>_miniextendr` symbol generation.
     pub ident: syn::Ident,
 }
@@ -115,24 +168,47 @@ impl syn::parse::Parse for MiniextendrModuleName {
     }
 }
 
-/// An `impl <Type>;` line inside `miniextendr_module! { ... }`.
+/// An `impl <Type>;` or `impl <Type> as "label";` line inside `miniextendr_module! { ... }`.
 ///
 /// Registers an impl block that has `#[miniextendr(env|r6|s7|s3|s4)]` attribute.
 ///
 /// ```text
-/// impl Counter;
+/// impl Counter;                    // Single impl block (no label)
+/// impl Counter as "constructors";  // Labeled impl block
 /// ```
+///
+/// When a type has multiple `#[miniextendr]` impl blocks, each must be registered
+/// with its distinct label using the `as "label"` syntax.
 pub(crate) struct MiniextendrModuleImpl {
+    /// Attributes on the impl entry (passed through for cfg/doc parity).
+    pub attrs: Vec<syn::Attribute>,
     _impl_token: syn::Token![impl],
     /// Type that has a `#[miniextendr(...)]` impl block.
     pub ident: syn::Ident,
+    /// Optional label for distinguishing multiple impl blocks of the same type.
+    pub label: Option<String>,
 }
 
 impl syn::parse::Parse for MiniextendrModuleImpl {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
+        let _impl_token = input.parse()?;
+        let ident = input.parse()?;
+
+        // Check for optional `as "label"` suffix
+        let label = if input.peek(syn::Token![as]) {
+            let _: syn::Token![as] = input.parse()?;
+            let label_lit: syn::LitStr = input.parse()?;
+            Some(label_lit.value())
+        } else {
+            None
+        };
+
         Ok(Self {
-            _impl_token: input.parse()?,
-            ident: input.parse()?,
+            attrs,
+            _impl_token,
+            ident,
+            label,
         })
     }
 }
@@ -151,6 +227,8 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
 /// - The type must have `#[miniextendr] impl Trait for Type` (generates vtable static)
 /// - The type should have `#[derive(ExternalPtr)]`
 pub(crate) struct MiniextendrModuleTraitImpl {
+    /// Attributes on the trait impl entry (for cfg propagation).
+    pub attrs: Vec<syn::Attribute>,
     /// Token span for `impl` retained for diagnostics.
     pub _impl_token: syn::Token![impl],
     /// Trait being exposed for cross-package dispatch.
@@ -163,7 +241,9 @@ pub(crate) struct MiniextendrModuleTraitImpl {
 
 impl syn::parse::Parse for MiniextendrModuleTraitImpl {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
         Ok(Self {
+            attrs,
             _impl_token: input.parse()?,
             trait_path: input.parse()?,
             _for_token: input.parse()?,
@@ -172,17 +252,65 @@ impl syn::parse::Parse for MiniextendrModuleTraitImpl {
     }
 }
 
-impl MiniextendrModuleImpl {
-    /// Returns the identifier for the call defs const function.
-    #[allow(dead_code)]
+impl MiniextendrModuleTraitImpl {
+    /// Returns the identifier for the call defs const.
+    /// Format: `{TYPE}_{TRAIT}_CALL_DEFS`
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
-        quote::format_ident!("{}_CALL_DEFS", self.ident.to_string().to_uppercase())
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        let trait_name = self
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string().to_uppercase())
+            .unwrap_or_default();
+        quote::format_ident!("{}_{}_CALL_DEFS", type_upper, trait_name)
     }
 
     /// Returns the identifier for the R wrappers const.
-    #[allow(dead_code)]
+    /// Format: `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
-        quote::format_ident!("R_WRAPPERS_IMPL_{}", self.ident.to_string().to_uppercase())
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        let trait_name = self
+            .trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string().to_uppercase())
+            .unwrap_or_default();
+        quote::format_ident!("R_WRAPPERS_{}_{}_IMPL", type_upper, trait_name)
+    }
+}
+
+impl MiniextendrModuleImpl {
+    /// Returns the identifier for the call defs const.
+    ///
+    /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
+    pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
+        let type_upper = self.ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            quote::format_ident!("{}_{}_CALL_DEFS", type_upper, label_upper)
+        } else {
+            quote::format_ident!("{}_CALL_DEFS", type_upper)
+        }
+    }
+
+    /// Returns the identifier for the R wrappers const.
+    ///
+    /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
+    pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
+        let type_upper = self.ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            quote::format_ident!("R_WRAPPERS_IMPL_{}_{}", type_upper, label_upper)
+        } else {
+            quote::format_ident!("R_WRAPPERS_IMPL_{}", type_upper)
+        }
+    }
+
+    /// Returns the label if present.
+    #[allow(dead_code)]
+    pub(crate) fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 
@@ -194,7 +322,6 @@ impl MiniextendrModuleImpl {
 /// - `name::R_WRAPPERS_PARTS_<NAME_UPPER>`
 pub(crate) struct MiniextendrModuleUse {
     _use_token: syn::Token![use],
-    #[allow(dead_code)]
     /// Target module to re-export wrappers from.
     pub use_name: syn::UseName,
 }
@@ -238,10 +365,8 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// ```
 pub(crate) struct MiniextendrModule {
     /// The module header (`mod <name>;`) that drives symbol generation.
-    #[allow(dead_code)]
     pub(crate) module_name: MiniextendrModuleName,
     /// Submodules to re-export wrappers from (`use foo;`).
-    #[allow(dead_code)]
     pub(crate) uses: Vec<MiniextendrModuleUse>,
     /// Functions registered via `fn name;`.
     pub(crate) functions: Vec<MiniextendrModuleFunction>,
