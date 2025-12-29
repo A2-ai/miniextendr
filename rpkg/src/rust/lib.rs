@@ -34,6 +34,7 @@ mod panic_tests;
 mod r6_default_tests;
 mod r6_tests;
 mod receiver_tests;
+mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
@@ -1114,6 +1115,7 @@ miniextendr_module! {
     use class_system_matrix;
     use shared_trait_test;
     use convert_pref_tests;
+    use rng_tests;
     use nonapi;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
