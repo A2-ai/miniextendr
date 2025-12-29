@@ -1,5 +1,115 @@
 use super::*;
 
+// =============================================================================
+// Doc-lint feature tests (implicit title/description extraction)
+// =============================================================================
+
+#[cfg(feature = "doc-lint")]
+mod doc_lint_tests {
+    use super::*;
+
+    /// Helper to create doc attributes from lines (simulates `/// line1`, `/// line2`, etc.)
+    fn make_doc_attrs(lines: &[&str]) -> Vec<syn::Attribute> {
+        lines
+            .iter()
+            .map(|line| syn::parse_quote!(#[doc = #line]))
+            .collect()
+    }
+
+    #[test]
+    fn test_implicit_title_simple() {
+        let attrs = make_doc_attrs(&["Simple title"]);
+        assert_eq!(
+            implicit_title_from_attrs(&attrs),
+            Some("Simple title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_title_with_period() {
+        // Title ends at first period
+        let attrs = make_doc_attrs(&["This is the title. This is description."]);
+        assert_eq!(
+            implicit_title_from_attrs(&attrs),
+            Some("This is the title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_title_trailing_period_stripped() {
+        let attrs = make_doc_attrs(&["Title with trailing period."]);
+        assert_eq!(
+            implicit_title_from_attrs(&attrs),
+            Some("Title with trailing period".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_title_multiline_before_blank() {
+        // Title spans multiple lines until blank line
+        let attrs =
+            make_doc_attrs(&["First part of title", "second part of title", "", "Description"]);
+        assert_eq!(
+            implicit_title_from_attrs(&attrs),
+            Some("First part of title second part of title".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_title_none_when_starts_with_tag() {
+        let attrs = make_doc_attrs(&["@param x A parameter"]);
+        assert_eq!(implicit_title_from_attrs(&attrs), None);
+    }
+
+    #[test]
+    fn test_implicit_title_empty_docs() {
+        let attrs: Vec<syn::Attribute> = vec![];
+        assert_eq!(implicit_title_from_attrs(&attrs), None);
+    }
+
+    #[test]
+    fn test_implicit_description_single_paragraph() {
+        let attrs = make_doc_attrs(&["This is the description."]);
+        assert_eq!(
+            implicit_description_from_attrs(&attrs),
+            Some("This is the description.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_description_multiline_paragraph() {
+        let attrs =
+            make_doc_attrs(&["First line of description.", "Second line of description."]);
+        assert_eq!(
+            implicit_description_from_attrs(&attrs),
+            Some("First line of description. Second line of description.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_description_stops_at_blank_line() {
+        let attrs = make_doc_attrs(&[
+            "This is description.",
+            "",
+            "This is details (not description).",
+        ]);
+        assert_eq!(
+            implicit_description_from_attrs(&attrs),
+            Some("This is description.".to_string())
+        );
+    }
+
+    #[test]
+    fn test_implicit_description_none_when_starts_with_tag() {
+        let attrs = make_doc_attrs(&["@title Explicit title", "@description Explicit desc"]);
+        assert_eq!(implicit_description_from_attrs(&attrs), None);
+    }
+}
+
+// =============================================================================
+// Tag extraction tests
+// =============================================================================
+
 #[test]
 fn test_format_single_line_tags() {
     let tags = vec![
