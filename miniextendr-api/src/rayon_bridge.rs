@@ -32,12 +32,13 @@
 //! ┌───────────────────────────────────────────────────────────┐
 //! │                    R Main Thread                          │
 //! │  .Call("my_func") → miniextendr entry point               │
+//! │  (also handles routed R API calls from other threads)     │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
 //! ┌─────────────────────────┴─────────────────────────────────┐
 //! │               Worker Thread (run_on_worker)               │
 //! │  1. Setup: with_r_vec() allocates R vectors               │
-//! │  2. Parallel: spawn Rayon work (pure Rust only!)          │
+//! │  2. Parallel: spawn Rayon work                            │
 //! │  3. Cleanup: convert results to R                         │
 //! └─────────────────────────┬─────────────────────────────────┘
 //!                           ↓
@@ -45,78 +46,93 @@
 //! │              Rayon Thread Pool (2MB stacks)               │
 //! │   Thread 1    Thread 2    Thread 3    Thread N            │
 //! │      ↓           ↓           ↓           ↓                │
-//! │   Pure Rust  Pure Rust  Pure Rust  Pure Rust              │
-//! │   compute    compute    compute    compute                │
-//! │   (NO R API calls from within parallel iterators!)        │
+//! │   Compute    Compute    Compute    Compute                │
+//! │   (R API calls route to main thread - safe but slow)      │
 //! └───────────────────────────────────────────────────────────┘
 //! ```
 //!
 //! # Thread Context for `with_r_vec`
 //!
-//! [`with_r_vec`] can be called from **either** the worker thread or directly from
-//! an R-thread wrapper (SEXP-returning exported function). It works by:
+//! [`with_r_vec`] can be called from **any thread**. It works by:
 //!
 //! 1. **Allocation on R thread**: Uses [`with_r_thread`][crate::worker::with_r_thread]
 //!    to allocate and PROTECT the R vector on the R main thread.
-//! 2. **Pointer acquisition on R thread**: The raw pointer is obtained while the
-//!    object is protected, ensuring no GC can invalidate it.
+//! 2. **Pointer acquisition**: The raw pointer is obtained while the object is protected.
 //! 3. **Parallel fill**: The closure receives a `&mut [T]` slice that Rayon threads
-//!    can safely write to (the underlying memory won't move while protected).
+//!    can safely write to. The PROTECTED vector cannot be collected by GC.
 //! 4. **Cleanup**: UNPROTECT is called via a guard, and the SEXP is returned.
 //!
-//! **Safety invariant**: The R vector is PROTECTED for the entire duration of
-//! parallel writes. No R allocations can occur during the parallel section
-//! (the closure must be pure Rust), so GC cannot run and the pointer remains valid.
+//! **Safety**: The R vector is PROTECTED for the entire duration of parallel writes.
+//! Even if R APIs are called from within the closure (which route to main thread),
+//! GC cannot collect the protected vector, so the slice remains valid.
 //!
-//! # What NOT To Do
+//! **Efficiency tip**: For best performance, keep the closure body as pure Rust.
+//! R API calls inside will work but serialize through the main thread.
 //!
-//! **Never call R APIs inside parallel iterators.** R is single-threaded and
-//! calling R functions from multiple threads simultaneously causes undefined behavior.
+//! # Performance: Avoid R Calls in Hot Loops
 //!
-//! ## Forbidden Patterns
+//! **Non-`_unchecked` FFI calls are safe from any thread** - they automatically
+//! route to the R main thread via [`with_r_thread`][crate::worker::with_r_thread].
+//! However, this routing has overhead, so calling R APIs inside tight parallel
+//! loops defeats the purpose of parallelism.
+//!
+//! ## Inefficient Patterns (safe but slow)
 //!
 //! ```ignore
-//! // BAD: Calling ffi::Rf_* inside par_iter
+//! // SLOW: Each Rf_ScalarReal routes to main thread
 //! data.par_iter().map(|x| {
-//!     unsafe { ffi::Rf_ScalarReal(*x) }  // WRONG! R call from Rayon thread
+//!     unsafe { ffi::Rf_ScalarReal(*x) }  // Works, but serializes on main thread
 //! }).collect()
 //!
-//! // BAD: Using IntoR/into_sexp() inside parallel closure
+//! // SLOW: into_sexp() routes to main thread per element
 //! data.par_iter().map(|x| {
-//!     x.into_sexp()  // WRONG! This calls R internally
-//! }).collect()
-//!
-//! // BAD: Allocating R vectors inside parallel work
-//! data.par_iter().map(|chunk| {
-//!     let v: Vec<f64> = chunk.iter().copied().collect();
-//!     v.into_sexp()  // WRONG! R allocation from wrong thread
-//! }).collect()
-//!
-//! // BAD: Using RRng inside parallel iterators (with rand feature)
-//! data.par_iter().map(|x| {
-//!     let mut rng = RRng::new();
-//!     x + rng.random::<f64>()  // WRONG! R's RNG isn't thread-safe
+//!     x.into_sexp()  // Works, but no parallelism benefit
 //! }).collect()
 //! ```
 //!
-//! ## Correct Patterns
+//! ## Efficient Patterns
 //!
 //! ```ignore
-//! // GOOD: Pure Rust computation, R conversion after
+//! // FAST: Pure Rust parallel computation, single R conversion after
 //! let results: Vec<f64> = data.par_iter().map(|x| x.sqrt()).collect();
-//! results.into_sexp()  // R conversion happens on single thread
+//! results.into_sexp()  // One R call at the end
 //!
-//! // GOOD: Pre-allocate with with_r_vec, parallel fill
+//! // FAST: Pre-allocate R vector, parallel fill with pure Rust
 //! with_r_vec(data.len(), |output: &mut [f64]| {
 //!     output.par_iter_mut()
 //!         .zip(data.par_iter())
 //!         .for_each(|(out, x)| *out = x.sqrt());
 //! })
 //!
-//! // GOOD: Use reduce::* for reductions
+//! // FAST: Use reduce::* for parallel reductions
 //! rayon_bridge::reduce::sum(&data)
+//! ```
 //!
-//! // GOOD: Use Rust's thread_rng for parallel RNG (not R-reproducible)
+//! ## Special Case: `_unchecked` FFI Functions
+//!
+//! The `*_unchecked` variants bypass thread routing and **must** be called
+//! from the R main thread. Calling them from Rayon threads is undefined behavior.
+//!
+//! ```ignore
+//! // UNSAFE: _unchecked variants don't route to main thread
+//! data.par_iter().map(|x| {
+//!     unsafe { ffi::Rf_ScalarReal_unchecked(*x) }  // UB! No routing
+//! }).collect()
+//! ```
+//!
+//! # RNG in Parallel Code
+//!
+//! `RRng` (with `rand` feature) routes each call to R's RNG on the main thread.
+//! This is safe but serializes. For parallel RNG, use Rust's `thread_rng`:
+//!
+//! ```ignore
+//! // SLOW: RRng serializes on main thread
+//! data.par_iter().map(|x| {
+//!     let mut rng = RRng::new();
+//!     x + rng.uniform_f64()  // Each call routes to main thread
+//! }).collect::<Vec<_>>()
+//!
+//! // FAST: thread_rng is thread-local, no routing (not R-reproducible)
 //! use rand::Rng;
 //! data.par_iter().map(|x| {
 //!     let mut rng = rand::thread_rng();
@@ -124,17 +140,14 @@
 //! }).collect::<Vec<_>>()
 //! ```
 //!
-//! # Important Limitations
+//! # Summary
 //!
-//! **DO NOT call R APIs from within parallel iterators.** This includes:
-//! - Any direct FFI calls to R (`Rf_*`, `R_*` functions)
-//! - `IntoR::into_sexp()` inside `.map()` closures
-//! - `RRng` methods (they call R's RNG which isn't thread-safe)
-//!
-//! **DO** perform all R interactions before or after parallel work:
-//! - Use `with_r_vec::<T>()` to pre-allocate R vectors before parallel writes
-//! - Collect to `Vec<T>` then convert with `.into_sexp()` after
-//! - Use the `reduce::*` functions which handle this correctly
+//! | Pattern | Safety | Performance |
+//! |---------|--------|-------------|
+//! | Pure Rust in `par_iter`, R at end | Safe | Fast |
+//! | `with_r_vec` + parallel fill | Safe | Fast |
+//! | R FFI (non-`_unchecked`) in `par_iter` | Safe | Slow (serialized) |
+//! | R FFI `_unchecked` in `par_iter` | **UB** | N/A |
 
 use crate::IntoR;
 use crate::ffi::{RNativeType, SEXP};
