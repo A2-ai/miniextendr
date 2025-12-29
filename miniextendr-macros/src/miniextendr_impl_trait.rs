@@ -765,8 +765,10 @@ fn generate_trait_s3_r_wrapper(
 
         // S3 generic roxygen (only create if doesn't exist)
         let generic_roxygen = RoxygenBuilder::new()
+            .title(format!("S3 generic for `{}`", generic_name))
             .custom(format!("S3 generic for `{}`", generic_name))
             .name(&generic_name)
+            .rdname(&type_str)
             .custom("@param x An object")
             .custom("@param ... Additional arguments passed to methods")
             .source(format!(

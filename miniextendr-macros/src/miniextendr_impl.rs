@@ -1372,7 +1372,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Create the S3 generic (only for custom generics, not base R overrides)
             // Use conditional definition to avoid overwriting existing generics.
             // @name is required because roxygen2 can't parse conditional definitions.
+            lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
+            lines.push(format!("#' @rdname {}", class_name));
             lines.push(format!("#' @name {}", generic_name));
             lines.push("#' @param x An object".to_string());
             lines.push("#' @param ... Additional arguments passed to methods".to_string());
