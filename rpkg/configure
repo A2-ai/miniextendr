@@ -609,6 +609,7 @@ ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
 CARGO_SOURCE_REPLACE
+VENDOR_SYNC_EXTRA
 FORCE_VENDOR
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
@@ -697,7 +698,8 @@ CARGO_TARGET_DIR
 CARGO_PROFILE
 ENV_RUSTFLAGS
 CARGO_BUILD_TARGET
-FORCE_VENDOR'
+FORCE_VENDOR
+VENDOR_SYNC_EXTRA'
 
 
 # Initialize some variables set by options.
@@ -1331,6 +1333,9 @@ Some influential environment variables:
               Cargo build target triple (e.g. aarch64-apple-darwin)
   FORCE_VENDOR
               Set to 1 to force `cargo vendor` refresh in dev mode
+  VENDOR_SYNC_EXTRA
+              Set to 1 to include extra `cargo vendor --sync` manifests
+              (workspace/bench)
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -2528,6 +2533,10 @@ VENDOR_OUT="$abs_rpkg_src/vendor"
 
 
 
+: ${VENDOR_SYNC_EXTRA="0"}
+
+
+
 if test "$NOT_CRAN" = "true"
 then :
 
@@ -3295,7 +3304,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"
 RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
@@ -3810,7 +3819,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       fi
     fi
 
-        _new="$(cksum < "$LOCKFILE" | awk '{print ":"}')"
+        _new="$(cksum < "$LOCKFILE" | awk '{print $1":"$2}')"
     _old="$(cat "$STAMP" 2>/dev/null || true)"
 
     _need=0
@@ -3824,20 +3833,27 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       _need=1
     fi
 
-    if test $_need -eq 1; then
-            if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
-        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
-        mkdir -p "$VENDOR_OUT"
-        $CARGO_CMD vendor \
-          --manifest-path "$MANIFEST" \
-          --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
-          --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-          "$VENDOR_OUT"
-        if test $? -ne 0; then
-          echo "configure: error: cargo vendor failed" >&2
-          exit 1
-        fi
-        echo "$_new" > "$STAMP"
+	    if test $_need -eq 1; then
+	      	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
+	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
+	        mkdir -p "$VENDOR_OUT"
+	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
+	          echo "configure: cargo vendor: including extra --sync manifests (workspace/bench)"
+	          $CARGO_CMD vendor \
+	            --manifest-path "$MANIFEST" \
+	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
+	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
+	            "$VENDOR_OUT"
+	        else
+	          $CARGO_CMD vendor \
+	            --manifest-path "$MANIFEST" \
+	            "$VENDOR_OUT"
+	        fi
+	        if test $? -ne 0; then
+	          echo "configure: error: cargo vendor failed" >&2
+	          exit 1
+	        fi
+	        echo "$_new" > "$STAMP"
       else
                 if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
@@ -4033,23 +4049,23 @@ VENDORED_CONFIG_EOF
 
                 _lock_ck=""
     if test -f "src/rust/Cargo.lock"; then
-      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print ":"}')"
+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print $1":"$2}')"
     fi
     _api_ck=""
     if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
-      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print ":"}')"
+      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print $1":"$2}')"
     fi
     _macros_ck=""
     if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
-      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print ":"}')"
+      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print $1":"$2}')"
     fi
     _lint_ck=""
     if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
-      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print ":"}')"
+      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print $1":"$2}')"
     fi
     _engine_ck=""
     if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
-      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print ":"}')"
+      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print $1":"$2}')"
     fi
 
     _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"

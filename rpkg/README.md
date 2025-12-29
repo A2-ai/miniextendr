@@ -69,6 +69,8 @@ This runs cargo build and the document binary, then copies the generated
 
 - **Development builds**: `NOT_CRAN=true` (set by devtools or configure), so
   `cargo vendor` runs to refresh dependencies.
+  - Set `VENDOR_SYNC_EXTRA=1` when running `./configure` if you explicitly want
+    to include additional workspace/bench/tooling manifests in the vendor set.
 
 ## Publishing to CRAN
 
