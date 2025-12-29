@@ -323,10 +323,8 @@ pub(crate) fn warn_on_doc_conflicts(_attrs: &[syn::Attribute], _span: proc_macro
 ///
 /// This function looks at the function parameters and existing roxygen tags,
 /// then generates @param entries for common parameters that don't have documentation.
-pub(crate) fn auto_param_docs_for_method(
-    params: &[&str],
-    existing_tags: &[String],
-) -> Vec<String> {
+#[allow(dead_code)]
+pub(crate) fn auto_param_docs_for_method(params: &[&str], existing_tags: &[String]) -> Vec<String> {
     let mut auto_params = Vec::new();
     let documented: std::collections::HashSet<_> = existing_tags
         .iter()
@@ -350,7 +348,9 @@ pub(crate) fn auto_param_docs_for_method(
         let doc = match param {
             "self" => Some("@param self The object instance."),
             "name" => Some("@param name Method name for dispatch."),
-            ".ptr" => Some("@param .ptr Internal pointer (used by static methods, not for direct use)."),
+            ".ptr" => {
+                Some("@param .ptr Internal pointer (used by static methods, not for direct use).")
+            }
             "dots" | "..." => Some("@param ... Additional arguments."),
             _ => None,
         };
@@ -365,6 +365,7 @@ pub(crate) fn auto_param_docs_for_method(
 ///
 /// Parses the R function formals (e.g., "self, name, n = 1") and generates
 /// `#' @param ...` lines for known standard parameters that aren't already documented.
+#[allow(dead_code)]
 pub(crate) fn auto_param_lines_from_r_formals(
     r_formals: &str,
     existing_tags: &[String],

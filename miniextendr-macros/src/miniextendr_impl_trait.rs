@@ -102,7 +102,9 @@
 //! ## Thread Safety
 //!
 //! The generated vtable is a static constant, safe to access from any thread.
-//! However, the methods themselves are main-thread only (shims don't route).
+//! Trait shims now mirror inherent impls: instance methods stay on the main
+//! thread, while static trait methods run on the worker thread unless
+//! `main_thread` is explicitly requested.
 
 use proc_macro2::TokenStream;
 use quote::format_ident;
@@ -121,6 +123,9 @@ struct TraitMethod {
     has_self: bool,
     /// Is this &mut self (vs &self)? Only meaningful if has_self is true.
     is_mut: bool,
+    /// Opt-in flags controlling thread strategy
+    worker: bool,
+    unsafe_main_thread: bool,
     /// Roxygen @param tags extracted from method doc comments
     param_tags: Vec<String>,
 }
@@ -406,6 +411,7 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                         (false, false)
                     }
                 });
+                let (worker, unsafe_main_thread) = parse_trait_method_thread_attrs(&method.attrs);
 
                 // Extract @param tags from method doc comments
                 let all_tags = crate::roxygen::roxygen_tags_from_attrs(&method.attrs);
@@ -419,6 +425,8 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     sig: method.sig.clone(),
                     has_self,
                     is_mut,
+                    worker,
+                    unsafe_main_thread,
                     param_tags,
                 })
             } else {
@@ -426,6 +434,47 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
             }
         })
         .collect()
+}
+
+/// Parse thread hints for trait methods (worker / main_thread).
+///
+/// Accepts both nested class-system style (e.g., #[miniextendr(env(worker))])
+/// and flat style (#[miniextendr(worker)]).
+fn parse_trait_method_thread_attrs(attrs: &[syn::Attribute]) -> (bool, bool) {
+    let mut worker = false;
+    let mut unsafe_main_thread = false;
+
+    for attr in attrs {
+        if !attr.path().is_ident("miniextendr") {
+            continue;
+        }
+
+        let _ = attr.parse_nested_meta(|meta| {
+            let is_class_meta = meta.path.is_ident("env")
+                || meta.path.is_ident("r6")
+                || meta.path.is_ident("s7")
+                || meta.path.is_ident("s3")
+                || meta.path.is_ident("s4");
+
+            if is_class_meta {
+                meta.parse_nested_meta(|inner| {
+                    if inner.path.is_ident("worker") {
+                        worker = true;
+                    } else if inner.path.is_ident("main_thread") {
+                        unsafe_main_thread = true;
+                    }
+                    Ok(())
+                })?;
+            } else if meta.path.is_ident("worker") {
+                worker = true;
+            } else if meta.path.is_ident("main_thread") {
+                unsafe_main_thread = true;
+            }
+            Ok(())
+        });
+    }
+
+    (worker, unsafe_main_thread)
 }
 
 /// Extract const items from a trait impl block.
@@ -459,8 +508,14 @@ fn generate_trait_method_c_wrapper(
     let c_ident = method.c_wrapper_ident(type_ident, trait_name);
     let call_method_def_ident = method.call_method_def_ident(type_ident, trait_name);
 
-    // All trait methods run on main thread (static or instance)
-    let thread_strategy = ThreadStrategy::MainThread;
+    // Thread strategy: instance methods stay on main thread; static methods default to worker
+    let thread_strategy = if method.has_self || method.unsafe_main_thread {
+        ThreadStrategy::MainThread
+    } else if method.worker {
+        ThreadStrategy::WorkerThread
+    } else {
+        ThreadStrategy::WorkerThread
+    };
 
     // Build rust argument names from the signature (excluding self)
     let rust_args: Vec<syn::Ident> = method

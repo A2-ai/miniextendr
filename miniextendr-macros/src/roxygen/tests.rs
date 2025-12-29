@@ -47,8 +47,12 @@ mod doc_lint_tests {
     #[test]
     fn test_implicit_title_multiline_before_blank() {
         // Title spans multiple lines until blank line
-        let attrs =
-            make_doc_attrs(&["First part of title", "second part of title", "", "Description"]);
+        let attrs = make_doc_attrs(&[
+            "First part of title",
+            "second part of title",
+            "",
+            "Description",
+        ]);
         assert_eq!(
             implicit_title_from_attrs(&attrs),
             Some("First part of title second part of title".to_string())
@@ -78,8 +82,7 @@ mod doc_lint_tests {
 
     #[test]
     fn test_implicit_description_multiline_paragraph() {
-        let attrs =
-            make_doc_attrs(&["First line of description.", "Second line of description."]);
+        let attrs = make_doc_attrs(&["First line of description.", "Second line of description."]);
         assert_eq!(
             implicit_description_from_attrs(&attrs),
             Some("First line of description. Second line of description.".to_string())
