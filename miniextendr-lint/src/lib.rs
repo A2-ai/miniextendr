@@ -407,11 +407,11 @@ fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs {
     let mut result = MiniextendrImplAttrs::default();
 
     for attr in attrs {
-        if !attr
+        if attr
             .path()
             .segments
             .last()
-            .is_some_and(|seg| seg.ident == "miniextendr")
+            .is_none_or(|seg| seg.ident != "miniextendr")
         {
             continue;
         }
@@ -454,6 +454,7 @@ fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs {
 
 /// Parse the class system from #[miniextendr(...)] attribute.
 /// Returns Some("s3"), Some("s4"), etc. or None for default (env).
+#[allow(dead_code)]
 fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
     parse_miniextendr_impl_attrs(attrs).class_system
 }

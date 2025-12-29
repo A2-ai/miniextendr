@@ -95,30 +95,174 @@ impl List {
         None
     }
 
-    /// Read the `names` attribute if present.
+    // =========================================================================
+    // Attribute getters (equivalent to R's GET_* macros)
+    // =========================================================================
+
+    /// Get an arbitrary attribute by symbol (unchecked internal helper).
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `what` is a valid symbol SEXP.
     #[inline]
-    pub fn names(self) -> Option<SEXP> {
+    unsafe fn get_attr_impl_unchecked(self, what: SEXP) -> Option<SEXP> {
         unsafe {
-            let names = ffi::Rf_getAttrib(self.0, ffi::R_NamesSymbol);
-            if names == ffi::R_NilValue {
+            let attr = ffi::Rf_getAttrib(self.0, what);
+            if attr == ffi::R_NilValue {
                 None
             } else {
-                Some(names)
+                Some(attr)
             }
         }
     }
 
+    /// Get the `names` attribute if present.
+    ///
+    /// Equivalent to R's `GET_NAMES(x)`.
+    #[inline]
+    pub fn names(self) -> Option<SEXP> {
+        // Safety: R_NamesSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_NamesSymbol) }
+    }
+
+    /// Get the `class` attribute if present.
+    ///
+    /// Equivalent to R's `GET_CLASS(x)`.
+    #[inline]
+    pub fn get_class(self) -> Option<SEXP> {
+        // Safety: R_ClassSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_ClassSymbol) }
+    }
+
+    /// Get the `dim` attribute if present.
+    ///
+    /// Equivalent to R's `GET_DIM(x)`.
+    #[inline]
+    pub fn get_dim(self) -> Option<SEXP> {
+        // Safety: R_DimSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_DimSymbol) }
+    }
+
+    /// Get the `dimnames` attribute if present.
+    ///
+    /// Equivalent to R's `GET_DIMNAMES(x)`.
+    #[inline]
+    pub fn get_dimnames(self) -> Option<SEXP> {
+        // Safety: R_DimNamesSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_DimNamesSymbol) }
+    }
+
+    /// Get row names from the `dimnames` attribute.
+    ///
+    /// Equivalent to R's `GET_ROWNAMES(x)` / `Rf_GetRowNames(x)`.
+    #[inline]
+    pub fn get_rownames(self) -> Option<SEXP> {
+        unsafe {
+            let rownames = ffi::Rf_GetRowNames(self.0);
+            if rownames == ffi::R_NilValue {
+                None
+            } else {
+                Some(rownames)
+            }
+        }
+    }
+
+    /// Get column names from the `dimnames` attribute.
+    ///
+    /// Equivalent to R's `GET_COLNAMES(x)` / `Rf_GetColNames(x)`.
+    #[inline]
+    pub fn get_colnames(self) -> Option<SEXP> {
+        unsafe {
+            // Rf_GetColNames takes the dimnames, not the object itself
+            let dimnames = ffi::Rf_getAttrib(self.0, ffi::R_DimNamesSymbol);
+            if dimnames == ffi::R_NilValue {
+                return None;
+            }
+            let colnames = ffi::Rf_GetColNames(dimnames);
+            if colnames == ffi::R_NilValue {
+                None
+            } else {
+                Some(colnames)
+            }
+        }
+    }
+
+    /// Get the `levels` attribute if present (for factors).
+    ///
+    /// Equivalent to R's `GET_LEVELS(x)`.
+    #[inline]
+    pub fn get_levels(self) -> Option<SEXP> {
+        // Safety: R_LevelsSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_LevelsSymbol) }
+    }
+
+    /// Get the `tsp` attribute if present (for time series).
+    ///
+    /// Equivalent to R's `GET_TSP(x)`.
+    #[inline]
+    pub fn get_tsp(self) -> Option<SEXP> {
+        // Safety: R_TspSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_TspSymbol) }
+    }
+
+    // =========================================================================
+    // Attribute setters (equivalent to R's SET_* macros)
+    // =========================================================================
+
+    /// Set an arbitrary attribute by symbol (unchecked internal helper).
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `what` is a valid symbol SEXP.
+    #[inline]
+    #[allow(dead_code)]
+    unsafe fn set_attr_impl_unchecked(self, what: SEXP, value: SEXP) -> Self {
+        unsafe { ffi::Rf_setAttrib(self.0, what, value) };
+        self
+    }
+
     /// Set the `names` attribute; returns the same list for chaining.
+    ///
+    /// Equivalent to R's `SET_NAMES(x, n)`.
     #[inline]
     pub fn set_names(self, names: SEXP) -> Self {
         unsafe { ffi::Rf_namesgets(self.0, names) };
         self
     }
 
+    /// Set the `class` attribute; returns the same list for chaining.
+    ///
+    /// Equivalent to R's `SET_CLASS(x, n)`.
+    #[inline]
+    pub fn set_class(self, class: SEXP) -> Self {
+        unsafe { ffi::Rf_setAttrib(self.0, ffi::R_ClassSymbol, class) };
+        self
+    }
+
     /// Set the `dim` attribute; returns the same list for chaining.
+    ///
+    /// Equivalent to R's `SET_DIM(x, n)`.
     #[inline]
     pub fn set_dim(self, dim: SEXP) -> Self {
         unsafe { ffi::Rf_dimgets(self.0, dim) };
+        self
+    }
+
+    /// Set the `dimnames` attribute; returns the same list for chaining.
+    ///
+    /// Equivalent to R's `SET_DIMNAMES(x, n)`.
+    #[inline]
+    pub fn set_dimnames(self, dimnames: SEXP) -> Self {
+        unsafe { ffi::Rf_setAttrib(self.0, ffi::R_DimNamesSymbol, dimnames) };
+        self
+    }
+
+    /// Set the `levels` attribute; returns the same list for chaining.
+    ///
+    /// Equivalent to R's `SET_LEVELS(x, l)`.
+    #[inline]
+    pub fn set_levels(self, levels: SEXP) -> Self {
+        unsafe { ffi::Rf_setAttrib(self.0, ffi::R_LevelsSymbol, levels) };
         self
     }
 }

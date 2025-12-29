@@ -220,6 +220,10 @@ impl<T: RNativeType> IntoR for AsRNative<T> {
 /// ```
 pub trait AsListExt: IntoList + Sized {
     /// Wrap `self` in [`AsList`] for R list conversion.
+    ///
+    /// Note: This method consumes `self` despite the `as_` prefix because
+    /// it wraps the value in an `AsList` wrapper (matching the type name).
+    #[allow(clippy::wrong_self_convention)]
     fn as_list(self) -> AsList<Self> {
         AsList(self)
     }
@@ -244,6 +248,10 @@ impl<T: IntoList> AsListExt for T {}
 /// ```
 pub trait AsExternalPtrExt: IntoExternalPtr + Sized {
     /// Wrap `self` in [`AsExternalPtr`] for R external pointer conversion.
+    ///
+    /// Note: This method consumes `self` despite the `as_` prefix because
+    /// it wraps the value in an `AsExternalPtr` wrapper (matching the type name).
+    #[allow(clippy::wrong_self_convention)]
     fn as_external_ptr(self) -> AsExternalPtr<Self> {
         AsExternalPtr(self)
     }

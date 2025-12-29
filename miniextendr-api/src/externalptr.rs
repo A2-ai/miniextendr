@@ -66,6 +66,23 @@
 //! The `prot` slot holds a VECSXP (list) with two elements:
 //!   - Index 0: SYMSXP (interned symbol) for fast pointer-based type comparison
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
+//!
+//! # ExternalPtr is Not an R Native Type
+//!
+//! Unlike R's native atomic types (`integer`, `double`, `character`, etc.),
+//! external pointers cannot be coerced to vectors or used in R's vectorized
+//! operations. This is an R limitation, not a miniextendr limitation:
+//!
+//! ```r
+//! > matrix(new("externalptr"), 1, 1)
+//! Error in `as.vector()`:
+//! ! cannot coerce type 'externalptr' to vector of type 'any'
+//! ```
+//!
+//! If you need your Rust type to participate in R's vector/matrix operations,
+//! consider implementing [`IntoList`](crate::list::IntoList) (via `#[derive(IntoList)]`)
+//! to convert your struct to a named R list, or use ALTREP to expose Rust
+//! iterators as lazy R vectors.
 
 use std::alloc::Layout;
 use std::any::TypeId;

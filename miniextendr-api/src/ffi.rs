@@ -765,6 +765,8 @@ unsafe extern "C-unwind" {
     pub static R_DimNamesSymbol: SEXP;
     pub static R_ClassSymbol: SEXP;
     pub static R_RowNamesSymbol: SEXP;
+    pub static R_LevelsSymbol: SEXP;
+    pub static R_TspSymbol: SEXP;
 
     pub static R_GlobalEnv: SEXP;
     pub static R_BaseEnv: SEXP;

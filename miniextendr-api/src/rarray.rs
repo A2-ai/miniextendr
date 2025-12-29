@@ -386,6 +386,167 @@ impl<T: RNativeType> RMatrix<T> {
 }
 
 // =============================================================================
+// Attribute access (equivalent to R's GET_*/SET_* macros)
+// =============================================================================
+
+impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
+    // -------------------------------------------------------------------------
+    // Attribute getters
+    // -------------------------------------------------------------------------
+
+    /// Get an arbitrary attribute by symbol (unchecked internal helper).
+    ///
+    /// # Safety
+    ///
+    /// - The SEXP must be valid.
+    /// - `what` must be a valid symbol SEXP.
+    #[inline]
+    unsafe fn get_attr_impl_unchecked(&self, what: SEXP) -> Option<SEXP> {
+        unsafe {
+            let attr = ffi::Rf_getAttrib(self.sexp, what);
+            if attr == ffi::R_NilValue {
+                None
+            } else {
+                Some(attr)
+            }
+        }
+    }
+
+    /// Get the `names` attribute if present.
+    ///
+    /// Equivalent to R's `GET_NAMES(x)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    #[inline]
+    pub unsafe fn get_names(&self) -> Option<SEXP> {
+        // Safety: R_NamesSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_NamesSymbol) }
+    }
+
+    /// Get the `class` attribute if present.
+    ///
+    /// Equivalent to R's `GET_CLASS(x)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    #[inline]
+    pub unsafe fn get_class(&self) -> Option<SEXP> {
+        // Safety: R_ClassSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_ClassSymbol) }
+    }
+
+    /// Get the `dimnames` attribute if present.
+    ///
+    /// Equivalent to R's `GET_DIMNAMES(x)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    #[inline]
+    pub unsafe fn get_dimnames(&self) -> Option<SEXP> {
+        // Safety: R_DimNamesSymbol is a known symbol
+        unsafe { self.get_attr_impl_unchecked(ffi::R_DimNamesSymbol) }
+    }
+
+    /// Get row names from the `dimnames` attribute.
+    ///
+    /// Equivalent to R's `GET_ROWNAMES(x)` / `Rf_GetRowNames(x)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    #[inline]
+    pub unsafe fn get_rownames(&self) -> Option<SEXP> {
+        unsafe {
+            let rownames = ffi::Rf_GetRowNames(self.sexp);
+            if rownames == ffi::R_NilValue {
+                None
+            } else {
+                Some(rownames)
+            }
+        }
+    }
+
+    /// Get column names from the `dimnames` attribute.
+    ///
+    /// Equivalent to R's `GET_COLNAMES(x)` / `Rf_GetColNames(x)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid.
+    #[inline]
+    pub unsafe fn get_colnames(&self) -> Option<SEXP> {
+        unsafe {
+            let dimnames = ffi::Rf_getAttrib(self.sexp, ffi::R_DimNamesSymbol);
+            if dimnames == ffi::R_NilValue {
+                return None;
+            }
+            let colnames = ffi::Rf_GetColNames(dimnames);
+            if colnames == ffi::R_NilValue {
+                None
+            } else {
+                Some(colnames)
+            }
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // Attribute setters
+    // -------------------------------------------------------------------------
+
+    /// Set an arbitrary attribute by symbol (unchecked internal helper).
+    ///
+    /// # Safety
+    ///
+    /// - The SEXP must be valid and not shared.
+    /// - `what` must be a valid symbol SEXP.
+    #[inline]
+    #[allow(dead_code)]
+    unsafe fn set_attr_impl_unchecked(&mut self, what: SEXP, value: SEXP) {
+        unsafe { ffi::Rf_setAttrib(self.sexp, what, value) };
+    }
+
+    /// Set the `names` attribute.
+    ///
+    /// Equivalent to R's `SET_NAMES(x, n)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid and not shared.
+    #[inline]
+    pub unsafe fn set_names(&mut self, names: SEXP) {
+        unsafe { ffi::Rf_namesgets(self.sexp, names) };
+    }
+
+    /// Set the `class` attribute.
+    ///
+    /// Equivalent to R's `SET_CLASS(x, n)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid and not shared.
+    #[inline]
+    pub unsafe fn set_class(&mut self, class: SEXP) {
+        unsafe { ffi::Rf_setAttrib(self.sexp, ffi::R_ClassSymbol, class) };
+    }
+
+    /// Set the `dimnames` attribute.
+    ///
+    /// Equivalent to R's `SET_DIMNAMES(x, n)`.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid and not shared.
+    #[inline]
+    pub unsafe fn set_dimnames(&mut self, dimnames: SEXP) {
+        unsafe { ffi::Rf_setAttrib(self.sexp, ffi::R_DimNamesSymbol, dimnames) };
+    }
+}
+
+// =============================================================================
 // Construction helpers
 // =============================================================================
 
