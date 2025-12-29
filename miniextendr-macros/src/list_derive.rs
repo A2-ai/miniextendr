@@ -2,6 +2,27 @@ use proc_macro2::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Fields, parse_quote, spanned::Spanned};
 
+fn field_is_ignored(field: &syn::Field) -> syn::Result<bool> {
+    let mut ignored = false;
+
+    for attr in &field.attrs {
+        if !attr.path().is_ident("list") {
+            continue;
+        }
+
+        attr.parse_nested_meta(|meta| {
+            if meta.path.is_ident("ignore") {
+                ignored = true;
+                return Ok(());
+            }
+
+            Err(meta.error("unknown #[list(...)] option; supported: ignore"))
+        })?;
+    }
+
+    Ok(ignored)
+}
+
 /// Derive `IntoList` for structs (Rust → R).
 ///
 /// - Named structs (`struct Foo { x: i32 }`) → named R list: `list(x = 1L)`
@@ -31,13 +52,20 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
 
             for f in fields.named.iter() {
                 let ident = f.ident.as_ref().unwrap().clone();
+                if field_is_ignored(f)? {
+                    continue;
+                }
                 let ty = &f.ty;
                 bounds.push(parse_quote!(#ty: ::miniextendr_api::into_r::IntoR));
                 names.push(ident.to_string());
                 idents.push(ident);
             }
 
-            let pat = quote! { { #(#idents),* } };
+            let pat = if idents.is_empty() {
+                quote! { { .. } }
+            } else {
+                quote! { { #(#idents),*, .. } }
+            };
             let construction = quote! {
                 ::miniextendr_api::list::List::from_pairs(vec![ #( (#names, #idents) ),* ])
             };
@@ -46,18 +74,24 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
 
         // Tuple struct: create unnamed R list (positional access)
         Fields::Unnamed(fields) => {
-            let mut idents: Vec<syn::Ident> = Vec::new();
+            let mut pat_elems: Vec<proc_macro2::TokenStream> = Vec::new();
+            let mut value_idents: Vec<syn::Ident> = Vec::new();
 
             for (idx, f) in fields.unnamed.iter().enumerate() {
+                if field_is_ignored(f)? {
+                    pat_elems.push(quote! { _ });
+                    continue;
+                }
                 let ident = syn::Ident::new(&format!("_field{idx}"), f.span());
                 let ty = &f.ty;
                 bounds.push(parse_quote!(#ty: ::miniextendr_api::into_r::IntoR));
-                idents.push(ident);
+                pat_elems.push(quote! { #ident });
+                value_idents.push(ident);
             }
 
-            let pat = quote! { ( #(#idents),* ) };
+            let pat = quote! { ( #(#pat_elems),* ) };
             let construction = quote! {
-                ::miniextendr_api::list::List::from_raw_values(vec![ #( #idents.into_sexp() ),* ])
+                ::miniextendr_api::list::List::from_raw_values(vec![ #( #value_idents.into_sexp() ),* ])
             };
             (pat, construction)
         }
@@ -118,56 +152,75 @@ pub fn derive_try_from_list(input: DeriveInput) -> syn::Result<TokenStream> {
     let from_list_body = match &struct_data.fields {
         // Named struct: extract by field name
         Fields::Named(fields) => {
-            let mut idents: Vec<syn::Ident> = Vec::new();
             let mut field_extractions: Vec<proc_macro2::TokenStream> = Vec::new();
+            let mut field_inits: Vec<proc_macro2::TokenStream> = Vec::new();
 
             for f in fields.named.iter() {
                 let ident = f.ident.as_ref().unwrap().clone();
                 let ty = &f.ty;
+
+                if field_is_ignored(f)? {
+                    bounds.push(parse_quote!(#ty: ::core::default::Default));
+                    field_inits.push(quote! { #ident: ::core::default::Default::default() });
+                    continue;
+                }
+
                 bounds.push(parse_quote!(#ty: ::miniextendr_api::from_r::TryFromSexp<Error = ::miniextendr_api::from_r::SexpError>));
 
                 let name_str = ident.to_string();
-                idents.push(ident.clone());
-
                 field_extractions.push(quote! {
                     let #ident: #ty = list.get_named(#name_str)
                         .ok_or_else(|| ::miniextendr_api::from_r::SexpError::MissingField(#name_str.into()))?;
                 });
+                field_inits.push(quote! { #ident });
             }
 
             quote! {
                 #(#field_extractions)*
-                Ok(Self { #(#idents),* })
+                Ok(Self { #(#field_inits),* })
             }
         }
 
         // Tuple struct: extract by position
         Fields::Unnamed(fields) => {
-            let mut idents: Vec<syn::Ident> = Vec::new();
             let mut field_extractions: Vec<proc_macro2::TokenStream> = Vec::new();
-            let n_fields = fields.unnamed.len();
+            let mut ctor_args: Vec<proc_macro2::TokenStream> = Vec::new();
+            let mut ignored_fields: Vec<bool> = Vec::with_capacity(fields.unnamed.len());
+            for f in fields.unnamed.iter() {
+                ignored_fields.push(field_is_ignored(f)?);
+            }
+            let input_fields: usize = ignored_fields.iter().filter(|&&b| !b).count();
+            let mut input_idx: usize = 0;
 
             for (idx, f) in fields.unnamed.iter().enumerate() {
-                let ident = syn::Ident::new(&format!("_field{idx}"), f.span());
                 let ty = &f.ty;
+
+                if ignored_fields[idx] {
+                    bounds.push(parse_quote!(#ty: ::core::default::Default));
+                    ctor_args.push(quote! { ::core::default::Default::default() });
+                    continue;
+                }
+
+                let ident = syn::Ident::new(&format!("_field{idx}"), f.span());
                 bounds.push(parse_quote!(#ty: ::miniextendr_api::from_r::TryFromSexp<Error = ::miniextendr_api::from_r::SexpError>));
 
-                let idx_isize = idx as isize;
+                let idx_isize = input_idx as isize;
                 field_extractions.push(quote! {
                     let #ident: #ty = list.get_index(#idx_isize)
                         .ok_or_else(|| ::miniextendr_api::from_r::SexpError::Length(
                             ::miniextendr_api::from_r::SexpLengthError {
-                                expected: #n_fields,
+                                expected: #input_fields,
                                 actual: list.len() as usize,
                             }
                         ))?;
                 });
-                idents.push(ident);
+                ctor_args.push(quote! { #ident });
+                input_idx += 1;
             }
 
             quote! {
                 #(#field_extractions)*
-                Ok(Self( #(#idents),* ))
+                Ok(Self( #(#ctor_args),* ))
             }
         }
 

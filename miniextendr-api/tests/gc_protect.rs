@@ -118,7 +118,7 @@ fn reprotect_slot_count_stays_one() {
             assert_eq!(scope.count(), 1, "count should stay at 1 after set()");
         }
 
-        assert_eq!(slot.get().is_null(), false);
+        assert!(!slot.get().is_null());
     });
 }
 
@@ -255,10 +255,10 @@ fn owned_protect_basic() {
 #[test]
 fn owned_protect_deref() {
     r_test_utils::with_r_thread(|| unsafe {
-        let guard = OwnedProtect::new(Rf_ScalarReal(3.14));
+        let guard = OwnedProtect::new(Rf_ScalarReal(std::f64::consts::PI));
 
         // Deref to get &SEXP
-        let sexp: &miniextendr_api::ffi::SEXP = &*guard;
+        let sexp: &miniextendr_api::ffi::SEXP = &guard;
         assert!(!sexp.is_null());
     });
 }

@@ -200,6 +200,93 @@ fn parsed_fn_no_inline_for_extern_c() {
     );
 }
 
+fn normalize_tokens(ts: proc_macro2::TokenStream) -> String {
+    ts.to_string().chars().filter(|c| !c.is_whitespace()).collect()
+}
+
+#[test]
+fn derive_into_list_skips_ignored_named_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            a: i32,
+            #[list(ignore)]
+            b: i32,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_into_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("\"a\""));
+    assert!(!s.contains("\"b\""));
+}
+
+#[test]
+fn derive_try_from_list_defaults_ignored_named_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            a: i32,
+            #[list(ignore)]
+            b: i32,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("get_named(\"a\")"));
+    assert!(!s.contains("get_named(\"b\")"));
+    assert!(s.contains("b:::core::default::Default::default()"));
+}
+
+#[test]
+fn derive_into_list_skips_ignored_tuple_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo(i32, #[list(ignore)] i32, i32);
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_into_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("_field0"));
+    assert!(s.contains("_field2"));
+    assert!(!s.contains("_field1"));
+}
+
+#[test]
+fn derive_try_from_list_defaults_ignored_tuple_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo(i32, #[list(ignore)] i32, i32);
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("expected:2"));
+    assert!(s.contains("get_index(0"));
+    assert!(s.contains("get_index(1"));
+    assert!(!s.contains("get_index(2"));
+    assert!(s.contains("Self(_field0,::core::default::Default::default(),_field2)"));
+}
+
+#[test]
+fn list_attrs_error_on_unknown_options() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            #[list(typo)]
+            a: i32,
+        }
+    })
+    .unwrap();
+
+    let err = crate::list_derive::derive_into_list(input).unwrap_err();
+    assert!(err.to_string().contains("unknown #[list(...)] option"));
+}
+
 // =============================================================================
 // ALTREP derive macro tests
 // =============================================================================
