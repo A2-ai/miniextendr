@@ -22,6 +22,7 @@ Locations intentionally omit line numbers (they drift); use search on the symbol
 | `R_CStackStart` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack top address - needed for thread safety |
 | `R_CStackLimit` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack limit - set to `usize::MAX` to disable checking |
 | `R_CStackDir` | `miniextendr-api/src/ffi.rs` (`nonapi_stack`) | `nonapi` | Stack growth direction (-1 = down, 1 = up) |
+| `ptr_R_WriteConsoleEx` | `miniextendr-api/src/progress.rs` | `indicatif` (implies `nonapi`) | R console hook used by indicatif TermLike backend |
 
 Note: `miniextendr-engine` is entirely non-API (uses Rembedded.h/Rinterface.h for embedding R) and is not tracked here.
 

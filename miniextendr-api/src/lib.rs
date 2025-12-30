@@ -114,6 +114,10 @@ pub use worker::*;
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
 
+// `indicatif` progress integration (R console)
+#[cfg(feature = "indicatif")]
+pub mod progress;
+
 // Stack size constants and builder (always available)
 #[cfg(windows)]
 pub use thread::WINDOWS_R_STACK_SIZE;

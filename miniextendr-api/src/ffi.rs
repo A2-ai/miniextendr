@@ -681,6 +681,19 @@ unsafe extern "C-unwind" {
     pub fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
 }
 
+// Console hooks (non-API; declared in Rinterface.h)
+#[cfg(feature = "nonapi")]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    pub static ptr_R_WriteConsoleEx: Option<
+        unsafe extern "C-unwind" fn(
+            *const ::std::os::raw::c_char,
+            ::std::os::raw::c_int,
+            ::std::os::raw::c_int,
+        ),
+    >;
+}
+
 /// Checked wrapper for `Rf_error` - panics if called from non-main thread.
 /// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
 ///
@@ -771,6 +784,9 @@ unsafe extern "C-unwind" {
     pub static R_GlobalEnv: SEXP;
     pub static R_BaseEnv: SEXP;
     pub static R_EmptyEnv: SEXP;
+
+    // Rinterface.h
+    pub fn R_FlushConsole();
 
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.

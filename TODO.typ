@@ -290,3 +290,10 @@ checking available recipes (`just --list`)
 - [ ] tree \*cargo_flags            // # [alias: cargo-tree]
 - [ ] vendor                       // # [alias: cargo-vendor]
 - [ ] vendor-rpkg                  // # - bootstrap.R (CRAN tarball builds)
+
+=== Planned: Optional indicatif progress ===
+- [ ] Add `indicatif` feature to `miniextendr-api` (opt-in, non-default) with `indicatif -> nonapi` dependency
+- [ ] Implement `RTerm` (`indicatif::TermLike`) that writes to R console via `ptr_R_WriteConsoleEx` and no-ops off main thread
+- [ ] Provide ANSI cursor/clear defaults in `RTerm` (cursor moves, clear line, write_line)
+- [ ] Add convenience constructors (`term_like_{stdout,stderr}[_with_hz]`) for stream routing
+- [ ] Update NONAPI.md with new console hook usage
