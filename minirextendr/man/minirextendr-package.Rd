@@ -17,7 +17,17 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
+\strong{Maintainer}: 
+
+Authors:
+\itemize{
+  \item Mossa M. Reimert \email{mossa@sund.ku.dk}
+}
+
+Other contributors:
+\itemize{
+  \item A2-AI [copyright holder, funder]
+}
 
 }
 \keyword{internal}

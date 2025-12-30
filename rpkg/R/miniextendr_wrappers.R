@@ -6,10 +6,8 @@
 # nolint start
 # nocov start
 
-#' @title ALTREP Unsafe Entry Points
 #' @name rpkg_altrep_unsafe
 #' @keywords internal
-#' @description ALTREP low-level entry points (unsafe)
 #' @examples \dontrun{
 #' x <- unsafe_rpkg_altrep_from_doubles(c(1, 2, 3))
 #' unsafe_rpkg_lazy_int_seq_is_materialized(x)
@@ -158,9 +156,7 @@ repeating_raw <- function(pattern, n) {
     .Call(C_repeating_raw, .call = match.call(), pattern, n)
 }
 
-#' @title ALTREP Example Constructors
 #' @name rpkg_altrep_examples
-#' @description ALTREP example constructors
 #' @return An ALTREP vector.
 #' @examples
 #' unit_circle(8L)
@@ -373,10 +369,8 @@ unsafe_C_r_print_in_thread <- function() {
     .Call(C_r_print_in_thread)
 }
 
-#' @title Unwind Protect Tests
 #' @name rpkg_unwind_protect
 #' @keywords internal
-#' @description Unwind protect tests
 #' @examples
 #' \dontrun{
 #' unsafe_C_unwind_protect_normal()
@@ -670,9 +664,7 @@ with_flag <- function(flag = FALSE) {
     .Call(C_with_flag, .call = match.call(), flag)
 }
 
-#' @title External Pointer Tests
 #' @name rpkg_externalptr
-#' @description External pointer helpers
 #' @examples
 #' ptr <- extptr_counter_new(1L)
 #' unsafe_C_extptr_counter_get(ptr)
@@ -773,10 +765,8 @@ unsafe_C_test_sexp_equality <- function(x, y) {
     .Call(C_test_sexp_equality, x, y)
 }
 
-#' @title R6 Standalone Function
 #' @name rpkg_r6_standalone
 #' @keywords internal
-#' @description Standalone helper in the R6 test module.
 #' @examples
 #' r6_standalone_add(1L, 2L)
 #' @aliases r6_standalone_add
@@ -864,10 +854,8 @@ unsafe_C_test_worker_r_calls_then_panic <- function() {
     .Call(C_test_worker_r_calls_then_panic)
 }
 
-#' @title Worker Thread Tests
 #' @name rpkg_worker_tests
 #' @keywords internal
-#' @description Worker-thread and main-thread helpers
 #' @examples
 #' test_worker_return_i32()
 #' test_worker_return_string()
@@ -1167,10 +1155,8 @@ with_interrupt_check <- function(x) {
     .Call(C_with_interrupt_check, .call = match.call(), x)
 }
 
-#' @title Thread Builder Tests
 #' @name rpkg_thread_builder
 #' @keywords internal
-#' @description Thread builder and lean-stack tests
 #' @examples
 #' \dontrun{
 #' unsafe_C_test_r_thread_builder()
@@ -1297,9 +1283,7 @@ native_list_as_native <- function(x) {
     .Call(C_native_list_as_native, .call = match.call(), x)
 }
 
-#' @title RNG Tests
 #' @name rpkg_rng
-#' @description RNG state management tests
 #' @return A numeric vector.
 #' @export
 #' @examples
