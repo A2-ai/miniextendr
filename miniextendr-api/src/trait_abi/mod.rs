@@ -56,6 +56,29 @@
 //! This generates the wrapper structures, vtable references, and query
 //! implementations for cross-package trait dispatch.
 //!
+//! ## Exporting traits you don't own
+//!
+//! You cannot apply `#[miniextendr]` to external traits. Instead, define a
+//! **local adapter trait** that exposes the subset you want in R, then provide
+//! a blanket impl for any type that implements the external trait:
+//!
+//! ```ignore
+//! use num_traits::Num;
+//!
+//! #[miniextendr]
+//! pub trait RNum {
+//!     fn add(&self, other: &Self) -> Self;
+//!     fn to_string(&self) -> String;
+//! }
+//!
+//! impl<T: Num + Clone + ToString> RNum for T {
+//!     fn add(&self, other: &Self) -> Self { self.clone() + other.clone() }
+//!     fn to_string(&self) -> String { ToString::to_string(self) }
+//! }
+//! ```
+//!
+//! This keeps the ABI stable while avoiding generics in the trait itself.
+//!
 //! ## Initialization
 //!
 //! Packages using the trait ABI must call [`init_ccallables`] during

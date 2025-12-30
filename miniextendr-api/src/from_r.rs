@@ -111,6 +111,8 @@ pub enum SexpError {
     Type(SexpTypeError),
     Length(SexpLengthError),
     Na(SexpNaError),
+    /// Value is syntactically valid but semantically invalid (e.g. parse error).
+    InvalidValue(String),
     /// A required field was missing from a named list.
     MissingField(String),
     /// A named list has duplicate non-empty names.
@@ -133,6 +135,7 @@ impl std::fmt::Display for SexpError {
             SexpError::Type(e) => write!(f, "{}", e),
             SexpError::Length(e) => write!(f, "{}", e),
             SexpError::Na(e) => write!(f, "{}", e),
+            SexpError::InvalidValue(msg) => write!(f, "invalid value: {}", msg),
             SexpError::MissingField(name) => write!(f, "missing field: {}", name),
             SexpError::DuplicateName(name) => write!(f, "duplicate name in list: {:?}", name),
             #[cfg(feature = "either")]
@@ -154,6 +157,7 @@ impl std::error::Error for SexpError {
             SexpError::Type(e) => Some(e),
             SexpError::Length(e) => Some(e),
             SexpError::Na(e) => Some(e),
+            SexpError::InvalidValue(_) => None,
             SexpError::MissingField(_) => None,
             SexpError::DuplicateName(_) => None,
             #[cfg(feature = "either")]

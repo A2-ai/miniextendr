@@ -35,6 +35,12 @@ ndarray = ["dep:ndarray"]
 nalgebra = ["dep:nalgebra"]
 ## Enable serde integration. Re-exports serde for derive macros.
 serde = ["dep:serde"]
+## Enable num-bigint integration. Provides BigInt/BigUint conversions.
+num-bigint = ["dep:num-bigint"]
+## Enable rust_decimal integration. Provides Decimal conversions.
+rust_decimal = ["dep:rust_decimal"]
+## Enable ordered-float integration. Provides OrderedFloat conversions.
+ordered-float = ["dep:ordered-float"]
 ## Enable indicatif progress bar integration (R console).
 ## Requires non-API console hooks (ptr_R_WriteConsoleEx).
 indicatif = ["dep:indicatif", "nonapi"]
@@ -49,6 +55,9 @@ ndarray = { version = "0.17", optional = true }
 nalgebra = { version = "0.34", optional = true }
 serde = { version = "1.0", optional = true, features = ["derive"] }
 indicatif = { version = "0.18.3", optional = true }
+num-bigint = { version = "0.4", optional = true }
+rust_decimal = { version = "1", optional = true }
+ordered-float = { version = "4", optional = true }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }

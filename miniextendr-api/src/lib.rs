@@ -307,6 +307,36 @@ pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
 pub use nalgebra_impl::{DMatrix, DVector};
 
+/// Integration with the `num-bigint` crate.
+///
+/// Provides conversions for `BigInt` and `BigUint` via R character vectors.
+///
+/// Enable with `features = ["num-bigint"]`.
+#[cfg(feature = "num-bigint")]
+pub mod num_bigint_impl;
+#[cfg(feature = "num-bigint")]
+pub use num_bigint_impl::{BigInt, BigUint};
+
+/// Integration with the `rust_decimal` crate.
+///
+/// Provides conversions for `Decimal` via R character vectors.
+///
+/// Enable with `features = ["rust_decimal"]`.
+#[cfg(feature = "rust_decimal")]
+pub mod rust_decimal_impl;
+#[cfg(feature = "rust_decimal")]
+pub use rust_decimal_impl::Decimal;
+
+/// Integration with the `ordered-float` crate.
+///
+/// Provides conversions for `OrderedFloat<f64>` and `OrderedFloat<f32>`.
+///
+/// Enable with `features = ["ordered-float"]`.
+#[cfg(feature = "ordered-float")]
+pub mod ordered_float_impl;
+#[cfg(feature = "ordered-float")]
+pub use ordered_float_impl::OrderedFloat;
+
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;
 pub use rarray::{RArray, RArray3D, RMatrix, RVector};
