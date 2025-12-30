@@ -352,68 +352,6 @@ pub(crate) fn doc_conflict_warnings(
     proc_macro2::TokenStream::new()
 }
 
-/// Generate @param documentation for standard parameters that aren't already documented.
-///
-/// This function looks at the function parameters and existing roxygen tags,
-/// then generates @param entries for common parameters that don't have documentation.
-#[allow(dead_code)]
-pub(crate) fn auto_param_docs_for_method(params: &[&str], existing_tags: &[String]) -> Vec<String> {
-    let mut auto_params = Vec::new();
-    let documented: std::collections::HashSet<_> = existing_tags
-        .iter()
-        .filter_map(|tag| {
-            let trimmed = tag.trim_start();
-            if let Some(rest) = trimmed.strip_prefix("@param ") {
-                rest.split_whitespace().next()
-            } else {
-                None
-            }
-        })
-        .collect();
-
-    for &param in params {
-        if documented.contains(param) {
-            continue;
-        }
-        // Only auto-document parameters with consistent meanings across all contexts.
-        // Context-dependent parameters like `n`, `initial`, `amount`, `value` should
-        // be documented explicitly in the Rust source with @param tags.
-        let doc = match param {
-            "self" => Some("@param self The object instance."),
-            "name" => Some("@param name Method name for dispatch."),
-            ".ptr" => {
-                Some("@param .ptr Internal pointer (used by static methods, not for direct use).")
-            }
-            "dots" | "..." => Some("@param ... Additional arguments."),
-            _ => None,
-        };
-        if let Some(doc) = doc {
-            auto_params.push(doc.to_string());
-        }
-    }
-    auto_params
-}
-
-/// Generate @param roxygen lines for standard parameters from an R formals string.
-///
-/// Parses the R function formals (e.g., "self, name, n = 1") and generates
-/// `#' @param ...` lines for known standard parameters that aren't already documented.
-#[allow(dead_code)]
-pub(crate) fn auto_param_lines_from_r_formals(
-    r_formals: &str,
-    existing_tags: &[String],
-) -> Vec<String> {
-    // Parse parameter names from R formals string like "self, name, n = 1, ..."
-    let param_names: Vec<&str> = r_formals
-        .split(',')
-        .map(|p| p.split('=').next().unwrap_or(p).trim())
-        .filter(|p| !p.is_empty())
-        .collect();
-
-    let auto_docs = auto_param_docs_for_method(&param_names, existing_tags);
-    auto_docs.iter().map(|doc| format!("#' {}", doc)).collect()
-}
-
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
 ///
 /// Returns a new vector of attributes with roxygen lines removed from doc comments.

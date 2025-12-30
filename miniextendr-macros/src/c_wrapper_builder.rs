@@ -92,7 +92,7 @@ pub struct CWrapperContext {
     pub r_wrapper_const: syn::Ident,
     /// Function inputs (without self receiver)
     pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    /// Return type (used for future return handling detection)
+    /// Return type (stored for builder pattern but read via detect_return_handling)
     #[allow(dead_code)]
     pub output: syn::ReturnType,
     /// Pre-call statements (e.g., self extraction for methods)

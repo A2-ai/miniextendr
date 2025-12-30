@@ -309,13 +309,6 @@ impl DotCallBuilder {
         self
     }
 
-    /// Add a single argument.
-    #[allow(dead_code)] // API completeness - use with_args for multiple
-    pub fn with_arg(mut self, arg: impl Into<String>) -> Self {
-        self.args.push(arg.into());
-        self
-    }
-
     /// Build the `.Call()` string.
     pub fn build(&self) -> String {
         let mut all_args = Vec::new();
@@ -397,14 +390,13 @@ impl RoxygenBuilder {
     }
 
     /// Set the `@title` tag.
-    #[allow(dead_code)] // API completeness for future use
     pub fn title(mut self, title: impl Into<String>) -> Self {
         self.title = Some(title.into());
         self
     }
 
     /// Set the `@description` tag.
-    #[allow(dead_code)]
+    #[allow(dead_code)] // Public API for external consumers
     pub fn description(mut self, desc: impl Into<String>) -> Self {
         self.description = Some(desc.into());
         self
@@ -423,7 +415,7 @@ impl RoxygenBuilder {
     }
 
     /// Add `@exportMethod` tag (for S4).
-    #[allow(dead_code)] // API completeness for S4 support
+    #[allow(dead_code)] // Public API for external consumers
     pub fn export_method(mut self, method: impl Into<String>) -> Self {
         self.export_method = Some(method.into());
         self
@@ -474,12 +466,6 @@ impl RoxygenBuilder {
         }
 
         lines
-    }
-
-    /// Build and join with newlines.
-    #[allow(dead_code)] // Convenience method for API completeness
-    pub fn build_string(&self) -> String {
-        self.build().join("\n")
     }
 }
 

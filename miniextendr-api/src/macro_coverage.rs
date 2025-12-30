@@ -3,7 +3,6 @@
 //! Internal module that instantiates every macro path so `cargo expand`
 //! can be used as a living catalog of what gets generated.
 
-extern crate self as miniextendr_api;
 use crate::ffi;
 use crate::{miniextendr, miniextendr_module};
 
