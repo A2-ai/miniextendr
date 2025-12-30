@@ -1,6 +1,8 @@
 # miniextendr Templates
 
 This directory contains two template types for creating projects with miniextendr.
+These templates are consumed by the `minirextendr` package; see
+`../../README.md` for usage.
 
 ## Template Types
 

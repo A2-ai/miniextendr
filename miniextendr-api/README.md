@@ -43,6 +43,7 @@ miniextendr_module! {
 - **Connections** – experimental R connection framework (feature‑gated).
 - **Class systems** – S3, S4, S7, and R6 impl‑block methods plus an env
   impl‑block for `$`/`[[` dispatch.
+- **Trait ABI** – type‑erased, cross‑package trait dispatch via tags + vtables.
 - **Coerce** – infallible and fallible numeric coercion with clear errors.
 - **Generated R wrappers** – R functions and class methods are generated from
   Rust signatures and doc comments/roxygen tags.
@@ -73,6 +74,17 @@ miniextendr supports multiple class systems from Rust impl blocks:
 
 Per‑method attributes control behavior (constructor, finalizer, private/active
 bindings for R6, method name overrides, etc.).
+
+## Trait ABI (cross-package dispatch)
+
+`#[miniextendr]` can generate trait ABI metadata to allow type‑erased dispatch
+across package boundaries.
+
+- Apply `#[miniextendr]` to the trait definition to generate tags + vtable types.
+- Apply `#[miniextendr]` to `impl Trait for Type` to build vtables and wrappers.
+- Register `impl Trait for Type;` entries in `miniextendr_module!`.
+
+See `tests/cross-package/README.md` for an end‑to‑end example.
 
 ## ALTREP support
 

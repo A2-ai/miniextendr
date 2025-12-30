@@ -9,7 +9,13 @@ crate can be used directly if you want only the macros.
 
 ### `#[miniextendr]`
 
-Exports a Rust function to R and generates the necessary C and R wrappers.
+Exports Rust items to R and generates the necessary C and R wrappers.
+
+Applies to:
+- functions
+- inherent impl blocks
+- trait definitions (trait ABI metadata)
+- trait impls (`impl Trait for Type`) for vtables and wrappers
 
 ```rust
 use miniextendr_api::miniextendr;
@@ -28,7 +34,8 @@ Common attributes:
 
 ### `miniextendr_module!`
 
-Registers exported functions and ALTREP classes for a package/module.
+Registers exported functions, ALTREP classes, and trait impls for a
+package/module.
 
 ```rust
 use miniextendr_api::miniextendr_module;
@@ -55,6 +62,8 @@ thread when invoked from a non-main thread (requires a worker context).
   `#[miniextendr(coerce)]` control wrapper behavior and safety.
 - R wrapper generation is driven by doc comments and roxygen tags.
 - Impl‑block support covers S3/S4/S7/R6 methods plus env‑style dispatch.
+- Trait dispatch requires `#[miniextendr]` on the trait definition and the
+  trait impl, plus `impl Trait for Type;` in `miniextendr_module!`.
 
 ## Publishing to CRAN
 

@@ -11,8 +11,8 @@ Utility functions for creating and maintaining R packages that use miniextendr f
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/miniextendr/miniextendr}
-  \item Report bugs at \url{https://github.com/miniextendr/miniextendr/issues}
+  \item \url{https://github.com/CGMossa/miniextendr}
+  \item Report bugs at \url{https://github.com/CGMossa/miniextendr/issues}
 }
 
 }

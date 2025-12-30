@@ -18,10 +18,14 @@ into R, ALTREP support, and safe threading patterns.
 - `miniextendr-lint/` – Internal build-time linter (proc-macro helper); not
   intended for external consumption.
 
-### R package(s)
+### R packages and tooling
 
 - `rpkg/` – Example R package that exercises the Rust crates. Includes the
   autoconf build, vendoring, and wrapper generation flow.
+- `minirextendr/` – Helper R package for scaffolding, autoconf/configure wiring,
+  vendoring helpers, and cargo wrappers for R package workflows.
+- `tests/cross-package/` – Producer/consumer R packages used to validate the
+  cross-package trait ABI dispatch flow.
 - `rpkg_0.0.0.9000.tar.gz` – Example built tarball (when present).
 
 ## Crate details
@@ -126,6 +130,24 @@ just test
 just clippy
 just devtools-test
 ```
+
+More tasks (minirextendr helpers, cross-package tests, templates, vendor/lint
+sync) are listed in `justfile` and `tests/cross-package/justfile`.
+
+## Additional docs
+
+- `docs.md` – Architecture overview and command reference.
+- `THREADS.md` – Worker-thread model and safety notes.
+- `NONAPI.md` – Non-API R symbols and policy.
+- `RAYON.md` – Rayon integration details.
+- `COERCE.md` – Coercion rules and conversion behavior.
+- `COERCE_AND_INTO_R_REVIEW.md` – Review notes on coercion and `IntoR` behavior.
+- `ENGINE.md` – Embedding engine notes.
+- `TRAIT_AS_R.md` – Trait ABI and cross-package dispatch.
+- `TRACK_CALLER.md` – `#[track_caller]` usage and error reporting details.
+- `altrep.md` – ALTREP notes and design context.
+- `VENDOR.md` – Vendoring and sync checks.
+- `MAINTAINER.md` – Maintenance and release checklist.
 
 ## Threading model (two modes)
 

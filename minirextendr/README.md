@@ -10,8 +10,10 @@ R package workflows.
 From GitHub:
 
 ```r
-remotes::install_github("miniextendr/miniextendr", subdir = "minirextendr")
+remotes::install_github("CGMossa/miniextendr", subdir = "minirextendr")
 ```
+
+If you're using a fork, replace the owner/repo in the install command.
 
 From a local checkout:
 
@@ -54,6 +56,11 @@ Or run the full workflow:
 ```r
 miniextendr_build()
 ```
+
+## Templates
+
+See `inst/templates/README.md` for the standalone package and monorepo layouts
+used by the scaffolder.
 
 ## Status and validation
 

@@ -10,8 +10,8 @@ Description: Utility functions for creating and maintaining R packages
     templates, workflow helpers, and GitHub-based vendoring of miniextendr
     crates.
 License: MIT + file LICENSE
-URL: https://github.com/miniextendr/miniextendr
-BugReports: https://github.com/miniextendr/miniextendr/issues
+URL: https://github.com/CGMossa/miniextendr
+BugReports: https://github.com/CGMossa/miniextendr/issues
 Imports:
     cli,
     curl,
