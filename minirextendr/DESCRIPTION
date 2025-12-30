@@ -2,8 +2,10 @@ Package: minirextendr
 Title: Scaffold miniextendr R Packages
 Version: 0.1.0
 Authors@R:
-    person("Mossa", "Merhi Reimert", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
+    c(
+        person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = "aut"),
+        person("A2-AI", role = c("cph", "fnd"))
+    )
 Description: Utility functions for creating and maintaining R packages
     that use miniextendr for Rust integration. Similar to usethis but
     specialized for the miniextendr framework. Provides scaffolding

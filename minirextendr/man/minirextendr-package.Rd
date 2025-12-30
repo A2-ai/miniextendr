@@ -17,7 +17,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Mossa Merhi Reimert (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
+\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
 
 }
 \keyword{internal}
