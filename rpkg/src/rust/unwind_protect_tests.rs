@@ -14,15 +14,17 @@ impl Drop for SimpleDropMsg {
     }
 }
 
+/// Unwind Protect Tests
+///
+/// Unwind protect tests.
+///
 /// Test that with_r_unwind_protect works for normal (non-error) path.
 /// Destructors should run normally when the closure completes successfully.
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-/// @title Unwind Protect Tests
 /// @name rpkg_unwind_protect
 /// @keywords internal
-/// @description Unwind protect tests
 /// @examples
 /// \dontrun{
 /// unsafe_C_unwind_protect_normal()

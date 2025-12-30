@@ -19,11 +19,13 @@ pub struct Point {
     pub y: f64,
 }
 
-/// Create a new Counter wrapped in an ExternalPtr
+/// External Pointer Tests
+///
+/// External pointer helpers.
+///
+/// Create a new Counter wrapped in an ExternalPtr.
 #[miniextendr(unsafe(main_thread))]
-/// @title External Pointer Tests
 /// @name rpkg_externalptr
-/// @description External pointer helpers
 /// @examples
 /// ptr <- extptr_counter_new(1L)
 /// unsafe_C_extptr_counter_get(ptr)

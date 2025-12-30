@@ -13,11 +13,13 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 // Standalone function tests
 // =============================================================================
 
+/// RNG Tests
+///
+/// RNG state management tests.
+///
 /// Generate n uniform random numbers using the `#[miniextendr(rng)]` attribute.
 /// This tests automatic GetRNGstate/PutRNGstate wrapping.
-/// @title RNG Tests
 /// @name rpkg_rng
-/// @description RNG state management tests
 /// @return A numeric vector.
 /// @export
 /// @examples

@@ -407,16 +407,18 @@ pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SE
     }
 }
 
+/// ALTREP Unsafe Entry Points
+///
+/// ALTREP low-level entry points (unsafe).
+///
 /// Create a compact integer sequence with explicit length.
 ///
 /// This is the entrypoint used by R/altrep.R for integer ALTREP tests.
 ///
 /// # Safety
 /// Caller must ensure this is called from R's main thread.
-/// @title ALTREP Unsafe Entry Points
 /// @name rpkg_altrep_unsafe
 /// @keywords internal
-/// @description ALTREP low-level entry points (unsafe)
 /// @examples \dontrun{
 /// x <- unsafe_rpkg_altrep_from_doubles(c(1, 2, 3))
 /// unsafe_rpkg_lazy_int_seq_is_materialized(x)
@@ -752,11 +754,13 @@ miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
 #[miniextendr(class = "UnitCircle", pkg = "rpkg")]
 pub struct UnitCircleClass(pub UnitCircleData);
 
+/// ALTREP Example Constructors
+///
+/// ALTREP example constructors.
+///
 /// Create complex numbers on the unit circle: e^(i * 2π * k/n) for k = 0, 1, ..., n-1
 /// These are the n-th roots of unity, evenly spaced around the unit circle.
-/// @title ALTREP Example Constructors
 /// @name rpkg_altrep_examples
-/// @description ALTREP example constructors
 /// @return An ALTREP vector.
 /// @examples
 /// unit_circle(8L)
