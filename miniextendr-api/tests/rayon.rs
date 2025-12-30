@@ -167,7 +167,8 @@ fn test_with_r_matrix_basic() {
     assert_eq!(len, 12);
 
     // Verify the dim attribute
-    let dim = unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+    let dim =
+        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 2) };
     assert_eq!(dim_slice[0], 3); // nrow
@@ -235,7 +236,8 @@ fn test_with_r_array_basic() {
     assert_eq!(len, 24);
 
     // Verify the dim attribute
-    let dim = unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+    let dim =
+        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 3) };
     assert_eq!(dim_slice[0], 2);

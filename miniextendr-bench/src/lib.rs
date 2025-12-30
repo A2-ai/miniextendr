@@ -179,20 +179,9 @@ unsafe fn init_r_once() {
 unsafe fn init_fixtures_once() {
     let _ = FIXTURES.get_or_init(|| unsafe {
         use miniextendr_api::ffi::{
-            INTEGER,
-            LOGICAL,
-            RAW,
-            REAL,
-            R_NamesSymbol,
-            Rf_allocMatrix,
-            Rf_allocVector,
-            Rf_mkCharLenCE,
-            Rf_protect,
-            Rf_setAttrib,
-            Rf_ScalarInteger,
-            SET_STRING_ELT,
-            SET_VECTOR_ELT,
-            SEXPTYPE,
+            INTEGER, LOGICAL, R_NamesSymbol, RAW, REAL, Rf_ScalarInteger, Rf_allocMatrix,
+            Rf_allocVector, Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, SET_STRING_ELT,
+            SET_VECTOR_ELT, SEXPTYPE,
         };
 
         // UTF-8 string.
@@ -294,11 +283,7 @@ unsafe fn init_fixtures_once() {
         // REAL matrices for rarray benchmarks
         let mut real_mats = [SEXP::null(); 2];
         for (idx, &(nrow, ncol)) in MATRIX_DIMS.iter().enumerate() {
-            let mat = Rf_protect(Rf_allocMatrix(
-                SEXPTYPE::REALSXP,
-                nrow as i32,
-                ncol as i32,
-            ));
+            let mat = Rf_protect(Rf_allocMatrix(SEXPTYPE::REALSXP, nrow as i32, ncol as i32));
 
             let ptr = REAL(mat);
             let total = nrow * ncol;

@@ -64,4 +64,3 @@ fn rmatrix_to_vec(size_idx: usize) {
     let vec = unsafe { mat.to_vec() };
     divan::black_box(vec.len());
 }
-

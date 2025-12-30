@@ -225,11 +225,12 @@ impl<T: RNativeType + Clone> TryFromSexp for Array3<T> {
         let slice: &[T] = unsafe { sexp.as_slice() };
 
         // R stores in column-major order, so we create in Fortran order
-        let arr =
-            Array3::from_shape_vec((d0, d1, d2).f(), slice.to_vec()).map_err(|_| SexpLengthError {
+        let arr = Array3::from_shape_vec((d0, d1, d2).f(), slice.to_vec()).map_err(|_| {
+            SexpLengthError {
                 expected: d0 * d1 * d2,
                 actual: slice.len(),
-            })?;
+            }
+        })?;
 
         Ok(arr)
     }
@@ -321,10 +322,11 @@ impl<T: RNativeType + Clone> TryFromSexp for ArrayD<T> {
 
         // R stores in column-major order, so we create in Fortran order
         let shape = IxDyn(&dims);
-        let arr = ArrayD::from_shape_vec(shape.f(), slice.to_vec()).map_err(|_| SexpLengthError {
-            expected: dims.iter().product(),
-            actual: slice.len(),
-        })?;
+        let arr =
+            ArrayD::from_shape_vec(shape.f(), slice.to_vec()).map_err(|_| SexpLengthError {
+                expected: dims.iter().product(),
+                actual: slice.len(),
+            })?;
 
         Ok(arr)
     }
@@ -580,11 +582,10 @@ pub unsafe fn from_r_array3<T: RNativeType>(
     let slice: &[T] = unsafe { sexp.as_slice() };
 
     // R stores in column-major (Fortran) order, so create a Fortran-order view
-    let view =
-        ArrayView3::from_shape((d0, d1, d2).f(), slice).map_err(|_| SexpLengthError {
-            expected: d0 * d1 * d2,
-            actual: slice.len(),
-        })?;
+    let view = ArrayView3::from_shape((d0, d1, d2).f(), slice).map_err(|_| SexpLengthError {
+        expected: d0 * d1 * d2,
+        actual: slice.len(),
+    })?;
 
     Ok(view)
 }

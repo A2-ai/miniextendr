@@ -12,4 +12,3 @@
 //! Parameters:
 //! - matrix sizes from `MATRIX_DIMS` (e.g. 64x64, 256x256).
 //! - optionally: add 3D arrays and “stride-heavy” index patterns.
-

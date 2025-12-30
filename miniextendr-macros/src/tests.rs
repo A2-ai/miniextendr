@@ -201,7 +201,10 @@ fn parsed_fn_no_inline_for_extern_c() {
 }
 
 fn normalize_tokens(ts: proc_macro2::TokenStream) -> String {
-    ts.to_string().chars().filter(|c| !c.is_whitespace()).collect()
+    ts.to_string()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect()
 }
 
 #[test]

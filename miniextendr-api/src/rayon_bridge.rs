@@ -528,11 +528,13 @@ where
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         // Allocate the vector
-        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
+        let sexp =
+            crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect_unchecked(sexp);
 
         // Create and set dim attribute
-        let dim_sexp = crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        let dim_sexp =
+            crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect_unchecked(dim_sexp);
 
         let dim_ptr = crate::ffi::INTEGER_unchecked(dim_sexp);
@@ -788,11 +790,13 @@ where
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         // Allocate the vector
-        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
+        let sexp =
+            crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect_unchecked(sexp);
 
         // Create and set dim attribute
-        let dim_sexp = crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        let dim_sexp =
+            crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
         crate::ffi::Rf_protect_unchecked(dim_sexp);
 
         let dim_ptr = crate::ffi::INTEGER_unchecked(dim_sexp);
