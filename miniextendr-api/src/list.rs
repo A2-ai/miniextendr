@@ -5,6 +5,8 @@ use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
 use crate::ffi::{self, Rboolean, SEXP};
 use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
 use crate::into_r::IntoR;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
+use std::hash::Hash;
 
 /// Owned handle to an R list (`VECSXP`).
 #[derive(Clone, Copy, Debug)]
@@ -317,6 +319,166 @@ where
     }
 }
 
+// =============================================================================
+// HashMap conversions
+// =============================================================================
+
+impl<K, V> IntoList for HashMap<K, V>
+where
+    K: AsRef<str>,
+    V: IntoR,
+{
+    fn into_list(self) -> List {
+        let pairs: Vec<(K, V)> = self.into_iter().collect();
+        List::from_pairs(pairs)
+    }
+}
+
+impl<V> TryFromList for HashMap<String, V>
+where
+    V: TryFromSexp<Error = SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_list(list: List) -> Result<Self, Self::Error> {
+        let n = list.len() as usize;
+        let names_sexp = list.names();
+        let mut map = HashMap::with_capacity(n);
+
+        for i in 0..n {
+            let sexp = list.get(i as isize).ok_or_else(|| {
+                SexpError::from(SexpLengthError {
+                    expected: n,
+                    actual: i,
+                })
+            })?;
+            let value: V = TryFromSexp::try_from_sexp(sexp)?;
+
+            let key = if let Some(names) = names_sexp {
+                let name_sexp = unsafe { ffi::STRING_ELT(names, i as isize) };
+                if name_sexp == unsafe { ffi::R_NaString } {
+                    format!("{i}")
+                } else {
+                    let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                    let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+                    name_cstr.to_str().unwrap_or(&format!("{i}")).to_string()
+                }
+            } else {
+                format!("{i}")
+            };
+
+            map.insert(key, value);
+        }
+        Ok(map)
+    }
+}
+
+// =============================================================================
+// BTreeMap conversions
+// =============================================================================
+
+impl<K, V> IntoList for BTreeMap<K, V>
+where
+    K: AsRef<str>,
+    V: IntoR,
+{
+    fn into_list(self) -> List {
+        let pairs: Vec<(K, V)> = self.into_iter().collect();
+        List::from_pairs(pairs)
+    }
+}
+
+impl<V> TryFromList for BTreeMap<String, V>
+where
+    V: TryFromSexp<Error = SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_list(list: List) -> Result<Self, Self::Error> {
+        let n = list.len() as usize;
+        let names_sexp = list.names();
+        let mut map = BTreeMap::new();
+
+        for i in 0..n {
+            let sexp = list.get(i as isize).ok_or_else(|| {
+                SexpError::from(SexpLengthError {
+                    expected: n,
+                    actual: i,
+                })
+            })?;
+            let value: V = TryFromSexp::try_from_sexp(sexp)?;
+
+            let key = if let Some(names) = names_sexp {
+                let name_sexp = unsafe { ffi::STRING_ELT(names, i as isize) };
+                if name_sexp == unsafe { ffi::R_NaString } {
+                    format!("{i}")
+                } else {
+                    let name_ptr = unsafe { ffi::R_CHAR(name_sexp) };
+                    let name_cstr = unsafe { std::ffi::CStr::from_ptr(name_ptr) };
+                    name_cstr.to_str().unwrap_or(&format!("{i}")).to_string()
+                }
+            } else {
+                format!("{i}")
+            };
+
+            map.insert(key, value);
+        }
+        Ok(map)
+    }
+}
+
+// =============================================================================
+// HashSet conversions (unnamed list <-> set)
+// =============================================================================
+
+impl<T> IntoList for HashSet<T>
+where
+    T: IntoR,
+{
+    fn into_list(self) -> List {
+        let values: Vec<T> = self.into_iter().collect();
+        values.into_list()
+    }
+}
+
+impl<T> TryFromList for HashSet<T>
+where
+    T: TryFromSexp<Error = SexpError> + Eq + Hash,
+{
+    type Error = SexpError;
+
+    fn try_from_list(list: List) -> Result<Self, Self::Error> {
+        let vec: Vec<T> = TryFromList::try_from_list(list)?;
+        Ok(vec.into_iter().collect())
+    }
+}
+
+// =============================================================================
+// BTreeSet conversions (unnamed list <-> set)
+// =============================================================================
+
+impl<T> IntoList for BTreeSet<T>
+where
+    T: IntoR,
+{
+    fn into_list(self) -> List {
+        let values: Vec<T> = self.into_iter().collect();
+        values.into_list()
+    }
+}
+
+impl<T> TryFromList for BTreeSet<T>
+where
+    T: TryFromSexp<Error = SexpError> + Ord,
+{
+    type Error = SexpError;
+
+    fn try_from_list(list: List) -> Result<Self, Self::Error> {
+        let vec: Vec<T> = TryFromList::try_from_list(list)?;
+        Ok(vec.into_iter().collect())
+    }
+}
+
 impl List {
     /// Build a list from `(name, value)` pairs, setting `names` in one pass.
     pub fn from_pairs<N, T>(pairs: Vec<(N, T)>) -> Self
@@ -457,7 +619,7 @@ impl TryFromSexp for List {
         let names_sexp = unsafe { ffi::Rf_getAttrib(list_sexp, ffi::R_NamesSymbol) };
         if names_sexp != unsafe { ffi::R_NilValue } {
             let n = unsafe { ffi::Rf_xlength(list_sexp) };
-            let mut seen = std::collections::HashSet::new();
+            let mut seen = HashSet::new();
 
             for i in 0..n {
                 let name_sexp = unsafe { ffi::STRING_ELT(names_sexp, i) };

@@ -355,7 +355,8 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sexp = crate::worker::with_r_thread(move || {
             // This runs on main thread - unwrap the pointer
             let ptr: *mut T = sendable_ptr_into_ptr(sendable_ptr);
-            unsafe { Self::create_extptr_sexp(ptr) }
+            // Use _unchecked since with_r_thread guarantees we're on main thread
+            unsafe { Self::create_extptr_sexp_unchecked(ptr) }
         });
 
         Self {
@@ -1011,7 +1012,8 @@ impl ExternalPtr<()> {
             if stored_sym.type_of() != SEXPTYPE::SYMSXP {
                 return false;
             }
-            let expected_sym = type_symbol::<T>();
+            // Must use type_id_symbol (namespaced) to match what new() stores
+            let expected_sym = type_id_symbol::<T>();
             std::ptr::eq(stored_sym.0, expected_sym.0)
         }
     }

@@ -66,8 +66,9 @@ pub fn derive_into_list(input: DeriveInput) -> syn::Result<TokenStream> {
             } else {
                 quote! { { #(#idents),*, .. } }
             };
+            // Use from_raw_pairs to allow heterogeneous field types
             let construction = quote! {
-                ::miniextendr_api::list::List::from_pairs(vec![ #( (#names, #idents) ),* ])
+                ::miniextendr_api::list::List::from_raw_pairs(vec![ #( (#names, #idents.into_sexp()) ),* ])
             };
             (pat, construction)
         }

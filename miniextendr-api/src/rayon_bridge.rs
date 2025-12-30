@@ -299,7 +299,7 @@ where
     impl Drop for UnprotectGuard {
         fn drop(&mut self) {
             with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect(1);
+                crate::ffi::Rf_unprotect_unchecked(1);
             });
         }
     }
@@ -307,8 +307,8 @@ where
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
-        crate::ffi::Rf_protect(sexp);
+        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, len as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect_unchecked(sexp);
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
     });
@@ -402,7 +402,7 @@ where
     impl Drop for UnprotectGuard {
         fn drop(&mut self) {
             with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect(1);
+                crate::ffi::Rf_unprotect_unchecked(1);
             });
         }
     }
@@ -410,8 +410,8 @@ where
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
-        crate::ffi::Rf_protect(sexp);
+        let sexp = crate::ffi::Rf_allocMatrix_unchecked(T::SEXP_TYPE, nrow as i32, ncol as i32);
+        crate::ffi::Rf_protect_unchecked(sexp);
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
     });
@@ -504,7 +504,7 @@ where
         fn drop(&mut self) {
             let n = self.0;
             with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect(n);
+                crate::ffi::Rf_unprotect_unchecked(n);
             });
         }
     }
@@ -513,20 +513,20 @@ where
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         // Allocate the vector
-        let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
-        crate::ffi::Rf_protect(sexp);
+        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect_unchecked(sexp);
 
         // Create and set dim attribute
-        let dim_sexp = crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
-        crate::ffi::Rf_protect(dim_sexp);
+        let dim_sexp = crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect_unchecked(dim_sexp);
 
-        let dim_ptr = crate::ffi::INTEGER(dim_sexp);
+        let dim_ptr = crate::ffi::INTEGER_unchecked(dim_sexp);
         for (i, &d) in dims.iter().enumerate() {
             *dim_ptr.add(i) = d as i32;
         }
 
-        crate::ffi::Rf_setAttrib(sexp, crate::ffi::R_DimSymbol, dim_sexp);
-        crate::ffi::Rf_unprotect(1); // unprotect dim_sexp, sexp stays protected
+        crate::ffi::Rf_setAttrib_unchecked(sexp, crate::ffi::R_DimSymbol, dim_sexp);
+        crate::ffi::Rf_unprotect_unchecked(1); // unprotect dim_sexp, sexp stays protected
 
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
@@ -622,7 +622,7 @@ where
     impl Drop for UnprotectGuard {
         fn drop(&mut self) {
             with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect(1);
+                crate::ffi::Rf_unprotect_unchecked(1);
             });
         }
     }
@@ -630,8 +630,8 @@ where
     // Allocate, protect, and get data pointer on the R main thread
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
-        let sexp = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
-        crate::ffi::Rf_protect(sexp);
+        let sexp = crate::ffi::Rf_allocMatrix_unchecked(T::SEXP_TYPE, nrow as i32, ncol as i32);
+        crate::ffi::Rf_protect_unchecked(sexp);
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
     });
@@ -764,7 +764,7 @@ where
         fn drop(&mut self) {
             let n = self.0;
             with_r_thread(move || unsafe {
-                crate::ffi::Rf_unprotect(n);
+                crate::ffi::Rf_unprotect_unchecked(n);
             });
         }
     }
@@ -773,20 +773,20 @@ where
     use crate::worker::Sendable;
     let (sexp, Sendable(ptr)) = with_r_thread(move || unsafe {
         // Allocate the vector
-        let sexp = crate::ffi::Rf_allocVector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
-        crate::ffi::Rf_protect(sexp);
+        let sexp = crate::ffi::Rf_allocVector_unchecked(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect_unchecked(sexp);
 
         // Create and set dim attribute
-        let dim_sexp = crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
-        crate::ffi::Rf_protect(dim_sexp);
+        let dim_sexp = crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::INTSXP, NDIM as crate::ffi::R_xlen_t);
+        crate::ffi::Rf_protect_unchecked(dim_sexp);
 
-        let dim_ptr = crate::ffi::INTEGER(dim_sexp);
+        let dim_ptr = crate::ffi::INTEGER_unchecked(dim_sexp);
         for (i, &d) in dims.iter().enumerate() {
             *dim_ptr.add(i) = d as i32;
         }
 
-        crate::ffi::Rf_setAttrib(sexp, crate::ffi::R_DimSymbol, dim_sexp);
-        crate::ffi::Rf_unprotect(1); // unprotect dim_sexp, sexp stays protected
+        crate::ffi::Rf_setAttrib_unchecked(sexp, crate::ffi::R_DimSymbol, dim_sexp);
+        crate::ffi::Rf_unprotect_unchecked(1); // unprotect dim_sexp, sexp stays protected
 
         let ptr = T::dataptr_mut(sexp);
         (sexp, Sendable(ptr))
