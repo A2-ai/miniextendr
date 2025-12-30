@@ -11,6 +11,7 @@ console. This keeps the default build lean, but makes it easy for users to opt
 into progress bars for long-running Rust tasks.
 
 This proposal follows the constraints you outlined:
+
 - R console writes must be main-thread only.
 - `TermLike` is implementable today, but verbose.
 - A “stdout vs stderr” hint is useful for coloring/behavior heuristics.
@@ -44,6 +45,7 @@ This proposal follows the constraints you outlined:
 ### 3) ANSI vs non‑ANSI fallback
 
 If ANSI not available:
+
 - implement cursor ops by returning `Ok(())` (no multi‑line control)
 - rely on `\r` for single‑line progress
 This prevents garbled output in non‑ANSI frontends (some RStudio contexts).
