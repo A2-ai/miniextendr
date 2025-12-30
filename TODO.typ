@@ -303,3 +303,15 @@ checking available recipes (`just --list`)
 - [ ] `time` feature: `time::OffsetDateTime` / `time::Date` <-> R `POSIXct` / `Date`
 - [ ] `regex` feature: `Regex` from R `character` + optional compiled cache via ExternalPtr
 - [ ] `indexmap` feature: `IndexMap<String, T>` <-> R named list (order-preserving; auto-name when missing)
+
+=== Planned: External-trait export strategy ===
+- [ ] Document adapter-trait pattern for exporting non-owned traits to R
+- [ ] Provide example wrapper trait + blanket impl pattern in docs/reviews
+- [ ] Clarify trait ABI constraints (no generics/async; limited signatures) and recommend subset traits
+
+=== Planned: Numeric crate feature candidates ===
+- [ ] `num-bigint` feature: `BigInt`/`BigUint` <-> R `character` (lossless)
+- [ ] `rust_decimal` feature: `Decimal` <-> R `character` (lossless), optional `numeric` fast path
+- [ ] `ordered-float` feature: `OrderedFloat<f64|f32>` <-> R `numeric`
+- [ ] `num-traits` (internal only): optional helper for generic implementations, not a public R-facing trait
+- [ ] `rug` (LGPL + system GMP): keep out of defaults; document as advanced/opt-in if ever added
