@@ -27,19 +27,6 @@ R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/miniextendr_wrappers.R
 CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
 
-# Dev-mode rebuild sentinel (NOT_CRAN=true)
-#
-# Why this exists:
-#   devtools/pkgbuild decide whether to (re)compile based on file timestamps.
-#   When iterating locally, we want compilation to run even if the shared
-#   library appears “up to date”, and let Cargo decide what actually rebuilds.
-#
-# How it works:
-#   After a successful build in dev mode, we `touch` this file so it is newer
-#   than the built DLL. This makes pkgbuild:::needs_compile() return TRUE on the
-#   next invocation.
-DEV_REBUILD_SENTINEL = $(ABS_RPKG_SRCDIR)/dev_rebuild_sentinel
-
 # Pass Cargo feature flags to C compiler so entrypoint.c knows which modules exist
 PKG_CPPFLAGS = @CARGO_FEATURE_CPPFLAGS@
 ## ----------------------------------------------------------------------

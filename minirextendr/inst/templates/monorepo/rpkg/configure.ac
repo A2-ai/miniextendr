@@ -291,12 +291,16 @@ dnl Create .cargo directory (it's a hidden dir not included in tarball)
 AS_MKDIR_P([.cargo])
 AS_MKDIR_P([src/rust/.cargo])
 
+dnl Create inst/include for the mx_abi.h header
+AS_MKDIR_P([inst/include])
+
 AC_CONFIG_FILES([
   .cargo/config.toml:src/rust/cargo-config.toml.in
   src/rust/Cargo.toml
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars
   src/entrypoint.c
+  src/mx_abi.c
 ])
 
 dnl Ensure the monorepo root has a cargo config (needed for workspace resolution)

@@ -276,11 +276,15 @@ dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
 AS_MKDIR_P([src/rust/.cargo])
 
+dnl Create inst/include for the mx_abi.h header
+AS_MKDIR_P([inst/include])
+
 AC_CONFIG_FILES([
   src/rust/Cargo.toml
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars
   src/entrypoint.c
+  src/mx_abi.c
 ])
 
 dnl Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
