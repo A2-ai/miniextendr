@@ -297,3 +297,9 @@ checking available recipes (`just --list`)
 - [ ] Provide ANSI cursor/clear defaults in `RTerm` (cursor moves, clear line, write_line)
 - [ ] Add convenience constructors (`term_like_{stdout,stderr}[_with_hz]`) for stream routing
 - [ ] Update NONAPI.md with new console hook usage
+
+=== Planned: Feature shortlist from Rust ecosystem ===
+- [ ] `uuid` feature: `uuid::Uuid` <-> R `character` (scalar + vector), plus ExternalPtr cache option
+- [ ] `time` feature: `time::OffsetDateTime` / `time::Date` <-> R `POSIXct` / `Date`
+- [ ] `regex` feature: `Regex` from R `character` + optional compiled cache via ExternalPtr
+- [ ] `indexmap` feature: `IndexMap<String, T>` <-> R named list (order-preserving; auto-name when missing)
