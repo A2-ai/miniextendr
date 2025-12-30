@@ -99,5 +99,13 @@ harness = false
 name = "native_vs_coerce"
 harness = false
 
+[[bench]]
+name = "list"
+harness = false
+
+[[bench]]
+name = "rarray"
+harness = false
+
 [profile.release]
 debug-assertions = true

@@ -12,8 +12,6 @@ use miniextendr_api::ffi::{self, SEXP};
 
 pub mod bench_plan;
 
-type SexpAddr = usize;
-
 // =============================================================================
 // Size matrix for parameterized benchmarks
 // =============================================================================
@@ -24,74 +22,102 @@ pub const SIZES: &[usize] = &[1, 16, 256, 4096, 65536];
 /// Size labels for divan output.
 pub const SIZE_LABELS: &[&str] = &["1", "16", "256", "4K", "64K"];
 
+/// Sizes for named list fixtures (used for map/list benchmarks).
+pub const NAMED_LIST_SIZES: &[usize] = &[16, 256, 4096];
+
+/// Labels for named list sizes.
+pub const NAMED_LIST_SIZE_LABELS: &[&str] = &["16", "256", "4K"];
+
+/// Matrix dimensions (nrow, ncol) for matrix/rarray benchmarks.
+pub const MATRIX_DIMS: &[(usize, usize)] = &[(64, 64), (256, 256)];
+
+/// Labels for matrix dimensions.
+pub const MATRIX_DIM_LABELS: &[&str] = &["64x64", "256x256"];
+
 // =============================================================================
 // Fixtures
 // =============================================================================
 
 #[derive(Clone, Copy)]
 pub struct Fixtures {
-    utf8_charsxp: SexpAddr,
-    latin1_charsxp: SexpAddr,
-    utf8_strsxp: SexpAddr,
-    latin1_strsxp: SexpAddr,
+    utf8_charsxp: SEXP,
+    latin1_charsxp: SEXP,
+    utf8_strsxp: SEXP,
+    latin1_strsxp: SEXP,
     // Pre-allocated vectors for each size
-    int_vecs: [SexpAddr; 5],
-    real_vecs: [SexpAddr; 5],
-    lgl_vecs: [SexpAddr; 5],
-    raw_vecs: [SexpAddr; 5],
+    int_vecs: [SEXP; 5],
+    real_vecs: [SEXP; 5],
+    lgl_vecs: [SEXP; 5],
+    raw_vecs: [SEXP; 5],
     // STRSXP with single string element of various sizes
-    str_vecs: [SexpAddr; 5],
+    str_vecs: [SEXP; 5],
+    // Named lists (VECSXP + names) used for list/map benchmarks
+    named_list_i32: [SEXP; 3],
+    // REAL matrices used for rarray benchmarks
+    real_mats: [SEXP; 2],
 }
 
 impl Fixtures {
     #[inline(always)]
     pub fn utf8_charsxp(self) -> SEXP {
-        SEXP::from_ptr((self.utf8_charsxp as *const ()).cast_mut().cast())
+        self.utf8_charsxp
     }
 
     #[inline(always)]
     pub fn latin1_charsxp(self) -> SEXP {
-        SEXP::from_ptr((self.latin1_charsxp as *const ()).cast_mut().cast())
+        self.latin1_charsxp
     }
 
     #[inline(always)]
     pub fn utf8_strsxp(self) -> SEXP {
-        SEXP::from_ptr((self.utf8_strsxp as *const ()).cast_mut().cast())
+        self.utf8_strsxp
     }
 
     #[inline(always)]
     pub fn latin1_strsxp(self) -> SEXP {
-        SEXP::from_ptr((self.latin1_strsxp as *const ()).cast_mut().cast())
+        self.latin1_strsxp
     }
 
     /// Get pre-allocated INTSXP of given size index (0-4 maps to SIZES).
     #[inline(always)]
     pub fn int_vec(self, size_idx: usize) -> SEXP {
-        SEXP::from_ptr((self.int_vecs[size_idx] as *const ()).cast_mut().cast())
+        self.int_vecs[size_idx]
     }
 
     /// Get pre-allocated REALSXP of given size index.
     #[inline(always)]
     pub fn real_vec(self, size_idx: usize) -> SEXP {
-        SEXP::from_ptr((self.real_vecs[size_idx] as *const ()).cast_mut().cast())
+        self.real_vecs[size_idx]
     }
 
     /// Get pre-allocated LGLSXP of given size index.
     #[inline(always)]
     pub fn lgl_vec(self, size_idx: usize) -> SEXP {
-        SEXP::from_ptr((self.lgl_vecs[size_idx] as *const ()).cast_mut().cast())
+        self.lgl_vecs[size_idx]
     }
 
     /// Get pre-allocated RAWSXP of given size index.
     #[inline(always)]
     pub fn raw_vec(self, size_idx: usize) -> SEXP {
-        SEXP::from_ptr((self.raw_vecs[size_idx] as *const ()).cast_mut().cast())
+        self.raw_vecs[size_idx]
     }
 
     /// Get pre-allocated STRSXP(1) with string of given size index.
     #[inline(always)]
     pub fn str_vec(self, size_idx: usize) -> SEXP {
-        SEXP::from_ptr((self.str_vecs[size_idx] as *const ()).cast_mut().cast())
+        self.str_vecs[size_idx]
+    }
+
+    /// Get pre-allocated named list (VECSXP) of given size index (0-2 maps to NAMED_LIST_SIZES).
+    #[inline(always)]
+    pub fn named_list_i32(self, size_idx: usize) -> SEXP {
+        self.named_list_i32[size_idx]
+    }
+
+    /// Get pre-allocated REAL matrix of given size index (0-1 maps to MATRIX_DIMS).
+    #[inline(always)]
+    pub fn real_matrix(self, size_idx: usize) -> SEXP {
+        self.real_mats[size_idx]
     }
 }
 
@@ -153,8 +179,20 @@ unsafe fn init_r_once() {
 unsafe fn init_fixtures_once() {
     let _ = FIXTURES.get_or_init(|| unsafe {
         use miniextendr_api::ffi::{
-            INTEGER, LOGICAL, RAW, REAL, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
-            SET_STRING_ELT, SEXPTYPE,
+            INTEGER,
+            LOGICAL,
+            RAW,
+            REAL,
+            R_NamesSymbol,
+            Rf_allocMatrix,
+            Rf_allocVector,
+            Rf_mkCharLenCE,
+            Rf_protect,
+            Rf_setAttrib,
+            Rf_ScalarInteger,
+            SET_STRING_ELT,
+            SET_VECTOR_ELT,
+            SEXPTYPE,
         };
 
         // UTF-8 string.
@@ -181,10 +219,10 @@ unsafe fn init_fixtures_once() {
         SET_STRING_ELT(latin1_strsxp, 0, latin1_charsxp);
 
         // Pre-allocate vectors for each size in SIZES
-        let mut int_vecs = [0usize; 5];
-        let mut real_vecs = [0usize; 5];
-        let mut lgl_vecs = [0usize; 5];
-        let mut raw_vecs = [0usize; 5];
+        let mut int_vecs = [SEXP::null(); 5];
+        let mut real_vecs = [SEXP::null(); 5];
+        let mut lgl_vecs = [SEXP::null(); 5];
+        let mut raw_vecs = [SEXP::null(); 5];
 
         for (i, &size) in SIZES.iter().enumerate() {
             // Integer vector filled with 0..size
@@ -193,7 +231,7 @@ unsafe fn init_fixtures_once() {
             for j in 0..size {
                 *int_ptr.add(j) = j as i32;
             }
-            int_vecs[i] = int_vec.as_ptr() as SexpAddr;
+            int_vecs[i] = int_vec;
 
             // Real vector filled with 0.0..size as f64
             let real_vec = Rf_protect(Rf_allocVector(SEXPTYPE::REALSXP, size as ffi::R_xlen_t));
@@ -201,7 +239,7 @@ unsafe fn init_fixtures_once() {
             for j in 0..size {
                 *real_ptr.add(j) = j as f64;
             }
-            real_vecs[i] = real_vec.as_ptr() as SexpAddr;
+            real_vecs[i] = real_vec;
 
             // Logical vector with alternating TRUE/FALSE
             let lgl_vec = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, size as ffi::R_xlen_t));
@@ -209,7 +247,7 @@ unsafe fn init_fixtures_once() {
             for j in 0..size {
                 *lgl_ptr.add(j) = (j % 2) as i32;
             }
-            lgl_vecs[i] = lgl_vec.as_ptr() as SexpAddr;
+            lgl_vecs[i] = lgl_vec;
 
             // Raw vector filled with 0..255 cycling
             let raw_vec = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, size as ffi::R_xlen_t));
@@ -217,29 +255,72 @@ unsafe fn init_fixtures_once() {
             for j in 0..size {
                 *raw_ptr.add(j) = (j % 256) as u8;
             }
-            raw_vecs[i] = raw_vec.as_ptr() as SexpAddr;
+            raw_vecs[i] = raw_vec;
         }
 
         // String vectors: STRSXP(1) with string of various lengths
-        let mut str_vecs = [0usize; 5];
+        let mut str_vecs = [SEXP::null(); 5];
         for (i, &size) in SIZES.iter().enumerate() {
             let s: String = "x".repeat(size);
             let strsxp = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             let charsxp = Rf_mkCharLenCE(s.as_ptr().cast::<c_char>(), size as i32, ffi::CE_UTF8);
             SET_STRING_ELT(strsxp, 0, charsxp);
-            str_vecs[i] = strsxp.as_ptr() as SexpAddr;
+            str_vecs[i] = strsxp;
+        }
+
+        // Named lists for list/map conversion benchmarks
+        let mut named_list_i32 = [SEXP::null(); 3];
+        for (idx, &len) in NAMED_LIST_SIZES.iter().enumerate() {
+            let list = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, len as ffi::R_xlen_t));
+            let names = Rf_protect(Rf_allocVector(SEXPTYPE::STRSXP, len as ffi::R_xlen_t));
+
+            for i in 0..len {
+                let val = Rf_ScalarInteger(i as i32);
+                SET_VECTOR_ELT(list, i as ffi::R_xlen_t, val);
+
+                let key = format!("k{i}");
+                let chars = Rf_mkCharLenCE(
+                    key.as_ptr().cast::<c_char>(),
+                    key.len() as i32,
+                    ffi::CE_UTF8,
+                );
+                SET_STRING_ELT(names, i as ffi::R_xlen_t, chars);
+            }
+
+            Rf_setAttrib(list, R_NamesSymbol, names);
+            named_list_i32[idx] = list;
+        }
+
+        // REAL matrices for rarray benchmarks
+        let mut real_mats = [SEXP::null(); 2];
+        for (idx, &(nrow, ncol)) in MATRIX_DIMS.iter().enumerate() {
+            let mat = Rf_protect(Rf_allocMatrix(
+                SEXPTYPE::REALSXP,
+                nrow as i32,
+                ncol as i32,
+            ));
+
+            let ptr = REAL(mat);
+            let total = nrow * ncol;
+            for i in 0..total {
+                *ptr.add(i) = i as f64;
+            }
+
+            real_mats[idx] = mat;
         }
 
         Fixtures {
-            utf8_charsxp: utf8_charsxp.as_ptr() as SexpAddr,
-            latin1_charsxp: latin1_charsxp.as_ptr() as SexpAddr,
-            utf8_strsxp: utf8_strsxp.as_ptr() as SexpAddr,
-            latin1_strsxp: latin1_strsxp.as_ptr() as SexpAddr,
+            utf8_charsxp,
+            latin1_charsxp,
+            utf8_strsxp,
+            latin1_strsxp,
             int_vecs,
             real_vecs,
             lgl_vecs,
             raw_vecs,
             str_vecs,
+            named_list_i32,
+            real_mats,
         }
     });
 }

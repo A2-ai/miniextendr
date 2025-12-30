@@ -28,6 +28,8 @@
 //! - `rayon.rs`            rayon_bridge parallel helpers (feature-gated)
 //! - `connections.rs`      Custom connections (feature-gated)
 //! - `wrappers.rs`         R wrapper call overhead (optional, via R eval)
+//! - `list.rs`             list construction + named lookup + derives
+//! - `rarray.rs`           RArray/RMatrix access patterns
 //!
 //! ---------------------------------------------------------------------------
 //! Shared harness expectations
@@ -64,6 +66,7 @@
 //!   LGLSXP, RAWSXP, STRSXP, VECSXP).
 //! - Rust-side `Vec<T>` inputs mirroring the same sizes.
 //! - Named list fixtures for map conversions.
+//! - Matrix/array fixtures for `rarray` access benchmarks.
 //! - ExternalPtr fixtures for tagging/protection tests.
 //! - ALTREP class fixtures for each data type and iterator variant.
 //!
@@ -89,6 +92,8 @@
 //! - `connections`: custom connections
 //! - `wrappers`: generated R wrapper overhead
 //! - `rffi_checked`: checked wrapper overhead
+//! - `list`: list primitives and derives
+//! - `rarray`: array/matrix access patterns
 //!
 //! Each submodule contains a detailed plan for its bench cases.
 
@@ -102,8 +107,10 @@ pub mod ffi_calls;
 pub mod from_r;
 pub mod harness;
 pub mod into_r;
+pub mod list;
 pub mod preserve;
 pub mod rayon;
+pub mod rarray;
 pub mod rffi_checked;
 pub mod sexp_ext;
 pub mod strings;

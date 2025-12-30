@@ -4,6 +4,7 @@
 
 use miniextendr_api::TryFromSexp;
 use miniextendr_api::ffi;
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 fn main() {
     miniextendr_bench::init();
@@ -181,4 +182,36 @@ fn iterate_int_slice(size_idx: usize) {
     let slice: &[i32] = TryFromSexp::try_from_sexp(sexp).unwrap();
     let sum: i64 = slice.iter().map(|&x| x as i64).sum();
     divan::black_box(sum);
+}
+
+// =============================================================================
+// Collection conversions (sets + maps)
+// =============================================================================
+
+#[divan::bench(args = [0, 1, 2, 3, 4])]
+fn hashset_i32(size_idx: usize) {
+    let sexp = fixtures().int_vec(size_idx);
+    let set: HashSet<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+    divan::black_box(set.len());
+}
+
+#[divan::bench(args = [0, 1, 2, 3, 4])]
+fn btreeset_i32(size_idx: usize) {
+    let sexp = fixtures().int_vec(size_idx);
+    let set: BTreeSet<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+    divan::black_box(set.len());
+}
+
+#[divan::bench(args = [0usize, 1, 2])]
+fn named_list_hashmap_i32(size_idx: usize) {
+    let sexp = fixtures().named_list_i32(size_idx);
+    let map: HashMap<String, i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+    divan::black_box(map.len());
+}
+
+#[divan::bench(args = [0usize, 1, 2])]
+fn named_list_btreemap_i32(size_idx: usize) {
+    let sexp = fixtures().named_list_i32(size_idx);
+    let map: BTreeMap<String, i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
+    divan::black_box(map.len());
 }
