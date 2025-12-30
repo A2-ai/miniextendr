@@ -139,8 +139,8 @@ script_path <- function(name) {
 
 #' Use a minirextendr template
 #'
-#' Reads a template from the current template type directory, performs
-#' mustache-style variable substitution, and writes to the target location.
+#' Uses usethis' templating machinery to render and write a template from
+#' the current template type directory.
 #'
 #' @param template Name of template file (relative to template type directory)
 #' @param save_as Path to save the file (relative to project root)
@@ -151,33 +151,24 @@ script_path <- function(name) {
 #' @noRd
 use_template <- function(template, save_as = template, data = list(),
                          subdir = NULL, open = FALSE) {
-  # Get full path to template
-  src_path <- template_path(template, subdir = subdir)
-
-  # Read template content
-  content <- readLines(src_path, warn = FALSE)
-  content <- paste(content, collapse = "\n")
-
-  # Perform mustache-style substitution for {{variable}}
-  for (nm in names(data)) {
-    pattern <- paste0("\\{\\{", nm, "\\}\\}")
-    content <- gsub(pattern, data[[nm]], content)
+  template_rel <- if (is.null(subdir)) {
+    file.path(get_template_type(), template)
+  } else {
+    file.path(get_template_type(), subdir, template)
   }
 
-  # Ensure target directory exists
   target_path <- usethis::proj_path(save_as)
   ensure_dir(dirname(target_path))
 
-  # Write file
-  writeLines(content, target_path)
-  bullet_created(save_as)
+  new <- usethis::use_template(
+    template = template_rel,
+    save_as = save_as,
+    data = data,
+    open = open && rlang::is_interactive(),
+    package = "minirextendr"
+  )
 
-  # Open if requested
-  if (open && rlang::is_interactive()) {
-    usethis::edit_file(target_path)
-  }
-
-  invisible(TRUE)
+  invisible(new)
 }
 
 #' Check if a system command is available

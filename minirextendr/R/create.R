@@ -97,10 +97,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
 
   # Initialize git
   if (!fs::file_exists(usethis::proj_path(".git"))) {
-    withr::with_dir(path, {
-      system2("git", c("init", "-q"))
-    })
-    cli::cli_alert_success("Initialized git repository")
+    usethis::use_git()
   }
 
   cli::cli_h1("Monorepo created!")
