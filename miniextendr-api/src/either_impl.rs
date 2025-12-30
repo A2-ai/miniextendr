@@ -58,6 +58,17 @@
 //! **Rule of thumb**: If `L` can successfully parse values intended for `R`,
 //! swap the order so the more restrictive type is tried first.
 //!
+//! ## Ambiguous Pairs Quick Reference
+//!
+//! | Ambiguous (avoid) | Safe Alternative | Why |
+//! |-------------------|------------------|-----|
+//! | `Either<f64, i32>` | `Either<i32, f64>` | R integers coerce to doubles |
+//! | `Either<Vec<f64>, Vec<i32>>` | `Either<Vec<i32>, Vec<f64>>` | Same coercion issue |
+//! | `Either<f64, bool>` | `Either<bool, f64>` | Booleans coerce to numeric |
+//! | `Either<i32, bool>` | `Either<bool, i32>` | Booleans coerce to integer |
+//! | `Either<String, i32>` | OK as-is | Disjoint R types |
+//! | `Either<Vec<T>, T>` | `Either<T, Vec<T>>` | Scalar matches length-1 vector |
+//!
 //! # Example
 //!
 //! ```ignore

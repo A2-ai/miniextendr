@@ -35,6 +35,42 @@
 //! For worker-thread usability, use [`to_vec()`][RArray::to_vec] to copy data
 //! on the main thread, then pass the owned `Vec` to worker threads.
 //!
+//! # Performance
+//!
+//! For best performance, prefer slice-based and column-based access over per-element
+//! indexing:
+//!
+//! | Method | Speed | Use Case |
+//! |--------|-------|----------|
+//! | [`as_slice()`][RArray::as_slice] | Fastest | Full-buffer iteration, SIMD |
+//! | [`column()`][RMatrix::column] | Fast | Per-column operations (matrices) |
+//! | [`column_mut()`][RMatrix::column_mut] | Fast | Per-column mutation |
+//! | [`get()`][RArray::get] / [`get_rc()`][RMatrix::get_rc] | Slower | Single-element access |
+//!
+//! **Why?** Per-element methods like `get()` perform index translation and bounds
+//! checks on every call. For tight loops, this overhead dominates.
+//!
+//! ```ignore
+//! // Slow: per-element access
+//! for row in 0..nrow {
+//!     for col in 0..ncol {
+//!         let val = unsafe { matrix.get_rc(row, col) };
+//!     }
+//! }
+//!
+//! // Fast: slice-based iteration
+//! for val in unsafe { matrix.as_slice() } {
+//!     // ...
+//! }
+//!
+//! // Fast: column-wise iteration (columns are contiguous in R)
+//! for col in 0..ncol {
+//!     for val in unsafe { matrix.column(col) } {
+//!         // ...
+//!     }
+//! }
+//! ```
+//!
 //! # Example
 //!
 //! ```ignore
@@ -382,6 +418,27 @@ impl<T: RNativeType> RMatrix<T> {
         assert!(col < ncol, "column index out of bounds");
         let start = col * nrow;
         unsafe { &self.as_slice()[start..start + nrow] }
+    }
+
+    /// Get a mutable column as a slice.
+    ///
+    /// Columns are contiguous in R's column-major layout, so this returns
+    /// a proper `&mut [T]` without any striding.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be protected and valid.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `col >= ncol`.
+    #[inline]
+    pub unsafe fn column_mut(&mut self, col: usize) -> &mut [T] {
+        let nrow = unsafe { self.nrow() };
+        let ncol = unsafe { self.ncol() };
+        assert!(col < ncol, "column index out of bounds");
+        let start = col * nrow;
+        unsafe { &mut self.as_slice_mut()[start..start + nrow] }
     }
 }
 

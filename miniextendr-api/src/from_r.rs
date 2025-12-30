@@ -113,6 +113,8 @@ pub enum SexpError {
     Na(SexpNaError),
     /// A required field was missing from a named list.
     MissingField(String),
+    /// A named list has duplicate non-empty names.
+    DuplicateName(String),
     /// Failed to convert to `Either<L, R>` - both branches failed.
     ///
     /// Contains the error messages from attempting both conversions.
@@ -132,6 +134,7 @@ impl std::fmt::Display for SexpError {
             SexpError::Length(e) => write!(f, "{}", e),
             SexpError::Na(e) => write!(f, "{}", e),
             SexpError::MissingField(name) => write!(f, "missing field: {}", name),
+            SexpError::DuplicateName(name) => write!(f, "duplicate name in list: {:?}", name),
             #[cfg(feature = "either")]
             SexpError::EitherConversion {
                 left_error,
@@ -152,6 +155,7 @@ impl std::error::Error for SexpError {
             SexpError::Length(e) => Some(e),
             SexpError::Na(e) => Some(e),
             SexpError::MissingField(_) => None,
+            SexpError::DuplicateName(_) => None,
             #[cfg(feature = "either")]
             SexpError::EitherConversion { .. } => None,
         }
@@ -873,6 +877,8 @@ where
 }
 
 /// Helper to convert R named list to a map type.
+///
+/// Returns an error if the list has duplicate non-empty, non-NA names.
 fn named_list_to_map<V, M, F>(sexp: SEXP, create_map: F) -> Result<M, SexpError>
 where
     V: TryFromSexp,
@@ -897,6 +903,32 @@ where
     // Get names attribute
     let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
     let has_names = names.type_of() == SEXPTYPE::STRSXP && names.len() == len;
+
+    // Check for duplicate non-empty names before conversion
+    if has_names {
+        let mut seen = HashSet::new();
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(names, i as crate::ffi::R_xlen_t) };
+            // Skip NA names
+            if charsxp == unsafe { crate::ffi::R_NaString } {
+                continue;
+            }
+            let c_str = unsafe { Rf_translateCharUTF8(charsxp) };
+            if c_str.is_null() {
+                continue;
+            }
+            let name = unsafe { std::ffi::CStr::from_ptr(c_str) }
+                .to_str()
+                .unwrap_or("");
+            // Skip empty names
+            if name.is_empty() {
+                continue;
+            }
+            if !seen.insert(name) {
+                return Err(SexpError::DuplicateName(name.to_string()));
+            }
+        }
+    }
 
     for i in 0..len {
         let key = if has_names {

@@ -149,6 +149,21 @@
 //! | `with_r_vec` + parallel fill | Safe | Fast |
 //! | R FFI (any) in `par_iter` | **Panic** | N/A |
 //! | R FFI `_unchecked` in `par_iter` | **UB** | N/A |
+//!
+//! # APIs That CANNOT Be Called from Rayon Threads
+//!
+//! The following will **panic** or cause **undefined behavior** if called from
+//! inside `par_iter`, `par_chunks`, or any Rayon parallel context:
+//!
+//! - **Any `ffi::*` function** (both checked and unchecked variants)
+//! - **`with_r_thread()`** - routing only works from the worker thread
+//! - **`with_r_vec()`**, **`with_r_matrix()`**, etc. - these use `with_r_thread` internally
+//! - **`.into_sexp()`** on any type - routes to main thread, fails on Rayon threads
+//! - **`RRng`** and R's RNG functions - call R APIs internally
+//! - **`TryFromSexp::try_from_sexp()`** - may call R for error messages
+//!
+//! **The golden rule**: Inside Rayon parallel code, use only pure Rust operations
+//! on primitive types (`i32`, `f64`, `bool`, etc.) and standard Rust collections.
 
 use crate::IntoR;
 use crate::ffi::{RNativeType, SEXP};

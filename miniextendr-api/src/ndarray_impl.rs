@@ -29,7 +29,7 @@
 //!   is already column-major, this is a direct copy. If row-major, elements are
 //!   reordered via transpose.
 //!
-//! For zero-copy access, use `ArrayView` types (see [`from_r_slice`]).
+//! For zero-copy access, use `ArrayView` types (see [`from_r_slice`] and [`from_r_matrix`]).
 //!
 //! # Example
 //!
@@ -243,6 +243,52 @@ pub unsafe fn from_r_slice<T: RNativeType>(
 
     let slice: &[T] = unsafe { sexp.as_slice() };
     Ok(ArrayView1::from(slice))
+}
+
+/// Create an `ArrayView2` from an R matrix without copying.
+///
+/// Returns a Fortran-order (column-major) view that directly references R's
+/// matrix storage. This is true zero-copy access.
+///
+/// # Safety
+///
+/// - The returned view is only valid as long as the R object is protected.
+/// - The SEXP must be of the correct type for `T`.
+/// - The SEXP must be a matrix (have a `dim` attribute of length 2).
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::ndarray_impl::from_r_matrix;
+///
+/// #[miniextendr]
+/// fn matrix_sum(x: SEXP) -> f64 {
+///     let view = unsafe { from_r_matrix::<f64>(x).unwrap() };
+///     view.sum()
+/// }
+/// ```
+pub unsafe fn from_r_matrix<T: RNativeType>(
+    sexp: SEXP,
+) -> Result<ArrayView2<'static, T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let (nrow, ncol) = get_matrix_dims(sexp)?;
+    let slice: &[T] = unsafe { sexp.as_slice() };
+
+    // R stores in column-major (Fortran) order, so create a Fortran-order view
+    let view = ArrayView2::from_shape((nrow, ncol).f(), slice).map_err(|_| SexpLengthError {
+        expected: nrow * ncol,
+        actual: slice.len(),
+    })?;
+
+    Ok(view)
 }
 
 // =============================================================================
