@@ -31,7 +31,11 @@ impl TryFromSexp for BigInt {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or_else(|| SexpError::Na(SexpNaError { sexp_type: SEXPTYPE::STRSXP }))?;
+        let s = s.ok_or_else(|| {
+            SexpError::Na(SexpNaError {
+                sexp_type: SEXPTYPE::STRSXP,
+            })
+        })?;
         parse_bigint(&s)
     }
 }
@@ -41,7 +45,11 @@ impl TryFromSexp for BigUint {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or_else(|| SexpError::Na(SexpNaError { sexp_type: SEXPTYPE::STRSXP }))?;
+        let s = s.ok_or_else(|| {
+            SexpError::Na(SexpNaError {
+                sexp_type: SEXPTYPE::STRSXP,
+            })
+        })?;
         parse_biguint(&s)
     }
 }
@@ -164,13 +172,19 @@ impl IntoR for Option<BigUint> {
 
 impl IntoR for Vec<BigInt> {
     fn into_sexp(self) -> SEXP {
-        self.into_iter().map(|v| v.to_string()).collect::<Vec<_>>().into_sexp()
+        self.into_iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .into_sexp()
     }
 }
 
 impl IntoR for Vec<BigUint> {
     fn into_sexp(self) -> SEXP {
-        self.into_iter().map(|v| v.to_string()).collect::<Vec<_>>().into_sexp()
+        self.into_iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .into_sexp()
     }
 }
 

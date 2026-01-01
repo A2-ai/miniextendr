@@ -1,11 +1,11 @@
 mod r_test_utils;
 
 #[cfg(feature = "num-bigint")]
-use miniextendr_api::{BigInt, BigUint};
-#[cfg(feature = "num-bigint")]
 use miniextendr_api::from_r::TryFromSexp;
 #[cfg(feature = "num-bigint")]
 use miniextendr_api::into_r::IntoR;
+#[cfg(feature = "num-bigint")]
+use miniextendr_api::{BigInt, BigUint};
 
 #[cfg(feature = "num-bigint")]
 #[test]

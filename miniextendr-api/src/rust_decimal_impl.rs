@@ -27,7 +27,11 @@ impl TryFromSexp for Decimal {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or_else(|| SexpError::Na(SexpNaError { sexp_type: SEXPTYPE::STRSXP }))?;
+        let s = s.ok_or_else(|| {
+            SexpError::Na(SexpNaError {
+                sexp_type: SEXPTYPE::STRSXP,
+            })
+        })?;
         parse_decimal(&s)
     }
 }
@@ -92,7 +96,10 @@ impl IntoR for Option<Decimal> {
 
 impl IntoR for Vec<Decimal> {
     fn into_sexp(self) -> SEXP {
-        self.into_iter().map(|v| v.to_string()).collect::<Vec<_>>().into_sexp()
+        self.into_iter()
+            .map(|v| v.to_string())
+            .collect::<Vec<_>>()
+            .into_sexp()
     }
 }
 

@@ -144,7 +144,10 @@ impl IntoR for Option<OrderedFloat<f32>> {
 
 impl IntoR for Vec<OrderedFloat<f64>> {
     fn into_sexp(self) -> SEXP {
-        self.into_iter().map(|v| v.0).collect::<Vec<_>>().into_sexp()
+        self.into_iter()
+            .map(|v| v.0)
+            .collect::<Vec<_>>()
+            .into_sexp()
     }
 }
 
@@ -159,7 +162,10 @@ impl IntoR for Vec<OrderedFloat<f32>> {
 
 impl IntoR for Vec<Option<OrderedFloat<f64>>> {
     fn into_sexp(self) -> SEXP {
-        self.into_iter().map(|v| v.map(|val| val.0)).collect::<Vec<_>>().into_sexp()
+        self.into_iter()
+            .map(|v| v.map(|val| val.0))
+            .collect::<Vec<_>>()
+            .into_sexp()
     }
 }
 
