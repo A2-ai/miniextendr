@@ -548,16 +548,30 @@ Debug adapter:
   - Direct SEXP serialization without JSON intermediate
   - Similar to jsonlite's R ↔ JSON model
 
-==== num-traits adapters (internal helpers) ====
+==== num-traits adapters (with num-traits feature) ====
 
-- [ ] Create `RNum` adapter trait for common numeric operations
-  - Blanket impl for `T: num_traits::Num + Clone + ToString`
-  - Methods: `r_zero()`, `r_one()`, `r_is_zero()`, `r_abs()` (where applicable)
-  - Use case: Generic numeric type R interfaces
-- [ ] Create `RFloat` adapter trait for floating point ops
+- [x] Create `RNum` adapter trait for common numeric operations
+  - Blanket impl for `T: num_traits::Num + Clone`
+  - Methods: `r_zero()`, `r_one()`, `r_is_zero()`, `r_is_one()`
+  - Implemented in `miniextendr-api/src/num_traits_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RSigned` adapter trait for signed number operations
+  - Blanket impl for `T: num_traits::Signed + Clone`
+  - Methods: `r_abs()`, `r_signum()`, `r_is_positive()`, `r_is_negative()`
+  - Implemented in `miniextendr-api/src/num_traits_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RFloat` adapter trait for floating point ops
   - Blanket impl for `T: num_traits::Float`
-  - Methods: `r_is_nan()`, `r_is_infinite()`, `r_floor()`, `r_ceil()`, etc.
-  - Use case: Generic float operations exposed to R
+  - Classification: `r_is_nan()`, `r_is_infinite()`, `r_is_finite()`, `r_is_normal()`, etc.
+  - Rounding: `r_floor()`, `r_ceil()`, `r_round()`, `r_trunc()`, `r_fract()`
+  - Math: `r_abs()`, `r_signum()`, `r_sqrt()`, `r_cbrt()`
+  - Exp/Log: `r_exp()`, `r_exp2()`, `r_ln()`, `r_log2()`, `r_log10()`
+  - Trig: `r_sin()`, `r_cos()`, `r_tan()`, `r_asin()`, `r_acos()`, `r_atan()`
+  - Hyperbolic: `r_sinh()`, `r_cosh()`, `r_tanh()`, `r_asinh()`, `r_acosh()`, `r_atanh()`
+  - Special: `r_infinity()`, `r_neg_infinity()`, `r_nan()`, `r_min_value()`, `r_max_value()`, `r_epsilon()`
+  - Power: `r_powi()`, `r_powf()`, `r_recip()`
+  - Implemented in `miniextendr-api/src/num_traits_impl.rs`
+  - Re-exported from crate root
 
 ==== Error trait adapters ====
 
@@ -719,7 +733,9 @@ Standalone adapter traits not needed - use connection framework instead.
   - `r_remaining_mut(&self) -> usize` - writable space
   - Use case: Efficient byte buffer writing from R
 
-==== crossbeam channel adapters (potential new feature) ====
+==== crossbeam channel adapters (potential new feature) - POSTPONED ====
+
+**POSTPONED:** Do these last - complex concurrency patterns require careful design.
 
 - [ ] Add `crossbeam-channel = { version = "0.5", optional = true }` feature (if useful)
 - [ ] Create `RSender` adapter trait for channel senders
@@ -733,7 +749,9 @@ Standalone adapter traits not needed - use connection framework instead.
   - `r_is_empty(&self) -> bool` - check if channel empty
   - Use case: Receive from background threads in R
 
-==== Future/async adapters (long-term, if async support added) ====
+==== Future/async adapters (long-term, if async support added) - POSTPONED ====
+
+**POSTPONED:** Do these last - requires async runtime integration and careful design around R's single-threaded nature.
 
 - [ ] Create `RFuture` adapter trait for `std::future::Future`
   - `r_poll(&mut self) -> Option<T>` - check if ready (simplified poll)

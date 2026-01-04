@@ -52,6 +52,8 @@ time = ["dep:time"]
 ## Enable indicatif progress bar integration (R console).
 ## Requires non-API console hooks (ptr_R_WriteConsoleEx).
 indicatif = ["dep:indicatif", "nonapi"]
+## Enable num-traits integration. Provides RNum and RFloat adapter traits for generic numeric operations.
+num-traits = ["dep:num-traits"]
 
 [dependencies]
 miniextendr-macros = { workspace = true }
@@ -72,6 +74,7 @@ uuid = { version = "1", optional = true, features = ["v4"] }
 regex = { version = "1", optional = true }
 indexmap = { version = "2", optional = true }
 time = { version = "0.3", optional = true, features = ["formatting", "parsing", "macros"] }
+num-traits = { version = "0.2", optional = true }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }

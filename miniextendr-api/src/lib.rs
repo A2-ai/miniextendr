@@ -462,3 +462,32 @@ pub mod serde_impl;
 pub use serde;
 #[cfg(feature = "serde")]
 pub use serde_impl::{RDeserialize, RSerialize};
+
+/// Integration with the `num-traits` crate for generic numeric operations.
+///
+/// Provides adapter traits for generic numeric types:
+/// - [`RNum`][num_traits_impl::RNum] - Basic numeric operations (zero, one, is_zero)
+/// - [`RSigned`][num_traits_impl::RSigned] - Signed number operations (abs, signum)
+/// - [`RFloat`][num_traits_impl::RFloat] - Floating-point operations (floor, ceil, sqrt, trig)
+///
+/// All traits have blanket implementations for types implementing the corresponding
+/// `num-traits` trait.
+///
+/// Enable with `features = ["num-traits"]`.
+///
+/// ```ignore
+/// use miniextendr_api::num_traits_impl::{RNum, RFloat};
+///
+/// #[derive(ExternalPtr)]
+/// struct MyFloat(f64);
+///
+/// #[miniextendr]
+/// impl RNum for MyFloat {}
+///
+/// #[miniextendr]
+/// impl RFloat for MyFloat {}
+/// ```
+#[cfg(feature = "num-traits")]
+pub mod num_traits_impl;
+#[cfg(feature = "num-traits")]
+pub use num_traits_impl::{RFloat, RNum, RSigned};
