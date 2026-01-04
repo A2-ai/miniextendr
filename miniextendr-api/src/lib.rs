@@ -287,7 +287,7 @@ pub mod macro_coverage;
 #[cfg(feature = "rand")]
 pub mod rand_impl;
 #[cfg(feature = "rand")]
-pub use rand_impl::{RDistributions, RRng, RRngOps};
+pub use rand_impl::{RDistributionOps, RDistributions, RRng, RRngOps};
 
 /// Re-export of `rand_distr` for probability distributions.
 ///

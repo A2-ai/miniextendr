@@ -365,6 +365,104 @@ pub trait RRngOps {
 // Note: No blanket impl because Rng methods require &mut self,
 // but ExternalPtr methods receive &self. Users must use interior mutability.
 
+/// Adapter trait for exposing probability distributions to R.
+///
+/// This trait provides methods for sampling from any probability distribution.
+/// Implementations typically wrap both a distribution and an RNG together,
+/// using interior mutability for the RNG state.
+///
+/// # Methods
+///
+/// - `r_sample()` - Draw a single sample from the distribution
+/// - `r_sample_n(n)` - Draw n samples from the distribution
+/// - `r_sample_vec(n)` - Alias for r_sample_n
+///
+/// # Example
+///
+/// ```ignore
+/// use std::cell::RefCell;
+/// use rand::rngs::StdRng;
+/// use rand::SeedableRng;
+/// use rand_distr::{Normal, Distribution};
+///
+/// #[derive(ExternalPtr)]
+/// struct NormalDist {
+///     dist: Normal<f64>,
+///     rng: RefCell<StdRng>,
+/// }
+///
+/// impl NormalDist {
+///     fn new(mean: f64, std_dev: f64, seed: u64) -> Self {
+///         Self {
+///             dist: Normal::new(mean, std_dev).unwrap(),
+///             rng: RefCell::new(StdRng::seed_from_u64(seed)),
+///         }
+///     }
+/// }
+///
+/// impl RDistributionOps<f64> for NormalDist {
+///     fn r_sample(&self) -> f64 {
+///         self.dist.sample(&mut *self.rng.borrow_mut())
+///     }
+/// }
+///
+/// #[miniextendr]
+/// impl RDistributionOps<f64> for NormalDist {}
+/// ```
+///
+/// In R:
+/// ```r
+/// dist <- NormalDist$new(mean = 0, std_dev = 1, seed = 42L)
+/// dist$r_sample()        # Single sample
+/// dist$r_sample_n(100L)  # 100 samples
+/// ```
+///
+/// # Design Note
+///
+/// Like `RIterator` and `RRngOps`, this trait does NOT have a blanket impl
+/// because sampling requires mutable RNG state, but R's ExternalPtr pattern
+/// provides `&self`. Users must use interior mutability (RefCell, Mutex, etc.).
+pub trait RDistributionOps<T> {
+    /// Draw a single sample from the distribution.
+    fn r_sample(&self) -> T;
+
+    /// Draw n samples from the distribution.
+    ///
+    /// Default implementation calls `r_sample()` n times.
+    fn r_sample_n(&self, n: i32) -> Vec<T> {
+        (0..n).map(|_| self.r_sample()).collect()
+    }
+
+    /// Draw n samples from the distribution (alias for r_sample_n).
+    fn r_sample_vec(&self, n: i32) -> Vec<T> {
+        self.r_sample_n(n)
+    }
+
+    /// Get the mean/expected value of the distribution, if known.
+    ///
+    /// Returns None by default. Override for distributions with known mean.
+    fn r_mean(&self) -> Option<f64> {
+        None
+    }
+
+    /// Get the variance of the distribution, if known.
+    ///
+    /// Returns None by default. Override for distributions with known variance.
+    fn r_variance(&self) -> Option<f64> {
+        None
+    }
+
+    /// Get the standard deviation of the distribution, if known.
+    ///
+    /// Default implementation returns sqrt(variance) if variance is known.
+    fn r_std_dev(&self) -> Option<f64> {
+        self.r_variance().map(|v| v.sqrt())
+    }
+}
+
+// Note: No blanket impl because Distribution::sample() requires &mut Rng,
+// but ExternalPtr methods receive &self. Users must use interior mutability.
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -510,5 +608,107 @@ mod tests {
     fn test_rrngops_gen_bool_invalid() {
         let rng = MockRng::new(42);
         rng.r_gen_bool(1.5); // p > 1
+    }
+
+    // Test RDistributionOps with a mock uniform distribution
+    struct MockUniformDist {
+        low: f64,
+        high: f64,
+        rng: RefCell<u64>,
+    }
+
+    impl MockUniformDist {
+        fn new(low: f64, high: f64, seed: u64) -> Self {
+            Self {
+                low,
+                high,
+                rng: RefCell::new(seed),
+            }
+        }
+
+        fn next_f64(&self) -> f64 {
+            let mut state = self.rng.borrow_mut();
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (*state as f64) / (u64::MAX as f64)
+        }
+    }
+
+    impl RDistributionOps<f64> for MockUniformDist {
+        fn r_sample(&self) -> f64 {
+            self.low + self.next_f64() * (self.high - self.low)
+        }
+
+        fn r_mean(&self) -> Option<f64> {
+            Some((self.low + self.high) / 2.0)
+        }
+
+        fn r_variance(&self) -> Option<f64> {
+            let range = self.high - self.low;
+            Some(range * range / 12.0)
+        }
+    }
+
+    #[test]
+    fn test_rdistributionops_sample() {
+        let dist = MockUniformDist::new(0.0, 10.0, 42);
+        let sample = dist.r_sample();
+        assert!((0.0..10.0).contains(&sample));
+    }
+
+    #[test]
+    fn test_rdistributionops_sample_n() {
+        let dist = MockUniformDist::new(5.0, 15.0, 42);
+        let samples = dist.r_sample_n(100);
+        assert_eq!(samples.len(), 100);
+        assert!(samples.iter().all(|&s| (5.0..15.0).contains(&s)));
+    }
+
+    #[test]
+    fn test_rdistributionops_sample_vec() {
+        let dist = MockUniformDist::new(0.0, 1.0, 42);
+        let samples = dist.r_sample_vec(50);
+        assert_eq!(samples.len(), 50);
+    }
+
+    #[test]
+    fn test_rdistributionops_mean() {
+        let dist = MockUniformDist::new(0.0, 10.0, 42);
+        assert_eq!(dist.r_mean(), Some(5.0));
+    }
+
+    #[test]
+    fn test_rdistributionops_variance() {
+        let dist = MockUniformDist::new(0.0, 12.0, 42);
+        // Variance of uniform(0, 12) = (12-0)^2 / 12 = 144/12 = 12
+        assert_eq!(dist.r_variance(), Some(12.0));
+    }
+
+    #[test]
+    fn test_rdistributionops_std_dev() {
+        let dist = MockUniformDist::new(0.0, 12.0, 42);
+        let std_dev = dist.r_std_dev().unwrap();
+        // std_dev = sqrt(12) ≈ 3.464
+        assert!((std_dev - 12.0_f64.sqrt()).abs() < 1e-10);
+    }
+
+    // Test distribution with no known statistics
+    struct MockUnknownDist(RefCell<u64>);
+
+    impl RDistributionOps<i32> for MockUnknownDist {
+        fn r_sample(&self) -> i32 {
+            let mut state = self.0.borrow_mut();
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            (*state % 100) as i32
+        }
+    }
+
+    #[test]
+    fn test_rdistributionops_unknown_stats() {
+        let dist = MockUnknownDist(RefCell::new(42));
+        assert_eq!(dist.r_mean(), None);
+        assert_eq!(dist.r_variance(), None);
+        assert_eq!(dist.r_std_dev(), None);
+        // But sampling still works
+        let _sample = dist.r_sample();
     }
 }
