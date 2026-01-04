@@ -648,26 +648,41 @@ Debug adapter:
 
 ==== regex trait adapters (with regex feature) ====
 
-- [ ] Create `RReplacer` adapter trait for `regex::Replacer`
-  - `r_replace_all(&self, text: &str, replacement: &str) -> String`
-  - `r_replace_first(&self, text: &str, replacement: &str) -> String`
-  - Use case: Expose regex replacement API to R
-- [ ] Create `RCaptures` adapter for `regex::Captures`
-  - `r_group(&self, i: usize) -> Option<String>` - get capture group by index
-  - `r_named_group(&self, name: &str) -> Option<String>` - get by name
-  - `r_len(&self) -> i32` - number of groups
-  - Use case: Access regex capture groups from R
+- [x] Create `RRegexOps` adapter trait for `regex::Regex`
+  - `replace_first(&self, text, replacement) -> String`
+  - `replace_all(&self, text, replacement) -> String`
+  - `is_match(&self, text) -> bool`
+  - `find(&self, text) -> Option<String>`
+  - `find_all(&self, text) -> Vec<String>`
+  - `split(&self, text) -> Vec<String>`
+  - `captures_len(&self) -> i32`
+  - Implemented in `miniextendr-api/src/regex_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RCaptureGroups` adapter for capture group access
+  - `CaptureGroups::capture(re, text) -> Option<Self>` - capture from regex
+  - `get(&self, i) -> Option<String>` - get capture group by index
+  - `get_named(&self, name) -> Option<String>` - get by name
+  - `len(&self) -> i32`, `is_empty(&self) -> bool`
+  - `all_groups(&self) -> Vec<Option<String>>`
+  - Implemented in `miniextendr-api/src/regex_impl.rs`
+  - Re-exported from crate root
 
 ==== time trait adapters (with time feature) ====
 
-- [ ] Create `RDuration` adapter trait for `time::Duration`
-  - `r_as_seconds(&self) -> f64` - total seconds as float
-  - `r_as_millis(&self) -> i64` - total milliseconds
-  - `r_components(&self) -> (i64, i32, i32, i32)` - (days, hours, minutes, seconds)
+- [x] Create `RDuration` adapter trait for `time::Duration`
+  - `as_seconds_f64(&self) -> f64` - total seconds as float
+  - `as_milliseconds(&self) -> i64` - total milliseconds
+  - `whole_days(&self) -> i64`, `whole_hours(&self) -> i64`, `whole_minutes(&self) -> i64`, `whole_seconds(&self) -> i64`
+  - `subsec_nanoseconds(&self) -> i32` - nanosecond component
+  - `is_negative(&self) -> bool`, `is_zero(&self) -> bool`, `abs(&self) -> Duration`
+  - Implemented in `miniextendr-api/src/time_impl.rs`
   - Use case: Time duration operations from R
-- [ ] Create `RDateTimeFormat` adapter for formatting/parsing
-  - `r_format(&self, fmt: &str) -> String` - format with pattern
-  - `r_parse(s: &str, fmt: &str) -> Result<Self, SexpError>` - parse with pattern
+- [x] Create `RDateTimeFormat` adapter for formatting/parsing
+  - `r_format(&self, fmt: &str) -> Result<String, String>` - format with pattern
+  - `r_parse(s: &str, fmt: &str) -> Result<Self, String>` - parse with pattern
+  - Implemented for both `OffsetDateTime` and `Date`
+  - Located in `miniextendr-api/src/time_impl.rs`
+  - Re-exported from crate root
   - Use case: Custom datetime formatting in R
 
 ==== bytes crate adapters (potential new feature) ====
@@ -723,76 +738,78 @@ Debug adapter:
 
 ==== num-bigint trait adapters (with num-bigint feature) ====
 
-- [ ] Create `RBigIntOps` adapter trait for BigInt/BigUint arithmetic
-  - `r_add(&self, other: &Self) -> Self`
-  - `r_sub(&self, other: &Self) -> Self`
-  - `r_mul(&self, other: &Self) -> Self`
-  - `r_div(&self, other: &Self) -> Self`
-  - `r_rem(&self, other: &Self) -> Self`
-  - `r_pow(&self, exp: u32) -> Self`
-  - `r_gcd(&self, other: &Self) -> Self`
-  - `r_lcm(&self, other: &Self) -> Self`
-  - Use case: Arbitrary-precision arithmetic from R
-- [ ] Create `RBigIntBitOps` adapter for bitwise operations
-  - `r_bit_and(&self, other: &Self) -> Self`
-  - `r_bit_or(&self, other: &Self) -> Self`
-  - `r_bit_xor(&self, other: &Self) -> Self`
-  - `r_shl(&self, n: u32) -> Self`
-  - `r_shr(&self, n: u32) -> Self`
-  - Use case: Bitwise operations on big integers from R
+- [x] Create `RBigIntOps` adapter trait for BigInt arithmetic
+  - `as_string()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
+  - `bit_length()`, `abs()`, `neg()`
+  - `add_str()`, `sub_str()`, `mul_str()`, `div_str()`, `rem_str()` (string-based operands)
+  - `pow(exp: u32)`, `gcd_str()`
+  - `to_bytes_be()`, `to_bytes_le()`
+  - Implemented in `miniextendr-api/src/num_bigint_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RBigUintOps` adapter trait for BigUint arithmetic
+  - Same operations as RBigIntOps but for unsigned integers
+  - Additional: `is_one()`
+  - Implemented in `miniextendr-api/src/num_bigint_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RBigIntBitOps` adapter for BigInt bitwise operations
+  - `bit_and_str()`, `bit_or_str()`, `bit_xor_str()` (string-based operands)
+  - `bit_not()`, `shl()`, `shr()`
+  - `count_ones()`, `trailing_zeros()`
+  - `bit()`, `set_bit()`, `clear_bit()`
+  - Implemented in `miniextendr-api/src/num_bigint_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RBigUintBitOps` adapter for BigUint bitwise operations
+  - Same operations as RBigIntBitOps (except bit_not)
+  - Implemented in `miniextendr-api/src/num_bigint_impl.rs`
+  - Re-exported from crate root
 
 ==== rust_decimal trait adapters (with rust_decimal feature) ====
 
-- [ ] Create `RDecimalOps` adapter trait for Decimal arithmetic
-  - `r_add(&self, other: &Self) -> Self`
-  - `r_sub(&self, other: &Self) -> Self`
-  - `r_mul(&self, other: &Self) -> Self`
-  - `r_div(&self, other: &Self) -> Self`
-  - `r_rem(&self, other: &Self) -> Self`
-  - `r_round(&self, dp: i32) -> Self` - round to decimal places
-  - `r_floor(&self) -> Self`, `r_ceil(&self) -> Self`
-  - `r_trunc(&self) -> Self` - truncate toward zero
-  - Use case: Fixed-precision decimal arithmetic from R
-- [ ] Create `RDecimalConversions` adapter for type conversions
-  - `r_to_f64(&self) -> f64` - lossy conversion to f64
-  - `r_to_i64(&self) -> Option<i64>` - try conversion to i64
-  - `r_scale(&self) -> i32` - number of decimal places
-  - `r_mantissa(&self) -> i128` (or string for R compatibility)
-  - Use case: Inspect decimal internals from R
+- [x] Create `RDecimalOps` adapter trait for Decimal operations
+  - `as_string()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
+  - `scale()`, `abs()`, `neg()`
+  - `add_str()`, `sub_str()`, `mul_str()`, `div_str()`, `rem_str()` (string-based operands)
+  - `round(dp)`, `floor()`, `ceil()`, `trunc()`, `fract()`
+  - `as_f64()`, `as_i64()`, `normalize()`, `is_integer()`
+  - Implemented in `miniextendr-api/src/rust_decimal_impl.rs`
+  - Re-exported from crate root
 
 ==== uuid trait adapters (with uuid feature) ====
 
-- [ ] Create `RUuidOps` adapter trait for UUID operations
-  - `r_new_v4() -> Self` - generate random UUID
-  - `r_nil() -> Self` - nil UUID
-  - `r_max() -> Self` - max UUID (all 1s)
-  - `r_version(&self) -> i32` - UUID version number
-  - `r_variant(&self) -> i32` - UUID variant
-  - `r_is_nil(&self) -> bool`
-  - Use case: UUID generation and inspection from R
-- [ ] Create `RUuidParse` adapter for parsing variants
-  - `r_from_str(s: &str) -> Result<Self, SexpError>` - parse any format
-  - `r_from_bytes(bytes: &[u8]) -> Result<Self, SexpError>` - parse from raw
-  - `r_as_bytes(&self) -> Vec<u8>` - convert to raw bytes
-  - Use case: UUID parsing and serialization from R
+- [x] Create `RUuidOps` adapter trait for UUID operations
+  - `version(&self) -> i32` - UUID version number
+  - `variant(&self) -> String` - UUID variant
+  - `is_nil(&self) -> bool`, `is_max(&self) -> bool`
+  - `as_bytes(&self) -> Vec<u8>` - convert to raw bytes
+  - `to_hyphenated(&self) -> String`, `to_simple(&self) -> String`, `to_urn(&self) -> String`
+  - Implemented in `miniextendr-api/src/uuid_impl.rs`
+  - Re-exported from crate root
+- [x] Create `uuid_helpers` module for UUID creation
+  - `new_v4() -> Uuid` - generate random UUID
+  - `nil() -> Uuid`, `max() -> Uuid` - special UUIDs
+  - `from_bytes(bytes) -> Result<Uuid, String>` - parse from raw
+  - `parse_str(s) -> Result<Uuid, String>` - parse any format
+  - Implemented in `miniextendr-api/src/uuid_impl.rs`
+  - Re-exported from crate root
 
 ==== ordered-float trait adapters (with ordered-float feature) ====
 
-- [ ] Create `ROrderedFloatOps` adapter trait for NaN-safe operations
-  - `r_min(&self, other: &Self) -> Self` - NaN-safe minimum
-  - `r_max(&self, other: &Self) -> Self` - NaN-safe maximum
-  - `r_clamp(&self, min: f64, max: f64) -> Self` - clamp to range
-  - `r_is_nan(&self) -> bool`, `r_is_infinite(&self) -> bool`
-  - Use case: NaN-safe numeric operations from R
+- [x] Create `ROrderedFloatOps` adapter trait for NaN-safe operations
+  - `into_inner()`, `is_nan()`, `is_infinite()`, `is_finite()`
+  - `is_positive()`, `is_negative()`
+  - `floor()`, `ceil()`, `round()`, `trunc()`, `fract()`
+  - `abs()`, `signum()`
+  - `min_with(other)`, `max_with(other)`, `clamp_to(min, max)`
+  - Implemented in `miniextendr-api/src/ordered_float_impl.rs`
+  - Re-exported from crate root
 
 ==== indexmap trait adapters (with indexmap feature) ====
 
-- [ ] Create `RIndexMapOps` adapter trait for IndexMap operations
-  - `r_insert(&mut self, key: String, value: T) -> Option<T>` - insert/update
-  - `r_remove(&mut self, key: &str) -> Option<T>` - remove by key
-  - `r_get(&self, key: &str) -> Option<&T>` - get by key
-  - `r_get_index(&self, i: usize) -> Option<(&String, &T)>` - get by position
-  - `r_keys(&self) -> Vec<String>` - all keys in order
-  - `r_len(&self) -> i32`, `r_is_empty(&self) -> bool`
-  - `r_shift_remove(&mut self, key: &str) -> Option<T>` - remove preserving order
-  - Use case: Ordered dictionary operations from R
+- [x] Create `RIndexMapOps<T>` adapter trait for IndexMap operations
+  - `len()`, `is_empty()`, `keys()`, `contains_key()`
+  - `get_index(index) -> Option<(String, T)>` - get by position
+  - `get_key_at(index) -> Option<String>` - get key at position
+  - `first() -> Option<(String, T)>`, `last() -> Option<(String, T)>`
+  - `get_index_of(key) -> i32` - find position of key (-1 if not found)
+  - Implemented in `miniextendr-api/src/indexmap_impl.rs`
+  - Re-exported from crate root

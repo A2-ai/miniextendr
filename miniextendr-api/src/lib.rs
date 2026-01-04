@@ -344,7 +344,9 @@ pub use nalgebra_impl::{DMatrix, DVector};
 #[cfg(feature = "num-bigint")]
 pub mod num_bigint_impl;
 #[cfg(feature = "num-bigint")]
-pub use num_bigint_impl::{BigInt, BigUint};
+pub use num_bigint_impl::{
+    BigInt, BigUint, RBigIntBitOps, RBigIntOps, RBigUintBitOps, RBigUintOps,
+};
 
 /// Integration with the `rust_decimal` crate.
 ///
@@ -354,7 +356,7 @@ pub use num_bigint_impl::{BigInt, BigUint};
 #[cfg(feature = "rust_decimal")]
 pub mod rust_decimal_impl;
 #[cfg(feature = "rust_decimal")]
-pub use rust_decimal_impl::Decimal;
+pub use rust_decimal_impl::{Decimal, RDecimalOps};
 
 /// Integration with the `ordered-float` crate.
 ///
@@ -364,7 +366,7 @@ pub use rust_decimal_impl::Decimal;
 #[cfg(feature = "ordered-float")]
 pub mod ordered_float_impl;
 #[cfg(feature = "ordered-float")]
-pub use ordered_float_impl::OrderedFloat;
+pub use ordered_float_impl::{OrderedFloat, ROrderedFloatOps};
 
 /// UUID support via the `uuid` crate.
 ///
@@ -377,7 +379,7 @@ pub use ordered_float_impl::OrderedFloat;
 #[cfg(feature = "uuid")]
 pub mod uuid_impl;
 #[cfg(feature = "uuid")]
-pub use uuid_impl::Uuid;
+pub use uuid_impl::{uuid_helpers, RUuidOps, Uuid};
 
 /// Regex support via the `regex` crate.
 ///
@@ -391,7 +393,7 @@ pub use uuid_impl::Uuid;
 #[cfg(feature = "regex")]
 pub mod regex_impl;
 #[cfg(feature = "regex")]
-pub use regex_impl::Regex;
+pub use regex_impl::{CaptureGroups, RCaptureGroups, RRegexOps, Regex};
 
 /// IndexMap support via the `indexmap` crate.
 ///
@@ -404,7 +406,7 @@ pub use regex_impl::Regex;
 #[cfg(feature = "indexmap")]
 pub mod indexmap_impl;
 #[cfg(feature = "indexmap")]
-pub use indexmap_impl::IndexMap;
+pub use indexmap_impl::{IndexMap, RIndexMapOps};
 
 /// Time and date support via the `time` crate.
 ///
@@ -417,7 +419,7 @@ pub use indexmap_impl::IndexMap;
 #[cfg(feature = "time")]
 pub mod time_impl;
 #[cfg(feature = "time")]
-pub use time_impl::{Date, OffsetDateTime};
+pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;

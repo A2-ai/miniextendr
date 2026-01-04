@@ -125,6 +125,187 @@ pub fn try_compile(pattern: &str) -> Result<Regex, regex::Error> {
     Regex::new(pattern)
 }
 
+// =============================================================================
+// RRegexOps adapter trait
+// =============================================================================
+
+/// Adapter trait for [`Regex`] operations.
+///
+/// Provides string replacement and matching operations from R.
+/// Automatically implemented for `regex::Regex`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use regex::Regex;
+/// use miniextendr_api::regex_impl::RRegexOps;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyPattern(Regex);
+///
+/// #[miniextendr]
+/// impl RRegexOps for MyPattern {}
+/// ```
+///
+/// In R:
+/// ```r
+/// pat <- compile_regex("\\d+")
+/// pat$replace_first("abc123def456", "X")  # "abcXdef456"
+/// pat$replace_all("abc123def456", "X")    # "abcXdefX"
+/// pat$is_match("test123")                 # TRUE
+/// pat$find("test123")                     # "123"
+/// ```
+pub trait RRegexOps {
+    /// Replace the first match in the text.
+    fn replace_first(&self, text: &str, replacement: &str) -> String;
+
+    /// Replace all matches in the text.
+    fn replace_all(&self, text: &str, replacement: &str) -> String;
+
+    /// Check if the pattern matches anywhere in the text.
+    fn is_match(&self, text: &str) -> bool;
+
+    /// Find the first match and return it, or None if no match.
+    fn find(&self, text: &str) -> Option<String>;
+
+    /// Find all non-overlapping matches.
+    fn find_all(&self, text: &str) -> Vec<String>;
+
+    /// Split the text by the pattern.
+    fn split(&self, text: &str) -> Vec<String>;
+
+    /// Get the number of capture groups (including the whole match).
+    fn captures_len(&self) -> i32;
+}
+
+impl RRegexOps for Regex {
+    fn replace_first(&self, text: &str, replacement: &str) -> String {
+        self.replace(text, replacement).into_owned()
+    }
+
+    fn replace_all(&self, text: &str, replacement: &str) -> String {
+        Regex::replace_all(self, text, replacement).into_owned()
+    }
+
+    fn is_match(&self, text: &str) -> bool {
+        Regex::is_match(self, text)
+    }
+
+    fn find(&self, text: &str) -> Option<String> {
+        Regex::find(self, text).map(|m| m.as_str().to_string())
+    }
+
+    fn find_all(&self, text: &str) -> Vec<String> {
+        Regex::find_iter(self, text)
+            .map(|m| m.as_str().to_string())
+            .collect()
+    }
+
+    fn split(&self, text: &str) -> Vec<String> {
+        Regex::split(self, text).map(|s| s.to_string()).collect()
+    }
+
+    fn captures_len(&self) -> i32 {
+        self.captures_len() as i32
+    }
+}
+
+// =============================================================================
+// RCaptures adapter trait
+// =============================================================================
+
+/// Wrapper for regex capture groups.
+///
+/// This type wraps `regex::Captures` for access from R.
+/// It holds owned copies of capture group strings for safe access.
+#[derive(Debug, Clone)]
+pub struct CaptureGroups {
+    groups: Vec<Option<String>>,
+    names: std::collections::HashMap<String, usize>,
+}
+
+impl CaptureGroups {
+    /// Create capture groups from a regex and text.
+    pub fn capture(re: &Regex, text: &str) -> Option<Self> {
+        re.captures(text).map(|caps| {
+            let groups: Vec<Option<String>> = caps
+                .iter()
+                .map(|m| m.map(|m| m.as_str().to_string()))
+                .collect();
+
+            let names: std::collections::HashMap<String, usize> = re
+                .capture_names()
+                .enumerate()
+                .filter_map(|(i, name)| name.map(|n| (n.to_string(), i)))
+                .collect();
+
+            CaptureGroups { groups, names }
+        })
+    }
+}
+
+/// Adapter trait for capture group access.
+///
+/// Provides methods to access regex capture groups from R.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use regex::Regex;
+/// use miniextendr_api::regex_impl::{CaptureGroups, RCaptureGroups};
+///
+/// let re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
+/// let caps = CaptureGroups::capture(&re, "Date: 2024-01-15").unwrap();
+///
+/// assert_eq!(caps.get(0), Some("2024-01-15".to_string()));  // whole match
+/// assert_eq!(caps.get(1), Some("2024".to_string()));        // year
+/// assert_eq!(caps.get(2), Some("01".to_string()));          // month
+/// assert_eq!(caps.get(3), Some("15".to_string()));          // day
+/// ```
+pub trait RCaptureGroups {
+    /// Get a capture group by index (0 = whole match).
+    fn get(&self, i: i32) -> Option<String>;
+
+    /// Get a capture group by name.
+    fn get_named(&self, name: &str) -> Option<String>;
+
+    /// Get the number of capture groups.
+    fn len(&self) -> i32;
+
+    /// Check if there are no capture groups.
+    fn is_empty(&self) -> bool;
+
+    /// Get all capture groups as a vector (None for non-matching groups).
+    fn all_groups(&self) -> Vec<Option<String>>;
+}
+
+impl RCaptureGroups for CaptureGroups {
+    fn get(&self, i: i32) -> Option<String> {
+        if i < 0 {
+            return None;
+        }
+        self.groups.get(i as usize).and_then(|s| s.clone())
+    }
+
+    fn get_named(&self, name: &str) -> Option<String> {
+        self.names
+            .get(name)
+            .and_then(|&i| self.groups.get(i).and_then(|s| s.clone()))
+    }
+
+    fn len(&self) -> i32 {
+        self.groups.len() as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        self.groups.is_empty()
+    }
+
+    fn all_groups(&self) -> Vec<Option<String>> {
+        self.groups.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -146,5 +327,84 @@ mod tests {
     fn try_compile_works() {
         assert!(try_compile(r"\d+").is_ok());
         assert!(try_compile(r"[invalid").is_err());
+    }
+
+    #[test]
+    fn rregexops_replace() {
+        let re = Regex::new(r"\d+").unwrap();
+        assert_eq!(re.replace_first("abc123def456", "X"), "abcXdef456");
+        assert_eq!(re.replace_all("abc123def456", "X"), "abcXdefX");
+    }
+
+    #[test]
+    fn rregexops_find() {
+        let re = Regex::new(r"\d+").unwrap();
+        assert_eq!(RRegexOps::find(&re, "abc123def"), Some("123".to_string()));
+        assert_eq!(RRegexOps::find(&re, "no digits"), None);
+        assert_eq!(
+            RRegexOps::find_all(&re, "a1b2c3"),
+            vec!["1", "2", "3"]
+        );
+    }
+
+    #[test]
+    fn rregexops_split() {
+        let re = Regex::new(r"\s+").unwrap();
+        assert_eq!(
+            RRegexOps::split(&re, "hello world  test"),
+            vec!["hello", "world", "test"]
+        );
+    }
+
+    #[test]
+    fn rregexops_match() {
+        let re = Regex::new(r"\d+").unwrap();
+        assert!(RRegexOps::is_match(&re, "has123numbers"));
+        assert!(!RRegexOps::is_match(&re, "no numbers"));
+    }
+
+    #[test]
+    fn rcapturegroups_basic() {
+        let re = Regex::new(r"(\d{4})-(\d{2})-(\d{2})").unwrap();
+        let caps = CaptureGroups::capture(&re, "Date: 2024-01-15 here").unwrap();
+
+        assert_eq!(caps.get(0), Some("2024-01-15".to_string())); // whole match
+        assert_eq!(caps.get(1), Some("2024".to_string())); // year
+        assert_eq!(caps.get(2), Some("01".to_string())); // month
+        assert_eq!(caps.get(3), Some("15".to_string())); // day
+        assert_eq!(caps.get(4), None); // out of bounds
+        assert_eq!(caps.get(-1), None); // negative index
+        assert_eq!(caps.len(), 4);
+        assert!(!caps.is_empty());
+    }
+
+    #[test]
+    fn rcapturegroups_named() {
+        let re = Regex::new(r"(?P<year>\d{4})-(?P<month>\d{2})-(?P<day>\d{2})").unwrap();
+        let caps = CaptureGroups::capture(&re, "2024-01-15").unwrap();
+
+        assert_eq!(caps.get_named("year"), Some("2024".to_string()));
+        assert_eq!(caps.get_named("month"), Some("01".to_string()));
+        assert_eq!(caps.get_named("day"), Some("15".to_string()));
+        assert_eq!(caps.get_named("nonexistent"), None);
+    }
+
+    #[test]
+    fn rcapturegroups_no_match() {
+        let re = Regex::new(r"(\d+)").unwrap();
+        let caps = CaptureGroups::capture(&re, "no digits");
+        assert!(caps.is_none());
+    }
+
+    #[test]
+    fn rcapturegroups_all_groups() {
+        let re = Regex::new(r"(\w+)@(\w+)\.(\w+)").unwrap();
+        let caps = CaptureGroups::capture(&re, "test@example.com").unwrap();
+        let all = caps.all_groups();
+        assert_eq!(all.len(), 4);
+        assert_eq!(all[0], Some("test@example.com".to_string()));
+        assert_eq!(all[1], Some("test".to_string()));
+        assert_eq!(all[2], Some("example".to_string()));
+        assert_eq!(all[3], Some("com".to_string()));
     }
 }
