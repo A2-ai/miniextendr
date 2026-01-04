@@ -493,3 +493,39 @@ pub use serde_impl::{RDeserialize, RSerialize};
 pub mod num_traits_impl;
 #[cfg(feature = "num-traits")]
 pub use num_traits_impl::{RFloat, RNum, RSigned};
+
+/// Integration with the `bytes` crate for byte buffer operations.
+///
+/// Provides adapter traits for byte buffer types:
+/// - [`RBuf`][bytes_impl::RBuf] - Read operations (get_u8, get_i32, etc.)
+/// - [`RBufMut`][bytes_impl::RBufMut] - Write operations (put_u8, put_slice, etc.)
+///
+/// Also re-exports the core `bytes` types: `Bytes`, `BytesMut`, `Buf`, `BufMut`.
+///
+/// Since `Buf` and `BufMut` traits require `&mut self`, implementations must use
+/// interior mutability (e.g., `RefCell`). There are no blanket implementations.
+///
+/// Enable with `features = ["bytes"]`.
+///
+/// ```ignore
+/// use miniextendr_api::bytes_impl::{RBuf, RBufMut, Bytes, BytesMut};
+/// use std::cell::RefCell;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyBuffer {
+///     data: RefCell<BytesMut>,
+/// }
+///
+/// // Implement RBuf or RBufMut, then register with miniextendr_module!
+/// #[miniextendr]
+/// impl RBuf for MyBuffer { /* ... */ }
+///
+/// miniextendr_module! {
+///     mod mybuffer;
+///     impl RBuf for MyBuffer;
+/// }
+/// ```
+#[cfg(feature = "bytes")]
+pub mod bytes_impl;
+#[cfg(feature = "bytes")]
+pub use bytes_impl::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};

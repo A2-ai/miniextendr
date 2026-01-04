@@ -628,9 +628,17 @@ Standalone adapter traits not needed - use connection framework instead.
   - No blanket impl (requires interior mutability like RIterator)
   - Implemented in `miniextendr-api/src/rand_impl.rs`
   - Re-exported from crate root
-- [ ] Create `RDistribution` adapter for `rand_distr::Distribution`
-  - `r_sample(&self, rng: &mut dyn Rng) -> T`
-  - Use case: Sample from Rust distributions in R
+- [x] Create `RDistributionOps` adapter for probability distributions
+  - `r_sample(&self) -> T` - draw single sample (distribution owns RNG)
+  - `r_sample_n(&self, n) -> Vec<T>` - draw n samples
+  - `r_sample_vec(&self, n) -> Vec<T>` - alias for r_sample_n
+  - `r_mean(&self) -> Option<f64>` - theoretical mean
+  - `r_variance(&self) -> Option<f64>` - theoretical variance
+  - `r_std_dev(&self) -> Option<f64>` - derived from variance
+  - No blanket impl (requires interior mutability for RNG)
+  - Implemented in `miniextendr-api/src/rand_impl.rs`
+  - Re-exported from crate root
+  - Added 7 unit tests
 
 ==== Documentation tasks ====
 
@@ -667,7 +675,27 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented for `Array1<f64>`, `Array2<f64>`, `ArrayD<f64>`
   - Implemented in `miniextendr-api/src/ndarray_impl.rs`
   - Re-exported from crate root
-- [ ] Create `RNdIndex` adapter for ndarray indexing
+- [x] Create `RNdSlice` adapter trait for 1D array element access
+  - `r_get(&self, index) -> Option<T>` - get element by index
+  - `r_first(&self) -> Option<T>`, `r_last(&self) -> Option<T>` - endpoints
+  - `r_slice_1d(&self, start, end) -> Vec<T>` - extract range
+  - `r_get_many(&self, indices) -> Vec<Option<T>>` - batch access
+  - `r_is_valid_index(&self, index) -> bool` - bounds check
+  - Implemented for `Array1<f64>`, `Array1<i32>`
+  - Implemented in `miniextendr-api/src/ndarray_impl.rs`
+  - Re-exported from crate root
+  - Added 5 unit tests
+- [x] Create `RNdSlice2D` adapter trait for 2D array row/column access
+  - `r_get_2d(&self, row, col) -> Option<T>` - get element
+  - `r_row(&self, row) -> Vec<T>` - extract row
+  - `r_col(&self, col) -> Vec<T>` - extract column
+  - `r_diag(&self) -> Vec<T>` - extract diagonal
+  - `r_nrows(&self) -> i32`, `r_ncols(&self) -> i32` - dimensions
+  - Implemented for `Array2<f64>`, `Array2<i32>`
+  - Implemented in `miniextendr-api/src/ndarray_impl.rs`
+  - Re-exported from crate root
+  - Added 4 unit tests
+- [ ] Create `RNdIndex` adapter for n-dimensional ndarray indexing
   - `r_slice(&self, start: Vec<usize>, end: Vec<usize>) -> Self` - subarray view
   - Use case: R-style array subsetting for ndarray types
 
@@ -730,18 +758,41 @@ Standalone adapter traits not needed - use connection framework instead.
   - Re-exported from crate root
   - Use case: Custom datetime formatting in R
 
-==== bytes crate adapters (potential new feature) ====
+==== bytes crate adapters (with bytes feature) ====
 
-- [ ] Add `bytes = { version = "1", optional = true }` feature (if useful)
-- [ ] Create `RBuf` adapter trait for `bytes::Buf`
-  - `r_remaining(&self) -> usize` - bytes remaining
+- [x] Add `bytes = { version = "1", optional = true }` feature
+- [x] Create `RBuf` adapter trait for `bytes::Buf`
+  - `r_remaining(&self) -> i32` - bytes remaining
+  - `r_has_remaining(&self) -> bool` - any bytes remaining
+  - `r_get_u8()`, `r_get_i8()` - read single byte
+  - `r_get_u16()`, `r_get_u16_le()`, `r_get_i16()`, `r_get_i16_le()` - read 16-bit
+  - `r_get_u32()`, `r_get_u32_le()`, `r_get_i32()`, `r_get_i32_le()` - read 32-bit
+  - `r_get_u64()`, `r_get_u64_le()`, `r_get_i64()`, `r_get_i64_le()` - read 64-bit
+  - `r_get_f32()`, `r_get_f32_le()`, `r_get_f64()`, `r_get_f64_le()` - read floats
   - `r_chunk(&self) -> Vec<u8>` - get current chunk
-  - `r_advance(&mut self, n: usize)` - advance cursor
-  - Use case: Zero-copy byte buffer access from R
-- [ ] Create `RBufMut` adapter trait for `bytes::BufMut`
-  - `r_put_slice(&mut self, data: &[u8])` - write bytes
-  - `r_remaining_mut(&self) -> usize` - writable space
-  - Use case: Efficient byte buffer writing from R
+  - `r_copy_to_vec(&self, len) -> Vec<u8>` - copy bytes advancing cursor
+  - `r_advance(&self, cnt)` - advance cursor
+  - `r_to_vec(&self) -> Vec<u8>` - read all remaining
+  - No blanket impl (requires interior mutability like RIterator)
+  - Implemented in `miniextendr-api/src/bytes_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RBufMut` adapter trait for `bytes::BufMut`
+  - `r_remaining_mut(&self) -> i32` - writable space
+  - `r_has_remaining_mut(&self) -> bool` - any space remaining
+  - `r_put_u8()`, `r_put_i8()` - write single byte
+  - `r_put_u16()`, `r_put_u16_le()`, `r_put_i16()`, `r_put_i16_le()` - write 16-bit
+  - `r_put_u32()`, `r_put_u32_le()`, `r_put_i32()`, `r_put_i32_le()` - write 32-bit
+  - `r_put_u64()`, `r_put_u64_le()`, `r_put_i64()`, `r_put_i64_le()` - write 64-bit
+  - `r_put_f32()`, `r_put_f32_le()`, `r_put_f64()`, `r_put_f64_le()` - write floats
+  - `r_put_slice(&self, src: Vec<u8>)` - write bytes
+  - `r_put_bytes(&self, val, n)` - write n copies of byte
+  - `r_reserve(&self, additional)` - reserve capacity
+  - `r_len(&self) -> i32`, `r_is_empty(&self) -> bool`, `r_clear(&self)`
+  - No blanket impl (requires interior mutability like RIterator)
+  - Implemented in `miniextendr-api/src/bytes_impl.rs`
+  - Re-exported from crate root
+- [x] Re-exports `Bytes`, `BytesMut`, `Buf`, `BufMut` from bytes crate
+- [x] Added 14 unit tests covering read/write operations
 
 ==== crossbeam channel adapters (potential new feature) - POSTPONED ====
 
