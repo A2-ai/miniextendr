@@ -763,6 +763,21 @@ pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os
     unsafe { Rprintf_unchecked(fmt, arg1) }
 }
 
+/// Print to R's stderr (via R_ShowMessage or error console).
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `fmt` and `arg1` must be valid null-terminated C strings
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("REprintf called from non-main thread");
+    }
+    unsafe { REprintf_unchecked(fmt, arg1) }
+}
+
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]

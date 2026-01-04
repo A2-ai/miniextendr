@@ -337,6 +337,59 @@ pub mod ordered_float_impl;
 #[cfg(feature = "ordered-float")]
 pub use ordered_float_impl::OrderedFloat;
 
+/// UUID support via the `uuid` crate.
+///
+/// Provides conversions between R character vectors and `Uuid` types:
+/// - `Uuid` ⇄ `character(1)`
+/// - `Vec<Uuid>` ⇄ `character`
+/// - `Option<Uuid>` for NA support
+///
+/// Enable with `features = ["uuid"]`.
+#[cfg(feature = "uuid")]
+pub mod uuid_impl;
+#[cfg(feature = "uuid")]
+pub use uuid_impl::Uuid;
+
+/// Regex support via the `regex` crate.
+///
+/// Provides compiled regular expressions from R character patterns:
+/// - `Regex` from `character(1)` (compiles pattern)
+/// - `Option<Regex>` for NA support
+///
+/// Note: `Regex` does not convert back to R (use original pattern string).
+///
+/// Enable with `features = ["regex"]`.
+#[cfg(feature = "regex")]
+pub mod regex_impl;
+#[cfg(feature = "regex")]
+pub use regex_impl::Regex;
+
+/// IndexMap support via the `indexmap` crate.
+///
+/// Provides conversions between R named lists and `IndexMap<String, T>`:
+/// - `IndexMap<String, T>` ⇄ named `list()`
+/// - Preserves insertion order in both directions
+/// - Auto-names unnamed elements ("V1", "V2", ...)
+///
+/// Enable with `features = ["indexmap"]`.
+#[cfg(feature = "indexmap")]
+pub mod indexmap_impl;
+#[cfg(feature = "indexmap")]
+pub use indexmap_impl::IndexMap;
+
+/// Time and date support via the `time` crate.
+///
+/// Provides conversions between R date/time types and `time` crate types:
+/// - `OffsetDateTime` ⇄ `POSIXct` (seconds since epoch + timezone)
+/// - `Date` ⇄ R `Date` (days since 1970-01-01)
+/// - Vector and Option variants for all types
+///
+/// Enable with `features = ["time"]`.
+#[cfg(feature = "time")]
+pub mod time_impl;
+#[cfg(feature = "time")]
+pub use time_impl::{Date, OffsetDateTime};
+
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;
 pub use rarray::{RArray, RArray3D, RMatrix, RVector};

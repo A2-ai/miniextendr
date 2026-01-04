@@ -70,6 +70,7 @@ pub use ndarray::{
 
 use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
 
 // =============================================================================
@@ -186,16 +187,15 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
             data.extend(self.column(j).iter().cloned());
         }
 
-        // Create R matrix
+        // Create R matrix with RAII protection
         unsafe {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
-            crate::ffi::Rf_protect(mat);
+            let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(mat) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
-            crate::ffi::Rf_unprotect(1);
-            mat
+            guard.into_inner()
         }
     }
 }
@@ -273,26 +273,28 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             v
         };
 
-        // Create R array with dim attribute
+        // Create R array with dim attribute using RAII protection
         unsafe {
-            let arr = crate::ffi::Rf_allocVector(T::SEXP_TYPE, data.len() as crate::ffi::R_xlen_t);
-            crate::ffi::Rf_protect(arr);
+            let scope = ProtectScope::new();
+
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                data.len() as crate::ffi::R_xlen_t,
+            ));
 
             let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Set dim attribute
-            let dim = crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 3);
-            crate::ffi::Rf_protect(dim);
+            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 3));
             let dim_ptr = crate::ffi::INTEGER(dim);
             *dim_ptr = d0 as i32;
             *dim_ptr.add(1) = d1 as i32;
             *dim_ptr.add(2) = d2 as i32;
             crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
 
-            crate::ffi::Rf_unprotect(2);
             arr
-        }
+        } // scope drops here, calling UNPROTECT(2)
     }
 }
 
@@ -356,30 +358,33 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
             v
         };
 
+        // Create R array with RAII protection
         unsafe {
-            let arr = crate::ffi::Rf_allocVector(T::SEXP_TYPE, total_len as crate::ffi::R_xlen_t);
-            crate::ffi::Rf_protect(arr);
+            let scope = ProtectScope::new();
+
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                total_len as crate::ffi::R_xlen_t,
+            ));
 
             let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
             // Set dim attribute if ndim > 1
             if ndim > 1 {
-                let dim =
-                    crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, ndim as crate::ffi::R_xlen_t);
-                crate::ffi::Rf_protect(dim);
+                let dim = scope.protect_raw(crate::ffi::Rf_allocVector(
+                    SEXPTYPE::INTSXP,
+                    ndim as crate::ffi::R_xlen_t,
+                ));
                 let dim_ptr = crate::ffi::INTEGER(dim);
                 for (i, &d) in shape.iter().enumerate() {
                     *dim_ptr.add(i) = d as i32;
                 }
                 crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
-                crate::ffi::Rf_unprotect(2);
-            } else {
-                crate::ffi::Rf_unprotect(1);
             }
 
             arr
-        }
+        } // scope drops here, calling UNPROTECT(n) automatically
     }
 }
 

@@ -26,10 +26,39 @@
 
 use std::collections::HashSet;
 
+/// Tags that allow multi-line content (continuation lines appended).
+/// All other tags are treated as single-line.
+const MULTILINE_TAGS: &[&str] = &[
+    "examples",
+    "description",
+    "details",
+    "return",
+    "returns",
+    "param",
+    "note",
+    "seealso",
+    "section",
+    "format",
+    "references",
+    "slot",
+    "field",
+    "value", // synonym for return
+];
+
+/// Check if a tag name supports multi-line content.
+fn is_multiline_tag(tag: &str) -> bool {
+    // Extract the tag name from "@tagname ..." or "@tagname"
+    let tag_name = tag
+        .strip_prefix('@')
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or("");
+    MULTILINE_TAGS.contains(&tag_name)
+}
+
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
 ///
-/// Handles multiline tags: continuation lines (not starting with '@') are
-/// appended to the previous tag with a newline separator.
+/// Most tags capture only a single line. Multi-line tags like `@examples`,
+/// `@description`, `@param`, and `@return` append continuation lines.
 ///
 /// For R6 methods, if no explicit tags are found, the first doc comment paragraph
 /// is auto-converted to `@description`.
@@ -74,21 +103,47 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
                 if tags.is_empty() {
                     // Before any @tags - collect as regular docs
                     regular_docs.push(trimmed.to_string());
-                } else {
-                    // Continuation line - append to last tag UNLESS it's @rdname
-                    // (bare text after @rdname creates invalid roxygen topics)
-                    if let Some(last) = tags.last_mut()
-                        && !last.starts_with("@rdname")
-                    {
-                        last.push('\n');
-                        last.push_str(trimmed);
-                    }
+                } else if let Some(last) = tags.last_mut()
+                    && is_multiline_tag(last)
+                {
+                    // Continuation line for multi-line tags only
+                    last.push('\n');
+                    last.push_str(trimmed);
                 }
+                // Single-line tags: ignore continuation lines
             }
         }
     }
 
-    // Auto-generate @description from regular docs if requested and no tags found
+    // Check which tags are present
+    let tag_names_set = tag_names(&tags);
+    let has_name = tag_names_set.contains("name") || tag_names_set.contains("rdname");
+    let has_title = tag_names_set.contains("title");
+    let has_description = tag_names_set.contains("description");
+
+    // Auto-generate @title from implicit title if we have @name but no @title
+    // Use implicit_title_from_attrs which respects paragraph breaks
+    if has_name && !has_title {
+        if let Some(title) = implicit_title_from_attrs(attrs) {
+            tags.insert(0, format!("@title {}", title));
+        }
+    }
+
+    // Auto-generate @description from implicit description if we have @name but no @description
+    // Use implicit_description_from_attrs which respects paragraph breaks
+    if has_name && !has_description {
+        if let Some(desc) = implicit_description_from_attrs(attrs) {
+            // Insert after @title if present, otherwise at start
+            let insert_pos = if tags.first().is_some_and(|t| t.starts_with("@title")) {
+                1
+            } else {
+                0
+            };
+            tags.insert(insert_pos, format!("@description {}", desc));
+        }
+    }
+
+    // Original auto_description behavior for methods without any tags
     if auto_description && tags.is_empty() && !regular_docs.is_empty() {
         let description = regular_docs.join(" ");
         tags.push(format!("@description {}", description));

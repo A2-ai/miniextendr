@@ -63,6 +63,7 @@ pub use nalgebra::{DMatrix, DVector};
 
 use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use nalgebra::Scalar;
 
@@ -176,15 +177,15 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
         // nalgebra data is already column-major
         let data: Vec<T> = self.data.into();
 
+        // Create R matrix with RAII protection
         unsafe {
             let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
-            crate::ffi::Rf_protect(mat);
+            let guard = OwnedProtect::new(mat);
 
-            let ptr = crate::ffi::DATAPTR_RO(mat) as *mut T;
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
-            crate::ffi::Rf_unprotect(1);
-            mat
+            guard.into_inner()
         }
     }
 }

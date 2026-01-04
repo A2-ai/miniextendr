@@ -13,7 +13,7 @@
 
 pub use ordered_float::OrderedFloat;
 
-use crate::ffi::{SEXP, SEXPTYPE};
+use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 

@@ -205,6 +205,65 @@
     - Order of initialization requirements
     - Example minimal R_init_* function
 
+=== Reference Study Tasks (from background/) ===
+
+==== R Internals & Extensions ====
+- [ ] Study `background/R Internals.html` for SEXP type system
+  - Document missing SEXP types not yet exposed in miniextendr-api/src/ffi.rs
+  - Verify PROTECT/UNPROTECT patterns match R's expectations
+  - Check for undocumented API behaviors
+- [ ] Study `background/Writing R Extensions.html` for .Call interface
+  - Verify R wrapper generation matches documented conventions
+  - Check registration patterns against recommended practices
+  - Verify NA handling matches R's documented behavior
+- [ ] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
+  - Compare miniextendr ALTREP impl against documented patterns
+  - Identify any missing ALTREP methods worth implementing
+  - Document which ALTREP classes are supported vs. planned
+
+==== R Source Reference ====
+- [ ] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings
+  - Location: `src/include/Rinternals.h` - verify SEXP type definitions match
+  - Location: `src/include/R_ext/Altrep.h` - verify ALTREP bindings are complete
+  - Location: `src/main/memory.c` - study GC behavior for protect patterns
+  - Location: `src/main/altclasses.c` - study ALTREP dispatch for reference
+
+==== Class System References ====
+- [ ] Study S7 patterns (`background/S7-main/`) for class generation
+  - How does S7 handle method dispatch?
+  - How does S7 generate constructors?
+  - Patterns for property access/validation
+  - Reference for improving #[miniextendr] impl block codegen
+- [ ] Study R6 patterns (`background/R6-main/`) for reference class generation
+  - How does R6 handle private vs. public fields?
+  - How does R6 handle inheritance?
+  - Reference for R6 class generator in miniextendr-macros
+- [ ] Study vctrs patterns (`background/vctrs-main/`) for type coercion
+  - How does vctrs handle type casting?
+  - Recycling rules for binary operations
+  - Patterns for Vec<T> / Option<T> conversions in miniextendr-api
+
+==== ALTREP Implementation References ====
+- [ ] Study `background/Rpkg-mutable-master/` for mutable ALTREP patterns
+  - How does it handle write barriers?
+  - How does it handle copy-on-modify semantics?
+- [ ] Study `background/Rpkg-simplemmap-master/` for memory-mapped ALTREP
+  - How does it handle lazy loading?
+  - How does it handle file descriptor lifecycle?
+- [ ] Study `background/vectorwindow-main/` for ALTREP views
+  - How does it implement subset views without copying?
+  - How does it handle window lifecycle?
+
+==== Documentation & Tooling References ====
+- [ ] Study roxygen2 (`background/roxygen2-main/`) for R wrapper generation
+  - How does roxygen2 parse @param, @return, @export tags?
+  - Patterns for improving miniextendr-macros/src/roxygen.rs
+  - Reference for R documentation generation
+- [ ] Study mirai (`background/mirai-main/`) for async patterns
+  - How does mirai handle clean environment evaluation?
+  - Patterns for worker thread communication
+  - Reference for potential async miniextendr features
+
 === Testing (from reviews 02, 06, 08) ===
 - [ ] Add snapshot/golden tests for R wrapper generation
   - `reviews/02_miniextendr-macros.md` section "Testing gaps"
@@ -264,6 +323,42 @@
   - Purpose: Test "configure ran but didn't generate expected files" scenarios
   - Implementation: Create temp project, run workflow subset, verify outputs
 
+==== minirextendr Dependency Rationalization ====
+Source: `reviews/dependency-idiomaticity.md`
+
+Strong fit (replace manual code):
+- [ ] Replace manual `git init` in `create.R:98-103` with `gert::git_init()` or `usethis::use_git()`
+- [ ] Replace `jsonlite::fromJSON()` in `vendor.R:12-35` with `gh::gh()` for GitHub API
+  - Benefits: automatic pagination, auth token handling, rate limit awareness
+  - Enables removal of jsonlite dependency
+- [ ] Replace manual gsub templater in `utils.R:152-179` with `whisker::whisker.render()` or `usethis::use_template()`
+
+Good fit (add functionality):
+- [ ] Add persistent cache for downloaded tarballs using `rappdirs::user_cache_dir("minirextendr")` in `vendor.R:52-65`
+  - Reduces repeated downloads of same crate versions
+- [ ] Improve project detection in `utils.R:23-63` with `rprojroot::find_root(rprojroot::has_file("Cargo.toml"))`
+  - Current: only checks current/parent dir
+  - Improved: walks up tree to find project root
+
+Optional:
+- [ ] Add `miniextendr.yml` config file support for user defaults using `yaml` package
+  - Store: crate name, rpkg name, version, features
+- [ ] Add `clipr` for copying "next steps" commands to clipboard
+- [ ] Add `lifecycle` for deprecation warnings and API evolution
+
+==== minirextendr usethis Replacements ====
+Source: `reviews/usethis-replacements.md`
+
+- [ ] Replace hand-built DESCRIPTION in `create.R:133` with `usethis::use_description(fields = list(...))`
+  - Use `withr::with_dir(rpkg_path)` for monorepo targeting
+  - Keep `desc` for in-place edits if needed
+- [ ] Replace manual `.Rbuildignore` append in `use-r.R:69` with `usethis::use_build_ignore(template_lines, escape = FALSE)`
+- [ ] Replace manual `.gitignore` append in `use-r.R:100` with `usethis::use_git_ignore(template_lines, directory = ".")`
+- [ ] Replace custom `use_template()` in `utils.R:140` with `usethis::use_template()`
+  - Replace custom gsub logic with whisker templating
+- [ ] Replace custom `ensure_dir()` in `utils.R:320` with `usethis::use_directory()`
+- [ ] Update package doc template in `use-r.R:10` to use `usethis::use_package_doc()` + patch for `@useDynLib`
+
 checking available recipes (`just --list`)
 - [x] build \*cargo_flags           // # [alias: cargo-build]
 - [x] check \*cargo_flags           // # [alias: cargo-check]
@@ -299,19 +394,124 @@ checking available recipes (`just --list`)
 - [ ] Update NONAPI.md with new console hook usage
 
 === Planned: Feature shortlist from Rust ecosystem ===
-- [ ] `uuid` feature: `uuid::Uuid` <-> R `character` (scalar + vector), plus ExternalPtr cache option
-- [ ] `time` feature: `time::OffsetDateTime` / `time::Date` <-> R `POSIXct` / `Date`
-- [ ] `regex` feature: `Regex` from R `character` + optional compiled cache via ExternalPtr
-- [ ] `indexmap` feature: `IndexMap<String, T>` <-> R named list (order-preserving; auto-name when missing)
+Source: `reviews/feature-plans-uuid-time-regex-indexmap.md`, `reviews/feature-shortlist.md`
+
+Common scaffolding for all features:
+1. Add optional dep + feature in `miniextendr-api/Cargo.toml` (non-default)
+2. Create feature module: `*_impl.rs`
+3. Gate module in `lib.rs` with `#[cfg(feature = "...")]`
+4. Add doc block per feature in `lib.rs` with example snippets
+5. Add feature-gated tests under `miniextendr-api/tests/`
+
+==== uuid feature ====
+- [x] Add `uuid = { version = "1", optional = true, features = ["v4"] }` to Cargo.toml
+- [x] Create `uuid_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `Uuid`: parse from R `character(1)`
+- [x] Implement `IntoR` for `Uuid`: convert to R `character(1)`
+- [x] Implement `TryFromSexp` for `Vec<Uuid>`: parse from R `character` vector
+- [x] Implement `IntoR` for `Vec<Uuid>`: convert to R `character` vector
+- [x] Handle `Option<Uuid>` for NA support: `NA_character_` ⇄ `None`
+- [x] Map parse failures to `SexpError::InvalidValue`
+- [x] Add feature-gated tests (miniextendr-api/tests/uuid.rs)
+
+==== time feature ====
+- [x] Add `time = { version = "0.3", optional = true, features = ["formatting", "parsing", "macros"] }` to Cargo.toml
+- [x] Create `time_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `OffsetDateTime`: R `POSIXct` (numeric + tzone attr) → Rust
+- [x] Implement `IntoR` for `OffsetDateTime`: Rust → R `POSIXct` with tzone (UTC)
+- [x] Implement `TryFromSexp` for `time::Date`: R date (day counts since 1970-01-01)
+- [x] Implement `IntoR` for `time::Date`: Rust → R Date
+- [x] Fractional seconds policy: truncate (documented in module)
+- [x] Add Vec and Option variants for both OffsetDateTime and Date
+- [x] Add feature-gated tests (10 tests)
+
+==== regex feature ====
+- [x] Add `regex = { version = "1", optional = true }` to Cargo.toml
+- [x] Create `regex_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `Regex`: compile from R `character(1)`
+- [x] Handle `Option<Regex>` for NA support
+- [x] Add `try_compile` helper (users wrap in ExternalPtr themselves for caching)
+- [x] Documented `ExternalPtr<Regex>` pattern for loop reuse in module docs
+- [x] Add feature-gated tests (5 tests)
+
+==== indexmap feature ====
+- [x] Add `indexmap = { version = "2", optional = true }` to Cargo.toml
+- [x] Create `indexmap_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `IndexMap<String, T>`: R named list → Rust
+- [x] Implement `IntoR` for `IndexMap<String, T>`: Rust → R named list
+- [x] Preserve insertion order in both directions
+- [x] Auto-name unnamed entries: "V1", "V2", ... when converting R list without names
+- [x] Add feature-gated tests (5 tests)
 
 === Planned: External-trait export strategy ===
+Source: `reviews/trait-export-and-numeric-crates.md`
+
+**Key constraint:** Cannot directly export external (non-owned) traits to R.
+
+Solution: Adapter trait pattern
 - [ ] Document adapter-trait pattern for exporting non-owned traits to R
+  - Define local wrapper trait mirroring desired subset of external trait
+  - Provide blanket impl for types implementing the external trait
+  - Example pattern:
+    ```rust
+    #[miniextendr]
+    pub trait RNum {
+        fn add(&self, other: &Self) -> Self;
+        fn to_string(&self) -> String;
+    }
+    impl<T: Num + Clone + ToString> RNum for T { ... }
+    ```
 - [ ] Provide example wrapper trait + blanket impl pattern in docs/reviews
-- [ ] Clarify trait ABI constraints (no generics/async; limited signatures) and recommend subset traits
+- [ ] Clarify trait ABI constraints:
+  - No generic parameters on traits
+  - No async methods
+  - No generic methods
+  - Argument/return types must implement `TryFromSexp`/`IntoR`
+  - Static methods allowed (but don't go through vtable)
+- [ ] Document newtype wrapper as alternative for total control and explicit conversions
 
 === Planned: Numeric crate feature candidates ===
-- [ ] `num-bigint` feature: `BigInt`/`BigUint` <-> R `character` (lossless)
-- [ ] `rust_decimal` feature: `Decimal` <-> R `character` (lossless), optional `numeric` fast path
-- [ ] `ordered-float` feature: `OrderedFloat<f64|f32>` <-> R `numeric`
-- [ ] `num-traits` (internal only): optional helper for generic implementations, not a public R-facing trait
-- [ ] `rug` (LGPL + system GMP): keep out of defaults; document as advanced/opt-in if ever added
+Source: `reviews/trait-export-and-numeric-crates.md`
+
+Common scaffolding (same as feature shortlist):
+1. Add optional dep + feature in `miniextendr-api/Cargo.toml`
+2. Create `*_impl.rs` module
+3. Gate module with `#[cfg(feature = "...")]`
+4. Add doc block + tests
+
+==== num-bigint feature ====
+- [ ] Add `num-bigint = { version = "0.4", optional = true }` to Cargo.toml
+- [ ] Create `num_bigint_impl.rs` in miniextendr-api/src/
+- [ ] Implement `TryFromSexp` for `BigInt`: parse from R `character`
+- [ ] Implement `IntoR` for `BigInt`: convert to R `character` (lossless)
+- [ ] Implement `TryFromSexp` for `BigUint`: parse from R `character`
+- [ ] Implement `IntoR` for `BigUint`: convert to R `character` (lossless)
+- [ ] Add feature-gated tests
+
+==== rust_decimal feature ====
+- [ ] Add `rust_decimal = { version = "1", optional = true }` to Cargo.toml
+- [ ] Create `rust_decimal_impl.rs` in miniextendr-api/src/
+- [ ] Implement `TryFromSexp` for `Decimal`: parse from R `character` (lossless)
+- [ ] Implement `IntoR` for `Decimal`: convert to R `character` (lossless)
+- [ ] Optional: Add `numeric` fast path with precision warning in docs
+- [ ] Add feature-gated tests
+
+==== ordered-float feature ====
+- [x] Add `ordered-float = { version = "4", optional = true }` to Cargo.toml
+- [x] Create `ordered_float_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `OrderedFloat<f64>`: R `numeric` → Rust
+- [x] Implement `IntoR` for `OrderedFloat<f64>`: Rust → R `numeric`
+- [x] Implement `TryFromSexp` for `OrderedFloat<f32>`: R `numeric` → Rust
+- [x] Implement `IntoR` for `OrderedFloat<f32>`: Rust → R `numeric`
+- [x] Implement vector conversions: `Vec<OrderedFloat<T>>`, `Vec<Option<OrderedFloat<T>>>`
+- [x] Add feature-gated tests (miniextendr-api/tests/ordered_float.rs)
+
+==== num-traits (internal only) ====
+- [ ] Optional helper for generic implementations
+- [ ] NOT a public R-facing feature (internal use only)
+- [ ] Consider for implementing generic numeric helpers
+
+==== rug (LGPL + system GMP) ====
+- [ ] Keep out of defaults due to LGPL license and system GMP dependency
+- [ ] Document as advanced/opt-in if ever added
+- [ ] Include clear license notes if implemented
