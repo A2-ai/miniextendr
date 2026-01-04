@@ -6,13 +6,16 @@
 \usage{
 vendor_miniextendr(
   version = "main",
-  dest = usethis::proj_path("src", "vendor")
+  dest = usethis::proj_path("src", "vendor"),
+  refresh = FALSE
 )
 }
 \arguments{
 \item{version}{Version tag to download (default: "main" for latest)}
 
 \item{dest}{Destination directory for vendored crates}
+
+\item{refresh}{Force re-download even if cached (default: FALSE)}
 }
 \value{
 Invisibly returns TRUE on success
@@ -21,4 +24,8 @@ Invisibly returns TRUE on success
 Downloads miniextendr-api, miniextendr-macros, and miniextendr-lint
 from GitHub and vendors them into src/vendor/. Also patches
 Cargo.toml files to remove workspace inheritance.
+}
+\details{
+Downloaded archives are cached in \code{rappdirs::user_cache_dir("minirextendr")}
+to avoid repeated downloads of the same version.
 }

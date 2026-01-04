@@ -25,9 +25,11 @@ get_template_type <- function() {
 #' Detect project type from directory structure
 #'
 #' Auto-detects whether the current project is:
-#' - "monorepo": Has a Cargo.toml in the current directory or parent
+#' - "monorepo": Has a Cargo.toml anywhere in the parent tree
 #'   (indicates Rust project context where rpkg/ will be embedded)
-#' - "rpkg": Is a standalone R package (has DESCRIPTION, no parent Cargo.toml)
+#' - "rpkg": Is a standalone R package (has DESCRIPTION, no Cargo.toml in tree)
+#'
+#' Uses rprojroot for reliable tree-walking detection.
 #'
 #' @param path Path to check (default: current project)
 #' @return "monorepo" or "rpkg", or NULL if can't detect
@@ -42,9 +44,9 @@ detect_project_type <- function(path = usethis::proj_get()) {
 
   # Check if we're in an R package directory
   if (file.exists(file.path(path, "DESCRIPTION"))) {
-    # Check if this rpkg is embedded in a Rust project (parent has Cargo.toml)
-    parent_cargo <- file.path(dirname(path), "Cargo.toml")
-    if (file.exists(parent_cargo)) {
+    # Check if this rpkg is embedded in a Rust project (Cargo.toml anywhere up the tree)
+    rust_root <- find_rust_root(path)
+    if (!is.null(rust_root)) {
       # This is an rpkg inside a Rust project (monorepo)
       return("monorepo")
     }
@@ -57,26 +59,34 @@ detect_project_type <- function(path = usethis::proj_get()) {
 
 #' Check if project is inside a Rust project
 #'
-#' Looks for a Cargo.toml in the current directory or parent.
-#' This indicates the R package is embedded in a Rust project context.
+#' Walks up the directory tree to find a Cargo.toml, indicating
+#' the R package is embedded in a Rust project context.
 #'
 #' @param path Path to check
 #' @return TRUE if inside a Rust project, FALSE otherwise
 #' @noRd
 is_in_rust_project <- function(path = usethis::proj_get()) {
-  # Check current directory
-  cargo_toml <- file.path(path, "Cargo.toml")
-  if (file.exists(cargo_toml)) {
-    return(TRUE)
-  }
+  rust_root <- find_rust_root(path)
+  !is.null(rust_root)
+}
 
-  # Check parent (for rpkg/ inside monorepo)
-  parent_cargo <- file.path(dirname(path), "Cargo.toml")
-  if (file.exists(parent_cargo)) {
-    return(TRUE)
-  }
-
-  FALSE
+#' Find the root of a Rust project
+#'
+#' Walks up the directory tree to find a directory containing Cargo.toml.
+#' Uses rprojroot for reliable detection.
+#'
+#' @param path Path to start searching from
+#' @return Path to Rust project root, or NULL if not found
+#' @noRd
+find_rust_root <- function(path = usethis::proj_get()) {
+  tryCatch(
+    {
+      rprojroot::find_root(rprojroot::has_file("Cargo.toml"), path = path)
+    },
+    error = function(e) {
+      NULL
+    }
+  )
 }
 
 #' Check if project is inside a Cargo workspace

@@ -26,7 +26,12 @@ fn bigint_roundtrip() {
 #[test]
 fn biguint_vector_with_na() {
     r_test_utils::with_r_thread(|| {
-        let sexp = vec![Some("1"), None, Some("42")].into_sexp();
+        let sexp = vec![
+            Some("1".to_string()),
+            None,
+            Some("42".to_string()),
+        ]
+        .into_sexp();
         let values: Vec<Option<BigUint>> = TryFromSexp::try_from_sexp(sexp).unwrap();
         assert_eq!(values.len(), 3);
         assert_eq!(values[0].as_ref().unwrap().to_string(), "1");

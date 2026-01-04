@@ -39,6 +39,8 @@ Highlights:
 - Safe(ish) Rust-to-R and R-to-Rust conversions.
 - Worker-thread pattern for panic isolation and Drop safety under R longjmp.
 - ALTREP traits and utilities.
+- Adapter traits (`RDebug`, `RDisplay`, `RHash`, `ROrd`, `RPartialOrd`) with
+  blanket impls for std traits.
 - Re-exports macros from `miniextendr-macros` so downstream crates can depend
   on a single crate.
 
@@ -47,6 +49,21 @@ Feature flags:
 - `nonapi` – enable feature‑gated non‑API R symbols (e.g., stack controls).
 - `rayon` – parallel helpers for R vectors.
 - `connections` – experimental R connection framework (unstable API).
+- `indicatif` – progress bar integration via R console (requires `nonapi`).
+
+Optional type integrations:
+- `rand` / `rand_distr` – R RNG with rand traits.
+- `either` – `Either<L, R>` conversions.
+- `ndarray` – `Array1`, `Array2` conversions.
+- `nalgebra` – `DVector`, `DMatrix` conversions.
+- `serde` – re-exports serde for derive macros.
+- `num-bigint` – `BigInt`/`BigUint` ⇄ character.
+- `rust_decimal` – `Decimal` ⇄ character.
+- `ordered-float` – `OrderedFloat` ⇄ numeric.
+- `uuid` – `Uuid` ⇄ character.
+- `regex` – compiled `Regex` from R patterns.
+- `indexmap` – `IndexMap<String, T>` ⇄ named list.
+- `time` – `OffsetDateTime` ⇄ POSIXct, `Date` conversions.
 
 ### `miniextendr-macros`
 
@@ -136,17 +153,29 @@ sync) are listed in `justfile` and `tests/cross-package/justfile`.
 
 ## Additional docs
 
-- `docs.md` – Architecture overview and command reference.
+### Core concepts
+- `SAFETY.md` – Thread safety invariants, FFI safety, and memory model.
 - `THREADS.md` – Worker-thread model and safety notes.
-- `NONAPI.md` – Non-API R symbols and policy.
-- `RAYON.md` – Rayon integration details.
+- `RAYON.md` – Rayon integration guide with patterns and performance tips.
+- `ENTRYPOINT.md` – R_init_* requirements and initialization order.
+
+### Type system and conversions
 - `COERCE.md` – Coercion rules and conversion behavior.
 - `COERCE_AND_INTO_R_REVIEW.md` – Review notes on coercion and `IntoR` behavior.
-- `ENGINE.md` – Embedding engine notes.
 - `TRAIT_AS_R.md` – Trait ABI and cross-package dispatch.
+- `ADAPTER_TRAITS.md` – Exporting external traits to R via adapter pattern.
+- `ADAPTER_COOKBOOK.md` – Practical recipes: iterators, serde, IO, comparison, hashing.
+
+### Build and linking
+- `LINKING.md` – Linking strategy for R packages and standalone binaries.
+- `VENDOR.md` – Vendoring and sync checks.
+- `ENGINE.md` – Embedding engine notes.
+
+### Reference
+- `docs.md` – Architecture overview and command reference.
+- `NONAPI.md` – Non-API R symbols and policy.
 - `TRACK_CALLER.md` – `#[track_caller]` usage and error reporting details.
 - `altrep.md` – ALTREP notes and design context.
-- `VENDOR.md` – Vendoring and sync checks.
 - `MAINTAINER.md` – Maintenance and release checklist.
 
 ## Threading model (two modes)

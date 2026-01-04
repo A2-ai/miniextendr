@@ -86,6 +86,31 @@ across package boundaries.
 
 See `tests/cross-package/README.md` for an end‑to‑end example.
 
+## Adapter traits
+
+Built-in adapter traits provide blanket implementations for common std traits:
+
+- `RDebug` – Debug string output (`debug_str()`, `debug_str_pretty()`)
+- `RDisplay` – Display string output (`to_r_string()`)
+- `RHash` – Hash computation (`r_hash() -> i64`)
+- `ROrd` – Total ordering comparison (`r_cmp() -> -1/0/1`)
+- `RPartialOrd` – Partial ordering (`r_partial_cmp() -> Option<i32>`)
+
+Any type implementing the corresponding std trait automatically gets these methods:
+
+```rust
+#[derive(Debug, Hash, Ord, PartialOrd, Eq, PartialEq, ExternalPtr)]
+struct Version(u32, u32, u32);
+
+#[miniextendr]
+impl RDebug for Version {}
+
+#[miniextendr]
+impl ROrd for Version {}
+```
+
+See `ADAPTER_TRAITS.md` and `ADAPTER_COOKBOOK.md` for patterns and recipes.
+
 ## ALTREP support
 
 ALTREP support is built around a two‑layer trait model:
@@ -161,9 +186,25 @@ unstable in R itself; use only when you control the runtime environment.
 
 ## Feature flags
 
+Core features:
 - `nonapi` – enable non‑API R symbols (stack controls and mutable `DATAPTR`).
 - `rayon` – parallel helpers and Rayon integration.
 - `connections` – experimental R connection framework.
+- `indicatif` – progress bar integration via R console (requires `nonapi`).
+
+Optional type integrations:
+- `rand` / `rand_distr` – R RNG wrapped with rand traits, distributions.
+- `either` – `Either<L, R>` ⇄ R conversions.
+- `ndarray` – `Array1`, `Array2`, `ArrayView1`, `ArrayView2` conversions.
+- `nalgebra` – `DVector`, `DMatrix` conversions.
+- `serde` – re-exports serde for derive macros.
+- `num-bigint` – `BigInt`/`BigUint` ⇄ character (lossless).
+- `rust_decimal` – `Decimal` ⇄ character (lossless).
+- `ordered-float` – `OrderedFloat<f64>` ⇄ numeric.
+- `uuid` – `Uuid` ⇄ character.
+- `regex` – compiled `Regex` from R character patterns.
+- `indexmap` – `IndexMap<String, T>` ⇄ named list.
+- `time` – `OffsetDateTime` ⇄ POSIXct, `Date` ⇄ day counts.
 
 ## Publishing to CRAN
 

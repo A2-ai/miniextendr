@@ -4,8 +4,9 @@ exported_funs <- c(
   "cargo_add", "cargo_build", "cargo_check", "cargo_clippy", "cargo_deps",
   "cargo_doc", "cargo_fmt", "cargo_init", "cargo_rm", "cargo_search",
   "cargo_test", "cargo_update", "create_miniextendr_package", "miniextendr_autoconf",
-  "miniextendr_available_versions", "miniextendr_build", "miniextendr_check",
-  "miniextendr_configure", "miniextendr_document", "miniextendr_update",
+  "miniextendr_available_versions", "miniextendr_build", "miniextendr_cache_info",
+  "miniextendr_check", "miniextendr_clear_cache", "miniextendr_configure",
+  "miniextendr_document", "miniextendr_update",
   "use_miniextendr", "use_miniextendr_bootstrap", "use_miniextendr_cargo_config",
   "use_miniextendr_cleanup", "use_miniextendr_config_scripts", "use_miniextendr_configure",
   "use_miniextendr_configure_win", "use_miniextendr_description", "use_miniextendr_document",
@@ -16,5 +17,8 @@ exported_funs <- c(
 
 test_that("exported helper functions exist", {
   missing <- exported_funs[!vapply(exported_funs, exists, logical(1), envir = asNamespace("minirextendr"))]
-  expect_length(missing, 0, info = paste("missing:", paste(missing, collapse = ", ")))
+  expect_equal(
+    length(missing), 0,
+    label = paste("missing exports:", paste(missing, collapse = ", "))
+  )
 })

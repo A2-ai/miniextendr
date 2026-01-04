@@ -78,6 +78,14 @@ miniextendr_available_versions()
 vendor_miniextendr("main")
 ```
 
+Downloaded archives are cached to avoid repeated downloads:
+
+```r
+miniextendr_cache_info()      # Show cached versions
+miniextendr_clear_cache()     # Clear all cached archives
+vendor_miniextendr("main", refresh = TRUE)  # Force re-download
+```
+
 Vendoring external crates.io dependencies:
 
 ```r

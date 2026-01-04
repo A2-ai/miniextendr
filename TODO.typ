@@ -68,8 +68,11 @@
   - `rpkg/src/entrypoint.c.in:7-10`, `encoding.rs:29-73`
   - Fix: Added documentation explaining that encoding_init only works when
     embedding R (miniextendr-engine), not for R packages where symbols aren't exported.
-- [ ] `#[miniextendr]` has no support for methods (`self`)
-  - `miniextendr-macros/src/lib.rs:203-206`
+- [ ] `#[miniextendr]` impl blocks: consuming `self` by value not fully supported
+  - `miniextendr-macros/src/miniextendr_impl.rs:79` - "Consuming method (not supported in v1)"
+  - Note: `&self` and `&mut self` work correctly
+  - `self` by value treated as finalizer unless `#[miniextendr(returns_self)]` is set
+  - Future: Allow consuming methods that return a different type
 - [x] `miniextendr_module!` treats `extern "C-unwind" fn` and `fn` the same
   - `miniextendr-macros/src/lib.rs:815-816`
   - Fix: Updated documentation to clarify this is intentional. The ABI distinction
@@ -91,8 +94,9 @@
 - [x] Generated build artifacts tracked in git (target/, config.log, etc.)
   - Fix: Updated `.gitignore` with proper entries for config.log, config.status,
     autom4te.cache/, generated Makevars/entrypoint.c/Cargo.toml/.cargo/, vendor/, etc.
-- [ ] Template/generated files can drift (.in vs generated)
-  - Fix: CI check to ensure generated files up-to-date
+- [x] Template/generated files can drift (.in vs generated)
+  - Fix: CI `generated-files-check` job verifies generated files not committed
+  - R package check jobs run configure which validates templates work correctly
 - [x] Vendored set incomplete for `--all-features` (missing rayon crate)
   - `rpkg/src/vendor/`
   - Fix: CRAN builds now use default features (no rayon) to avoid unvendored deps.
@@ -253,15 +257,11 @@
   - Reference for potential async miniextendr features
 
 === Testing (from reviews 02, 06, 08) ===
-- [ ] Add snapshot/golden tests for R wrapper generation
-  - `reviews/02_miniextendr-macros.md` section "Testing gaps"
-  - Location: miniextendr-macros/tests/snapshots/ or similar
-  - Purpose: Catch unintentional R wrapper shape regressions
-  - Implementation:
-    - Use `expect_test` or similar snapshot testing crate
-    - Test cases for: basic function, impl block methods, all 5 class systems
-    - Test cases for: roxygen tag propagation, parameter defaults, generic overrides
-    - Compare generated R wrapper strings against golden files
+- [x] Add snapshot/golden tests for R wrapper generation
+  - Location: miniextendr-macros/tests/snapshots.rs
+  - Uses: expect-test crate for inline snapshot testing
+  - Coverage: 21 tests for function wrappers, impl blocks (env/r6/s3),
+    roxygen tags, DotCallBuilder, RArgumentBuilder, defaults, dots
 - [x] Add CI check for generated file hygiene
   - `reviews/06_rpkg.md` section "Generated file hygiene"
   - `.github/workflows/ci.yml` - `generated-files-check` job
@@ -287,37 +287,42 @@
   - Note: processx is common in R tooling ecosystem
 
 === Optional Enhancements (lower priority) ===
-- [ ] Add more lint rules to miniextendr-lint
-  - `reviews/04_miniextendr-lint.md` section "Lint surface area"
-  - Candidates:
-    - "exported item exists but not listed in miniextendr_module!"
-    - "listed item does not exist / is cfg'd out"
-    - "trait ABI: init_ccallables() not called in R_init_*" (if detectable)
+- [x] Add more lint rules to miniextendr-lint
+  - Already implemented in miniextendr-lint/src/lib.rs:
+    - "exported item exists but not listed in miniextendr_module!" (lines 308-316)
+    - "listed item does not exist / is cfg'd out" (lines 319-329)
+    - Multiple impl blocks require labels (lines 663-710)
+    - Class system compatibility for trait impls (lines 632-660)
+  - Not implemented (not detectable from Rust):
+    - "trait ABI: init_ccallables() not called in R_init_*" (in C code)
 - [x] Add bench environment documentation
   - Location: miniextendr-bench/README.md
   - Content: Recommended setup, environment capture commands, running consistently,
     interpreting results, environment variables, benchmark categories
-- [ ] Add integration test for minirextendr workflow
-  - `reviews/07_minirextendr.md` section "Tests focus on templates"
-  - Purpose: Test "configure ran but didn't generate expected files" scenarios
-  - Implementation: Create temp project, run workflow subset, verify outputs
+- [x] Add integration test for minirextendr workflow
+  - Implemented: `minirextendr/tests/testthat/test-status-coverage.R`
+  - Tests: `has_miniextendr()`, `miniextendr_status()`, `miniextendr_check()` with temp projects
 
 ==== minirextendr Dependency Rationalization ====
 Source: `reviews/dependency-idiomaticity.md`
 
 Strong fit (replace manual code):
-- [ ] Replace manual `git init` in `create.R:98-103` with `gert::git_init()` or `usethis::use_git()`
-- [ ] Replace `jsonlite::fromJSON()` in `vendor.R:12-35` with `gh::gh()` for GitHub API
+- [x] Replace manual `git init` in `create.R:98-103` with `usethis::use_git()`
+  - Already implemented at create.R:99-101
+- [x] Replace `jsonlite::fromJSON()` in `vendor.R:12-35` with `gh::gh()` for GitHub API
   - Benefits: automatic pagination, auth token handling, rate limit awareness
-  - Enables removal of jsonlite dependency
-- [ ] Replace manual gsub templater in `utils.R:152-179` with `whisker::whisker.render()` or `usethis::use_template()`
+  - Implemented: Replaced jsonlite with gh, removed jsonlite from DESCRIPTION
+- [x] Replace manual gsub templater in `utils.R:152-179` with `usethis::use_template()`
+  - Already implemented at utils.R:163 using usethis::use_template()
 
 Good fit (add functionality):
-- [ ] Add persistent cache for downloaded tarballs using `rappdirs::user_cache_dir("minirextendr")` in `vendor.R:52-65`
-  - Reduces repeated downloads of same crate versions
-- [ ] Improve project detection in `utils.R:23-63` with `rprojroot::find_root(rprojroot::has_file("Cargo.toml"))`
-  - Current: only checks current/parent dir
-  - Improved: walks up tree to find project root
+- [x] Add persistent cache for downloaded tarballs using `rappdirs::user_cache_dir("minirextendr")` in `vendor.R`
+  - Implemented: Cache in vendor.R with download_miniextendr_archive()
+  - Added: `refresh` param to vendor_miniextendr(), miniextendr_clear_cache(), miniextendr_cache_info()
+  - Added rappdirs to DESCRIPTION
+- [x] Improve project detection in `utils.R` with `rprojroot::find_root(rprojroot::has_file("Cargo.toml"))`
+  - Implemented: Added find_rust_root() helper using rprojroot
+  - Updated detect_project_type() and is_in_rust_project() to walk up tree
 
 Optional:
 - [ ] Add `miniextendr.yml` config file support for user defaults using `yaml` package
@@ -328,42 +333,32 @@ Optional:
 ==== minirextendr usethis Replacements ====
 Source: `reviews/usethis-replacements.md`
 
-- [ ] Replace hand-built DESCRIPTION in `create.R:133` with `usethis::use_description(fields = list(...))`
-  - Use `withr::with_dir(rpkg_path)` for monorepo targeting
-  - Keep `desc` for in-place edits if needed
-- [ ] Replace manual `.Rbuildignore` append in `use-r.R:69` with `usethis::use_build_ignore(template_lines, escape = FALSE)`
-- [ ] Replace manual `.gitignore` append in `use-r.R:100` with `usethis::use_git_ignore(template_lines, directory = ".")`
-- [ ] Replace custom `use_template()` in `utils.R:140` with `usethis::use_template()`
-  - Replace custom gsub logic with whisker templating
-- [ ] Replace custom `ensure_dir()` in `utils.R:320` with `usethis::use_directory()`
-- [ ] Update package doc template in `use-r.R:10` to use `usethis::use_package_doc()` + patch for `@useDynLib`
+- [x] Keep hand-built DESCRIPTION in `create.R:133` (not using usethis::use_description())
+  - Reason: Creating DESCRIPTION in subdirectory (rpkg/) requires project context switching
+  - Current sprintf approach is simpler, more direct for scaffolding
+  - `desc` package used for updates (use_miniextendr_description)
+- [x] Replace manual `.Rbuildignore` append in `use-r.R:69` with `usethis::use_build_ignore(template_lines, escape = FALSE)`
+  - Implemented: Uses usethis for deduplication and file creation
+- [x] Replace manual `.gitignore` append in `use-r.R:100` with `usethis::use_git_ignore(template_lines, directory = ".")`
+  - Implemented: Uses usethis for deduplication and file creation
+- [x] Replace custom `use_template()` in `utils.R:140` with `usethis::use_template()`
+  - Already implemented: utils.R:163 delegates to usethis::use_template()
+- [x] Keep `ensure_dir()` in `utils.R:311` (not replaced)
+  - Reason: `usethis::use_directory()` only works for project-relative paths
+  - `ensure_dir()` handles arbitrary paths (vendor.R, target_path)
+- [x] Keep custom package doc template in `use-r.R:10` (not using usethis::use_package_doc())
+  - Reason: Template includes @useDynLib directive; using usethis + patching adds complexity
+  - Current approach: Single template with all miniextendr-specific content
 
-checking available recipes (`just --list`)
-- [x] build \*cargo_flags           // # [alias: cargo-build]
-- [x] check \*cargo_flags           // # [alias: cargo-check]
-- [x] clean \*cargo_flags           // # [alias: cargo-clean]
-- [x] clippy \*cargo_flags          // # [alias: cargo-clippy]
-- [ ] configure                    // # Run ./configure and vendor rpkg deps
-- [ ] default 
-- [ ] devtools-build               // # Build rpkg with devtools::build
-- [ ] devtools-check               // # Check rpkg with devtools::check
-- [ ] devtools-document            // # Document rpkg with devtools::document
-- [ ] devtools-install             // # Install rpkg with devtools::install
-- [ ] devtools-load                // # [alias: devtools-load_all]
-- [ ] devtools-test FILTER=""      // # Load and test rpkg with devtools
-- [ ] doc \*cargo_flags             // # [alias: cargo-doc]
-- [ ] doc-check \*cargo_flags       // # [alias: cargo-doc-check]
-- [ ] expand \*cargo_flags          // # [alias: cargo-expand]
-- [ ] fmt \*cargo_flags             // # [alias: cargo-fmt]
-- [ ] fmt-check \*cargo_flags       // # [alias: cargo-fmt-check]
-- [ ] r-cmd-build \*args            // # [alias: rcmdbuild]
-- [ ] r-cmd-check \*args            // # [alias: rcmdcheck]
-- [ ] r-cmd-install \*args          // # [alias: rcmdinstall]
-- [ ] test \*args                   // # [alias: cargo-test]
-- [ ] test-r-build                 // # Build R package tarball
-- [ ] tree \*cargo_flags            // # [alias: cargo-tree]
-- [ ] vendor                       // # [alias: cargo-vendor]
-- [ ] vendor-rpkg                  // # - bootstrap.R (CRAN tarball builds)
+checking available recipes (`just --list`) - ALL EXIST
+- [x] build, check, clean, clippy, configure, default
+- [x] devtools-build, devtools-check, devtools-document, devtools-install, devtools-load, devtools-test
+- [x] doc, doc-check, expand, fmt, fmt-check
+- [x] r-cmd-build, r-cmd-check, r-cmd-install, test, test-r-build, tree
+- [x] vendor-sync-check, lint-sync-check (new recipes added)
+- [x] minirextendr-* recipes (build, check, dev, document, install, load, rcmdcheck, test)
+- [x] cross-* recipes for cross-package tests
+- [x] templates-* recipes for template management
 
 === Planned: Optional indicatif progress ===
 - [x] Add `indicatif` feature to `miniextendr-api` (opt-in, non-default) with `indicatif -> nonapi` dependency
@@ -428,26 +423,16 @@ Source: `reviews/trait-export-and-numeric-crates.md`
 **Key constraint:** Cannot directly export external (non-owned) traits to R.
 
 Solution: Adapter trait pattern
-- [ ] Document adapter-trait pattern for exporting non-owned traits to R
-  - Define local wrapper trait mirroring desired subset of external trait
-  - Provide blanket impl for types implementing the external trait
-  - Example pattern:
-    ```rust
-    #[miniextendr]
-    pub trait RNum {
-        fn add(&self, other: &Self) -> Self;
-        fn to_string(&self) -> String;
-    }
-    impl<T: Num + Clone + ToString> RNum for T { ... }
-    ```
-- [ ] Provide example wrapper trait + blanket impl pattern in docs/reviews
-- [ ] Clarify trait ABI constraints:
-  - No generic parameters on traits
-  - No async methods
-  - No generic methods
-  - Argument/return types must implement `TryFromSexp`/`IntoR`
-  - Static methods allowed (but don't go through vtable)
-- [ ] Document newtype wrapper as alternative for total control and explicit conversions
+- [x] Document adapter-trait pattern for exporting non-owned traits to R
+  - Location: Top-level ADAPTER_TRAITS.md
+  - Content: Basic pattern, blanket impl examples, Iterator adapter, newtype alternative
+- [x] Provide example wrapper trait + blanket impl pattern in docs/reviews
+  - Location: ADAPTER_TRAITS.md - Complete Example section
+- [x] Clarify trait ABI constraints:
+  - Location: ADAPTER_TRAITS.md - Trait ABI Constraints table
+  - No generic parameters, no async, no generic methods, TryFromSexp/IntoR requirements
+- [x] Document newtype wrapper as alternative for total control and explicit conversions
+  - Location: ADAPTER_TRAITS.md - Alternative: Newtype Wrapper section
 
 === Planned: Numeric crate feature candidates ===
 Source: `reviews/trait-export-and-numeric-crates.md`
@@ -472,8 +457,12 @@ Common scaffolding (same as feature shortlist):
 - [x] Create `rust_decimal_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `Decimal`: parse from R `character` (lossless)
 - [x] Implement `IntoR` for `Decimal`: convert to R `character` (lossless)
-- [ ] Optional: Add `numeric` fast path with precision warning in docs
+- [x] Add `numeric` fast path with precision warning in docs
+  - Now accepts REALSXP (f64), INTSXP (i32), and STRSXP (character)
+  - Comprehensive docs explain precision trade-offs
+  - Output always goes to character for lossless storage
 - [x] Add feature-gated tests (miniextendr-api/tests/rust_decimal.rs)
+  - 7 tests including numeric and integer fast paths
 
 ==== ordered-float feature ====
 - [x] Add `ordered-float = { version = "4", optional = true }` to Cargo.toml
@@ -494,3 +483,308 @@ Common scaffolding (same as feature shortlist):
 - [ ] Keep out of defaults due to LGPL license and system GMP dependency
 - [ ] Document as advanced/opt-in if ever added
 - [ ] Include clear license notes if implemented
+
+=== Planned: Additional Adapter Trait Candidates ===
+Source: ADAPTER_TRAITS.md pattern - applicable to many external traits
+
+The adapter trait pattern (local trait + blanket impl) enables exporting external traits to R.
+Each candidate below can follow the pattern documented in ADAPTER_TRAITS.md.
+
+==== std library traits ====
+
+Iterator adapter:
+- [ ] Create `RIterator` adapter trait for `Iterator` (documented example in ADAPTER_TRAITS.md)
+  - `next() -> Option<T>` where T: IntoR
+  - `size_hint() -> (usize, Option<usize>)` as R integer vector
+  - Wrap `ExactSizeIterator::len()` when available
+  - Use case: Expose Rust iterators as R generator-like objects
+
+Display/FromStr adapters:
+- [x] Create `RDisplay` adapter trait for `Display`
+  - `to_r_string(&self) -> String` delegating to Display::fmt
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+- [ ] Create `RFromStr` adapter trait for `FromStr`
+  - `r_from_str(s: &str) -> Result<Self, SexpError>` delegating to FromStr::from_str
+  - Use case: Parse R character input into Rust types generically
+
+Debug adapter:
+- [x] Create `RDebug` adapter trait for `Debug`
+  - `debug_str(&self) -> String` and `debug_str_pretty(&self) -> String`
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+
+==== Comparison trait adapters ====
+
+- [x] Create `RPartialOrd` adapter trait for `PartialOrd`
+  - `r_partial_cmp(&self, other: &Self) -> Option<i32>` returning -1/0/1/None
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+- [x] Create `ROrd` adapter trait for `Ord`
+  - `r_cmp(&self, other: &Self) -> i32` returning -1/0/1
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+- [x] Create `RHash` adapter trait for `Hash`
+  - `r_hash(&self) -> i64` using DefaultHasher
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+
+==== serde trait adapters (with serde feature) ====
+
+- [ ] Create `RSerialize` adapter trait for `serde::Serialize`
+  - `r_to_json(&self) -> String` using serde_json
+  - `r_to_list(&self) -> SEXP` for direct R list output (future)
+  - Use case: Serialize Rust structs to R-consumable JSON
+- [ ] Create `RDeserialize` adapter trait for `serde::Deserialize`
+  - `r_from_json(s: &str) -> Result<Self, SexpError>`
+  - Use case: Parse R character JSON into Rust types
+- [ ] Consider serde_json R list bridge
+  - Direct SEXP serialization without JSON intermediate
+  - Similar to jsonlite's R ↔ JSON model
+
+==== num-traits adapters (internal helpers) ====
+
+- [ ] Create `RNum` adapter trait for common numeric operations
+  - Blanket impl for `T: num_traits::Num + Clone + ToString`
+  - Methods: `r_zero()`, `r_one()`, `r_is_zero()`, `r_abs()` (where applicable)
+  - Use case: Generic numeric type R interfaces
+- [ ] Create `RFloat` adapter trait for floating point ops
+  - Blanket impl for `T: num_traits::Float`
+  - Methods: `r_is_nan()`, `r_is_infinite()`, `r_floor()`, `r_ceil()`, etc.
+  - Use case: Generic float operations exposed to R
+
+==== Error trait adapters ====
+
+- [x] Create `RError` adapter trait for `std::error::Error`
+  - `error_message(&self) -> String` from Error::to_string()
+  - `error_chain(&self) -> Vec<String>` walking source() chain
+  - `error_chain_length(&self) -> i32` for chain length
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+
+==== IO trait adapters (with connections feature) ====
+
+- [ ] Create `RRead` adapter trait for `std::io::Read`
+  - `r_read_bytes(&mut self, n: usize) -> Vec<u8>`
+  - `r_read_to_end(&mut self) -> Vec<u8>`
+  - Use case: R-accessible readers from Rust IO sources
+- [ ] Create `RWrite` adapter trait for `std::io::Write`
+  - `r_write_bytes(&mut self, data: &[u8]) -> usize`
+  - `r_flush(&mut self)`
+  - Use case: R-accessible writers to Rust IO sinks
+- [ ] Create `RBufRead` adapter trait for `std::io::BufRead`
+  - `r_read_line(&mut self) -> Option<String>`
+  - `r_lines(&mut self) -> impl Iterator<Item = String>` (combined with RIterator)
+  - Use case: Line-by-line reading in R
+
+==== Collection trait adapters ====
+
+- [ ] Create `RExtend` adapter trait for `Extend`
+  - `r_extend_from_vec(&mut self, items: Vec<T>)`
+  - Use case: Append R vectors to Rust collections
+- [ ] Create `RIntoIterator` adapter trait for `IntoIterator`
+  - Returns wrapped `RIterator` from `into_iter()`
+  - Use case: Convert Rust collections into R-iterable objects
+
+==== rand trait adapters (with rand feature) ====
+
+- [ ] Create `RRng` adapter for `rand::Rng`
+  - `r_gen_range(low: f64, high: f64) -> f64`
+  - `r_gen_bool(p: f64) -> bool`
+  - Use case: Access custom RNGs from R
+- [ ] Create `RDistribution` adapter for `rand_distr::Distribution`
+  - `r_sample(&self, rng: &mut dyn Rng) -> T`
+  - Use case: Sample from Rust distributions in R
+
+==== Documentation tasks ====
+
+- [x] Add adapter trait examples to ADAPTER_TRAITS.md for each major category
+  - Added: Display/FromStr, Debug, Comparison (Ord/PartialOrd), Hash
+  - Added: Serde (Serialize/Deserialize with JSON)
+  - Added: IO (Read/Write/BufRead)
+  - Added: Error (with error chain walking)
+- [x] Create cookbook with common adapter patterns (ADAPTER_COOKBOOK.md)
+  - Recipe 1: Expose a custom iterator to R
+  - Recipe 2: Serialize/deserialize custom types with serde
+  - Recipe 3: Use Rust IO with R connections
+  - Recipe 4: Wrap comparison for R sorting
+  - Recipe 5: Expose hash for deduplication
+
+==== rayon trait adapters (with rayon feature) ====
+
+- [ ] Create `RParallelIterator` adapter trait for `rayon::iter::ParallelIterator`
+  - `r_par_for_each(&self, f: impl Fn(T) + Sync)` - parallel iteration
+  - `r_par_map(&self, f: impl Fn(T) -> U + Sync) -> Vec<U>` - parallel transform
+  - `r_par_filter(&self, f: impl Fn(&T) -> bool + Sync) -> Vec<T>` - parallel filter
+  - `r_par_reduce(&self, identity: T, op: impl Fn(T, T) -> T + Sync) -> T`
+  - Use case: Expose Rayon's parallel iteration to R for vectorized operations
+- [ ] Create `RParallelExtend` adapter trait for `rayon::iter::ParallelExtend`
+  - `r_par_extend(&mut self, items: Vec<T>)` - parallel bulk insert
+  - Use case: Efficient parallel collection building from R vectors
+
+==== ndarray trait adapters (with ndarray feature) ====
+
+- [ ] Create `RArrayBase` adapter trait for common `ndarray` operations
+  - `r_shape(&self) -> Vec<usize>` - get dimensions as R integer vector
+  - `r_ndim(&self) -> i32` - number of dimensions
+  - `r_is_contiguous(&self) -> bool` - check memory layout
+  - `r_sum(&self) -> T` where T: Sum - reduce to scalar
+  - Use case: Expose array metadata and operations to R
+- [ ] Create `RNdIndex` adapter for ndarray indexing
+  - `r_slice(&self, start: Vec<usize>, end: Vec<usize>) -> Self` - subarray view
+  - Use case: R-style array subsetting for ndarray types
+
+==== nalgebra trait adapters (with nalgebra feature) ====
+
+- [ ] Create `RMatrix` adapter trait for nalgebra matrix operations
+  - `r_nrows(&self) -> i32`, `r_ncols(&self) -> i32`
+  - `r_transpose(&self) -> Self` - matrix transpose
+  - `r_determinant(&self) -> f64` where applicable
+  - `r_inverse(&self) -> Option<Self>` where applicable
+  - Use case: Linear algebra operations accessible from R
+- [ ] Create `RVector` adapter trait for nalgebra vector operations
+  - `r_norm(&self) -> f64` - Euclidean norm
+  - `r_dot(&self, other: &Self) -> f64` - dot product
+  - `r_normalize(&self) -> Self` - unit vector
+  - Use case: Vector math operations from R
+
+==== regex trait adapters (with regex feature) ====
+
+- [ ] Create `RReplacer` adapter trait for `regex::Replacer`
+  - `r_replace_all(&self, text: &str, replacement: &str) -> String`
+  - `r_replace_first(&self, text: &str, replacement: &str) -> String`
+  - Use case: Expose regex replacement API to R
+- [ ] Create `RCaptures` adapter for `regex::Captures`
+  - `r_group(&self, i: usize) -> Option<String>` - get capture group by index
+  - `r_named_group(&self, name: &str) -> Option<String>` - get by name
+  - `r_len(&self) -> i32` - number of groups
+  - Use case: Access regex capture groups from R
+
+==== time trait adapters (with time feature) ====
+
+- [ ] Create `RDuration` adapter trait for `time::Duration`
+  - `r_as_seconds(&self) -> f64` - total seconds as float
+  - `r_as_millis(&self) -> i64` - total milliseconds
+  - `r_components(&self) -> (i64, i32, i32, i32)` - (days, hours, minutes, seconds)
+  - Use case: Time duration operations from R
+- [ ] Create `RDateTimeFormat` adapter for formatting/parsing
+  - `r_format(&self, fmt: &str) -> String` - format with pattern
+  - `r_parse(s: &str, fmt: &str) -> Result<Self, SexpError>` - parse with pattern
+  - Use case: Custom datetime formatting in R
+
+==== bytes crate adapters (potential new feature) ====
+
+- [ ] Add `bytes = { version = "1", optional = true }` feature (if useful)
+- [ ] Create `RBuf` adapter trait for `bytes::Buf`
+  - `r_remaining(&self) -> usize` - bytes remaining
+  - `r_chunk(&self) -> Vec<u8>` - get current chunk
+  - `r_advance(&mut self, n: usize)` - advance cursor
+  - Use case: Zero-copy byte buffer access from R
+- [ ] Create `RBufMut` adapter trait for `bytes::BufMut`
+  - `r_put_slice(&mut self, data: &[u8])` - write bytes
+  - `r_remaining_mut(&self) -> usize` - writable space
+  - Use case: Efficient byte buffer writing from R
+
+==== crossbeam channel adapters (potential new feature) ====
+
+- [ ] Add `crossbeam-channel = { version = "0.5", optional = true }` feature (if useful)
+- [ ] Create `RSender` adapter trait for channel senders
+  - `r_send(&self, item: T) -> bool` - send item, return success
+  - `r_try_send(&self, item: T) -> Option<T>` - non-blocking send
+  - `r_is_full(&self) -> bool` - check if channel full
+  - Use case: Inter-thread communication from R
+- [ ] Create `RReceiver` adapter trait for channel receivers
+  - `r_recv(&self) -> Option<T>` - blocking receive
+  - `r_try_recv(&self) -> Option<T>` - non-blocking receive
+  - `r_is_empty(&self) -> bool` - check if channel empty
+  - Use case: Receive from background threads in R
+
+==== Future/async adapters (long-term, if async support added) ====
+
+- [ ] Create `RFuture` adapter trait for `std::future::Future`
+  - `r_poll(&mut self) -> Option<T>` - check if ready (simplified poll)
+  - `r_block_on(&mut self) -> T` - blocking wait (using tokio/async-std runtime)
+  - Use case: Basic async/await integration with R
+  - Note: Requires careful design around R's single-threaded nature
+
+==== Clone/Default adapters ====
+
+- [ ] Create `RClone` adapter trait for `Clone`
+  - `r_clone(&self) -> Self` - explicit deep copy for R
+  - Use case: Control over copy semantics in R (vs. reference semantics)
+- [ ] Create `RDefault` adapter trait for `Default`
+  - `r_default() -> Self` - construct default instance
+  - Use case: Factory functions in R for Rust types
+
+==== num-bigint trait adapters (with num-bigint feature) ====
+
+- [ ] Create `RBigIntOps` adapter trait for BigInt/BigUint arithmetic
+  - `r_add(&self, other: &Self) -> Self`
+  - `r_sub(&self, other: &Self) -> Self`
+  - `r_mul(&self, other: &Self) -> Self`
+  - `r_div(&self, other: &Self) -> Self`
+  - `r_rem(&self, other: &Self) -> Self`
+  - `r_pow(&self, exp: u32) -> Self`
+  - `r_gcd(&self, other: &Self) -> Self`
+  - `r_lcm(&self, other: &Self) -> Self`
+  - Use case: Arbitrary-precision arithmetic from R
+- [ ] Create `RBigIntBitOps` adapter for bitwise operations
+  - `r_bit_and(&self, other: &Self) -> Self`
+  - `r_bit_or(&self, other: &Self) -> Self`
+  - `r_bit_xor(&self, other: &Self) -> Self`
+  - `r_shl(&self, n: u32) -> Self`
+  - `r_shr(&self, n: u32) -> Self`
+  - Use case: Bitwise operations on big integers from R
+
+==== rust_decimal trait adapters (with rust_decimal feature) ====
+
+- [ ] Create `RDecimalOps` adapter trait for Decimal arithmetic
+  - `r_add(&self, other: &Self) -> Self`
+  - `r_sub(&self, other: &Self) -> Self`
+  - `r_mul(&self, other: &Self) -> Self`
+  - `r_div(&self, other: &Self) -> Self`
+  - `r_rem(&self, other: &Self) -> Self`
+  - `r_round(&self, dp: i32) -> Self` - round to decimal places
+  - `r_floor(&self) -> Self`, `r_ceil(&self) -> Self`
+  - `r_trunc(&self) -> Self` - truncate toward zero
+  - Use case: Fixed-precision decimal arithmetic from R
+- [ ] Create `RDecimalConversions` adapter for type conversions
+  - `r_to_f64(&self) -> f64` - lossy conversion to f64
+  - `r_to_i64(&self) -> Option<i64>` - try conversion to i64
+  - `r_scale(&self) -> i32` - number of decimal places
+  - `r_mantissa(&self) -> i128` (or string for R compatibility)
+  - Use case: Inspect decimal internals from R
+
+==== uuid trait adapters (with uuid feature) ====
+
+- [ ] Create `RUuidOps` adapter trait for UUID operations
+  - `r_new_v4() -> Self` - generate random UUID
+  - `r_nil() -> Self` - nil UUID
+  - `r_max() -> Self` - max UUID (all 1s)
+  - `r_version(&self) -> i32` - UUID version number
+  - `r_variant(&self) -> i32` - UUID variant
+  - `r_is_nil(&self) -> bool`
+  - Use case: UUID generation and inspection from R
+- [ ] Create `RUuidParse` adapter for parsing variants
+  - `r_from_str(s: &str) -> Result<Self, SexpError>` - parse any format
+  - `r_from_bytes(bytes: &[u8]) -> Result<Self, SexpError>` - parse from raw
+  - `r_as_bytes(&self) -> Vec<u8>` - convert to raw bytes
+  - Use case: UUID parsing and serialization from R
+
+==== ordered-float trait adapters (with ordered-float feature) ====
+
+- [ ] Create `ROrderedFloatOps` adapter trait for NaN-safe operations
+  - `r_min(&self, other: &Self) -> Self` - NaN-safe minimum
+  - `r_max(&self, other: &Self) -> Self` - NaN-safe maximum
+  - `r_clamp(&self, min: f64, max: f64) -> Self` - clamp to range
+  - `r_is_nan(&self) -> bool`, `r_is_infinite(&self) -> bool`
+  - Use case: NaN-safe numeric operations from R
+
+==== indexmap trait adapters (with indexmap feature) ====
+
+- [ ] Create `RIndexMapOps` adapter trait for IndexMap operations
+  - `r_insert(&mut self, key: String, value: T) -> Option<T>` - insert/update
+  - `r_remove(&mut self, key: &str) -> Option<T>` - remove by key
+  - `r_get(&self, key: &str) -> Option<&T>` - get by key
+  - `r_get_index(&self, i: usize) -> Option<(&String, &T)>` - get by position
+  - `r_keys(&self) -> Vec<String>` - all keys in order
+  - `r_len(&self) -> i32`, `r_is_empty(&self) -> bool`
+  - `r_shift_remove(&mut self, key: &str) -> Option<T>` - remove preserving order
+  - Use case: Ordered dictionary operations from R

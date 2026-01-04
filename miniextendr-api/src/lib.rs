@@ -230,6 +230,28 @@ pub use markers::{
     IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType,
 };
 
+// =============================================================================
+// Adapter Traits
+// =============================================================================
+//
+// Built-in adapter traits with blanket implementations for standard library traits.
+// These allow any Rust type implementing Debug, Display, Hash, Ord, etc. to be
+// exposed to R without boilerplate.
+
+/// Built-in adapter traits for std library traits.
+///
+/// Provides [`RDebug`], [`RDisplay`], [`RHash`], [`ROrd`], [`RPartialOrd`],
+/// and [`RError`] with blanket implementations. See module docs for usage.
+///
+/// [`RDebug`]: adapter_traits::RDebug
+/// [`RDisplay`]: adapter_traits::RDisplay
+/// [`RHash`]: adapter_traits::RHash
+/// [`ROrd`]: adapter_traits::ROrd
+/// [`RPartialOrd`]: adapter_traits::RPartialOrd
+/// [`RError`]: adapter_traits::RError
+pub mod adapter_traits;
+pub use adapter_traits::{RDebug, RDisplay, RError, RHash, ROrd, RPartialOrd};
+
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
 /// atleast in the `macro_coverage`
 #[doc(hidden)]

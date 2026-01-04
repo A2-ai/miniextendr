@@ -67,7 +67,7 @@ fn ensure_r_home_env_errors_when_r_missing() {
     unsafe { std::env::set_var("PATH", tmp.path()) };
 
     let err = ensure_r_home_env(None).expect_err("should fail when R is missing");
-    assert!(matches!(err, REngineError::RHomeNotFound));
+    assert!(matches!(err, REngineError::RHomeNotFound { stderr: _ }));
 
     match original_r_home {
         Some(val) => unsafe { std::env::set_var("R_HOME", val) },
