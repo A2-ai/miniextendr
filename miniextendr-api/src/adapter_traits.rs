@@ -602,6 +602,123 @@ pub trait RIterator {
 // Note: No blanket impl because Iterator::next() requires &mut self,
 // but ExternalPtr methods receive &self. Users must use interior mutability.
 
+/// Adapter trait for [`std::iter::Extend`].
+///
+/// Provides collection extension operations for R, allowing Rust collections
+/// to be extended with R vectors. Since extension requires mutation, the
+/// wrapper type should use interior mutability (e.g., `RefCell`).
+///
+/// # Methods
+///
+/// - `r_extend_from_vec(items)` - Extend the collection with items from a vector
+/// - `r_extend_from_slice(items)` - Extend from a slice (for Clone items)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::cell::RefCell;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyVec(RefCell<Vec<i32>>);
+///
+/// impl MyVec {
+///     fn new() -> Self {
+///         Self(RefCell::new(Vec::new()))
+///     }
+/// }
+///
+/// impl RExtend<i32> for MyVec {
+///     fn r_extend_from_vec(&self, items: Vec<i32>) {
+///         self.0.borrow_mut().extend(items);
+///     }
+/// }
+///
+/// #[miniextendr]
+/// impl RExtend<i32> for MyVec {}
+/// ```
+///
+/// In R:
+/// ```r
+/// v <- MyVec$new()
+/// v$r_extend_from_vec(c(1L, 2L, 3L))  # Add items
+/// v$r_extend_from_vec(c(4L, 5L))      # Add more items
+/// ```
+///
+/// # Design Note
+///
+/// Like `RIterator`, `RExtend` does NOT have a blanket impl because `Extend::extend()`
+/// requires `&mut self`, but R's ExternalPtr pattern provides `&self`. Users must
+/// implement this trait manually using interior mutability (RefCell, Mutex, etc.).
+pub trait RExtend<T> {
+    /// Extend the collection with items from a vector.
+    ///
+    /// The items are moved into the collection.
+    fn r_extend_from_vec(&self, items: Vec<T>);
+
+    /// Extend the collection with cloned items from a slice.
+    ///
+    /// Default implementation clones items into a Vec and calls `r_extend_from_vec`.
+    fn r_extend_from_slice(&self, items: &[T])
+    where
+        T: Clone,
+    {
+        self.r_extend_from_vec(items.to_vec());
+    }
+
+    /// Get the current length of the collection.
+    ///
+    /// Optional - returns -1 if not implemented.
+    fn r_len(&self) -> i64 {
+        -1 // Indicates "unknown" - implementers can override
+    }
+}
+
+// Note: No blanket impl because Extend::extend() requires &mut self,
+// but ExternalPtr methods receive &self. Users must use interior mutability.
+
+/// Adapter trait for [`std::iter::FromIterator`].
+///
+/// Provides collection construction from iterators/vectors for R.
+/// Unlike `RExtend`, this creates a new collection from items.
+///
+/// # Methods
+///
+/// - `r_from_vec(items)` - Create a new collection from a vector
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(ExternalPtr)]
+/// struct MySet(std::collections::HashSet<i32>);
+///
+/// impl RFromIter<i32> for MySet {
+///     fn r_from_vec(items: Vec<i32>) -> Self {
+///         Self(items.into_iter().collect())
+///     }
+/// }
+///
+/// #[miniextendr]
+/// impl RFromIter<i32> for MySet {}
+/// ```
+///
+/// In R:
+/// ```r
+/// set <- MySet$r_from_vec(c(1L, 2L, 2L, 3L))  # Creates {1, 2, 3}
+/// ```
+pub trait RFromIter<T>: Sized {
+    /// Create a new collection from a vector of items.
+    fn r_from_vec(items: Vec<T>) -> Self;
+}
+
+impl<C, T> RFromIter<T> for C
+where
+    C: FromIterator<T>,
+{
+    fn r_from_vec(items: Vec<T>) -> Self {
+        items.into_iter().collect()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -869,5 +986,88 @@ mod tests {
         assert_eq!(it.r_collect_n(5), Vec::<i32>::new());
         assert_eq!(it.r_skip(5), 0);
         assert_eq!(it.r_nth(0), None);
+    }
+
+    // Tests for RExtend
+    struct TestExtendVec(RefCell<Vec<i32>>);
+
+    impl TestExtendVec {
+        fn new() -> Self {
+            Self(RefCell::new(Vec::new()))
+        }
+
+        fn get(&self) -> Vec<i32> {
+            self.0.borrow().clone()
+        }
+    }
+
+    impl RExtend<i32> for TestExtendVec {
+        fn r_extend_from_vec(&self, items: Vec<i32>) {
+            self.0.borrow_mut().extend(items);
+        }
+
+        fn r_len(&self) -> i64 {
+            self.0.borrow().len() as i64
+        }
+    }
+
+    #[test]
+    fn test_rextend_basic() {
+        let v = TestExtendVec::new();
+        assert_eq!(v.get(), Vec::<i32>::new());
+        assert_eq!(v.r_len(), 0);
+
+        v.r_extend_from_vec(vec![1, 2, 3]);
+        assert_eq!(v.get(), vec![1, 2, 3]);
+        assert_eq!(v.r_len(), 3);
+
+        v.r_extend_from_vec(vec![4, 5]);
+        assert_eq!(v.get(), vec![1, 2, 3, 4, 5]);
+        assert_eq!(v.r_len(), 5);
+    }
+
+    #[test]
+    fn test_rextend_empty() {
+        let v = TestExtendVec::new();
+        v.r_extend_from_vec(vec![]);
+        assert_eq!(v.get(), Vec::<i32>::new());
+        assert_eq!(v.r_len(), 0);
+    }
+
+    #[test]
+    fn test_rextend_from_slice() {
+        let v = TestExtendVec::new();
+        let data = [1, 2, 3];
+        v.r_extend_from_slice(&data);
+        assert_eq!(v.get(), vec![1, 2, 3]);
+    }
+
+    // Tests for RFromIter
+    #[test]
+    fn test_rfromiter_vec() {
+        let v: Vec<i32> = RFromIter::r_from_vec(vec![1, 2, 3]);
+        assert_eq!(v, vec![1, 2, 3]);
+    }
+
+    #[test]
+    fn test_rfromiter_hashset() {
+        use std::collections::HashSet;
+        let set: HashSet<i32> = RFromIter::r_from_vec(vec![1, 2, 2, 3, 3, 3]);
+        assert_eq!(set.len(), 3);
+        assert!(set.contains(&1));
+        assert!(set.contains(&2));
+        assert!(set.contains(&3));
+    }
+
+    #[test]
+    fn test_rfromiter_string() {
+        let s: String = RFromIter::r_from_vec(vec!['h', 'e', 'l', 'l', 'o']);
+        assert_eq!(s, "hello");
+    }
+
+    #[test]
+    fn test_rfromiter_empty() {
+        let v: Vec<i32> = RFromIter::r_from_vec(vec![]);
+        assert!(v.is_empty());
     }
 }

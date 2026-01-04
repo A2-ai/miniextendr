@@ -8,7 +8,7 @@
 //! env UPDATE_EXPECT=1 cargo test --test snapshots
 //! ```
 
-use expect_test::{expect, Expect};
+use expect_test::{Expect, expect};
 
 /// Helper to check R wrapper output.
 fn check_r_wrapper(actual: &str, expected: Expect) {
@@ -26,50 +26,35 @@ mod r_argument_builder {
     fn basic_formals() {
         // Simulated output for: fn add(a: i32, b: i32) -> i32
         let formals = "a, b";
-        check_r_wrapper(
-            formals,
-            expect![[r#"a, b"#]],
-        );
+        check_r_wrapper(formals, expect![[r#"a, b"#]]);
     }
 
     #[test]
     fn with_defaults() {
         // Simulated output for: fn greet(name: &str, #[miniextendr(default = "\"World\"")] greeting: &str)
         let formals = r#"name, greeting = "World""#;
-        check_r_wrapper(
-            formals,
-            expect![[r#"name, greeting = "World""#]],
-        );
+        check_r_wrapper(formals, expect![[r#"name, greeting = "World""#]]);
     }
 
     #[test]
     fn underscore_normalization() {
         // _x becomes unused_x, __y becomes private__y
         let formals = "unused_x, private__y";
-        check_r_wrapper(
-            formals,
-            expect![[r#"unused_x, private__y"#]],
-        );
+        check_r_wrapper(formals, expect![[r#"unused_x, private__y"#]]);
     }
 
     #[test]
     fn with_dots() {
         // fn variadic(x: i32, dots: &Dots)
         let formals = "x, ...";
-        check_r_wrapper(
-            formals,
-            expect![[r#"x, ..."#]],
-        );
+        check_r_wrapper(formals, expect![[r#"x, ..."#]]);
     }
 
     #[test]
     fn unit_default() {
         // () type gets default = NULL
         let formals = "callback = NULL";
-        check_r_wrapper(
-            formals,
-            expect![[r#"callback = NULL"#]],
-        );
+        check_r_wrapper(formals, expect![[r#"callback = NULL"#]]);
     }
 }
 
@@ -369,10 +354,7 @@ mod dot_call_builder {
     #[test]
     fn simple_call() {
         let call = r#".Call("C_add", a, b)"#;
-        check_r_wrapper(
-            call,
-            expect![[r#".Call("C_add", a, b)"#]],
-        );
+        check_r_wrapper(call, expect![[r#".Call("C_add", a, b)"#]]);
     }
 
     #[test]
@@ -387,18 +369,12 @@ mod dot_call_builder {
     #[test]
     fn call_with_dots() {
         let call = r#".Call("C_variadic", x, ...)"#;
-        check_r_wrapper(
-            call,
-            expect![[r#".Call("C_variadic", x, ...)"#]],
-        );
+        check_r_wrapper(call, expect![[r#".Call("C_variadic", x, ...)"#]]);
     }
 
     #[test]
     fn call_no_args() {
         let call = r#".Call("C_get_version")"#;
-        check_r_wrapper(
-            call,
-            expect![[r#".Call("C_get_version")"#]],
-        );
+        check_r_wrapper(call, expect![[r#".Call("C_get_version")"#]]);
     }
 }

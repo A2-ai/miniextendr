@@ -241,8 +241,9 @@ pub use markers::{
 /// Built-in adapter traits for std library traits.
 ///
 /// Provides [`RDebug`], [`RDisplay`], [`RHash`], [`ROrd`], [`RPartialOrd`],
-/// [`RError`], [`RFromStr`], [`RClone`], [`RCopy`], and [`RDefault`] with blanket
-/// implementations. See module docs for usage.
+/// [`RError`], [`RFromStr`], [`RClone`], [`RCopy`], [`RDefault`], [`RIterator`],
+/// [`RExtend`], and [`RFromIter`] with blanket implementations where possible.
+/// See module docs for usage.
 ///
 /// [`RDebug`]: adapter_traits::RDebug
 /// [`RDisplay`]: adapter_traits::RDisplay
@@ -254,10 +255,13 @@ pub use markers::{
 /// [`RClone`]: adapter_traits::RClone
 /// [`RCopy`]: adapter_traits::RCopy
 /// [`RDefault`]: adapter_traits::RDefault
+/// [`RIterator`]: adapter_traits::RIterator
+/// [`RExtend`]: adapter_traits::RExtend
+/// [`RFromIter`]: adapter_traits::RFromIter
 pub mod adapter_traits;
 pub use adapter_traits::{
-    RClone, RCopy, RDebug, RDefault, RDisplay, RError, RFromStr, RHash, RIterator, ROrd,
-    RPartialOrd,
+    RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,
+    RIterator, ROrd, RPartialOrd,
 };
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"

@@ -570,27 +570,33 @@ Debug adapter:
 
 ==== IO trait adapters (with connections feature) ====
 
-- [ ] Create `RRead` adapter trait for `std::io::Read`
-  - `r_read_bytes(&mut self, n: usize) -> Vec<u8>`
-  - `r_read_to_end(&mut self) -> Vec<u8>`
-  - Use case: R-accessible readers from Rust IO sources
-- [ ] Create `RWrite` adapter trait for `std::io::Write`
-  - `r_write_bytes(&mut self, data: &[u8]) -> usize`
-  - `r_flush(&mut self)`
-  - Use case: R-accessible writers to Rust IO sinks
-- [ ] Create `RBufRead` adapter trait for `std::io::BufRead`
-  - `r_read_line(&mut self) -> Option<String>`
-  - `r_lines(&mut self) -> impl Iterator<Item = String>` (combined with RIterator)
-  - Use case: Line-by-line reading in R
+NOTE: IO adapters are provided by the connection module (`miniextendr-api/src/connection.rs`):
+- `IoRead<T>` for `T: std::io::Read`
+- `IoWrite<T>` for `T: std::io::Write`
+- `IoBufRead<T>` for `T: std::io::BufRead`
+- `IoReadWrite<T>`, `IoReadSeek<T>`, `IoWriteSeek<T>`, `IoReadWriteSeek<T>`
+- Use `RConnectionIo` builder for easy creation
+
+Standalone adapter traits not needed - use connection framework instead.
 
 ==== Collection trait adapters ====
 
-- [ ] Create `RExtend` adapter trait for `Extend`
-  - `r_extend_from_vec(&mut self, items: Vec<T>)`
-  - Use case: Append R vectors to Rust collections
+- [x] Create `RExtend` adapter trait for `Extend`
+  - `r_extend_from_vec(&self, items: Vec<T>)` - extend with items from vector
+  - `r_extend_from_slice(&self, items: &[T])` - extend from slice (Clone items)
+  - `r_len(&self) -> i64` - get current length (optional, -1 if unknown)
+  - No blanket impl (requires interior mutability like RIterator)
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+- [x] Create `RFromIter` adapter trait for `FromIterator`
+  - `r_from_vec(items: Vec<T>) -> Self` - create collection from vector
+  - Blanket impl for all `FromIterator` types
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
 - [ ] Create `RIntoIterator` adapter trait for `IntoIterator`
   - Returns wrapped `RIterator` from `into_iter()`
   - Use case: Convert Rust collections into R-iterable objects
+  - Note: Complex due to associated type issues
 
 ==== rand trait adapters (with rand feature) ====
 
