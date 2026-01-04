@@ -186,13 +186,13 @@
 - [x] Add SAFETY.md documenting FFI/thread safety invariants for Send wrapper types
   - `reviews/01_miniextendr-api.md` section "Invariant documentation"
   - Location: Top-level SAFETY.md
-  - Content: Thread model, Sendable<T>/SendablePtr<T> safety, ExternalPtr safety,
+  - Content: Thread model, `Sendable<T>`/`SendablePtr<T>` safety, ExternalPtr safety,
     R_UnwindProtect, StackCheckGuard, allocator thread requirements, FFI categories
 - [x] Add macro expansion pipeline documentation
   - Location: miniextendr-macros/src/lib.rs module docs
   - Content: Flow diagrams for fn/impl/trait/module macros, module table,
     symbol naming conventions, return type handling, class systems
-- [x] Consolidate R_init_* requirements into one doc
+- [x] Consolidate `R_init_*` requirements into one doc
   - Location: Top-level ENTRYPOINT.md
   - Content: Initialization order, function explanations, API timing table,
     minimal example, embedding R section, troubleshooting
@@ -282,7 +282,7 @@
     platform notes, troubleshooting, environment variables
 - [ ] Consider processx-based execution in minirextendr
   - `reviews/07_minirextendr.md` section "system2() portability"
-  - Location: minirextendr/R/*.R
+  - Location: `minirextendr/R/*.R`
   - Purpose: Better cross-platform command execution with proper quoting/output capture
   - Note: processx is common in R tooling ecosystem
 
@@ -294,7 +294,7 @@
     - Multiple impl blocks require labels (lines 663-710)
     - Class system compatibility for trait impls (lines 632-660)
   - Not implemented (not detectable from Rust):
-    - "trait ABI: init_ccallables() not called in R_init_*" (in C code)
+    - "trait ABI: init_ccallables() not called in `R_init_*`" (in C code)
 - [x] Add bench environment documentation
   - Location: miniextendr-bench/README.md
   - Content: Recommended setup, environment capture commands, running consistently,
@@ -504,9 +504,10 @@ Display/FromStr adapters:
   - `to_r_string(&self) -> String` delegating to Display::fmt
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
-- [ ] Create `RFromStr` adapter trait for `FromStr`
-  - `r_from_str(s: &str) -> Result<Self, SexpError>` delegating to FromStr::from_str
-  - Use case: Parse R character input into Rust types generically
+- [x] Create `RFromStr` adapter trait for `FromStr`
+  - `r_from_str(s: &str) -> Option<Self>` delegating to FromStr::from_str
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
 
 Debug adapter:
 - [x] Create `RDebug` adapter trait for `Debug`
@@ -706,12 +707,14 @@ Debug adapter:
 
 ==== Clone/Default adapters ====
 
-- [ ] Create `RClone` adapter trait for `Clone`
+- [x] Create `RClone` adapter trait for `Clone`
   - `r_clone(&self) -> Self` - explicit deep copy for R
-  - Use case: Control over copy semantics in R (vs. reference semantics)
-- [ ] Create `RDefault` adapter trait for `Default`
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+- [x] Create `RDefault` adapter trait for `Default`
   - `r_default() -> Self` - construct default instance
-  - Use case: Factory functions in R for Rust types
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
 
 ==== num-bigint trait adapters (with num-bigint feature) ====
 

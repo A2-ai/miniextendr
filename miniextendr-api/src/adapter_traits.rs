@@ -34,6 +34,7 @@
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
 use std::collections::hash_map::DefaultHasher;
+use std::str::FromStr;
 
 /// Adapter trait for [`std::fmt::Debug`].
 ///
@@ -292,6 +293,120 @@ impl<T: std::error::Error> RError for T {
     }
 }
 
+/// Adapter trait for [`std::str::FromStr`].
+///
+/// Provides string parsing for R, allowing R strings to be parsed into Rust types.
+/// Automatically implemented for any type that implements `FromStr`.
+///
+/// # Methods
+///
+/// - `r_from_str(s: &str)` - Parse a string into this type, returning None on failure
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::net::IpAddr;
+///
+/// // IpAddr implements FromStr
+/// #[derive(ExternalPtr)]
+/// struct IpAddress(IpAddr);
+///
+/// #[miniextendr]
+/// impl RFromStr for IpAddress {}
+/// ```
+///
+/// In R:
+/// ```r
+/// ip <- IpAddress$r_from_str("192.168.1.1")
+/// ```
+pub trait RFromStr: Sized {
+    /// Parse a string into this type.
+    ///
+    /// Returns `Some(value)` on success, `None` on parse failure.
+    /// The None case maps to NULL in R.
+    fn r_from_str(s: &str) -> Option<Self>;
+}
+
+impl<T: FromStr> RFromStr for T {
+    fn r_from_str(s: &str) -> Option<Self> {
+        s.parse().ok()
+    }
+}
+
+/// Adapter trait for [`std::clone::Clone`].
+///
+/// Provides explicit deep copying for R. This is useful when R users need
+/// to create independent copies of Rust objects (which normally use reference
+/// semantics via `ExternalPtr`).
+///
+/// # Methods
+///
+/// - `r_clone()` - Create a deep copy of this value
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(Clone, ExternalPtr)]
+/// struct Buffer { data: Vec<u8> }
+///
+/// #[miniextendr]
+/// impl RClone for Buffer {}
+/// ```
+///
+/// In R:
+/// ```r
+/// buf1 <- Buffer$new(...)
+/// buf2 <- buf1$r_clone()  # Independent copy
+/// ```
+pub trait RClone {
+    /// Create a deep copy of this value.
+    fn r_clone(&self) -> Self;
+}
+
+impl<T: Clone> RClone for T {
+    fn r_clone(&self) -> Self {
+        self.clone()
+    }
+}
+
+/// Adapter trait for [`std::default::Default`].
+///
+/// Provides default value construction for R. This allows R users to create
+/// instances with default values without needing to specify all parameters.
+///
+/// # Methods
+///
+/// - `r_default()` - Create a new instance with default values
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(Default, ExternalPtr)]
+/// struct Config {
+///     timeout: u32,     // defaults to 0
+///     retries: u32,     // defaults to 0
+///     verbose: bool,    // defaults to false
+/// }
+///
+/// #[miniextendr]
+/// impl RDefault for Config {}
+/// ```
+///
+/// In R:
+/// ```r
+/// config <- Config$r_default()  # All fields have default values
+/// ```
+pub trait RDefault {
+    /// Create a new instance with default values.
+    fn r_default() -> Self;
+}
+
+impl<T: Default> RDefault for T {
+    fn r_default() -> Self {
+        Self::default()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -392,5 +507,53 @@ mod tests {
         assert_eq!(chain[0], "outer error");
         assert_eq!(chain[1], "inner error");
         assert_eq!(err.error_chain_length(), 2);
+    }
+
+    #[test]
+    fn test_rfromstr_success() {
+        let result: Option<i32> = RFromStr::r_from_str("42");
+        assert_eq!(result, Some(42));
+
+        let result: Option<f64> = RFromStr::r_from_str("3.14");
+        assert_eq!(result, Some(3.14));
+
+        let result: Option<bool> = RFromStr::r_from_str("true");
+        assert_eq!(result, Some(true));
+    }
+
+    #[test]
+    fn test_rfromstr_failure() {
+        let result: Option<i32> = RFromStr::r_from_str("not a number");
+        assert_eq!(result, None);
+
+        let result: Option<f64> = RFromStr::r_from_str("abc");
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn test_rclone() {
+        let v = vec![1, 2, 3];
+        let cloned = v.r_clone();
+        assert_eq!(v, cloned);
+
+        // Verify it's a deep copy
+        let s = String::from("hello");
+        let cloned_s = s.r_clone();
+        assert_eq!(s, cloned_s);
+    }
+
+    #[test]
+    fn test_rdefault() {
+        let default_i32: i32 = RDefault::r_default();
+        assert_eq!(default_i32, 0);
+
+        let default_vec: Vec<i32> = RDefault::r_default();
+        assert!(default_vec.is_empty());
+
+        let default_string: String = RDefault::r_default();
+        assert_eq!(default_string, "");
+
+        let default_bool: bool = RDefault::r_default();
+        assert!(!default_bool);
     }
 }

@@ -76,6 +76,46 @@ miniextendr_module! {
 2. **Blanket impl provides functionality** - Any type implementing `Num` gets `RNum`
 3. **Concrete impl triggers codegen** - `impl RNum for MyNumber` generates the vtable
 
+## Built-in Adapter Traits
+
+`miniextendr-api` provides ready-to-use adapter traits for common std library traits.
+These have blanket implementations so you just need to export them for your types:
+
+| Trait | Wraps | Methods |
+|-------|-------|---------|
+| `RDebug` | `Debug` | `debug_str()`, `debug_str_pretty()` |
+| `RDisplay` | `Display` | `to_r_string()` |
+| `RFromStr` | `FromStr` | `r_from_str(s) -> Option<Self>` |
+| `RHash` | `Hash` | `r_hash() -> i64` |
+| `ROrd` | `Ord` | `r_cmp(&self, other) -> i32` |
+| `RPartialOrd` | `PartialOrd` | `r_partial_cmp(&self, other) -> Option<i32>` |
+| `RError` | `Error` | `error_message()`, `error_chain()`, `error_chain_length()` |
+| `RClone` | `Clone` | `r_clone() -> Self` |
+| `RDefault` | `Default` | `r_default() -> Self` |
+
+**Usage:**
+
+```rust
+use miniextendr_api::prelude::*;
+use miniextendr_api::{RDebug, RDisplay, RClone};
+
+#[derive(Debug, Clone, ExternalPtr)]
+struct MyData { value: i32 }
+
+// Expose Debug, Display (via Debug), and Clone to R
+#[miniextendr]
+impl RDebug for MyData {}
+
+#[miniextendr]
+impl RClone for MyData {}
+
+miniextendr_module! {
+    mod mymod;
+    impl RDebug for MyData;
+    impl RClone for MyData;
+}
+```
+
 ## Trait ABI Constraints
 
 When designing adapter traits, keep these limitations in mind:
