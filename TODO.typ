@@ -387,11 +387,11 @@ checking available recipes (`just --list`)
 - [ ] vendor-rpkg                  // # - bootstrap.R (CRAN tarball builds)
 
 === Planned: Optional indicatif progress ===
-- [ ] Add `indicatif` feature to `miniextendr-api` (opt-in, non-default) with `indicatif -> nonapi` dependency
-- [ ] Implement `RTerm` (`indicatif::TermLike`) that writes to R console via `ptr_R_WriteConsoleEx` and no-ops off main thread
-- [ ] Provide ANSI cursor/clear defaults in `RTerm` (cursor moves, clear line, write_line)
-- [ ] Add convenience constructors (`term_like_{stdout,stderr}[_with_hz]`) for stream routing
-- [ ] Update NONAPI.md with new console hook usage
+- [x] Add `indicatif` feature to `miniextendr-api` (opt-in, non-default) with `indicatif -> nonapi` dependency
+- [x] Implement `RTerm` (`indicatif::TermLike`) that writes to R console via `ptr_R_WriteConsoleEx` and no-ops off main thread
+- [x] Provide ANSI cursor/clear defaults in `RTerm` (cursor moves, clear line, write_line)
+- [x] Implemented `term_like_stdout()`, `term_like_stderr()` and `into_draw_target()` helpers
+- [x] Updated NONAPI.md with `ptr_R_WriteConsoleEx` under feature-gated non-API functions
 
 === Planned: Feature shortlist from Rust ecosystem ===
 Source: `reviews/feature-plans-uuid-time-regex-indexmap.md`, `reviews/feature-shortlist.md`
@@ -480,21 +480,21 @@ Common scaffolding (same as feature shortlist):
 4. Add doc block + tests
 
 ==== num-bigint feature ====
-- [ ] Add `num-bigint = { version = "0.4", optional = true }` to Cargo.toml
-- [ ] Create `num_bigint_impl.rs` in miniextendr-api/src/
-- [ ] Implement `TryFromSexp` for `BigInt`: parse from R `character`
-- [ ] Implement `IntoR` for `BigInt`: convert to R `character` (lossless)
-- [ ] Implement `TryFromSexp` for `BigUint`: parse from R `character`
-- [ ] Implement `IntoR` for `BigUint`: convert to R `character` (lossless)
-- [ ] Add feature-gated tests
+- [x] Add `num-bigint = { version = "0.4", optional = true }` to Cargo.toml
+- [x] Create `num_bigint_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `BigInt`: parse from R `character`
+- [x] Implement `IntoR` for `BigInt`: convert to R `character` (lossless)
+- [x] Implement `TryFromSexp` for `BigUint`: parse from R `character`
+- [x] Implement `IntoR` for `BigUint`: convert to R `character` (lossless)
+- [x] Add feature-gated tests (miniextendr-api/tests/num_bigint.rs)
 
 ==== rust_decimal feature ====
-- [ ] Add `rust_decimal = { version = "1", optional = true }` to Cargo.toml
-- [ ] Create `rust_decimal_impl.rs` in miniextendr-api/src/
-- [ ] Implement `TryFromSexp` for `Decimal`: parse from R `character` (lossless)
-- [ ] Implement `IntoR` for `Decimal`: convert to R `character` (lossless)
+- [x] Add `rust_decimal = { version = "1", optional = true }` to Cargo.toml
+- [x] Create `rust_decimal_impl.rs` in miniextendr-api/src/
+- [x] Implement `TryFromSexp` for `Decimal`: parse from R `character` (lossless)
+- [x] Implement `IntoR` for `Decimal`: convert to R `character` (lossless)
 - [ ] Optional: Add `numeric` fast path with precision warning in docs
-- [ ] Add feature-gated tests
+- [x] Add feature-gated tests (miniextendr-api/tests/rust_decimal.rs)
 
 ==== ordered-float feature ====
 - [x] Add `ordered-float = { version = "4", optional = true }` to Cargo.toml
