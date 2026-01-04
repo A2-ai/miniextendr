@@ -276,6 +276,11 @@ impl_te_nalgebra!(DMatrix<u8>, "nalgebra::DMatrix<u8>");
 ///
 /// #[miniextendr]
 /// impl RVectorOps for MyVector {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RVectorOps for MyVector;
+/// }
 /// ```
 ///
 /// In R:
@@ -446,6 +451,11 @@ impl RVectorOps for DVector<f64> {
 ///
 /// #[miniextendr]
 /// impl RMatrixOps for MyMatrix {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RMatrixOps for MyMatrix;
+/// }
 /// ```
 ///
 /// In R:

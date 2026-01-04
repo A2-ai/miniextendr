@@ -228,6 +228,11 @@ use num_bigint::Sign;
 ///
 /// #[miniextendr]
 /// impl RBigIntOps for MyBigInt {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RBigIntOps for MyBigInt;
+/// }
 /// ```
 ///
 /// In R:
@@ -525,6 +530,11 @@ impl RBigUintOps for BigUint {
 ///
 /// #[miniextendr]
 /// impl RBigIntBitOps for MyBigInt {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RBigIntBitOps for MyBigInt;
+/// }
 /// ```
 ///
 /// In R:

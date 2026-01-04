@@ -54,6 +54,11 @@ use std::str::FromStr;
 ///
 /// #[miniextendr]
 /// impl RDebug for Config {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RDebug for Config;
+/// }
 /// ```
 pub trait RDebug {
     /// Get a compact debug string representation.
@@ -95,6 +100,11 @@ impl<T: Debug> RDebug for T {
 ///
 /// #[miniextendr]
 /// impl RDisplay for Version {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RDisplay for Version;
+/// }
 /// ```
 pub trait RDisplay {
     /// Convert to a user-friendly string.
@@ -129,6 +139,11 @@ impl<T: Display> RDisplay for T {
 ///
 /// #[miniextendr]
 /// impl RHash for Record {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RHash for Record;
+/// }
 /// ```
 pub trait RHash {
     /// Compute a hash of this value.
@@ -160,6 +175,11 @@ impl<T: Hash> RHash for T {
 ///
 /// #[miniextendr]
 /// impl ROrd for Priority {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl ROrd for Priority;
+/// }
 /// ```
 pub trait ROrd {
     /// Compare with another value.
@@ -194,8 +214,16 @@ impl<T: Ord> ROrd for T {
 ///
 /// ```rust,ignore
 /// // f64 has partial ordering (NaN is not comparable)
+/// #[derive(PartialOrd, PartialEq, ExternalPtr)]
+/// struct MyFloat(f64);
+///
 /// #[miniextendr]
 /// impl RPartialOrd for MyFloat {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RPartialOrd for MyFloat;
+/// }
 /// ```
 pub trait RPartialOrd {
     /// Compare with another value, returning None if incomparable.
@@ -255,6 +283,11 @@ impl<T: PartialOrd> RPartialOrd for T {
 ///
 /// #[miniextendr]
 /// impl RError for MyErrorWrapper {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RError for MyErrorWrapper;
+/// }
 /// ```
 pub trait RError {
     /// Get the error message (Display representation).
@@ -313,6 +346,11 @@ impl<T: std::error::Error> RError for T {
 ///
 /// #[miniextendr]
 /// impl RFromStr for IpAddress {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RFromStr for IpAddress;
+/// }
 /// ```
 ///
 /// In R:
@@ -351,6 +389,11 @@ impl<T: FromStr> RFromStr for T {
 ///
 /// #[miniextendr]
 /// impl RClone for Buffer {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RClone for Buffer;
+/// }
 /// ```
 ///
 /// In R:
@@ -390,6 +433,11 @@ impl<T: Clone> RClone for T {
 ///
 /// #[miniextendr]
 /// impl RDefault for Config {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RDefault for Config;
+/// }
 /// ```
 ///
 /// In R:
@@ -434,6 +482,11 @@ impl<T: Default> RDefault for T {
 ///
 /// #[miniextendr]
 /// impl RCopy for Point {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RCopy for Point;
+/// }
 /// ```
 ///
 /// In R:
@@ -509,6 +562,11 @@ impl<T: Copy> RCopy for T {
 ///
 /// #[miniextendr]
 /// impl RIterator for MyIter {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RIterator for MyIter;
+/// }
 /// ```
 ///
 /// In R:
@@ -635,6 +693,11 @@ pub trait RIterator {
 ///
 /// #[miniextendr]
 /// impl RExtend<i32> for MyVec {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RExtend<i32> for MyVec;
+/// }
 /// ```
 ///
 /// In R:
@@ -699,6 +762,11 @@ pub trait RExtend<T> {
 ///
 /// #[miniextendr]
 /// impl RFromIter<i32> for MySet {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RFromIter<i32> for MySet;
+/// }
 /// ```
 ///
 /// In R:

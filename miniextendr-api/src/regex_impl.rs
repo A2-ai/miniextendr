@@ -145,6 +145,11 @@ pub fn try_compile(pattern: &str) -> Result<Regex, regex::Error> {
 ///
 /// #[miniextendr]
 /// impl RRegexOps for MyPattern {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RRegexOps for MyPattern;
+/// }
 /// ```
 ///
 /// In R:

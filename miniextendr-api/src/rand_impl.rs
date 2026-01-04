@@ -289,6 +289,11 @@ impl RDistributions for RRng {
 ///
 /// #[miniextendr]
 /// impl RRngOps for MyRng {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RRngOps for MyRng;
+/// }
 /// ```
 ///
 /// In R:
@@ -408,6 +413,11 @@ pub trait RRngOps {
 ///
 /// #[miniextendr]
 /// impl RDistributionOps<f64> for NormalDist {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RDistributionOps<f64> for NormalDist;
+/// }
 /// ```
 ///
 /// In R:

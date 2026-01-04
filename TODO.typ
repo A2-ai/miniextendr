@@ -653,6 +653,12 @@ Standalone adapter traits not needed - use connection framework instead.
   - Recipe 3: Use Rust IO with R connections
   - Recipe 4: Wrap comparison for R sorting
   - Recipe 5: Expose hash for deduplication
+- [x] Add `miniextendr_module!` registration examples to all adapter trait docs
+  - Updated: adapter_traits.rs (13 traits), num_traits_impl.rs (3 traits), rand_impl.rs (2 traits)
+  - Updated: serde_impl.rs (2 traits), time_impl.rs (1 trait), regex_impl.rs (1 trait)
+  - Updated: rust_decimal_impl.rs, ordered_float_impl.rs, indexmap_impl.rs, uuid_impl.rs
+  - Updated: num_bigint_impl.rs (2 traits), ndarray_impl.rs (3 traits), nalgebra_impl.rs (2 traits)
+  - Each trait example now shows the required `miniextendr_module! { impl Trait for Type; }` block
 
 ==== rayon trait adapters (with rayon feature) ====
 

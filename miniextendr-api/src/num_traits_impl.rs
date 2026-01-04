@@ -60,6 +60,11 @@ use num_traits::{Float, Num, Signed};
 /// // Blanket impl provides all methods automatically
 /// #[miniextendr]
 /// impl RNum for BigNum {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RNum for BigNum;
+/// }
 /// ```
 pub trait RNum: Clone {
     /// Get the additive identity (zero).
@@ -116,6 +121,11 @@ where
 ///
 /// #[miniextendr]
 /// impl RSigned for SignedInt {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RSigned for SignedInt;
+/// }
 /// ```
 pub trait RSigned: Clone {
     /// Get the absolute value.
@@ -208,6 +218,11 @@ where
 ///
 /// #[miniextendr]
 /// impl RFloat for MyFloat {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RFloat for MyFloat;
+/// }
 /// ```
 ///
 /// In R:

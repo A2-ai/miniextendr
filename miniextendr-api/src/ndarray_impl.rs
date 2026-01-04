@@ -723,6 +723,11 @@ impl_te_ndarray!(ArrayD<Rcomplex>, "ndarray::ArrayD<Rcomplex>");
 ///
 /// #[miniextendr]
 /// impl RNdArrayOps for MyArray {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RNdArrayOps for MyArray;
+/// }
 /// ```
 ///
 /// In R:
@@ -954,6 +959,11 @@ impl RNdArrayOps for ArrayD<f64> {
 ///
 /// #[miniextendr]
 /// impl RNdSlice for MyArray {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RNdSlice for MyArray;
+/// }
 /// ```
 ///
 /// In R:
@@ -1066,6 +1076,11 @@ impl RNdSlice for Array1<i32> {
 ///
 /// #[miniextendr]
 /// impl RNdSlice2D for MyMatrix {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RNdSlice2D for MyMatrix;
+/// }
 /// ```
 ///
 /// In R:

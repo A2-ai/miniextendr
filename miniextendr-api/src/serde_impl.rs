@@ -83,6 +83,11 @@ pub use serde_json;
 ///
 /// #[miniextendr]
 /// impl RSerialize for Point {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RSerialize for Point;
+/// }
 /// ```
 pub trait RSerialize {
     /// Serialize to a compact JSON string.
@@ -124,6 +129,11 @@ impl<T: Serialize> RSerialize for T {
 ///
 /// #[miniextendr]
 /// impl RDeserialize for Config {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RDeserialize for Config;
+/// }
 /// ```
 ///
 /// In R:
