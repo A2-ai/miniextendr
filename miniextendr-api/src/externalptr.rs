@@ -213,11 +213,15 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
 /// # Type ID vs Type Name
 ///
 /// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in prot[0]).
-///   Should be unique across packages to prevent cross-package type collisions.
-///   Format: `"crate_name::module::TypeName\0"`
+///   Format: `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`
+///
+///   The crate name and version ensure:
+///   - Same type from same crate+version → compatible (can share ExternalPtr)
+///   - Same type name from different crates → incompatible
+///   - Same type from different crate versions → incompatible
 ///
 /// - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
-///   Can be just the type identifier for readability.
+///   Just the type identifier for readability.
 pub trait TypedExternal: 'static {
     /// The type name as a static string (for debugging and display)
     const TYPE_NAME: &'static str;
@@ -256,15 +260,26 @@ pub trait IntoExternalPtr: TypedExternal {}
 /// This macro generates:
 /// - `TYPE_NAME`: Short display name (just the type identifier)
 /// - `TYPE_NAME_CSTR`: Null-terminated display name for R tag
-/// - `TYPE_ID_CSTR`: Namespaced ID using `module_path!()` for type checking
+/// - `TYPE_ID_CSTR`: Namespaced ID using crate name, version, and module path
+///
+/// Format: `<crate_name>@<crate_version>::<module_path>::<type_name>`
 #[macro_export]
 macro_rules! impl_typed_external {
     ($ty:ty) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = stringify!($ty);
             const TYPE_NAME_CSTR: &'static [u8] = concat!(stringify!($ty), "\0").as_bytes();
-            const TYPE_ID_CSTR: &'static [u8] =
-                concat!(module_path!(), "::", stringify!($ty), "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!(
+                env!("CARGO_PKG_NAME"),
+                "@",
+                env!("CARGO_PKG_VERSION"),
+                "::",
+                module_path!(),
+                "::",
+                stringify!($ty),
+                "\0"
+            )
+            .as_bytes();
         }
     };
 }
@@ -274,15 +289,24 @@ macro_rules! impl_typed_external {
 /// Use this when you want the R tag to display a specific name
 /// (e.g., without module path).
 ///
-/// Note: The type ID is still namespaced using the tag + module_path!().
+/// Format: `<crate_name>@<crate_version>::<module_path>::<tag>`
 #[macro_export]
 macro_rules! impl_typed_external_with_tag {
     ($ty:ty, $tag:expr) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = $tag;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
-            const TYPE_ID_CSTR: &'static [u8] =
-                concat!(module_path!(), "::", $tag, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!(
+                env!("CARGO_PKG_NAME"),
+                "@",
+                env!("CARGO_PKG_VERSION"),
+                "::",
+                module_path!(),
+                "::",
+                $tag,
+                "\0"
+            )
+            .as_bytes();
         }
     };
 }

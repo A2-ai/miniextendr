@@ -179,31 +179,19 @@
   - Templates and cross-package tests now derive from NOT_CRAN consistently
 
 === Documentation (from reviews 01, 02, 08) ===
-- [ ] Add SAFETY.md documenting FFI/thread safety invariants for Send wrapper types
+- [x] Add SAFETY.md documenting FFI/thread safety invariants for Send wrapper types
   - `reviews/01_miniextendr-api.md` section "Invariant documentation"
-  - Location: Top-level SAFETY.md or miniextendr-api/SAFETY.md
-  - Content needed:
-    - Document why `SendWrapper<Sexp>` is safe (what invariants it upholds)
-    - Document `ExternalPtr<T>` Send/Sync story
-    - Document worker thread model and when R APIs can be called
-    - Document unwind protection requirements
-    - Cross-reference from relevant code with `// SAFETY:` comments
-- [ ] Add macro expansion pipeline documentation
-  - `reviews/02_miniextendr-macros.md` section "Macro expansion pipeline"
-  - Location: miniextendr-macros/src/lib.rs module docs or separate ARCHITECTURE.md
-  - Content needed:
-    - Flow diagram: `#[miniextendr]` → ParsedFn → C wrapper + R wrapper + registration
-    - Document the 5 class system generators (Env, R6, S3, S4, S7)
-    - Document `miniextendr_module!` expansion stages
-    - Document ALTREP trait derivation pipeline
-- [ ] Consolidate R_init_* requirements into one doc
-  - `reviews/08_repo-tooling-docs-tests.md` section "Docs improvements"
-  - Location: Top-level ENTRYPOINT.md or in miniextendr-api docs
-  - Content needed:
-    - What must be called in R_init_* (miniextendr_worker_init, trait_abi::init_ccallables)
-    - When it's safe to call which APIs (main thread only vs worker-routed)
-    - Order of initialization requirements
-    - Example minimal R_init_* function
+  - Location: Top-level SAFETY.md
+  - Content: Thread model, Sendable<T>/SendablePtr<T> safety, ExternalPtr safety,
+    R_UnwindProtect, StackCheckGuard, allocator thread requirements, FFI categories
+- [x] Add macro expansion pipeline documentation
+  - Location: miniextendr-macros/src/lib.rs module docs
+  - Content: Flow diagrams for fn/impl/trait/module macros, module table,
+    symbol naming conventions, return type handling, class systems
+- [x] Consolidate R_init_* requirements into one doc
+  - Location: Top-level ENTRYPOINT.md
+  - Content: Initialization order, function explanations, API timing table,
+    minimal example, embedding R section, troubleshooting
 
 === Reference Study Tasks (from background/) ===
 
@@ -274,33 +262,24 @@
     - Test cases for: basic function, impl block methods, all 5 class systems
     - Test cases for: roxygen tag propagation, parameter defaults, generic overrides
     - Compare generated R wrapper strings against golden files
-- [ ] Add CI check for generated file hygiene
+- [x] Add CI check for generated file hygiene
   - `reviews/06_rpkg.md` section "Generated file hygiene"
-  - `reviews/08_repo-tooling-docs-tests.md` section "Repo hygiene task"
-  - Purpose: Ensure generated build outputs (Makevars, entrypoint.c, Cargo.toml) not committed
-  - Implementation:
-    - CI script that fails if certain generated paths are tracked in git
-    - Check: rpkg/src/Makevars, rpkg/src/entrypoint.c, rpkg/src/rust/Cargo.toml
-    - Check: rpkg/src/rust/.cargo/config.toml, rpkg/src/rust/target/
-- [ ] Add CI for cross-package trait ABI tests
+  - `.github/workflows/ci.yml` - `generated-files-check` job
+  - Checks: rpkg/src/Makevars, entrypoint.c, rust/Cargo.toml, rust/.cargo/
+- [x] Add CI for cross-package trait ABI tests
   - `reviews/06_rpkg.md` section "Suggested next checks"
-  - `reviews/08_repo-tooling-docs-tests.md` section "cross-package tests"
-  - Purpose: Validate trait ABI stability across package boundaries
-  - Implementation:
-    - GitHub Actions workflow that builds/installs/tests producer.pkg and consumer.pkg
-    - Run on at least one OS (Linux recommended for CI speed)
-    - Triggered on changes to miniextendr-api trait_abi module
+  - `.github/workflows/ci.yml` - `cross-package-tests` job
+  - Builds/tests producer.pkg and consumer.pkg on Linux
 
 === Build/Infrastructure (from reviews 03, 04, 07) ===
-- [ ] Add REngineBuilder::r_home(PathBuf) to bypass R RHOME shell-out
-  - `reviews/03_miniextendr-engine.md` section "R discovery policy"
+- [x] Add REngineBuilder::r_home(PathBuf) to bypass R RHOME shell-out
   - Location: miniextendr-engine/src/lib.rs
-  - Purpose: More flexible R home resolution for custom installs/CI
-  - Also: Surface stderr on all R command failures for better diagnostics
-- [ ] Add linking strategy documentation
-  - `reviews/03_miniextendr-engine.md` section "Linking/rpath policy"
-  - Location: miniextendr-engine/README.md or top-level LINKING.md
-  - Content: Document "mirror R CMD LINK" behavior, rpath decisions per platform
+  - Already implemented: `r_home()` method on REngineBuilder
+  - Enhanced: `REngineError::RHomeNotFound` now includes stderr for better diagnostics
+- [x] Add linking strategy documentation
+  - Location: Top-level LINKING.md
+  - Content: R package vs standalone linking, build.rs strategy, rpath behavior,
+    platform notes, troubleshooting, environment variables
 - [ ] Consider processx-based execution in minirextendr
   - `reviews/07_minirextendr.md` section "system2() portability"
   - Location: minirextendr/R/*.R
@@ -314,10 +293,10 @@
     - "exported item exists but not listed in miniextendr_module!"
     - "listed item does not exist / is cfg'd out"
     - "trait ABI: init_ccallables() not called in R_init_*" (if detectable)
-- [ ] Add bench environment documentation
-  - `reviews/05_miniextendr-bench.md` section "Bench reproducibility"
+- [x] Add bench environment documentation
   - Location: miniextendr-bench/README.md
-  - Content: Recommended bench environment, R version capture, sessionInfo logging
+  - Content: Recommended setup, environment capture commands, running consistently,
+    interpreting results, environment variables, benchmark categories
 - [ ] Add integration test for minirextendr workflow
   - `reviews/07_minirextendr.md` section "Tests focus on templates"
   - Purpose: Test "configure ran but didn't generate expected files" scenarios

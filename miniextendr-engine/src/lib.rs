@@ -337,7 +337,10 @@ impl REngine {
 #[derive(Debug)]
 pub enum REngineError {
     /// Could not determine / set `R_HOME` for embedding.
-    RHomeNotFound,
+    RHomeNotFound {
+        /// Optional stderr from `R RHOME` command for diagnostics.
+        stderr: Option<String>,
+    },
     /// R initialization failed.
     InitializationFailed,
     /// R is already initialized. Re-initialization is not supported.
@@ -347,8 +350,14 @@ pub enum REngineError {
 impl std::fmt::Display for REngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            REngineError::RHomeNotFound => {
-                write!(f, "R_HOME is not set and `R RHOME` could not be resolved")
+            REngineError::RHomeNotFound { stderr } => {
+                write!(f, "R_HOME is not set and `R RHOME` could not be resolved")?;
+                if let Some(stderr) = stderr {
+                    if !stderr.is_empty() {
+                        write!(f, "\nstderr: {}", stderr)?;
+                    }
+                }
+                Ok(())
             }
             REngineError::InitializationFailed => write!(f, "R initialization failed"),
             REngineError::AlreadyInitialized => {
@@ -383,16 +392,20 @@ fn ensure_r_home_env(explicit_path: Option<&PathBuf>) -> Result<(), REngineError
     let output = Command::new("R")
         .args(["RHOME"])
         .output()
-        .map_err(|_| REngineError::RHomeNotFound)?;
+        .map_err(|_| REngineError::RHomeNotFound { stderr: None })?;
 
     if !output.status.success() {
-        return Err(REngineError::RHomeNotFound);
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(REngineError::RHomeNotFound {
+            stderr: Some(stderr),
+        });
     }
 
-    let r_home = String::from_utf8(output.stdout).map_err(|_| REngineError::RHomeNotFound)?;
+    let r_home = String::from_utf8(output.stdout)
+        .map_err(|_| REngineError::RHomeNotFound { stderr: None })?;
     let r_home = r_home.trim();
     if r_home.is_empty() {
-        return Err(REngineError::RHomeNotFound);
+        return Err(REngineError::RHomeNotFound { stderr: None });
     }
 
     // SAFETY: We call this during single-threaded startup (before initializing

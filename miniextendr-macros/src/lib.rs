@@ -1,3 +1,136 @@
+//! # miniextendr-macros - Procedural Macros for R-Rust Interop
+//!
+//! This crate provides the procedural macros that power miniextendr's code generation.
+//! The primary macros are `#[miniextendr]` and `miniextendr_module!`.
+//!
+//! ## Macro Expansion Pipeline
+//!
+//! ### Overview
+//!
+//! ```text
+//! ┌──────────────────────────────────────────────────────────────────────────┐
+//! │                         #[miniextendr] on fn                             │
+//! │                                                                          │
+//! │  1. Parse: syn::ItemFn → MiniextendrFunctionParsed                       │
+//! │  2. Analyze return type (Result<T>, Option<T>, raw SEXP, etc.)           │
+//! │  3. Generate:                                                            │
+//! │     ├── C wrapper: extern "C-unwind" fn C_<name>(call: SEXP, ...) → SEXP │
+//! │     ├── R wrapper: const R_WRAPPER_<NAME>: &str = "..."                  │
+//! │     └── Registration: const call_method_def_<name>: R_CallMethodDef      │
+//! │  4. Original function preserved (with added attributes)                  │
+//! └──────────────────────────────────────────────────────────────────────────┘
+//!
+//! ┌──────────────────────────────────────────────────────────────────────────┐
+//! │                    #[miniextendr(env|r6|s3|s4|s7)] on impl               │
+//! │                                                                          │
+//! │  1. Parse: syn::ItemImpl → extract methods                               │
+//! │  2. For each method:                                                     │
+//! │     ├── Generate C wrapper (handles self parameter)                      │
+//! │     ├── Generate R method wrapper string                                 │
+//! │     └── Generate registration entry                                      │
+//! │  3. Generate class definition code per class system:                     │
+//! │     ├── env: new.env() + method assignment                               │
+//! │     ├── r6: R6Class() definition                                         │
+//! │     ├── s3: S3 generics + methods                                        │
+//! │     ├── s4: setClass() + setMethod()                                     │
+//! │     └── s7: new_class() definition                                       │
+//! │  4. Emit const with combined R code                                      │
+//! └──────────────────────────────────────────────────────────────────────────┘
+//!
+//! ┌──────────────────────────────────────────────────────────────────────────┐
+//! │                         #[miniextendr] on trait                          │
+//! │                                                                          │
+//! │  1. Parse: syn::ItemTrait → extract method signatures                    │
+//! │  2. Generate:                                                            │
+//! │     ├── Trait tag constant: const TAG_<TRAIT>: mx_tag = ...              │
+//! │     ├── Vtable struct: struct __vtable_<Trait> { ... }                   │
+//! │     └── CCalls table: static MX_CCALL_<TRAIT>: [...] = ...               │
+//! │  3. Original trait preserved                                             │
+//! └──────────────────────────────────────────────────────────────────────────┘
+//!
+//! ┌──────────────────────────────────────────────────────────────────────────┐
+//! │                    #[miniextendr] impl Trait for Type                    │
+//! │                                                                          │
+//! │  1. Parse: syn::ItemImpl (trait impl)                                    │
+//! │  2. Generate:                                                            │
+//! │     ├── Vtable instance: static __VTABLE_<TRAIT>_FOR_<TYPE>: ...         │
+//! │     ├── Wrapper struct: struct __MxWrapper<Type> { erased, data }        │
+//! │     ├── Query function: fn __mx_query_<type>(tag) → vtable ptr           │
+//! │     └── Base vtable: static __MX_BASE_VTABLE_<TYPE>: ...                 │
+//! │  3. Original impl preserved                                              │
+//! └──────────────────────────────────────────────────────────────────────────┘
+//!
+//! ┌──────────────────────────────────────────────────────────────────────────┐
+//! │                         miniextendr_module! { ... }                      │
+//! │                                                                          │
+//! │  1. Parse module contents:                                               │
+//! │     ├── mod <name>;          → package name                              │
+//! │     ├── fn <name>;           → function registration                     │
+//! │     ├── struct <name>;       → ALTREP registration                       │
+//! │     ├── impl <Type>;         → class method registration                 │
+//! │     └── impl Trait for Type; → trait ABI registration                    │
+//! │                                                                          │
+//! │  2. Generate:                                                            │
+//! │     ├── R_CallMethodDef array from all registered items                  │
+//! │     ├── R_init_<name>_miniextendr() initialization function              │
+//! │     ├── Combined R wrapper code (all functions + classes)                │
+//! │     └── Trait ABI init_ccallables() call if traits present               │
+//! └──────────────────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ### Key Modules
+//!
+//! | Module | Purpose |
+//! |--------|---------|
+//! | [`miniextendr_fn`] | Function parsing and attribute handling |
+//! | [`c_wrapper_builder`] | C wrapper generation (`extern "C-unwind"`) |
+//! | [`r_wrapper_builder`] | R wrapper code generation |
+//! | [`rust_conversion_builder`] | Rust→SEXP return value conversion |
+//! | [`miniextendr_impl`] | `impl Type` block processing |
+//! | [`r_class_formatter`] | Class system code generation (env/r6/s3/s4/s7) |
+//! | [`miniextendr_trait`] | Trait ABI metadata generation |
+//! | [`miniextendr_impl_trait`] | `impl Trait for Type` vtable generation |
+//! | [`miniextendr_module`] | Module macro parsing and codegen |
+//! | [`altrep`] / [`altrep_derive`] | ALTREP struct derivation |
+//! | [`externalptr_derive`] | `#[derive(ExternalPtr)]` |
+//! | [`roxygen`] | Roxygen doc comment handling |
+//!
+//! ### Generated Symbol Naming
+//!
+//! For a function `my_func`:
+//! - C wrapper: `C_my_func`
+//! - R wrapper const: `R_WRAPPER_MY_FUNC`
+//! - Registration: `call_method_def_my_func`
+//!
+//! For a type `MyType` with trait `Counter`:
+//! - Vtable: `__VTABLE_COUNTER_FOR_MYTYPE`
+//! - Wrapper: `__MxWrapperMyType`
+//! - Query: `__mx_query_mytype`
+//!
+//! ## Return Type Handling
+//!
+//! The [`return_type_analysis`] module determines how to convert Rust returns to SEXP:
+//!
+//! | Rust Type | Strategy | R Result |
+//! |-----------|----------|----------|
+//! | `T: IntoR` | `.into_sexp()` | Converted value |
+//! | `Result<T, E>` | Unwrap or R error | Value or error |
+//! | `Option<T>` | `Some` → value, `None` → `NULL` | Value or NULL |
+//! | `SEXP` | Pass through | Raw SEXP |
+//! | `()` | Invisible NULL | `invisible(NULL)` |
+//!
+//! ## Class Systems
+//!
+//! The [`r_class_formatter`] module generates R code for different class systems:
+//!
+//! | System | Generated R Code | Self Parameter |
+//! |--------|------------------|----------------|
+//! | `env` | `new.env()` with methods | `self` environment |
+//! | `r6` | `R6Class()` | `self` environment |
+//! | `s3` | `structure()` + generics | First argument |
+//! | `s4` | `setClass()` + `setMethod()` | First argument |
+//! | `s7` | `new_class()` | `self` property |
+
 // miniextendr-macros procedural macros
 
 mod altrep;
