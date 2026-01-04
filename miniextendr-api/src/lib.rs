@@ -330,7 +330,7 @@ pub use either_impl::{Either, Left, Right};
 #[cfg(feature = "ndarray")]
 pub mod ndarray_impl;
 #[cfg(feature = "ndarray")]
-pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2, RNdArrayOps};
+pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2, RNdArrayOps, RNdSlice, RNdSlice2D};
 
 /// Integration with the `nalgebra` crate.
 ///

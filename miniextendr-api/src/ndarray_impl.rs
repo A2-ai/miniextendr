@@ -933,6 +933,245 @@ impl RNdArrayOps for ArrayD<f64> {
     }
 }
 
+// =============================================================================
+// RNdSlice adapter trait for array indexing/slicing
+// =============================================================================
+
+/// Adapter trait for ndarray slicing and indexing operations.
+///
+/// Provides element access and subarray extraction accessible from R.
+/// Unlike `RNdArrayOps` which provides aggregate operations, `RNdSlice`
+/// focuses on accessing individual elements and extracting subarrays.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ndarray::Array1;
+/// use miniextendr_api::ndarray_impl::RNdSlice;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyArray(Array1<f64>);
+///
+/// #[miniextendr]
+/// impl RNdSlice for MyArray {}
+/// ```
+///
+/// In R:
+/// ```r
+/// arr <- MyArray$new(c(1, 2, 3, 4, 5))
+/// arr$r_get(2L)              # Get element at index 2 (0-indexed): 3.0
+/// arr$r_slice_1d(1L, 4L)     # Slice [1:4): c(2, 3, 4)
+/// arr$r_first()              # First element: 1.0
+/// arr$r_last()               # Last element: 5.0
+/// ```
+pub trait RNdSlice {
+    /// Element type of the array.
+    type Elem: Clone;
+
+    /// Get the element at the given flat index (0-indexed).
+    ///
+    /// Returns None if index is out of bounds.
+    fn r_get(&self, index: i32) -> Option<Self::Elem>;
+
+    /// Get the first element, or None if empty.
+    fn r_first(&self) -> Option<Self::Elem>;
+
+    /// Get the last element, or None if empty.
+    fn r_last(&self) -> Option<Self::Elem>;
+
+    /// Extract a 1D slice as a new Vec (0-indexed, exclusive end).
+    ///
+    /// Returns elements in the range [start, end).
+    fn r_slice_1d(&self, start: i32, end: i32) -> Vec<Self::Elem>;
+
+    /// Get elements at the given indices.
+    fn r_get_many(&self, indices: Vec<i32>) -> Vec<Option<Self::Elem>> {
+        indices.into_iter().map(|i| self.r_get(i)).collect()
+    }
+
+    /// Check if the given index is valid.
+    fn r_is_valid_index(&self, index: i32) -> bool {
+        self.r_get(index).is_some()
+    }
+}
+
+impl RNdSlice for Array1<f64> {
+    type Elem = f64;
+
+    fn r_get(&self, index: i32) -> Option<f64> {
+        if index < 0 {
+            return None;
+        }
+        self.get(index as usize).copied()
+    }
+
+    fn r_first(&self) -> Option<f64> {
+        self.first().copied()
+    }
+
+    fn r_last(&self) -> Option<f64> {
+        self.last().copied()
+    }
+
+    fn r_slice_1d(&self, start: i32, end: i32) -> Vec<f64> {
+        let start = start.max(0) as usize;
+        let end = (end as usize).min(self.len());
+        if start >= end {
+            return Vec::new();
+        }
+        self.slice(ndarray::s![start..end]).to_vec()
+    }
+}
+
+impl RNdSlice for Array1<i32> {
+    type Elem = i32;
+
+    fn r_get(&self, index: i32) -> Option<i32> {
+        if index < 0 {
+            return None;
+        }
+        self.get(index as usize).copied()
+    }
+
+    fn r_first(&self) -> Option<i32> {
+        self.first().copied()
+    }
+
+    fn r_last(&self) -> Option<i32> {
+        self.last().copied()
+    }
+
+    fn r_slice_1d(&self, start: i32, end: i32) -> Vec<i32> {
+        let start = start.max(0) as usize;
+        let end = (end as usize).min(self.len());
+        if start >= end {
+            return Vec::new();
+        }
+        self.slice(ndarray::s![start..end]).to_vec()
+    }
+}
+
+/// Adapter trait for 2D array row/column access.
+///
+/// Provides row and column extraction for matrices.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ndarray::Array2;
+/// use miniextendr_api::ndarray_impl::RNdSlice2D;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyMatrix(Array2<f64>);
+///
+/// #[miniextendr]
+/// impl RNdSlice2D for MyMatrix {}
+/// ```
+///
+/// In R:
+/// ```r
+/// mat <- MyMatrix$new(matrix(1:6, nrow=2, ncol=3))
+/// mat$r_row(0L)     # First row: c(1, 3, 5)
+/// mat$r_col(1L)     # Second column: c(3, 4)
+/// mat$r_get_2d(0L, 1L)  # Element at [0,1]: 3
+/// ```
+pub trait RNdSlice2D {
+    /// Element type of the array.
+    type Elem: Clone;
+
+    /// Get the element at [row, col] (0-indexed).
+    fn r_get_2d(&self, row: i32, col: i32) -> Option<Self::Elem>;
+
+    /// Get a row as a vector.
+    fn r_row(&self, row: i32) -> Vec<Self::Elem>;
+
+    /// Get a column as a vector.
+    fn r_col(&self, col: i32) -> Vec<Self::Elem>;
+
+    /// Get the diagonal elements.
+    fn r_diag(&self) -> Vec<Self::Elem>;
+
+    /// Get the number of rows.
+    fn r_nrows(&self) -> i32;
+
+    /// Get the number of columns.
+    fn r_ncols(&self) -> i32;
+}
+
+impl RNdSlice2D for Array2<f64> {
+    type Elem = f64;
+
+    fn r_get_2d(&self, row: i32, col: i32) -> Option<f64> {
+        if row < 0 || col < 0 {
+            return None;
+        }
+        self.get((row as usize, col as usize)).copied()
+    }
+
+    fn r_row(&self, row: i32) -> Vec<f64> {
+        if row < 0 || row as usize >= self.nrows() {
+            return Vec::new();
+        }
+        self.row(row as usize).to_vec()
+    }
+
+    fn r_col(&self, col: i32) -> Vec<f64> {
+        if col < 0 || col as usize >= self.ncols() {
+            return Vec::new();
+        }
+        self.column(col as usize).to_vec()
+    }
+
+    fn r_diag(&self) -> Vec<f64> {
+        self.diag().to_vec()
+    }
+
+    fn r_nrows(&self) -> i32 {
+        self.nrows() as i32
+    }
+
+    fn r_ncols(&self) -> i32 {
+        self.ncols() as i32
+    }
+}
+
+impl RNdSlice2D for Array2<i32> {
+    type Elem = i32;
+
+    fn r_get_2d(&self, row: i32, col: i32) -> Option<i32> {
+        if row < 0 || col < 0 {
+            return None;
+        }
+        self.get((row as usize, col as usize)).copied()
+    }
+
+    fn r_row(&self, row: i32) -> Vec<i32> {
+        if row < 0 || row as usize >= self.nrows() {
+            return Vec::new();
+        }
+        self.row(row as usize).to_vec()
+    }
+
+    fn r_col(&self, col: i32) -> Vec<i32> {
+        if col < 0 || col as usize >= self.ncols() {
+            return Vec::new();
+        }
+        self.column(col as usize).to_vec()
+    }
+
+    fn r_diag(&self) -> Vec<i32> {
+        self.diag().to_vec()
+    }
+
+    fn r_nrows(&self) -> i32 {
+        self.nrows() as i32
+    }
+
+    fn r_ncols(&self) -> i32 {
+        self.ncols() as i32
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1084,5 +1323,89 @@ mod tests {
         assert!(RNdArrayOps::is_empty(&arr));
         assert!(RNdArrayOps::mean(&arr).is_nan());
         assert!(RNdArrayOps::var(&arr).is_nan());
+    }
+
+    // RNdSlice tests
+    #[test]
+    fn rndslice_get() {
+        let arr = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(RNdSlice::r_get(&arr, 0), Some(1.0));
+        assert_eq!(RNdSlice::r_get(&arr, 2), Some(3.0));
+        assert_eq!(RNdSlice::r_get(&arr, 4), Some(5.0));
+        assert_eq!(RNdSlice::r_get(&arr, 5), None);
+        assert_eq!(RNdSlice::r_get(&arr, -1), None);
+    }
+
+    #[test]
+    fn rndslice_first_last() {
+        let arr = Array1::from_vec(vec![10.0, 20.0, 30.0]);
+        assert_eq!(RNdSlice::r_first(&arr), Some(10.0));
+        assert_eq!(RNdSlice::r_last(&arr), Some(30.0));
+
+        let empty: Array1<f64> = Array1::from_vec(vec![]);
+        assert_eq!(RNdSlice::r_first(&empty), None);
+        assert_eq!(RNdSlice::r_last(&empty), None);
+    }
+
+    #[test]
+    fn rndslice_slice_1d() {
+        let arr = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(RNdSlice::r_slice_1d(&arr, 1, 4), vec![2.0, 3.0, 4.0]);
+        assert_eq!(RNdSlice::r_slice_1d(&arr, 0, 2), vec![1.0, 2.0]);
+        assert_eq!(RNdSlice::r_slice_1d(&arr, 3, 10), vec![4.0, 5.0]); // Clamped
+        assert_eq!(RNdSlice::r_slice_1d(&arr, -5, 2), vec![1.0, 2.0]); // Negative start clamped
+        assert_eq!(RNdSlice::r_slice_1d(&arr, 3, 2), Vec::<f64>::new()); // Empty range
+    }
+
+    #[test]
+    fn rndslice_get_many() {
+        let arr = Array1::from_vec(vec![10, 20, 30, 40, 50]);
+        let results = RNdSlice::r_get_many(&arr, vec![0, 2, 4, 10]);
+        assert_eq!(results, vec![Some(10), Some(30), Some(50), None]);
+    }
+
+    #[test]
+    fn rndslice_is_valid_index() {
+        let arr = Array1::from_vec(vec![1.0, 2.0, 3.0]);
+        assert!(RNdSlice::r_is_valid_index(&arr, 0));
+        assert!(RNdSlice::r_is_valid_index(&arr, 2));
+        assert!(!RNdSlice::r_is_valid_index(&arr, 3));
+        assert!(!RNdSlice::r_is_valid_index(&arr, -1));
+    }
+
+    // RNdSlice2D tests
+    #[test]
+    fn rndslice2d_get_2d() {
+        let arr = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        assert_eq!(RNdSlice2D::r_get_2d(&arr, 0, 0), Some(1.0));
+        assert_eq!(RNdSlice2D::r_get_2d(&arr, 0, 2), Some(3.0));
+        assert_eq!(RNdSlice2D::r_get_2d(&arr, 1, 1), Some(5.0));
+        assert_eq!(RNdSlice2D::r_get_2d(&arr, 2, 0), None);
+        assert_eq!(RNdSlice2D::r_get_2d(&arr, -1, 0), None);
+    }
+
+    #[test]
+    fn rndslice2d_row_col() {
+        let arr = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        assert_eq!(RNdSlice2D::r_row(&arr, 0), vec![1.0, 2.0, 3.0]);
+        assert_eq!(RNdSlice2D::r_row(&arr, 1), vec![4.0, 5.0, 6.0]);
+        assert_eq!(RNdSlice2D::r_row(&arr, 2), Vec::<f64>::new()); // Out of bounds
+        assert_eq!(RNdSlice2D::r_col(&arr, 0), vec![1.0, 4.0]);
+        assert_eq!(RNdSlice2D::r_col(&arr, 1), vec![2.0, 5.0]);
+        assert_eq!(RNdSlice2D::r_col(&arr, 3), Vec::<f64>::new()); // Out of bounds
+    }
+
+    #[test]
+    fn rndslice2d_diag() {
+        let arr = Array2::from_shape_vec((3, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0])
+            .unwrap();
+        assert_eq!(RNdSlice2D::r_diag(&arr), vec![1.0, 5.0, 9.0]);
+    }
+
+    #[test]
+    fn rndslice2d_nrows_ncols() {
+        let arr = Array2::from_shape_vec((2, 4), vec![1.0; 8]).unwrap();
+        assert_eq!(RNdSlice2D::r_nrows(&arr), 2);
+        assert_eq!(RNdSlice2D::r_ncols(&arr), 4);
     }
 }
