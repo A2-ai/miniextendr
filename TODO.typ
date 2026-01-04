@@ -614,10 +614,20 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== rand trait adapters (with rand feature) ====
 
-- [ ] Create `RRng` adapter for `rand::Rng`
-  - `r_gen_range(low: f64, high: f64) -> f64`
-  - `r_gen_bool(p: f64) -> bool`
-  - Use case: Access custom RNGs from R
+- [x] Create `RRngOps` adapter trait for exposing custom RNGs to R
+  - `r_random_f64()` - Random float in [0, 1)
+  - `r_random_i32()` - Random i32 (full range)
+  - `r_random_bool()` - Random boolean (50/50)
+  - `r_gen_range_f64(low, high)` - Random float in [low, high)
+  - `r_gen_range_i32(low, high)` - Random integer in [low, high)
+  - `r_gen_bool(p)` - Bernoulli trial with probability p
+  - `r_random_f64_vec(n)` - Generate n random floats
+  - `r_gen_range_f64_vec(n, low, high)` - Generate n floats in range
+  - `r_gen_range_i32_vec(n, low, high)` - Generate n integers in range
+  - `r_gen_bool_vec(n, p)` - Generate n booleans
+  - No blanket impl (requires interior mutability like RIterator)
+  - Implemented in `miniextendr-api/src/rand_impl.rs`
+  - Re-exported from crate root
 - [ ] Create `RDistribution` adapter for `rand_distr::Distribution`
   - `r_sample(&self, rng: &mut dyn Rng) -> T`
   - Use case: Sample from Rust distributions in R

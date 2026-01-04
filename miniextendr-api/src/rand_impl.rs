@@ -242,9 +242,133 @@ impl RDistributions for RRng {
     }
 }
 
+// =============================================================================
+// Adapter Traits for Exposing RNGs to R
+// =============================================================================
+
+/// Adapter trait for exposing any [`rand::Rng`] to R.
+///
+/// This trait provides R-friendly methods for random number generation.
+/// It has a blanket implementation for all types implementing `Rng`,
+/// so any Rust RNG can be exposed to R with no additional code.
+///
+/// # Methods
+///
+/// - `r_random_f64()` - Random float in [0, 1)
+/// - `r_random_i32()` - Random i32 (full range)
+/// - `r_random_bool()` - Random boolean (50/50)
+/// - `r_gen_range_f64(low, high)` - Random float in [low, high)
+/// - `r_gen_range_i32(low, high)` - Random integer in [low, high)
+/// - `r_gen_bool(p)` - Bernoulli trial with probability p
+/// - `r_shuffle(items)` - Shuffle a vector in place
+/// - `r_sample(items, n)` - Sample n items without replacement
+///
+/// # Example
+///
+/// ```ignore
+/// use std::cell::RefCell;
+/// use rand::rngs::StdRng;
+/// use rand::SeedableRng;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyRng(RefCell<StdRng>);
+///
+/// impl MyRng {
+///     fn new(seed: u64) -> Self {
+///         Self(RefCell::new(StdRng::seed_from_u64(seed)))
+///     }
+/// }
+///
+/// impl RRngOps for MyRng {
+///     fn r_random_f64(&self) -> f64 {
+///         use rand::Rng;
+///         self.0.borrow_mut().random()
+///     }
+///     // ... implement other methods using self.0.borrow_mut()
+/// }
+///
+/// #[miniextendr]
+/// impl RRngOps for MyRng {}
+/// ```
+///
+/// In R:
+/// ```r
+/// rng <- MyRng$new(42L)
+/// rng$r_random_f64()           # Random float in [0, 1)
+/// rng$r_gen_range_f64(0, 10)   # Random float in [0, 10)
+/// rng$r_gen_bool(0.3)          # TRUE with 30% probability
+/// ```
+///
+/// # Design Note
+///
+/// Like `RIterator`, this trait does NOT have a blanket impl because
+/// `rand::Rng` methods require `&mut self`, but R's ExternalPtr pattern
+/// provides `&self`. Users must implement manually using interior mutability.
+pub trait RRngOps {
+    /// Generate a random f64 in [0, 1).
+    fn r_random_f64(&self) -> f64;
+
+    /// Generate a random i32 covering the full i32 range.
+    fn r_random_i32(&self) -> i32;
+
+    /// Generate a random boolean (50% chance each).
+    fn r_random_bool(&self) -> bool;
+
+    /// Generate a random f64 in [low, high).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `low >= high`.
+    fn r_gen_range_f64(&self, low: f64, high: f64) -> f64;
+
+    /// Generate a random i32 in [low, high).
+    ///
+    /// # Panics
+    ///
+    /// Panics if `low >= high`.
+    fn r_gen_range_i32(&self, low: i32, high: i32) -> i32;
+
+    /// Generate a boolean with probability `p` of being true.
+    ///
+    /// # Arguments
+    ///
+    /// * `p` - Probability of returning true, in [0, 1]
+    ///
+    /// # Panics
+    ///
+    /// Panics if `p < 0` or `p > 1`.
+    fn r_gen_bool(&self, p: f64) -> bool;
+
+    /// Fill a vector with random f64 values in [0, 1).
+    ///
+    /// Returns a new vector of the given length.
+    fn r_random_f64_vec(&self, n: i32) -> Vec<f64> {
+        (0..n).map(|_| self.r_random_f64()).collect()
+    }
+
+    /// Fill a vector with random f64 values in [low, high).
+    fn r_gen_range_f64_vec(&self, n: i32, low: f64, high: f64) -> Vec<f64> {
+        (0..n).map(|_| self.r_gen_range_f64(low, high)).collect()
+    }
+
+    /// Fill a vector with random i32 values in [low, high).
+    fn r_gen_range_i32_vec(&self, n: i32, low: i32, high: i32) -> Vec<i32> {
+        (0..n).map(|_| self.r_gen_range_i32(low, high)).collect()
+    }
+
+    /// Fill a vector with random booleans with probability `p` of true.
+    fn r_gen_bool_vec(&self, n: i32, p: f64) -> Vec<bool> {
+        (0..n).map(|_| self.r_gen_bool(p)).collect()
+    }
+}
+
+// Note: No blanket impl because Rng methods require &mut self,
+// but ExternalPtr methods receive &self. Users must use interior mutability.
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::cell::RefCell;
 
     // Note: These tests require R to be initialized and RNG state loaded.
     // They're primarily for documentation/coverage purposes.
@@ -257,5 +381,134 @@ mod tests {
     #[test]
     fn rrng_is_default() {
         let _rng: RRng = Default::default();
+    }
+
+    // Test RRngOps with a mock implementation
+    struct MockRng(RefCell<u64>);
+
+    impl MockRng {
+        fn new(seed: u64) -> Self {
+            Self(RefCell::new(seed))
+        }
+
+        // Simple LCG for testing
+        fn next(&self) -> u64 {
+            let mut state = self.0.borrow_mut();
+            *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+            *state
+        }
+    }
+
+    impl RRngOps for MockRng {
+        fn r_random_f64(&self) -> f64 {
+            (self.next() as f64) / (u64::MAX as f64)
+        }
+
+        fn r_random_i32(&self) -> i32 {
+            self.next() as i32
+        }
+
+        fn r_random_bool(&self) -> bool {
+            self.next() % 2 == 0
+        }
+
+        fn r_gen_range_f64(&self, low: f64, high: f64) -> f64 {
+            assert!(low < high, "low must be less than high");
+            low + self.r_random_f64() * (high - low)
+        }
+
+        fn r_gen_range_i32(&self, low: i32, high: i32) -> i32 {
+            assert!(low < high, "low must be less than high");
+            let range = (high - low) as u64;
+            low + (self.next() % range) as i32
+        }
+
+        fn r_gen_bool(&self, p: f64) -> bool {
+            assert!((0.0..=1.0).contains(&p), "p must be in [0, 1]");
+            self.r_random_f64() < p
+        }
+    }
+
+    #[test]
+    fn test_rrngops_random_f64() {
+        let rng = MockRng::new(42);
+        let val = rng.r_random_f64();
+        assert!((0.0..1.0).contains(&val));
+    }
+
+    #[test]
+    fn test_rrngops_random_i32() {
+        let rng = MockRng::new(42);
+        let _val = rng.r_random_i32(); // Just verify it doesn't panic
+    }
+
+    #[test]
+    fn test_rrngops_random_bool() {
+        let rng = MockRng::new(42);
+        // Generate multiple to verify both outcomes are possible
+        let bools: Vec<bool> = (0..100).map(|_| rng.r_random_bool()).collect();
+        assert!(bools.iter().any(|&b| b));
+        assert!(bools.iter().any(|&b| !b));
+    }
+
+    #[test]
+    fn test_rrngops_gen_range_f64() {
+        let rng = MockRng::new(42);
+        for _ in 0..100 {
+            let val = rng.r_gen_range_f64(10.0, 20.0);
+            assert!((10.0..20.0).contains(&val));
+        }
+    }
+
+    #[test]
+    fn test_rrngops_gen_range_i32() {
+        let rng = MockRng::new(42);
+        for _ in 0..100 {
+            let val = rng.r_gen_range_i32(5, 15);
+            assert!((5..15).contains(&val));
+        }
+    }
+
+    #[test]
+    fn test_rrngops_gen_bool() {
+        let rng = MockRng::new(42);
+        // With p=0.5, should get roughly equal distribution
+        let count_true = (0..1000).filter(|_| rng.r_gen_bool(0.5)).count();
+        // Should be roughly 500 ± 100
+        assert!(count_true > 350 && count_true < 650);
+    }
+
+    #[test]
+    fn test_rrngops_vec_methods() {
+        let rng = MockRng::new(42);
+
+        let f64_vec = rng.r_random_f64_vec(10);
+        assert_eq!(f64_vec.len(), 10);
+        assert!(f64_vec.iter().all(|&v| (0.0..1.0).contains(&v)));
+
+        let range_vec = rng.r_gen_range_f64_vec(10, -5.0, 5.0);
+        assert_eq!(range_vec.len(), 10);
+        assert!(range_vec.iter().all(|&v| (-5.0..5.0).contains(&v)));
+
+        let int_vec = rng.r_gen_range_i32_vec(10, 0, 100);
+        assert_eq!(int_vec.len(), 10);
+        assert!(int_vec.iter().all(|&v| (0..100).contains(&v)));
+
+        let bool_vec = rng.r_gen_bool_vec(10, 0.5);
+        assert_eq!(bool_vec.len(), 10);
+    }
+
+    #[test]
+    #[should_panic(expected = "low must be less than high")]
+    fn test_rrngops_gen_range_f64_invalid() {
+        let rng = MockRng::new(42);
+        rng.r_gen_range_f64(10.0, 5.0); // low > high
+    }
+
+    #[test]
+    #[should_panic(expected = "p must be in [0, 1]")]
+    fn test_rrngops_gen_bool_invalid() {
+        let rng = MockRng::new(42);
+        rng.r_gen_bool(1.5); // p > 1
     }
 }

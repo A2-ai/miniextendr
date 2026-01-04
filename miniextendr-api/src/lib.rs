@@ -278,14 +278,16 @@ pub mod macro_coverage;
 
 /// Integration with the `rand` crate for R's RNG.
 ///
-/// Provides [`RRng`][rand_impl::RRng], which wraps R's random number generator
-/// and implements `rand::RngCore`.
+/// Provides:
+/// - [`RRng`][rand_impl::RRng] - Wraps R's RNG, implements `rand::RngCore`
+/// - [`RDistributions`][rand_impl::RDistributions] - Direct access to R's native distributions
+/// - [`RRngOps`][rand_impl::RRngOps] - Adapter trait for exposing custom RNGs to R
 ///
 /// Enable with `features = ["rand"]`.
 #[cfg(feature = "rand")]
 pub mod rand_impl;
 #[cfg(feature = "rand")]
-pub use rand_impl::{RDistributions, RRng};
+pub use rand_impl::{RDistributions, RRng, RRngOps};
 
 /// Re-export of `rand_distr` for probability distributions.
 ///
