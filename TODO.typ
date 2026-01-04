@@ -705,10 +705,15 @@ Debug adapter:
   - Use case: Basic async/await integration with R
   - Note: Requires careful design around R's single-threaded nature
 
-==== Clone/Default adapters ====
+==== Clone/Copy/Default adapters ====
 
 - [x] Create `RClone` adapter trait for `Clone`
   - `r_clone(&self) -> Self` - explicit deep copy for R
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+- [x] Create `RCopy` adapter trait for `Copy`
+  - `r_copy(&self) -> Self` - cheap bitwise copy (O(1), no heap)
+  - `is_copy(&self) -> bool` - runtime type check
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
 - [x] Create `RDefault` adapter trait for `Default`

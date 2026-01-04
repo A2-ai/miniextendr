@@ -91,6 +91,7 @@ These have blanket implementations so you just need to export them for your type
 | `RPartialOrd` | `PartialOrd` | `r_partial_cmp(&self, other) -> Option<i32>` |
 | `RError` | `Error` | `error_message()`, `error_chain()`, `error_chain_length()` |
 | `RClone` | `Clone` | `r_clone() -> Self` |
+| `RCopy` | `Copy` | `r_copy() -> Self`, `is_copy() -> bool` |
 | `RDefault` | `Default` | `r_default() -> Self` |
 
 **Usage:**

@@ -407,6 +407,64 @@ impl<T: Default> RDefault for T {
     }
 }
 
+/// Adapter trait for [`std::marker::Copy`].
+///
+/// Indicates that a type can be cheaply copied (bitwise copy, no heap allocation).
+/// This is useful for R users to know that copying is O(1) and doesn't involve
+/// deep cloning of heap data.
+///
+/// # Methods
+///
+/// - `r_copy()` - Create a bitwise copy of this value
+/// - `is_copy()` - Returns true (useful for runtime type checking in R)
+///
+/// # Difference from RClone
+///
+/// Both `RCopy` and `RClone` create copies, but:
+/// - `RCopy`: Only for types where copying is cheap (stack-only, no heap)
+/// - `RClone`: For any clonable type (may involve heap allocation)
+///
+/// If a type implements both, prefer `r_copy()` when you know copies are frequent.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// #[derive(Copy, Clone, ExternalPtr)]
+/// struct Point { x: f64, y: f64 }
+///
+/// #[miniextendr]
+/// impl RCopy for Point {}
+/// ```
+///
+/// In R:
+/// ```r
+/// p1 <- Point$new(1.0, 2.0)
+/// p2 <- p1$r_copy()  # Cheap bitwise copy
+/// p1$is_copy()       # TRUE
+/// ```
+pub trait RCopy {
+    /// Create a bitwise copy of this value.
+    ///
+    /// For Copy types, this is always cheap (O(1), no heap allocation).
+    fn r_copy(&self) -> Self;
+
+    /// Check if this type implements Copy.
+    ///
+    /// Always returns true for types implementing this trait.
+    /// Useful for runtime type checking in R.
+    fn is_copy(&self) -> bool;
+}
+
+impl<T: Copy> RCopy for T {
+    fn r_copy(&self) -> Self {
+        *self
+    }
+
+    fn is_copy(&self) -> bool {
+        true
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -555,5 +613,25 @@ mod tests {
 
         let default_bool: bool = RDefault::r_default();
         assert!(!default_bool);
+    }
+
+    #[test]
+    fn test_rcopy() {
+        // Primitives are Copy
+        let x = 42i32;
+        let y = x.r_copy();
+        assert_eq!(x, y);
+        assert!(x.is_copy());
+
+        // Tuples of Copy types are Copy
+        let point = (1.0f64, 2.0f64);
+        let point2 = point.r_copy();
+        assert_eq!(point, point2);
+        assert!(point.is_copy());
+
+        // Arrays of Copy types are Copy
+        let arr = [1, 2, 3];
+        let arr2 = arr.r_copy();
+        assert_eq!(arr, arr2);
     }
 }
