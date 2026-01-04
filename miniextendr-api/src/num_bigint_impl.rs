@@ -700,7 +700,10 @@ impl RBigUintBitOps for BigUint {
     }
 
     fn count_ones(&self) -> i64 {
-        self.to_u32_digits().iter().map(|d| d.count_ones() as i64).sum()
+        self.to_u32_digits()
+            .iter()
+            .map(|d| d.count_ones() as i64)
+            .sum()
     }
 
     fn trailing_zeros(&self) -> Option<i64> {

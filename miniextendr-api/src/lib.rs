@@ -256,7 +256,8 @@ pub use markers::{
 /// [`RDefault`]: adapter_traits::RDefault
 pub mod adapter_traits;
 pub use adapter_traits::{
-    RClone, RCopy, RDebug, RDefault, RDisplay, RError, RFromStr, RHash, ROrd, RPartialOrd,
+    RClone, RCopy, RDebug, RDefault, RDisplay, RError, RFromStr, RHash, RIterator, ROrd,
+    RPartialOrd,
 };
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
@@ -379,7 +380,7 @@ pub use ordered_float_impl::{OrderedFloat, ROrderedFloatOps};
 #[cfg(feature = "uuid")]
 pub mod uuid_impl;
 #[cfg(feature = "uuid")]
-pub use uuid_impl::{uuid_helpers, RUuidOps, Uuid};
+pub use uuid_impl::{RUuidOps, Uuid, uuid_helpers};
 
 /// Regex support via the `regex` crate.
 ///
@@ -425,19 +426,35 @@ pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 pub mod rarray;
 pub use rarray::{RArray, RArray3D, RMatrix, RVector};
 
-/// Re-export of `serde` with derive macros enabled.
+/// Integration with the `serde` crate for JSON serialization.
 ///
-/// This allows using `#[derive(Serialize, Deserialize)]` on types stored in
-/// `ExternalPtr` or passed through R. Enable with `features = ["serde"]`.
+/// Provides adapter traits for serializing/deserializing Rust types to/from JSON:
+/// - `RSerialize` - Serialize to JSON string
+/// - `RDeserialize` - Parse JSON string
+///
+/// Also re-exports `serde` with derive macros enabled for `#[derive(Serialize, Deserialize)]`.
+///
+/// Enable with `features = ["serde"]`.
 ///
 /// ```ignore
 /// use miniextendr_api::serde::{Serialize, Deserialize};
+/// use miniextendr_api::serde_impl::{RSerialize, RDeserialize};
 ///
-/// #[derive(Serialize, Deserialize)]
+/// #[derive(Serialize, Deserialize, ExternalPtr)]
 /// struct Config {
 ///     name: String,
 ///     count: i32,
 /// }
+///
+/// #[miniextendr]
+/// impl RSerialize for Config {}
+///
+/// #[miniextendr]
+/// impl RDeserialize for Config {}
 /// ```
 #[cfg(feature = "serde")]
+pub mod serde_impl;
+#[cfg(feature = "serde")]
 pub use serde;
+#[cfg(feature = "serde")]
+pub use serde_impl::{RDeserialize, RSerialize};

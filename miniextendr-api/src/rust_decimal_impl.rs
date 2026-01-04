@@ -198,7 +198,10 @@ impl TryFromSexp for Vec<Option<Decimal>> {
             }
             SEXPTYPE::INTSXP => {
                 let values: Vec<Option<i32>> = TryFromSexp::try_from_sexp(sexp)?;
-                Ok(values.into_iter().map(|opt| opt.map(Decimal::from)).collect())
+                Ok(values
+                    .into_iter()
+                    .map(|opt| opt.map(Decimal::from))
+                    .collect())
             }
             _ => {
                 let values: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
@@ -513,17 +516,11 @@ mod tests {
     fn rdecimalops_rounding() {
         let d = Decimal::from_str("123.456").unwrap();
 
-        assert_eq!(
-            ToString::to_string(&RDecimalOps::round(&d, 2)),
-            "123.46"
-        );
+        assert_eq!(ToString::to_string(&RDecimalOps::round(&d, 2)), "123.46");
         assert_eq!(ToString::to_string(&RDecimalOps::floor(&d)), "123");
         assert_eq!(ToString::to_string(&RDecimalOps::ceil(&d)), "124");
         assert_eq!(ToString::to_string(&RDecimalOps::trunc(&d)), "123");
-        assert_eq!(
-            ToString::to_string(&RDecimalOps::fract(&d)),
-            "0.456"
-        );
+        assert_eq!(ToString::to_string(&RDecimalOps::fract(&d)), "0.456");
     }
 
     #[test]
@@ -538,21 +535,12 @@ mod tests {
     #[test]
     fn rdecimalops_abs_neg() {
         let neg = Decimal::from_str("-123.45").unwrap();
-        assert_eq!(
-            ToString::to_string(&RDecimalOps::abs(&neg)),
-            "123.45"
-        );
-        assert_eq!(
-            ToString::to_string(&RDecimalOps::neg(&neg)),
-            "123.45"
-        );
+        assert_eq!(ToString::to_string(&RDecimalOps::abs(&neg)), "123.45");
+        assert_eq!(ToString::to_string(&RDecimalOps::neg(&neg)), "123.45");
 
         let pos = Decimal::from_str("67.89").unwrap();
         assert_eq!(ToString::to_string(&RDecimalOps::abs(&pos)), "67.89");
-        assert_eq!(
-            ToString::to_string(&RDecimalOps::neg(&pos)),
-            "-67.89"
-        );
+        assert_eq!(ToString::to_string(&RDecimalOps::neg(&pos)), "-67.89");
     }
 
     #[test]

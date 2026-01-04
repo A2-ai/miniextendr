@@ -274,7 +274,9 @@ impl<T> RIndexMapOps<T> for IndexMap<String, T> {
     }
 
     fn get_index_of(&self, key: &str) -> i32 {
-        IndexMap::get_index_of(self, key).map(|i| i as i32).unwrap_or(-1)
+        IndexMap::get_index_of(self, key)
+            .map(|i| i as i32)
+            .unwrap_or(-1)
     }
 }
 

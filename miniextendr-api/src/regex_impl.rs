@@ -341,10 +341,7 @@ mod tests {
         let re = Regex::new(r"\d+").unwrap();
         assert_eq!(RRegexOps::find(&re, "abc123def"), Some("123".to_string()));
         assert_eq!(RRegexOps::find(&re, "no digits"), None);
-        assert_eq!(
-            RRegexOps::find_all(&re, "a1b2c3"),
-            vec!["1", "2", "3"]
-        );
+        assert_eq!(RRegexOps::find_all(&re, "a1b2c3"), vec!["1", "2", "3"]);
     }
 
     #[test]

@@ -33,8 +33,8 @@ either = ["dep:either"]
 ndarray = ["dep:ndarray"]
 ## Enable nalgebra integration. Provides conversions for DVector, DMatrix.
 nalgebra = ["dep:nalgebra"]
-## Enable serde integration. Re-exports serde for derive macros.
-serde = ["dep:serde"]
+## Enable serde integration. Re-exports serde for derive macros. Includes serde_json for JSON.
+serde = ["dep:serde", "dep:serde_json"]
 ## Enable num-bigint integration. Provides BigInt/BigUint conversions.
 num-bigint = ["dep:num-bigint", "dep:num-integer"]
 ## Enable rust_decimal integration. Provides Decimal conversions.
@@ -62,6 +62,7 @@ either = { version = "1.15", optional = true }
 ndarray = { version = "0.17", optional = true }
 nalgebra = { version = "0.34", optional = true }
 serde = { version = "1.0", optional = true, features = ["derive"] }
+serde_json = { version = "1.0", optional = true }
 indicatif = { version = "0.18.3", optional = true }
 num-bigint = { version = "0.4", optional = true }
 num-integer = { version = "0.1", optional = true }

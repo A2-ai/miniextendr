@@ -26,12 +26,7 @@ fn decimal_roundtrip() {
 #[test]
 fn decimal_vector_with_na() {
     r_test_utils::with_r_thread(|| {
-        let sexp = vec![
-            Some("1.5".to_string()),
-            None,
-            Some("2.25".to_string()),
-        ]
-        .into_sexp();
+        let sexp = vec![Some("1.5".to_string()), None, Some("2.25".to_string())].into_sexp();
         let values: Vec<Option<Decimal>> = TryFromSexp::try_from_sexp(sexp).unwrap();
         assert_eq!(values.len(), 3);
         assert_eq!(values[0].as_ref().unwrap().to_string(), "1.5");

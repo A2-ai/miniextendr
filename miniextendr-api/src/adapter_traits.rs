@@ -31,9 +31,9 @@
 //! data$debug_str_pretty() # Pretty-printed with newlines
 //! ```
 
+use std::collections::hash_map::DefaultHasher;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
-use std::collections::hash_map::DefaultHasher;
 use std::str::FromStr;
 
 /// Adapter trait for [`std::fmt::Debug`].
@@ -465,6 +465,143 @@ impl<T: Copy> RCopy for T {
     }
 }
 
+/// Adapter trait for [`std::iter::Iterator`].
+///
+/// Provides iterator operations for R, allowing Rust iterators to be consumed
+/// element-by-element from R code. Since iterators are stateful, the wrapper
+/// type should use interior mutability (e.g., `RefCell`).
+///
+/// # Methods
+///
+/// - `r_next()` - Get the next element, or None if exhausted
+/// - `r_size_hint()` - Get estimated remaining elements as `c(lower, upper)`
+/// - `r_count()` - Consume and count remaining elements
+/// - `r_collect_n(n)` - Collect up to n elements into a vector
+/// - `r_skip(n)` - Skip n elements
+/// - `r_nth(n)` - Get the nth element (0-indexed)
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::cell::RefCell;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyIter(RefCell<std::vec::IntoIter<i32>>);
+///
+/// impl MyIter {
+///     fn new(data: Vec<i32>) -> Self {
+///         Self(RefCell::new(data.into_iter()))
+///     }
+/// }
+///
+/// impl RIterator for MyIter {
+///     type Item = i32;
+///
+///     fn r_next(&self) -> Option<Self::Item> {
+///         self.0.borrow_mut().next()
+///     }
+///
+///     fn r_size_hint(&self) -> (i64, Option<i64>) {
+///         let (lo, hi) = self.0.borrow().size_hint();
+///         (lo as i64, hi.map(|h| h as i64))
+///     }
+/// }
+///
+/// #[miniextendr]
+/// impl RIterator for MyIter {}
+/// ```
+///
+/// In R:
+/// ```r
+/// it <- MyIter$new(c(1L, 2L, 3L))
+/// it$r_next()        # 1L
+/// it$r_next()        # 2L
+/// it$r_size_hint()   # c(1, 1) - one element remaining
+/// it$r_next()        # 3L
+/// it$r_next()        # NULL (exhausted)
+/// ```
+///
+/// # Design Note
+///
+/// Unlike other adapter traits, `RIterator` does NOT have a blanket impl
+/// because iterators require `&mut self` for `next()`, but R's ExternalPtr
+/// pattern typically provides `&self`. Users must implement this trait
+/// manually using interior mutability (RefCell, Mutex, etc.).
+pub trait RIterator {
+    /// The type of elements yielded by this iterator.
+    type Item;
+
+    /// Get the next element from the iterator.
+    ///
+    /// Returns `Some(item)` if there are more elements, `None` if exhausted.
+    /// None maps to NULL in R.
+    fn r_next(&self) -> Option<Self::Item>;
+
+    /// Get the estimated number of remaining elements.
+    ///
+    /// Returns `(lower_bound, upper_bound)` where upper_bound is None if unknown.
+    /// In R, this becomes `c(lower, upper)` where upper is NA if unknown.
+    fn r_size_hint(&self) -> (i64, Option<i64>);
+
+    /// Consume the iterator and count remaining elements.
+    ///
+    /// **Warning:** This exhausts the iterator.
+    fn r_count(&self) -> i64 {
+        let mut count = 0i64;
+        while self.r_next().is_some() {
+            count += 1;
+        }
+        count
+    }
+
+    /// Collect up to `n` elements into a vector.
+    ///
+    /// Returns fewer than `n` elements if the iterator is exhausted first.
+    fn r_collect_n(&self, n: i32) -> Vec<Self::Item> {
+        let mut result = Vec::with_capacity(n.max(0) as usize);
+        for _ in 0..n {
+            match self.r_next() {
+                Some(item) => result.push(item),
+                None => break,
+            }
+        }
+        result
+    }
+
+    /// Skip `n` elements from the iterator.
+    ///
+    /// Returns the number of elements actually skipped (may be less than `n`
+    /// if the iterator is exhausted).
+    fn r_skip(&self, n: i32) -> i32 {
+        let mut skipped = 0i32;
+        for _ in 0..n {
+            if self.r_next().is_none() {
+                break;
+            }
+            skipped += 1;
+        }
+        skipped
+    }
+
+    /// Get the `n`th element (0-indexed), consuming elements up to and including it.
+    ///
+    /// Returns None if the iterator has fewer than `n + 1` elements.
+    fn r_nth(&self, n: i32) -> Option<Self::Item> {
+        if n < 0 {
+            return None;
+        }
+        for _ in 0..n {
+            if self.r_next().is_none() {
+                return None;
+            }
+        }
+        self.r_next()
+    }
+}
+
+// Note: No blanket impl because Iterator::next() requires &mut self,
+// but ExternalPtr methods receive &self. Users must use interior mutability.
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -633,5 +770,104 @@ mod tests {
         let arr = [1, 2, 3];
         let arr2 = arr.r_copy();
         assert_eq!(arr, arr2);
+    }
+
+    // Tests for RIterator
+    use std::cell::RefCell;
+
+    /// Test iterator wrapper using RefCell for interior mutability.
+    struct TestIter(RefCell<std::vec::IntoIter<i32>>);
+
+    impl TestIter {
+        fn new(data: Vec<i32>) -> Self {
+            Self(RefCell::new(data.into_iter()))
+        }
+    }
+
+    impl RIterator for TestIter {
+        type Item = i32;
+
+        fn r_next(&self) -> Option<Self::Item> {
+            self.0.borrow_mut().next()
+        }
+
+        fn r_size_hint(&self) -> (i64, Option<i64>) {
+            let (lo, hi) = self.0.borrow().size_hint();
+            (lo as i64, hi.map(|h| h as i64))
+        }
+    }
+
+    #[test]
+    fn test_riterator_next() {
+        let it = TestIter::new(vec![1, 2, 3]);
+        assert_eq!(it.r_next(), Some(1));
+        assert_eq!(it.r_next(), Some(2));
+        assert_eq!(it.r_next(), Some(3));
+        assert_eq!(it.r_next(), None);
+        assert_eq!(it.r_next(), None); // Stays exhausted
+    }
+
+    #[test]
+    fn test_riterator_size_hint() {
+        let it = TestIter::new(vec![1, 2, 3, 4, 5]);
+        assert_eq!(it.r_size_hint(), (5, Some(5)));
+        it.r_next();
+        assert_eq!(it.r_size_hint(), (4, Some(4)));
+        it.r_next();
+        it.r_next();
+        assert_eq!(it.r_size_hint(), (2, Some(2)));
+    }
+
+    #[test]
+    fn test_riterator_count() {
+        let it = TestIter::new(vec![1, 2, 3, 4, 5]);
+        assert_eq!(it.r_count(), 5);
+        // Iterator is now exhausted
+        assert_eq!(it.r_next(), None);
+    }
+
+    #[test]
+    fn test_riterator_collect_n() {
+        let it = TestIter::new(vec![1, 2, 3, 4, 5]);
+        let first_three = it.r_collect_n(3);
+        assert_eq!(first_three, vec![1, 2, 3]);
+        let remaining = it.r_collect_n(10); // Ask for more than available
+        assert_eq!(remaining, vec![4, 5]);
+    }
+
+    #[test]
+    fn test_riterator_skip() {
+        let it = TestIter::new(vec![1, 2, 3, 4, 5]);
+        let skipped = it.r_skip(2);
+        assert_eq!(skipped, 2);
+        assert_eq!(it.r_next(), Some(3));
+
+        // Skip more than remaining
+        let skipped = it.r_skip(10);
+        assert_eq!(skipped, 2); // Only 2 elements were left
+    }
+
+    #[test]
+    fn test_riterator_nth() {
+        let it = TestIter::new(vec![10, 20, 30, 40, 50]);
+        // Get element at index 2 (third element)
+        assert_eq!(it.r_nth(2), Some(30));
+        // Iterator has consumed 0, 1, 2 - next is index 3
+        assert_eq!(it.r_next(), Some(40));
+
+        // Negative index returns None
+        let it2 = TestIter::new(vec![1, 2, 3]);
+        assert_eq!(it2.r_nth(-1), None);
+    }
+
+    #[test]
+    fn test_riterator_empty() {
+        let it = TestIter::new(vec![]);
+        assert_eq!(it.r_next(), None);
+        assert_eq!(it.r_size_hint(), (0, Some(0)));
+        assert_eq!(it.r_count(), 0);
+        assert_eq!(it.r_collect_n(5), Vec::<i32>::new());
+        assert_eq!(it.r_skip(5), 0);
+        assert_eq!(it.r_nth(0), None);
     }
 }

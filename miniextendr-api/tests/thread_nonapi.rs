@@ -34,9 +34,7 @@ fn ensure_r_initialized() -> Result<(), String> {
 
                         // Verify R is properly initialized
                         if !miniextendr_engine::r_initialized_sentinel() {
-                            return Err(
-                                "Rf_initialize_R did not set C stack sentinels".to_string()
-                            );
+                            return Err("Rf_initialize_R did not set C stack sentinels".to_string());
                         }
 
                         // Forget the engine to prevent Drop (R cleanup is unsafe)
@@ -88,7 +86,10 @@ fn nonapi_thread_suite() {
 
     // Test with_stack_checking_disabled helper
     let value = with_stack_checking_disabled(|| 123);
-    assert_eq!(value, 123, "with_stack_checking_disabled should return closure result");
+    assert_eq!(
+        value, 123,
+        "with_stack_checking_disabled should return closure result"
+    );
 }
 
 #[test]

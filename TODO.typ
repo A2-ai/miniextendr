@@ -493,11 +493,14 @@ Each candidate below can follow the pattern documented in ADAPTER_TRAITS.md.
 ==== std library traits ====
 
 Iterator adapter:
-- [ ] Create `RIterator` adapter trait for `Iterator` (documented example in ADAPTER_TRAITS.md)
-  - `next() -> Option<T>` where T: IntoR
-  - `size_hint() -> (usize, Option<usize>)` as R integer vector
-  - Wrap `ExactSizeIterator::len()` when available
-  - Use case: Expose Rust iterators as R generator-like objects
+- [x] Create `RIterator` adapter trait for `Iterator`
+  - `r_next() -> Option<T>` where T: IntoR
+  - `r_size_hint() -> (i64, Option<i64>)` - lower and upper bounds
+  - `r_count()`, `r_collect_n(n)`, `r_skip(n)`, `r_nth(n)` - convenience methods
+  - Note: No blanket impl because Iterator::next() requires &mut self
+  - Users implement manually with interior mutability (RefCell, Mutex)
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
 
 Display/FromStr adapters:
 - [x] Create `RDisplay` adapter trait for `Display`
@@ -529,13 +532,18 @@ Debug adapter:
 
 ==== serde trait adapters (with serde feature) ====
 
-- [ ] Create `RSerialize` adapter trait for `serde::Serialize`
-  - `r_to_json(&self) -> String` using serde_json
-  - `r_to_list(&self) -> SEXP` for direct R list output (future)
-  - Use case: Serialize Rust structs to R-consumable JSON
-- [ ] Create `RDeserialize` adapter trait for `serde::Deserialize`
-  - `r_from_json(s: &str) -> Result<Self, SexpError>`
-  - Use case: Parse R character JSON into Rust types
+- [x] Create `RSerialize` adapter trait for `serde::Serialize`
+  - `r_to_json(&self) -> Result<String, String>` - compact JSON
+  - `r_to_json_pretty(&self) -> Result<String, String>` - pretty-printed JSON
+  - Implemented in `miniextendr-api/src/serde_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RDeserialize` adapter trait for `serde::Deserialize`
+  - `r_from_json(s: &str) -> Option<Self>` - returns None on failure
+  - `r_from_json_result(s: &str) -> Result<Self, String>` - with error details
+  - Implemented in `miniextendr-api/src/serde_impl.rs`
+  - Re-exported from crate root
+- [x] Added serde_json to serde feature dependencies
+  - `serde` feature now includes `serde_json` automatically
 - [ ] Consider serde_json R list bridge
   - Direct SEXP serialization without JSON intermediate
   - Similar to jsonlite's R ↔ JSON model
