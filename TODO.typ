@@ -656,15 +656,31 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== rayon trait adapters (with rayon feature) ====
 
-- [ ] Create `RParallelIterator` adapter trait for `rayon::iter::ParallelIterator`
-  - `r_par_for_each(&self, f: impl Fn(T) + Sync)` - parallel iteration
-  - `r_par_map(&self, f: impl Fn(T) -> U + Sync) -> Vec<U>` - parallel transform
-  - `r_par_filter(&self, f: impl Fn(&T) -> bool + Sync) -> Vec<T>` - parallel filter
-  - `r_par_reduce(&self, identity: T, op: impl Fn(T, T) -> T + Sync) -> T`
-  - Use case: Expose Rayon's parallel iteration to R for vectorized operations
-- [ ] Create `RParallelExtend` adapter trait for `rayon::iter::ParallelExtend`
-  - `r_par_extend(&mut self, items: Vec<T>)` - parallel bulk insert
-  - Use case: Efficient parallel collection building from R vectors
+- [x] Create `RParallelIterator` adapter trait for parallel iteration
+  - Associated type `Item: Send + Sync + Copy` for element type
+  - `r_par_iter(&self) -> impl ParallelIterator<Item = Self::Item>` - core method
+  - `r_par_len(&self) -> i32` - element count
+  - Aggregations: `r_par_sum()`, `r_par_sum_int()`, `r_par_sum_i64()`, `r_par_mean()`
+  - Min/Max: `r_par_min()`, `r_par_max()`, `r_par_min_f64()`, `r_par_max_f64()`
+  - Statistics: `r_par_count()`, `r_par_product()`, `r_par_variance()`, `r_par_std_dev()`
+  - Predicates: `r_par_any_gt()`, `r_par_all_gt()`, `r_par_any_lt()`, `r_par_all_lt()`
+  - Counting: `r_par_count_gt()`, `r_par_count_lt()`, `r_par_count_eq()`
+  - Filtering: `r_par_filter_gt()`, `r_par_filter_lt()`
+  - Transforms: `r_par_scale()`, `r_par_offset()`, `r_par_clamp()`
+  - Math: `r_par_abs()`, `r_par_sqrt()`, `r_par_pow()`, `r_par_ln()`, `r_par_exp()`
+  - No blanket impl (requires `r_par_iter()` implementation)
+  - Implemented in `miniextendr-api/src/rayon_bridge.rs`
+  - Re-exported from crate root
+  - Added 17 unit tests
+- [x] Create `RParallelExtend` adapter trait for parallel collection extension
+  - `r_par_extend(&self, items: Vec<T>)` - extend collection in parallel
+  - `r_par_extend_from_slice(&self, items: &[T])` - extend from slice
+  - `r_par_len(&self) -> i32`, `r_par_is_empty(&self) -> bool`
+  - `r_par_clear(&self)`, `r_par_reserve(&self, additional: i32)`
+  - No blanket impl (requires interior mutability)
+  - Implemented in `miniextendr-api/src/rayon_bridge.rs`
+  - Re-exported from crate root
+  - Added 4 unit tests
 
 ==== ndarray trait adapters (with ndarray feature) ====
 

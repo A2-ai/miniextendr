@@ -109,6 +109,8 @@ pub mod worker;
 // Rayon integration (parallel computation with R interop)
 #[cfg(feature = "rayon")]
 pub mod rayon_bridge;
+#[cfg(feature = "rayon")]
+pub use rayon_bridge::{RParallelExtend, RParallelIterator};
 pub use worker::*;
 
 // Thread safety utilities for calling R from non-main threads
