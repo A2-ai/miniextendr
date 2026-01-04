@@ -703,6 +703,236 @@ impl_te_ndarray!(ArrayD<u8>, "ndarray::ArrayD<u8>");
 impl_te_ndarray!(ArrayD<RLogical>, "ndarray::ArrayD<RLogical>");
 impl_te_ndarray!(ArrayD<Rcomplex>, "ndarray::ArrayD<Rcomplex>");
 
+// =============================================================================
+// RNdArrayOps adapter trait
+// =============================================================================
+
+/// Adapter trait for ndarray array operations.
+///
+/// Provides common array operations accessible from R.
+/// Implemented for `Array1<f64>`, `Array2<f64>`, and `ArrayD<f64>`.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ndarray::Array1;
+/// use miniextendr_api::ndarray_impl::RNdArrayOps;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyArray(Array1<f64>);
+///
+/// #[miniextendr]
+/// impl RNdArrayOps for MyArray {}
+/// ```
+///
+/// In R:
+/// ```r
+/// arr <- MyArray$new(c(1, 2, 3, 4, 5))
+/// arr$len()          # 5L
+/// arr$sum()          # 15.0
+/// arr$mean()         # 3.0
+/// arr$shape()        # c(5L)
+/// ```
+pub trait RNdArrayOps {
+    /// Get the total number of elements.
+    fn len(&self) -> i32;
+
+    /// Check if the array is empty.
+    fn is_empty(&self) -> bool;
+
+    /// Get the number of dimensions (ndim).
+    fn ndim(&self) -> i32;
+
+    /// Get the shape as a vector of dimensions.
+    fn shape(&self) -> Vec<i32>;
+
+    /// Compute the sum of all elements.
+    fn sum(&self) -> f64;
+
+    /// Compute the mean of all elements.
+    fn mean(&self) -> f64;
+
+    /// Get the minimum element.
+    fn min(&self) -> f64;
+
+    /// Get the maximum element.
+    fn max(&self) -> f64;
+
+    /// Compute the product of all elements.
+    fn product(&self) -> f64;
+
+    /// Compute the variance (population variance, ddof=0).
+    fn var(&self) -> f64;
+
+    /// Compute the standard deviation (population, ddof=0).
+    fn std(&self) -> f64;
+}
+
+impl RNdArrayOps for Array1<f64> {
+    fn len(&self) -> i32 {
+        Array1::len(self) as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        Array1::is_empty(self)
+    }
+
+    fn ndim(&self) -> i32 {
+        Array1::ndim(self) as i32
+    }
+
+    fn shape(&self) -> Vec<i32> {
+        Array1::shape(self).iter().map(|&d| d as i32).collect()
+    }
+
+    fn sum(&self) -> f64 {
+        self.iter().sum()
+    }
+
+    fn mean(&self) -> f64 {
+        if Array1::is_empty(self) {
+            f64::NAN
+        } else {
+            self.iter().sum::<f64>() / Array1::len(self) as f64
+        }
+    }
+
+    fn min(&self) -> f64 {
+        self.iter().copied().fold(f64::INFINITY, f64::min)
+    }
+
+    fn max(&self) -> f64 {
+        self.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    fn product(&self) -> f64 {
+        self.iter().product()
+    }
+
+    fn var(&self) -> f64 {
+        let n = Array1::len(self) as f64;
+        if n == 0.0 {
+            return f64::NAN;
+        }
+        let mean = self.iter().sum::<f64>() / n;
+        self.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n
+    }
+
+    fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+}
+
+impl RNdArrayOps for Array2<f64> {
+    fn len(&self) -> i32 {
+        Array2::len(self) as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        Array2::is_empty(self)
+    }
+
+    fn ndim(&self) -> i32 {
+        Array2::ndim(self) as i32
+    }
+
+    fn shape(&self) -> Vec<i32> {
+        Array2::shape(self).iter().map(|&d| d as i32).collect()
+    }
+
+    fn sum(&self) -> f64 {
+        self.iter().sum()
+    }
+
+    fn mean(&self) -> f64 {
+        if Array2::is_empty(self) {
+            f64::NAN
+        } else {
+            self.iter().sum::<f64>() / Array2::len(self) as f64
+        }
+    }
+
+    fn min(&self) -> f64 {
+        self.iter().copied().fold(f64::INFINITY, f64::min)
+    }
+
+    fn max(&self) -> f64 {
+        self.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    fn product(&self) -> f64 {
+        self.iter().product()
+    }
+
+    fn var(&self) -> f64 {
+        let n = Array2::len(self) as f64;
+        if n == 0.0 {
+            return f64::NAN;
+        }
+        let mean = self.iter().sum::<f64>() / n;
+        self.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n
+    }
+
+    fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+}
+
+impl RNdArrayOps for ArrayD<f64> {
+    fn len(&self) -> i32 {
+        ArrayD::len(self) as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        ArrayD::is_empty(self)
+    }
+
+    fn ndim(&self) -> i32 {
+        ArrayD::ndim(self) as i32
+    }
+
+    fn shape(&self) -> Vec<i32> {
+        ArrayD::shape(self).iter().map(|&d| d as i32).collect()
+    }
+
+    fn sum(&self) -> f64 {
+        self.iter().sum()
+    }
+
+    fn mean(&self) -> f64 {
+        if ArrayD::is_empty(self) {
+            f64::NAN
+        } else {
+            self.iter().sum::<f64>() / ArrayD::len(self) as f64
+        }
+    }
+
+    fn min(&self) -> f64 {
+        self.iter().copied().fold(f64::INFINITY, f64::min)
+    }
+
+    fn max(&self) -> f64 {
+        self.iter().copied().fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    fn product(&self) -> f64 {
+        self.iter().product()
+    }
+
+    fn var(&self) -> f64 {
+        let n = ArrayD::len(self) as f64;
+        if n == 0.0 {
+            return f64::NAN;
+        }
+        let mean = self.iter().sum::<f64>() / n;
+        self.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n
+    }
+
+    fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -796,5 +1026,63 @@ mod tests {
         assert_eq!(indices[1], vec![1, 0, 0]);
         assert_eq!(indices[4], vec![0, 0, 1]);
         assert_eq!(indices[7], vec![1, 1, 1]);
+    }
+
+    // RNdArrayOps tests
+    #[test]
+    fn rndarrayops_array1_basic() {
+        let arr = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert_eq!(RNdArrayOps::len(&arr), 5);
+        assert!(!RNdArrayOps::is_empty(&arr));
+        assert_eq!(RNdArrayOps::ndim(&arr), 1);
+        assert_eq!(RNdArrayOps::shape(&arr), vec![5]);
+    }
+
+    #[test]
+    fn rndarrayops_array1_stats() {
+        let arr = Array1::from_vec(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
+        assert!((RNdArrayOps::sum(&arr) - 15.0).abs() < 1e-10);
+        assert!((RNdArrayOps::mean(&arr) - 3.0).abs() < 1e-10);
+        assert!((RNdArrayOps::min(&arr) - 1.0).abs() < 1e-10);
+        assert!((RNdArrayOps::max(&arr) - 5.0).abs() < 1e-10);
+        assert!((RNdArrayOps::product(&arr) - 120.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rndarrayops_array1_var_std() {
+        let arr = Array1::from_vec(vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]);
+        // Mean = 5.0, variance = 4.0, std = 2.0
+        assert!((RNdArrayOps::mean(&arr) - 5.0).abs() < 1e-10);
+        assert!((RNdArrayOps::var(&arr) - 4.0).abs() < 1e-10);
+        assert!((RNdArrayOps::std(&arr) - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rndarrayops_array2_basic() {
+        let arr = Array2::from_shape_vec((2, 3), vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]).unwrap();
+        assert_eq!(RNdArrayOps::len(&arr), 6);
+        assert_eq!(RNdArrayOps::ndim(&arr), 2);
+        assert_eq!(RNdArrayOps::shape(&arr), vec![2, 3]);
+        assert!((RNdArrayOps::sum(&arr) - 21.0).abs() < 1e-10);
+        assert!((RNdArrayOps::mean(&arr) - 3.5).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rndarrayops_arrayd_basic() {
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 2, 2]), vec![1.0; 8]).unwrap();
+        assert_eq!(RNdArrayOps::len(&arr), 8);
+        assert_eq!(RNdArrayOps::ndim(&arr), 3);
+        assert_eq!(RNdArrayOps::shape(&arr), vec![2, 2, 2]);
+        assert!((RNdArrayOps::sum(&arr) - 8.0).abs() < 1e-10);
+        assert!((RNdArrayOps::mean(&arr) - 1.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn rndarrayops_empty() {
+        let arr: Array1<f64> = Array1::from_vec(vec![]);
+        assert_eq!(RNdArrayOps::len(&arr), 0);
+        assert!(RNdArrayOps::is_empty(&arr));
+        assert!(RNdArrayOps::mean(&arr).is_nan());
+        assert!(RNdArrayOps::var(&arr).is_nan());
     }
 }

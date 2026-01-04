@@ -324,7 +324,7 @@ pub use either_impl::{Either, Left, Right};
 #[cfg(feature = "ndarray")]
 pub mod ndarray_impl;
 #[cfg(feature = "ndarray")]
-pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2};
+pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2, RNdArrayOps};
 
 /// Integration with the `nalgebra` crate.
 ///
@@ -335,7 +335,7 @@ pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2};
 #[cfg(feature = "nalgebra")]
 pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
-pub use nalgebra_impl::{DMatrix, DVector};
+pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps};
 
 /// Integration with the `num-bigint` crate.
 ///

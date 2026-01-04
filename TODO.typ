@@ -630,29 +630,36 @@ Debug adapter:
 
 ==== ndarray trait adapters (with ndarray feature) ====
 
-- [ ] Create `RArrayBase` adapter trait for common `ndarray` operations
-  - `r_shape(&self) -> Vec<usize>` - get dimensions as R integer vector
-  - `r_ndim(&self) -> i32` - number of dimensions
-  - `r_is_contiguous(&self) -> bool` - check memory layout
-  - `r_sum(&self) -> T` where T: Sum - reduce to scalar
-  - Use case: Expose array metadata and operations to R
+- [x] Create `RNdArrayOps` adapter trait for common `ndarray` operations
+  - `len()`, `is_empty()`, `ndim()`, `shape()` - array metadata
+  - `sum()`, `mean()`, `min()`, `max()`, `product()` - reductions
+  - `var()`, `std()` - statistical operations
+  - Implemented for `Array1<f64>`, `Array2<f64>`, `ArrayD<f64>`
+  - Implemented in `miniextendr-api/src/ndarray_impl.rs`
+  - Re-exported from crate root
 - [ ] Create `RNdIndex` adapter for ndarray indexing
   - `r_slice(&self, start: Vec<usize>, end: Vec<usize>) -> Self` - subarray view
   - Use case: R-style array subsetting for ndarray types
 
 ==== nalgebra trait adapters (with nalgebra feature) ====
 
-- [ ] Create `RMatrix` adapter trait for nalgebra matrix operations
-  - `r_nrows(&self) -> i32`, `r_ncols(&self) -> i32`
-  - `r_transpose(&self) -> Self` - matrix transpose
-  - `r_determinant(&self) -> f64` where applicable
-  - `r_inverse(&self) -> Option<Self>` where applicable
-  - Use case: Linear algebra operations accessible from R
-- [ ] Create `RVector` adapter trait for nalgebra vector operations
-  - `r_norm(&self) -> f64` - Euclidean norm
-  - `r_dot(&self, other: &Self) -> f64` - dot product
-  - `r_normalize(&self) -> Self` - unit vector
-  - Use case: Vector math operations from R
+- [x] Create `RMatrixOps` adapter trait for nalgebra DMatrix operations
+  - `nrows()`, `ncols()`, `shape()`, `is_square()`, `is_empty()`
+  - `transpose()`, `determinant()`, `trace()`, `diagonal()`, `norm()`
+  - `try_inverse()` - returns Option for singular matrices
+  - `sum()`, `mean()`, `min()`, `max()`, `scale()`
+  - `add()`, `sub()`, `mul()`, `component_mul()`
+  - `row_sum()`, `column_sum()`, `row_mean()`, `column_mean()`
+  - Implemented in `miniextendr-api/src/nalgebra_impl.rs`
+  - Re-exported from crate root
+- [x] Create `RVectorOps` adapter trait for nalgebra DVector operations
+  - `len()`, `is_empty()`
+  - `norm()`, `norm_squared()`, `norm_l1()`, `norm_linf()`
+  - `sum()`, `mean()`, `min()`, `max()`, `argmin()`, `argmax()`
+  - `dot()`, `normalize()`, `scale()`
+  - `add()`, `sub()`, `component_mul()`
+  - Implemented in `miniextendr-api/src/nalgebra_impl.rs`
+  - Re-exported from crate root
 
 ==== regex trait adapters (with regex feature) ====
 
