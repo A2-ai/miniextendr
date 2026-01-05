@@ -7,6 +7,10 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **No backwards compatibility**: This is an unreleased project. Remove deprecated code, don't shim around it.
 - **Simple over complex**: Avoid over-engineering. Only make changes directly requested or clearly necessary.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
+- **Edit `.in` templates, not generated files**: Files like `Cargo.toml`, `Makevars`, `configure` are generated from `.in` templates. Always edit the `.in` source file instead:
+  - `rpkg/src/rust/Cargo.toml` → edit `rpkg/src/rust/Cargo.toml.in`
+  - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
+  - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
 
 ## Project Structure
 

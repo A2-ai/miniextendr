@@ -124,7 +124,7 @@ impl<T: Display> RDisplay for T {
 ///
 /// # Methods
 ///
-/// - `r_hash()` - Returns a 64-bit hash as i64
+/// - `hash()` - Returns a 64-bit hash as i64
 ///
 /// # Note
 ///
@@ -147,11 +147,11 @@ impl<T: Display> RDisplay for T {
 /// ```
 pub trait RHash {
     /// Compute a hash of this value.
-    fn r_hash(&self) -> i64;
+    fn hash(&self) -> i64;
 }
 
 impl<T: Hash> RHash for T {
-    fn r_hash(&self) -> i64 {
+    fn hash(&self) -> i64 {
         let mut hasher = DefaultHasher::new();
         self.hash(&mut hasher);
         hasher.finish() as i64
@@ -165,7 +165,7 @@ impl<T: Hash> RHash for T {
 ///
 /// # Methods
 ///
-/// - `r_cmp(&self, other: &Self)` - Returns -1, 0, or 1
+/// - `cmp(&self, other: &Self)` - Returns -1, 0, or 1
 ///
 /// # Example
 ///
@@ -188,11 +188,11 @@ pub trait ROrd {
     /// - `-1` if `self < other`
     /// - `0` if `self == other`
     /// - `1` if `self > other`
-    fn r_cmp(&self, other: &Self) -> i32;
+    fn cmp(&self, other: &Self) -> i32;
 }
 
 impl<T: Ord> ROrd for T {
-    fn r_cmp(&self, other: &Self) -> i32 {
+    fn cmp(&self, other: &Self) -> i32 {
         match self.cmp(other) {
             std::cmp::Ordering::Less => -1,
             std::cmp::Ordering::Equal => 0,
@@ -208,7 +208,7 @@ impl<T: Ord> ROrd for T {
 ///
 /// # Methods
 ///
-/// - `r_partial_cmp(&self, other: &Self)` - Returns Some(-1/0/1) or None
+/// - `partial_cmp(&self, other: &Self)` - Returns Some(-1/0/1) or None
 ///
 /// # Example
 ///
@@ -233,11 +233,11 @@ pub trait RPartialOrd {
     /// - `Some(0)` if `self == other`
     /// - `Some(1)` if `self > other`
     /// - `None` if values are incomparable (maps to NA in R)
-    fn r_partial_cmp(&self, other: &Self) -> Option<i32>;
+    fn partial_cmp(&self, other: &Self) -> Option<i32>;
 }
 
 impl<T: PartialOrd> RPartialOrd for T {
-    fn r_partial_cmp(&self, other: &Self) -> Option<i32> {
+    fn partial_cmp(&self, other: &Self) -> Option<i32> {
         self.partial_cmp(other).map(|ord| match ord {
             std::cmp::Ordering::Less => -1,
             std::cmp::Ordering::Equal => 0,
@@ -333,7 +333,7 @@ impl<T: std::error::Error> RError for T {
 ///
 /// # Methods
 ///
-/// - `r_from_str(s: &str)` - Parse a string into this type, returning None on failure
+/// - `from_str(s: &str)` - Parse a string into this type, returning None on failure
 ///
 /// # Example
 ///
@@ -355,18 +355,18 @@ impl<T: std::error::Error> RError for T {
 ///
 /// In R:
 /// ```r
-/// ip <- IpAddress$r_from_str("192.168.1.1")
+/// ip <- IpAddress$from_str("192.168.1.1")
 /// ```
 pub trait RFromStr: Sized {
     /// Parse a string into this type.
     ///
     /// Returns `Some(value)` on success, `None` on parse failure.
     /// The None case maps to NULL in R.
-    fn r_from_str(s: &str) -> Option<Self>;
+    fn from_str(s: &str) -> Option<Self>;
 }
 
 impl<T: FromStr> RFromStr for T {
-    fn r_from_str(s: &str) -> Option<Self> {
+    fn from_str(s: &str) -> Option<Self> {
         s.parse().ok()
     }
 }
@@ -379,7 +379,7 @@ impl<T: FromStr> RFromStr for T {
 ///
 /// # Methods
 ///
-/// - `r_clone()` - Create a deep copy of this value
+/// - `clone()` - Create a deep copy of this value
 ///
 /// # Example
 ///
@@ -399,15 +399,15 @@ impl<T: FromStr> RFromStr for T {
 /// In R:
 /// ```r
 /// buf1 <- Buffer$new(...)
-/// buf2 <- buf1$r_clone()  # Independent copy
+/// buf2 <- buf1$clone()  # Independent copy
 /// ```
 pub trait RClone {
     /// Create a deep copy of this value.
-    fn r_clone(&self) -> Self;
+    fn clone(&self) -> Self;
 }
 
 impl<T: Clone> RClone for T {
-    fn r_clone(&self) -> Self {
+    fn clone(&self) -> Self {
         self.clone()
     }
 }
@@ -419,7 +419,7 @@ impl<T: Clone> RClone for T {
 ///
 /// # Methods
 ///
-/// - `r_default()` - Create a new instance with default values
+/// - `default()` - Create a new instance with default values
 ///
 /// # Example
 ///
@@ -442,15 +442,15 @@ impl<T: Clone> RClone for T {
 ///
 /// In R:
 /// ```r
-/// config <- Config$r_default()  # All fields have default values
+/// config <- Config$default()  # All fields have default values
 /// ```
 pub trait RDefault {
     /// Create a new instance with default values.
-    fn r_default() -> Self;
+    fn default() -> Self;
 }
 
 impl<T: Default> RDefault for T {
-    fn r_default() -> Self {
+    fn default() -> Self {
         Self::default()
     }
 }
@@ -463,7 +463,7 @@ impl<T: Default> RDefault for T {
 ///
 /// # Methods
 ///
-/// - `r_copy()` - Create a bitwise copy of this value
+/// - `copy()` - Create a bitwise copy of this value
 /// - `is_copy()` - Returns true (useful for runtime type checking in R)
 ///
 /// # Difference from RClone
@@ -472,7 +472,7 @@ impl<T: Default> RDefault for T {
 /// - `RCopy`: Only for types where copying is cheap (stack-only, no heap)
 /// - `RClone`: For any clonable type (may involve heap allocation)
 ///
-/// If a type implements both, prefer `r_copy()` when you know copies are frequent.
+/// If a type implements both, prefer `copy()` when you know copies are frequent.
 ///
 /// # Example
 ///
@@ -492,14 +492,14 @@ impl<T: Default> RDefault for T {
 /// In R:
 /// ```r
 /// p1 <- Point$new(1.0, 2.0)
-/// p2 <- p1$r_copy()  # Cheap bitwise copy
+/// p2 <- p1$copy()  # Cheap bitwise copy
 /// p1$is_copy()       # TRUE
 /// ```
 pub trait RCopy {
     /// Create a bitwise copy of this value.
     ///
     /// For Copy types, this is always cheap (O(1), no heap allocation).
-    fn r_copy(&self) -> Self;
+    fn copy(&self) -> Self;
 
     /// Check if this type implements Copy.
     ///
@@ -509,7 +509,7 @@ pub trait RCopy {
 }
 
 impl<T: Copy> RCopy for T {
-    fn r_copy(&self) -> Self {
+    fn copy(&self) -> Self {
         *self
     }
 
@@ -526,12 +526,12 @@ impl<T: Copy> RCopy for T {
 ///
 /// # Methods
 ///
-/// - `r_next()` - Get the next element, or None if exhausted
-/// - `r_size_hint()` - Get estimated remaining elements as `c(lower, upper)`
-/// - `r_count()` - Consume and count remaining elements
-/// - `r_collect_n(n)` - Collect up to n elements into a vector
-/// - `r_skip(n)` - Skip n elements
-/// - `r_nth(n)` - Get the nth element (0-indexed)
+/// - `next()` - Get the next element, or None if exhausted
+/// - `size_hint()` - Get estimated remaining elements as `c(lower, upper)`
+/// - `count()` - Consume and count remaining elements
+/// - `collect_n(n)` - Collect up to n elements into a vector
+/// - `skip(n)` - Skip n elements
+/// - `nth(n)` - Get the nth element (0-indexed)
 ///
 /// # Example
 ///
@@ -550,11 +550,11 @@ impl<T: Copy> RCopy for T {
 /// impl RIterator for MyIter {
 ///     type Item = i32;
 ///
-///     fn r_next(&self) -> Option<Self::Item> {
+///     fn next(&self) -> Option<Self::Item> {
 ///         self.0.borrow_mut().next()
 ///     }
 ///
-///     fn r_size_hint(&self) -> (i64, Option<i64>) {
+///     fn size_hint(&self) -> (i64, Option<i64>) {
 ///         let (lo, hi) = self.0.borrow().size_hint();
 ///         (lo as i64, hi.map(|h| h as i64))
 ///     }
@@ -572,11 +572,11 @@ impl<T: Copy> RCopy for T {
 /// In R:
 /// ```r
 /// it <- MyIter$new(c(1L, 2L, 3L))
-/// it$r_next()        # 1L
-/// it$r_next()        # 2L
-/// it$r_size_hint()   # c(1, 1) - one element remaining
-/// it$r_next()        # 3L
-/// it$r_next()        # NULL (exhausted)
+/// it$next()        # 1L
+/// it$next()        # 2L
+/// it$size_hint()   # c(1, 1) - one element remaining
+/// it$next()        # 3L
+/// it$next()        # NULL (exhausted)
 /// ```
 ///
 /// # Design Note
@@ -593,20 +593,20 @@ pub trait RIterator {
     ///
     /// Returns `Some(item)` if there are more elements, `None` if exhausted.
     /// None maps to NULL in R.
-    fn r_next(&self) -> Option<Self::Item>;
+    fn next(&self) -> Option<Self::Item>;
 
     /// Get the estimated number of remaining elements.
     ///
     /// Returns `(lower_bound, upper_bound)` where upper_bound is None if unknown.
     /// In R, this becomes `c(lower, upper)` where upper is NA if unknown.
-    fn r_size_hint(&self) -> (i64, Option<i64>);
+    fn size_hint(&self) -> (i64, Option<i64>);
 
     /// Consume the iterator and count remaining elements.
     ///
     /// **Warning:** This exhausts the iterator.
-    fn r_count(&self) -> i64 {
+    fn count(&self) -> i64 {
         let mut count = 0i64;
-        while self.r_next().is_some() {
+        while self.next().is_some() {
             count += 1;
         }
         count
@@ -615,10 +615,10 @@ pub trait RIterator {
     /// Collect up to `n` elements into a vector.
     ///
     /// Returns fewer than `n` elements if the iterator is exhausted first.
-    fn r_collect_n(&self, n: i32) -> Vec<Self::Item> {
+    fn collect_n(&self, n: i32) -> Vec<Self::Item> {
         let mut result = Vec::with_capacity(n.max(0) as usize);
         for _ in 0..n {
-            match self.r_next() {
+            match self.next() {
                 Some(item) => result.push(item),
                 None => break,
             }
@@ -630,10 +630,10 @@ pub trait RIterator {
     ///
     /// Returns the number of elements actually skipped (may be less than `n`
     /// if the iterator is exhausted).
-    fn r_skip(&self, n: i32) -> i32 {
+    fn skip(&self, n: i32) -> i32 {
         let mut skipped = 0i32;
         for _ in 0..n {
-            if self.r_next().is_none() {
+            if self.next().is_none() {
                 break;
             }
             skipped += 1;
@@ -644,16 +644,16 @@ pub trait RIterator {
     /// Get the `n`th element (0-indexed), consuming elements up to and including it.
     ///
     /// Returns None if the iterator has fewer than `n + 1` elements.
-    fn r_nth(&self, n: i32) -> Option<Self::Item> {
+    fn nth(&self, n: i32) -> Option<Self::Item> {
         if n < 0 {
             return None;
         }
         for _ in 0..n {
-            if self.r_next().is_none() {
+            if self.next().is_none() {
                 return None;
             }
         }
-        self.r_next()
+        self.next()
     }
 }
 
@@ -668,8 +668,8 @@ pub trait RIterator {
 ///
 /// # Methods
 ///
-/// - `r_extend_from_vec(items)` - Extend the collection with items from a vector
-/// - `r_extend_from_slice(items)` - Extend from a slice (for Clone items)
+/// - `extend_from_vec(items)` - Extend the collection with items from a vector
+/// - `extend_from_slice(items)` - Extend from a slice (for Clone items)
 ///
 /// # Example
 ///
@@ -686,7 +686,7 @@ pub trait RIterator {
 /// }
 ///
 /// impl RExtend<i32> for MyVec {
-///     fn r_extend_from_vec(&self, items: Vec<i32>) {
+///     fn extend_from_vec(&self, items: Vec<i32>) {
 ///         self.0.borrow_mut().extend(items);
 ///     }
 /// }
@@ -703,8 +703,8 @@ pub trait RIterator {
 /// In R:
 /// ```r
 /// v <- MyVec$new()
-/// v$r_extend_from_vec(c(1L, 2L, 3L))  # Add items
-/// v$r_extend_from_vec(c(4L, 5L))      # Add more items
+/// v$extend_from_vec(c(1L, 2L, 3L))  # Add items
+/// v$extend_from_vec(c(4L, 5L))      # Add more items
 /// ```
 ///
 /// # Design Note
@@ -716,22 +716,22 @@ pub trait RExtend<T> {
     /// Extend the collection with items from a vector.
     ///
     /// The items are moved into the collection.
-    fn r_extend_from_vec(&self, items: Vec<T>);
+    fn extend_from_vec(&self, items: Vec<T>);
 
     /// Extend the collection with cloned items from a slice.
     ///
-    /// Default implementation clones items into a Vec and calls `r_extend_from_vec`.
-    fn r_extend_from_slice(&self, items: &[T])
+    /// Default implementation clones items into a Vec and calls `extend_from_vec`.
+    fn extend_from_slice(&self, items: &[T])
     where
         T: Clone,
     {
-        self.r_extend_from_vec(items.to_vec());
+        self.extend_from_vec(items.to_vec());
     }
 
     /// Get the current length of the collection.
     ///
     /// Optional - returns -1 if not implemented.
-    fn r_len(&self) -> i64 {
+    fn len(&self) -> i64 {
         -1 // Indicates "unknown" - implementers can override
     }
 }
@@ -746,7 +746,7 @@ pub trait RExtend<T> {
 ///
 /// # Methods
 ///
-/// - `r_from_vec(items)` - Create a new collection from a vector
+/// - `from_vec(items)` - Create a new collection from a vector
 ///
 /// # Example
 ///
@@ -755,7 +755,7 @@ pub trait RExtend<T> {
 /// struct MySet(std::collections::HashSet<i32>);
 ///
 /// impl RFromIter<i32> for MySet {
-///     fn r_from_vec(items: Vec<i32>) -> Self {
+///     fn from_vec(items: Vec<i32>) -> Self {
 ///         Self(items.into_iter().collect())
 ///     }
 /// }
@@ -771,18 +771,18 @@ pub trait RExtend<T> {
 ///
 /// In R:
 /// ```r
-/// set <- MySet$r_from_vec(c(1L, 2L, 2L, 3L))  # Creates {1, 2, 3}
+/// set <- MySet$from_vec(c(1L, 2L, 2L, 3L))  # Creates {1, 2, 3}
 /// ```
 pub trait RFromIter<T>: Sized {
     /// Create a new collection from a vector of items.
-    fn r_from_vec(items: Vec<T>) -> Self;
+    fn from_vec(items: Vec<T>) -> Self;
 }
 
 impl<C, T> RFromIter<T> for C
 where
     C: FromIterator<T>,
 {
-    fn r_from_vec(items: Vec<T>) -> Self {
+    fn from_vec(items: Vec<T>) -> Self {
         items.into_iter().collect()
     }
 }
@@ -794,9 +794,9 @@ where
 ///
 /// # Methods
 ///
-/// - `r_to_vec()` - Collect all elements into a vector (cloning elements)
-/// - `r_len()` - Get the number of elements
-/// - `r_is_empty()` - Check if the collection is empty
+/// - `to_vec()` - Collect all elements into a vector (cloning elements)
+/// - `len()` - Get the number of elements
+/// - `is_empty()` - Check if the collection is empty
 ///
 /// # Design Note
 ///
@@ -827,22 +827,22 @@ where
 /// In R:
 /// ```r
 /// set <- MySet$new(...)
-/// vec <- set$r_to_vec()    # Get all elements as vector
-/// set$r_len()              # Number of elements
-/// set$r_is_empty()         # Check if empty
+/// vec <- set$to_vec()    # Get all elements as vector
+/// set$len()              # Number of elements
+/// set$is_empty()         # Check if empty
 /// ```
 pub trait RToVec<T> {
     /// Collect all elements into a vector.
     ///
     /// Elements are cloned from the collection.
-    fn r_to_vec(&self) -> Vec<T>;
+    fn to_vec(&self) -> Vec<T>;
 
     /// Get the number of elements in the collection.
-    fn r_len(&self) -> i64;
+    fn len(&self) -> i64;
 
     /// Check if the collection is empty.
-    fn r_is_empty(&self) -> bool {
-        self.r_len() == 0
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -859,11 +859,11 @@ where
     for<'a> &'a C: IntoIterator<Item = &'a T>,
     for<'a> <&'a C as IntoIterator>::IntoIter: ExactSizeIterator,
 {
-    fn r_to_vec(&self) -> Vec<T> {
+    fn to_vec(&self) -> Vec<T> {
         self.into_iter().cloned().collect()
     }
 
-    fn r_len(&self) -> i64 {
+    fn len(&self) -> i64 {
         self.into_iter().len() as i64
     }
 }
@@ -882,7 +882,7 @@ where
 /// # Design Note
 ///
 /// The returned iterator is independent from the source collection. Modifications
-/// to the original collection after calling `r_make_iter()` won't affect the
+/// to the original collection after calling `make_iter()` won't affect the
 /// iterator's output.
 ///
 /// # Example
@@ -898,17 +898,17 @@ where
 ///
 /// impl RIterator for MyVecIter {
 ///     type Item = i32;
-///     fn r_next(&self) -> Option<i32> {
+///     fn next(&self) -> Option<i32> {
 ///         self.0.borrow_mut().next()
 ///     }
-///     fn r_size_hint(&self) -> (i64, Option<i64>) {
+///     fn size_hint(&self) -> (i64, Option<i64>) {
 ///         let (lo, hi) = self.0.borrow().size_hint();
 ///         (lo as i64, hi.map(|h| h as i64))
 ///     }
 /// }
 ///
 /// impl RMakeIter<i32, MyVecIter> for MyVec {
-///     fn r_make_iter(&self) -> MyVecIter {
+///     fn make_iter(&self) -> MyVecIter {
 ///         MyVecIter(RefCell::new(self.0.clone().into_iter()))
 ///     }
 /// }
@@ -925,10 +925,10 @@ where
 /// In R:
 /// ```r
 /// v <- MyVec$new(c(1L, 2L, 3L))
-/// it <- v$r_make_iter()   # Create iterator
-/// it$r_next()             # 1L
-/// it$r_next()             # 2L
-/// v$r_to_vec()            # c(1L, 2L, 3L) - original unchanged
+/// it <- v$make_iter()   # Create iterator
+/// it$next()             # 1L
+/// it$next()             # 2L
+/// v$to_vec()            # c(1L, 2L, 3L) - original unchanged
 /// ```
 pub trait RMakeIter<T, I>
 where
@@ -938,7 +938,7 @@ where
     ///
     /// The iterator is independent from this collection (typically by cloning
     /// the underlying data).
-    fn r_make_iter(&self) -> I;
+    fn make_iter(&self) -> I;
 }
 
 // Note: No blanket impl because:
@@ -972,23 +972,23 @@ mod tests {
         let b = "test";
         let c = "other";
 
-        assert_eq!(a.r_hash(), b.r_hash());
-        assert_ne!(a.r_hash(), c.r_hash());
+        assert_eq!(RHash::hash(&a), RHash::hash(&b));
+        assert_ne!(RHash::hash(&a), RHash::hash(&c));
     }
 
     #[test]
     fn test_rord() {
-        assert_eq!(1i32.r_cmp(&2), -1);
-        assert_eq!(2i32.r_cmp(&2), 0);
-        assert_eq!(3i32.r_cmp(&2), 1);
+        assert_eq!(ROrd::cmp(&1i32, &2), -1);
+        assert_eq!(ROrd::cmp(&2i32, &2), 0);
+        assert_eq!(ROrd::cmp(&3i32, &2), 1);
     }
 
     #[test]
     fn test_rpartialord() {
-        assert_eq!(1.0f64.r_partial_cmp(&2.0), Some(-1));
-        assert_eq!(2.0f64.r_partial_cmp(&2.0), Some(0));
-        assert_eq!(3.0f64.r_partial_cmp(&2.0), Some(1));
-        assert_eq!(f64::NAN.r_partial_cmp(&1.0), None);
+        assert_eq!(RPartialOrd::partial_cmp(&1.0f64, &2.0), Some(-1));
+        assert_eq!(RPartialOrd::partial_cmp(&2.0f64, &2.0), Some(0));
+        assert_eq!(RPartialOrd::partial_cmp(&3.0f64, &2.0), Some(1));
+        assert_eq!(RPartialOrd::partial_cmp(&f64::NAN, &1.0), None);
     }
 
     #[test]
@@ -1050,49 +1050,49 @@ mod tests {
 
     #[test]
     fn test_rfromstr_success() {
-        let result: Option<i32> = RFromStr::r_from_str("42");
+        let result: Option<i32> = RFromStr::from_str("42");
         assert_eq!(result, Some(42));
 
-        let result: Option<f64> = RFromStr::r_from_str("3.14");
+        let result: Option<f64> = RFromStr::from_str("3.14");
         assert_eq!(result, Some(3.14));
 
-        let result: Option<bool> = RFromStr::r_from_str("true");
+        let result: Option<bool> = RFromStr::from_str("true");
         assert_eq!(result, Some(true));
     }
 
     #[test]
     fn test_rfromstr_failure() {
-        let result: Option<i32> = RFromStr::r_from_str("not a number");
+        let result: Option<i32> = RFromStr::from_str("not a number");
         assert_eq!(result, None);
 
-        let result: Option<f64> = RFromStr::r_from_str("abc");
+        let result: Option<f64> = RFromStr::from_str("abc");
         assert_eq!(result, None);
     }
 
     #[test]
     fn test_rclone() {
         let v = vec![1, 2, 3];
-        let cloned = v.r_clone();
+        let cloned = RClone::clone(&v);
         assert_eq!(v, cloned);
 
         // Verify it's a deep copy
         let s = String::from("hello");
-        let cloned_s = s.r_clone();
+        let cloned_s = RClone::clone(&s);
         assert_eq!(s, cloned_s);
     }
 
     #[test]
     fn test_rdefault() {
-        let default_i32: i32 = RDefault::r_default();
+        let default_i32: i32 = RDefault::default();
         assert_eq!(default_i32, 0);
 
-        let default_vec: Vec<i32> = RDefault::r_default();
+        let default_vec: Vec<i32> = RDefault::default();
         assert!(default_vec.is_empty());
 
-        let default_string: String = RDefault::r_default();
+        let default_string: String = RDefault::default();
         assert_eq!(default_string, "");
 
-        let default_bool: bool = RDefault::r_default();
+        let default_bool: bool = RDefault::default();
         assert!(!default_bool);
     }
 
@@ -1100,19 +1100,19 @@ mod tests {
     fn test_rcopy() {
         // Primitives are Copy
         let x = 42i32;
-        let y = x.r_copy();
+        let y = RCopy::copy(&x);
         assert_eq!(x, y);
         assert!(x.is_copy());
 
         // Tuples of Copy types are Copy
         let point = (1.0f64, 2.0f64);
-        let point2 = point.r_copy();
+        let point2 = RCopy::copy(&point);
         assert_eq!(point, point2);
         assert!(point.is_copy());
 
         // Arrays of Copy types are Copy
         let arr = [1, 2, 3];
-        let arr2 = arr.r_copy();
+        let arr2 = RCopy::copy(&arr);
         assert_eq!(arr, arr2);
     }
 
@@ -1131,11 +1131,11 @@ mod tests {
     impl RIterator for TestIter {
         type Item = i32;
 
-        fn r_next(&self) -> Option<Self::Item> {
+        fn next(&self) -> Option<Self::Item> {
             self.0.borrow_mut().next()
         }
 
-        fn r_size_hint(&self) -> (i64, Option<i64>) {
+        fn size_hint(&self) -> (i64, Option<i64>) {
             let (lo, hi) = self.0.borrow().size_hint();
             (lo as i64, hi.map(|h| h as i64))
         }
@@ -1144,50 +1144,50 @@ mod tests {
     #[test]
     fn test_riterator_next() {
         let it = TestIter::new(vec![1, 2, 3]);
-        assert_eq!(it.r_next(), Some(1));
-        assert_eq!(it.r_next(), Some(2));
-        assert_eq!(it.r_next(), Some(3));
-        assert_eq!(it.r_next(), None);
-        assert_eq!(it.r_next(), None); // Stays exhausted
+        assert_eq!(it.next(), Some(1));
+        assert_eq!(it.next(), Some(2));
+        assert_eq!(it.next(), Some(3));
+        assert_eq!(it.next(), None);
+        assert_eq!(it.next(), None); // Stays exhausted
     }
 
     #[test]
     fn test_riterator_size_hint() {
         let it = TestIter::new(vec![1, 2, 3, 4, 5]);
-        assert_eq!(it.r_size_hint(), (5, Some(5)));
-        it.r_next();
-        assert_eq!(it.r_size_hint(), (4, Some(4)));
-        it.r_next();
-        it.r_next();
-        assert_eq!(it.r_size_hint(), (2, Some(2)));
+        assert_eq!(it.size_hint(), (5, Some(5)));
+        it.next();
+        assert_eq!(it.size_hint(), (4, Some(4)));
+        it.next();
+        it.next();
+        assert_eq!(it.size_hint(), (2, Some(2)));
     }
 
     #[test]
     fn test_riterator_count() {
         let it = TestIter::new(vec![1, 2, 3, 4, 5]);
-        assert_eq!(it.r_count(), 5);
+        assert_eq!(it.count(), 5);
         // Iterator is now exhausted
-        assert_eq!(it.r_next(), None);
+        assert_eq!(it.next(), None);
     }
 
     #[test]
     fn test_riterator_collect_n() {
         let it = TestIter::new(vec![1, 2, 3, 4, 5]);
-        let first_three = it.r_collect_n(3);
+        let first_three = it.collect_n(3);
         assert_eq!(first_three, vec![1, 2, 3]);
-        let remaining = it.r_collect_n(10); // Ask for more than available
+        let remaining = it.collect_n(10); // Ask for more than available
         assert_eq!(remaining, vec![4, 5]);
     }
 
     #[test]
     fn test_riterator_skip() {
         let it = TestIter::new(vec![1, 2, 3, 4, 5]);
-        let skipped = it.r_skip(2);
+        let skipped = it.skip(2);
         assert_eq!(skipped, 2);
-        assert_eq!(it.r_next(), Some(3));
+        assert_eq!(it.next(), Some(3));
 
         // Skip more than remaining
-        let skipped = it.r_skip(10);
+        let skipped = it.skip(10);
         assert_eq!(skipped, 2); // Only 2 elements were left
     }
 
@@ -1195,24 +1195,24 @@ mod tests {
     fn test_riterator_nth() {
         let it = TestIter::new(vec![10, 20, 30, 40, 50]);
         // Get element at index 2 (third element)
-        assert_eq!(it.r_nth(2), Some(30));
+        assert_eq!(it.nth(2), Some(30));
         // Iterator has consumed 0, 1, 2 - next is index 3
-        assert_eq!(it.r_next(), Some(40));
+        assert_eq!(it.next(), Some(40));
 
         // Negative index returns None
         let it2 = TestIter::new(vec![1, 2, 3]);
-        assert_eq!(it2.r_nth(-1), None);
+        assert_eq!(it2.nth(-1), None);
     }
 
     #[test]
     fn test_riterator_empty() {
         let it = TestIter::new(vec![]);
-        assert_eq!(it.r_next(), None);
-        assert_eq!(it.r_size_hint(), (0, Some(0)));
-        assert_eq!(it.r_count(), 0);
-        assert_eq!(it.r_collect_n(5), Vec::<i32>::new());
-        assert_eq!(it.r_skip(5), 0);
-        assert_eq!(it.r_nth(0), None);
+        assert_eq!(it.next(), None);
+        assert_eq!(it.size_hint(), (0, Some(0)));
+        assert_eq!(it.count(), 0);
+        assert_eq!(it.collect_n(5), Vec::<i32>::new());
+        assert_eq!(it.skip(5), 0);
+        assert_eq!(it.nth(0), None);
     }
 
     // Tests for RExtend
@@ -1224,16 +1224,16 @@ mod tests {
         }
 
         fn get(&self) -> Vec<i32> {
-            self.0.borrow().clone()
+            Clone::clone(&*self.0.borrow())
         }
     }
 
     impl RExtend<i32> for TestExtendVec {
-        fn r_extend_from_vec(&self, items: Vec<i32>) {
+        fn extend_from_vec(&self, items: Vec<i32>) {
             self.0.borrow_mut().extend(items);
         }
 
-        fn r_len(&self) -> i64 {
+        fn len(&self) -> i64 {
             self.0.borrow().len() as i64
         }
     }
@@ -1242,44 +1242,44 @@ mod tests {
     fn test_rextend_basic() {
         let v = TestExtendVec::new();
         assert_eq!(v.get(), Vec::<i32>::new());
-        assert_eq!(v.r_len(), 0);
+        assert_eq!(v.len(), 0);
 
-        v.r_extend_from_vec(vec![1, 2, 3]);
+        v.extend_from_vec(vec![1, 2, 3]);
         assert_eq!(v.get(), vec![1, 2, 3]);
-        assert_eq!(v.r_len(), 3);
+        assert_eq!(v.len(), 3);
 
-        v.r_extend_from_vec(vec![4, 5]);
+        v.extend_from_vec(vec![4, 5]);
         assert_eq!(v.get(), vec![1, 2, 3, 4, 5]);
-        assert_eq!(v.r_len(), 5);
+        assert_eq!(v.len(), 5);
     }
 
     #[test]
     fn test_rextend_empty() {
         let v = TestExtendVec::new();
-        v.r_extend_from_vec(vec![]);
+        v.extend_from_vec(vec![]);
         assert_eq!(v.get(), Vec::<i32>::new());
-        assert_eq!(v.r_len(), 0);
+        assert_eq!(v.len(), 0);
     }
 
     #[test]
     fn test_rextend_from_slice() {
         let v = TestExtendVec::new();
         let data = [1, 2, 3];
-        v.r_extend_from_slice(&data);
+        v.extend_from_slice(&data);
         assert_eq!(v.get(), vec![1, 2, 3]);
     }
 
     // Tests for RFromIter
     #[test]
     fn test_rfromiter_vec() {
-        let v: Vec<i32> = RFromIter::r_from_vec(vec![1, 2, 3]);
+        let v: Vec<i32> = RFromIter::from_vec(vec![1, 2, 3]);
         assert_eq!(v, vec![1, 2, 3]);
     }
 
     #[test]
     fn test_rfromiter_hashset() {
         use std::collections::HashSet;
-        let set: HashSet<i32> = RFromIter::r_from_vec(vec![1, 2, 2, 3, 3, 3]);
+        let set: HashSet<i32> = RFromIter::from_vec(vec![1, 2, 2, 3, 3, 3]);
         assert_eq!(set.len(), 3);
         assert!(set.contains(&1));
         assert!(set.contains(&2));
@@ -1288,13 +1288,13 @@ mod tests {
 
     #[test]
     fn test_rfromiter_string() {
-        let s: String = RFromIter::r_from_vec(vec!['h', 'e', 'l', 'l', 'o']);
+        let s: String = RFromIter::from_vec(vec!['h', 'e', 'l', 'l', 'o']);
         assert_eq!(s, "hello");
     }
 
     #[test]
     fn test_rfromiter_empty() {
-        let v: Vec<i32> = RFromIter::r_from_vec(vec![]);
+        let v: Vec<i32> = RFromIter::from_vec(vec![]);
         assert!(v.is_empty());
     }
 
@@ -1302,19 +1302,19 @@ mod tests {
     #[test]
     fn test_rtovec_vec() {
         let v = vec![1, 2, 3];
-        let collected: Vec<i32> = RToVec::r_to_vec(&v);
+        let collected: Vec<i32> = RToVec::to_vec(&v);
         assert_eq!(collected, vec![1, 2, 3]);
-        assert_eq!(RToVec::<i32>::r_len(&v), 3);
-        assert!(!RToVec::<i32>::r_is_empty(&v));
+        assert_eq!(RToVec::<i32>::len(&v), 3);
+        assert!(!RToVec::<i32>::is_empty(&v));
     }
 
     #[test]
     fn test_rtovec_empty() {
         let v: Vec<i32> = vec![];
-        let collected: Vec<i32> = RToVec::r_to_vec(&v);
+        let collected: Vec<i32> = RToVec::to_vec(&v);
         assert!(collected.is_empty());
-        assert_eq!(RToVec::<i32>::r_len(&v), 0);
-        assert!(RToVec::<i32>::r_is_empty(&v));
+        assert_eq!(RToVec::<i32>::len(&v), 0);
+        assert!(RToVec::<i32>::is_empty(&v));
     }
 
     #[test]
@@ -1325,18 +1325,18 @@ mod tests {
         set.insert(2);
         set.insert(3);
 
-        let mut collected: Vec<i32> = RToVec::r_to_vec(&set);
+        let mut collected: Vec<i32> = RToVec::to_vec(&set);
         collected.sort();
         assert_eq!(collected, vec![1, 2, 3]);
-        assert_eq!(RToVec::<i32>::r_len(&set), 3);
+        assert_eq!(RToVec::<i32>::len(&set), 3);
     }
 
     #[test]
     fn test_rtovec_slice() {
         let arr = [10, 20, 30];
-        let collected: Vec<i32> = RToVec::r_to_vec(&arr);
+        let collected: Vec<i32> = RToVec::to_vec(&arr);
         assert_eq!(collected, vec![10, 20, 30]);
-        assert_eq!(RToVec::<i32>::r_len(&arr), 3);
+        assert_eq!(RToVec::<i32>::len(&arr), 3);
     }
 
     // Tests for RMakeIter
@@ -1347,31 +1347,31 @@ mod tests {
     impl RIterator for TestCollectionIter {
         type Item = i32;
 
-        fn r_next(&self) -> Option<i32> {
+        fn next(&self) -> Option<i32> {
             self.0.borrow_mut().next()
         }
 
-        fn r_size_hint(&self) -> (i64, Option<i64>) {
+        fn size_hint(&self) -> (i64, Option<i64>) {
             let (lo, hi) = self.0.borrow().size_hint();
             (lo as i64, hi.map(|h| h as i64))
         }
     }
 
     impl RMakeIter<i32, TestCollectionIter> for TestCollection {
-        fn r_make_iter(&self) -> TestCollectionIter {
-            TestCollectionIter(RefCell::new(self.0.clone().into_iter()))
+        fn make_iter(&self) -> TestCollectionIter {
+            TestCollectionIter(RefCell::new(Clone::clone(&self.0).into_iter()))
         }
     }
 
     #[test]
     fn test_rmakeiter_basic() {
         let coll = TestCollection(vec![1, 2, 3]);
-        let iter = coll.r_make_iter();
+        let iter = coll.make_iter();
 
-        assert_eq!(iter.r_next(), Some(1));
-        assert_eq!(iter.r_next(), Some(2));
-        assert_eq!(iter.r_next(), Some(3));
-        assert_eq!(iter.r_next(), None);
+        assert_eq!(iter.next(), Some(1));
+        assert_eq!(iter.next(), Some(2));
+        assert_eq!(iter.next(), Some(3));
+        assert_eq!(iter.next(), None);
     }
 
     #[test]
@@ -1379,14 +1379,14 @@ mod tests {
         let coll = TestCollection(vec![1, 2, 3]);
 
         // Create two independent iterators
-        let iter1 = coll.r_make_iter();
-        let iter2 = coll.r_make_iter();
+        let iter1 = coll.make_iter();
+        let iter2 = coll.make_iter();
 
         // Consuming one doesn't affect the other
-        assert_eq!(iter1.r_next(), Some(1));
-        assert_eq!(iter1.r_next(), Some(2));
+        assert_eq!(iter1.next(), Some(1));
+        assert_eq!(iter1.next(), Some(2));
 
-        assert_eq!(iter2.r_next(), Some(1)); // iter2 starts fresh
-        assert_eq!(iter2.r_size_hint(), (2, Some(2))); // 2 remaining in iter2
+        assert_eq!(iter2.next(), Some(1)); // iter2 starts fresh
+        assert_eq!(iter2.size_hint(), (2, Some(2))); // 2 remaining in iter2
     }
 }

@@ -754,6 +754,14 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented for `ArrayD<f64>`, `ArrayD<i32>`
   - Implemented in `miniextendr-api/src/ndarray_impl.rs`
   - Added 8 unit tests
+- [ ] Expand ndarray support to all dimension types
+  - Currently only Array1, Array2, ArrayD supported
+  - Add support for Array0 through Array6 (fixed dimensions)
+  - Add ArrayView types: ArrayView0 through ArrayViewD (read-only views)
+  - Add ArrayViewMut types: ArrayViewMut0 through ArrayViewMutD (mutable views)
+  - Add ArcArray types: ArcArray1, ArcArray2 (shared ownership)
+  - Index helper functions: Ix0() through Ix6(), IxDyn()
+  - All type aliases defined in ndarray's `type_aliases.rs`
 
 ==== nalgebra trait adapters (with nalgebra feature) ====
 
@@ -1186,16 +1194,12 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== Remove `r_` prefix from adapter trait methods ====
 
-- [ ] Remove `r_` prefix from adapter trait method names
-  - Current: `r_clone()`, `r_to_vec()`, `r_next()`, `r_hash()`, etc.
-  - Proposed: `clone()`, `to_vec()`, `next()`, `hash()`, etc.
-  - Rationale: The `r_` prefix adds visual noise; context makes it clear these are R-bound methods
-  - Files to update:
-    - `miniextendr-api/src/adapter_traits.rs` (RDebug, RDisplay, RHash, ROrd, RPartialOrd, RError, RFromStr, RClone, RCopy, RDefault, RIterator, RExtend, RFromIter, RToVec, RMakeIter)
-    - All feature `*_impl.rs` files with adapter traits
-    - rpkg R wrappers and tests
-    - Documentation examples
-  - Note: This is a breaking change; should be done before any public release
+- [x] Remove `r_` prefix from adapter trait method names
+  - Changed: `r_clone()` → `clone()`, `r_to_vec()` → `to_vec()`, `r_next()` → `next()`, etc.
+  - Completed in `miniextendr-api/src/adapter_traits.rs`
+  - Note: `RClone::clone` and `RDefault::default` have same signatures as std traits, so
+    ambiguity requires `Clone::clone(&x)` syntax when calling std trait in scope
+  - Remaining: Update feature `*_impl.rs` files, rpkg wrappers, and documentation
 
 == Coerce Integration (from coerce-coverage-review-2026-01-04) ==
 
