@@ -121,58 +121,23 @@ pub type RArray3D<T> = RArray<T, 3>;
 /// R APIs that must run on the R main thread.
 #[derive(Clone, Copy)]
 #[repr(transparent)]
-pub struct RArray<T: RNativeType, const NDIM: usize> {
+pub struct RArray<T, const NDIM: usize> {
     sexp: SEXP,
     // PhantomData<*const T> keeps T in the type AND makes this !Send + !Sync
     _marker: PhantomData<*const T>,
 }
 
-impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
-    /// Create an RArray from a SEXP, validating type and dimensions.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be protected from GC for the lifetime of the returned RArray.
-    ///
-    /// # Errors
-    ///
-    /// Returns an error if:
-    /// - The SEXP type doesn't match `T::SEXP_TYPE`
-    /// - The dim attribute has wrong number of dimensions
-    #[inline]
-    pub unsafe fn from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
-        // Type check
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
+// =============================================================================
+// Basic methods (no T bounds - available for all RArray types)
+// =============================================================================
 
-        // Validate dimensions count
-        let ndim = get_ndim(sexp);
-        if ndim != NDIM {
-            return Err(SexpLengthError {
-                expected: NDIM,
-                actual: ndim,
-            }
-            .into());
-        }
-
-        Ok(Self {
-            sexp,
-            _marker: PhantomData,
-        })
-    }
-
+impl<T, const NDIM: usize> RArray<T, NDIM> {
     /// Create an RArray from a SEXP without validation.
     ///
     /// # Safety
     ///
     /// - The SEXP must be protected from GC
-    /// - The SEXP must be of type `T::SEXP_TYPE`
+    /// - The SEXP must have the correct type for `T`
     /// - The SEXP must have exactly `NDIM` dimensions
     #[inline]
     pub const unsafe fn from_sexp_unchecked(sexp: SEXP) -> Self {
@@ -231,6 +196,79 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         self.len() == 0
     }
 
+    /// Convert N-dimensional indices to linear index (column-major).
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be valid (needed to read dims).
+    ///
+    /// # Panics
+    ///
+    /// Panics if any index is out of bounds.
+    #[inline]
+    pub unsafe fn linear_index(&self, indices: [usize; NDIM]) -> usize {
+        let dims = unsafe { self.dims() };
+        let mut linear = 0;
+        let mut stride = 1;
+        for i in 0..NDIM {
+            assert!(
+                indices[i] < dims[i],
+                "index {} out of bounds for dimension {} (size {})",
+                indices[i],
+                i,
+                dims[i]
+            );
+            linear += indices[i] * stride;
+            stride *= dims[i];
+        }
+        linear
+    }
+}
+
+// =============================================================================
+// Native type methods (T: RNativeType - slice access, mutation, etc.)
+// =============================================================================
+
+impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
+    /// Create an RArray from a SEXP, validating type and dimensions.
+    ///
+    /// # Safety
+    ///
+    /// The SEXP must be protected from GC for the lifetime of the returned RArray.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if:
+    /// - The SEXP type doesn't match `T::SEXP_TYPE`
+    /// - The dim attribute has wrong number of dimensions
+    #[inline]
+    pub unsafe fn from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        // Type check
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+
+        // Validate dimensions count
+        let ndim = get_ndim(sexp);
+        if ndim != NDIM {
+            return Err(SexpLengthError {
+                expected: NDIM,
+                actual: ndim,
+            }
+            .into());
+        }
+
+        Ok(Self {
+            sexp,
+            _marker: PhantomData,
+        })
+    }
+
     /// Get the data as a slice (column-major order).
     ///
     /// # Safety
@@ -284,34 +322,6 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
         T: Copy,
     {
         unsafe { self.as_slice().to_vec() }
-    }
-
-    /// Convert N-dimensional indices to linear index (column-major).
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be valid (needed to read dims).
-    ///
-    /// # Panics
-    ///
-    /// Panics if any index is out of bounds.
-    #[inline]
-    pub unsafe fn linear_index(&self, indices: [usize; NDIM]) -> usize {
-        let dims = unsafe { self.dims() };
-        let mut linear = 0;
-        let mut stride = 1;
-        for i in 0..NDIM {
-            assert!(
-                indices[i] < dims[i],
-                "index {} out of bounds for dimension {} (size {})",
-                indices[i],
-                i,
-                dims[i]
-            );
-            linear += indices[i] * stride;
-            stride *= dims[i];
-        }
-        linear
     }
 
     /// Get an element by N-dimensional indices.
@@ -687,125 +697,113 @@ impl<T: RNativeType, const NDIM: usize> TryFromSexp for RArray<T, NDIM> {
 }
 
 // =============================================================================
-// Coerce support - element-wise coercion to owned collections
+// Direct coercion TryFromSexp implementations
 // =============================================================================
+//
+// These implement TryFromSexp for RArray<T, NDIM> where T is not an R native type
+// but can be coerced from one. The RArray wraps the source SEXP directly (zero-copy).
+// Note: as_slice() is not available for coerced types - use to_vec_coerced() instead.
 
-use crate::coerce::{Coerce, TryCoerce};
+use crate::coerce::TryCoerce;
+use crate::ffi::RLogical;
 
-impl<T: RNativeType + Copy, const NDIM: usize> RArray<T, NDIM> {
-    /// Coerce all elements to type `U`, returning an owned `Vec<U>`.
-    ///
-    /// This performs infallible element-wise coercion using the [`Coerce`] trait.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be protected and valid.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let matrix: RMatrix<i32> = ...;
-    /// // Coerce i32 elements to f64
-    /// let floats: Vec<f64> = unsafe { matrix.coerce() };
-    /// ```
-    #[inline]
-    pub unsafe fn coerce<U>(&self) -> Vec<U>
-    where
-        T: Coerce<U>,
-    {
-        unsafe { self.as_slice() }
-            .iter()
-            .copied()
-            .map(T::coerce)
-            .collect()
+/// Helper to validate all elements can be coerced.
+fn validate_coercion<S, T>(slice: &[S]) -> Result<(), SexpError>
+where
+    S: Copy + TryCoerce<T>,
+    <S as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    for &val in slice {
+        val.try_coerce()
+            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))?;
     }
-
-    /// Try to coerce all elements to type `U`, returning `Result<Vec<U>, E>`.
-    ///
-    /// This performs fallible element-wise coercion using the [`TryCoerce`] trait.
-    /// If any element fails to coerce, returns the first error.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be protected and valid.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let matrix: RMatrix<f64> = ...;
-    /// // Try to coerce f64 elements to i32 (may fail on overflow/NaN)
-    /// let ints: Result<Vec<i32>, _> = unsafe { matrix.try_coerce() };
-    /// ```
-    #[inline]
-    pub unsafe fn try_coerce<U, E>(&self) -> Result<Vec<U>, E>
-    where
-        T: TryCoerce<U, Error = E>,
-    {
-        unsafe { self.as_slice() }
-            .iter()
-            .copied()
-            .map(T::try_coerce)
-            .collect()
-    }
-
-    /// Return an iterator that coerces each element to type `U`.
-    ///
-    /// This is lazy - elements are coerced on demand.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be protected and valid for the lifetime of the iterator.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let matrix: RMatrix<i32> = ...;
-    /// // Lazy coercion iterator
-    /// for val in unsafe { matrix.coerce_iter::<f64>() } {
-    ///     println!("{}", val);
-    /// }
-    /// ```
-    #[inline]
-    pub unsafe fn coerce_iter<'a, U: 'a>(&'a self) -> impl Iterator<Item = U> + 'a
-    where
-        T: Coerce<U>,
-    {
-        unsafe { self.as_slice() }.iter().copied().map(T::coerce)
-    }
-
-    /// Return an iterator that tries to coerce each element to type `U`.
-    ///
-    /// This is lazy - elements are coerced on demand, yielding `Result<U, E>`.
-    ///
-    /// # Safety
-    ///
-    /// The SEXP must be protected and valid for the lifetime of the iterator.
-    ///
-    /// # Example
-    ///
-    /// ```ignore
-    /// let matrix: RMatrix<f64> = ...;
-    /// // Lazy fallible coercion iterator
-    /// for result in unsafe { matrix.try_coerce_iter::<i32>() } {
-    ///     match result {
-    ///         Ok(val) => println!("{}", val),
-    ///         Err(e) => eprintln!("coercion failed: {:?}", e),
-    ///     }
-    /// }
-    /// ```
-    #[inline]
-    pub unsafe fn try_coerce_iter<'a, U: 'a, E: 'a>(
-        &'a self,
-    ) -> impl Iterator<Item = Result<U, E>> + 'a
-    where
-        T: TryCoerce<U, Error = E>,
-    {
-        unsafe { self.as_slice() }
-            .iter()
-            .copied()
-            .map(T::try_coerce)
-    }
+    Ok(())
 }
+
+/// Implement `TryFromSexp for RArray<$target, NDIM>` by reading R's native `$source` type.
+///
+/// The RArray wraps the source SEXP directly. Use `to_vec_coerced()` to get coerced data.
+macro_rules! impl_rarray_try_from_sexp_coerce {
+    ($source:ty => $target:ty) => {
+        impl<const NDIM: usize> TryFromSexp for RArray<$target, NDIM> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                // Check source type
+                let actual = sexp.type_of();
+                if actual != <$source as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$source as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+
+                // Validate dimensions count
+                let ndim = get_ndim(sexp);
+                if ndim != NDIM {
+                    return Err(SexpLengthError {
+                        expected: NDIM,
+                        actual: ndim,
+                    }
+                    .into());
+                }
+
+                // Validate all elements can be coerced
+                let slice: &[$source] = unsafe { sexp.as_slice() };
+                validate_coercion::<$source, $target>(slice)?;
+
+                Ok(Self {
+                    sexp,
+                    _marker: PhantomData,
+                })
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+
+        impl<const NDIM: usize> RArray<$target, NDIM> {
+            /// Copy array data to an owned `Vec`, coercing from the R native type.
+            ///
+            /// # Safety
+            ///
+            /// The SEXP must be protected and valid.
+            ///
+            /// # Panics
+            ///
+            /// Panics if any element fails to coerce (shouldn't happen if constructed via TryFromSexp).
+            #[inline]
+            pub unsafe fn to_vec_coerced(&self) -> Vec<$target> {
+                let slice: &[$source] = unsafe { self.sexp.as_slice() };
+                slice
+                    .iter()
+                    .copied()
+                    .map(|v| <$source as TryCoerce<$target>>::try_coerce(v).expect("coercion should succeed"))
+                    .collect()
+            }
+        }
+    };
+}
+
+// Integer coercions: R integer (i32) -> various Rust integer types
+impl_rarray_try_from_sexp_coerce!(i32 => i8);
+impl_rarray_try_from_sexp_coerce!(i32 => i16);
+impl_rarray_try_from_sexp_coerce!(i32 => i64);
+impl_rarray_try_from_sexp_coerce!(i32 => isize);
+impl_rarray_try_from_sexp_coerce!(i32 => u16);
+impl_rarray_try_from_sexp_coerce!(i32 => u32);
+impl_rarray_try_from_sexp_coerce!(i32 => u64);
+impl_rarray_try_from_sexp_coerce!(i32 => usize);
+
+// Float coercions: R numeric (f64) -> f32
+impl_rarray_try_from_sexp_coerce!(f64 => f32);
+
+// Logical coercions: R logical (RLogical) -> bool
+impl_rarray_try_from_sexp_coerce!(RLogical => bool);
+
+
 
 // =============================================================================
 // IntoR implementation
