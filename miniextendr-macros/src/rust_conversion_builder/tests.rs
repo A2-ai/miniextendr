@@ -50,7 +50,7 @@ fn test_str_conversion() {
         let stmts = builder.build_conversion(&pat_type, &sexp_ident);
         assert_eq!(stmts.len(), 2); // String storage + borrow
         assert!(stmts[0].to_string().contains("String"));
-        assert!(stmts[1].to_string().contains("as_str"));
+        assert!(stmts[1].to_string().contains("Borrow"));
     }
 }
 
