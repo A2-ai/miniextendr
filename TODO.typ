@@ -148,6 +148,20 @@
   - Note: Would require embedded R runtime for meaningful tests.
 - [ ] Known TODOs not tracked as GitHub issues
 
+=== Safety Issues (from project-review-2026-01-04) ===
+- [ ] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding
+  - `miniextendr-api/src/from_r.rs:30`
+  - `std::str::from_utf8_unchecked` used on `R_CHAR` without encoding check
+  - Behavior: Assumes input is UTF-8 or ASCII (Latin-1/native-encoded may cause issues)
+  - Document this assumption in function docs; user must ensure proper encoding
+- [ ] DOCUMENT: `Vec<String>` conversion maps NA/invalid UTF-8 to empty strings
+  - `miniextendr-api/src/from_r.rs:992`
+  - `NA_character_` and invalid UTF-8 mapped to empty strings
+  - Document this behavior; users should use `Vec<Option<String>>` for NA-aware paths
+- [ ] DOCUMENT: Named list → map drops elements with NA/empty names
+  - `miniextendr-api/src/from_r.rs:883`
+  - Duplicate empty/NA names overwrite earlier entries silently
+  - Document this behavior; users should pre-filter or use Vec<(String, T)>
 
 == Reviews Findings (December 2024) ==
 
@@ -955,3 +969,253 @@ Standalone adapter traits not needed - use connection framework instead.
   - `get_index_of(key) -> i32` - find position of key (-1 if not found)
   - Implemented in `miniextendr-api/src/indexmap_impl.rs`
   - Re-exported from crate root
+
+== New Optional Features (from reviews/ plans 2026-01-04) ==
+
+==== aho-corasick feature ====
+
+- [ ] Add `aho-corasick` optional feature for multi-pattern search
+  - `aho-corasick = { version = "1.1", optional = true }`
+  - Create `miniextendr-api/src/aho_corasick_impl.rs`
+  - `TryFromSexp for AhoCorasick` - build from `Vec<String>` patterns
+  - `IntoR for AhoCorasick` - wrap in ExternalPtr via `impl_typed_external!`
+  - Helpers: `aho_compile(patterns)`, `aho_find_all(ac, haystack) -> Vec<(pattern_id, start, end)>`
+  - Optional builder for `ascii_case_insensitive` and `match_kind` options
+  - R wrappers: `aho_compile()`, `aho_find_all_df()`, `aho_find_all_mat()`
+  - Pattern IDs 1-based in R, byte offsets documented
+  - Plan: `reviews/aho-corasick-plan.md`
+
+==== bitflags feature ====
+
+- [ ] Add `bitflags` optional feature for flag ↔ integer conversions
+  - `bitflags = { version = "2", optional = true }`
+  - Create `miniextendr-api/src/bitflags_impl.rs`
+  - Wrapper types: `RFlags<T>`, `RFlagsVec<T>` to avoid blanket impl conflicts
+  - `TryFromSexp for RFlags<T>` - read integer, use `T::from_bits`
+  - `IntoR for RFlags<T>` - return integer with `flags.bits()`
+  - Default: strict bits (unknown bits cause error)
+  - Optional truncating helper: `flags_from_bits_truncate()`
+  - Bit width policy: require values fit in `i32`; RFlags64 optional for u64
+  - Plan: `reviews/bitflags-plan.md`
+
+==== bitvec feature ====
+
+- [ ] Add `bitvec` optional feature for bit vectors ↔ logical vectors
+  - `bitvec = { version = "1", optional = true }`
+  - Create `miniextendr-api/src/bitvec_impl.rs`
+  - Type alias: `pub type RBitVec = BitVec<u8, Lsb0>` (stable order)
+  - `TryFromSexp for RBitVec` - accept LGLSXP, TRUE→1, FALSE→0, NA→error
+  - `IntoR for RBitVec` - produce LGLSXP
+  - Optional raw mapping (deferred): RAWSXP with `bit_length` attribute
+  - Plan: `reviews/bitvec-plan.md`
+
+==== borsh feature ====
+
+- [ ] Add `borsh` optional feature for binary serialization
+  - `borsh = { version = "1", optional = true }`
+  - Create `miniextendr-api/src/borsh_impl.rs`
+  - Wrapper type: `Borsh<T>` to avoid trait conflicts
+  - `IntoR for Borsh<T>` where `T: BorshSerialize` → RAWSXP
+  - `TryFromSexp for Borsh<T>` where `T: BorshDeserialize` → decode RAWSXP
+  - Helpers: `borsh_to_raw()`, `borsh_from_raw()`
+  - Map decode errors to `SexpError::InvalidValue`
+  - Optional `mx_version` attribute for versioning
+  - Plan: `reviews/borsh-rkyv-plan.md`
+
+==== rkyv feature ====
+
+- [ ] Add `rkyv` optional feature for zero-copy serialization
+  - `rkyv = { version = "0.7", optional = true }`
+  - `bytecheck = { version = "0.6", optional = true }` (required for safety)
+  - Create `miniextendr-api/src/rkyv_impl.rs`
+  - Wrapper type: `Rkyv<T>` to avoid trait conflicts
+  - `IntoR for Rkyv<T>` → RAWSXP
+  - `TryFromSexp for Rkyv<T>` → validate with bytecheck before deserialize
+  - Always use `rkyv::check_archived_root` to avoid UB
+  - Plan: `reviews/borsh-rkyv-plan.md`
+
+==== num-complex feature ====
+
+- [ ] Add `num-complex` optional feature for complex number support
+  - `num-complex = { version = "0.4", optional = true }`
+  - Create `miniextendr-api/src/num_complex_impl.rs`
+  - Helpers: `to_rcomplex()`, `from_rcomplex()`, `na_rcomplex()`
+  - `TryFromSexp for Complex<f64>` - from CPLXSXP scalar
+  - `TryFromSexp for Vec<Complex<f64>>` - from CPLXSXP vector
+  - `TryFromSexp for Option<Complex<f64>>` - NA handling
+  - `TryFromSexp for Vec<Option<Complex<f64>>>` - NA-aware vectors
+  - `IntoR` impls for all above
+  - NA detection: either part is `NA_REAL` (use `to_bits()` comparison)
+  - Plan: `reviews/num-complex-plan.md`
+
+==== serde-json Value bridge ====
+
+- [ ] Add `serde-json` feature for direct Value ↔ R list conversion
+  - Feature already exists; enhance with Value ↔ SEXP bridge
+  - Create/update `miniextendr-api/src/serde_json_impl.rs`
+  - Type alias: `pub type JsonValue = serde_json::Value`
+  - Functions: `json_from_sexp(sexp)`, `json_into_sexp(value)`
+  - `TryFromSexp for serde_json::Value`, `IntoR for serde_json::Value`
+  - R → JSON mapping:
+    - NULL → Null, scalars → primitives, vectors → Arrays, named lists → Objects
+    - NA → Null (default), NaN/Inf → error (default)
+    - Factors → String via levels
+  - JSON → R mapping:
+    - Null → R_NilValue, Bool → LGLSXP, Number → INTSXP/REALSXP
+    - String → STRSXP, Array → VECSXP, Object → named VECSXP
+  - Optional helpers: `json_from_sexp_strict()`, `json_from_sexp_permissive()`
+  - Plan: `reviews/serde-json-plan.md`
+
+==== sha2 feature ====
+
+- [ ] Add `sha2` optional feature for hashing helpers
+  - `sha2 = { version = "0.10", optional = true }`
+  - Create `miniextendr-api/src/sha2_impl.rs`
+  - Helpers:
+    - `sha256_raw(bytes) -> String` (hex, lowercase)
+    - `sha256_str(s) -> String` (UTF-8)
+    - `sha512_raw(bytes) -> String`
+    - `sha512_str(s) -> String`
+  - Optional vector helpers: `sha256_raw_vec()`, `sha256_str_vec()`
+  - R wrappers: `sha256_raw()`, `sha256_str()`, `sha512_*`
+  - NA strings → error (no hashing of NA)
+  - Plan: `reviews/sha2-plan.md`
+
+==== tabled feature ====
+
+- [ ] Add `tabled` optional feature for table formatting
+  - `tabled = { version = "0.20", optional = true, default-features = true }`
+  - Create `miniextendr-api/src/tabled_impl.rs`
+  - Helpers:
+    - `table_to_string<T: Tabled>(rows)` → String
+    - `table_builder_to_string(builder)` → String
+  - Optional: `impl IntoR for tabled::Table` → STRSXP
+  - Optional formatting options: `max_width`, `align`, `trim`
+  - Default: no ANSI styling (R consoles may not render)
+  - Plan: `reviews/tabled-plan.md`
+
+==== toml feature ====
+
+- [ ] Add `toml` optional feature for TOML value conversions
+  - `toml = { version = "0.8", optional = true }`
+  - Create `miniextendr-api/src/toml_impl.rs`
+  - Type alias: `pub type TomlValue = toml::Value`
+  - Functions: `toml_from_str(s)`, `toml_to_string(v)`
+  - `TryFromSexp for TomlValue` - from character(1) or list
+  - `IntoR for TomlValue` - to list or character(1)
+  - R → TOML mapping:
+    - NULL → error (TOML has no null)
+    - Scalars → primitives, lists → Tables (require names)
+    - Vectors → Arrays (must be homogeneous)
+    - NA → error (default), mixed arrays → error
+  - TOML → R mapping:
+    - Primitives → scalars, Arrays → vectors/lists, Tables → named lists
+    - Datetime → character(1)
+  - Plan: `reviews/toml-plan.md`
+
+==== url feature ====
+
+- [ ] Add `url` optional feature for URL parsing/validation
+  - `url = { version = "2", optional = true }`
+  - Create `miniextendr-api/src/url_impl.rs`
+  - `TryFromSexp for url::Url` - from character(1), strict validation
+  - `TryFromSexp for Option<url::Url>` - NA → None
+  - `TryFromSexp for Vec<url::Url>` and `Vec<Option<url::Url>>`
+  - `IntoR for url::Url` - character(1) via `url.as_str()`
+  - Helpers: `url_parse(s)`, `url_join(base, path)`
+  - Strict validation: invalid URLs error
+  - Plan: `reviews/url-plan.md`
+
+==== raw_conversions feature (bytemuck-based) ====
+
+- [ ] Add `raw_conversions` optional feature for POD ↔ raw vector
+  - `bytemuck = { version = "1", optional = true, features = ["derive"] }`
+  - Create `miniextendr-api/src/raw_conversions.rs`
+  - Core types:
+    - `Raw<T>` - validated typed wrapper
+    - `RawSlice<T>` - validated vector wrapper
+    - `RawTagged<T>` / `RawSliceTagged<T>` - with header metadata
+  - Traits: `IntoRawBytes`, `TryFromRawBytes`
+  - Error type: `RawError` (LengthMismatch, AlignmentMismatch, InvalidHeader, TypeMismatch)
+  - Safety: alignment checks mandatory, length checks mandatory
+  - Fast format: headerless native layout (not portable)
+  - Tagged format: header with magic/version/elem_size/elem_count
+  - Plan: `reviews/raw-conversions-plan.md`
+
+==== enum-as-factors (proc-macro) ====
+
+- [ ] Add `#[derive(RFactor)]` for Rust enums ↔ R factors
+  - Add derive macro in `miniextendr-macros`
+  - Create `miniextendr-api/src/factor.rs` module
+  - Global `FACTOR_SYMBOL` (cached SYMSXP)
+  - Trait: `pub trait RFactor: Copy + 'static`
+    - `const LEVELS: &'static [&'static str]`
+    - `fn to_level_index(self) -> i32` (1-based)
+    - `fn from_level_index(idx: i32) -> Option<Self>`
+  - Helpers: `build_levels_sexp()`, `factor_class_vec()`, `build_factor()`
+  - Trait impls: `IntoR for T`, `IntoR for Vec<T>`, `IntoR for Vec<Option<T>>`
+  - `TryFromSexp` impls with `Rf_isFactor` validation
+  - Option<T>: NA_INTEGER → None
+  - Derive attributes: `#[r_factor(rename = "...")]`, `#[r_factor(rename_all = "...")]`
+  - Validation: only fieldless (C-style) enums
+  - Plan: `reviews/enum-as-factors-plan.md`
+
+== Test Infrastructure (from reviews/ plans) ==
+
+==== rpkg adapter trait tests ====
+
+- [ ] Add feature pass-throughs in `rpkg/src/rust/Cargo.toml`
+  - Pass-through for all optional features to miniextendr-api
+- [ ] Add `rpkg_enabled_features()` function to return compiled feature list
+- [ ] Add R helper `rpkg_has_feature(name)` and `skip_if_missing_feature(name)`
+- [ ] Create `rpkg/src/rust/adapter_traits_tests.rs` with test types:
+  - RDebug/RDisplay: `DebugType`, `DisplayType`
+  - RHash/ROrd/RPartialOrd: `HashType`, `OrdType`, `PartialOrdType`
+  - RError: `MyError` with source chain
+  - RFromStr: `IpAddrType`
+  - RClone/RCopy/RDefault: `CloneType`, `CopyType`, `DefaultType`
+  - RIterator: `IterVec(RefCell<...>)`
+  - RExtend/RFromIter: `ExtendVec`, `FromIterSet`
+- [ ] Add R tests in `rpkg/tests/testthat/test-adapter-traits.R`
+- [ ] Add per-feature adapter demos (cfg-gated):
+  - ordered-float, num-bigint, rust_decimal, uuid, regex, indexmap, time
+- [ ] Add per-feature R tests using `skip_if_missing_feature()`
+- Plan: `reviews/rpkg-adapter-tests-plan.md`
+
+== API Cleanup ==
+
+==== Remove `r_` prefix from adapter trait methods ====
+
+- [ ] Remove `r_` prefix from adapter trait method names
+  - Current: `r_clone()`, `r_to_vec()`, `r_next()`, `r_hash()`, etc.
+  - Proposed: `clone()`, `to_vec()`, `next()`, `hash()`, etc.
+  - Rationale: The `r_` prefix adds visual noise; context makes it clear these are R-bound methods
+  - Files to update:
+    - `miniextendr-api/src/adapter_traits.rs` (RDebug, RDisplay, RHash, ROrd, RPartialOrd, RError, RFromStr, RClone, RCopy, RDefault, RIterator, RExtend, RFromIter, RToVec, RMakeIter)
+    - All feature `*_impl.rs` files with adapter traits
+    - rpkg R wrappers and tests
+    - Documentation examples
+  - Note: This is a breaking change; should be done before any public release
+
+== Coerce Integration (from coerce-coverage-review-2026-01-04) ==
+
+==== Feature module Coerce/TryCoerce integration ====
+
+- [ ] Add `Coerce`/`TryCoerce` impls for feature types
+  - `impl Coerce<OrderedFloat<f64>> for f64`
+  - `impl TryCoerce<OrderedFloat<f32>> for f64` (precision-loss check)
+  - `impl Coerce<Decimal> for i32`
+  - `impl TryCoerce<Decimal> for f64` (precision loss/error)
+  - `impl Coerce<BigInt> for i32`
+  - `impl TryCoerce<BigInt> for i64` (if needed)
+- [ ] Use `Coerced<T, R>` in feature `TryFromSexp` impls
+  - Standardize error messages and NA handling
+  - Replace manual parsing in `ordered_float_impl`, `rust_decimal_impl`, `num_bigint_impl`
+- [ ] Document per-feature coercion policy
+  - Clarify integer inputs for float-centric types
+  - Document truncation/rounding behavior
+  - Note lossy vs strict conversions
+- [ ] Add TryCoerce tests for feature types
+  - `f64 -> OrderedFloat<f32>` errors on precision loss
+  - `i32 -> Decimal` succeeds; `f64 -> Decimal` errors on NaN/Inf
+  - `i32 -> BigInt` succeeds; `f64 -> BigInt` errors on fractional/NaN
