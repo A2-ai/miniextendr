@@ -128,18 +128,6 @@ pub trait RFactor: Copy + 'static {
     /// Returns `None` for out-of-range indices.
     fn from_level_index(idx: i32) -> Option<Self>;
 
-    /// Get the cached levels STRSXP for this enum type.
-    ///
-    /// This is lazily initialized on first call and reused thereafter.
-    /// The derive macro generates a private `OnceLock<SEXP>` that stores
-    /// the levels STRSXP, avoiding repeated allocations when converting
-    /// enum values to R factors.
-    ///
-    /// The default implementation builds the levels on each call (no caching).
-    /// The derive macro overrides this with a caching implementation.
-    fn cached_levels_sexp() -> SEXP {
-        build_levels_sexp(Self::LEVELS)
-    }
 }
 
 // =============================================================================
@@ -256,33 +244,28 @@ pub fn validate_factor_levels(sexp: SEXP, expected_levels: &[&str]) -> Result<()
 }
 
 // =============================================================================
-// Conversion helpers (for use by derive macro)
+// Conversion helpers
 // =============================================================================
 
 /// Convert a single RFactor value to an R factor SEXP.
 ///
-/// This is used by the derive macro to implement IntoR.
-/// Uses cached levels STRSXP to avoid repeated allocations.
+/// Note: This allocates fresh level strings on each call. The `#[derive(RFactor)]`
+/// macro generates an `IntoR` implementation with cached levels for better performance.
+/// This function is primarily for manual `RFactor` implementations.
 #[inline]
 pub fn factor_to_sexp<T: RFactor>(value: T) -> SEXP {
     let idx = value.to_level_index();
-    build_factor_with_levels(&[idx], T::cached_levels_sexp())
+    build_factor(&[idx], T::LEVELS)
 }
 
 /// Convert a Vec of RFactor values to an R factor SEXP.
-///
-/// This is used by the derive macro to implement IntoR for Vec<T>.
-/// Uses cached levels STRSXP to avoid repeated allocations.
 #[inline]
 pub fn factor_vec_to_sexp<T: RFactor>(values: &[T]) -> SEXP {
     let indices: Vec<i32> = values.iter().map(|v| v.to_level_index()).collect();
-    build_factor_with_levels(&indices, T::cached_levels_sexp())
+    build_factor(&indices, T::LEVELS)
 }
 
 /// Convert a Vec of Option<RFactor> values to an R factor SEXP.
-///
-/// This is used by the derive macro to implement IntoR for Vec<Option<T>>.
-/// Uses cached levels STRSXP to avoid repeated allocations.
 #[inline]
 pub fn factor_option_vec_to_sexp<T: RFactor>(values: &[Option<T>]) -> SEXP {
     let indices: Vec<i32> = values
@@ -292,7 +275,7 @@ pub fn factor_option_vec_to_sexp<T: RFactor>(values: &[Option<T>]) -> SEXP {
             None => NA_INTEGER,
         })
         .collect();
-    build_factor_with_levels(&indices, T::cached_levels_sexp())
+    build_factor(&indices, T::LEVELS)
 }
 
 /// Convert an R factor SEXP to a single RFactor value.
