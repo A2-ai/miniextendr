@@ -580,4 +580,148 @@ mod tests {
     fn test_levels_array() {
         assert_eq!(TestColor::LEVELS, &["Red", "Green", "Blue"]);
     }
+
+    // Test interaction factor (manual impl to verify logic)
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    enum Size {
+        Small,
+        Large,
+    }
+
+    impl RFactor for Size {
+        const LEVELS: &'static [&'static str] = &["Small", "Large"];
+
+        fn to_level_index(self) -> i32 {
+            match self {
+                Size::Small => 1,
+                Size::Large => 2,
+            }
+        }
+
+        fn from_level_index(idx: i32) -> Option<Self> {
+            match idx {
+                1 => Some(Size::Small),
+                2 => Some(Size::Large),
+                _ => None,
+            }
+        }
+    }
+
+    // Manual interaction factor impl (what derive should generate)
+    #[derive(Copy, Clone, Debug, PartialEq)]
+    enum ColorSize {
+        Red(Size),
+        Green(Size),
+        Blue(Size),
+    }
+
+    impl RFactor for ColorSize {
+        // Levels: Red.Small, Red.Large, Green.Small, Green.Large, Blue.Small, Blue.Large
+        const LEVELS: &'static [&'static str] = &[
+            "Red.Small",
+            "Red.Large",
+            "Green.Small",
+            "Green.Large",
+            "Blue.Small",
+            "Blue.Large",
+        ];
+
+        fn to_level_index(self) -> i32 {
+            match self {
+                Self::Red(inner) => {
+                    let inner_idx_0 = inner.to_level_index() - 1;
+                    0 * 2 + inner_idx_0 + 1
+                }
+                Self::Green(inner) => {
+                    let inner_idx_0 = inner.to_level_index() - 1;
+                    1 * 2 + inner_idx_0 + 1
+                }
+                Self::Blue(inner) => {
+                    let inner_idx_0 = inner.to_level_index() - 1;
+                    2 * 2 + inner_idx_0 + 1
+                }
+            }
+        }
+
+        fn from_level_index(idx: i32) -> Option<Self> {
+            match idx {
+                1..=2 => {
+                    let inner_idx_1 = (idx - 1) % 2 + 1;
+                    Size::from_level_index(inner_idx_1).map(Self::Red)
+                }
+                3..=4 => {
+                    let inner_idx_1 = (idx - 1) % 2 + 1;
+                    Size::from_level_index(inner_idx_1).map(Self::Green)
+                }
+                5..=6 => {
+                    let inner_idx_1 = (idx - 1) % 2 + 1;
+                    Size::from_level_index(inner_idx_1).map(Self::Blue)
+                }
+                _ => None,
+            }
+        }
+    }
+
+    #[test]
+    fn test_interaction_levels() {
+        assert_eq!(
+            ColorSize::LEVELS,
+            &[
+                "Red.Small",
+                "Red.Large",
+                "Green.Small",
+                "Green.Large",
+                "Blue.Small",
+                "Blue.Large"
+            ]
+        );
+    }
+
+    #[test]
+    fn test_interaction_to_index() {
+        assert_eq!(ColorSize::Red(Size::Small).to_level_index(), 1);
+        assert_eq!(ColorSize::Red(Size::Large).to_level_index(), 2);
+        assert_eq!(ColorSize::Green(Size::Small).to_level_index(), 3);
+        assert_eq!(ColorSize::Green(Size::Large).to_level_index(), 4);
+        assert_eq!(ColorSize::Blue(Size::Small).to_level_index(), 5);
+        assert_eq!(ColorSize::Blue(Size::Large).to_level_index(), 6);
+    }
+
+    #[test]
+    fn test_interaction_from_index() {
+        assert_eq!(
+            ColorSize::from_level_index(1),
+            Some(ColorSize::Red(Size::Small))
+        );
+        assert_eq!(
+            ColorSize::from_level_index(2),
+            Some(ColorSize::Red(Size::Large))
+        );
+        assert_eq!(
+            ColorSize::from_level_index(3),
+            Some(ColorSize::Green(Size::Small))
+        );
+        assert_eq!(
+            ColorSize::from_level_index(4),
+            Some(ColorSize::Green(Size::Large))
+        );
+        assert_eq!(
+            ColorSize::from_level_index(5),
+            Some(ColorSize::Blue(Size::Small))
+        );
+        assert_eq!(
+            ColorSize::from_level_index(6),
+            Some(ColorSize::Blue(Size::Large))
+        );
+        assert_eq!(ColorSize::from_level_index(0), None);
+        assert_eq!(ColorSize::from_level_index(7), None);
+    }
+
+    #[test]
+    fn test_interaction_roundtrip() {
+        for i in 1..=6 {
+            let color_size = ColorSize::from_level_index(i).unwrap();
+            assert_eq!(color_size.to_level_index(), i);
+        }
+    }
 }

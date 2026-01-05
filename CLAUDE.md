@@ -66,6 +66,7 @@ just minirextendr-test      # Run tests
 **ALWAYS run `./configure` (or `just configure`) before any R CMD operation.**
 
 The configure script:
+
 1. Syncs `miniextendr-api/`, `miniextendr-macros/`, `miniextendr-lint/`, `miniextendr-engine/` to `rpkg/src/vendor/`
 2. Vendors crates.io dependencies (proc-macro2, quote, syn, unicode-ident)
 3. Generates `Makevars` from `Makevars.in`
@@ -84,12 +85,14 @@ R CMD check rpkg
 ### NOT_CRAN Environment Variable
 
 Set `NOT_CRAN=true` for development mode:
+
 ```bash
 cd rpkg && NOT_CRAN=true ./configure
 NOT_CRAN=true R CMD INSTALL rpkg
 ```
 
 **What NOT_CRAN does:**
+
 - Preserves the `src/vendor/` directory during `R CMD build` (CRAN strips it)
 - Enables symlinks for faster iteration (CRAN requires copies)
 - Skips certain checks that only apply to CRAN submissions
@@ -109,6 +112,7 @@ just rcmdinstall        # 4. Rebuild with updated R wrappers
 ```
 
 **Why this order matters:**
+
 - `just configure` syncs workspace crates to vendored copies
 - First build compiles the new macros
 - `devtools-document` runs the macros to regenerate `rpkg/R/miniextendr_wrappers.R`
@@ -196,6 +200,7 @@ The `background/` folder (gitignored) contains reference documentation.
 | `r-source-tags-R-4-5-2/` | R 4.5.2 source with tags - lookup exact API behavior |
 
 Key paths in R source:
+
 - `src/include/Rinternals.h` - SEXP types, macros
 - `src/include/R_ext/Altrep.h` - ALTREP C API
 - `src/main/altclasses.c` - ALTREP implementations
@@ -289,6 +294,7 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
 ### "configure: command not found"
 
 Run autoconf first:
+
 ```bash
 cd rpkg && autoconf && ./configure
 ```
@@ -296,6 +302,7 @@ cd rpkg && autoconf && ./configure
 ### Stale R wrappers after macro changes
 
 Run the full workflow:
+
 ```bash
 just configure && just rcmdinstall && just devtools-document && just rcmdinstall
 ```
@@ -303,6 +310,7 @@ just configure && just rcmdinstall && just devtools-document && just rcmdinstall
 ### Tests fail with "package not found"
 
 Install rpkg first:
+
 ```bash
 just rcmdinstall
 ```
@@ -310,6 +318,7 @@ just rcmdinstall
 ### Cross-package tests fail
 
 Rebuild both packages:
+
 ```bash
 just cross-install
 ```
@@ -317,6 +326,7 @@ just cross-install
 ### R package installation permission errors
 
 If you get "ERROR: no permission to install to directory", use a local library path:
+
 ```bash
 R_LIBS=/tmp/claude/R_lib R CMD INSTALL rpkg
 # or
@@ -326,6 +336,7 @@ R_LIBS=/tmp/claude/R_lib just rcmdinstall
 The `/tmp/claude/` directory is writable in sandboxed environments.
 
 Alternatively, use `devtools::install()` which handles library paths:
+
 ```bash
 just devtools-install
 ```
