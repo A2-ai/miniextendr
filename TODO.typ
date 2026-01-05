@@ -1153,13 +1153,29 @@ Standalone adapter traits not needed - use connection framework instead.
     - `const LEVELS: &'static [&'static str]`
     - `fn to_level_index(self) -> i32` (1-based)
     - `fn from_level_index(idx: i32) -> Option<Self>`
-  - Helpers: `factor_to_sexp()`, `factor_from_sexp()`, `factor_vec_to_sexp()`, `factor_vec_from_sexp()`
+  - Helpers: `build_factor()`, `build_levels_sexp()`, `build_levels_sexp_cached()`, `factor_from_sexp()`
   - Derive generates: `impl RFactor`, `impl IntoR`, `impl TryFromSexp`
   - Newtype wrappers: `FactorVec<T>`, `FactorOptionVec<T>` for Vec conversions
   - NA handling: NA_INTEGER → None via Option<T>
-  - Derive attributes: `#[r_factor(rename = "...")]`, `#[r_factor(rename_all = "...")]`
+  - Derive attributes:
+    - `#[r_factor(rename = "...")]` - rename variant level string
+    - `#[r_factor(rename_all = "...")]` - rename all variants (snake_case, SCREAMING_SNAKE_CASE, etc.)
+    - `#[r_factor(interaction = ["A", "B", ...])]` - interaction factor with inner RFactor type
+    - `#[r_factor(sep = "_")]` - custom separator for interaction levels (default ".")
+  - Interaction factors:
+    - Outer enum wraps inner RFactor type: `enum Outer { A(Inner), B(Inner) }`
+    - Combined levels: `["A.Inner1", "A.Inner2", ..., "B.Inner1", "B.Inner2", ...]`
+    - Lex-order indexing: `outer_idx * n_inner + inner_idx + 1`
+    - Compile-time const assertion validates specified levels match inner type's LEVELS
+  - Slice access types:
+    - `Factor<'a>` - immutable view into factor integer array (Deref<Target=[i32]>)
+    - `FactorMut<'a>` - mutable view with validation on set
+  - Performance: Symbol-based CHARSXP caching with OnceLock (~6-8x speedup)
+    - `build_levels_sexp_cached()` caches levels STRSXP in static OnceLock
+    - Uses `Rf_install()` for permanent GC protection (no R_ReleaseObject needed)
   - Validation: only fieldless (C-style) enums
-  - Tests: `rpkg/src/rust/factor_tests.rs` with 10 exported functions
+  - Benchmarks: `miniextendr-bench/benches/factor.rs`
+  - Tests: `rpkg/src/rust/factor_tests.rs`
   - Plan: `reviews/enum-as-factors-plan.md`
 
 == Test Infrastructure (from reviews/ plans) ==
