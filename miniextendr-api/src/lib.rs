@@ -531,3 +531,28 @@ pub use num_traits_impl::{RFloat, RNum, RSigned};
 pub mod bytes_impl;
 #[cfg(feature = "bytes")]
 pub use bytes_impl::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
+
+/// Integration with the `num-complex` crate for complex number operations.
+///
+/// Provides conversions between R complex vectors (`CPLXSXP`) and `Complex<f64>`:
+/// - `Complex<f64>` ⇄ `complex(1)` (single complex)
+/// - `Vec<Complex<f64>>` ⇄ `complex` vector
+/// - `Option<Complex<f64>>` for NA support
+///
+/// Also provides the [`RComplexOps`][num_complex_impl::RComplexOps] adapter trait
+/// for exposing complex number inspection methods to R.
+///
+/// Enable with `features = ["num-complex"]`.
+///
+/// ```ignore
+/// use num_complex::Complex;
+///
+/// #[miniextendr]
+/// fn add_complex(a: Complex<f64>, b: Complex<f64>) -> Complex<f64> {
+///     a + b
+/// }
+/// ```
+#[cfg(feature = "num-complex")]
+pub mod num_complex_impl;
+#[cfg(feature = "num-complex")]
+pub use num_complex_impl::{Complex, RComplexOps};

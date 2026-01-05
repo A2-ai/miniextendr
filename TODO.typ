@@ -149,19 +149,18 @@
 - [ ] Known TODOs not tracked as GitHub issues
 
 === Safety Issues (from project-review-2026-01-04) ===
-- [ ] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding
+- [x] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding
   - `miniextendr-api/src/from_r.rs:30`
-  - `std::str::from_utf8_unchecked` used on `R_CHAR` without encoding check
-  - Behavior: Assumes input is UTF-8 or ASCII (Latin-1/native-encoded may cause issues)
-  - Document this assumption in function docs; user must ensure proper encoding
-- [ ] DOCUMENT: `Vec<String>` conversion maps NA/invalid UTF-8 to empty strings
-  - `miniextendr-api/src/from_r.rs:992`
-  - `NA_character_` and invalid UTF-8 mapped to empty strings
-  - Document this behavior; users should use `Vec<Option<String>>` for NA-aware paths
-- [ ] DOCUMENT: Named list → map drops elements with NA/empty names
-  - `miniextendr-api/src/from_r.rs:883`
-  - Duplicate empty/NA names overwrite earlier entries silently
-  - Document this behavior; users should pre-filter or use Vec<(String, T)>
+  - Added "Encoding Assumption" section documenting UTF-8 requirement
+  - Suggests `Rf_translateCharUTF8()` or `from_utf8()` for external data
+- [x] DOCUMENT: `Vec<String>` conversion maps NA/invalid UTF-8 to empty strings
+  - `miniextendr-api/src/from_r.rs:1002`
+  - Added "NA and Encoding Handling" warning in doc comment
+  - Recommends `Vec<Option<String>>` for NA-aware paths
+- [x] DOCUMENT: Named list → map drops elements with NA/empty names
+  - `miniextendr-api/src/from_r.rs:893`
+  - Added "NA and Empty Name Handling" warning with example of data loss
+  - Recommends `Vec<(String, V)>` for full preservation
 
 == Reviews Findings (December 2024) ==
 
@@ -1172,8 +1171,10 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== rpkg adapter trait tests ====
 
-- [ ] Add feature pass-throughs in `rpkg/src/rust/Cargo.toml`
+- [x] Add feature pass-throughs in `rpkg/src/rust/Cargo.toml.in`
   - Pass-through for all optional features to miniextendr-api
+  - Completed: rayon, rand, rand_distr, either, ndarray, nalgebra, serde, num-bigint,
+    rust_decimal, ordered-float, uuid, regex, indexmap, time, num-traits, bytes
 - [ ] Add `rpkg_enabled_features()` function to return compiled feature list
 - [ ] Add R helper `rpkg_has_feature(name)` and `skip_if_missing_feature(name)`
 - [ ] Create `rpkg/src/rust/adapter_traits_tests.rs` with test types:

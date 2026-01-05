@@ -528,6 +528,7 @@ dependencies = [
  "nalgebra",
  "ndarray",
  "num-bigint",
+ "num-complex",
  "num-integer",
  "num-traits",
  "ordered-float",

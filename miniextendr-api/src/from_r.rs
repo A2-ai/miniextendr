@@ -29,10 +29,20 @@ use crate::ffi::{RLogical, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
 
 /// Convert CHARSXP to `&str` using LENGTH (O(1)) instead of strlen (O(n)).
 ///
+/// # Encoding Assumption
+///
+/// This function assumes the CHARSXP contains valid UTF-8 or ASCII bytes.
+/// Modern R (4.2+) with UTF-8 locale support typically ensures this, but R can
+/// store strings in other encodings (latin1, native, bytes).
+///
+/// **If you receive data from external sources that may not be UTF-8**, consider:
+/// - Using `Rf_translateCharUTF8()` to convert to UTF-8 first
+/// - Validating with `std::str::from_utf8()` instead of `from_utf8_unchecked()`
+///
 /// # Safety
 ///
 /// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
-/// - R must guarantee UTF-8 encoding (CE_UTF8 or ASCII).
+/// - The CHARSXP must contain valid UTF-8 bytes (CE_UTF8, CE_ASCII, or compatible).
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
 #[inline]
 unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
@@ -857,6 +867,9 @@ use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
 
 /// Convert R named list (VECSXP) to HashMap<String, V>.
+///
+/// See [`named_list_to_map`] for NA/empty name handling (elements with NA/empty
+/// names map to key `""` and may silently overwrite each other).
 impl<V: TryFromSexp> TryFromSexp for HashMap<String, V>
 where
     V::Error: Into<SexpError>,
@@ -869,6 +882,9 @@ where
 }
 
 /// Convert R named list (VECSXP) to BTreeMap<String, V>.
+///
+/// See [`named_list_to_map`] for NA/empty name handling (elements with NA/empty
+/// names map to key `""` and may silently overwrite each other).
 impl<V: TryFromSexp> TryFromSexp for BTreeMap<String, V>
 where
     V::Error: Into<SexpError>,
@@ -883,6 +899,26 @@ where
 /// Helper to convert R named list to a map type.
 ///
 /// Returns an error if the list has duplicate non-empty, non-NA names.
+///
+/// # NA and Empty Name Handling
+///
+/// **Warning:** Elements with NA or empty names are converted with key `""`:
+/// - `NA` names become empty string key `""`
+/// - Empty string names `""` stay as `""`
+/// - If multiple elements have NA/empty names, later ones **silently overwrite** earlier ones
+///
+/// This means data loss can occur without error if your list has multiple
+/// unnamed or NA-named elements.
+///
+/// **Example of silent data loss:**
+/// ```r
+/// # In R:
+/// x <- list(a = 1, 2, 3)  # Elements 2 and 3 have empty names
+/// # After conversion, only one of them survives under key ""
+/// ```
+///
+/// If you need all elements regardless of names, use `Vec<(String, V)>` instead,
+/// or convert the list to a vector first.
 fn named_list_to_map<V, M, F>(sexp: SEXP, create_map: F) -> Result<M, SexpError>
 where
     V: TryFromSexp,
@@ -990,6 +1026,23 @@ where
 }
 
 /// Convert R character vector to `Vec<String>`.
+///
+/// # NA and Encoding Handling
+///
+/// **Warning:** This conversion is lossy for NA values and encoding failures:
+/// - `NA_character_` values are converted to empty string `""`
+/// - Encoding translation failures become empty string `""`
+/// - Invalid UTF-8 (after translation) becomes empty string `""`
+///
+/// If you need to preserve NA semantics, use `Vec<Option<String>>` instead:
+///
+/// ```ignore
+/// let strings: Vec<Option<String>> = sexp.try_into()?;
+/// // NA values will be None, valid strings will be Some(s)
+/// ```
+///
+/// This design choice prioritizes convenience over strict correctness for the
+/// common case where strings are known to be non-NA and properly encoded.
 impl TryFromSexp for Vec<String> {
     type Error = SexpError;
 

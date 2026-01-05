@@ -56,6 +56,8 @@ indicatif = ["dep:indicatif", "nonapi"]
 num-traits = ["dep:num-traits"]
 ## Enable bytes crate integration. Provides RBuf and RBufMut adapter traits for byte buffer operations.
 bytes = ["dep:bytes"]
+## Enable num-complex integration. Provides Complex<f64> ⇄ CPLXSXP conversions.
+num-complex = ["dep:num-complex"]
 
 [dependencies]
 miniextendr-macros = { workspace = true }
@@ -78,6 +80,7 @@ indexmap = { version = "2", optional = true }
 time = { version = "0.3", optional = true, features = ["formatting", "parsing", "macros"] }
 num-traits = { version = "0.2", optional = true }
 bytes = { version = "1", optional = true }
+num-complex = { version = "0.4", optional = true }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }
