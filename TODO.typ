@@ -1146,20 +1146,20 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== enum-as-factors (proc-macro) ====
 
-- [ ] Add `#[derive(RFactor)]` for Rust enums ↔ R factors
-  - Add derive macro in `miniextendr-macros`
-  - Create `miniextendr-api/src/factor.rs` module
-  - Global `FACTOR_SYMBOL` (cached SYMSXP)
+- [x] Add `#[derive(RFactor)]` for Rust enums ↔ R factors
+  - Added derive macro in `miniextendr-macros/src/factor_derive.rs`
+  - Created `miniextendr-api/src/factor.rs` module
   - Trait: `pub trait RFactor: Copy + 'static`
     - `const LEVELS: &'static [&'static str]`
     - `fn to_level_index(self) -> i32` (1-based)
     - `fn from_level_index(idx: i32) -> Option<Self>`
-  - Helpers: `build_levels_sexp()`, `factor_class_vec()`, `build_factor()`
-  - Trait impls: `IntoR for T`, `IntoR for Vec<T>`, `IntoR for Vec<Option<T>>`
-  - `TryFromSexp` impls with `Rf_isFactor` validation
-  - Option<T>: NA_INTEGER → None
+  - Helpers: `factor_to_sexp()`, `factor_from_sexp()`, `factor_vec_to_sexp()`, `factor_vec_from_sexp()`
+  - Derive generates: `impl RFactor`, `impl IntoR`, `impl TryFromSexp`
+  - Newtype wrappers: `FactorVec<T>`, `FactorOptionVec<T>` for Vec conversions
+  - NA handling: NA_INTEGER → None via Option<T>
   - Derive attributes: `#[r_factor(rename = "...")]`, `#[r_factor(rename_all = "...")]`
   - Validation: only fieldless (C-style) enums
+  - Tests: `rpkg/src/rust/factor_tests.rs` with 10 exported functions
   - Plan: `reviews/enum-as-factors-plan.md`
 
 == Test Infrastructure (from reviews/ plans) ==
@@ -1169,9 +1169,14 @@ Standalone adapter traits not needed - use connection framework instead.
 - [x] Add feature pass-throughs in `rpkg/src/rust/Cargo.toml.in`
   - Pass-through for all optional features to miniextendr-api
   - Completed: rayon, rand, rand_distr, either, ndarray, nalgebra, serde, num-bigint,
-    rust_decimal, ordered-float, uuid, regex, indexmap, time, num-traits, bytes
-- [ ] Add `rpkg_enabled_features()` function to return compiled feature list
-- [ ] Add R helper `rpkg_has_feature(name)` and `skip_if_missing_feature(name)`
+    rust_decimal, ordered-float, uuid, regex, indexmap, time, num-traits, bytes,
+    bitvec, bitflags, num-complex, sha2, tabled, toml, url, aho-corasick, raw_conversions
+- [x] Enable all features by default in dev mode (NOT_CRAN=true)
+  - Updated `configure.ac` to set MINIEXTENDR_FEATURES automatically
+- [x] Add `rpkg_enabled_features()` function to return compiled feature list
+  - Added to `rpkg/src/rust/lib.rs`
+- [x] Add R helper `rpkg_has_feature(name)` and `skip_if_missing_feature(name)`
+  - Added `rpkg/R/feature_helpers.R`
 - [ ] Create `rpkg/src/rust/adapter_traits_tests.rs` with test types:
   - RDebug/RDisplay: `DebugType`, `DisplayType`
   - RHash/ROrd/RPartialOrd: `HashType`, `OrdType`, `PartialOrdType`

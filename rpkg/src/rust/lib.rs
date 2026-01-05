@@ -1039,6 +1039,107 @@ mod nonapi;
 
 // endregion
 
+// region: Feature detection
+
+/// Returns a vector of enabled feature names for this build.
+///
+/// This function is useful for R tests to skip tests when features are not enabled.
+///
+/// @name rpkg_enabled_features
+/// @return A character vector of enabled feature names.
+/// @examples
+/// rpkg_enabled_features()
+#[miniextendr]
+pub fn rpkg_enabled_features() -> Vec<&'static str> {
+    let mut features = Vec::new();
+
+    // Core features
+    if cfg!(feature = "nonapi") {
+        features.push("nonapi");
+    }
+
+    // Optional crate features
+    if cfg!(feature = "uuid") {
+        features.push("uuid");
+    }
+    if cfg!(feature = "time") {
+        features.push("time");
+    }
+    if cfg!(feature = "regex") {
+        features.push("regex");
+    }
+    if cfg!(feature = "indexmap") {
+        features.push("indexmap");
+    }
+    if cfg!(feature = "serde") {
+        features.push("serde");
+    }
+    if cfg!(feature = "num-bigint") {
+        features.push("num-bigint");
+    }
+    if cfg!(feature = "rust_decimal") {
+        features.push("rust_decimal");
+    }
+    if cfg!(feature = "ordered-float") {
+        features.push("ordered-float");
+    }
+    if cfg!(feature = "num-traits") {
+        features.push("num-traits");
+    }
+    if cfg!(feature = "rand") {
+        features.push("rand");
+    }
+    if cfg!(feature = "rand_distr") {
+        features.push("rand_distr");
+    }
+    if cfg!(feature = "rayon") {
+        features.push("rayon");
+    }
+    if cfg!(feature = "ndarray") {
+        features.push("ndarray");
+    }
+    if cfg!(feature = "nalgebra") {
+        features.push("nalgebra");
+    }
+    if cfg!(feature = "either") {
+        features.push("either");
+    }
+    if cfg!(feature = "bytes") {
+        features.push("bytes");
+    }
+    if cfg!(feature = "bitvec") {
+        features.push("bitvec");
+    }
+    if cfg!(feature = "bitflags") {
+        features.push("bitflags");
+    }
+    if cfg!(feature = "num-complex") {
+        features.push("num-complex");
+    }
+    if cfg!(feature = "sha2") {
+        features.push("sha2");
+    }
+    if cfg!(feature = "tabled") {
+        features.push("tabled");
+    }
+    if cfg!(feature = "toml") {
+        features.push("toml");
+    }
+    if cfg!(feature = "url") {
+        features.push("url");
+    }
+    if cfg!(feature = "aho-corasick") {
+        features.push("aho-corasick");
+    }
+    if cfg!(feature = "raw_conversions") {
+        features.push("raw_conversions");
+    }
+
+    features
+}
+
+// endregion
+
 miniextendr_module! {
     mod miniextendr;
 
@@ -1144,4 +1245,7 @@ miniextendr_module! {
     fn leaked_ints;
     struct StaticStringsClass;
     fn static_strings;
+
+    // Feature detection
+    fn rpkg_enabled_features;
 }

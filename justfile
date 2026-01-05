@@ -6,6 +6,7 @@
 #     just test               - Run cargo tests
 #     just clippy             - Run lints
 #     just fmt                - Format Rust code
+#     just lint               - Run miniextendr-lint on rpkg
 #
 #   rpkg (example R package):
 #     just configure          - Configure R package build
@@ -82,6 +83,16 @@ clippy *cargo_flags:
     cargo clippy --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo clippy --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo clippy --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+
+# Run miniextendr-lint on rpkg (checks #[miniextendr] ↔ miniextendr_module! consistency)
+# The lint runs as a build script; this command triggers it via cargo check.
+# Lint output appears as cargo warnings. Errors indicate:
+# - #[miniextendr] items missing from miniextendr_module!
+# - miniextendr_module! items without #[miniextendr] attribute
+# - Multiple unlabeled impl blocks for the same type
+# - Class system incompatibilities between inherent and trait impls
+lint:
+    cd rpkg && NOT_CRAN=true cargo check --manifest-path=src/rust/Cargo.toml 2>&1 | grep -E "(warning.*miniextendr-lint|error)" || echo "miniextendr-lint: no issues found"
 
 # Check documentation builds
 alias cargo-doc-check := doc-check

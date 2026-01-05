@@ -160,7 +160,16 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
     // - factor_option_vec_to_sexp(&[Option<T>])
     // - factor_option_vec_from_sexp::<T>(SEXP)
 
+    // Generate a unique identifier for the static OnceLock
+    let cache_ident = quote::format_ident!("__RFACTOR_LEVELS_CACHE_{}", name);
+
     Ok(quote! {
+        // Private static cache for the levels STRSXP.
+        // This is initialized on first use and reused for all subsequent conversions.
+        #[doc(hidden)]
+        static #cache_ident: ::std::sync::OnceLock<::miniextendr_api::ffi::SEXP> =
+            ::std::sync::OnceLock::new();
+
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
             const LEVELS: &'static [&'static str] = &[#(#level_name_strs),*];
 
@@ -175,6 +184,12 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
                     #(#indices => Some(Self::#variant_idents),)*
                     _ => None,
                 }
+            }
+
+            fn cached_levels_sexp() -> ::miniextendr_api::ffi::SEXP {
+                *#cache_ident.get_or_init(|| {
+                    ::miniextendr_api::build_levels_sexp_preserved(Self::LEVELS)
+                })
             }
         }
 

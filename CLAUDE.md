@@ -37,7 +37,8 @@ miniextendr/
 # Rust development
 just check              # Run cargo check on all crates
 just test               # Run cargo tests
-just clippy             # Run lints
+just clippy             # Run clippy lints
+just lint               # Run miniextendr-lint (checks macro/module consistency)
 just fmt                # Format Rust code
 
 # R package development (rpkg)
@@ -248,6 +249,40 @@ The lint crate parser should track the macros parser:
 just lint-sync-check    # Check for significant drift
 just lint-sync-diff     # Show differences
 ```
+
+## miniextendr-lint
+
+The `miniextendr-lint` crate is a build-time static analysis tool that checks consistency between `#[miniextendr]` attributes and `miniextendr_module!` declarations.
+
+### What it checks
+
+- **Missing module entries**: `#[miniextendr]` items not listed in `miniextendr_module!`
+- **Missing attributes**: Items in `miniextendr_module!` without `#[miniextendr]` attribute
+- **Multiple impl blocks**: When a type has 2+ impl blocks, all must have distinct labels
+- **Class system compatibility**: Trait impls must be compatible with inherent impl class systems
+
+### Running the lint
+
+```bash
+just lint               # Run lint on rpkg
+```
+
+The lint runs automatically during `cargo build`/`cargo check` via `build.rs`. Output appears as cargo warnings. To disable temporarily:
+
+```bash
+MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
+```
+
+### Fixing lint errors
+
+1. **"#[miniextendr] fn X not listed in miniextendr_module!"**
+   - Add `fn X;` to the appropriate `miniextendr_module!` block
+
+2. **"fn X listed in miniextendr_module! but has no #[miniextendr] attribute"**
+   - Add `#[miniextendr]` to the function definition, or remove from module
+
+3. **"type T has N impl blocks but some are missing labels"**
+   - Add `#[miniextendr(label = "...")]` with unique labels to each impl block
 
 ## Common Issues
 
