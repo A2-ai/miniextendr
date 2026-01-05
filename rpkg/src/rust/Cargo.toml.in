@@ -40,6 +40,9 @@ num-traits = ["miniextendr-api/num-traits"]
 bytes = ["miniextendr-api/bytes"]
 num-complex = ["miniextendr-api/num-complex"]
 url = ["miniextendr-api/url"]
+sha2 = ["miniextendr-api/sha2"]
+bitflags = ["miniextendr-api/bitflags"]
+bitvec = ["miniextendr-api/bitvec"]
 
 [dependencies]
 miniextendr-api = { version = "*" }

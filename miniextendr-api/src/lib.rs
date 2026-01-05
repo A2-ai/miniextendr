@@ -581,3 +581,78 @@ pub use num_complex_impl::{Complex, RComplexOps};
 pub mod url_impl;
 #[cfg(feature = "url")]
 pub use url_impl::{RUrlOps, Url, url_helpers};
+
+/// Integration with the `sha2` crate for cryptographic hashing.
+///
+/// Provides SHA-256 and SHA-512 hashing helpers:
+/// - `sha256_str(s)` / `sha256_bytes(data)` - 64-char hex hash
+/// - `sha512_str(s)` / `sha512_bytes(data)` - 128-char hex hash
+/// - Vector variants for batch hashing
+///
+/// Enable with `features = ["sha2"]`.
+///
+/// ```ignore
+/// use miniextendr_api::sha2_impl::sha256_str;
+///
+/// #[miniextendr]
+/// fn hash_input(s: &str) -> String {
+///     sha256_str(s)
+/// }
+/// ```
+#[cfg(feature = "sha2")]
+pub mod sha2_impl;
+#[cfg(feature = "sha2")]
+pub use sha2_impl::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
+
+/// Integration with the `bitflags` crate.
+///
+/// Provides [`RFlags<T>`][bitflags_impl::RFlags] wrapper for bitflags ↔ integer conversions:
+/// - `RFlags<T>` - Wrapper implementing `TryFromSexp` and `IntoR`
+/// - `flags_from_i32_strict(v)` - Strict conversion (rejects unknown bits)
+/// - `flags_from_i32_truncate(v)` - Truncating conversion (ignores unknown bits)
+/// - `flags_to_i32(flags)` - Convert flags to integer
+///
+/// Enable with `features = ["bitflags"]`.
+///
+/// ```ignore
+/// use bitflags::bitflags;
+/// use miniextendr_api::bitflags_impl::RFlags;
+///
+/// bitflags! {
+///     #[derive(Clone, Copy, Debug)]
+///     pub struct Mode: u8 {
+///         const READ = 0b01;
+///         const WRITE = 0b10;
+///     }
+/// }
+///
+/// #[miniextendr]
+/// fn check_read(mode: RFlags<Mode>) -> bool {
+///     mode.contains(Mode::READ)
+/// }
+/// ```
+#[cfg(feature = "bitflags")]
+pub mod bitflags_impl;
+#[cfg(feature = "bitflags")]
+pub use bitflags_impl::{Flags, RFlags};
+
+/// Integration with the `bitvec` crate.
+///
+/// Provides conversions between R logical vectors and `BitVec` types:
+/// - `RBitVec` (type alias for `BitVec<u8, Lsb0>`) ↔ logical vector
+/// - NA values cause error (no NA representation in BitVec)
+///
+/// Enable with `features = ["bitvec"]`.
+///
+/// ```ignore
+/// use miniextendr_api::bitvec_impl::RBitVec;
+///
+/// #[miniextendr]
+/// fn count_true(bits: RBitVec) -> i32 {
+///     bits.count_ones() as i32
+/// }
+/// ```
+#[cfg(feature = "bitvec")]
+pub mod bitvec_impl;
+#[cfg(feature = "bitvec")]
+pub use bitvec_impl::{BitVec, Lsb0, Msb0, RBitVec};

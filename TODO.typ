@@ -994,15 +994,17 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== bitflags feature ====
 
-- [ ] Add `bitflags` optional feature for flag ↔ integer conversions
+- [x] Add `bitflags` optional feature for flag ↔ integer conversions
   - `bitflags = { version = "2", optional = true }`
   - Create `miniextendr-api/src/bitflags_impl.rs`
-  - Wrapper types: `RFlags<T>`, `RFlagsVec<T>` to avoid blanket impl conflicts
-  - `TryFromSexp for RFlags<T>` - read integer, use `T::from_bits`
+  - Wrapper type: `RFlags<T>` implementing `TryFromSexp` and `IntoR`
+  - `TryFromSexp for RFlags<T>` - read integer, use `T::from_bits` (strict)
   - `IntoR for RFlags<T>` - return integer with `flags.bits()`
-  - Default: strict bits (unknown bits cause error)
-  - Optional truncating helper: `flags_from_bits_truncate()`
-  - Bit width policy: require values fit in `i32`; RFlags64 optional for u64
+  - Helper functions:
+    - `flags_from_i32_strict(v)` - rejects unknown bits
+    - `flags_from_i32_truncate(v)` - ignores unknown bits
+    - `flags_to_i32(flags)` - convert to integer
+  - Bit width policy: require values fit in `i32`
   - Plan: `reviews/bitflags-plan.md`
 
 ==== bitvec feature ====
@@ -1076,17 +1078,16 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== sha2 feature ====
 
-- [ ] Add `sha2` optional feature for hashing helpers
+- [x] Add `sha2` optional feature for hashing helpers
   - `sha2 = { version = "0.10", optional = true }`
   - Create `miniextendr-api/src/sha2_impl.rs`
   - Helpers:
-    - `sha256_raw(bytes) -> String` (hex, lowercase)
+    - `sha256_bytes(data) -> String` (64-char hex, lowercase)
     - `sha256_str(s) -> String` (UTF-8)
-    - `sha512_raw(bytes) -> String`
+    - `sha512_bytes(data) -> String` (128-char hex)
     - `sha512_str(s) -> String`
-  - Optional vector helpers: `sha256_raw_vec()`, `sha256_str_vec()`
-  - R wrappers: `sha256_raw()`, `sha256_str()`, `sha512_*`
-  - NA strings → error (no hashing of NA)
+  - Vector helpers: `sha256_bytes_vec()`, `sha256_str_vec()`, `sha512_*_vec()`
+  - Re-exports `Sha256`, `Sha512`, `Digest` for advanced usage
   - Plan: `reviews/sha2-plan.md`
 
 ==== tabled feature ====
