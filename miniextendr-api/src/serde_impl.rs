@@ -71,6 +71,7 @@ use crate::ffi::{
     Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
     SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
 };
+use crate::gc_protect::OwnedProtect;
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
@@ -508,29 +509,32 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
         }
         JsonValue::Array(arr) => {
             let len = arr.len();
-            let sexp = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len as isize) };
+            // Protect sexp before recursive calls that may trigger GC
+            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
             for (i, elem) in arr.iter().enumerate() {
-                unsafe { SET_VECTOR_ELT(sexp, i as isize, json_value_to_sexp(elem)) };
+                unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(elem)) };
             }
-            sexp
+            sexp.into_inner()
         }
         JsonValue::Object(map) => {
             let len = map.len();
-            let sexp = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len as isize) };
-            let names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len as isize) };
+            // Protect both sexp and names before recursive calls that may trigger GC
+            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
+            let names =
+                unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, len as isize)) };
 
             for (i, (key, val)) in map.iter().enumerate() {
                 let charsxp = unsafe {
                     Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8)
                 };
                 unsafe {
-                    SET_STRING_ELT(names, i as isize, charsxp);
-                    SET_VECTOR_ELT(sexp, i as isize, json_value_to_sexp(val));
+                    SET_STRING_ELT(names.get(), i as isize, charsxp);
+                    SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(val));
                 }
             }
 
-            unsafe { Rf_setAttrib(sexp, crate::ffi::R_NamesSymbol, names) };
-            sexp
+            unsafe { Rf_setAttrib(sexp.get(), crate::ffi::R_NamesSymbol, names.get()) };
+            sexp.into_inner()
         }
     }
 }

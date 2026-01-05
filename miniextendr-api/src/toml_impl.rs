@@ -61,6 +61,7 @@ use crate::ffi::{
     SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 
 // =============================================================================
@@ -183,10 +184,11 @@ fn toml_value_to_sexp(v: &TomlValue) -> SEXP {
 
 fn string_to_sexp(s: &str) -> SEXP {
     unsafe {
-        let sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+        // Protect sexp before Rf_mkCharLenCE which can trigger GC
+        let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
         let charsxp = Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8);
-        SET_STRING_ELT(sexp, 0, charsxp);
-        sexp
+        SET_STRING_ELT(sexp.get(), 0, charsxp);
+        sexp.into_inner()
     }
 }
 
@@ -237,7 +239,10 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
         // Try to create a homogeneous vector
         match &arr[0] {
             TomlValue::String(_) => {
-                let sexp = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, arr.len() as isize) };
+                // Protect sexp before Rf_mkCharLenCE calls which can trigger GC
+                let sexp = unsafe {
+                    OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, arr.len() as isize))
+                };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::String(s) = v {
                         unsafe {
@@ -246,11 +251,11 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                                 s.len() as i32,
                                 cetype_t::CE_UTF8,
                             );
-                            SET_STRING_ELT(sexp, i as isize, charsxp);
+                            SET_STRING_ELT(sexp.get(), i as isize, charsxp);
                         }
                     }
                 }
-                return sexp;
+                return sexp.into_inner();
             }
             TomlValue::Integer(_) => {
                 let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
@@ -293,31 +298,32 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
     }
 
     // Heterogeneous or complex types -> list
-    let sexp = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, arr.len() as isize) };
+    // Protect sexp before recursive calls that may trigger GC
+    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, arr.len() as isize)) };
     for (i, v) in arr.iter().enumerate() {
-        unsafe { SET_VECTOR_ELT(sexp, i as isize, toml_value_to_sexp(v)) };
+        unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, toml_value_to_sexp(v)) };
     }
-    sexp
+    sexp.into_inner()
 }
 
 fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     let len = table.len();
-    let sexp = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len as isize) };
+    // Protect both sexp and names before recursive calls that may trigger GC
+    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
+    let names = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, len as isize)) };
 
-    // Set names
-    let names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len as isize) };
     for (i, (key, value)) in table.iter().enumerate() {
         unsafe {
             let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8);
-            SET_STRING_ELT(names, i as isize, charsxp);
-            SET_VECTOR_ELT(sexp, i as isize, toml_value_to_sexp(value));
+            SET_STRING_ELT(names.get(), i as isize, charsxp);
+            SET_VECTOR_ELT(sexp.get(), i as isize, toml_value_to_sexp(value));
         }
     }
 
     unsafe {
-        Rf_setAttrib(sexp, crate::ffi::R_NamesSymbol, names);
+        Rf_setAttrib(sexp.get(), crate::ffi::R_NamesSymbol, names.get());
     }
-    sexp
+    sexp.into_inner()
 }
 
 // Helper to get a discriminant for type comparison

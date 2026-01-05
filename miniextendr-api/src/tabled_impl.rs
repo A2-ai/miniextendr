@@ -48,6 +48,7 @@ pub use tabled::settings::{Alignment, Modify, Style, Width};
 pub use tabled::{Table, Tabled};
 
 use crate::ffi::{Rf_allocVector, Rf_mkCharLenCE, SET_STRING_ELT, SEXP, SEXPTYPE, cetype_t};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 
 // =============================================================================
@@ -199,10 +200,11 @@ impl IntoR for Table {
     fn into_sexp(self) -> SEXP {
         let s = self.to_string();
         unsafe {
-            let sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
+            // Protect sexp before Rf_mkCharLenCE which can trigger GC
+            let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             let charsxp = Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8);
-            SET_STRING_ELT(sexp, 0, charsxp);
-            sexp
+            SET_STRING_ELT(sexp.get(), 0, charsxp);
+            sexp.into_inner()
         }
     }
 }
