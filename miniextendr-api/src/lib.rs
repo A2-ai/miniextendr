@@ -214,6 +214,35 @@ pub mod abi;
 /// Provides C-callable loading and type conversion helpers for trait ABI support.
 pub mod trait_abi;
 
+/// Optional vctrs C API support.
+///
+/// Provides access to vctrs' maturing C API functions for vector operations.
+/// This is an optional dependency - if vctrs is not available at runtime,
+/// [`init_vctrs`] will return an error.
+///
+/// Available functions:
+/// - [`obj_is_vector`](vctrs::obj_is_vector) - Check if object is a vector
+/// - [`short_vec_size`](vctrs::short_vec_size) - Get vector size
+/// - [`short_vec_recycle`](vctrs::short_vec_recycle) - Recycle to target size
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{init_vctrs, obj_is_vector, short_vec_size};
+///
+/// // In R_init_<pkg>:
+/// if init_vctrs().is_ok() {
+///     // vctrs support enabled
+/// }
+///
+/// // Later:
+/// if obj_is_vector(x)? {
+///     let n = short_vec_size(x)?;
+/// }
+/// ```
+pub mod vctrs;
+pub use vctrs::{VctrsSexpExt, init_vctrs};
+
 // Re-export key ABI types at crate root for convenience
 pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};
 pub use trait_abi::TraitView;

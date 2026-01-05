@@ -11,12 +11,20 @@ extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 
+// Optional vctrs support initialization
+// Returns: 0=success, 1=not available, 2=not main thread, 3=already initialized
+extern int miniextendr_init_vctrs(void);
+
 // Trait ABI C-callable registration (defined in mx_abi.c)
 extern void mx_abi_register(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
+
+    // Optional: initialize vctrs C API support
+    // Status 1 (not available) is fine - vctrs is optional
+    (void)miniextendr_init_vctrs();
 
     // Register trait ABI C-callables (mx_wrap, mx_get, mx_query)
     // These are loaded by consumer packages via R_GetCCallable()

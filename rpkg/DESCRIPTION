@@ -11,7 +11,8 @@ RoxygenNote: 7.3.3
 Imports:
     methods,
     R6,
-    S7
+    S7,
+    vctrs
 Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3

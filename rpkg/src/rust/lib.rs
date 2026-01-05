@@ -45,6 +45,7 @@ mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
+mod vctrs_tests;
 mod visibility_tests;
 mod worker_tests;
 
@@ -1172,6 +1173,7 @@ miniextendr_module! {
     use rng_tests;
     use nonapi;
     use factor_tests;
+    use vctrs_tests;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
     extern "C-unwind" fn rpkg_altrep_compact_int;
