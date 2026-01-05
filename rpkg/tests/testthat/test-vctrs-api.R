@@ -5,15 +5,21 @@
 #
 # Note: Test functions are internal (not exported), so we use `:::` to access them.
 
-test_that("vctrs support is initialized", {
+# Helper to skip if vctrs feature is not enabled
+skip_if_vctrs_disabled <- function() {
+  skip_if_not("vctrs" %in% miniextendr::rpkg_enabled_features(), "vctrs feature not enabled")
   skip_if_not_installed("vctrs")
+}
+
+test_that("vctrs support is initialized", {
+  skip_if_vctrs_disabled()
 
   # vctrs should be initialized when the package loads
   expect_true(miniextendr:::test_vctrs_is_initialized())
 })
 
 test_that("obj_is_vector returns TRUE for vectors", {
-  skip_if_not_installed("vctrs")
+  skip_if_vctrs_disabled()
 
   # Atomic vectors
   expect_true(miniextendr:::test_vctrs_obj_is_vector(logical(0)))
@@ -39,7 +45,7 @@ test_that("obj_is_vector returns TRUE for vectors", {
 })
 
 test_that("obj_is_vector returns FALSE for non-vectors", {
-  skip_if_not_installed("vctrs")
+  skip_if_vctrs_disabled()
 
   # NULL
   expect_false(miniextendr:::test_vctrs_obj_is_vector(NULL))
@@ -61,7 +67,7 @@ test_that("obj_is_vector returns FALSE for non-vectors", {
 })
 
 test_that("short_vec_size returns correct sizes", {
-  skip_if_not_installed("vctrs")
+  skip_if_vctrs_disabled()
 
   # Atomic vectors
   expect_equal(miniextendr:::test_vctrs_short_vec_size(integer(0)), 0L)
@@ -80,7 +86,7 @@ test_that("short_vec_size returns correct sizes", {
 })
 
 test_that("short_vec_recycle recycles vectors", {
-  skip_if_not_installed("vctrs")
+  skip_if_vctrs_disabled()
 
   # Recycle length-1 to length-5
   result <- miniextendr:::test_vctrs_short_vec_recycle(42L, 5L)
@@ -100,7 +106,7 @@ test_that("short_vec_recycle recycles vectors", {
 })
 
 test_that("short_vec_recycle matches vctrs behavior", {
-  skip_if_not_installed("vctrs")
+  skip_if_vctrs_disabled()
 
   # Test that our wrapper matches vctrs::vec_recycle
   x <- 1:1

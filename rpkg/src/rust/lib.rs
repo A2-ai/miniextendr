@@ -45,7 +45,6 @@ mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
-mod vctrs_tests;
 mod visibility_tests;
 mod worker_tests;
 
@@ -1041,6 +1040,18 @@ mod nonapi;
 
 // endregion
 
+// region: vctrs module (optional vctrs C API support)
+
+#[cfg(feature = "vctrs")]
+#[path = "vctrs_tests_enabled.rs"]
+mod vctrs_tests;
+
+#[cfg(not(feature = "vctrs"))]
+#[path = "vctrs_tests_disabled.rs"]
+mod vctrs_tests;
+
+// endregion
+
 // region: Feature detection
 
 /// Returns a vector of enabled feature names for this build.
@@ -1135,6 +1146,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     }
     if cfg!(feature = "raw_conversions") {
         features.push("raw_conversions");
+    }
+    if cfg!(feature = "vctrs") {
+        features.push("vctrs");
     }
 
     features

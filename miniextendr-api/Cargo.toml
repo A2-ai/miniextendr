@@ -74,6 +74,9 @@ toml = ["dep:toml"]
 tabled = ["dep:tabled"]
 ## Enable raw_conversions integration. Provides bytemuck-based POD ↔ raw vector conversions.
 raw_conversions = ["dep:bytemuck"]
+## Enable vctrs integration. Provides access to vctrs' maturing C API (obj_is_vector,
+## short_vec_size, short_vec_recycle) via R_GetCCallable. Requires vctrs R package.
+vctrs = []
 
 [dependencies]
 miniextendr-macros = { workspace = true }

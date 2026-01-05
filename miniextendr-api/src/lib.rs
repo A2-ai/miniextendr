@@ -225,6 +225,8 @@ pub mod trait_abi;
 /// - [`short_vec_size`](vctrs::short_vec_size) - Get vector size
 /// - [`short_vec_recycle`](vctrs::short_vec_recycle) - Recycle to target size
 ///
+/// Enable with `features = ["vctrs"]`.
+///
 /// # Example
 ///
 /// ```ignore
@@ -240,8 +242,18 @@ pub mod trait_abi;
 ///     let n = short_vec_size(x)?;
 /// }
 /// ```
+#[cfg(feature = "vctrs")]
 pub mod vctrs;
+#[cfg(feature = "vctrs")]
 pub use vctrs::{VctrsSexpExt, init_vctrs};
+
+// Stub for miniextendr_init_vctrs when vctrs feature is disabled.
+// Always returns 1 (NotAvailable) so C code can call it unconditionally.
+#[cfg(not(feature = "vctrs"))]
+#[unsafe(no_mangle)]
+pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
+    1 // NotAvailable
+}
 
 // Re-export key ABI types at crate root for convenience
 pub use abi::{mx_base_vtable, mx_erased, mx_meth, mx_tag};

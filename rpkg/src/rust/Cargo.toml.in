@@ -47,6 +47,7 @@ aho-corasick = ["miniextendr-api/aho-corasick"]
 toml = ["miniextendr-api/toml"]
 tabled = ["miniextendr-api/tabled"]
 raw_conversions = ["miniextendr-api/raw_conversions"]
+vctrs = ["miniextendr-api/vctrs"]
 
 [dependencies]
 miniextendr-api = { version = "*" }

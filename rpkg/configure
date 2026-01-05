@@ -2001,7 +2001,7 @@ fi
 
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
     if test "$NOT_CRAN" = "true"; then
-        MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions"
+        MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
     echo "configure: dev mode - enabling all optional features for testing"
   else
         MINIEXTENDR_FEATURES=""
