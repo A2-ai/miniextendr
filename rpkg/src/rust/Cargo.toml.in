@@ -38,6 +38,8 @@ indexmap = ["miniextendr-api/indexmap"]
 time = ["miniextendr-api/time"]
 num-traits = ["miniextendr-api/num-traits"]
 bytes = ["miniextendr-api/bytes"]
+num-complex = ["miniextendr-api/num-complex"]
+url = ["miniextendr-api/url"]
 
 [dependencies]
 miniextendr-api = { version = "*" }

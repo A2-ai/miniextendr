@@ -556,3 +556,28 @@ pub use bytes_impl::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
 pub mod num_complex_impl;
 #[cfg(feature = "num-complex")]
 pub use num_complex_impl::{Complex, RComplexOps};
+
+/// Integration with the `url` crate for URL parsing and validation.
+///
+/// Provides conversions between R character vectors and `Url` types:
+/// - `Url` ⇄ `character(1)` (validated URL)
+/// - `Vec<Url>` ⇄ `character` vector
+/// - `Option<Url>` for NA support
+///
+/// Also provides the [`RUrlOps`][url_impl::RUrlOps] adapter trait
+/// for exposing URL inspection methods to R (scheme, host, port, path, etc.).
+///
+/// Enable with `features = ["url"]`.
+///
+/// ```ignore
+/// use url::Url;
+///
+/// #[miniextendr]
+/// fn get_domain(url: Url) -> Option<String> {
+///     url.host_str().map(|s| s.to_string())
+/// }
+/// ```
+#[cfg(feature = "url")]
+pub mod url_impl;
+#[cfg(feature = "url")]
+pub use url_impl::{RUrlOps, Url, url_helpers};

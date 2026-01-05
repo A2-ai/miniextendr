@@ -45,7 +45,7 @@ use crate::ffi::{RLogical, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
 /// - The CHARSXP must contain valid UTF-8 bytes (CE_UTF8, CE_ASCII, or compatible).
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
 #[inline]
-unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
+pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR(charsxp);
         let len = crate::ffi::LENGTH(charsxp) as usize;

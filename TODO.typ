@@ -1043,16 +1043,17 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== num-complex feature ====
 
-- [ ] Add `num-complex` optional feature for complex number support
+- [x] Add `num-complex` optional feature for complex number support
   - `num-complex = { version = "0.4", optional = true }`
   - Create `miniextendr-api/src/num_complex_impl.rs`
-  - Helpers: `to_rcomplex()`, `from_rcomplex()`, `na_rcomplex()`
+  - Helpers: `to_rcomplex()`, `from_rcomplex()`, `na_rcomplex()`, `is_na_rcomplex()`, `is_na_complex()`
   - `TryFromSexp for Complex<f64>` - from CPLXSXP scalar
   - `TryFromSexp for Vec<Complex<f64>>` - from CPLXSXP vector
   - `TryFromSexp for Option<Complex<f64>>` - NA handling
   - `TryFromSexp for Vec<Option<Complex<f64>>>` - NA-aware vectors
   - `IntoR` impls for all above
   - NA detection: either part is `NA_REAL` (use `to_bits()` comparison)
+  - `RComplexOps` adapter trait (re, im, norm, norm_sqr, arg, is_finite, is_infinite, is_nan, is_normal, conj, inv)
   - Plan: `reviews/num-complex-plan.md`
 
 ==== serde-json Value bridge ====
@@ -1122,14 +1123,15 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== url feature ====
 
-- [ ] Add `url` optional feature for URL parsing/validation
+- [x] Add `url` optional feature for URL parsing/validation
   - `url = { version = "2", optional = true }`
   - Create `miniextendr-api/src/url_impl.rs`
   - `TryFromSexp for url::Url` - from character(1), strict validation
   - `TryFromSexp for Option<url::Url>` - NA → None
   - `TryFromSexp for Vec<url::Url>` and `Vec<Option<url::Url>>`
   - `IntoR for url::Url` - character(1) via `url.as_str()`
-  - Helpers: `url_parse(s)`, `url_join(base, path)`
+  - `RUrlOps` adapter trait (scheme, host, port, path, query, fragment, etc.)
+  - Helpers in `url_helpers`: `parse()`, `join()`, `is_valid()`
   - Strict validation: invalid URLs error
   - Plan: `reviews/url-plan.md`
 
