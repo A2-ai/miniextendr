@@ -1419,7 +1419,9 @@ impl<T: RNativeType + Clone> From<&RMatrix<T>> for Array2<T> {
     fn from(arr: &RMatrix<T>) -> Self {
         let slice = unsafe { arr.as_slice() };
         let dims = unsafe { arr.dims() };
-        Array2::from_shape_vec((dims[0], dims[1]).f(), slice.to_vec()).unwrap()
+        // SAFETY: RArray dimensions are validated at construction time,
+        // so dims and slice length are guaranteed to be consistent.
+        unsafe { Array2::from_shape_vec_unchecked((dims[0], dims[1]).f(), slice.to_vec()) }
     }
 }
 
@@ -1429,7 +1431,8 @@ impl<T: RNativeType + Clone> From<&RArray3D<T>> for Array3<T> {
     fn from(arr: &RArray3D<T>) -> Self {
         let slice = unsafe { arr.as_slice() };
         let dims = unsafe { arr.dims() };
-        Array3::from_shape_vec((dims[0], dims[1], dims[2]).f(), slice.to_vec()).unwrap()
+        // SAFETY: RArray dimensions are validated at construction time.
+        unsafe { Array3::from_shape_vec_unchecked((dims[0], dims[1], dims[2]).f(), slice.to_vec()) }
     }
 }
 
@@ -1442,7 +1445,8 @@ impl<T: RNativeType + Clone, const NDIM: usize> From<&RArray<T, NDIM>> for Array
         let slice = unsafe { arr.as_slice() };
         let dims = unsafe { arr.dims() };
         let shape = IxDyn(&dims);
-        ArrayD::from_shape_vec(shape.f(), slice.to_vec()).unwrap()
+        // SAFETY: RArray dimensions are validated at construction time.
+        unsafe { ArrayD::from_shape_vec_unchecked(shape.f(), slice.to_vec()) }
     }
 }
 
