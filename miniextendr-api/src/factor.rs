@@ -394,7 +394,9 @@ pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, Sex
 
 /// Convert an R factor SEXP to a Vec of Option enum values (NA → None).
 #[inline]
-pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError> {
+pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
+    sexp: SEXP,
+) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::LEVELS)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
@@ -405,10 +407,9 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<
         if idx == NA_INTEGER {
             result.push(None);
         } else {
-            result.push(Some(
-                T::from_level_index(idx)
-                    .ok_or_else(|| SexpError::InvalidValue("index out of range".into()))?,
-            ));
+            result.push(Some(T::from_level_index(idx).ok_or_else(|| {
+                SexpError::InvalidValue("index out of range".into())
+            })?));
         }
     }
 

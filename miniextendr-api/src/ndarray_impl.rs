@@ -64,7 +64,46 @@
 //! ```
 
 pub use ndarray::{
-    Array1, Array2, Array3, ArrayD, ArrayView1, ArrayView2, ArrayView3, ArrayViewD, IxDyn,
+    // Shared ownership
+    ArcArray1,
+    ArcArray2,
+    // Owned arrays (all fixed dimensions)
+    Array0,
+    Array1,
+    Array2,
+    Array3,
+    Array4,
+    Array5,
+    Array6,
+    ArrayD,
+    // Read-only views
+    ArrayView0,
+    ArrayView1,
+    ArrayView2,
+    ArrayView3,
+    ArrayView4,
+    ArrayView5,
+    ArrayView6,
+    ArrayViewD,
+    // Mutable views
+    ArrayViewMut0,
+    ArrayViewMut1,
+    ArrayViewMut2,
+    ArrayViewMut3,
+    ArrayViewMut4,
+    ArrayViewMut5,
+    ArrayViewMut6,
+    ArrayViewMutD,
+    // Index types
+    Ix0,
+    Ix1,
+    Ix2,
+    Ix3,
+    Ix4,
+    Ix5,
+    Ix6,
+    IxDyn,
+    // Shape builder
     ShapeBuilder,
 };
 
@@ -295,6 +334,259 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
 
             arr
         } // scope drops here, calling UNPROTECT(2)
+    }
+}
+
+// =============================================================================
+// Array4 conversions (4D arrays)
+// =============================================================================
+
+/// Convert R 4D array to `Array4<T>`.
+impl<T: RNativeType + Clone> TryFromSexp for Array4<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+
+        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+            expected: 4,
+            actual: 1,
+        })?;
+        if dims.len() != 4 {
+            return Err(SexpLengthError {
+                expected: 4,
+                actual: dims.len(),
+            }
+            .into());
+        }
+
+        let slice: &[T] = unsafe { sexp.as_slice() };
+        let arr = Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec())
+            .map_err(|_| SexpLengthError {
+                expected: dims.iter().product(),
+                actual: slice.len(),
+            })?;
+
+        Ok(arr)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// Convert `Array4<T>` to R 4D array.
+impl<T: RNativeType + Clone> IntoR for Array4<T> {
+    fn into_sexp(self) -> SEXP {
+        let (d0, d1, d2, d3) = self.dim();
+        let shape = vec![d0, d1, d2, d3];
+        let total_len = shape.iter().product();
+
+        let data: Vec<T> = {
+            let mut v = Vec::with_capacity(total_len);
+            fortran_order_iter(&shape, |idx| {
+                v.push(self[[idx[0], idx[1], idx[2], idx[3]]]);
+            });
+            v
+        };
+
+        unsafe {
+            let scope = ProtectScope::new();
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                total_len as crate::ffi::R_xlen_t,
+            ));
+
+            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+
+            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 4));
+            let dim_ptr = crate::ffi::INTEGER(dim);
+            *dim_ptr = d0 as i32;
+            *dim_ptr.add(1) = d1 as i32;
+            *dim_ptr.add(2) = d2 as i32;
+            *dim_ptr.add(3) = d3 as i32;
+            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+
+            arr
+        }
+    }
+}
+
+// =============================================================================
+// Array5 conversions (5D arrays)
+// =============================================================================
+
+/// Convert R 5D array to `Array5<T>`.
+impl<T: RNativeType + Clone> TryFromSexp for Array5<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+
+        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+            expected: 5,
+            actual: 1,
+        })?;
+        if dims.len() != 5 {
+            return Err(SexpLengthError {
+                expected: 5,
+                actual: dims.len(),
+            }
+            .into());
+        }
+
+        let slice: &[T] = unsafe { sexp.as_slice() };
+        let arr = Array5::from_shape_vec(
+            (dims[0], dims[1], dims[2], dims[3], dims[4]).f(),
+            slice.to_vec(),
+        )
+        .map_err(|_| SexpLengthError {
+            expected: dims.iter().product(),
+            actual: slice.len(),
+        })?;
+
+        Ok(arr)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// Convert `Array5<T>` to R 5D array.
+impl<T: RNativeType + Clone> IntoR for Array5<T> {
+    fn into_sexp(self) -> SEXP {
+        let (d0, d1, d2, d3, d4) = self.dim();
+        let shape = vec![d0, d1, d2, d3, d4];
+        let total_len = shape.iter().product();
+
+        let data: Vec<T> = {
+            let mut v = Vec::with_capacity(total_len);
+            fortran_order_iter(&shape, |idx| {
+                v.push(self[[idx[0], idx[1], idx[2], idx[3], idx[4]]]);
+            });
+            v
+        };
+
+        unsafe {
+            let scope = ProtectScope::new();
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                total_len as crate::ffi::R_xlen_t,
+            ));
+
+            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+
+            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 5));
+            let dim_ptr = crate::ffi::INTEGER(dim);
+            for (i, &d) in [d0, d1, d2, d3, d4].iter().enumerate() {
+                *dim_ptr.add(i) = d as i32;
+            }
+            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+
+            arr
+        }
+    }
+}
+
+// =============================================================================
+// Array6 conversions (6D arrays)
+// =============================================================================
+
+/// Convert R 6D array to `Array6<T>`.
+impl<T: RNativeType + Clone> TryFromSexp for Array6<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+
+        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+            expected: 6,
+            actual: 1,
+        })?;
+        if dims.len() != 6 {
+            return Err(SexpLengthError {
+                expected: 6,
+                actual: dims.len(),
+            }
+            .into());
+        }
+
+        let slice: &[T] = unsafe { sexp.as_slice() };
+        let arr = Array6::from_shape_vec(
+            (dims[0], dims[1], dims[2], dims[3], dims[4], dims[5]).f(),
+            slice.to_vec(),
+        )
+        .map_err(|_| SexpLengthError {
+            expected: dims.iter().product(),
+            actual: slice.len(),
+        })?;
+
+        Ok(arr)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// Convert `Array6<T>` to R 6D array.
+impl<T: RNativeType + Clone> IntoR for Array6<T> {
+    fn into_sexp(self) -> SEXP {
+        let (d0, d1, d2, d3, d4, d5) = self.dim();
+        let shape = vec![d0, d1, d2, d3, d4, d5];
+        let total_len = shape.iter().product();
+
+        let data: Vec<T> = {
+            let mut v = Vec::with_capacity(total_len);
+            fortran_order_iter(&shape, |idx| {
+                v.push(self[[idx[0], idx[1], idx[2], idx[3], idx[4], idx[5]]]);
+            });
+            v
+        };
+
+        unsafe {
+            let scope = ProtectScope::new();
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                total_len as crate::ffi::R_xlen_t,
+            ));
+
+            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+
+            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 6));
+            let dim_ptr = crate::ffi::INTEGER(dim);
+            for (i, &d) in [d0, d1, d2, d3, d4, d5].iter().enumerate() {
+                *dim_ptr.add(i) = d as i32;
+            }
+            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+
+            arr
+        }
     }
 }
 
@@ -696,12 +988,39 @@ impl_te_ndarray!(Array3<u8>, "ndarray::Array3<u8>");
 impl_te_ndarray!(Array3<RLogical>, "ndarray::Array3<RLogical>");
 impl_te_ndarray!(Array3<Rcomplex>, "ndarray::Array3<Rcomplex>");
 
+// --- Array4 TypedExternal (all R native types) ---
+impl_te_ndarray!(Array4<i32>, "ndarray::Array4<i32>");
+impl_te_ndarray!(Array4<f64>, "ndarray::Array4<f64>");
+impl_te_ndarray!(Array4<u8>, "ndarray::Array4<u8>");
+impl_te_ndarray!(Array4<RLogical>, "ndarray::Array4<RLogical>");
+impl_te_ndarray!(Array4<Rcomplex>, "ndarray::Array4<Rcomplex>");
+
+// --- Array5 TypedExternal (all R native types) ---
+impl_te_ndarray!(Array5<i32>, "ndarray::Array5<i32>");
+impl_te_ndarray!(Array5<f64>, "ndarray::Array5<f64>");
+impl_te_ndarray!(Array5<u8>, "ndarray::Array5<u8>");
+impl_te_ndarray!(Array5<RLogical>, "ndarray::Array5<RLogical>");
+impl_te_ndarray!(Array5<Rcomplex>, "ndarray::Array5<Rcomplex>");
+
+// --- Array6 TypedExternal (all R native types) ---
+impl_te_ndarray!(Array6<i32>, "ndarray::Array6<i32>");
+impl_te_ndarray!(Array6<f64>, "ndarray::Array6<f64>");
+impl_te_ndarray!(Array6<u8>, "ndarray::Array6<u8>");
+impl_te_ndarray!(Array6<RLogical>, "ndarray::Array6<RLogical>");
+impl_te_ndarray!(Array6<Rcomplex>, "ndarray::Array6<Rcomplex>");
+
 // --- ArrayD TypedExternal (all R native types) ---
 impl_te_ndarray!(ArrayD<i32>, "ndarray::ArrayD<i32>");
 impl_te_ndarray!(ArrayD<f64>, "ndarray::ArrayD<f64>");
 impl_te_ndarray!(ArrayD<u8>, "ndarray::ArrayD<u8>");
 impl_te_ndarray!(ArrayD<RLogical>, "ndarray::ArrayD<RLogical>");
 impl_te_ndarray!(ArrayD<Rcomplex>, "ndarray::ArrayD<Rcomplex>");
+
+// --- ArcArray TypedExternal (common types) ---
+impl_te_ndarray!(ArcArray1<f64>, "ndarray::ArcArray1<f64>");
+impl_te_ndarray!(ArcArray1<i32>, "ndarray::ArcArray1<i32>");
+impl_te_ndarray!(ArcArray2<f64>, "ndarray::ArcArray2<f64>");
+impl_te_ndarray!(ArcArray2<i32>, "ndarray::ArcArray2<i32>");
 
 // =============================================================================
 // RNdArrayOps adapter trait

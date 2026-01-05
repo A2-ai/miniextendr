@@ -447,8 +447,33 @@ pub fn miniextendr(
         }
     }
 
-    // Generate conversion statements
-    let closure_statements = conversion_builder.build_conversions(inputs, &rust_inputs);
+    // Generate conversion statements (split for worker thread compatibility)
+    // pre_closure: runs on main thread, produces owned values to move
+    // in_closure: runs inside worker closure, creates borrows from moved storage
+    let (pre_closure_stmts, in_closure_stmts): (Vec<_>, Vec<_>) = inputs
+        .iter()
+        .zip(rust_inputs.iter())
+        .filter_map(|(arg, sexp_ident)| {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                Some(conversion_builder.build_conversion_split(pat_type, sexp_ident))
+            } else {
+                None
+            }
+        })
+        .fold(
+            (Vec::new(), Vec::new()),
+            |(mut pre, mut in_c), (owned, borrowed)| {
+                pre.extend(owned);
+                in_c.extend(borrowed);
+                (pre, in_c)
+            },
+        );
+    // For main thread paths (no split needed), flatten both into closure_statements
+    let closure_statements: Vec<_> = pre_closure_stmts
+        .iter()
+        .chain(in_closure_stmts.iter())
+        .cloned()
+        .collect();
 
     // Hygiene: Use mixed_site() for internal variables that need to reference both
     // macro-generated items (quote!) and user-provided items from the original function.
@@ -620,9 +645,12 @@ pub fn miniextendr(
                 #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #(#pre_call_statements)*
-                    #(#closure_statements)*
+                    // Pre-closure: conversions on main thread (owned values to move)
+                    #(#pre_closure_stmts)*
 
                     let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                        // In-closure: borrows from moved storage
+                        #(#in_closure_stmts)*
                         let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
                         #(#post_call_statements)*
                         #rust_result_ident

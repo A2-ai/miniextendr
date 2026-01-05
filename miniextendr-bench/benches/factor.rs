@@ -7,8 +7,8 @@
 //! Key finding: ~4x speedup for single value conversions (the primary use case).
 //! Vector conversions show minimal difference since vector allocation dominates.
 
-use miniextendr_api::ffi::SEXP;
 use miniextendr_api::factor::{build_factor, build_levels_sexp};
+use miniextendr_api::ffi::SEXP;
 use miniextendr_api::{FactorVec, IntoR, RFactor};
 
 fn main() {

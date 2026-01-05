@@ -123,13 +123,19 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
 
     // Auto-generate @title from implicit title if we have @name but no @title
     // Use implicit_title_from_attrs which respects paragraph breaks
-    if has_name && !has_title && let Some(title) = implicit_title_from_attrs(attrs) {
+    if has_name
+        && !has_title
+        && let Some(title) = implicit_title_from_attrs(attrs)
+    {
         tags.insert(0, format!("@title {}", title));
     }
 
     // Auto-generate @description from implicit description if we have @name but no @description
     // Use implicit_description_from_attrs which respects paragraph breaks
-    if has_name && !has_description && let Some(desc) = implicit_description_from_attrs(attrs) {
+    if has_name
+        && !has_description
+        && let Some(desc) = implicit_description_from_attrs(attrs)
+    {
         // Insert after @title if present, otherwise at start
         let insert_pos = if tags.first().is_some_and(|t| t.starts_with("@title")) {
             1

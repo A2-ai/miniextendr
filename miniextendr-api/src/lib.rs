@@ -334,7 +334,54 @@ pub use either_impl::{Either, Left, Right};
 #[cfg(feature = "ndarray")]
 pub mod ndarray_impl;
 #[cfg(feature = "ndarray")]
-pub use ndarray_impl::{Array1, Array2, ArrayView1, ArrayView2, RNdArrayOps, RNdSlice, RNdSlice2D};
+pub use ndarray_impl::{
+    // Shared ownership
+    ArcArray1,
+    ArcArray2,
+    // Owned arrays
+    Array0,
+    Array1,
+    Array2,
+    Array3,
+    Array4,
+    Array5,
+    Array6,
+    ArrayD,
+    // Read-only views
+    ArrayView0,
+    ArrayView1,
+    ArrayView2,
+    ArrayView3,
+    ArrayView4,
+    ArrayView5,
+    ArrayView6,
+    ArrayViewD,
+    // Mutable views
+    ArrayViewMut0,
+    ArrayViewMut1,
+    ArrayViewMut2,
+    ArrayViewMut3,
+    ArrayViewMut4,
+    ArrayViewMut5,
+    ArrayViewMut6,
+    ArrayViewMutD,
+    // Index types
+    Ix0,
+    Ix1,
+    Ix2,
+    Ix3,
+    Ix4,
+    Ix5,
+    Ix6,
+    IxDyn,
+    // Adapter traits
+    RNdArrayOps,
+    RNdIndex,
+    RNdSlice,
+    RNdSlice2D,
+    // Shape builder
+    ShapeBuilder,
+};
 
 /// Integration with the `nalgebra` crate.
 ///
