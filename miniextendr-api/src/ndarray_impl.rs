@@ -1187,6 +1187,369 @@ impl RNdSlice2D for Array2<i32> {
     }
 }
 
+// =============================================================================
+// RNdIndex adapter trait for n-dimensional indexing
+// =============================================================================
+
+/// Adapter trait for n-dimensional array indexing and slicing.
+///
+/// Provides R-style array subsetting for `ArrayD` (dynamic dimension arrays).
+/// Unlike `RNdSlice` (1D) and `RNdSlice2D` (2D), this trait handles arrays
+/// of arbitrary dimension.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use ndarray::ArrayD;
+/// use miniextendr_api::ndarray_impl::RNdIndex;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyNdArray(ArrayD<f64>);
+///
+/// #[miniextendr]
+/// impl RNdIndex for MyNdArray {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RNdIndex for MyNdArray;
+/// }
+/// ```
+///
+/// In R:
+/// ```r
+/// # Create a 3D array (2x3x4)
+/// arr <- MyNdArray$new(array(1:24, dim = c(2, 3, 4)))
+/// arr$r_get_nd(c(0L, 1L, 2L))     # Element at [0,1,2]
+/// arr$r_slice_nd(c(0L, 0L, 0L), c(2L, 2L, 2L))  # Subarray [0:2, 0:2, 0:2]
+/// arr$r_flatten()                 # Flatten to 1D vector
+/// ```
+pub trait RNdIndex {
+    /// Element type of the array.
+    type Elem: Clone;
+
+    /// Get the element at the given n-dimensional index (0-indexed).
+    ///
+    /// Returns None if the index is out of bounds or has wrong dimensionality.
+    fn r_get_nd(&self, indices: Vec<i32>) -> Option<Self::Elem>;
+
+    /// Extract a subarray from start (inclusive) to end (exclusive).
+    ///
+    /// Both `start` and `end` must have the same length as the array's ndim.
+    /// Returns None if bounds are invalid.
+    fn r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<Self::Elem>>;
+
+    /// Get the shape of the array.
+    fn r_shape_nd(&self) -> Vec<i32>;
+
+    /// Get the number of dimensions.
+    fn r_ndim(&self) -> i32;
+
+    /// Get the total number of elements.
+    fn r_len_nd(&self) -> i32;
+
+    /// Flatten the array to a 1D vector in Fortran (column-major) order.
+    ///
+    /// This matches R's default array storage order.
+    fn r_flatten(&self) -> Vec<Self::Elem>;
+
+    /// Flatten the array to a 1D vector in C (row-major) order.
+    fn r_flatten_c(&self) -> Vec<Self::Elem>;
+
+    /// Check if the given index is valid.
+    fn r_is_valid_nd(&self, indices: Vec<i32>) -> bool {
+        self.r_get_nd(indices).is_some()
+    }
+
+    /// Get elements along a specific axis at the given index.
+    ///
+    /// Returns elements where the specified axis is fixed at `index`.
+    fn r_axis_slice(&self, axis: i32, index: i32) -> Vec<Self::Elem>;
+
+    /// Reshape the array to new dimensions (data must fit exactly).
+    ///
+    /// Returns None if the total element count doesn't match.
+    fn r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<Self::Elem>>;
+}
+
+impl RNdIndex for ArrayD<f64> {
+    type Elem = f64;
+
+    fn r_get_nd(&self, indices: Vec<i32>) -> Option<f64> {
+        if indices.len() != self.ndim() {
+            return None;
+        }
+        // Check for negative indices
+        if indices.iter().any(|&i| i < 0) {
+            return None;
+        }
+        let idx: Vec<usize> = indices.iter().map(|&i| i as usize).collect();
+        self.get(IxDyn(&idx)).copied()
+    }
+
+    fn r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<f64>> {
+        let ndim = self.ndim();
+        if start.len() != ndim || end.len() != ndim {
+            return None;
+        }
+
+        let shape = self.shape();
+        let mut result = Vec::new();
+
+        // Convert to usize and clamp
+        let start_usize: Vec<usize> = start
+            .iter()
+            .enumerate()
+            .map(|(i, &s)| (s.max(0) as usize).min(shape[i]))
+            .collect();
+        let end_usize: Vec<usize> = end
+            .iter()
+            .enumerate()
+            .map(|(i, &e)| (e.max(0) as usize).min(shape[i]))
+            .collect();
+
+        // Check if range is valid
+        for i in 0..ndim {
+            if start_usize[i] >= end_usize[i] {
+                return Some(Vec::new());
+            }
+        }
+
+        // Calculate subarray shape
+        let sub_shape: Vec<usize> = (0..ndim)
+            .map(|i| end_usize[i] - start_usize[i])
+            .collect();
+
+        // Iterate in Fortran order (column-major)
+        fortran_order_iter(&sub_shape, |sub_idx| {
+            let full_idx: Vec<usize> = sub_idx
+                .iter()
+                .enumerate()
+                .map(|(i, &s)| s + start_usize[i])
+                .collect();
+            if let Some(&val) = self.get(IxDyn(&full_idx)) {
+                result.push(val);
+            }
+        });
+
+        Some(result)
+    }
+
+    fn r_shape_nd(&self) -> Vec<i32> {
+        self.shape().iter().map(|&d| d as i32).collect()
+    }
+
+    fn r_ndim(&self) -> i32 {
+        self.ndim() as i32
+    }
+
+    fn r_len_nd(&self) -> i32 {
+        self.len() as i32
+    }
+
+    fn r_flatten(&self) -> Vec<f64> {
+        // Iterate in Fortran order to match R
+        let shape: Vec<usize> = self.shape().to_vec();
+        let mut result = Vec::with_capacity(self.len());
+        fortran_order_iter(&shape, |idx| {
+            if let Some(&val) = self.get(IxDyn(&idx)) {
+                result.push(val);
+            }
+        });
+        result
+    }
+
+    fn r_flatten_c(&self) -> Vec<f64> {
+        // Standard iteration (C order)
+        self.iter().copied().collect()
+    }
+
+    fn r_axis_slice(&self, axis: i32, index: i32) -> Vec<f64> {
+        if axis < 0 || axis as usize >= self.ndim() {
+            return Vec::new();
+        }
+        if index < 0 || index as usize >= self.shape()[axis as usize] {
+            return Vec::new();
+        }
+
+        let axis_usize = axis as usize;
+        let index_usize = index as usize;
+
+        // Build shape for the result (all dims except the sliced axis)
+        let result_shape: Vec<usize> = self
+            .shape()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != axis_usize)
+            .map(|(_, &d)| d)
+            .collect();
+
+        let mut result = Vec::new();
+
+        // Iterate over the result shape
+        fortran_order_iter(&result_shape, |sub_idx| {
+            // Build full index by inserting the fixed axis value
+            let mut full_idx = Vec::with_capacity(self.ndim());
+            let mut sub_i = 0;
+            for i in 0..self.ndim() {
+                if i == axis_usize {
+                    full_idx.push(index_usize);
+                } else {
+                    full_idx.push(sub_idx[sub_i]);
+                    sub_i += 1;
+                }
+            }
+            if let Some(&val) = self.get(IxDyn(&full_idx)) {
+                result.push(val);
+            }
+        });
+
+        result
+    }
+
+    fn r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<f64>> {
+        let new_len: usize = new_shape.iter().map(|&d| d.max(0) as usize).product();
+        if new_len != self.len() {
+            return None;
+        }
+        // Return flattened data - reshaping is just reinterpretation
+        Some(self.r_flatten())
+    }
+}
+
+impl RNdIndex for ArrayD<i32> {
+    type Elem = i32;
+
+    fn r_get_nd(&self, indices: Vec<i32>) -> Option<i32> {
+        if indices.len() != self.ndim() {
+            return None;
+        }
+        if indices.iter().any(|&i| i < 0) {
+            return None;
+        }
+        let idx: Vec<usize> = indices.iter().map(|&i| i as usize).collect();
+        self.get(IxDyn(&idx)).copied()
+    }
+
+    fn r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<i32>> {
+        let ndim = self.ndim();
+        if start.len() != ndim || end.len() != ndim {
+            return None;
+        }
+
+        let shape = self.shape();
+        let mut result = Vec::new();
+
+        let start_usize: Vec<usize> = start
+            .iter()
+            .enumerate()
+            .map(|(i, &s)| (s.max(0) as usize).min(shape[i]))
+            .collect();
+        let end_usize: Vec<usize> = end
+            .iter()
+            .enumerate()
+            .map(|(i, &e)| (e.max(0) as usize).min(shape[i]))
+            .collect();
+
+        for i in 0..ndim {
+            if start_usize[i] >= end_usize[i] {
+                return Some(Vec::new());
+            }
+        }
+
+        let sub_shape: Vec<usize> = (0..ndim)
+            .map(|i| end_usize[i] - start_usize[i])
+            .collect();
+
+        fortran_order_iter(&sub_shape, |sub_idx| {
+            let full_idx: Vec<usize> = sub_idx
+                .iter()
+                .enumerate()
+                .map(|(i, &s)| s + start_usize[i])
+                .collect();
+            if let Some(&val) = self.get(IxDyn(&full_idx)) {
+                result.push(val);
+            }
+        });
+
+        Some(result)
+    }
+
+    fn r_shape_nd(&self) -> Vec<i32> {
+        self.shape().iter().map(|&d| d as i32).collect()
+    }
+
+    fn r_ndim(&self) -> i32 {
+        self.ndim() as i32
+    }
+
+    fn r_len_nd(&self) -> i32 {
+        self.len() as i32
+    }
+
+    fn r_flatten(&self) -> Vec<i32> {
+        let shape: Vec<usize> = self.shape().to_vec();
+        let mut result = Vec::with_capacity(self.len());
+        fortran_order_iter(&shape, |idx| {
+            if let Some(&val) = self.get(IxDyn(&idx)) {
+                result.push(val);
+            }
+        });
+        result
+    }
+
+    fn r_flatten_c(&self) -> Vec<i32> {
+        self.iter().copied().collect()
+    }
+
+    fn r_axis_slice(&self, axis: i32, index: i32) -> Vec<i32> {
+        if axis < 0 || axis as usize >= self.ndim() {
+            return Vec::new();
+        }
+        if index < 0 || index as usize >= self.shape()[axis as usize] {
+            return Vec::new();
+        }
+
+        let axis_usize = axis as usize;
+        let index_usize = index as usize;
+
+        let result_shape: Vec<usize> = self
+            .shape()
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != axis_usize)
+            .map(|(_, &d)| d)
+            .collect();
+
+        let mut result = Vec::new();
+
+        fortran_order_iter(&result_shape, |sub_idx| {
+            let mut full_idx = Vec::with_capacity(self.ndim());
+            let mut sub_i = 0;
+            for i in 0..self.ndim() {
+                if i == axis_usize {
+                    full_idx.push(index_usize);
+                } else {
+                    full_idx.push(sub_idx[sub_i]);
+                    sub_i += 1;
+                }
+            }
+            if let Some(&val) = self.get(IxDyn(&full_idx)) {
+                result.push(val);
+            }
+        });
+
+        result
+    }
+
+    fn r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<i32>> {
+        let new_len: usize = new_shape.iter().map(|&d| d.max(0) as usize).product();
+        if new_len != self.len() {
+            return None;
+        }
+        Some(self.r_flatten())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1422,5 +1785,155 @@ mod tests {
         let arr = Array2::from_shape_vec((2, 4), vec![1.0; 8]).unwrap();
         assert_eq!(RNdSlice2D::r_nrows(&arr), 2);
         assert_eq!(RNdSlice2D::r_ncols(&arr), 4);
+    }
+
+    // RNdIndex tests
+    #[test]
+    fn rndindex_get_nd() {
+        // 2x3x2 array with values 1..12
+        let data: Vec<f64> = (1..=12).map(|x| x as f64).collect();
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 3, 2]), data).unwrap();
+
+        // Test valid indices
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![0, 0, 0]), Some(1.0));
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![0, 0, 1]), Some(2.0));
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![1, 2, 1]), Some(12.0));
+
+        // Test out of bounds
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![2, 0, 0]), None);
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![0, 3, 0]), None);
+
+        // Test wrong number of indices
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![0, 0]), None);
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![0, 0, 0, 0]), None);
+
+        // Test negative indices
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![-1, 0, 0]), None);
+    }
+
+    #[test]
+    fn rndindex_shape_ndim_len() {
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 3, 4]), vec![0.0; 24]).unwrap();
+
+        assert_eq!(RNdIndex::r_shape_nd(&arr), vec![2, 3, 4]);
+        assert_eq!(RNdIndex::r_ndim(&arr), 3);
+        assert_eq!(RNdIndex::r_len_nd(&arr), 24);
+    }
+
+    #[test]
+    fn rndindex_slice_nd() {
+        // 3x3 array
+        let data: Vec<f64> = (1..=9).map(|x| x as f64).collect();
+        let arr = ArrayD::from_shape_vec(IxDyn(&[3, 3]), data).unwrap();
+
+        // Slice [0:2, 0:2] - 2x2 subarray
+        let slice = RNdIndex::r_slice_nd(&arr, vec![0, 0], vec![2, 2]);
+        assert!(slice.is_some());
+        let slice = slice.unwrap();
+        // In Fortran order (column-major): [0,0]=1, [1,0]=4, [0,1]=2, [1,1]=5
+        assert_eq!(slice, vec![1.0, 4.0, 2.0, 5.0]);
+
+        // Invalid slice (wrong dimensions)
+        assert_eq!(RNdIndex::r_slice_nd(&arr, vec![0], vec![2, 2]), None);
+
+        // Empty slice (start >= end)
+        let empty = RNdIndex::r_slice_nd(&arr, vec![2, 2], vec![1, 1]);
+        assert!(empty.is_some());
+        assert!(empty.unwrap().is_empty());
+    }
+
+    #[test]
+    fn rndindex_flatten() {
+        // 2x3 array: [[1,2,3], [4,5,6]]
+        let data: Vec<f64> = (1..=6).map(|x| x as f64).collect();
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 3]), data).unwrap();
+
+        // Fortran order (column-major, R-compatible)
+        let f_order = RNdIndex::r_flatten(&arr);
+        assert_eq!(f_order, vec![1.0, 4.0, 2.0, 5.0, 3.0, 6.0]);
+
+        // C order (row-major)
+        let c_order = RNdIndex::r_flatten_c(&arr);
+        assert_eq!(c_order, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+    }
+
+    #[test]
+    fn rndindex_is_valid_nd() {
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 3]), vec![0.0; 6]).unwrap();
+
+        assert!(RNdIndex::r_is_valid_nd(&arr, vec![0, 0]));
+        assert!(RNdIndex::r_is_valid_nd(&arr, vec![1, 2]));
+        assert!(!RNdIndex::r_is_valid_nd(&arr, vec![2, 0]));
+        assert!(!RNdIndex::r_is_valid_nd(&arr, vec![0, 3]));
+        assert!(!RNdIndex::r_is_valid_nd(&arr, vec![0])); // Wrong dim count
+        assert!(!RNdIndex::r_is_valid_nd(&arr, vec![-1, 0])); // Negative
+    }
+
+    #[test]
+    fn rndindex_axis_slice() {
+        // 2x3 array: [[1,2,3], [4,5,6]]
+        let data: Vec<f64> = (1..=6).map(|x| x as f64).collect();
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 3]), data).unwrap();
+
+        // Get row 0 (axis 0, index 0)
+        let row0 = RNdIndex::r_axis_slice(&arr, 0, 0);
+        assert_eq!(row0, vec![1.0, 2.0, 3.0]);
+
+        // Get row 1 (axis 0, index 1)
+        let row1 = RNdIndex::r_axis_slice(&arr, 0, 1);
+        assert_eq!(row1, vec![4.0, 5.0, 6.0]);
+
+        // Get col 1 (axis 1, index 1)
+        let col1 = RNdIndex::r_axis_slice(&arr, 1, 1);
+        assert_eq!(col1, vec![2.0, 5.0]);
+
+        // Invalid axis
+        let invalid = RNdIndex::r_axis_slice(&arr, 2, 0);
+        assert!(invalid.is_empty());
+
+        // Invalid index
+        let invalid = RNdIndex::r_axis_slice(&arr, 0, 5);
+        assert!(invalid.is_empty());
+    }
+
+    #[test]
+    fn rndindex_reshape() {
+        // 2x3 array flattened and reshaped to 3x2
+        let data: Vec<f64> = (1..=6).map(|x| x as f64).collect();
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 3]), data).unwrap();
+
+        // Valid reshape
+        let reshaped = RNdIndex::r_reshape(&arr, vec![3, 2]);
+        assert!(reshaped.is_some());
+        assert_eq!(reshaped.unwrap().len(), 6);
+
+        // Reshape to 1D
+        let flat = RNdIndex::r_reshape(&arr, vec![6]);
+        assert!(flat.is_some());
+        assert_eq!(flat.unwrap().len(), 6);
+
+        // Invalid reshape (wrong total size)
+        let invalid = RNdIndex::r_reshape(&arr, vec![2, 2]);
+        assert!(invalid.is_none());
+
+        // Invalid reshape (zero dimension)
+        let invalid = RNdIndex::r_reshape(&arr, vec![0, 6]);
+        assert!(invalid.is_none());
+
+        // Invalid reshape (negative dimension)
+        let invalid = RNdIndex::r_reshape(&arr, vec![-1, 6]);
+        assert!(invalid.is_none());
+    }
+
+    #[test]
+    fn rndindex_i32_impl() {
+        // Test i32 implementation
+        let arr = ArrayD::from_shape_vec(IxDyn(&[2, 2]), vec![1i32, 2, 3, 4]).unwrap();
+
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![0, 0]), Some(1));
+        assert_eq!(RNdIndex::r_get_nd(&arr, vec![1, 1]), Some(4));
+        assert_eq!(RNdIndex::r_shape_nd(&arr), vec![2, 2]);
+        assert_eq!(RNdIndex::r_ndim(&arr), 2);
+        assert_eq!(RNdIndex::r_len_nd(&arr), 4);
     }
 }

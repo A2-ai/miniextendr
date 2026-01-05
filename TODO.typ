@@ -717,9 +717,17 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/ndarray_impl.rs`
   - Re-exported from crate root
   - Added 4 unit tests
-- [ ] Create `RNdIndex` adapter for n-dimensional ndarray indexing
-  - `r_slice(&self, start: Vec<usize>, end: Vec<usize>) -> Self` - subarray view
-  - Use case: R-style array subsetting for ndarray types
+- [x] Create `RNdIndex` adapter for n-dimensional ndarray indexing
+  - `r_get_nd(&self, indices: Vec<i32>) -> Option<T>` - element at n-dimensional index
+  - `r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<T>>` - subarray extraction
+  - `r_shape_nd(&self) -> Vec<i32>`, `r_ndim(&self) -> i32`, `r_len_nd(&self) -> i32`
+  - `r_flatten(&self) -> Vec<T>` - Fortran (column-major) order for R compatibility
+  - `r_flatten_c(&self) -> Vec<T>` - C (row-major) order
+  - `r_axis_slice(&self, axis: i32, index: i32) -> Vec<T>` - slice along axis
+  - `r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<T>>`
+  - Implemented for `ArrayD<f64>`, `ArrayD<i32>`
+  - Implemented in `miniextendr-api/src/ndarray_impl.rs`
+  - Added 8 unit tests
 
 ==== nalgebra trait adapters (with nalgebra feature) ====
 
