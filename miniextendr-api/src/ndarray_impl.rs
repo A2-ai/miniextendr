@@ -1274,6 +1274,179 @@ pub unsafe fn from_r_array<T: RNativeType>(
 }
 
 // =============================================================================
+// RArray <-> ndarray conversions
+// =============================================================================
+//
+// These implementations allow converting between RArray (a view over R data)
+// and ndarray types using standard From/Into traits.
+//
+// Two conversion modes are available:
+//
+// 1. **Zero-copy views** (`From<&RArray>` for `ArrayView`):
+//    - `ArrayView1::from(&rvector)` or `(&rvector).into()`
+//    - `ArrayView2::from(&rmatrix)` or `(&rmatrix).into()`
+//    - The view borrows from the RArray and has the same lifetime
+//
+// 2. **Copy to owned** (`From<&RArray>` for `Array`):
+//    - `Array1::from(&rvector)` or `(&rvector).into()`
+//    - `Array2::from(&rmatrix)` or `(&rmatrix).into()`
+//    - The resulting array owns its data and can be used freely
+//
+// For the reverse direction (ndarray -> R):
+// - Use the existing `IntoR` impl: `array.into_sexp()`
+// - Then wrap as RArray: `RArray::from_sexp(sexp)`
+//
+// # Safety
+//
+// These conversions internally use unsafe code to access RArray's slice data.
+// This is safe because:
+// 1. RArray is always constructed from a valid, type-checked SEXP
+// 2. RArray is !Send + !Sync, ensuring it stays on the R main thread
+// 3. The lifetime of views is bounded by the RArray reference
+
+use crate::rarray::{RArray, RArray3D, RMatrix, RVector};
+
+// =============================================================================
+// Zero-copy view conversions
+// =============================================================================
+
+/// Convert `&RVector<T>` to `ArrayView1<T>` without copying.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rarray::RVector;
+/// use ndarray::ArrayView1;
+///
+/// #[miniextendr(unsafe(main_thread))]
+/// fn vector_sum(v: RVector<f64>) -> f64 {
+///     let view: ArrayView1<f64> = (&v).into();
+///     view.sum()
+/// }
+/// ```
+impl<'a, T: RNativeType> From<&'a RVector<T>> for ArrayView1<'a, T> {
+    #[inline]
+    fn from(arr: &'a RVector<T>) -> Self {
+        // SAFETY: RArray is constructed from a valid SEXP and is !Send+!Sync
+        let slice = unsafe { arr.as_slice() };
+        ArrayView1::from(slice)
+    }
+}
+
+/// Convert `&RMatrix<T>` to `ArrayView2<T>` without copying.
+///
+/// The view is in Fortran (column-major) order to match R's storage.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rarray::RMatrix;
+/// use ndarray::ArrayView2;
+///
+/// #[miniextendr(unsafe(main_thread))]
+/// fn matrix_trace(m: RMatrix<f64>) -> f64 {
+///     let view: ArrayView2<f64> = (&m).into();
+///     view.diag().sum()
+/// }
+/// ```
+impl<'a, T: RNativeType> From<&'a RMatrix<T>> for ArrayView2<'a, T> {
+    #[inline]
+    fn from(arr: &'a RMatrix<T>) -> Self {
+        // SAFETY: RArray is constructed from a valid SEXP and is !Send+!Sync
+        let slice = unsafe { arr.as_slice() };
+        let dims = unsafe { arr.dims() };
+        ArrayView2::from_shape((dims[0], dims[1]).f(), slice).unwrap()
+    }
+}
+
+/// Convert `&RArray3D<T>` to `ArrayView3<T>` without copying.
+impl<'a, T: RNativeType> From<&'a RArray3D<T>> for ArrayView3<'a, T> {
+    #[inline]
+    fn from(arr: &'a RArray3D<T>) -> Self {
+        let slice = unsafe { arr.as_slice() };
+        let dims = unsafe { arr.dims() };
+        ArrayView3::from_shape((dims[0], dims[1], dims[2]).f(), slice).unwrap()
+    }
+}
+
+/// Convert `&RArray<T, NDIM>` to `ArrayViewD<T>` without copying.
+///
+/// Works with any dimension count. Useful for generic code.
+impl<'a, T: RNativeType, const NDIM: usize> From<&'a RArray<T, NDIM>> for ArrayViewD<'a, T> {
+    #[inline]
+    fn from(arr: &'a RArray<T, NDIM>) -> Self {
+        let slice = unsafe { arr.as_slice() };
+        let dims = unsafe { arr.dims() };
+        let shape = IxDyn(&dims);
+        ArrayViewD::from_shape(shape.f(), slice).unwrap()
+    }
+}
+
+// =============================================================================
+// Copy-to-owned conversions
+// =============================================================================
+
+/// Copy `&RVector<T>` into an owned `Array1<T>`.
+///
+/// The resulting array owns its data and can outlive the RArray.
+/// Useful for passing data to worker threads.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::rarray::RVector;
+/// use ndarray::Array1;
+///
+/// #[miniextendr(unsafe(main_thread))]
+/// fn double_vector(v: RVector<f64>) -> Array1<f64> {
+///     let arr: Array1<f64> = (&v).into();
+///     arr * 2.0
+/// }
+/// ```
+impl<T: RNativeType + Clone> From<&RVector<T>> for Array1<T> {
+    #[inline]
+    fn from(arr: &RVector<T>) -> Self {
+        let slice = unsafe { arr.as_slice() };
+        Array1::from_vec(slice.to_vec())
+    }
+}
+
+/// Copy `&RMatrix<T>` into an owned `Array2<T>`.
+///
+/// The result is in Fortran (column-major) order to match R.
+impl<T: RNativeType + Clone> From<&RMatrix<T>> for Array2<T> {
+    #[inline]
+    fn from(arr: &RMatrix<T>) -> Self {
+        let slice = unsafe { arr.as_slice() };
+        let dims = unsafe { arr.dims() };
+        Array2::from_shape_vec((dims[0], dims[1]).f(), slice.to_vec()).unwrap()
+    }
+}
+
+/// Copy `&RArray3D<T>` into an owned `Array3<T>`.
+impl<T: RNativeType + Clone> From<&RArray3D<T>> for Array3<T> {
+    #[inline]
+    fn from(arr: &RArray3D<T>) -> Self {
+        let slice = unsafe { arr.as_slice() };
+        let dims = unsafe { arr.dims() };
+        Array3::from_shape_vec((dims[0], dims[1], dims[2]).f(), slice.to_vec()).unwrap()
+    }
+}
+
+/// Copy `&RArray<T, NDIM>` into an owned `ArrayD<T>`.
+///
+/// Works with any dimension count.
+impl<T: RNativeType + Clone, const NDIM: usize> From<&RArray<T, NDIM>> for ArrayD<T> {
+    #[inline]
+    fn from(arr: &RArray<T, NDIM>) -> Self {
+        let slice = unsafe { arr.as_slice() };
+        let dims = unsafe { arr.dims() };
+        let shape = IxDyn(&dims);
+        ArrayD::from_shape_vec(shape.f(), slice.to_vec()).unwrap()
+    }
+}
+
+// =============================================================================
 // TypedExternal implementations for ExternalPtr support
 // =============================================================================
 //
