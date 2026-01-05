@@ -324,14 +324,16 @@ mod tests {
 
     #[test]
     fn regex_invalid_pattern() {
-        let result = Regex::new(r"[invalid");
+        let pattern = String::from("[invalid");
+        let result = Regex::new(&pattern);
         assert!(result.is_err());
     }
 
     #[test]
     fn try_compile_works() {
         assert!(try_compile(r"\d+").is_ok());
-        assert!(try_compile(r"[invalid").is_err());
+        let pattern = String::from("[invalid");
+        assert!(try_compile(&pattern).is_err());
     }
 
     #[test]

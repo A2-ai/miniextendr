@@ -59,8 +59,8 @@ use std::fmt;
 use std::mem;
 
 use crate::ffi::{
-    RAW, Rf_allocVector, Rf_xlength, SEXP, SEXPTYPE, SexpExt,
-    Rf_setAttrib, Rf_install, Rf_mkCharLenCE, cetype_t, Rf_ScalarString,
+    RAW, Rf_ScalarString, Rf_allocVector, Rf_install, Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength,
+    SEXP, SEXPTYPE, SexpExt, cetype_t,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -73,14 +73,9 @@ use crate::into_r::IntoR;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum RawError {
     /// Length mismatch during conversion.
-    LengthMismatch {
-        expected: usize,
-        actual: usize,
-    },
+    LengthMismatch { expected: usize, actual: usize },
     /// Alignment mismatch (internal - we handle this by copying).
-    AlignmentMismatch {
-        align: usize,
-    },
+    AlignmentMismatch { align: usize },
     /// Invalid header in tagged format.
     InvalidHeader(String),
     /// Type name mismatch.
@@ -94,7 +89,10 @@ impl fmt::Display for RawError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             RawError::LengthMismatch { expected, actual } => {
-                write!(f, "length mismatch: expected {expected} bytes, got {actual}")
+                write!(
+                    f,
+                    "length mismatch: expected {expected} bytes, got {actual}"
+                )
             }
             RawError::AlignmentMismatch { align } => {
                 write!(f, "alignment mismatch: required {align}-byte alignment")
@@ -102,12 +100,10 @@ impl fmt::Display for RawError {
             RawError::InvalidHeader(msg) => {
                 write!(f, "invalid header: {msg}")
             }
-            RawError::TypeMismatch { expected, actual } => {
-                match actual {
-                    Some(a) => write!(f, "type mismatch: expected {expected}, got {a}"),
-                    None => write!(f, "type mismatch: expected {expected}, got untagged data"),
-                }
-            }
+            RawError::TypeMismatch { expected, actual } => match actual {
+                Some(a) => write!(f, "type mismatch: expected {expected}, got {a}"),
+                None => write!(f, "type mismatch: expected {expected}, got untagged data"),
+            },
         }
     }
 }
@@ -167,13 +163,15 @@ impl RawHeader {
         if self.magic != Self::MAGIC {
             return Err(RawError::InvalidHeader(format!(
                 "invalid magic: expected {:?}, got {:?}",
-                Self::MAGIC, self.magic
+                Self::MAGIC,
+                self.magic
             )));
         }
         if self.version != Self::VERSION {
             return Err(RawError::InvalidHeader(format!(
                 "unsupported version: expected {}, got {}",
-                Self::VERSION, self.version
+                Self::VERSION,
+                self.version
             )));
         }
         let expected_size = mem::size_of::<T>() as u32;
@@ -405,12 +403,20 @@ impl<T: Pod> IntoR for RawTagged<T> {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_len as isize);
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
-            std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), ptr.add(header_bytes.len()), value_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                value_bytes.as_ptr(),
+                ptr.add(header_bytes.len()),
+                value_bytes.len(),
+            );
 
             // Set type attribute
             let type_name = std::any::type_name::<T>();
             let attr_sym = Rf_install(c"mx_raw_type".as_ptr());
-            let charsxp = Rf_mkCharLenCE(type_name.as_ptr().cast(), type_name.len() as i32, cetype_t::CE_UTF8);
+            let charsxp = Rf_mkCharLenCE(
+                type_name.as_ptr().cast(),
+                type_name.len() as i32,
+                cetype_t::CE_UTF8,
+            );
             Rf_setAttrib(sexp, attr_sym, Rf_ScalarString(charsxp));
 
             sexp
@@ -429,12 +435,20 @@ impl<T: Pod> IntoR for RawSliceTagged<T> {
             let sexp = Rf_allocVector(SEXPTYPE::RAWSXP, total_len as isize);
             let ptr = RAW(sexp);
             std::ptr::copy_nonoverlapping(header_bytes.as_ptr(), ptr, header_bytes.len());
-            std::ptr::copy_nonoverlapping(value_bytes.as_ptr(), ptr.add(header_bytes.len()), value_bytes.len());
+            std::ptr::copy_nonoverlapping(
+                value_bytes.as_ptr(),
+                ptr.add(header_bytes.len()),
+                value_bytes.len(),
+            );
 
             // Set type attribute
             let type_name = std::any::type_name::<T>();
             let attr_sym = Rf_install(c"mx_raw_type".as_ptr());
-            let charsxp = Rf_mkCharLenCE(type_name.as_ptr().cast(), type_name.len() as i32, cetype_t::CE_UTF8);
+            let charsxp = Rf_mkCharLenCE(
+                type_name.as_ptr().cast(),
+                type_name.len() as i32,
+                cetype_t::CE_UTF8,
+            );
             Rf_setAttrib(sexp, attr_sym, Rf_ScalarString(charsxp));
 
             sexp
@@ -451,9 +465,8 @@ impl<T: Pod> TryFromSexp for Raw<T> {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
         let bytes = get_raw_bytes(sexp)?;
-        let value = align_bytes::<T>(bytes).map_err(|e| {
-            SexpError::InvalidValue(format!("Raw<T>: {}", e))
-        })?;
+        let value = align_bytes::<T>(bytes)
+            .map_err(|e| SexpError::InvalidValue(format!("Raw<T>: {}", e)))?;
         Ok(Raw(value))
     }
 }
@@ -463,9 +476,8 @@ impl<T: Pod> TryFromSexp for RawSlice<T> {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
         let bytes = get_raw_bytes(sexp)?;
-        let values = align_slice::<T>(bytes).map_err(|e| {
-            SexpError::InvalidValue(format!("RawSlice<T>: {}", e))
-        })?;
+        let values = align_slice::<T>(bytes)
+            .map_err(|e| SexpError::InvalidValue(format!("RawSlice<T>: {}", e)))?;
         Ok(RawSlice(values))
     }
 }
@@ -486,20 +498,18 @@ impl<T: Pod> TryFromSexp for RawTagged<T> {
         }
 
         // Parse header
-        let header = align_bytes::<RawHeader>(&bytes[..RawHeader::SIZE]).map_err(|e| {
-            SexpError::InvalidValue(format!("RawTagged<T> header: {}", e))
-        })?;
+        let header = align_bytes::<RawHeader>(&bytes[..RawHeader::SIZE])
+            .map_err(|e| SexpError::InvalidValue(format!("RawTagged<T> header: {}", e)))?;
 
         // Validate header
-        header.validate::<T>(Some(1)).map_err(|e| {
-            SexpError::InvalidValue(format!("RawTagged<T>: {}", e))
-        })?;
+        header
+            .validate::<T>(Some(1))
+            .map_err(|e| SexpError::InvalidValue(format!("RawTagged<T>: {}", e)))?;
 
         // Parse value
         let value_bytes = &bytes[RawHeader::SIZE..];
-        let value = align_bytes::<T>(value_bytes).map_err(|e| {
-            SexpError::InvalidValue(format!("RawTagged<T> value: {}", e))
-        })?;
+        let value = align_bytes::<T>(value_bytes)
+            .map_err(|e| SexpError::InvalidValue(format!("RawTagged<T> value: {}", e)))?;
 
         Ok(RawTagged(value))
     }
@@ -521,20 +531,18 @@ impl<T: Pod> TryFromSexp for RawSliceTagged<T> {
         }
 
         // Parse header
-        let header = align_bytes::<RawHeader>(&bytes[..RawHeader::SIZE]).map_err(|e| {
-            SexpError::InvalidValue(format!("RawSliceTagged<T> header: {}", e))
-        })?;
+        let header = align_bytes::<RawHeader>(&bytes[..RawHeader::SIZE])
+            .map_err(|e| SexpError::InvalidValue(format!("RawSliceTagged<T> header: {}", e)))?;
 
         // Validate header (don't enforce count, derive from remaining bytes)
-        header.validate::<T>(None).map_err(|e| {
-            SexpError::InvalidValue(format!("RawSliceTagged<T>: {}", e))
-        })?;
+        header
+            .validate::<T>(None)
+            .map_err(|e| SexpError::InvalidValue(format!("RawSliceTagged<T>: {}", e)))?;
 
         // Parse values
         let value_bytes = &bytes[RawHeader::SIZE..];
-        let values = align_slice::<T>(value_bytes).map_err(|e| {
-            SexpError::InvalidValue(format!("RawSliceTagged<T> values: {}", e))
-        })?;
+        let values = align_slice::<T>(value_bytes)
+            .map_err(|e| SexpError::InvalidValue(format!("RawSliceTagged<T> values: {}", e)))?;
 
         // Verify count matches header
         if values.len() != header.elem_count as usize {
@@ -598,7 +606,11 @@ mod tests {
 
     #[test]
     fn test_raw_bytes_roundtrip() {
-        let value = TestVec3 { x: 1.0, y: 2.0, z: 3.0 };
+        let value = TestVec3 {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        };
         let bytes = raw_to_bytes(&value);
         let decoded: TestVec3 = raw_from_bytes(&bytes).unwrap();
         assert_eq!(value, decoded);
@@ -660,7 +672,11 @@ mod tests {
 
     #[test]
     fn test_raw_wrapper() {
-        let raw = Raw(TestVec3 { x: 1.0, y: 2.0, z: 3.0 });
+        let raw = Raw(TestVec3 {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        });
         assert_eq!(raw.inner().x, 1.0);
         let inner = raw.into_inner();
         assert_eq!(inner.y, 2.0);
@@ -678,7 +694,11 @@ mod tests {
 
     #[test]
     fn test_raw_tagged_wrapper() {
-        let raw = RawTagged(TestVec3 { x: 1.0, y: 2.0, z: 3.0 });
+        let raw = RawTagged(TestVec3 {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        });
         assert_eq!(raw.inner().z, 3.0);
         let inner = raw.into_inner();
         assert_eq!(inner.x, 1.0);

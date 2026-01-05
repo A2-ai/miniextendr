@@ -1027,7 +1027,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into()).sum()
+        self.par_iter().map(|x| x.into()).sum()
     }
 
     /// Computes the parallel sum of i32 elements.
@@ -1035,7 +1035,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<i32>,
     {
-        self.r_par_iter().map(|x| x.into()).sum()
+        self.par_iter().map(|x| x.into()).sum()
     }
 
     /// Computes the parallel sum of i64 elements (returned as f64 for R).
@@ -1043,7 +1043,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<i64>,
     {
-        self.r_par_iter().map(|x| x.into()).sum::<i64>() as f64
+        self.par_iter().map(|x| x.into()).sum::<i64>() as f64
     }
 
     /// Computes the parallel mean of f64 elements.
@@ -1052,7 +1052,7 @@ pub trait RParallelIterator {
         Self::Item: Into<f64>,
     {
         let (sum, count) = self
-            .r_par_iter()
+            .par_iter()
             .map(|x| (x.into(), 1usize))
             .reduce(|| (0.0, 0), |(s1, c1), (s2, c2)| (s1 + s2, c1 + c2));
 
@@ -1068,7 +1068,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Ord,
     {
-        self.r_par_iter().min()
+        self.par_iter().min()
     }
 
     /// Finds the parallel maximum.
@@ -1076,7 +1076,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Ord,
     {
-        self.r_par_iter().max()
+        self.par_iter().max()
     }
 
     /// Finds the parallel minimum f64 (handles NaN).
@@ -1084,7 +1084,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
+        self.par_iter()
             .map(|x| x.into())
             .reduce(|| f64::INFINITY, |a, b| a.min(b))
     }
@@ -1094,14 +1094,14 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
+        self.par_iter()
             .map(|x| x.into())
             .reduce(|| f64::NEG_INFINITY, |a, b| a.max(b))
     }
 
     /// Counts the number of elements in parallel.
     fn par_count(&self) -> i32 {
-        self.r_par_iter().count() as i32
+        self.par_iter().count() as i32
     }
 
     /// Computes the parallel product of f64 elements.
@@ -1109,7 +1109,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into()).product()
+        self.par_iter().map(|x| x.into()).product()
     }
 
     /// Returns true if any element satisfies the predicate (greater than threshold).
@@ -1117,7 +1117,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().any(|x| x.into() > threshold)
+        self.par_iter().any(|x| x.into() > threshold)
     }
 
     /// Returns true if all elements satisfy the predicate (greater than threshold).
@@ -1125,7 +1125,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().all(|x| x.into() > threshold)
+        self.par_iter().all(|x| x.into() > threshold)
     }
 
     /// Returns true if any element satisfies the predicate (less than threshold).
@@ -1133,7 +1133,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().any(|x| x.into() < threshold)
+        self.par_iter().any(|x| x.into() < threshold)
     }
 
     /// Returns true if all elements satisfy the predicate (less than threshold).
@@ -1141,7 +1141,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().all(|x| x.into() < threshold)
+        self.par_iter().all(|x| x.into() < threshold)
     }
 
     /// Counts elements greater than threshold.
@@ -1149,9 +1149,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
-            .filter(|&x| x.into() > threshold)
-            .count() as i32
+        self.par_iter().filter(|&x| x.into() > threshold).count() as i32
     }
 
     /// Counts elements less than threshold.
@@ -1159,9 +1157,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
-            .filter(|&x| x.into() < threshold)
-            .count() as i32
+        self.par_iter().filter(|&x| x.into() < threshold).count() as i32
     }
 
     /// Counts elements equal to value (within epsilon for floats).
@@ -1169,7 +1165,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
+        self.par_iter()
             .filter(|&x| (x.into() - value).abs() <= epsilon)
             .count() as i32
     }
@@ -1179,13 +1175,13 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        let mean = self.r_par_mean();
+        let mean = self.par_mean();
         if mean.is_nan() {
             return f64::NAN;
         }
 
         let (sum_sq_diff, count) = self
-            .r_par_iter()
+            .par_iter()
             .map(|x| {
                 let diff = x.into() - mean;
                 (diff * diff, 1usize)
@@ -1204,7 +1200,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_variance().sqrt()
+        self.par_variance().sqrt()
     }
 
     /// Collects elements greater than threshold into a Vec<f64>.
@@ -1212,7 +1208,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
+        self.par_iter()
             .filter(|&x| x.into() > threshold)
             .map(|x| x.into())
             .collect()
@@ -1223,7 +1219,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
+        self.par_iter()
             .filter(|&x| x.into() < threshold)
             .map(|x| x.into())
             .collect()
@@ -1234,7 +1230,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into() * factor).collect()
+        self.par_iter().map(|x| x.into() * factor).collect()
     }
 
     /// Applies offset and collects results (add offset).
@@ -1242,7 +1238,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into() + offset).collect()
+        self.par_iter().map(|x| x.into() + offset).collect()
     }
 
     /// Clamps values to range and collects results.
@@ -1250,9 +1246,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter()
-            .map(|x| x.into().clamp(min, max))
-            .collect()
+        self.par_iter().map(|x| x.into().clamp(min, max)).collect()
     }
 
     /// Applies absolute value and collects results.
@@ -1260,7 +1254,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into().abs()).collect()
+        self.par_iter().map(|x| x.into().abs()).collect()
     }
 
     /// Applies square root and collects results.
@@ -1268,7 +1262,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into().sqrt()).collect()
+        self.par_iter().map(|x| x.into().sqrt()).collect()
     }
 
     /// Applies power and collects results.
@@ -1276,7 +1270,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into().powf(exp)).collect()
+        self.par_iter().map(|x| x.into().powf(exp)).collect()
     }
 
     /// Applies natural log and collects results.
@@ -1284,7 +1278,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into().ln()).collect()
+        self.par_iter().map(|x| x.into().ln()).collect()
     }
 
     /// Applies exp and collects results.
@@ -1292,7 +1286,7 @@ pub trait RParallelIterator {
     where
         Self::Item: Into<f64>,
     {
-        self.r_par_iter().map(|x| x.into().exp()).collect()
+        self.par_iter().map(|x| x.into().exp()).collect()
     }
 }
 
@@ -1343,7 +1337,7 @@ pub trait RParallelExtend<T: Send> {
     where
         T: Clone + Sync,
     {
-        self.r_par_extend(items.to_vec());
+        self.par_extend(items.to_vec());
     }
 
     /// Returns the current length of the collection.
@@ -1355,7 +1349,7 @@ pub trait RParallelExtend<T: Send> {
 
     /// Returns true if the collection is empty.
     fn par_is_empty(&self) -> bool {
-        self.r_par_len() == 0
+        self.par_len() == 0
     }
 
     /// Clears the collection.
@@ -1428,65 +1422,65 @@ mod tests {
     #[test]
     fn test_rparalleliterator_sum() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-        assert_eq!(data.r_par_sum(), 15.0);
+        assert_eq!(data.par_sum(), 15.0);
     }
 
     #[test]
     fn test_rparalleliterator_mean() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-        assert_eq!(data.r_par_mean(), 3.0);
+        assert_eq!(data.par_mean(), 3.0);
     }
 
     #[test]
     fn test_rparalleliterator_mean_empty() {
         let data = TestParData::new(vec![]);
-        assert!(data.r_par_mean().is_nan());
+        assert!(data.par_mean().is_nan());
     }
 
     #[test]
     fn test_rparalleliterator_min_max() {
         let data = TestParData::new(vec![3.0, 1.0, 4.0, 1.0, 5.0, 9.0, 2.0]);
-        assert_eq!(data.r_par_min_f64(), 1.0);
-        assert_eq!(data.r_par_max_f64(), 9.0);
+        assert_eq!(data.par_min_f64(), 1.0);
+        assert_eq!(data.par_max_f64(), 9.0);
     }
 
     #[test]
     fn test_rparalleliterator_count() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
-        assert_eq!(data.r_par_count(), 5);
-        assert_eq!(data.r_par_len(), 5);
+        assert_eq!(data.par_count(), 5);
+        assert_eq!(data.par_len(), 5);
     }
 
     #[test]
     fn test_rparalleliterator_product() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0]);
-        assert_eq!(data.r_par_product(), 24.0);
+        assert_eq!(data.par_product(), 24.0);
     }
 
     #[test]
     fn test_rparalleliterator_predicates() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
 
-        assert!(data.r_par_any_gt(4.0)); // 5.0 > 4.0
-        assert!(!data.r_par_all_gt(4.0)); // 1.0, 2.0, 3.0, 4.0 are not > 4.0
-        assert!(data.r_par_any_lt(2.0)); // 1.0 < 2.0
-        assert!(!data.r_par_all_lt(2.0)); // 2.0, 3.0, 4.0, 5.0 are not < 2.0
+        assert!(data.par_any_gt(4.0)); // 5.0 > 4.0
+        assert!(!data.par_all_gt(4.0)); // 1.0, 2.0, 3.0, 4.0 are not > 4.0
+        assert!(data.par_any_lt(2.0)); // 1.0 < 2.0
+        assert!(!data.par_all_lt(2.0)); // 2.0, 3.0, 4.0, 5.0 are not < 2.0
     }
 
     #[test]
     fn test_rparalleliterator_count_predicates() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
 
-        assert_eq!(data.r_par_count_gt(3.0), 2); // 4.0, 5.0
-        assert_eq!(data.r_par_count_lt(3.0), 2); // 1.0, 2.0
-        assert_eq!(data.r_par_count_eq(3.0, 0.0), 1); // exactly 3.0
+        assert_eq!(data.par_count_gt(3.0), 2); // 4.0, 5.0
+        assert_eq!(data.par_count_lt(3.0), 2); // 1.0, 2.0
+        assert_eq!(data.par_count_eq(3.0, 0.0), 1); // exactly 3.0
     }
 
     #[test]
     fn test_rparalleliterator_variance_stddev() {
         let data = TestParData::new(vec![2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0]);
-        let var = data.r_par_variance();
-        let std = data.r_par_std_dev();
+        let var = data.par_variance();
+        let std = data.par_std_dev();
 
         // Variance should be approximately 4.571 (sample variance)
         assert!((var - 4.571428571).abs() < 0.001);
@@ -1497,12 +1491,12 @@ mod tests {
     fn test_rparalleliterator_filter() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0]);
 
-        let gt3: Vec<f64> = data.r_par_filter_gt(3.0);
+        let gt3: Vec<f64> = data.par_filter_gt(3.0);
         assert_eq!(gt3.len(), 2);
         assert!(gt3.contains(&4.0));
         assert!(gt3.contains(&5.0));
 
-        let lt3: Vec<f64> = data.r_par_filter_lt(3.0);
+        let lt3: Vec<f64> = data.par_filter_lt(3.0);
         assert_eq!(lt3.len(), 2);
         assert!(lt3.contains(&1.0));
         assert!(lt3.contains(&2.0));
@@ -1512,13 +1506,13 @@ mod tests {
     fn test_rparalleliterator_transform() {
         let data = TestParData::new(vec![1.0, 2.0, 3.0, 4.0]);
 
-        let scaled = data.r_par_scale(2.0);
+        let scaled = data.par_scale(2.0);
         assert_eq!(scaled, vec![2.0, 4.0, 6.0, 8.0]);
 
-        let offset = data.r_par_offset(10.0);
+        let offset = data.par_offset(10.0);
         assert_eq!(offset, vec![11.0, 12.0, 13.0, 14.0]);
 
-        let clamped = data.r_par_clamp(2.0, 3.0);
+        let clamped = data.par_clamp(2.0, 3.0);
         assert_eq!(clamped, vec![2.0, 2.0, 3.0, 3.0]);
     }
 
@@ -1526,17 +1520,17 @@ mod tests {
     fn test_rparalleliterator_math() {
         let data = TestParData::new(vec![1.0, 4.0, 9.0, 16.0]);
 
-        let sqrt = data.r_par_sqrt();
+        let sqrt = data.par_sqrt();
         assert_eq!(sqrt, vec![1.0, 2.0, 3.0, 4.0]);
 
-        let pow2 = data.r_par_pow(0.5);
+        let pow2 = data.par_pow(0.5);
         assert_eq!(pow2, vec![1.0, 2.0, 3.0, 4.0]);
     }
 
     #[test]
     fn test_rparalleliterator_abs() {
         let data = TestParData::new(vec![-1.0, 2.0, -3.0, 4.0]);
-        let abs = data.r_par_abs();
+        let abs = data.par_abs();
         assert_eq!(abs, vec![1.0, 2.0, 3.0, 4.0]);
     }
 
@@ -1582,12 +1576,12 @@ mod tests {
     fn test_rparallelextend_basic() {
         let buffer = TestParBuffer::new();
 
-        buffer.r_par_extend(vec![1.0, 2.0, 3.0]);
-        assert_eq!(buffer.r_par_len(), 3);
+        buffer.par_extend(vec![1.0, 2.0, 3.0]);
+        assert_eq!(buffer.par_len(), 3);
         assert_eq!(buffer.get_data(), vec![1.0, 2.0, 3.0]);
 
-        buffer.r_par_extend(vec![4.0, 5.0]);
-        assert_eq!(buffer.r_par_len(), 5);
+        buffer.par_extend(vec![4.0, 5.0]);
+        assert_eq!(buffer.par_len(), 5);
         assert_eq!(buffer.get_data(), vec![1.0, 2.0, 3.0, 4.0, 5.0]);
     }
 
@@ -1596,7 +1590,7 @@ mod tests {
         let buffer = TestParBuffer::new();
         let slice = [1.0, 2.0, 3.0];
 
-        buffer.r_par_extend_from_slice(&slice);
+        buffer.par_extend_from_slice(&slice);
         assert_eq!(buffer.get_data(), vec![1.0, 2.0, 3.0]);
     }
 
@@ -1604,20 +1598,20 @@ mod tests {
     fn test_rparallelextend_clear() {
         let buffer = TestParBuffer::new();
 
-        buffer.r_par_extend(vec![1.0, 2.0, 3.0]);
-        assert!(!buffer.r_par_is_empty());
+        buffer.par_extend(vec![1.0, 2.0, 3.0]);
+        assert!(!buffer.par_is_empty());
 
-        buffer.r_par_clear();
-        assert!(buffer.r_par_is_empty());
-        assert_eq!(buffer.r_par_len(), 0);
+        buffer.par_clear();
+        assert!(buffer.par_is_empty());
+        assert_eq!(buffer.par_len(), 0);
     }
 
     #[test]
     fn test_rparallelextend_reserve() {
         let buffer = TestParBuffer::new();
-        buffer.r_par_reserve(100);
+        buffer.par_reserve(100);
         // Can't easily verify capacity, but at least it shouldn't panic
-        buffer.r_par_extend(vec![1.0; 100]);
-        assert_eq!(buffer.r_par_len(), 100);
+        buffer.par_extend(vec![1.0; 100]);
+        assert_eq!(buffer.par_len(), 100);
     }
 }

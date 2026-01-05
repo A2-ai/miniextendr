@@ -61,8 +61,7 @@ pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, TryFromList,
-    RFactor as RFactorDerive,
+    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList,
 };
 
 pub mod altrep;
@@ -469,8 +468,8 @@ pub mod serde_impl;
 pub use serde;
 #[cfg(feature = "serde")]
 pub use serde_impl::{
-    JsonValue, RDeserialize, RJsonValueOps, RSerialize,
-    json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict, json_into_sexp,
+    JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
+    json_from_sexp_strict, json_into_sexp,
 };
 
 /// Integration with the `num-traits` crate for generic numeric operations.
@@ -686,8 +685,8 @@ pub use bitvec_impl::{BitVec, Lsb0, Msb0, RBitVec};
 pub mod aho_corasick_impl;
 #[cfg(feature = "aho-corasick")]
 pub use aho_corasick_impl::{
-    AhoCorasick, RAhoCorasickOps, aho_compile, aho_find_all, aho_find_all_flat,
-    aho_is_match, aho_count_matches, aho_find_first, aho_replace_all,
+    AhoCorasick, RAhoCorasickOps, aho_compile, aho_count_matches, aho_find_all, aho_find_all_flat,
+    aho_find_first, aho_is_match, aho_replace_all,
 };
 
 /// Integration with the `toml` crate for TOML value conversions.
@@ -739,8 +738,8 @@ pub use toml_impl::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_
 pub mod tabled_impl;
 #[cfg(feature = "tabled")]
 pub use tabled_impl::{
-    Table, Tabled, Builder, table_to_string, table_to_string_opts, table_to_string_styled,
-    builder_to_string, table_from_vecs,
+    Builder, Table, Tabled, builder_to_string, table_from_vecs, table_to_string,
+    table_to_string_opts, table_to_string_styled,
 };
 
 /// Integration with the `bytemuck` crate for POD type conversions.
@@ -770,8 +769,8 @@ pub use tabled_impl::{
 pub mod raw_conversions;
 #[cfg(feature = "raw_conversions")]
 pub use raw_conversions::{
-    Pod, Zeroable, Raw, RawSlice, RawTagged, RawSliceTagged, RawHeader, RawError,
-    raw_to_bytes, raw_from_bytes, raw_slice_to_bytes, raw_slice_from_bytes,
+    Pod, Raw, RawError, RawHeader, RawSlice, RawSliceTagged, RawTagged, Zeroable, raw_from_bytes,
+    raw_slice_from_bytes, raw_slice_to_bytes, raw_to_bytes,
 };
 
 /// Factor support for enum ↔ R factor conversions.
@@ -798,7 +797,7 @@ pub use raw_conversions::{
 /// ```
 pub mod factor;
 pub use factor::{
-    RFactor, build_factor, build_levels_sexp, validate_factor_levels,
-    factor_to_sexp, factor_vec_to_sexp, factor_option_vec_to_sexp,
-    factor_from_sexp, factor_option_from_sexp, factor_vec_from_sexp, factor_option_vec_from_sexp,
+    FactorOptionVec, FactorVec, RFactor, build_factor, build_levels_sexp, factor_from_sexp,
+    factor_option_from_sexp, factor_option_vec_from_sexp, factor_option_vec_to_sexp,
+    factor_to_sexp, factor_vec_from_sexp, factor_vec_to_sexp, validate_factor_levels,
 };

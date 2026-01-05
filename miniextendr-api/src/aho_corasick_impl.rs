@@ -40,9 +40,9 @@
 
 pub use aho_corasick::{AhoCorasick, MatchKind};
 
-use crate::from_r::{SexpError, TryFromSexp};
-use crate::ffi::{SEXP, SEXPTYPE, SexpExt, STRING_ELT, Rf_xlength};
+use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, STRING_ELT, SexpExt};
 use crate::from_r::charsxp_to_str;
+use crate::from_r::{SexpError, TryFromSexp};
 
 // =============================================================================
 // TryFromSexp for AhoCorasick (from Vec<String> patterns)
@@ -88,9 +88,8 @@ impl TryFromSexp for AhoCorasick {
             patterns.push(s.to_string());
         }
 
-        AhoCorasick::new(&patterns).map_err(|e| {
-            SexpError::InvalidValue(format!("failed to build AhoCorasick: {}", e))
-        })
+        AhoCorasick::new(&patterns)
+            .map_err(|e| SexpError::InvalidValue(format!("failed to build AhoCorasick: {}", e)))
     }
 }
 
@@ -116,9 +115,8 @@ pub fn aho_compile(patterns: &[String]) -> Result<AhoCorasick, SexpError> {
             "aho-corasick requires at least one pattern".to_string(),
         ));
     }
-    AhoCorasick::new(patterns).map_err(|e| {
-        SexpError::InvalidValue(format!("failed to build AhoCorasick: {}", e))
-    })
+    AhoCorasick::new(patterns)
+        .map_err(|e| SexpError::InvalidValue(format!("failed to build AhoCorasick: {}", e)))
 }
 
 /// Compile an Aho-Corasick automaton with custom options.
@@ -208,7 +206,7 @@ pub fn aho_find_all_flat(ac: &AhoCorasick, haystack: &str) -> Vec<i32> {
         // +1 for 1-based pattern ID, +1 for 1-based start position
         result.push((m.pattern().as_usize() + 1) as i32);
         result.push((m.start() + 1) as i32); // 1-based position for R
-        result.push((m.end()) as i32);       // end is exclusive, so keep as-is for length
+        result.push((m.end()) as i32); // end is exclusive, so keep as-is for length
     }
     result
 }
@@ -323,9 +321,9 @@ impl RAhoCorasickOps for AhoCorasick {
         match aho_find_first(self, haystack) {
             Some((pid, start, end)) => {
                 vec![
-                    (pid + 1) as i32,    // 1-based pattern ID
-                    (start + 1) as i32,  // 1-based position
-                    end as i32,          // end is exclusive
+                    (pid + 1) as i32,   // 1-based pattern ID
+                    (start + 1) as i32, // 1-based position
+                    end as i32,         // end is exclusive
                 ]
             }
             None => vec![],

@@ -35,7 +35,7 @@
 
 use proc_macro2::TokenStream;
 use quote::quote;
-use syn::{DeriveInput, Data, Fields};
+use syn::{Data, DeriveInput, Fields};
 
 /// Convert PascalCase to snake_case.
 fn to_snake_case(s: &str) -> String {
@@ -152,6 +152,14 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
     // Generate the implementation
     let level_name_strs: Vec<&str> = level_names.iter().map(|s| s.as_str()).collect();
 
+    // Generate impl for the enum itself. Vec/Option wrappers cannot be generated
+    // due to Rust's orphan rules - neither IntoR nor Vec is local to the user's crate.
+    // For Vec conversions, users must use the helper functions:
+    // - factor_vec_to_sexp(&[T])
+    // - factor_vec_from_sexp::<T>(SEXP)
+    // - factor_option_vec_to_sexp(&[Option<T>])
+    // - factor_option_vec_from_sexp::<T>(SEXP)
+
     Ok(quote! {
         impl #impl_generics ::miniextendr_api::RFactor for #name #ty_generics #where_clause {
             const LEVELS: &'static [&'static str] = &[#(#level_name_strs),*];
@@ -176,47 +184,11 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
-        impl #impl_generics ::miniextendr_api::IntoR for Vec<#name #ty_generics> #where_clause {
-            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::factor_vec_to_sexp(&self)
-            }
-        }
-
-        impl #impl_generics ::miniextendr_api::IntoR for Vec<Option<#name #ty_generics>> #where_clause {
-            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::factor_option_vec_to_sexp(&self)
-            }
-        }
-
         impl #impl_generics ::miniextendr_api::TryFromSexp for #name #ty_generics #where_clause {
             type Error = ::miniextendr_api::SexpError;
 
             fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
                 ::miniextendr_api::factor_from_sexp(sexp)
-            }
-        }
-
-        impl #impl_generics ::miniextendr_api::TryFromSexp for Option<#name #ty_generics> #where_clause {
-            type Error = ::miniextendr_api::SexpError;
-
-            fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
-                ::miniextendr_api::factor_option_from_sexp(sexp)
-            }
-        }
-
-        impl #impl_generics ::miniextendr_api::TryFromSexp for Vec<#name #ty_generics> #where_clause {
-            type Error = ::miniextendr_api::SexpError;
-
-            fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
-                ::miniextendr_api::factor_vec_from_sexp(sexp)
-            }
-        }
-
-        impl #impl_generics ::miniextendr_api::TryFromSexp for Vec<Option<#name #ty_generics>> #where_clause {
-            type Error = ::miniextendr_api::SexpError;
-
-            fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Result<Self, Self::Error> {
-                ::miniextendr_api::factor_option_vec_from_sexp(sexp)
             }
         }
     })
@@ -242,8 +214,14 @@ mod tests {
 
     #[test]
     fn test_apply_rename_all() {
-        assert_eq!(apply_rename_all("HelloWorld", Some("snake_case")), "hello_world");
-        assert_eq!(apply_rename_all("HelloWorld", Some("kebab-case")), "hello-world");
+        assert_eq!(
+            apply_rename_all("HelloWorld", Some("snake_case")),
+            "hello_world"
+        );
+        assert_eq!(
+            apply_rename_all("HelloWorld", Some("kebab-case")),
+            "hello-world"
+        );
         assert_eq!(apply_rename_all("HelloWorld", Some("lower")), "helloworld");
         assert_eq!(apply_rename_all("HelloWorld", Some("upper")), "HELLOWORLD");
         assert_eq!(apply_rename_all("HelloWorld", None), "HelloWorld");

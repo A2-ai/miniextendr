@@ -42,12 +42,12 @@
 //! By default, no ANSI styling is used. R consoles may not render ANSI codes
 //! correctly, so plain ASCII/Unicode borders are preferred.
 
-pub use tabled::{Table, Tabled};
 pub use tabled::builder::Builder;
-pub use tabled::settings::{Alignment, Width, Modify, Style};
 pub use tabled::settings::object::Columns;
+pub use tabled::settings::{Alignment, Modify, Style, Width};
+pub use tabled::{Table, Tabled};
 
-use crate::ffi::{Rf_allocVector, SET_STRING_ELT, SEXP, SEXPTYPE, Rf_mkCharLenCE, cetype_t};
+use crate::ffi::{Rf_allocVector, Rf_mkCharLenCE, SET_STRING_ELT, SEXP, SEXPTYPE, cetype_t};
 use crate::into_r::IntoR;
 
 // =============================================================================
@@ -167,11 +167,21 @@ pub fn table_to_string_styled<T: Tabled>(rows: &[T], style: &str) -> String {
     let mut table = Table::new(rows);
 
     match style {
-        "markdown" => { table.with(Style::markdown()); }
-        "modern" => { table.with(Style::modern()); }
-        "rounded" => { table.with(Style::rounded()); }
-        "blank" => { table.with(Style::blank()); }
-        "ascii" | _ => { table.with(Style::ascii()); }
+        "markdown" => {
+            table.with(Style::markdown());
+        }
+        "modern" => {
+            table.with(Style::modern());
+        }
+        "rounded" => {
+            table.with(Style::rounded());
+        }
+        "blank" => {
+            table.with(Style::blank());
+        }
+        "ascii" | _ => {
+            table.with(Style::ascii());
+        }
     }
 
     table.to_string()
@@ -211,8 +221,14 @@ mod tests {
     #[test]
     fn test_table_to_string() {
         let rows = vec![
-            TestRow { name: "foo".into(), value: 1 },
-            TestRow { name: "bar".into(), value: 2 },
+            TestRow {
+                name: "foo".into(),
+                value: 1,
+            },
+            TestRow {
+                name: "bar".into(),
+                value: 2,
+            },
         ];
         let table = table_to_string(&rows);
         assert!(table.contains("foo"));
@@ -223,21 +239,30 @@ mod tests {
 
     #[test]
     fn test_table_to_string_opts_left() {
-        let rows = vec![TestRow { name: "test".into(), value: 42 }];
+        let rows = vec![TestRow {
+            name: "test".into(),
+            value: 42,
+        }];
         let table = table_to_string_opts(&rows, None, "left", true);
         assert!(table.contains("test"));
     }
 
     #[test]
     fn test_table_to_string_opts_center() {
-        let rows = vec![TestRow { name: "test".into(), value: 42 }];
+        let rows = vec![TestRow {
+            name: "test".into(),
+            value: 42,
+        }];
         let table = table_to_string_opts(&rows, None, "center", true);
         assert!(table.contains("test"));
     }
 
     #[test]
     fn test_table_to_string_opts_max_width() {
-        let rows = vec![TestRow { name: "verylongname".into(), value: 42 }];
+        let rows = vec![TestRow {
+            name: "verylongname".into(),
+            value: 42,
+        }];
         let table = table_to_string_opts(&rows, Some(5), "left", true);
         // Width truncation should apply
         assert!(!table.is_empty());
@@ -256,10 +281,7 @@ mod tests {
     #[test]
     fn test_table_from_vecs() {
         let headers = vec!["H1", "H2"];
-        let rows = vec![
-            vec!["r1c1", "r1c2"],
-            vec!["r2c1", "r2c2"],
-        ];
+        let rows = vec![vec!["r1c1", "r1c2"], vec!["r2c1", "r2c2"]];
         let table = table_from_vecs(&headers, &rows);
         assert!(table.contains("H1"));
         assert!(table.contains("r1c1"));
@@ -268,7 +290,10 @@ mod tests {
 
     #[test]
     fn test_table_to_string_styled() {
-        let rows = vec![TestRow { name: "x".into(), value: 1 }];
+        let rows = vec![TestRow {
+            name: "x".into(),
+            value: 1,
+        }];
 
         let ascii = table_to_string_styled(&rows, "ascii");
         assert!(ascii.contains("x"));

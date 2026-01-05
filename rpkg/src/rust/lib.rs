@@ -28,6 +28,7 @@ mod convert_pref_tests;
 mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
+mod factor_tests;
 mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
@@ -1067,6 +1068,7 @@ miniextendr_module! {
     use convert_pref_tests;
     use rng_tests;
     use nonapi;
+    use factor_tests;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
     extern "C-unwind" fn rpkg_altrep_compact_int;

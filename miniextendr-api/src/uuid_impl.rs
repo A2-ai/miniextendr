@@ -330,7 +330,7 @@ mod tests {
 
         let nil = Uuid::nil();
         // Nil UUID has no version
-        assert!(RUuidOps::version(&nil) == 0 || true); // version_num returns 0 or undefined for nil
+        assert_eq!(RUuidOps::version(&nil), 0);
     }
 
     #[test]

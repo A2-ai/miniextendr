@@ -348,22 +348,22 @@ pub trait RRngOps {
     ///
     /// Returns a new vector of the given length.
     fn random_f64_vec(&self, n: i32) -> Vec<f64> {
-        (0..n).map(|_| self.r_random_f64()).collect()
+        (0..n).map(|_| self.random_f64()).collect()
     }
 
     /// Fill a vector with random f64 values in [low, high).
     fn gen_range_f64_vec(&self, n: i32, low: f64, high: f64) -> Vec<f64> {
-        (0..n).map(|_| self.r_gen_range_f64(low, high)).collect()
+        (0..n).map(|_| self.gen_range_f64(low, high)).collect()
     }
 
     /// Fill a vector with random i32 values in [low, high).
     fn gen_range_i32_vec(&self, n: i32, low: i32, high: i32) -> Vec<i32> {
-        (0..n).map(|_| self.r_gen_range_i32(low, high)).collect()
+        (0..n).map(|_| self.gen_range_i32(low, high)).collect()
     }
 
     /// Fill a vector with random booleans with probability `p` of true.
     fn gen_bool_vec(&self, n: i32, p: f64) -> Vec<bool> {
-        (0..n).map(|_| self.r_gen_bool(p)).collect()
+        (0..n).map(|_| self.gen_bool(p)).collect()
     }
 }
 
@@ -440,12 +440,12 @@ pub trait RDistributionOps<T> {
     ///
     /// Default implementation calls `r_sample()` n times.
     fn sample_n(&self, n: i32) -> Vec<T> {
-        (0..n).map(|_| self.r_sample()).collect()
+        (0..n).map(|_| self.sample()).collect()
     }
 
     /// Draw n samples from the distribution (alias for sample_n).
     fn sample_vec(&self, n: i32) -> Vec<T> {
-        self.r_sample_n(n)
+        self.sample_n(n)
     }
 
     /// Get the mean/expected value of the distribution, if known.
@@ -466,7 +466,7 @@ pub trait RDistributionOps<T> {
     ///
     /// Default implementation returns sqrt(variance) if variance is known.
     fn std_dev(&self) -> Option<f64> {
-        self.r_variance().map(|v| v.sqrt())
+        self.variance().map(|v| v.sqrt())
     }
 }
 
@@ -522,7 +522,7 @@ mod tests {
 
         fn gen_range_f64(&self, low: f64, high: f64) -> f64 {
             assert!(low < high, "low must be less than high");
-            low + self.r_random_f64() * (high - low)
+            low + self.random_f64() * (high - low)
         }
 
         fn gen_range_i32(&self, low: i32, high: i32) -> i32 {
@@ -533,28 +533,28 @@ mod tests {
 
         fn gen_bool(&self, p: f64) -> bool {
             assert!((0.0..=1.0).contains(&p), "p must be in [0, 1]");
-            self.r_random_f64() < p
+            self.random_f64() < p
         }
     }
 
     #[test]
     fn test_rrngops_random_f64() {
         let rng = MockRng::new(42);
-        let val = rng.r_random_f64();
+        let val = rng.random_f64();
         assert!((0.0..1.0).contains(&val));
     }
 
     #[test]
     fn test_rrngops_random_i32() {
         let rng = MockRng::new(42);
-        let _val = rng.r_random_i32(); // Just verify it doesn't panic
+        let _val = rng.random_i32(); // Just verify it doesn't panic
     }
 
     #[test]
     fn test_rrngops_random_bool() {
         let rng = MockRng::new(42);
         // Generate multiple to verify both outcomes are possible
-        let bools: Vec<bool> = (0..100).map(|_| rng.r_random_bool()).collect();
+        let bools: Vec<bool> = (0..100).map(|_| rng.random_bool()).collect();
         assert!(bools.iter().any(|&b| b));
         assert!(bools.iter().any(|&b| !b));
     }
@@ -563,7 +563,7 @@ mod tests {
     fn test_rrngops_gen_range_f64() {
         let rng = MockRng::new(42);
         for _ in 0..100 {
-            let val = rng.r_gen_range_f64(10.0, 20.0);
+            let val = rng.gen_range_f64(10.0, 20.0);
             assert!((10.0..20.0).contains(&val));
         }
     }
@@ -572,7 +572,7 @@ mod tests {
     fn test_rrngops_gen_range_i32() {
         let rng = MockRng::new(42);
         for _ in 0..100 {
-            let val = rng.r_gen_range_i32(5, 15);
+            let val = rng.gen_range_i32(5, 15);
             assert!((5..15).contains(&val));
         }
     }
@@ -581,7 +581,7 @@ mod tests {
     fn test_rrngops_gen_bool() {
         let rng = MockRng::new(42);
         // With p=0.5, should get roughly equal distribution
-        let count_true = (0..1000).filter(|_| rng.r_gen_bool(0.5)).count();
+        let count_true = (0..1000).filter(|_| rng.gen_bool(0.5)).count();
         // Should be roughly 500 ± 100
         assert!(count_true > 350 && count_true < 650);
     }
@@ -590,19 +590,19 @@ mod tests {
     fn test_rrngops_vec_methods() {
         let rng = MockRng::new(42);
 
-        let f64_vec = rng.r_random_f64_vec(10);
+        let f64_vec = rng.random_f64_vec(10);
         assert_eq!(f64_vec.len(), 10);
         assert!(f64_vec.iter().all(|&v| (0.0..1.0).contains(&v)));
 
-        let range_vec = rng.r_gen_range_f64_vec(10, -5.0, 5.0);
+        let range_vec = rng.gen_range_f64_vec(10, -5.0, 5.0);
         assert_eq!(range_vec.len(), 10);
         assert!(range_vec.iter().all(|&v| (-5.0..5.0).contains(&v)));
 
-        let int_vec = rng.r_gen_range_i32_vec(10, 0, 100);
+        let int_vec = rng.gen_range_i32_vec(10, 0, 100);
         assert_eq!(int_vec.len(), 10);
         assert!(int_vec.iter().all(|&v| (0..100).contains(&v)));
 
-        let bool_vec = rng.r_gen_bool_vec(10, 0.5);
+        let bool_vec = rng.gen_bool_vec(10, 0.5);
         assert_eq!(bool_vec.len(), 10);
     }
 
@@ -610,14 +610,14 @@ mod tests {
     #[should_panic(expected = "low must be less than high")]
     fn test_rrngops_gen_range_f64_invalid() {
         let rng = MockRng::new(42);
-        rng.r_gen_range_f64(10.0, 5.0); // low > high
+        rng.gen_range_f64(10.0, 5.0); // low > high
     }
 
     #[test]
     #[should_panic(expected = "p must be in [0, 1]")]
     fn test_rrngops_gen_bool_invalid() {
         let rng = MockRng::new(42);
-        rng.r_gen_bool(1.5); // p > 1
+        rng.gen_bool(1.5); // p > 1
     }
 
     // Test RDistributionOps with a mock uniform distribution
@@ -661,14 +661,14 @@ mod tests {
     #[test]
     fn test_rdistributionops_sample() {
         let dist = MockUniformDist::new(0.0, 10.0, 42);
-        let sample = dist.r_sample();
+        let sample = dist.sample();
         assert!((0.0..10.0).contains(&sample));
     }
 
     #[test]
     fn test_rdistributionops_sample_n() {
         let dist = MockUniformDist::new(5.0, 15.0, 42);
-        let samples = dist.r_sample_n(100);
+        let samples = dist.sample_n(100);
         assert_eq!(samples.len(), 100);
         assert!(samples.iter().all(|&s| (5.0..15.0).contains(&s)));
     }
@@ -676,27 +676,27 @@ mod tests {
     #[test]
     fn test_rdistributionops_sample_vec() {
         let dist = MockUniformDist::new(0.0, 1.0, 42);
-        let samples = dist.r_sample_vec(50);
+        let samples = dist.sample_vec(50);
         assert_eq!(samples.len(), 50);
     }
 
     #[test]
     fn test_rdistributionops_mean() {
         let dist = MockUniformDist::new(0.0, 10.0, 42);
-        assert_eq!(dist.r_mean(), Some(5.0));
+        assert_eq!(dist.mean(), Some(5.0));
     }
 
     #[test]
     fn test_rdistributionops_variance() {
         let dist = MockUniformDist::new(0.0, 12.0, 42);
         // Variance of uniform(0, 12) = (12-0)^2 / 12 = 144/12 = 12
-        assert_eq!(dist.r_variance(), Some(12.0));
+        assert_eq!(dist.variance(), Some(12.0));
     }
 
     #[test]
     fn test_rdistributionops_std_dev() {
         let dist = MockUniformDist::new(0.0, 12.0, 42);
-        let std_dev = dist.r_std_dev().unwrap();
+        let std_dev = dist.std_dev().unwrap();
         // std_dev = sqrt(12) ≈ 3.464
         assert!((std_dev - 12.0_f64.sqrt()).abs() < 1e-10);
     }
@@ -715,10 +715,10 @@ mod tests {
     #[test]
     fn test_rdistributionops_unknown_stats() {
         let dist = MockUnknownDist(RefCell::new(42));
-        assert_eq!(dist.r_mean(), None);
-        assert_eq!(dist.r_variance(), None);
-        assert_eq!(dist.r_std_dev(), None);
+        assert_eq!(dist.mean(), None);
+        assert_eq!(dist.variance(), None);
+        assert_eq!(dist.std_dev(), None);
         // But sampling still works
-        let _sample = dist.r_sample();
+        let _sample = dist.sample();
     }
 }

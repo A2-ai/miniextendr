@@ -57,10 +57,10 @@
 pub use toml::Value as TomlValue;
 
 use crate::ffi::{
-    Rf_allocVector, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
-    SET_VECTOR_ELT, SEXP, SEXPTYPE, SexpExt, STRING_ELT, Rf_mkCharLenCE, Rf_setAttrib, cetype_t,
+    Rf_allocVector, Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT,
+    SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
 };
-use crate::from_r::{charsxp_to_str, SexpError, SexpTypeError, TryFromSexp};
+use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
 // =============================================================================
@@ -237,8 +237,11 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::String(s) = v {
                         unsafe {
-                            let charsxp =
-                                Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8);
+                            let charsxp = Rf_mkCharLenCE(
+                                s.as_ptr().cast(),
+                                s.len() as i32,
+                                cetype_t::CE_UTF8,
+                            );
                             SET_STRING_ELT(sexp, i as isize, charsxp);
                         }
                     }
@@ -301,8 +304,7 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     let names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len as isize) };
     for (i, (key, value)) in table.iter().enumerate() {
         unsafe {
-            let charsxp =
-                Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8);
+            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8);
             SET_STRING_ELT(names, i as isize, charsxp);
             SET_VECTOR_ELT(sexp, i as isize, toml_value_to_sexp(value));
         }
@@ -395,31 +397,31 @@ pub trait RTomlOps {
 
 impl RTomlOps for TomlValue {
     fn is_string(&self) -> bool {
-        matches!(self, TomlValue::String(_))
+        TomlValue::is_str(self)
     }
 
     fn is_integer(&self) -> bool {
-        matches!(self, TomlValue::Integer(_))
+        TomlValue::is_integer(self)
     }
 
     fn is_float(&self) -> bool {
-        matches!(self, TomlValue::Float(_))
+        TomlValue::is_float(self)
     }
 
     fn is_boolean(&self) -> bool {
-        matches!(self, TomlValue::Boolean(_))
+        TomlValue::is_bool(self)
     }
 
     fn is_datetime(&self) -> bool {
-        matches!(self, TomlValue::Datetime(_))
+        TomlValue::is_datetime(self)
     }
 
     fn is_array(&self) -> bool {
-        matches!(self, TomlValue::Array(_))
+        TomlValue::is_array(self)
     }
 
     fn is_table(&self) -> bool {
-        matches!(self, TomlValue::Table(_))
+        TomlValue::is_table(self)
     }
 
     fn type_name(&self) -> String {
@@ -443,51 +445,29 @@ impl RTomlOps for TomlValue {
     }
 
     fn as_str(&self) -> Option<String> {
-        if let TomlValue::String(s) = self {
-            Some(s.clone())
-        } else {
-            None
-        }
+        TomlValue::as_str(self).map(|s| s.to_string())
     }
 
     fn as_integer(&self) -> Option<i64> {
-        if let TomlValue::Integer(i) = self {
-            Some(*i)
-        } else {
-            None
-        }
+        TomlValue::as_integer(self)
     }
 
     fn as_float(&self) -> Option<f64> {
-        if let TomlValue::Float(f) = self {
-            Some(*f)
-        } else {
-            None
-        }
+        TomlValue::as_float(self)
     }
 
     fn as_bool(&self) -> Option<bool> {
-        if let TomlValue::Boolean(b) = self {
-            Some(*b)
-        } else {
-            None
-        }
+        TomlValue::as_bool(self)
     }
 
     fn array_len(&self) -> Option<i32> {
-        if let TomlValue::Array(arr) = self {
-            Some(arr.len() as i32)
-        } else {
-            None
-        }
+        TomlValue::as_array(self).map(|arr| arr.len() as i32)
     }
 
     fn table_keys(&self) -> Vec<String> {
-        if let TomlValue::Table(table) = self {
-            table.keys().cloned().collect()
-        } else {
-            vec![]
-        }
+        TomlValue::as_table(self)
+            .map(|table| table.keys().cloned().collect())
+            .unwrap_or_default()
     }
 }
 
@@ -544,9 +524,9 @@ mod tests {
         assert!(RTomlOps::is_integer(&i));
         assert_eq!(RTomlOps::as_integer(&i), Some(42));
 
-        let f = TomlValue::Float(3.14);
+        let f = TomlValue::Float(std::f64::consts::PI);
         assert!(RTomlOps::is_float(&f));
-        assert_eq!(RTomlOps::as_float(&f), Some(3.14));
+        assert_eq!(RTomlOps::as_float(&f), Some(std::f64::consts::PI));
 
         let b = TomlValue::Boolean(true);
         assert!(RTomlOps::is_boolean(&b));

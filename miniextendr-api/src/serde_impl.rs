@@ -43,7 +43,7 @@
 //! json <- cfg$r_to_json()
 //! # '{"name":"test","value":42,"enabled":true}'
 //!
-//! cfg2 <- Config$r_from_json(json)
+//! cfg2 <- Config$from_json(json)
 //! cfg2$name  # "test"
 //!
 //! # Pretty-printed JSON
@@ -58,8 +58,8 @@
 //! # Error Handling
 //!
 //! - `r_to_json()` returns `Result<String, String>` - errors include serialization failures
-//! - `r_from_json()` returns `Option<Self>` - returns None on parse failure
-//! - For more detailed error information, use `r_from_json_result()`
+//! - `from_json()` returns `Option<Self>` - returns None on parse failure
+//! - For more detailed error information, use `from_json_result()`
 
 pub use serde::{Deserialize, Serialize};
 pub use serde_json;
@@ -67,11 +67,11 @@ pub use serde_json::Value as JsonValue;
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
 use crate::ffi::{
-    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rboolean, Rf_allocVector, Rf_isFactor, Rf_xlength,
-    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
-    SexpExt, STRING_ELT, Rf_getAttrib, Rf_setAttrib, Rf_mkCharLenCE, cetype_t,
+    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rboolean, Rf_allocVector, Rf_getAttrib, Rf_isFactor,
+    Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
+    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
 };
-use crate::from_r::{charsxp_to_str, SexpError, TryFromSexp};
+use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::into_r::IntoR;
 
 /// Adapter trait for [`serde::Serialize`].
@@ -128,8 +128,8 @@ impl<T: Serialize> RSerialize for T {
 ///
 /// # Methods
 ///
-/// - `r_from_json(s)` - Parse JSON string, returning None on failure
-/// - `r_from_json_result(s)` - Parse JSON string with detailed error
+/// - `from_json(s)` - Parse JSON string, returning None on failure
+/// - `from_json_result(s)` - Parse JSON string with detailed error
 ///
 /// # Example
 ///
@@ -148,7 +148,7 @@ impl<T: Serialize> RSerialize for T {
 ///
 /// In R:
 /// ```r
-/// cfg <- Config$r_from_json('{"name":"test","value":42}')
+/// cfg <- Config$from_json('{"name":"test","value":42}')
 /// ```
 pub trait RDeserialize: Sized {
     /// Parse a JSON string into this type.
@@ -230,7 +230,9 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                 let val = unsafe { LOGICAL_ELT(sexp, 0) };
                 if val == NA_LOGICAL {
                     if strict {
-                        return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+                        return Err(SexpError::InvalidValue(
+                            "NA not allowed in strict mode".into(),
+                        ));
                     }
                     return Ok(JsonValue::Null);
                 }
@@ -260,7 +262,9 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                 let val = unsafe { INTEGER_ELT(sexp, 0) };
                 if val == NA_INTEGER {
                     if strict {
-                        return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+                        return Err(SexpError::InvalidValue(
+                            "NA not allowed in strict mode".into(),
+                        ));
                     }
                     return Ok(JsonValue::Null);
                 }
@@ -304,7 +308,9 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                 let charsxp = unsafe { STRING_ELT(sexp, 0) };
                 if charsxp == unsafe { crate::ffi::R_NaString } {
                     if strict {
-                        return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+                        return Err(SexpError::InvalidValue(
+                            "NA not allowed in strict mode".into(),
+                        ));
                     }
                     return Ok(JsonValue::Null);
                 }
@@ -373,7 +379,9 @@ fn real_to_json(val: f64, strict: bool, permissive: bool) -> Result<JsonValue, S
     // Check for NA (NA_REAL is a specific NaN bit pattern)
     if val.to_bits() == NA_REAL.to_bits() {
         if strict {
-            return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+            return Err(SexpError::InvalidValue(
+                "NA not allowed in strict mode".into(),
+            ));
         }
         return Ok(JsonValue::Null);
     }
@@ -383,13 +391,17 @@ fn real_to_json(val: f64, strict: bool, permissive: bool) -> Result<JsonValue, S
         if permissive {
             return Ok(JsonValue::Null);
         }
-        return Err(SexpError::InvalidValue("NaN cannot be represented in JSON".into()));
+        return Err(SexpError::InvalidValue(
+            "NaN cannot be represented in JSON".into(),
+        ));
     }
     if val.is_infinite() {
         if permissive {
             return Ok(JsonValue::Null);
         }
-        return Err(SexpError::InvalidValue("Infinity cannot be represented in JSON".into()));
+        return Err(SexpError::InvalidValue(
+            "Infinity cannot be represented in JSON".into(),
+        ));
     }
 
     serde_json::Number::from_f64(val)
@@ -405,7 +417,9 @@ fn factor_to_json(sexp: SEXP, strict: bool, _permissive: bool) -> Result<JsonVal
         let idx = unsafe { INTEGER_ELT(sexp, 0) };
         if idx == NA_INTEGER {
             if strict {
-                return Err(SexpError::InvalidValue("NA factor not allowed in strict mode".into()));
+                return Err(SexpError::InvalidValue(
+                    "NA factor not allowed in strict mode".into(),
+                ));
             }
             return Ok(JsonValue::Null);
         }
@@ -487,9 +501,8 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
         }
         JsonValue::String(s) => {
             let sexp = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, 1) };
-            let charsxp = unsafe {
-                Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8)
-            };
+            let charsxp =
+                unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8) };
             unsafe { SET_STRING_ELT(sexp, 0, charsxp) };
             sexp
         }
@@ -569,22 +582,22 @@ pub trait RJsonValueOps {
 
 impl RJsonValueOps for JsonValue {
     fn is_null(&self) -> bool {
-        matches!(self, JsonValue::Null)
+        JsonValue::is_null(self)
     }
     fn is_boolean(&self) -> bool {
-        matches!(self, JsonValue::Bool(_))
+        JsonValue::is_boolean(self)
     }
     fn is_number(&self) -> bool {
-        matches!(self, JsonValue::Number(_))
+        JsonValue::is_number(self)
     }
     fn is_string(&self) -> bool {
-        matches!(self, JsonValue::String(_))
+        JsonValue::is_string(self)
     }
     fn is_array(&self) -> bool {
-        matches!(self, JsonValue::Array(_))
+        JsonValue::is_array(self)
     }
     fn is_object(&self) -> bool {
-        matches!(self, JsonValue::Object(_))
+        JsonValue::is_object(self)
     }
     fn type_name(&self) -> String {
         match self {
@@ -603,46 +616,24 @@ impl RJsonValueOps for JsonValue {
         serde_json::to_string_pretty(self).unwrap_or_default()
     }
     fn as_bool(&self) -> Option<bool> {
-        if let JsonValue::Bool(b) = self {
-            Some(*b)
-        } else {
-            None
-        }
+        JsonValue::as_bool(self)
     }
     fn as_i64(&self) -> Option<i64> {
-        if let JsonValue::Number(n) = self {
-            n.as_i64()
-        } else {
-            None
-        }
+        JsonValue::as_i64(self)
     }
     fn as_f64(&self) -> Option<f64> {
-        if let JsonValue::Number(n) = self {
-            n.as_f64()
-        } else {
-            None
-        }
+        JsonValue::as_f64(self)
     }
     fn as_str(&self) -> Option<String> {
-        if let JsonValue::String(s) = self {
-            Some(s.clone())
-        } else {
-            None
-        }
+        JsonValue::as_str(self).map(|s| s.to_string())
     }
     fn array_len(&self) -> Option<i32> {
-        if let JsonValue::Array(arr) = self {
-            Some(arr.len() as i32)
-        } else {
-            None
-        }
+        JsonValue::as_array(self).map(|arr| arr.len() as i32)
     }
     fn object_keys(&self) -> Vec<String> {
-        if let JsonValue::Object(map) = self {
-            map.keys().cloned().collect()
-        } else {
-            vec![]
-        }
+        JsonValue::as_object(self)
+            .map(|map| map.keys().cloned().collect())
+            .unwrap_or_default()
     }
 }
 
@@ -664,7 +655,7 @@ mod tests {
             value: 42,
             enabled: true,
         };
-        let json = data.r_to_json().unwrap();
+        let json = data.to_json().unwrap();
         assert_eq!(json, r#"{"name":"test","value":42,"enabled":true}"#);
     }
 
@@ -675,7 +666,7 @@ mod tests {
             value: 42,
             enabled: true,
         };
-        let json = data.r_to_json_pretty().unwrap();
+        let json = data.to_json_pretty().unwrap();
         assert!(json.contains('\n'));
         assert!(json.contains("  ")); // Indentation
         assert!(json.contains("\"name\": \"test\""));
@@ -684,7 +675,7 @@ mod tests {
     #[test]
     fn rdeserialize_from_json() {
         let json = r#"{"name":"hello","value":123,"enabled":false}"#;
-        let data: Option<TestStruct> = RDeserialize::r_from_json(json);
+        let data: Option<TestStruct> = RDeserialize::from_json(json);
         assert!(data.is_some());
         let data = data.unwrap();
         assert_eq!(data.name, "hello");
@@ -695,7 +686,7 @@ mod tests {
     #[test]
     fn rdeserialize_from_json_result() {
         let json = r#"{"name":"world","value":456,"enabled":true}"#;
-        let result: Result<TestStruct, String> = RDeserialize::r_from_json_result(json);
+        let result: Result<TestStruct, String> = RDeserialize::from_json_result(json);
         assert!(result.is_ok());
         let data = result.unwrap();
         assert_eq!(data.name, "world");
@@ -704,10 +695,10 @@ mod tests {
     #[test]
     fn rdeserialize_invalid_json() {
         let invalid = "not valid json";
-        let data: Option<TestStruct> = RDeserialize::r_from_json(invalid);
+        let data: Option<TestStruct> = RDeserialize::from_json(invalid);
         assert!(data.is_none());
 
-        let result: Result<TestStruct, String> = RDeserialize::r_from_json_result(invalid);
+        let result: Result<TestStruct, String> = RDeserialize::from_json_result(invalid);
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("expected"));
     }
@@ -715,7 +706,7 @@ mod tests {
     #[test]
     fn rdeserialize_missing_field() {
         let json = r#"{"name":"test"}"#; // Missing value and enabled
-        let data: Option<TestStruct> = RDeserialize::r_from_json(json);
+        let data: Option<TestStruct> = RDeserialize::from_json(json);
         assert!(data.is_none());
     }
 
@@ -726,22 +717,22 @@ mod tests {
             value: 999,
             enabled: true,
         };
-        let json = original.r_to_json().unwrap();
-        let parsed: TestStruct = RDeserialize::r_from_json(&json).unwrap();
+        let json = original.to_json().unwrap();
+        let parsed: TestStruct = RDeserialize::from_json(&json).unwrap();
         assert_eq!(original, parsed);
     }
 
     #[test]
     fn serialize_vec() {
         let data = vec![1, 2, 3, 4, 5];
-        let json = data.r_to_json().unwrap();
+        let json = data.to_json().unwrap();
         assert_eq!(json, "[1,2,3,4,5]");
     }
 
     #[test]
     fn deserialize_vec() {
         let json = "[10,20,30]";
-        let data: Option<Vec<i32>> = RDeserialize::r_from_json(json);
+        let data: Option<Vec<i32>> = RDeserialize::from_json(json);
         assert_eq!(data, Some(vec![10, 20, 30]));
     }
 
@@ -750,16 +741,16 @@ mod tests {
         let some_val: Option<i32> = Some(42);
         let none_val: Option<i32> = None;
 
-        assert_eq!(some_val.r_to_json().unwrap(), "42");
-        assert_eq!(none_val.r_to_json().unwrap(), "null");
+        assert_eq!(some_val.to_json().unwrap(), "42");
+        assert_eq!(none_val.to_json().unwrap(), "null");
     }
 
     #[test]
     fn deserialize_option() {
-        let data: Option<Option<i32>> = RDeserialize::r_from_json("42");
+        let data: Option<Option<i32>> = RDeserialize::from_json("42");
         assert_eq!(data, Some(Some(42)));
 
-        let data: Option<Option<i32>> = RDeserialize::r_from_json("null");
+        let data: Option<Option<i32>> = RDeserialize::from_json("null");
         assert_eq!(data, Some(None));
     }
 
@@ -777,7 +768,7 @@ mod tests {
         let data = Outer {
             inner: Inner { x: 100 },
         };
-        let json = data.r_to_json().unwrap();
+        let json = data.to_json().unwrap();
         assert_eq!(json, r#"{"inner":{"x":100}}"#);
     }
 
@@ -788,7 +779,7 @@ mod tests {
             value: 0,
             enabled: false,
         };
-        let json = data.r_to_json().unwrap();
+        let json = data.to_json().unwrap();
         // Special chars should be escaped
         assert!(json.contains("\\n"));
         assert!(json.contains("\\t"));
@@ -821,9 +812,9 @@ mod tests {
         assert_eq!(RJsonValueOps::as_i64(&v), Some(42));
         assert_eq!(RJsonValueOps::as_f64(&v), Some(42.0));
 
-        let v = serde_json::json!(3.14);
+        let v = serde_json::json!(std::f64::consts::PI);
         assert!(RJsonValueOps::is_number(&v));
-        assert_eq!(RJsonValueOps::as_f64(&v), Some(3.14));
+        assert_eq!(RJsonValueOps::as_f64(&v), Some(std::f64::consts::PI));
     }
 
     #[test]
@@ -859,7 +850,7 @@ mod tests {
 
     #[test]
     fn real_to_json_normal() {
-        let result = real_to_json(3.14, false, false);
+        let result = real_to_json(std::f64::consts::PI, false, false);
         assert!(result.is_ok());
         let val = result.unwrap();
         assert!(RJsonValueOps::is_number(&val));

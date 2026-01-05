@@ -350,7 +350,7 @@ mod tests {
 
     #[test]
     fn ordered_float_basic() {
-        let of = OrderedFloat(3.14f64);
+        let of = OrderedFloat(std::f64::consts::PI);
         assert!(!of.is_nan());
         assert!(of.is_finite());
         assert!(!of.is_infinite());
@@ -358,7 +358,7 @@ mod tests {
 
     #[test]
     fn rorderedfloatops_predicates() {
-        let positive = OrderedFloat(3.14f64);
+        let positive = OrderedFloat(std::f64::consts::PI);
         let negative = OrderedFloat(-2.5f64);
         let nan = OrderedFloat(f64::NAN);
         let inf = OrderedFloat(f64::INFINITY);
@@ -423,7 +423,7 @@ mod tests {
 
     #[test]
     fn rorderedfloatops_f32() {
-        let of = OrderedFloat(3.14f32);
+        let of = OrderedFloat(std::f32::consts::PI);
         assert!(!ROrderedFloatOps::is_nan(&of));
         assert!(ROrderedFloatOps::is_finite(&of));
         assert!((ROrderedFloatOps::floor(&of) - 3.0).abs() < 0.001);

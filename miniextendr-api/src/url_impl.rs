@@ -41,7 +41,9 @@
 pub use url::Url;
 
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{charsxp_to_str, SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp};
+use crate::from_r::{
+    SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFromSexp, charsxp_to_str,
+};
 use crate::into_r::IntoR;
 
 // =============================================================================

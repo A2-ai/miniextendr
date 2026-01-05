@@ -65,7 +65,10 @@ pub fn from_rcomplex(r: Rcomplex) -> Complex<f64> {
 /// Create an NA complex value (both parts are `NA_REAL`).
 #[inline]
 pub fn na_rcomplex() -> Rcomplex {
-    Rcomplex { r: NA_REAL, i: NA_REAL }
+    Rcomplex {
+        r: NA_REAL,
+        i: NA_REAL,
+    }
 }
 
 /// Check if an `Rcomplex` value is NA.

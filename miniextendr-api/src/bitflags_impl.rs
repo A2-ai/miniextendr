@@ -201,17 +201,20 @@ where
 
         let int_val = unsafe { INTEGER_ELT(sexp, 0) };
         if int_val == NA_INTEGER {
-            return Err(SexpError::InvalidValue("NA not allowed for bitflags".to_string()));
+            return Err(SexpError::InvalidValue(
+                "NA not allowed for bitflags".to_string(),
+            ));
         }
 
         // Convert i32 to the flags' Bits type
-        let bits = T::Bits::try_from(int_val)
-            .map_err(|_| SexpError::InvalidValue(format!("value {} out of range for bitflags", int_val)))?;
+        let bits = T::Bits::try_from(int_val).map_err(|_| {
+            SexpError::InvalidValue(format!("value {} out of range for bitflags", int_val))
+        })?;
 
         // Try strict conversion (reject unknown bits)
-        T::from_bits(bits)
-            .map(RFlags)
-            .ok_or_else(|| SexpError::InvalidValue(format!("invalid bits 0x{:x} for flags", int_val)))
+        T::from_bits(bits).map(RFlags).ok_or_else(|| {
+            SexpError::InvalidValue(format!("invalid bits 0x{:x} for flags", int_val))
+        })
     }
 }
 

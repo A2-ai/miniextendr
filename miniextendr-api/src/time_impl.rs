@@ -779,7 +779,7 @@ impl RDuration for Duration {
 /// use miniextendr_api::time_impl::RDateTimeFormat;
 ///
 /// let now = OffsetDateTime::now_utc();
-/// let formatted = now.r_format("[year]-[month]-[day] [hour]:[minute]:[second]");
+/// let formatted = now.format("[year]-[month]-[day] [hour]:[minute]:[second]");
 /// // e.g., "2024-01-15 14:30:00"
 ///
 /// let parsed = OffsetDateTime::r_parse(
@@ -802,7 +802,7 @@ pub trait RDateTimeFormat: Sized {
 impl RDateTimeFormat for OffsetDateTime {
     fn format(&self, fmt: &str) -> Result<String, String> {
         let format = time::format_description::parse(fmt).map_err(|e| e.to_string())?;
-        self.format(&format).map_err(|e| e.to_string())
+        OffsetDateTime::format(*self, &format).map_err(|e| e.to_string())
     }
 
     fn parse(s: &str, fmt: &str) -> Result<Self, String> {
@@ -814,7 +814,7 @@ impl RDateTimeFormat for OffsetDateTime {
 impl RDateTimeFormat for Date {
     fn format(&self, fmt: &str) -> Result<String, String> {
         let format = time::format_description::parse(fmt).map_err(|e| e.to_string())?;
-        self.format(&format).map_err(|e| e.to_string())
+        Date::format(*self, &format).map_err(|e| e.to_string())
     }
 
     fn parse(s: &str, fmt: &str) -> Result<Self, String> {
@@ -895,14 +895,16 @@ mod tests {
         let dt = time::macros::datetime!(2024-01-15 14:30:00 UTC);
 
         // Test formatting
-        let formatted = dt.r_format("[year]-[month]-[day]").unwrap();
+        let formatted =
+            <OffsetDateTime as RDateTimeFormat>::format(&dt, "[year]-[month]-[day]").unwrap();
         assert_eq!(formatted, "2024-01-15");
 
-        let formatted_time = dt.r_format("[hour]:[minute]:[second]").unwrap();
+        let formatted_time =
+            <OffsetDateTime as RDateTimeFormat>::format(&dt, "[hour]:[minute]:[second]").unwrap();
         assert_eq!(formatted_time, "14:30:00");
 
         // Test parsing
-        let parsed = OffsetDateTime::r_parse(
+        let parsed = <OffsetDateTime as RDateTimeFormat>::parse(
             "2024-01-15 14:30:00 +00:00:00",
             "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory]:[offset_minute]:[offset_second]",
         )
@@ -919,11 +921,11 @@ mod tests {
         let d = time::macros::date!(2024 - 06 - 20);
 
         // Test formatting
-        let formatted = d.r_format("[year]-[month]-[day]").unwrap();
+        let formatted = <Date as RDateTimeFormat>::format(&d, "[year]-[month]-[day]").unwrap();
         assert_eq!(formatted, "2024-06-20");
 
         // Test parsing
-        let parsed = Date::r_parse("2024-06-20", "[year]-[month]-[day]").unwrap();
+        let parsed = <Date as RDateTimeFormat>::parse("2024-06-20", "[year]-[month]-[day]").unwrap();
         assert_eq!(parsed.year(), 2024);
         assert_eq!(parsed.month(), time::Month::June);
         assert_eq!(parsed.day(), 20);
@@ -932,11 +934,11 @@ mod tests {
     #[test]
     fn rdatetimeformat_errors() {
         // Invalid format string
-        let result = UNIX_EPOCH.r_format("[invalid]");
+        let result = <OffsetDateTime as RDateTimeFormat>::format(&UNIX_EPOCH, "[invalid]");
         assert!(result.is_err());
 
         // Invalid input for format
-        let result = OffsetDateTime::r_parse("not a date", "[year]-[month]-[day]");
+        let result = <Date as RDateTimeFormat>::parse("not a date", "[year]-[month]-[day]");
         assert!(result.is_err());
     }
 }
