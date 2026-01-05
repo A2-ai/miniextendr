@@ -107,7 +107,7 @@ pub use ndarray::{
     ShapeBuilder,
 };
 
-use crate::coerce::{Coerced, TryCoerce};
+use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
@@ -188,7 +188,7 @@ where
 
 /// Implement TryFromSexp for Array1<$target> by reading $source and coercing.
 macro_rules! impl_array1_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for Array1<$target> {
             type Error = SexpError;
 
@@ -215,7 +215,7 @@ macro_rules! impl_array1_try_from_sexp_coerce {
 
 /// Implement TryFromSexp for Array2<$target> by reading $source and coercing.
 macro_rules! impl_array2_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for Array2<$target> {
             type Error = SexpError;
 
@@ -249,7 +249,7 @@ macro_rules! impl_array2_try_from_sexp_coerce {
 
 /// Implement TryFromSexp for Array3<$target> by reading $source and coercing.
 macro_rules! impl_array3_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for Array3<$target> {
             type Error = SexpError;
 
@@ -283,7 +283,7 @@ macro_rules! impl_array3_try_from_sexp_coerce {
 
 /// Implement TryFromSexp for Array4<$target> by reading $source and coercing.
 macro_rules! impl_array4_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for Array4<$target> {
             type Error = SexpError;
 
@@ -329,7 +329,7 @@ macro_rules! impl_array4_try_from_sexp_coerce {
 
 /// Implement TryFromSexp for Array5<$target> by reading $source and coercing.
 macro_rules! impl_array5_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for Array5<$target> {
             type Error = SexpError;
 
@@ -374,7 +374,7 @@ macro_rules! impl_array5_try_from_sexp_coerce {
 
 /// Implement TryFromSexp for Array6<$target> by reading $source and coercing.
 macro_rules! impl_array6_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for Array6<$target> {
             type Error = SexpError;
 
@@ -422,7 +422,7 @@ macro_rules! impl_array6_try_from_sexp_coerce {
 
 /// Implement TryFromSexp for ArrayD<$target> by reading $source and coercing.
 macro_rules! impl_arrayd_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
+    ($source:ty => $target:ty) => {
         impl TryFromSexp for ArrayD<$target> {
             type Error = SexpError;
 
@@ -455,40 +455,40 @@ macro_rules! impl_arrayd_try_from_sexp_coerce {
     };
 }
 
-/// Implement TryFromSexp for all array types for a given target/source pair.
+/// Implement TryFromSexp for all array types for a given source/target pair.
 macro_rules! impl_all_arrays_try_from_sexp_coerce {
-    ($target:ty <= $source:ty) => {
-        impl_array1_try_from_sexp_coerce!($target <= $source);
-        impl_array2_try_from_sexp_coerce!($target <= $source);
-        impl_array3_try_from_sexp_coerce!($target <= $source);
-        impl_array4_try_from_sexp_coerce!($target <= $source);
-        impl_array5_try_from_sexp_coerce!($target <= $source);
-        impl_array6_try_from_sexp_coerce!($target <= $source);
-        impl_arrayd_try_from_sexp_coerce!($target <= $source);
+    ($source:ty => $target:ty) => {
+        impl_array1_try_from_sexp_coerce!($source => $target);
+        impl_array2_try_from_sexp_coerce!($source => $target);
+        impl_array3_try_from_sexp_coerce!($source => $target);
+        impl_array4_try_from_sexp_coerce!($source => $target);
+        impl_array5_try_from_sexp_coerce!($source => $target);
+        impl_array6_try_from_sexp_coerce!($source => $target);
+        impl_arrayd_try_from_sexp_coerce!($source => $target);
     };
 }
 
 // -----------------------------------------------------------------------------
 // Integer coercions: R integer (i32) -> various Rust integer types
 // -----------------------------------------------------------------------------
-impl_all_arrays_try_from_sexp_coerce!(i8 <= i32);
-impl_all_arrays_try_from_sexp_coerce!(i16 <= i32);
-impl_all_arrays_try_from_sexp_coerce!(i64 <= i32);
-impl_all_arrays_try_from_sexp_coerce!(isize <= i32);
-impl_all_arrays_try_from_sexp_coerce!(u16 <= i32);
-impl_all_arrays_try_from_sexp_coerce!(u32 <= i32);
-impl_all_arrays_try_from_sexp_coerce!(u64 <= i32);
-impl_all_arrays_try_from_sexp_coerce!(usize <= i32);
+impl_all_arrays_try_from_sexp_coerce!(i32 => i8);
+impl_all_arrays_try_from_sexp_coerce!(i32 => i16);
+impl_all_arrays_try_from_sexp_coerce!(i32 => i64);
+impl_all_arrays_try_from_sexp_coerce!(i32 => isize);
+impl_all_arrays_try_from_sexp_coerce!(i32 => u16);
+impl_all_arrays_try_from_sexp_coerce!(i32 => u32);
+impl_all_arrays_try_from_sexp_coerce!(i32 => u64);
+impl_all_arrays_try_from_sexp_coerce!(i32 => usize);
 
 // -----------------------------------------------------------------------------
 // Float coercions: R numeric (f64) -> f32
 // -----------------------------------------------------------------------------
-impl_all_arrays_try_from_sexp_coerce!(f32 <= f64);
+impl_all_arrays_try_from_sexp_coerce!(f64 => f32);
 
 // -----------------------------------------------------------------------------
 // Logical coercions: R logical (RLogical) -> bool
 // -----------------------------------------------------------------------------
-impl_all_arrays_try_from_sexp_coerce!(bool <= crate::ffi::RLogical);
+impl_all_arrays_try_from_sexp_coerce!(crate::ffi::RLogical => bool);
 
 // =============================================================================
 // Array2 conversions

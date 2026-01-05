@@ -1264,6 +1264,9 @@ impl_hashset_try_from_sexp_coerce!(i32 => u32);
 impl_hashset_try_from_sexp_coerce!(i32 => u64);
 impl_hashset_try_from_sexp_coerce!(i32 => usize);
 
+// Float coercions: R numeric (f64) -> f32
+// Note: f32 doesn't implement Hash, so no HashSet<f32>
+
 // Logical coercions: R logical (RLogical) -> bool
 impl_hashset_try_from_sexp_coerce!(RLogical => bool);
 
@@ -1313,6 +1316,9 @@ impl_btreeset_try_from_sexp_coerce!(i32 => u16);
 impl_btreeset_try_from_sexp_coerce!(i32 => u32);
 impl_btreeset_try_from_sexp_coerce!(i32 => u64);
 impl_btreeset_try_from_sexp_coerce!(i32 => usize);
+
+// Float coercions: R numeric (f64) -> f32
+// Note: f32 doesn't implement Ord (only PartialOrd due to NaN), so no BTreeSet<f32>
 
 // Logical coercions: R logical (RLogical) -> bool
 impl_btreeset_try_from_sexp_coerce!(RLogical => bool);
