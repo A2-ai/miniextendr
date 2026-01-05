@@ -981,14 +981,13 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== aho-corasick feature ====
 
-- [ ] Add `aho-corasick` optional feature for multi-pattern search
+- [x] Add `aho-corasick` optional feature for multi-pattern search
   - `aho-corasick = { version = "1.1", optional = true }`
   - Create `miniextendr-api/src/aho_corasick_impl.rs`
   - `TryFromSexp for AhoCorasick` - build from `Vec<String>` patterns
-  - `IntoR for AhoCorasick` - wrap in ExternalPtr via `impl_typed_external!`
   - Helpers: `aho_compile(patterns)`, `aho_find_all(ac, haystack) -> Vec<(pattern_id, start, end)>`
-  - Optional builder for `ascii_case_insensitive` and `match_kind` options
-  - R wrappers: `aho_compile()`, `aho_find_all_df()`, `aho_find_all_mat()`
+  - Builder: `aho_builder(patterns, ascii_case_insensitive, match_kind)`
+  - `RAhoCorasickOps` adapter trait for R interop
   - Pattern IDs 1-based in R, byte offsets documented
   - Plan: `reviews/aho-corasick-plan.md`
 
@@ -1009,13 +1008,14 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== bitvec feature ====
 
-- [ ] Add `bitvec` optional feature for bit vectors ↔ logical vectors
+- [x] Add `bitvec` optional feature for bit vectors ↔ logical vectors
   - `bitvec = { version = "1", optional = true }`
   - Create `miniextendr-api/src/bitvec_impl.rs`
   - Type alias: `pub type RBitVec = BitVec<u8, Lsb0>` (stable order)
   - `TryFromSexp for RBitVec` - accept LGLSXP, TRUE→1, FALSE→0, NA→error
-  - `IntoR for RBitVec` - produce LGLSXP
-  - Optional raw mapping (deferred): RAWSXP with `bit_length` attribute
+  - `TryFromSexp for BitVec<u8, Msb0>` - MSB-first variant
+  - `IntoR for RBitVec` and `BitVec<u8, Msb0>` - produce LGLSXP
+  - Helper functions: `bitvec_from_bools()`, `bitvec_to_bools()`, `bitvec_count_ones/zeros()`
   - Plan: `reviews/bitvec-plan.md`
 
 ==== borsh feature ====
@@ -1060,7 +1060,7 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== serde-json Value bridge ====
 
-- [ ] Add `serde-json` feature for direct Value ↔ R list conversion
+- [x] Add `serde-json` feature for direct Value ↔ R list conversion
   - Feature already exists; enhance with Value ↔ SEXP bridge
   - Create/update `miniextendr-api/src/serde_json_impl.rs`
   - Type alias: `pub type JsonValue = serde_json::Value`
@@ -1092,34 +1092,26 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== tabled feature ====
 
-- [ ] Add `tabled` optional feature for table formatting
-  - `tabled = { version = "0.20", optional = true, default-features = true }`
+- [x] Add `tabled` optional feature for table formatting
+  - `tabled = { version = "0.20", optional = true }`
   - Create `miniextendr-api/src/tabled_impl.rs`
   - Helpers:
-    - `table_to_string<T: Tabled>(rows)` → String
-    - `table_builder_to_string(builder)` → String
-  - Optional: `impl IntoR for tabled::Table` → STRSXP
-  - Optional formatting options: `max_width`, `align`, `trim`
-  - Default: no ANSI styling (R consoles may not render)
+    - `table_to_string(rows)`, `table_to_string_opts(rows, max_width, align, trim)`
+    - `table_to_string_styled(rows, style)`, `builder_to_string(builder)`
+    - `table_from_vecs(headers, rows)`
+  - `impl IntoR for tabled::Table` → STRSXP
   - Plan: `reviews/tabled-plan.md`
 
 ==== toml feature ====
 
-- [ ] Add `toml` optional feature for TOML value conversions
+- [x] Add `toml` optional feature for TOML value conversions
   - `toml = { version = "0.8", optional = true }`
   - Create `miniextendr-api/src/toml_impl.rs`
   - Type alias: `pub type TomlValue = toml::Value`
-  - Functions: `toml_from_str(s)`, `toml_to_string(v)`
-  - `TryFromSexp for TomlValue` - from character(1) or list
-  - `IntoR for TomlValue` - to list or character(1)
-  - R → TOML mapping:
-    - NULL → error (TOML has no null)
-    - Scalars → primitives, lists → Tables (require names)
-    - Vectors → Arrays (must be homogeneous)
-    - NA → error (default), mixed arrays → error
-  - TOML → R mapping:
-    - Primitives → scalars, Arrays → vectors/lists, Tables → named lists
-    - Datetime → character(1)
+  - Functions: `toml_from_str(s)`, `toml_to_string(v)`, `toml_to_string_pretty(v)`
+  - `TryFromSexp for TomlValue` - from character(1)
+  - `IntoR for TomlValue` - to list/vector
+  - `RTomlOps` adapter trait for value inspection
   - Plan: `reviews/toml-plan.md`
 
 ==== url feature ====
@@ -1138,7 +1130,7 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== raw_conversions feature (bytemuck-based) ====
 
-- [ ] Add `raw_conversions` optional feature for POD ↔ raw vector
+- [x] Add `raw_conversions` optional feature for POD ↔ raw vector
   - `bytemuck = { version = "1", optional = true, features = ["derive"] }`
   - Create `miniextendr-api/src/raw_conversions.rs`
   - Core types:

@@ -465,7 +465,10 @@ pub mod serde_impl;
 #[cfg(feature = "serde")]
 pub use serde;
 #[cfg(feature = "serde")]
-pub use serde_impl::{RDeserialize, RSerialize};
+pub use serde_impl::{
+    JsonValue, RDeserialize, RJsonValueOps, RSerialize,
+    json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict, json_into_sexp,
+};
 
 /// Integration with the `num-traits` crate for generic numeric operations.
 ///
@@ -656,3 +659,114 @@ pub use bitflags_impl::{Flags, RFlags};
 pub mod bitvec_impl;
 #[cfg(feature = "bitvec")]
 pub use bitvec_impl::{BitVec, Lsb0, Msb0, RBitVec};
+
+/// Integration with the `aho-corasick` crate for multi-pattern string search.
+///
+/// Provides fast multi-pattern search using the Aho-Corasick algorithm:
+/// - `AhoCorasick` - Compiled automaton from pattern list
+/// - `aho_compile(patterns)` - Build automaton from patterns
+/// - `aho_find_all(ac, haystack)` - Find all matches
+/// - `RAhoCorasickOps` - Adapter trait for R interop
+///
+/// Enable with `features = ["aho-corasick"]`.
+///
+/// ```ignore
+/// use miniextendr_api::aho_corasick_impl::{aho_compile, aho_find_all};
+///
+/// #[miniextendr]
+/// fn search_patterns(patterns: Vec<String>, text: &str) -> Vec<i32> {
+///     let ac = aho_compile(&patterns).unwrap();
+///     aho_find_all_flat(&ac, text)
+/// }
+/// ```
+#[cfg(feature = "aho-corasick")]
+pub mod aho_corasick_impl;
+#[cfg(feature = "aho-corasick")]
+pub use aho_corasick_impl::{
+    AhoCorasick, RAhoCorasickOps, aho_compile, aho_find_all, aho_find_all_flat,
+    aho_is_match, aho_count_matches, aho_find_first, aho_replace_all,
+};
+
+/// Integration with the `toml` crate for TOML value conversions.
+///
+/// Provides conversions between TOML values and R types:
+/// - `TomlValue` ⇄ R lists/vectors
+/// - `toml_from_str(s)` - Parse TOML string to value
+/// - `toml_to_string(v)` - Serialize value to TOML string
+/// - `RTomlOps` - Adapter trait for TOML value inspection
+///
+/// Enable with `features = ["toml"]`.
+///
+/// ```ignore
+/// use miniextendr_api::toml_impl::{toml_from_str, TomlValue};
+///
+/// #[miniextendr]
+/// fn parse_config(text: &str) -> TomlValue {
+///     toml_from_str(text).unwrap()
+/// }
+/// ```
+#[cfg(feature = "toml")]
+pub mod toml_impl;
+#[cfg(feature = "toml")]
+pub use toml_impl::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty};
+
+/// Integration with the `tabled` crate for table formatting.
+///
+/// Provides helpers for formatting data as ASCII/Unicode tables:
+/// - `table_to_string(rows)` - Format rows as table string
+/// - `table_to_string_opts(rows, max_width, align, trim)` - With options
+/// - `table_from_vecs(headers, rows)` - Build from vectors
+/// - `builder_to_string(builder)` - Dynamic table building
+///
+/// Enable with `features = ["tabled"]`.
+///
+/// ```ignore
+/// use tabled::Tabled;
+/// use miniextendr_api::tabled_impl::table_to_string;
+///
+/// #[derive(Tabled)]
+/// struct Item { name: String, count: i32 }
+///
+/// #[miniextendr]
+/// fn format_items(items: Vec<Item>) -> String {
+///     table_to_string(&items)
+/// }
+/// ```
+#[cfg(feature = "tabled")]
+pub mod tabled_impl;
+#[cfg(feature = "tabled")]
+pub use tabled_impl::{
+    Table, Tabled, Builder, table_to_string, table_to_string_opts, table_to_string_styled,
+    builder_to_string, table_from_vecs,
+};
+
+/// Integration with the `bytemuck` crate for POD type conversions.
+///
+/// Provides explicit, safe conversions between Rust POD (Plain Old Data) types
+/// and R raw vectors:
+/// - `Raw<T>` - Single POD value (headerless, native layout)
+/// - `RawSlice<T>` - Sequence of POD values (headerless)
+/// - `RawTagged<T>` / `RawSliceTagged<T>` - With header metadata
+///
+/// Enable with `features = ["raw_conversions"]`.
+///
+/// ```ignore
+/// use bytemuck::{Pod, Zeroable};
+/// use miniextendr_api::raw_conversions::{Raw, RawSlice};
+///
+/// #[derive(Copy, Clone, Pod, Zeroable)]
+/// #[repr(C)]
+/// struct Vec3 { x: f32, y: f32, z: f32 }
+///
+/// #[miniextendr]
+/// fn encode(x: f64, y: f64, z: f64) -> Raw<Vec3> {
+///     Raw(Vec3 { x: x as f32, y: y as f32, z: z as f32 })
+/// }
+/// ```
+#[cfg(feature = "raw_conversions")]
+pub mod raw_conversions;
+#[cfg(feature = "raw_conversions")]
+pub use raw_conversions::{
+    Pod, Zeroable, Raw, RawSlice, RawTagged, RawSliceTagged, RawHeader, RawError,
+    raw_to_bytes, raw_from_bytes, raw_slice_to_bytes, raw_slice_from_bytes,
+};

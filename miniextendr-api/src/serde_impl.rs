@@ -63,6 +63,16 @@
 
 pub use serde::{Deserialize, Serialize};
 pub use serde_json;
+pub use serde_json::Value as JsonValue;
+
+use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+use crate::ffi::{
+    INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rboolean, Rf_allocVector, Rf_isFactor, Rf_xlength,
+    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    SexpExt, STRING_ELT, Rf_getAttrib, Rf_setAttrib, Rf_mkCharLenCE, cetype_t,
+};
+use crate::from_r::{charsxp_to_str, SexpError, TryFromSexp};
+use crate::into_r::IntoR;
 
 /// Adapter trait for [`serde::Serialize`].
 ///
@@ -160,6 +170,479 @@ impl<T: for<'de> Deserialize<'de>> RDeserialize for T {
 
     fn r_from_json_result(s: &str) -> Result<Self, String> {
         serde_json::from_str(s).map_err(|e| e.to_string())
+    }
+}
+
+// =============================================================================
+// serde_json::Value <-> R Bridge
+// =============================================================================
+
+/// Convert an R object to a JSON value.
+///
+/// Mapping rules (R -> JSON):
+/// - `NULL` -> `Null`
+/// - Scalar `LGLSXP` -> `Bool` (NA -> `Null`)
+/// - Scalar `INTSXP` -> `Number` (NA -> `Null`)
+/// - Scalar `REALSXP` -> `Number` (NA/NaN/Inf -> error)
+/// - Scalar `STRSXP` -> `String` (NA -> `Null`)
+/// - Vector of length > 1 -> `Array`
+/// - Named `VECSXP` -> `Object`
+/// - Unnamed `VECSXP` -> `Array`
+/// - Factor -> `String` (via levels)
+///
+/// # Errors
+///
+/// Returns an error for:
+/// - `NaN` or `Inf` values (JSON has no representation)
+/// - Unsupported R types (e.g., CLOSXP, ENVSXP)
+pub fn json_from_sexp(sexp: SEXP) -> Result<JsonValue, SexpError> {
+    sexp_to_json_value(sexp, false, false)
+}
+
+/// Convert R to JSON with strict NA handling (errors on NA).
+pub fn json_from_sexp_strict(sexp: SEXP) -> Result<JsonValue, SexpError> {
+    sexp_to_json_value(sexp, true, false)
+}
+
+/// Convert R to JSON with permissive handling (NA/NaN/Inf -> Null).
+pub fn json_from_sexp_permissive(sexp: SEXP) -> Result<JsonValue, SexpError> {
+    sexp_to_json_value(sexp, false, true)
+}
+
+fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<JsonValue, SexpError> {
+    let sexp_type = sexp.type_of();
+
+    // Handle NULL
+    if sexp_type == SEXPTYPE::NILSXP {
+        return Ok(JsonValue::Null);
+    }
+
+    // Handle factors first (convert to string)
+    if unsafe { Rf_isFactor(sexp) } != Rboolean::FALSE {
+        return factor_to_json(sexp, strict, permissive);
+    }
+
+    let len = unsafe { Rf_xlength(sexp) } as usize;
+
+    match sexp_type {
+        SEXPTYPE::LGLSXP => {
+            if len == 1 {
+                let val = unsafe { LOGICAL_ELT(sexp, 0) };
+                if val == NA_LOGICAL {
+                    if strict {
+                        return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+                    }
+                    return Ok(JsonValue::Null);
+                }
+                Ok(JsonValue::Bool(val != 0))
+            } else {
+                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
+                    .map(|i| {
+                        let val = unsafe { LOGICAL_ELT(sexp, i as isize) };
+                        if val == NA_LOGICAL {
+                            if strict {
+                                return Err(SexpError::InvalidValue(format!(
+                                    "NA at index {} not allowed in strict mode",
+                                    i
+                                )));
+                            }
+                            Ok(JsonValue::Null)
+                        } else {
+                            Ok(JsonValue::Bool(val != 0))
+                        }
+                    })
+                    .collect();
+                Ok(JsonValue::Array(arr?))
+            }
+        }
+        SEXPTYPE::INTSXP => {
+            if len == 1 {
+                let val = unsafe { INTEGER_ELT(sexp, 0) };
+                if val == NA_INTEGER {
+                    if strict {
+                        return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+                    }
+                    return Ok(JsonValue::Null);
+                }
+                Ok(JsonValue::Number(serde_json::Number::from(val)))
+            } else {
+                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
+                    .map(|i| {
+                        let val = unsafe { INTEGER_ELT(sexp, i as isize) };
+                        if val == NA_INTEGER {
+                            if strict {
+                                return Err(SexpError::InvalidValue(format!(
+                                    "NA at index {} not allowed in strict mode",
+                                    i
+                                )));
+                            }
+                            Ok(JsonValue::Null)
+                        } else {
+                            Ok(JsonValue::Number(serde_json::Number::from(val)))
+                        }
+                    })
+                    .collect();
+                Ok(JsonValue::Array(arr?))
+            }
+        }
+        SEXPTYPE::REALSXP => {
+            if len == 1 {
+                let val = unsafe { REAL_ELT(sexp, 0) };
+                return real_to_json(val, strict, permissive);
+            } else {
+                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
+                    .map(|i| {
+                        let val = unsafe { REAL_ELT(sexp, i as isize) };
+                        real_to_json(val, strict, permissive)
+                    })
+                    .collect();
+                Ok(JsonValue::Array(arr?))
+            }
+        }
+        SEXPTYPE::STRSXP => {
+            if len == 1 {
+                let charsxp = unsafe { STRING_ELT(sexp, 0) };
+                if charsxp == unsafe { crate::ffi::R_NaString } {
+                    if strict {
+                        return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+                    }
+                    return Ok(JsonValue::Null);
+                }
+                let s = unsafe { charsxp_to_str(charsxp) };
+                Ok(JsonValue::String(s.to_string()))
+            } else {
+                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
+                    .map(|i| {
+                        let charsxp = unsafe { STRING_ELT(sexp, i as isize) };
+                        if charsxp == unsafe { crate::ffi::R_NaString } {
+                            if strict {
+                                return Err(SexpError::InvalidValue(format!(
+                                    "NA at index {} not allowed in strict mode",
+                                    i
+                                )));
+                            }
+                            Ok(JsonValue::Null)
+                        } else {
+                            let s = unsafe { charsxp_to_str(charsxp) };
+                            Ok(JsonValue::String(s.to_string()))
+                        }
+                    })
+                    .collect();
+                Ok(JsonValue::Array(arr?))
+            }
+        }
+        SEXPTYPE::VECSXP => {
+            // Check for names
+            let names = unsafe { Rf_getAttrib(sexp, crate::ffi::R_NamesSymbol) };
+            let has_names = !names.is_null() && names.type_of() == SEXPTYPE::STRSXP;
+
+            if has_names {
+                // Convert to object
+                let mut map = serde_json::Map::new();
+                for i in 0..len {
+                    let charsxp = unsafe { STRING_ELT(names, i as isize) };
+                    let key = if charsxp == unsafe { crate::ffi::R_NaString } {
+                        format!("V{}", i + 1) // Auto-name for NA keys
+                    } else {
+                        unsafe { charsxp_to_str(charsxp) }.to_string()
+                    };
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as isize) };
+                    let val = sexp_to_json_value(elem, strict, permissive)?;
+                    map.insert(key, val);
+                }
+                Ok(JsonValue::Object(map))
+            } else {
+                // Convert to array
+                let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
+                    .map(|i| {
+                        let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as isize) };
+                        sexp_to_json_value(elem, strict, permissive)
+                    })
+                    .collect();
+                Ok(JsonValue::Array(arr?))
+            }
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "unsupported R type for JSON conversion: {:?}",
+            sexp_type
+        ))),
+    }
+}
+
+fn real_to_json(val: f64, strict: bool, permissive: bool) -> Result<JsonValue, SexpError> {
+    // Check for NA (NA_REAL is a specific NaN bit pattern)
+    if val.to_bits() == NA_REAL.to_bits() {
+        if strict {
+            return Err(SexpError::InvalidValue("NA not allowed in strict mode".into()));
+        }
+        return Ok(JsonValue::Null);
+    }
+
+    // Check for NaN/Inf
+    if val.is_nan() {
+        if permissive {
+            return Ok(JsonValue::Null);
+        }
+        return Err(SexpError::InvalidValue("NaN cannot be represented in JSON".into()));
+    }
+    if val.is_infinite() {
+        if permissive {
+            return Ok(JsonValue::Null);
+        }
+        return Err(SexpError::InvalidValue("Infinity cannot be represented in JSON".into()));
+    }
+
+    serde_json::Number::from_f64(val)
+        .map(JsonValue::Number)
+        .ok_or_else(|| SexpError::InvalidValue("cannot convert f64 to JSON number".into()))
+}
+
+fn factor_to_json(sexp: SEXP, strict: bool, _permissive: bool) -> Result<JsonValue, SexpError> {
+    let len = unsafe { Rf_xlength(sexp) } as usize;
+    let levels = unsafe { Rf_getAttrib(sexp, crate::ffi::R_LevelsSymbol) };
+
+    if len == 1 {
+        let idx = unsafe { INTEGER_ELT(sexp, 0) };
+        if idx == NA_INTEGER {
+            if strict {
+                return Err(SexpError::InvalidValue("NA factor not allowed in strict mode".into()));
+            }
+            return Ok(JsonValue::Null);
+        }
+        // Factor indices are 1-based
+        let charsxp = unsafe { STRING_ELT(levels, (idx - 1) as isize) };
+        let s = unsafe { charsxp_to_str(charsxp) };
+        Ok(JsonValue::String(s.to_string()))
+    } else {
+        let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
+            .map(|i| {
+                let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
+                if idx == NA_INTEGER {
+                    if strict {
+                        return Err(SexpError::InvalidValue(format!(
+                            "NA factor at index {} not allowed in strict mode",
+                            i
+                        )));
+                    }
+                    Ok(JsonValue::Null)
+                } else {
+                    let charsxp = unsafe { STRING_ELT(levels, (idx - 1) as isize) };
+                    let s = unsafe { charsxp_to_str(charsxp) };
+                    Ok(JsonValue::String(s.to_string()))
+                }
+            })
+            .collect();
+        Ok(JsonValue::Array(arr?))
+    }
+}
+
+// =============================================================================
+// TryFromSexp for JsonValue
+// =============================================================================
+
+impl TryFromSexp for JsonValue {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        json_from_sexp(sexp)
+    }
+}
+
+// =============================================================================
+// IntoR for JsonValue
+// =============================================================================
+
+impl IntoR for JsonValue {
+    fn into_sexp(self) -> SEXP {
+        json_value_to_sexp(&self)
+    }
+}
+
+/// Convert a JSON value to an R object.
+pub fn json_into_sexp(value: &JsonValue) -> SEXP {
+    json_value_to_sexp(value)
+}
+
+fn json_value_to_sexp(value: &JsonValue) -> SEXP {
+    match value {
+        JsonValue::Null => unsafe { crate::ffi::R_NilValue },
+        JsonValue::Bool(b) => {
+            let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, 1) };
+            unsafe { SET_LOGICAL_ELT(sexp, 0, if *b { 1 } else { 0 }) };
+            sexp
+        }
+        JsonValue::Number(n) => {
+            if let Some(i) = n.as_i64() {
+                if i >= i32::MIN as i64 && i <= i32::MAX as i64 {
+                    let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 1) };
+                    unsafe { SET_INTEGER_ELT(sexp, 0, i as i32) };
+                    return sexp;
+                }
+            }
+            // Fall back to f64
+            let f = n.as_f64().unwrap_or(f64::NAN);
+            let sexp = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, 1) };
+            unsafe { SET_REAL_ELT(sexp, 0, f) };
+            sexp
+        }
+        JsonValue::String(s) => {
+            let sexp = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, 1) };
+            let charsxp = unsafe {
+                Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8)
+            };
+            unsafe { SET_STRING_ELT(sexp, 0, charsxp) };
+            sexp
+        }
+        JsonValue::Array(arr) => {
+            let len = arr.len();
+            let sexp = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len as isize) };
+            for (i, elem) in arr.iter().enumerate() {
+                unsafe { SET_VECTOR_ELT(sexp, i as isize, json_value_to_sexp(elem)) };
+            }
+            sexp
+        }
+        JsonValue::Object(map) => {
+            let len = map.len();
+            let sexp = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, len as isize) };
+            let names = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, len as isize) };
+
+            for (i, (key, val)) in map.iter().enumerate() {
+                let charsxp = unsafe {
+                    Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8)
+                };
+                unsafe {
+                    SET_STRING_ELT(names, i as isize, charsxp);
+                    SET_VECTOR_ELT(sexp, i as isize, json_value_to_sexp(val));
+                }
+            }
+
+            unsafe { Rf_setAttrib(sexp, crate::ffi::R_NamesSymbol, names) };
+            sexp
+        }
+    }
+}
+
+/// Adapter trait for JSON value inspection.
+///
+/// # Registration
+///
+/// ```ignore
+/// use miniextendr_api::serde_impl::{JsonValue, RJsonValueOps};
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RJsonValueOps for JsonValue;
+/// }
+/// ```
+pub trait RJsonValueOps {
+    /// Check if this is a null value.
+    fn is_null(&self) -> bool;
+    /// Check if this is a boolean.
+    fn is_boolean(&self) -> bool;
+    /// Check if this is a number.
+    fn is_number(&self) -> bool;
+    /// Check if this is a string.
+    fn is_string(&self) -> bool;
+    /// Check if this is an array.
+    fn is_array(&self) -> bool;
+    /// Check if this is an object.
+    fn is_object(&self) -> bool;
+    /// Get the type name.
+    fn type_name(&self) -> String;
+    /// Serialize to compact JSON string.
+    fn to_json_string(&self) -> String;
+    /// Serialize to pretty JSON string.
+    fn to_json_string_pretty(&self) -> String;
+    /// Get as boolean if this is a boolean.
+    fn as_bool(&self) -> Option<bool>;
+    /// Get as integer if this is an integer.
+    fn as_i64(&self) -> Option<i64>;
+    /// Get as float if this is a number.
+    fn as_f64(&self) -> Option<f64>;
+    /// Get as string if this is a string.
+    fn as_str(&self) -> Option<String>;
+    /// Get array length if this is an array.
+    fn array_len(&self) -> Option<i32>;
+    /// Get object keys if this is an object.
+    fn object_keys(&self) -> Vec<String>;
+}
+
+impl RJsonValueOps for JsonValue {
+    fn is_null(&self) -> bool {
+        matches!(self, JsonValue::Null)
+    }
+    fn is_boolean(&self) -> bool {
+        matches!(self, JsonValue::Bool(_))
+    }
+    fn is_number(&self) -> bool {
+        matches!(self, JsonValue::Number(_))
+    }
+    fn is_string(&self) -> bool {
+        matches!(self, JsonValue::String(_))
+    }
+    fn is_array(&self) -> bool {
+        matches!(self, JsonValue::Array(_))
+    }
+    fn is_object(&self) -> bool {
+        matches!(self, JsonValue::Object(_))
+    }
+    fn type_name(&self) -> String {
+        match self {
+            JsonValue::Null => "null".to_string(),
+            JsonValue::Bool(_) => "boolean".to_string(),
+            JsonValue::Number(_) => "number".to_string(),
+            JsonValue::String(_) => "string".to_string(),
+            JsonValue::Array(_) => "array".to_string(),
+            JsonValue::Object(_) => "object".to_string(),
+        }
+    }
+    fn to_json_string(&self) -> String {
+        serde_json::to_string(self).unwrap_or_default()
+    }
+    fn to_json_string_pretty(&self) -> String {
+        serde_json::to_string_pretty(self).unwrap_or_default()
+    }
+    fn as_bool(&self) -> Option<bool> {
+        if let JsonValue::Bool(b) = self {
+            Some(*b)
+        } else {
+            None
+        }
+    }
+    fn as_i64(&self) -> Option<i64> {
+        if let JsonValue::Number(n) = self {
+            n.as_i64()
+        } else {
+            None
+        }
+    }
+    fn as_f64(&self) -> Option<f64> {
+        if let JsonValue::Number(n) = self {
+            n.as_f64()
+        } else {
+            None
+        }
+    }
+    fn as_str(&self) -> Option<String> {
+        if let JsonValue::String(s) = self {
+            Some(s.clone())
+        } else {
+            None
+        }
+    }
+    fn array_len(&self) -> Option<i32> {
+        if let JsonValue::Array(arr) = self {
+            Some(arr.len() as i32)
+        } else {
+            None
+        }
+    }
+    fn object_keys(&self) -> Vec<String> {
+        if let JsonValue::Object(map) = self {
+            map.keys().cloned().collect()
+        } else {
+            vec![]
+        }
     }
 }
 
@@ -310,5 +793,95 @@ mod tests {
         assert!(json.contains("\\n"));
         assert!(json.contains("\\t"));
         assert!(json.contains("\\\""));
+    }
+
+    // =========================================================================
+    // JsonValue tests
+    // =========================================================================
+
+    #[test]
+    fn json_value_adapter_null() {
+        let v = JsonValue::Null;
+        assert!(RJsonValueOps::is_null(&v));
+        assert!(!RJsonValueOps::is_boolean(&v));
+        assert_eq!(RJsonValueOps::type_name(&v), "null");
+    }
+
+    #[test]
+    fn json_value_adapter_bool() {
+        let v = JsonValue::Bool(true);
+        assert!(RJsonValueOps::is_boolean(&v));
+        assert_eq!(RJsonValueOps::as_bool(&v), Some(true));
+    }
+
+    #[test]
+    fn json_value_adapter_number() {
+        let v = serde_json::json!(42);
+        assert!(RJsonValueOps::is_number(&v));
+        assert_eq!(RJsonValueOps::as_i64(&v), Some(42));
+        assert_eq!(RJsonValueOps::as_f64(&v), Some(42.0));
+
+        let v = serde_json::json!(3.14);
+        assert!(RJsonValueOps::is_number(&v));
+        assert_eq!(RJsonValueOps::as_f64(&v), Some(3.14));
+    }
+
+    #[test]
+    fn json_value_adapter_string() {
+        let v = serde_json::json!("hello");
+        assert!(RJsonValueOps::is_string(&v));
+        assert_eq!(RJsonValueOps::as_str(&v), Some("hello".to_string()));
+    }
+
+    #[test]
+    fn json_value_adapter_array() {
+        let v = serde_json::json!([1, 2, 3]);
+        assert!(RJsonValueOps::is_array(&v));
+        assert_eq!(RJsonValueOps::array_len(&v), Some(3));
+    }
+
+    #[test]
+    fn json_value_adapter_object() {
+        let v = serde_json::json!({"a": 1, "b": 2});
+        assert!(RJsonValueOps::is_object(&v));
+        let keys = RJsonValueOps::object_keys(&v);
+        assert!(keys.contains(&"a".to_string()));
+        assert!(keys.contains(&"b".to_string()));
+    }
+
+    #[test]
+    fn json_value_to_string() {
+        let v = serde_json::json!({"x": 1});
+        let s = RJsonValueOps::to_json_string(&v);
+        assert!(s.contains("\"x\""));
+        assert!(s.contains("1"));
+    }
+
+    #[test]
+    fn real_to_json_normal() {
+        let result = real_to_json(3.14, false, false);
+        assert!(result.is_ok());
+        let val = result.unwrap();
+        assert!(RJsonValueOps::is_number(&val));
+    }
+
+    #[test]
+    fn real_to_json_nan_strict() {
+        let result = real_to_json(f64::NAN, true, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn real_to_json_nan_permissive() {
+        let result = real_to_json(f64::NAN, false, true);
+        assert!(result.is_ok());
+        assert!(RJsonValueOps::is_null(&result.unwrap()));
+    }
+
+    #[test]
+    fn real_to_json_inf_permissive() {
+        let result = real_to_json(f64::INFINITY, false, true);
+        assert!(result.is_ok());
+        assert!(RJsonValueOps::is_null(&result.unwrap()));
     }
 }
