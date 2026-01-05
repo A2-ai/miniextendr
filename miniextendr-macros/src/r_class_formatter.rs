@@ -212,6 +212,9 @@ pub struct MethodDocBuilder<'a> {
 
 impl<'a> MethodDocBuilder<'a> {
     /// Create a new MethodDocBuilder.
+    ///
+    /// Note: `always_export` defaults to `false` because methods accessed via `Class$method`
+    /// should not be exported directly - only the class env and S3 methods should be exported.
     pub fn new(
         class_name: &'a str,
         method_name: &'a str,
@@ -224,7 +227,7 @@ impl<'a> MethodDocBuilder<'a> {
             type_ident,
             doc_tags,
             name_prefix: None,
-            always_export: true,
+            always_export: false,
         }
     }
 

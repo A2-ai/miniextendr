@@ -262,7 +262,7 @@ unsafe extern "C-unwind" {
 ///
 /// Rust equivalent of the C macro `R_SEXP(x)` which expands to `(x).ptr`.
 #[inline(always)]
-pub fn r_sexp(class: R_altrep_class_t) -> SEXP {
+pub fn sexp(class: R_altrep_class_t) -> SEXP {
     class.ptr
 }
 
@@ -270,7 +270,7 @@ pub fn r_sexp(class: R_altrep_class_t) -> SEXP {
 ///
 /// Rust equivalent of the C macro `R_SUBTYPE_INIT(x)` which expands to `{ x }`.
 #[inline(always)]
-pub const fn r_subtype_init(ptr: SEXP) -> R_altrep_class_t {
+pub const fn subtype_init(ptr: SEXP) -> R_altrep_class_t {
     R_altrep_class_t { ptr }
 }
 

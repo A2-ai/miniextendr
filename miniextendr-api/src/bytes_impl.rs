@@ -25,11 +25,11 @@
 //! }
 //!
 //! impl RBuf for MyBuffer {
-//!     fn r_remaining(&self) -> i32 {
+//!     fn remaining(&self) -> i32 {
 //!         self.inner.borrow().remaining() as i32
 //!     }
 //!
-//!     fn r_get_u8(&self) -> Option<i32> {
+//!     fn get_u8(&self) -> Option<i32> {
 //!         let mut buf = self.inner.borrow_mut();
 //!         if buf.has_remaining() {
 //!             Some(buf.get_u8() as i32)
@@ -82,11 +82,11 @@ pub use bytes::{Buf, BufMut, Bytes, BytesMut};
 /// }
 ///
 /// impl RBuf for ReadableBuffer {
-///     fn r_remaining(&self) -> i32 {
+///     fn remaining(&self) -> i32 {
 ///         self.data.borrow().remaining() as i32
 ///     }
 ///
-///     fn r_get_u8(&self) -> Option<i32> {
+///     fn get_u8(&self) -> Option<i32> {
 ///         let mut buf = self.data.borrow_mut();
 ///         if buf.has_remaining() {
 ///             Some(buf.get_u8() as i32)
@@ -95,11 +95,11 @@ pub use bytes::{Buf, BufMut, Bytes, BytesMut};
 ///         }
 ///     }
 ///
-///     fn r_chunk(&self) -> Vec<u8> {
+///     fn chunk(&self) -> Vec<u8> {
 ///         self.data.borrow().chunk().to_vec()
 ///     }
 ///
-///     fn r_copy_to_vec(&self, len: i32) -> Vec<u8> {
+///     fn copy_to_vec(&self, len: i32) -> Vec<u8> {
 ///         let mut buf = self.data.borrow_mut();
 ///         let len = (len as usize).min(buf.remaining());
 ///         let mut dst = vec![0u8; len];
@@ -121,118 +121,118 @@ pub use bytes::{Buf, BufMut, Bytes, BytesMut};
 /// than panicking.
 pub trait RBuf {
     /// Returns the number of bytes remaining in the buffer.
-    fn r_remaining(&self) -> i32;
+    fn remaining(&self) -> i32;
 
     /// Returns `true` if there are any bytes remaining.
-    fn r_has_remaining(&self) -> bool {
+    fn has_remaining(&self) -> bool {
         self.r_remaining() > 0
     }
 
     /// Gets a single byte from the buffer, advancing the position.
     /// Returns `None` if no bytes remain.
-    fn r_get_u8(&self) -> Option<i32>;
+    fn get_u8(&self) -> Option<i32>;
 
     /// Gets a signed byte from the buffer.
     /// Returns `None` if no bytes remain.
-    fn r_get_i8(&self) -> Option<i32> {
+    fn get_i8(&self) -> Option<i32> {
         self.r_get_u8().map(|v| v as i8 as i32)
     }
 
     /// Gets a big-endian u16 from the buffer.
     /// Returns `None` if fewer than 2 bytes remain.
-    fn r_get_u16(&self) -> Option<i32> {
+    fn get_u16(&self) -> Option<i32> {
         None
     }
 
     /// Gets a little-endian u16 from the buffer.
-    fn r_get_u16_le(&self) -> Option<i32> {
+    fn get_u16_le(&self) -> Option<i32> {
         None
     }
 
     /// Gets a big-endian i16 from the buffer.
-    fn r_get_i16(&self) -> Option<i32> {
+    fn get_i16(&self) -> Option<i32> {
         None
     }
 
     /// Gets a little-endian i16 from the buffer.
-    fn r_get_i16_le(&self) -> Option<i32> {
+    fn get_i16_le(&self) -> Option<i32> {
         None
     }
 
     /// Gets a big-endian u32 from the buffer.
     /// Returns as f64 since u32 may overflow i32.
-    fn r_get_u32(&self) -> Option<f64> {
+    fn get_u32(&self) -> Option<f64> {
         None
     }
 
     /// Gets a little-endian u32 from the buffer.
-    fn r_get_u32_le(&self) -> Option<f64> {
+    fn get_u32_le(&self) -> Option<f64> {
         None
     }
 
     /// Gets a big-endian i32 from the buffer.
-    fn r_get_i32(&self) -> Option<i32> {
+    fn get_i32(&self) -> Option<i32> {
         None
     }
 
     /// Gets a little-endian i32 from the buffer.
-    fn r_get_i32_le(&self) -> Option<i32> {
+    fn get_i32_le(&self) -> Option<i32> {
         None
     }
 
     /// Gets a big-endian u64 from the buffer.
     /// Returns as f64 (may lose precision for large values).
-    fn r_get_u64(&self) -> Option<f64> {
+    fn get_u64(&self) -> Option<f64> {
         None
     }
 
     /// Gets a little-endian u64 from the buffer.
-    fn r_get_u64_le(&self) -> Option<f64> {
+    fn get_u64_le(&self) -> Option<f64> {
         None
     }
 
     /// Gets a big-endian i64 from the buffer.
     /// Returns as f64 (may lose precision for large values).
-    fn r_get_i64(&self) -> Option<f64> {
+    fn get_i64(&self) -> Option<f64> {
         None
     }
 
     /// Gets a little-endian i64 from the buffer.
-    fn r_get_i64_le(&self) -> Option<f64> {
+    fn get_i64_le(&self) -> Option<f64> {
         None
     }
 
     /// Gets a big-endian f32 from the buffer.
-    fn r_get_f32(&self) -> Option<f64> {
+    fn get_f32(&self) -> Option<f64> {
         None
     }
 
     /// Gets a little-endian f32 from the buffer.
-    fn r_get_f32_le(&self) -> Option<f64> {
+    fn get_f32_le(&self) -> Option<f64> {
         None
     }
 
     /// Gets a big-endian f64 from the buffer.
-    fn r_get_f64(&self) -> Option<f64> {
+    fn get_f64(&self) -> Option<f64> {
         None
     }
 
     /// Gets a little-endian f64 from the buffer.
-    fn r_get_f64_le(&self) -> Option<f64> {
+    fn get_f64_le(&self) -> Option<f64> {
         None
     }
 
     /// Returns the current chunk of bytes available for reading without advancing.
-    fn r_chunk(&self) -> Vec<u8>;
+    fn chunk(&self) -> Vec<u8>;
 
     /// Copies `len` bytes from the buffer into a new Vec, advancing the position.
-    fn r_copy_to_vec(&self, len: i32) -> Vec<u8>;
+    fn copy_to_vec(&self, len: i32) -> Vec<u8>;
 
     /// Advances the buffer position by `cnt` bytes.
-    fn r_advance(&self, cnt: i32);
+    fn advance(&self, cnt: i32);
 
     /// Reads all remaining bytes into a Vec.
-    fn r_to_vec(&self) -> Vec<u8> {
+    fn to_vec(&self) -> Vec<u8> {
         let len = self.r_remaining();
         self.r_copy_to_vec(len)
     }
@@ -256,15 +256,15 @@ pub trait RBuf {
 /// }
 ///
 /// impl RBufMut for WritableBuffer {
-///     fn r_remaining_mut(&self) -> i32 {
+///     fn remaining_mut(&self) -> i32 {
 ///         self.data.borrow().remaining_mut() as i32
 ///     }
 ///
-///     fn r_put_u8(&self, val: i32) {
+///     fn put_u8(&self, val: i32) {
 ///         self.data.borrow_mut().put_u8(val as u8);
 ///     }
 ///
-///     fn r_put_slice(&self, src: Vec<u8>) {
+///     fn put_slice(&self, src: Vec<u8>) {
 ///         self.data.borrow_mut().put_slice(&src);
 ///     }
 /// }
@@ -276,94 +276,94 @@ pub trait RBuf {
 /// ```
 pub trait RBufMut {
     /// Returns the number of bytes that can be written without reallocation.
-    fn r_remaining_mut(&self) -> i32;
+    fn remaining_mut(&self) -> i32;
 
     /// Returns `true` if there is space to write more bytes.
-    fn r_has_remaining_mut(&self) -> bool {
+    fn has_remaining_mut(&self) -> bool {
         self.r_remaining_mut() > 0
     }
 
     /// Writes a single byte to the buffer.
-    fn r_put_u8(&self, val: i32);
+    fn put_u8(&self, val: i32);
 
     /// Writes a signed byte to the buffer.
-    fn r_put_i8(&self, val: i32) {
+    fn put_i8(&self, val: i32) {
         self.r_put_u8(val);
     }
 
     /// Writes a big-endian u16 to the buffer.
-    fn r_put_u16(&self, _val: i32) {}
+    fn put_u16(&self, _val: i32) {}
 
     /// Writes a little-endian u16 to the buffer.
-    fn r_put_u16_le(&self, _val: i32) {}
+    fn put_u16_le(&self, _val: i32) {}
 
     /// Writes a big-endian i16 to the buffer.
-    fn r_put_i16(&self, _val: i32) {}
+    fn put_i16(&self, _val: i32) {}
 
     /// Writes a little-endian i16 to the buffer.
-    fn r_put_i16_le(&self, _val: i32) {}
+    fn put_i16_le(&self, _val: i32) {}
 
     /// Writes a big-endian u32 to the buffer.
-    fn r_put_u32(&self, _val: f64) {}
+    fn put_u32(&self, _val: f64) {}
 
     /// Writes a little-endian u32 to the buffer.
-    fn r_put_u32_le(&self, _val: f64) {}
+    fn put_u32_le(&self, _val: f64) {}
 
     /// Writes a big-endian i32 to the buffer.
-    fn r_put_i32(&self, _val: i32) {}
+    fn put_i32(&self, _val: i32) {}
 
     /// Writes a little-endian i32 to the buffer.
-    fn r_put_i32_le(&self, _val: i32) {}
+    fn put_i32_le(&self, _val: i32) {}
 
     /// Writes a big-endian u64 to the buffer.
-    fn r_put_u64(&self, _val: f64) {}
+    fn put_u64(&self, _val: f64) {}
 
     /// Writes a little-endian u64 to the buffer.
-    fn r_put_u64_le(&self, _val: f64) {}
+    fn put_u64_le(&self, _val: f64) {}
 
     /// Writes a big-endian i64 to the buffer.
-    fn r_put_i64(&self, _val: f64) {}
+    fn put_i64(&self, _val: f64) {}
 
     /// Writes a little-endian i64 to the buffer.
-    fn r_put_i64_le(&self, _val: f64) {}
+    fn put_i64_le(&self, _val: f64) {}
 
     /// Writes a big-endian f32 to the buffer.
-    fn r_put_f32(&self, _val: f64) {}
+    fn put_f32(&self, _val: f64) {}
 
     /// Writes a little-endian f32 to the buffer.
-    fn r_put_f32_le(&self, _val: f64) {}
+    fn put_f32_le(&self, _val: f64) {}
 
     /// Writes a big-endian f64 to the buffer.
-    fn r_put_f64(&self, _val: f64) {}
+    fn put_f64(&self, _val: f64) {}
 
     /// Writes a little-endian f64 to the buffer.
-    fn r_put_f64_le(&self, _val: f64) {}
+    fn put_f64_le(&self, _val: f64) {}
 
     /// Writes a slice of bytes to the buffer.
-    fn r_put_slice(&self, src: Vec<u8>);
+    fn put_slice(&self, src: Vec<u8>);
 
     /// Writes `n` copies of byte `val` to the buffer.
-    fn r_put_bytes(&self, val: i32, n: i32) {
+    fn put_bytes(&self, val: i32, n: i32) {
         for _ in 0..n {
             self.r_put_u8(val);
         }
     }
 
     /// Reserves capacity for at least `additional` more bytes.
-    fn r_reserve(&self, _additional: i32) {}
+    fn reserve(&self, _additional: i32) {}
 
     /// Returns the current length of written data.
-    fn r_len(&self) -> i32 {
+    fn len(&self) -> i32 {
         0
     }
 
     /// Returns `true` if the buffer is empty.
-    fn r_is_empty(&self) -> bool {
+    fn is_empty(&self) -> bool {
         self.r_len() == 0
     }
 
     /// Clears the buffer, removing all written data.
-    fn r_clear(&self) {}
+    fn clear(&self) {}
 }
 
 #[cfg(test)]
@@ -385,11 +385,11 @@ mod tests {
     }
 
     impl RBuf for TestBuf {
-        fn r_remaining(&self) -> i32 {
+        fn remaining(&self) -> i32 {
             self.data.borrow().remaining() as i32
         }
 
-        fn r_get_u8(&self) -> Option<i32> {
+        fn get_u8(&self) -> Option<i32> {
             let mut buf = self.data.borrow_mut();
             if buf.has_remaining() {
                 Some(buf.get_u8() as i32)
@@ -398,7 +398,7 @@ mod tests {
             }
         }
 
-        fn r_get_u16(&self) -> Option<i32> {
+        fn get_u16(&self) -> Option<i32> {
             let mut buf = self.data.borrow_mut();
             if buf.remaining() >= 2 {
                 Some(buf.get_u16() as i32)
@@ -407,7 +407,7 @@ mod tests {
             }
         }
 
-        fn r_get_u16_le(&self) -> Option<i32> {
+        fn get_u16_le(&self) -> Option<i32> {
             let mut buf = self.data.borrow_mut();
             if buf.remaining() >= 2 {
                 Some(buf.get_u16_le() as i32)
@@ -416,7 +416,7 @@ mod tests {
             }
         }
 
-        fn r_get_i32(&self) -> Option<i32> {
+        fn get_i32(&self) -> Option<i32> {
             let mut buf = self.data.borrow_mut();
             if buf.remaining() >= 4 {
                 Some(buf.get_i32())
@@ -425,7 +425,7 @@ mod tests {
             }
         }
 
-        fn r_get_i32_le(&self) -> Option<i32> {
+        fn get_i32_le(&self) -> Option<i32> {
             let mut buf = self.data.borrow_mut();
             if buf.remaining() >= 4 {
                 Some(buf.get_i32_le())
@@ -434,7 +434,7 @@ mod tests {
             }
         }
 
-        fn r_get_f64(&self) -> Option<f64> {
+        fn get_f64(&self) -> Option<f64> {
             let mut buf = self.data.borrow_mut();
             if buf.remaining() >= 8 {
                 Some(buf.get_f64())
@@ -443,7 +443,7 @@ mod tests {
             }
         }
 
-        fn r_get_f64_le(&self) -> Option<f64> {
+        fn get_f64_le(&self) -> Option<f64> {
             let mut buf = self.data.borrow_mut();
             if buf.remaining() >= 8 {
                 Some(buf.get_f64_le())
@@ -452,11 +452,11 @@ mod tests {
             }
         }
 
-        fn r_chunk(&self) -> Vec<u8> {
+        fn chunk(&self) -> Vec<u8> {
             self.data.borrow().chunk().to_vec()
         }
 
-        fn r_copy_to_vec(&self, len: i32) -> Vec<u8> {
+        fn copy_to_vec(&self, len: i32) -> Vec<u8> {
             let mut buf = self.data.borrow_mut();
             let len = (len as usize).min(buf.remaining());
             let mut dst = vec![0u8; len];
@@ -464,7 +464,7 @@ mod tests {
             dst
         }
 
-        fn r_advance(&self, cnt: i32) {
+        fn advance(&self, cnt: i32) {
             let mut buf = self.data.borrow_mut();
             let cnt = (cnt as usize).min(buf.remaining());
             buf.advance(cnt);
@@ -495,51 +495,51 @@ mod tests {
     }
 
     impl RBufMut for TestBufMut {
-        fn r_remaining_mut(&self) -> i32 {
+        fn remaining_mut(&self) -> i32 {
             self.data.borrow().remaining_mut() as i32
         }
 
-        fn r_put_u8(&self, val: i32) {
+        fn put_u8(&self, val: i32) {
             self.data.borrow_mut().put_u8(val as u8);
         }
 
-        fn r_put_u16(&self, val: i32) {
+        fn put_u16(&self, val: i32) {
             self.data.borrow_mut().put_u16(val as u16);
         }
 
-        fn r_put_u16_le(&self, val: i32) {
+        fn put_u16_le(&self, val: i32) {
             self.data.borrow_mut().put_u16_le(val as u16);
         }
 
-        fn r_put_i32(&self, val: i32) {
+        fn put_i32(&self, val: i32) {
             self.data.borrow_mut().put_i32(val);
         }
 
-        fn r_put_i32_le(&self, val: i32) {
+        fn put_i32_le(&self, val: i32) {
             self.data.borrow_mut().put_i32_le(val);
         }
 
-        fn r_put_f64(&self, val: f64) {
+        fn put_f64(&self, val: f64) {
             self.data.borrow_mut().put_f64(val);
         }
 
-        fn r_put_f64_le(&self, val: f64) {
+        fn put_f64_le(&self, val: f64) {
             self.data.borrow_mut().put_f64_le(val);
         }
 
-        fn r_put_slice(&self, src: Vec<u8>) {
+        fn put_slice(&self, src: Vec<u8>) {
             self.data.borrow_mut().put_slice(&src);
         }
 
-        fn r_reserve(&self, additional: i32) {
+        fn reserve(&self, additional: i32) {
             self.data.borrow_mut().reserve(additional as usize);
         }
 
-        fn r_len(&self) -> i32 {
+        fn len(&self) -> i32 {
             self.data.borrow().len() as i32
         }
 
-        fn r_clear(&self) {
+        fn clear(&self) {
             self.data.borrow_mut().clear();
         }
     }

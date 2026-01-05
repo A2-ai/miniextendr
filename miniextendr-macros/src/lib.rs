@@ -160,6 +160,9 @@ mod externalptr_derive;
 mod miniextendr_impl_trait;
 mod miniextendr_trait;
 
+// Factor support
+mod factor_derive;
+
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
@@ -2062,6 +2065,31 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
 pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_prefer_rnative(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `RFactor`: enables conversion between Rust enums and R factors.
+///
+/// # Usage
+///
+/// ```ignore
+/// #[derive(Copy, Clone, RFactor)]
+/// enum Color {
+///     Red,
+///     Green,
+///     Blue,
+/// }
+/// ```
+///
+/// # Attributes
+///
+/// - `#[r_factor(rename = "name")]` - Rename a variant's level string
+/// - `#[r_factor(rename_all = "snake_case")]` - Rename all variants (snake_case, kebab-case, lower, upper)
+#[proc_macro_derive(RFactor, attributes(r_factor))]
+pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    factor_derive::derive_r_factor(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

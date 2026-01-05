@@ -981,26 +981,26 @@ pub trait RNdSlice {
     /// Get the element at the given flat index (0-indexed).
     ///
     /// Returns None if index is out of bounds.
-    fn r_get(&self, index: i32) -> Option<Self::Elem>;
+    fn get(&self, index: i32) -> Option<Self::Elem>;
 
     /// Get the first element, or None if empty.
-    fn r_first(&self) -> Option<Self::Elem>;
+    fn first(&self) -> Option<Self::Elem>;
 
     /// Get the last element, or None if empty.
-    fn r_last(&self) -> Option<Self::Elem>;
+    fn last(&self) -> Option<Self::Elem>;
 
     /// Extract a 1D slice as a new Vec (0-indexed, exclusive end).
     ///
     /// Returns elements in the range [start, end).
-    fn r_slice_1d(&self, start: i32, end: i32) -> Vec<Self::Elem>;
+    fn slice_1d(&self, start: i32, end: i32) -> Vec<Self::Elem>;
 
     /// Get elements at the given indices.
-    fn r_get_many(&self, indices: Vec<i32>) -> Vec<Option<Self::Elem>> {
+    fn get_many(&self, indices: Vec<i32>) -> Vec<Option<Self::Elem>> {
         indices.into_iter().map(|i| self.r_get(i)).collect()
     }
 
     /// Check if the given index is valid.
-    fn r_is_valid_index(&self, index: i32) -> bool {
+    fn is_valid_index(&self, index: i32) -> bool {
         self.r_get(index).is_some()
     }
 }
@@ -1008,22 +1008,22 @@ pub trait RNdSlice {
 impl RNdSlice for Array1<f64> {
     type Elem = f64;
 
-    fn r_get(&self, index: i32) -> Option<f64> {
+    fn get(&self, index: i32) -> Option<f64> {
         if index < 0 {
             return None;
         }
         self.get(index as usize).copied()
     }
 
-    fn r_first(&self) -> Option<f64> {
+    fn first(&self) -> Option<f64> {
         self.first().copied()
     }
 
-    fn r_last(&self) -> Option<f64> {
+    fn last(&self) -> Option<f64> {
         self.last().copied()
     }
 
-    fn r_slice_1d(&self, start: i32, end: i32) -> Vec<f64> {
+    fn slice_1d(&self, start: i32, end: i32) -> Vec<f64> {
         let start = start.max(0) as usize;
         let end = (end as usize).min(self.len());
         if start >= end {
@@ -1036,22 +1036,22 @@ impl RNdSlice for Array1<f64> {
 impl RNdSlice for Array1<i32> {
     type Elem = i32;
 
-    fn r_get(&self, index: i32) -> Option<i32> {
+    fn get(&self, index: i32) -> Option<i32> {
         if index < 0 {
             return None;
         }
         self.get(index as usize).copied()
     }
 
-    fn r_first(&self) -> Option<i32> {
+    fn first(&self) -> Option<i32> {
         self.first().copied()
     }
 
-    fn r_last(&self) -> Option<i32> {
+    fn last(&self) -> Option<i32> {
         self.last().copied()
     }
 
-    fn r_slice_1d(&self, start: i32, end: i32) -> Vec<i32> {
+    fn slice_1d(&self, start: i32, end: i32) -> Vec<i32> {
         let start = start.max(0) as usize;
         let end = (end as usize).min(self.len());
         if start >= end {
@@ -1095,57 +1095,57 @@ pub trait RNdSlice2D {
     type Elem: Clone;
 
     /// Get the element at [row, col] (0-indexed).
-    fn r_get_2d(&self, row: i32, col: i32) -> Option<Self::Elem>;
+    fn get_2d(&self, row: i32, col: i32) -> Option<Self::Elem>;
 
     /// Get a row as a vector.
-    fn r_row(&self, row: i32) -> Vec<Self::Elem>;
+    fn row(&self, row: i32) -> Vec<Self::Elem>;
 
     /// Get a column as a vector.
-    fn r_col(&self, col: i32) -> Vec<Self::Elem>;
+    fn col(&self, col: i32) -> Vec<Self::Elem>;
 
     /// Get the diagonal elements.
-    fn r_diag(&self) -> Vec<Self::Elem>;
+    fn diag(&self) -> Vec<Self::Elem>;
 
     /// Get the number of rows.
-    fn r_nrows(&self) -> i32;
+    fn nrows(&self) -> i32;
 
     /// Get the number of columns.
-    fn r_ncols(&self) -> i32;
+    fn ncols(&self) -> i32;
 }
 
 impl RNdSlice2D for Array2<f64> {
     type Elem = f64;
 
-    fn r_get_2d(&self, row: i32, col: i32) -> Option<f64> {
+    fn get_2d(&self, row: i32, col: i32) -> Option<f64> {
         if row < 0 || col < 0 {
             return None;
         }
         self.get((row as usize, col as usize)).copied()
     }
 
-    fn r_row(&self, row: i32) -> Vec<f64> {
+    fn row(&self, row: i32) -> Vec<f64> {
         if row < 0 || row as usize >= self.nrows() {
             return Vec::new();
         }
         self.row(row as usize).to_vec()
     }
 
-    fn r_col(&self, col: i32) -> Vec<f64> {
+    fn col(&self, col: i32) -> Vec<f64> {
         if col < 0 || col as usize >= self.ncols() {
             return Vec::new();
         }
         self.column(col as usize).to_vec()
     }
 
-    fn r_diag(&self) -> Vec<f64> {
+    fn diag(&self) -> Vec<f64> {
         self.diag().to_vec()
     }
 
-    fn r_nrows(&self) -> i32 {
+    fn nrows(&self) -> i32 {
         self.nrows() as i32
     }
 
-    fn r_ncols(&self) -> i32 {
+    fn ncols(&self) -> i32 {
         self.ncols() as i32
     }
 }
@@ -1153,36 +1153,36 @@ impl RNdSlice2D for Array2<f64> {
 impl RNdSlice2D for Array2<i32> {
     type Elem = i32;
 
-    fn r_get_2d(&self, row: i32, col: i32) -> Option<i32> {
+    fn get_2d(&self, row: i32, col: i32) -> Option<i32> {
         if row < 0 || col < 0 {
             return None;
         }
         self.get((row as usize, col as usize)).copied()
     }
 
-    fn r_row(&self, row: i32) -> Vec<i32> {
+    fn row(&self, row: i32) -> Vec<i32> {
         if row < 0 || row as usize >= self.nrows() {
             return Vec::new();
         }
         self.row(row as usize).to_vec()
     }
 
-    fn r_col(&self, col: i32) -> Vec<i32> {
+    fn col(&self, col: i32) -> Vec<i32> {
         if col < 0 || col as usize >= self.ncols() {
             return Vec::new();
         }
         self.column(col as usize).to_vec()
     }
 
-    fn r_diag(&self) -> Vec<i32> {
+    fn diag(&self) -> Vec<i32> {
         self.diag().to_vec()
     }
 
-    fn r_nrows(&self) -> i32 {
+    fn nrows(&self) -> i32 {
         self.nrows() as i32
     }
 
-    fn r_ncols(&self) -> i32 {
+    fn ncols(&self) -> i32 {
         self.ncols() as i32
     }
 }
@@ -1230,51 +1230,51 @@ pub trait RNdIndex {
     /// Get the element at the given n-dimensional index (0-indexed).
     ///
     /// Returns None if the index is out of bounds or has wrong dimensionality.
-    fn r_get_nd(&self, indices: Vec<i32>) -> Option<Self::Elem>;
+    fn get_nd(&self, indices: Vec<i32>) -> Option<Self::Elem>;
 
     /// Extract a subarray from start (inclusive) to end (exclusive).
     ///
     /// Both `start` and `end` must have the same length as the array's ndim.
     /// Returns None if bounds are invalid.
-    fn r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<Self::Elem>>;
+    fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<Self::Elem>>;
 
     /// Get the shape of the array.
-    fn r_shape_nd(&self) -> Vec<i32>;
+    fn shape_nd(&self) -> Vec<i32>;
 
     /// Get the number of dimensions.
-    fn r_ndim(&self) -> i32;
+    fn ndim(&self) -> i32;
 
     /// Get the total number of elements.
-    fn r_len_nd(&self) -> i32;
+    fn len_nd(&self) -> i32;
 
     /// Flatten the array to a 1D vector in Fortran (column-major) order.
     ///
     /// This matches R's default array storage order.
-    fn r_flatten(&self) -> Vec<Self::Elem>;
+    fn flatten(&self) -> Vec<Self::Elem>;
 
     /// Flatten the array to a 1D vector in C (row-major) order.
-    fn r_flatten_c(&self) -> Vec<Self::Elem>;
+    fn flatten_c(&self) -> Vec<Self::Elem>;
 
     /// Check if the given index is valid.
-    fn r_is_valid_nd(&self, indices: Vec<i32>) -> bool {
+    fn is_valid_nd(&self, indices: Vec<i32>) -> bool {
         self.r_get_nd(indices).is_some()
     }
 
     /// Get elements along a specific axis at the given index.
     ///
     /// Returns elements where the specified axis is fixed at `index`.
-    fn r_axis_slice(&self, axis: i32, index: i32) -> Vec<Self::Elem>;
+    fn axis_slice(&self, axis: i32, index: i32) -> Vec<Self::Elem>;
 
     /// Reshape the array to new dimensions (data must fit exactly).
     ///
     /// Returns None if the total element count doesn't match.
-    fn r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<Self::Elem>>;
+    fn reshape(&self, new_shape: Vec<i32>) -> Option<Vec<Self::Elem>>;
 }
 
 impl RNdIndex for ArrayD<f64> {
     type Elem = f64;
 
-    fn r_get_nd(&self, indices: Vec<i32>) -> Option<f64> {
+    fn get_nd(&self, indices: Vec<i32>) -> Option<f64> {
         if indices.len() != self.ndim() {
             return None;
         }
@@ -1286,7 +1286,7 @@ impl RNdIndex for ArrayD<f64> {
         self.get(IxDyn(&idx)).copied()
     }
 
-    fn r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<f64>> {
+    fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<f64>> {
         let ndim = self.ndim();
         if start.len() != ndim || end.len() != ndim {
             return None;
@@ -1334,19 +1334,19 @@ impl RNdIndex for ArrayD<f64> {
         Some(result)
     }
 
-    fn r_shape_nd(&self) -> Vec<i32> {
+    fn shape_nd(&self) -> Vec<i32> {
         self.shape().iter().map(|&d| d as i32).collect()
     }
 
-    fn r_ndim(&self) -> i32 {
+    fn ndim(&self) -> i32 {
         self.ndim() as i32
     }
 
-    fn r_len_nd(&self) -> i32 {
+    fn len_nd(&self) -> i32 {
         self.len() as i32
     }
 
-    fn r_flatten(&self) -> Vec<f64> {
+    fn flatten(&self) -> Vec<f64> {
         // Iterate in Fortran order to match R
         let shape: Vec<usize> = self.shape().to_vec();
         let mut result = Vec::with_capacity(self.len());
@@ -1358,12 +1358,12 @@ impl RNdIndex for ArrayD<f64> {
         result
     }
 
-    fn r_flatten_c(&self) -> Vec<f64> {
+    fn flatten_c(&self) -> Vec<f64> {
         // Standard iteration (C order)
         self.iter().copied().collect()
     }
 
-    fn r_axis_slice(&self, axis: i32, index: i32) -> Vec<f64> {
+    fn axis_slice(&self, axis: i32, index: i32) -> Vec<f64> {
         if axis < 0 || axis as usize >= self.ndim() {
             return Vec::new();
         }
@@ -1406,7 +1406,7 @@ impl RNdIndex for ArrayD<f64> {
         result
     }
 
-    fn r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<f64>> {
+    fn reshape(&self, new_shape: Vec<i32>) -> Option<Vec<f64>> {
         let new_len: usize = new_shape.iter().map(|&d| d.max(0) as usize).product();
         if new_len != self.len() {
             return None;
@@ -1419,7 +1419,7 @@ impl RNdIndex for ArrayD<f64> {
 impl RNdIndex for ArrayD<i32> {
     type Elem = i32;
 
-    fn r_get_nd(&self, indices: Vec<i32>) -> Option<i32> {
+    fn get_nd(&self, indices: Vec<i32>) -> Option<i32> {
         if indices.len() != self.ndim() {
             return None;
         }
@@ -1430,7 +1430,7 @@ impl RNdIndex for ArrayD<i32> {
         self.get(IxDyn(&idx)).copied()
     }
 
-    fn r_slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<i32>> {
+    fn slice_nd(&self, start: Vec<i32>, end: Vec<i32>) -> Option<Vec<i32>> {
         let ndim = self.ndim();
         if start.len() != ndim || end.len() != ndim {
             return None;
@@ -1474,19 +1474,19 @@ impl RNdIndex for ArrayD<i32> {
         Some(result)
     }
 
-    fn r_shape_nd(&self) -> Vec<i32> {
+    fn shape_nd(&self) -> Vec<i32> {
         self.shape().iter().map(|&d| d as i32).collect()
     }
 
-    fn r_ndim(&self) -> i32 {
+    fn ndim(&self) -> i32 {
         self.ndim() as i32
     }
 
-    fn r_len_nd(&self) -> i32 {
+    fn len_nd(&self) -> i32 {
         self.len() as i32
     }
 
-    fn r_flatten(&self) -> Vec<i32> {
+    fn flatten(&self) -> Vec<i32> {
         let shape: Vec<usize> = self.shape().to_vec();
         let mut result = Vec::with_capacity(self.len());
         fortran_order_iter(&shape, |idx| {
@@ -1497,11 +1497,11 @@ impl RNdIndex for ArrayD<i32> {
         result
     }
 
-    fn r_flatten_c(&self) -> Vec<i32> {
+    fn flatten_c(&self) -> Vec<i32> {
         self.iter().copied().collect()
     }
 
-    fn r_axis_slice(&self, axis: i32, index: i32) -> Vec<i32> {
+    fn axis_slice(&self, axis: i32, index: i32) -> Vec<i32> {
         if axis < 0 || axis as usize >= self.ndim() {
             return Vec::new();
         }
@@ -1541,7 +1541,7 @@ impl RNdIndex for ArrayD<i32> {
         result
     }
 
-    fn r_reshape(&self, new_shape: Vec<i32>) -> Option<Vec<i32>> {
+    fn reshape(&self, new_shape: Vec<i32>) -> Option<Vec<i32>> {
         let new_len: usize = new_shape.iter().map(|&d| d.max(0) as usize).product();
         if new_len != self.len() {
             return None;

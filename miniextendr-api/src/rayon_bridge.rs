@@ -182,7 +182,7 @@ use rayon::prelude::*;
 /// Implements `FromParallelIterator`, allowing:
 /// ```ignore
 /// let results: RVec<f64> = data.par_iter().map(f).collect();
-/// let r_vec = results.into_sexp();  // Uses IntoR trait
+/// let vec = results.into_sexp();  // Uses IntoR trait
 /// ```
 ///
 /// IntoR implementation is in `into_r.rs`.
@@ -277,7 +277,7 @@ impl<T: Send> FromParallelIterator<T> for RVec<T> {
 ///
 /// ```ignore
 /// // Type is inferred from the closure parameter
-/// let r_vec = with_r_vec(1000, |output: &mut [f64]| {
+/// let vec = with_r_vec(1000, |output: &mut [f64]| {
 ///     output.par_iter_mut()
 ///         .enumerate()
 ///         .for_each(|(i, slot)| *slot = (i as f64).sqrt());
@@ -358,7 +358,7 @@ where
 /// use miniextendr_api::rayon_bridge::{with_r_matrix, rayon::prelude::*};
 ///
 /// // Create a 3x4 matrix, fill in parallel
-/// let r_mat = with_r_matrix::<f64, _>(3, 4, |slice, nrow, ncol| {
+/// let mat = with_r_matrix::<f64, _>(3, 4, |slice, nrow, ncol| {
 ///     // slice is in column-major order
 ///     slice.par_iter_mut()
 ///         .enumerate()
@@ -461,7 +461,7 @@ where
 /// use miniextendr_api::rayon_bridge::{with_r_array, rayon::prelude::*};
 ///
 /// // Create a 2x3x4 array, fill in parallel
-/// let r_arr = with_r_array::<f64, 3, _>([2, 3, 4], |slice, dims| {
+/// let arr = with_r_array::<f64, 3, _>([2, 3, 4], |slice, dims| {
 ///     slice.par_iter_mut()
 ///         .enumerate()
 ///         .for_each(|(i, slot)| {
@@ -580,7 +580,7 @@ where
 /// use miniextendr_api::rayon_bridge::{with_r_matrix_cols, rayon::prelude::*};
 ///
 /// // Create a 3x4 matrix, process columns in parallel
-/// let r_mat = with_r_matrix_cols::<f64, _>(3, 4, |cols| {
+/// let mat = with_r_matrix_cols::<f64, _>(3, 4, |cols| {
 ///     cols.par_iter_mut()
 ///         .enumerate()
 ///         .for_each(|(col_idx, column)| {
@@ -720,7 +720,7 @@ where
 /// use miniextendr_api::rayon_bridge::{with_r_array_slabs, rayon::prelude::*};
 ///
 /// // Create a 2x3x4 array, process each of the 4 slabs (2x3 matrices) in parallel
-/// let r_arr = with_r_array_slabs::<f64, 3, _>([2, 3, 4], |slabs, dims| {
+/// let arr = with_r_array_slabs::<f64, 3, _>([2, 3, 4], |slabs, dims| {
 ///     slabs.par_iter_mut()
 ///         .enumerate()
 ///         .for_each(|(slab_idx, slab)| {
@@ -981,7 +981,7 @@ pub mod perf {
 /// impl RParallelIterator for ParallelData {
 ///     type Item = f64;
 ///
-///     fn r_par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_ {
+///     fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_ {
 ///         self.values.par_iter().copied()
 ///     }
 /// }
@@ -1011,19 +1011,19 @@ pub trait RParallelIterator {
     /// Returns a parallel iterator over the elements.
     ///
     /// Implementations should return an iterator that yields `Self::Item` values.
-    fn r_par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_;
+    fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_;
 
     /// Returns the number of elements, if known.
     ///
     /// Default implementation returns -1 (unknown).
-    fn r_par_len(&self) -> i32 {
+    fn par_len(&self) -> i32 {
         -1
     }
 
     /// Computes the parallel sum of f64 elements.
     ///
     /// Default implementation requires `Self::Item` to be convertible to f64.
-    fn r_par_sum(&self) -> f64
+    fn par_sum(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1031,7 +1031,7 @@ pub trait RParallelIterator {
     }
 
     /// Computes the parallel sum of i32 elements.
-    fn r_par_sum_int(&self) -> i32
+    fn par_sum_int(&self) -> i32
     where
         Self::Item: Into<i32>,
     {
@@ -1039,7 +1039,7 @@ pub trait RParallelIterator {
     }
 
     /// Computes the parallel sum of i64 elements (returned as f64 for R).
-    fn r_par_sum_i64(&self) -> f64
+    fn par_sum_i64(&self) -> f64
     where
         Self::Item: Into<i64>,
     {
@@ -1047,7 +1047,7 @@ pub trait RParallelIterator {
     }
 
     /// Computes the parallel mean of f64 elements.
-    fn r_par_mean(&self) -> f64
+    fn par_mean(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1064,7 +1064,7 @@ pub trait RParallelIterator {
     }
 
     /// Finds the parallel minimum.
-    fn r_par_min(&self) -> Option<Self::Item>
+    fn par_min(&self) -> Option<Self::Item>
     where
         Self::Item: Ord,
     {
@@ -1072,7 +1072,7 @@ pub trait RParallelIterator {
     }
 
     /// Finds the parallel maximum.
-    fn r_par_max(&self) -> Option<Self::Item>
+    fn par_max(&self) -> Option<Self::Item>
     where
         Self::Item: Ord,
     {
@@ -1080,7 +1080,7 @@ pub trait RParallelIterator {
     }
 
     /// Finds the parallel minimum f64 (handles NaN).
-    fn r_par_min_f64(&self) -> f64
+    fn par_min_f64(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1090,7 +1090,7 @@ pub trait RParallelIterator {
     }
 
     /// Finds the parallel maximum f64 (handles NaN).
-    fn r_par_max_f64(&self) -> f64
+    fn par_max_f64(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1100,12 +1100,12 @@ pub trait RParallelIterator {
     }
 
     /// Counts the number of elements in parallel.
-    fn r_par_count(&self) -> i32 {
+    fn par_count(&self) -> i32 {
         self.r_par_iter().count() as i32
     }
 
     /// Computes the parallel product of f64 elements.
-    fn r_par_product(&self) -> f64
+    fn par_product(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1113,7 +1113,7 @@ pub trait RParallelIterator {
     }
 
     /// Returns true if any element satisfies the predicate (greater than threshold).
-    fn r_par_any_gt(&self, threshold: f64) -> bool
+    fn par_any_gt(&self, threshold: f64) -> bool
     where
         Self::Item: Into<f64>,
     {
@@ -1121,7 +1121,7 @@ pub trait RParallelIterator {
     }
 
     /// Returns true if all elements satisfy the predicate (greater than threshold).
-    fn r_par_all_gt(&self, threshold: f64) -> bool
+    fn par_all_gt(&self, threshold: f64) -> bool
     where
         Self::Item: Into<f64>,
     {
@@ -1129,7 +1129,7 @@ pub trait RParallelIterator {
     }
 
     /// Returns true if any element satisfies the predicate (less than threshold).
-    fn r_par_any_lt(&self, threshold: f64) -> bool
+    fn par_any_lt(&self, threshold: f64) -> bool
     where
         Self::Item: Into<f64>,
     {
@@ -1137,7 +1137,7 @@ pub trait RParallelIterator {
     }
 
     /// Returns true if all elements satisfy the predicate (less than threshold).
-    fn r_par_all_lt(&self, threshold: f64) -> bool
+    fn par_all_lt(&self, threshold: f64) -> bool
     where
         Self::Item: Into<f64>,
     {
@@ -1145,7 +1145,7 @@ pub trait RParallelIterator {
     }
 
     /// Counts elements greater than threshold.
-    fn r_par_count_gt(&self, threshold: f64) -> i32
+    fn par_count_gt(&self, threshold: f64) -> i32
     where
         Self::Item: Into<f64>,
     {
@@ -1155,7 +1155,7 @@ pub trait RParallelIterator {
     }
 
     /// Counts elements less than threshold.
-    fn r_par_count_lt(&self, threshold: f64) -> i32
+    fn par_count_lt(&self, threshold: f64) -> i32
     where
         Self::Item: Into<f64>,
     {
@@ -1165,7 +1165,7 @@ pub trait RParallelIterator {
     }
 
     /// Counts elements equal to value (within epsilon for floats).
-    fn r_par_count_eq(&self, value: f64, epsilon: f64) -> i32
+    fn par_count_eq(&self, value: f64, epsilon: f64) -> i32
     where
         Self::Item: Into<f64>,
     {
@@ -1175,7 +1175,7 @@ pub trait RParallelIterator {
     }
 
     /// Computes variance in parallel.
-    fn r_par_variance(&self) -> f64
+    fn par_variance(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1200,7 +1200,7 @@ pub trait RParallelIterator {
     }
 
     /// Computes standard deviation in parallel.
-    fn r_par_std_dev(&self) -> f64
+    fn par_std_dev(&self) -> f64
     where
         Self::Item: Into<f64>,
     {
@@ -1208,7 +1208,7 @@ pub trait RParallelIterator {
     }
 
     /// Collects elements greater than threshold into a Vec<f64>.
-    fn r_par_filter_gt(&self, threshold: f64) -> Vec<f64>
+    fn par_filter_gt(&self, threshold: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1219,7 +1219,7 @@ pub trait RParallelIterator {
     }
 
     /// Collects elements less than threshold into a Vec<f64>.
-    fn r_par_filter_lt(&self, threshold: f64) -> Vec<f64>
+    fn par_filter_lt(&self, threshold: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1230,7 +1230,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies a scalar operation and collects results (multiply by factor).
-    fn r_par_scale(&self, factor: f64) -> Vec<f64>
+    fn par_scale(&self, factor: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1238,7 +1238,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies offset and collects results (add offset).
-    fn r_par_offset(&self, offset: f64) -> Vec<f64>
+    fn par_offset(&self, offset: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1246,7 +1246,7 @@ pub trait RParallelIterator {
     }
 
     /// Clamps values to range and collects results.
-    fn r_par_clamp(&self, min: f64, max: f64) -> Vec<f64>
+    fn par_clamp(&self, min: f64, max: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1256,7 +1256,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies absolute value and collects results.
-    fn r_par_abs(&self) -> Vec<f64>
+    fn par_abs(&self) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1264,7 +1264,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies square root and collects results.
-    fn r_par_sqrt(&self) -> Vec<f64>
+    fn par_sqrt(&self) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1272,7 +1272,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies power and collects results.
-    fn r_par_pow(&self, exp: f64) -> Vec<f64>
+    fn par_pow(&self, exp: f64) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1280,7 +1280,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies natural log and collects results.
-    fn r_par_ln(&self) -> Vec<f64>
+    fn par_ln(&self) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1288,7 +1288,7 @@ pub trait RParallelIterator {
     }
 
     /// Applies exp and collects results.
-    fn r_par_exp(&self) -> Vec<f64>
+    fn par_exp(&self) -> Vec<f64>
     where
         Self::Item: Into<f64>,
     {
@@ -1318,7 +1318,7 @@ pub trait RParallelIterator {
 /// }
 ///
 /// impl RParallelExtend<f64> for ParallelBuffer {
-///     fn r_par_extend(&self, items: Vec<f64>) {
+///     fn par_extend(&self, items: Vec<f64>) {
 ///         // Use par_extend from rayon
 ///         let mut guard = self.data.lock().unwrap();
 ///         guard.par_extend(items);
@@ -1336,10 +1336,10 @@ pub trait RParallelIterator {
 #[cfg(feature = "rayon")]
 pub trait RParallelExtend<T: Send> {
     /// Extends the collection with items from a Vec in parallel.
-    fn r_par_extend(&self, items: Vec<T>);
+    fn par_extend(&self, items: Vec<T>);
 
     /// Extends the collection with items from a slice (clones items).
-    fn r_par_extend_from_slice(&self, items: &[T])
+    fn par_extend_from_slice(&self, items: &[T])
     where
         T: Clone + Sync,
     {
@@ -1349,24 +1349,24 @@ pub trait RParallelExtend<T: Send> {
     /// Returns the current length of the collection.
     ///
     /// Default implementation returns -1 (unknown).
-    fn r_par_len(&self) -> i32 {
+    fn par_len(&self) -> i32 {
         -1
     }
 
     /// Returns true if the collection is empty.
-    fn r_par_is_empty(&self) -> bool {
+    fn par_is_empty(&self) -> bool {
         self.r_par_len() == 0
     }
 
     /// Clears the collection.
     ///
     /// Default implementation does nothing.
-    fn r_par_clear(&self) {}
+    fn par_clear(&self) {}
 
     /// Reserves capacity for at least `additional` more elements.
     ///
     /// Default implementation does nothing.
-    fn r_par_reserve(&self, _additional: i32) {}
+    fn par_reserve(&self, _additional: i32) {}
 }
 
 // endregion
@@ -1416,11 +1416,11 @@ mod tests {
     impl RParallelIterator for TestParData {
         type Item = f64;
 
-        fn r_par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_ {
+        fn par_iter(&self) -> impl rayon::iter::ParallelIterator<Item = Self::Item> + '_ {
             self.values.par_iter().copied()
         }
 
-        fn r_par_len(&self) -> i32 {
+        fn par_len(&self) -> i32 {
             self.values.len() as i32
         }
     }
@@ -1560,20 +1560,20 @@ mod tests {
     }
 
     impl RParallelExtend<f64> for TestParBuffer {
-        fn r_par_extend(&self, items: Vec<f64>) {
+        fn par_extend(&self, items: Vec<f64>) {
             let mut guard = self.data.lock().unwrap();
             guard.extend(items);
         }
 
-        fn r_par_len(&self) -> i32 {
+        fn par_len(&self) -> i32 {
             self.data.lock().unwrap().len() as i32
         }
 
-        fn r_par_clear(&self) {
+        fn par_clear(&self) {
             self.data.lock().unwrap().clear();
         }
 
-        fn r_par_reserve(&self, additional: i32) {
+        fn par_reserve(&self, additional: i32) {
             self.data.lock().unwrap().reserve(additional as usize);
         }
     }

@@ -68,35 +68,35 @@ use num_traits::{Float, Num, Signed};
 /// ```
 pub trait RNum: Clone {
     /// Get the additive identity (zero).
-    fn r_zero() -> Self;
+    fn zero() -> Self;
 
     /// Get the multiplicative identity (one).
-    fn r_one() -> Self;
+    fn one() -> Self;
 
     /// Check if this value is zero.
-    fn r_is_zero(&self) -> bool;
+    fn is_zero(&self) -> bool;
 
     /// Check if this value equals one.
-    fn r_is_one(&self) -> bool;
+    fn is_one(&self) -> bool;
 }
 
 impl<T> RNum for T
 where
     T: Num + Clone,
 {
-    fn r_zero() -> Self {
+    fn zero() -> Self {
         T::zero()
     }
 
-    fn r_one() -> Self {
+    fn one() -> Self {
         T::one()
     }
 
-    fn r_is_zero(&self) -> bool {
+    fn is_zero(&self) -> bool {
         self.clone() == T::zero()
     }
 
-    fn r_is_one(&self) -> bool {
+    fn is_one(&self) -> bool {
         self.clone() == T::one()
     }
 }
@@ -129,7 +129,7 @@ where
 /// ```
 pub trait RSigned: Clone {
     /// Get the absolute value.
-    fn r_abs(&self) -> Self;
+    fn abs(&self) -> Self;
 
     /// Get the sign of the number.
     ///
@@ -137,32 +137,32 @@ pub trait RSigned: Clone {
     /// - `-1` if negative
     /// - `0` if zero
     /// - `1` if positive
-    fn r_signum(&self) -> Self;
+    fn signum(&self) -> Self;
 
     /// Check if the value is positive.
-    fn r_is_positive(&self) -> bool;
+    fn is_positive(&self) -> bool;
 
     /// Check if the value is negative.
-    fn r_is_negative(&self) -> bool;
+    fn is_negative(&self) -> bool;
 }
 
 impl<T> RSigned for T
 where
     T: Signed + Clone,
 {
-    fn r_abs(&self) -> Self {
+    fn abs(&self) -> Self {
         Signed::abs(self)
     }
 
-    fn r_signum(&self) -> Self {
+    fn signum(&self) -> Self {
         Signed::signum(self)
     }
 
-    fn r_is_positive(&self) -> bool {
+    fn is_positive(&self) -> bool {
         Signed::is_positive(self)
     }
 
-    fn r_is_negative(&self) -> bool {
+    fn is_negative(&self) -> bool {
         Signed::is_negative(self)
     }
 }
@@ -236,301 +236,301 @@ where
 pub trait RFloat: Clone {
     // Classification
     /// Check if the value is NaN.
-    fn r_is_nan(&self) -> bool;
+    fn is_nan(&self) -> bool;
 
     /// Check if the value is infinite.
-    fn r_is_infinite(&self) -> bool;
+    fn is_infinite(&self) -> bool;
 
     /// Check if the value is finite (not NaN or infinite).
-    fn r_is_finite(&self) -> bool;
+    fn is_finite(&self) -> bool;
 
     /// Check if the value is normal (not zero, subnormal, infinite, or NaN).
-    fn r_is_normal(&self) -> bool;
+    fn is_normal(&self) -> bool;
 
     /// Check if the sign bit is positive.
-    fn r_is_sign_positive(&self) -> bool;
+    fn is_sign_positive(&self) -> bool;
 
     /// Check if the sign bit is negative.
-    fn r_is_sign_negative(&self) -> bool;
+    fn is_sign_negative(&self) -> bool;
 
     // Rounding
     /// Round towards negative infinity.
-    fn r_floor(&self) -> Self;
+    fn floor(&self) -> Self;
 
     /// Round towards positive infinity.
-    fn r_ceil(&self) -> Self;
+    fn ceil(&self) -> Self;
 
     /// Round to nearest integer.
-    fn r_round(&self) -> Self;
+    fn round(&self) -> Self;
 
     /// Round towards zero (truncate).
-    fn r_trunc(&self) -> Self;
+    fn trunc(&self) -> Self;
 
     /// Get the fractional part.
-    fn r_fract(&self) -> Self;
+    fn fract(&self) -> Self;
 
     // Basic math
     /// Get the absolute value.
-    fn r_abs(&self) -> Self;
+    fn abs(&self) -> Self;
 
     /// Get the sign of the number (1.0, -1.0, or NaN).
-    fn r_signum(&self) -> Self;
+    fn signum(&self) -> Self;
 
     /// Compute the square root.
-    fn r_sqrt(&self) -> Self;
+    fn sqrt(&self) -> Self;
 
     /// Compute the cube root.
-    fn r_cbrt(&self) -> Self;
+    fn cbrt(&self) -> Self;
 
     // Exponentials and logarithms
     /// Compute e^x.
-    fn r_exp(&self) -> Self;
+    fn exp(&self) -> Self;
 
     /// Compute 2^x.
-    fn r_exp2(&self) -> Self;
+    fn exp2(&self) -> Self;
 
     /// Compute the natural logarithm.
-    fn r_ln(&self) -> Self;
+    fn ln(&self) -> Self;
 
     /// Compute the base-2 logarithm.
-    fn r_log2(&self) -> Self;
+    fn log2(&self) -> Self;
 
     /// Compute the base-10 logarithm.
-    fn r_log10(&self) -> Self;
+    fn log10(&self) -> Self;
 
     // Trigonometric
     /// Compute sine.
-    fn r_sin(&self) -> Self;
+    fn sin(&self) -> Self;
 
     /// Compute cosine.
-    fn r_cos(&self) -> Self;
+    fn cos(&self) -> Self;
 
     /// Compute tangent.
-    fn r_tan(&self) -> Self;
+    fn tan(&self) -> Self;
 
     /// Compute arcsine.
-    fn r_asin(&self) -> Self;
+    fn asin(&self) -> Self;
 
     /// Compute arccosine.
-    fn r_acos(&self) -> Self;
+    fn acos(&self) -> Self;
 
     /// Compute arctangent.
-    fn r_atan(&self) -> Self;
+    fn atan(&self) -> Self;
 
     // Hyperbolic
     /// Compute hyperbolic sine.
-    fn r_sinh(&self) -> Self;
+    fn sinh(&self) -> Self;
 
     /// Compute hyperbolic cosine.
-    fn r_cosh(&self) -> Self;
+    fn cosh(&self) -> Self;
 
     /// Compute hyperbolic tangent.
-    fn r_tanh(&self) -> Self;
+    fn tanh(&self) -> Self;
 
     /// Compute inverse hyperbolic sine.
-    fn r_asinh(&self) -> Self;
+    fn asinh(&self) -> Self;
 
     /// Compute inverse hyperbolic cosine.
-    fn r_acosh(&self) -> Self;
+    fn acosh(&self) -> Self;
 
     /// Compute inverse hyperbolic tangent.
-    fn r_atanh(&self) -> Self;
+    fn atanh(&self) -> Self;
 
     // Special values
     /// Get positive infinity.
-    fn r_infinity() -> Self;
+    fn infinity() -> Self;
 
     /// Get negative infinity.
-    fn r_neg_infinity() -> Self;
+    fn neg_infinity() -> Self;
 
     /// Get NaN.
-    fn r_nan() -> Self;
+    fn nan() -> Self;
 
     /// Get the smallest finite value.
-    fn r_min_value() -> Self;
+    fn min_value() -> Self;
 
     /// Get the largest finite value.
-    fn r_max_value() -> Self;
+    fn max_value() -> Self;
 
     /// Get the machine epsilon.
-    fn r_epsilon() -> Self;
+    fn epsilon() -> Self;
 
     // Power and other operations
     /// Compute x^n for integer n.
-    fn r_powi(&self, n: i32) -> Self;
+    fn powi(&self, n: i32) -> Self;
 
     /// Compute x^y for float y.
-    fn r_powf(&self, y: &Self) -> Self;
+    fn powf(&self, y: &Self) -> Self;
 
     /// Compute the reciprocal (1/x).
-    fn r_recip(&self) -> Self;
+    fn recip(&self) -> Self;
 }
 
 impl<T> RFloat for T
 where
     T: Float,
 {
-    fn r_is_nan(&self) -> bool {
+    fn is_nan(&self) -> bool {
         Float::is_nan(*self)
     }
 
-    fn r_is_infinite(&self) -> bool {
+    fn is_infinite(&self) -> bool {
         Float::is_infinite(*self)
     }
 
-    fn r_is_finite(&self) -> bool {
+    fn is_finite(&self) -> bool {
         Float::is_finite(*self)
     }
 
-    fn r_is_normal(&self) -> bool {
+    fn is_normal(&self) -> bool {
         Float::is_normal(*self)
     }
 
-    fn r_is_sign_positive(&self) -> bool {
+    fn is_sign_positive(&self) -> bool {
         Float::is_sign_positive(*self)
     }
 
-    fn r_is_sign_negative(&self) -> bool {
+    fn is_sign_negative(&self) -> bool {
         Float::is_sign_negative(*self)
     }
 
-    fn r_floor(&self) -> Self {
+    fn floor(&self) -> Self {
         Float::floor(*self)
     }
 
-    fn r_ceil(&self) -> Self {
+    fn ceil(&self) -> Self {
         Float::ceil(*self)
     }
 
-    fn r_round(&self) -> Self {
+    fn round(&self) -> Self {
         Float::round(*self)
     }
 
-    fn r_trunc(&self) -> Self {
+    fn trunc(&self) -> Self {
         Float::trunc(*self)
     }
 
-    fn r_fract(&self) -> Self {
+    fn fract(&self) -> Self {
         Float::fract(*self)
     }
 
-    fn r_abs(&self) -> Self {
+    fn abs(&self) -> Self {
         Float::abs(*self)
     }
 
-    fn r_signum(&self) -> Self {
+    fn signum(&self) -> Self {
         Float::signum(*self)
     }
 
-    fn r_sqrt(&self) -> Self {
+    fn sqrt(&self) -> Self {
         Float::sqrt(*self)
     }
 
-    fn r_cbrt(&self) -> Self {
+    fn cbrt(&self) -> Self {
         Float::cbrt(*self)
     }
 
-    fn r_exp(&self) -> Self {
+    fn exp(&self) -> Self {
         Float::exp(*self)
     }
 
-    fn r_exp2(&self) -> Self {
+    fn exp2(&self) -> Self {
         Float::exp2(*self)
     }
 
-    fn r_ln(&self) -> Self {
+    fn ln(&self) -> Self {
         Float::ln(*self)
     }
 
-    fn r_log2(&self) -> Self {
+    fn log2(&self) -> Self {
         Float::log2(*self)
     }
 
-    fn r_log10(&self) -> Self {
+    fn log10(&self) -> Self {
         Float::log10(*self)
     }
 
-    fn r_sin(&self) -> Self {
+    fn sin(&self) -> Self {
         Float::sin(*self)
     }
 
-    fn r_cos(&self) -> Self {
+    fn cos(&self) -> Self {
         Float::cos(*self)
     }
 
-    fn r_tan(&self) -> Self {
+    fn tan(&self) -> Self {
         Float::tan(*self)
     }
 
-    fn r_asin(&self) -> Self {
+    fn asin(&self) -> Self {
         Float::asin(*self)
     }
 
-    fn r_acos(&self) -> Self {
+    fn acos(&self) -> Self {
         Float::acos(*self)
     }
 
-    fn r_atan(&self) -> Self {
+    fn atan(&self) -> Self {
         Float::atan(*self)
     }
 
-    fn r_sinh(&self) -> Self {
+    fn sinh(&self) -> Self {
         Float::sinh(*self)
     }
 
-    fn r_cosh(&self) -> Self {
+    fn cosh(&self) -> Self {
         Float::cosh(*self)
     }
 
-    fn r_tanh(&self) -> Self {
+    fn tanh(&self) -> Self {
         Float::tanh(*self)
     }
 
-    fn r_asinh(&self) -> Self {
+    fn asinh(&self) -> Self {
         Float::asinh(*self)
     }
 
-    fn r_acosh(&self) -> Self {
+    fn acosh(&self) -> Self {
         Float::acosh(*self)
     }
 
-    fn r_atanh(&self) -> Self {
+    fn atanh(&self) -> Self {
         Float::atanh(*self)
     }
 
-    fn r_infinity() -> Self {
+    fn infinity() -> Self {
         Float::infinity()
     }
 
-    fn r_neg_infinity() -> Self {
+    fn neg_infinity() -> Self {
         Float::neg_infinity()
     }
 
-    fn r_nan() -> Self {
+    fn nan() -> Self {
         Float::nan()
     }
 
-    fn r_min_value() -> Self {
+    fn min_value() -> Self {
         Float::min_value()
     }
 
-    fn r_max_value() -> Self {
+    fn max_value() -> Self {
         Float::max_value()
     }
 
-    fn r_epsilon() -> Self {
+    fn epsilon() -> Self {
         Float::epsilon()
     }
 
-    fn r_powi(&self, n: i32) -> Self {
+    fn powi(&self, n: i32) -> Self {
         Float::powi(*self, n)
     }
 
-    fn r_powf(&self, y: &Self) -> Self {
+    fn powf(&self, y: &Self) -> Self {
         Float::powf(*self, *y)
     }
 
-    fn r_recip(&self) -> Self {
+    fn recip(&self) -> Self {
         Float::recip(*self)
     }
 }

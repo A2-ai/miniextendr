@@ -1053,8 +1053,8 @@ mod tests {
         let result: Option<i32> = RFromStr::from_str("42");
         assert_eq!(result, Some(42));
 
-        let result: Option<f64> = RFromStr::from_str("3.14");
-        assert_eq!(result, Some(3.14));
+        let result: Option<f64> = RFromStr::from_str("std::f64::consts::PI");
+        assert_eq!(result, Some(std::f64::consts::PI));
 
         let result: Option<bool> = RFromStr::from_str("true");
         assert_eq!(result, Some(true));

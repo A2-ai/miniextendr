@@ -791,33 +791,33 @@ pub trait RDateTimeFormat: Sized {
     /// Format using a format description string.
     ///
     /// Returns the formatted string, or an error message on invalid format.
-    fn r_format(&self, fmt: &str) -> Result<String, String>;
+    fn format(&self, fmt: &str) -> Result<String, String>;
 
     /// Parse from a string using a format description.
     ///
     /// Returns the parsed value, or an error message on parse failure.
-    fn r_parse(s: &str, fmt: &str) -> Result<Self, String>;
+    fn parse(s: &str, fmt: &str) -> Result<Self, String>;
 }
 
 impl RDateTimeFormat for OffsetDateTime {
-    fn r_format(&self, fmt: &str) -> Result<String, String> {
+    fn format(&self, fmt: &str) -> Result<String, String> {
         let format = time::format_description::parse(fmt).map_err(|e| e.to_string())?;
         self.format(&format).map_err(|e| e.to_string())
     }
 
-    fn r_parse(s: &str, fmt: &str) -> Result<Self, String> {
+    fn parse(s: &str, fmt: &str) -> Result<Self, String> {
         let format = time::format_description::parse(fmt).map_err(|e| e.to_string())?;
         OffsetDateTime::parse(s, &format).map_err(|e| e.to_string())
     }
 }
 
 impl RDateTimeFormat for Date {
-    fn r_format(&self, fmt: &str) -> Result<String, String> {
+    fn format(&self, fmt: &str) -> Result<String, String> {
         let format = time::format_description::parse(fmt).map_err(|e| e.to_string())?;
         self.format(&format).map_err(|e| e.to_string())
     }
 
-    fn r_parse(s: &str, fmt: &str) -> Result<Self, String> {
+    fn parse(s: &str, fmt: &str) -> Result<Self, String> {
         let format = time::format_description::parse(fmt).map_err(|e| e.to_string())?;
         Date::parse(s, &format).map_err(|e| e.to_string())
     }

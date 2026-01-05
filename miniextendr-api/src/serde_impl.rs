@@ -103,20 +103,20 @@ pub trait RSerialize {
     /// Serialize to a compact JSON string.
     ///
     /// Returns `Ok(json_string)` on success, `Err(error_message)` on failure.
-    fn r_to_json(&self) -> Result<String, String>;
+    fn to_json(&self) -> Result<String, String>;
 
     /// Serialize to a pretty-printed JSON string with indentation.
     ///
     /// Returns `Ok(json_string)` on success, `Err(error_message)` on failure.
-    fn r_to_json_pretty(&self) -> Result<String, String>;
+    fn to_json_pretty(&self) -> Result<String, String>;
 }
 
 impl<T: Serialize> RSerialize for T {
-    fn r_to_json(&self) -> Result<String, String> {
+    fn to_json(&self) -> Result<String, String> {
         serde_json::to_string(self).map_err(|e| e.to_string())
     }
 
-    fn r_to_json_pretty(&self) -> Result<String, String> {
+    fn to_json_pretty(&self) -> Result<String, String> {
         serde_json::to_string_pretty(self).map_err(|e| e.to_string())
     }
 }
@@ -155,20 +155,20 @@ pub trait RDeserialize: Sized {
     ///
     /// Returns `Some(value)` on success, `None` on parse failure.
     /// The None case maps to NULL in R.
-    fn r_from_json(s: &str) -> Option<Self>;
+    fn from_json(s: &str) -> Option<Self>;
 
     /// Parse a JSON string with detailed error information.
     ///
     /// Returns `Ok(value)` on success, `Err(error_message)` on failure.
-    fn r_from_json_result(s: &str) -> Result<Self, String>;
+    fn from_json_result(s: &str) -> Result<Self, String>;
 }
 
 impl<T: for<'de> Deserialize<'de>> RDeserialize for T {
-    fn r_from_json(s: &str) -> Option<Self> {
+    fn from_json(s: &str) -> Option<Self> {
         serde_json::from_str(s).ok()
     }
 
-    fn r_from_json_result(s: &str) -> Result<Self, String> {
+    fn from_json_result(s: &str) -> Result<Self, String> {
         serde_json::from_str(s).map_err(|e| e.to_string())
     }
 }

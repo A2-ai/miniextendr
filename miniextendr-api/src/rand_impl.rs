@@ -280,7 +280,7 @@ impl RDistributions for RRng {
 /// }
 ///
 /// impl RRngOps for MyRng {
-///     fn r_random_f64(&self) -> f64 {
+///     fn random_f64(&self) -> f64 {
 ///         use rand::Rng;
 ///         self.0.borrow_mut().random()
 ///     }
@@ -311,27 +311,27 @@ impl RDistributions for RRng {
 /// provides `&self`. Users must implement manually using interior mutability.
 pub trait RRngOps {
     /// Generate a random f64 in [0, 1).
-    fn r_random_f64(&self) -> f64;
+    fn random_f64(&self) -> f64;
 
     /// Generate a random i32 covering the full i32 range.
-    fn r_random_i32(&self) -> i32;
+    fn random_i32(&self) -> i32;
 
     /// Generate a random boolean (50% chance each).
-    fn r_random_bool(&self) -> bool;
+    fn random_bool(&self) -> bool;
 
     /// Generate a random f64 in [low, high).
     ///
     /// # Panics
     ///
     /// Panics if `low >= high`.
-    fn r_gen_range_f64(&self, low: f64, high: f64) -> f64;
+    fn gen_range_f64(&self, low: f64, high: f64) -> f64;
 
     /// Generate a random i32 in [low, high).
     ///
     /// # Panics
     ///
     /// Panics if `low >= high`.
-    fn r_gen_range_i32(&self, low: i32, high: i32) -> i32;
+    fn gen_range_i32(&self, low: i32, high: i32) -> i32;
 
     /// Generate a boolean with probability `p` of being true.
     ///
@@ -342,27 +342,27 @@ pub trait RRngOps {
     /// # Panics
     ///
     /// Panics if `p < 0` or `p > 1`.
-    fn r_gen_bool(&self, p: f64) -> bool;
+    fn gen_bool(&self, p: f64) -> bool;
 
     /// Fill a vector with random f64 values in [0, 1).
     ///
     /// Returns a new vector of the given length.
-    fn r_random_f64_vec(&self, n: i32) -> Vec<f64> {
+    fn random_f64_vec(&self, n: i32) -> Vec<f64> {
         (0..n).map(|_| self.r_random_f64()).collect()
     }
 
     /// Fill a vector with random f64 values in [low, high).
-    fn r_gen_range_f64_vec(&self, n: i32, low: f64, high: f64) -> Vec<f64> {
+    fn gen_range_f64_vec(&self, n: i32, low: f64, high: f64) -> Vec<f64> {
         (0..n).map(|_| self.r_gen_range_f64(low, high)).collect()
     }
 
     /// Fill a vector with random i32 values in [low, high).
-    fn r_gen_range_i32_vec(&self, n: i32, low: i32, high: i32) -> Vec<i32> {
+    fn gen_range_i32_vec(&self, n: i32, low: i32, high: i32) -> Vec<i32> {
         (0..n).map(|_| self.r_gen_range_i32(low, high)).collect()
     }
 
     /// Fill a vector with random booleans with probability `p` of true.
-    fn r_gen_bool_vec(&self, n: i32, p: f64) -> Vec<bool> {
+    fn gen_bool_vec(&self, n: i32, p: f64) -> Vec<bool> {
         (0..n).map(|_| self.r_gen_bool(p)).collect()
     }
 }
@@ -380,7 +380,7 @@ pub trait RRngOps {
 ///
 /// - `r_sample()` - Draw a single sample from the distribution
 /// - `r_sample_n(n)` - Draw n samples from the distribution
-/// - `r_sample_vec(n)` - Alias for r_sample_n
+/// - `r_sample_vec(n)` - Alias for sample_n
 ///
 /// # Example
 ///
@@ -406,7 +406,7 @@ pub trait RRngOps {
 /// }
 ///
 /// impl RDistributionOps<f64> for NormalDist {
-///     fn r_sample(&self) -> f64 {
+///     fn sample(&self) -> f64 {
 ///         self.dist.sample(&mut *self.rng.borrow_mut())
 ///     }
 /// }
@@ -434,38 +434,38 @@ pub trait RRngOps {
 /// provides `&self`. Users must use interior mutability (RefCell, Mutex, etc.).
 pub trait RDistributionOps<T> {
     /// Draw a single sample from the distribution.
-    fn r_sample(&self) -> T;
+    fn sample(&self) -> T;
 
     /// Draw n samples from the distribution.
     ///
     /// Default implementation calls `r_sample()` n times.
-    fn r_sample_n(&self, n: i32) -> Vec<T> {
+    fn sample_n(&self, n: i32) -> Vec<T> {
         (0..n).map(|_| self.r_sample()).collect()
     }
 
-    /// Draw n samples from the distribution (alias for r_sample_n).
-    fn r_sample_vec(&self, n: i32) -> Vec<T> {
+    /// Draw n samples from the distribution (alias for sample_n).
+    fn sample_vec(&self, n: i32) -> Vec<T> {
         self.r_sample_n(n)
     }
 
     /// Get the mean/expected value of the distribution, if known.
     ///
     /// Returns None by default. Override for distributions with known mean.
-    fn r_mean(&self) -> Option<f64> {
+    fn mean(&self) -> Option<f64> {
         None
     }
 
     /// Get the variance of the distribution, if known.
     ///
     /// Returns None by default. Override for distributions with known variance.
-    fn r_variance(&self) -> Option<f64> {
+    fn variance(&self) -> Option<f64> {
         None
     }
 
     /// Get the standard deviation of the distribution, if known.
     ///
     /// Default implementation returns sqrt(variance) if variance is known.
-    fn r_std_dev(&self) -> Option<f64> {
+    fn std_dev(&self) -> Option<f64> {
         self.r_variance().map(|v| v.sqrt())
     }
 }
@@ -508,30 +508,30 @@ mod tests {
     }
 
     impl RRngOps for MockRng {
-        fn r_random_f64(&self) -> f64 {
+        fn random_f64(&self) -> f64 {
             (self.next() as f64) / (u64::MAX as f64)
         }
 
-        fn r_random_i32(&self) -> i32 {
+        fn random_i32(&self) -> i32 {
             self.next() as i32
         }
 
-        fn r_random_bool(&self) -> bool {
+        fn random_bool(&self) -> bool {
             self.next() % 2 == 0
         }
 
-        fn r_gen_range_f64(&self, low: f64, high: f64) -> f64 {
+        fn gen_range_f64(&self, low: f64, high: f64) -> f64 {
             assert!(low < high, "low must be less than high");
             low + self.r_random_f64() * (high - low)
         }
 
-        fn r_gen_range_i32(&self, low: i32, high: i32) -> i32 {
+        fn gen_range_i32(&self, low: i32, high: i32) -> i32 {
             assert!(low < high, "low must be less than high");
             let range = (high - low) as u64;
             low + (self.next() % range) as i32
         }
 
-        fn r_gen_bool(&self, p: f64) -> bool {
+        fn gen_bool(&self, p: f64) -> bool {
             assert!((0.0..=1.0).contains(&p), "p must be in [0, 1]");
             self.r_random_f64() < p
         }
@@ -644,15 +644,15 @@ mod tests {
     }
 
     impl RDistributionOps<f64> for MockUniformDist {
-        fn r_sample(&self) -> f64 {
+        fn sample(&self) -> f64 {
             self.low + self.next_f64() * (self.high - self.low)
         }
 
-        fn r_mean(&self) -> Option<f64> {
+        fn mean(&self) -> Option<f64> {
             Some((self.low + self.high) / 2.0)
         }
 
-        fn r_variance(&self) -> Option<f64> {
+        fn variance(&self) -> Option<f64> {
             let range = self.high - self.low;
             Some(range * range / 12.0)
         }
@@ -705,7 +705,7 @@ mod tests {
     struct MockUnknownDist(RefCell<u64>);
 
     impl RDistributionOps<i32> for MockUnknownDist {
-        fn r_sample(&self) -> i32 {
+        fn sample(&self) -> i32 {
             let mut state = self.0.borrow_mut();
             *state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
             (*state % 100) as i32

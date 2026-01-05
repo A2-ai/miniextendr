@@ -56,10 +56,13 @@ pub use miniextendr_macros::miniextendr;
 pub use miniextendr_macros::miniextendr_module;
 #[doc(inline)]
 pub use miniextendr_macros::r_ffi_checked;
+// Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
+// but they're in different namespaces (derive macros vs types/traits)
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
     IntoList, PreferExternalPtr, PreferList, PreferRNativeType, TryFromList,
+    RFactor as RFactorDerive,
 };
 
 pub mod altrep;
@@ -769,4 +772,33 @@ pub mod raw_conversions;
 pub use raw_conversions::{
     Pod, Zeroable, Raw, RawSlice, RawTagged, RawSliceTagged, RawHeader, RawError,
     raw_to_bytes, raw_from_bytes, raw_slice_to_bytes, raw_slice_from_bytes,
+};
+
+/// Factor support for enum ↔ R factor conversions.
+///
+/// Provides the [`RFactor`] trait for converting Rust enums to/from R factors.
+/// Use `#[derive(RFactor)]` on C-style enums to auto-generate the implementation.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::RFactor;
+///
+/// #[derive(Copy, Clone, RFactor)]
+/// enum Color { Red, Green, Blue }
+///
+/// #[miniextendr]
+/// fn color_name(c: Color) -> &'static str {
+///     match c {
+///         Color::Red => "red",
+///         Color::Green => "green",
+///         Color::Blue => "blue",
+///     }
+/// }
+/// ```
+pub mod factor;
+pub use factor::{
+    RFactor, build_factor, build_levels_sexp, validate_factor_levels,
+    factor_to_sexp, factor_vec_to_sexp, factor_option_vec_to_sexp,
+    factor_from_sexp, factor_option_from_sexp, factor_vec_from_sexp, factor_option_vec_from_sexp,
 };
