@@ -192,10 +192,10 @@ where
         }
 
         let len = sexp.len();
-        if len == 0 {
+        if len != 1 {
             return Err(SexpError::Length(SexpLengthError {
                 expected: 1,
-                actual: 0,
+                actual: len,
             }));
         }
 

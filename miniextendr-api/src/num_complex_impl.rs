@@ -108,10 +108,10 @@ impl TryFromSexp for Complex<f64> {
         }
 
         let len = sexp.len();
-        if len == 0 {
+        if len != 1 {
             return Err(SexpError::Length(SexpLengthError {
                 expected: 1,
-                actual: 0,
+                actual: len,
             }));
         }
 
@@ -153,8 +153,11 @@ impl TryFromSexp for Option<Complex<f64>> {
         }
 
         let len = sexp.len();
-        if len == 0 {
-            return Ok(None);
+        if len != 1 {
+            return Err(SexpError::Length(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }));
         }
 
         let rcomplex = unsafe { COMPLEX_ELT(sexp, 0) };

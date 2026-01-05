@@ -84,7 +84,9 @@ where
 
         // Get names attribute (may be NULL if no names)
         let names_sexp = unsafe { Rf_getAttrib(sexp, R_NamesSymbol) };
-        let has_names = names_sexp != unsafe { R_NilValue };
+        // Only use names if present and length matches the list length
+        let has_names =
+            names_sexp != unsafe { R_NilValue } && names_sexp.len() == len;
 
         for i in 0..len {
             // Get name for this element

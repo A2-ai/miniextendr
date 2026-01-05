@@ -66,10 +66,10 @@ impl TryFromSexp for Url {
         }
 
         let len = sexp.len();
-        if len == 0 {
+        if len != 1 {
             return Err(SexpError::Length(SexpLengthError {
                 expected: 1,
-                actual: 0,
+                actual: len,
             }));
         }
 
@@ -111,8 +111,11 @@ impl TryFromSexp for Option<Url> {
         }
 
         let len = sexp.len();
-        if len == 0 {
-            return Ok(None);
+        if len != 1 {
+            return Err(SexpError::Length(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }));
         }
 
         let charsxp = unsafe { STRING_ELT(sexp, 0) };

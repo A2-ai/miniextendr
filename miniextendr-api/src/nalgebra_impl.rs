@@ -212,7 +212,16 @@ fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
             .into());
         }
 
-        Ok((dim_slice[0] as usize, dim_slice[1] as usize))
+        // Validate: reject negative or NA dimensions (NA_INTEGER is i32::MIN)
+        let nrow = dim_slice[0];
+        let ncol = dim_slice[1];
+        if nrow < 0 || ncol < 0 {
+            return Err(SexpError::InvalidValue(
+                "matrix dimensions must be non-negative".into(),
+            ));
+        }
+
+        Ok((nrow as usize, ncol as usize))
     }
 }
 

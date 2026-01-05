@@ -95,8 +95,12 @@ impl TryFromSexp for OffsetDateTime {
         }
 
         // Split into whole seconds and fractional nanoseconds
-        let whole_secs = secs.trunc() as i64;
-        let nanos = ((secs.fract().abs()) * 1_000_000_000.0) as i32;
+        // Use floor() to handle negative timestamps correctly:
+        // -1.2 -> floor = -2, fract = 0.8 -> -2s + 800ms = -1.2s (correct)
+        // trunc would give: -1.2 -> trunc = -1, fract.abs = 0.2 -> -1s + 200ms = -0.8s (wrong)
+        let whole_secs = secs.floor() as i64;
+        let fract = secs - secs.floor(); // Always in [0, 1)
+        let nanos = (fract * 1_000_000_000.0) as i32;
 
         // Calculate from epoch
         let duration = time::Duration::new(whole_secs, nanos);
@@ -168,8 +172,10 @@ impl TryFromSexp for Option<OffsetDateTime> {
             return Ok(None);
         }
 
-        let whole_secs = secs.trunc() as i64;
-        let nanos = ((secs.fract().abs()) * 1_000_000_000.0) as i32;
+        // Use floor() to handle negative timestamps correctly
+        let whole_secs = secs.floor() as i64;
+        let fract = secs - secs.floor(); // Always in [0, 1)
+        let nanos = (fract * 1_000_000_000.0) as i32;
         let duration = time::Duration::new(whole_secs, nanos);
 
         UNIX_EPOCH
@@ -239,8 +245,10 @@ impl TryFromSexp for Vec<OffsetDateTime> {
                 )));
             }
 
-            let whole_secs = secs.trunc() as i64;
-            let nanos = ((secs.fract().abs()) * 1_000_000_000.0) as i32;
+            // Use floor() to handle negative timestamps correctly
+            let whole_secs = secs.floor() as i64;
+            let fract = secs - secs.floor(); // Always in [0, 1)
+            let nanos = (fract * 1_000_000_000.0) as i32;
             let duration = time::Duration::new(whole_secs, nanos);
 
             let dt = UNIX_EPOCH.checked_add(duration).ok_or_else(|| {
@@ -314,8 +322,10 @@ impl TryFromSexp for Vec<Option<OffsetDateTime>> {
             if secs.is_nan() {
                 result.push(None);
             } else {
-                let whole_secs = secs.trunc() as i64;
-                let nanos = ((secs.fract().abs()) * 1_000_000_000.0) as i32;
+                // Use floor() to handle negative timestamps correctly
+                let whole_secs = secs.floor() as i64;
+                let fract = secs - secs.floor(); // Always in [0, 1)
+                let nanos = (fract * 1_000_000_000.0) as i32;
                 let duration = time::Duration::new(whole_secs, nanos);
 
                 let dt = UNIX_EPOCH.checked_add(duration).ok_or_else(|| {
