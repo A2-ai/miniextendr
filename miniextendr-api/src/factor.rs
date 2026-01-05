@@ -1,71 +1,55 @@
 //! Factor support for enum ↔ R factor conversions.
 //!
-//! This module provides the [`RFactor`] trait for converting Rust enums to/from R factors.
-//! Factors in R are integer vectors with a `levels` attribute (character vector) and a
-//! `class` attribute set to `"factor"`.
+//! R factors are integer vectors with a `levels` attribute (character vector)
+//! and a `class` attribute set to `"factor"`. The integer payload uses 1-based
+//! indexing into the levels, with `NA_INTEGER` for missing values.
 //!
-//! # Example
+//! # Usage
 //!
 //! ```ignore
 //! use miniextendr_api::RFactor;
 //!
 //! #[derive(Copy, Clone, RFactor)]
-//! enum Color {
-//!     Red,
-//!     Green,
-//!     Blue,
-//! }
+//! enum Color { Red, Green, Blue }
 //!
-//! // Color values can now be converted to/from R factors automatically
+//! // Enum values convert to/from R factors automatically
 //! #[miniextendr]
-//! fn get_color(c: Color) -> &'static str {
+//! fn describe(c: Color) -> &'static str {
 //!     match c {
-//!         Color::Red => "it's red!",
-//!         Color::Green => "it's green!",
-//!         Color::Blue => "it's blue!",
+//!         Color::Red => "red",
+//!         Color::Green => "green",
+//!         Color::Blue => "blue",
 //!     }
 //! }
 //! ```
-//!
-//! # R Factor Structure
-//!
-//! A factor in R is an `INTSXP` with:
-//! - `levels` attribute: `STRSXP` containing level names (1-based indexing)
-//! - `class` attribute: `"factor"`
-//!
-//! Integer payload uses `NA_INTEGER` for missing values.
 
+use std::ffi::CString;
+use std::marker::PhantomData;
+use std::ops::Deref;
 use std::sync::OnceLock;
 
 use crate::altrep_traits::NA_INTEGER;
 use crate::ffi::{
-    INTEGER, INTEGER_ELT, R_ClassSymbol, R_LevelsSymbol, Rboolean, Rf_allocVector, Rf_getAttrib,
-    Rf_isFactor, Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_STRING_ELT, SEXP, SEXPTYPE,
-    STRING_ELT, SexpExt, cetype_t,
+    INTEGER, INTEGER_ELT, PRINTNAME, R_ClassSymbol, R_LevelsSymbol, Rboolean, Rf_allocVector,
+    Rf_getAttrib, Rf_install, Rf_isFactor, Rf_setAttrib, Rf_xlength, SET_STRING_ELT, SEXP,
+    SEXPTYPE, STRING_ELT, SexpExt,
 };
-use crate::from_r::{SexpError, charsxp_to_str};
+use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::into_r::IntoR;
 
 // =============================================================================
-// Global factor symbol (cached SYMSXP)
+// Cached "factor" class STRSXP
 // =============================================================================
 
-/// Cached "factor" class string SEXP.
 static FACTOR_CLASS: OnceLock<SEXP> = OnceLock::new();
 
-/// Get or initialize the factor class STRSXP.
-///
-/// This creates a length-1 STRSXP containing "factor".
 fn factor_class_sexp() -> SEXP {
     *FACTOR_CLASS.get_or_init(|| unsafe {
         let class_sexp = Rf_allocVector(SEXPTYPE::STRSXP, 1);
         crate::preserve::insert(class_sexp);
-        let factor_str = "factor";
-        let charsxp = Rf_mkCharLenCE(
-            factor_str.as_ptr().cast(),
-            factor_str.len() as i32,
-            cetype_t::CE_UTF8,
-        );
-        SET_STRING_ELT(class_sexp, 0, charsxp);
+        // Use symbol PRINTNAME for permanent CHARSXP
+        let sym = Rf_install(c"factor".as_ptr());
+        SET_STRING_ELT(class_sexp, 0, PRINTNAME(sym));
         class_sexp
     })
 }
@@ -76,85 +60,41 @@ fn factor_class_sexp() -> SEXP {
 
 /// Trait for mapping Rust enums to R factors.
 ///
-/// This trait is typically implemented via `#[derive(RFactor)]` for C-style enums.
-///
-/// # Safety
-///
-/// The `LEVELS` array must match the implementation of `to_level_index` and
-/// `from_level_index` - specifically, indices must be in the range 1..=LEVELS.len().
-///
-/// # Example (manual implementation)
-///
-/// ```ignore
-/// use miniextendr_api::factor::RFactor;
-///
-/// #[derive(Copy, Clone)]
-/// enum Status { Active, Inactive, Pending }
-///
-/// impl RFactor for Status {
-///     const LEVELS: &'static [&'static str] = &["Active", "Inactive", "Pending"];
-///
-///     fn to_level_index(self) -> i32 {
-///         match self {
-///             Status::Active => 1,
-///             Status::Inactive => 2,
-///             Status::Pending => 3,
-///         }
-///     }
-///
-///     fn from_level_index(idx: i32) -> Option<Self> {
-///         match idx {
-///             1 => Some(Status::Active),
-///             2 => Some(Status::Inactive),
-///             3 => Some(Status::Pending),
-///             _ => None,
-///         }
-///     }
-/// }
-/// ```
+/// Typically implemented via `#[derive(RFactor)]` for C-style enums.
+/// The derive macro also generates `IntoR` and `TryFromSexp` implementations.
 pub trait RFactor: Copy + 'static {
-    /// Level names for this enum.
-    ///
-    /// The order must match the indices returned by `to_level_index`.
+    /// Level names for this enum (order matches index values).
     const LEVELS: &'static [&'static str];
 
-    /// Convert enum variant to 1-based level index.
-    ///
-    /// Returns an integer in the range 1..=LEVELS.len().
+    /// Convert variant to 1-based level index.
     fn to_level_index(self) -> i32;
 
-    /// Convert 1-based level index to enum variant.
-    ///
-    /// Returns `None` for out-of-range indices.
+    /// Convert 1-based level index to variant, or `None` if out of range.
     fn from_level_index(idx: i32) -> Option<Self>;
-
 }
 
 // =============================================================================
-// Helper functions
+// Core building functions
 // =============================================================================
 
-/// Build a levels STRSXP from level names.
+/// Build a levels STRSXP using symbol PRINTNAMEs for permanent CHARSXP protection.
 ///
-/// This allocates fresh R strings each time. For repeated conversions,
-/// use `build_levels_sexp_preserved` which caches the result.
+/// The returned STRSXP is NOT protected - caller must protect or preserve it.
 pub fn build_levels_sexp(levels: &[&str]) -> SEXP {
     unsafe {
         let sexp = Rf_allocVector(SEXPTYPE::STRSXP, levels.len() as isize);
         for (i, level) in levels.iter().enumerate() {
-            let charsxp =
-                Rf_mkCharLenCE(level.as_ptr().cast(), level.len() as i32, cetype_t::CE_UTF8);
-            SET_STRING_ELT(sexp, i as isize, charsxp);
+            // Install as symbol - symbols and their PRINTNAMEs are never GC'd
+            let c_str = CString::new(*level).expect("level name contains null byte");
+            let sym = Rf_install(c_str.as_ptr());
+            SET_STRING_ELT(sexp, i as isize, PRINTNAME(sym));
         }
         sexp
     }
 }
 
-/// Build a levels STRSXP from level names and preserve it from GC.
-///
-/// This is intended for use in `OnceLock` caches - call once and store the result.
-/// The returned SEXP is protected via `R_PreserveObject` and will never be collected.
-pub fn build_levels_sexp_preserved(levels: &[&str]) -> SEXP {
+/// Build a levels STRSXP and preserve it permanently (for caching).
+pub fn build_levels_sexp_cached(levels: &[&str]) -> SEXP {
     unsafe {
         let sexp = build_levels_sexp(levels);
         crate::preserve::insert(sexp);
@@ -162,79 +102,148 @@ pub fn build_levels_sexp_preserved(levels: &[&str]) -> SEXP {
     }
 }
 
-/// Build a factor SEXP from indices and level names.
-///
-/// # Arguments
-///
-/// * `indices` - 1-based integer indices (use NA_INTEGER for NA)
-/// * `levels` - Level names
-pub fn build_factor(indices: &[i32], levels: &[&str]) -> SEXP {
-    build_factor_with_levels(indices, build_levels_sexp(levels))
-}
-
-/// Build a factor SEXP from indices and a pre-built levels STRSXP.
-///
-/// # Arguments
-///
-/// * `indices` - 1-based integer indices (use NA_INTEGER for NA)
-/// * `levels_sexp` - Pre-built STRSXP containing level names
-///
-/// This is more efficient when the levels SEXP is cached and reused.
-pub fn build_factor_with_levels(indices: &[i32], levels_sexp: SEXP) -> SEXP {
+/// Build a factor SEXP from indices and a levels STRSXP.
+pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
     unsafe {
         let sexp = Rf_allocVector(SEXPTYPE::INTSXP, indices.len() as isize);
         let ptr = INTEGER(sexp);
         std::ptr::copy_nonoverlapping(indices.as_ptr(), ptr, indices.len());
-
-        // Set levels attribute
-        Rf_setAttrib(sexp, R_LevelsSymbol, levels_sexp);
-
-        // Set class attribute to "factor"
+        Rf_setAttrib(sexp, R_LevelsSymbol, levels);
         Rf_setAttrib(sexp, R_ClassSymbol, factor_class_sexp());
-
         sexp
     }
 }
 
-/// Validate that a SEXP is a factor with expected levels.
+// =============================================================================
+// FactorRef - view into an R factor's data
+// =============================================================================
+
+/// A borrowed view into an R factor's integer indices.
 ///
-/// Returns an error if:
-/// - The SEXP is not a factor
-/// - The levels don't match expected (order-sensitive)
-pub fn validate_factor_levels(sexp: SEXP, expected_levels: &[&str]) -> Result<(), SexpError> {
-    // Check it's a factor
-    if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
-        return Err(SexpError::InvalidValue(
-            "expected a factor, got non-factor".into(),
-        ));
+/// Provides `Deref` to `&[i32]` for direct slice access to the factor's
+/// underlying integer data. The indices are 1-based (matching R's convention)
+/// with `NA_INTEGER` for missing values.
+///
+/// # Example
+///
+/// ```ignore
+/// let factor_ref = FactorRef::try_from_sexp(sexp)?;
+/// for &idx in factor_ref.iter() {
+///     if idx == NA_INTEGER {
+///         println!("NA");
+///     } else {
+///         println!("level index: {}", idx);
+///     }
+/// }
+/// ```
+pub struct FactorRef<'a> {
+    indices: &'a [i32],
+    levels_sexp: SEXP,
+    _marker: PhantomData<&'a ()>,
+}
+
+impl<'a> FactorRef<'a> {
+    /// Create a FactorRef from a factor SEXP.
+    ///
+    /// Returns an error if the SEXP is not a factor.
+    pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
+        if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+            return Err(SexpError::InvalidValue("expected a factor".into()));
+        }
+
+        let len = unsafe { Rf_xlength(sexp) } as usize;
+        let ptr = unsafe { INTEGER(sexp) };
+        let indices = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+
+        Ok(Self {
+            indices,
+            levels_sexp,
+            _marker: PhantomData,
+        })
     }
 
-    // Get and validate levels
+    /// Number of elements in the factor.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    /// Whether the factor is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.indices.is_empty()
+    }
+
+    /// The levels STRSXP.
+    #[inline]
+    pub fn levels_sexp(&self) -> SEXP {
+        self.levels_sexp
+    }
+
+    /// Number of levels.
+    #[inline]
+    pub fn n_levels(&self) -> usize {
+        unsafe { Rf_xlength(self.levels_sexp) as usize }
+    }
+
+    /// Get level string at 0-based index.
+    #[inline]
+    pub fn level(&self, idx: usize) -> &'a str {
+        let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
+        unsafe { charsxp_to_str(charsxp) }
+    }
+}
+
+impl Deref for FactorRef<'_> {
+    type Target = [i32];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.indices
+    }
+}
+
+impl<'a> TryFromSexp for FactorRef<'a> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_new(sexp)
+    }
+}
+
+// =============================================================================
+// Validation helper
+// =============================================================================
+
+/// Validate that a factor has the expected levels.
+pub fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<(), SexpError> {
+    if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+        return Err(SexpError::InvalidValue("expected a factor".into()));
+    }
+
     let levels = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
     if levels.type_of() != SEXPTYPE::STRSXP {
-        return Err(SexpError::InvalidValue(
-            "factor levels attribute is not a character vector".into(),
-        ));
+        return Err(SexpError::InvalidValue("levels is not STRSXP".into()));
     }
 
-    let n_levels = unsafe { Rf_xlength(levels) } as usize;
-    if n_levels != expected_levels.len() {
+    let n = unsafe { Rf_xlength(levels) } as usize;
+    if n != expected.len() {
         return Err(SexpError::InvalidValue(format!(
-            "factor has {} levels, expected {}",
-            n_levels,
-            expected_levels.len()
+            "expected {} levels, got {}",
+            expected.len(),
+            n
         )));
     }
 
-    // Validate each level matches
-    for (i, expected) in expected_levels.iter().enumerate() {
+    for (i, exp) in expected.iter().enumerate() {
         let charsxp = unsafe { STRING_ELT(levels, i as isize) };
         let actual = unsafe { charsxp_to_str(charsxp) };
-        if actual != *expected {
+        if actual != *exp {
             return Err(SexpError::InvalidValue(format!(
-                "level {} mismatch: expected '{}', got '{}'",
+                "level {}: expected '{}', got '{}'",
                 i + 1,
-                expected,
+                exp,
                 actual
             )));
         }
@@ -244,103 +253,33 @@ pub fn validate_factor_levels(sexp: SEXP, expected_levels: &[&str]) -> Result<()
 }
 
 // =============================================================================
-// Conversion helpers
+// Conversion helpers (used by derive macro)
 // =============================================================================
 
-/// Convert a single RFactor value to an R factor SEXP.
-///
-/// Note: This allocates fresh level strings on each call. The `#[derive(RFactor)]`
-/// macro generates an `IntoR` implementation with cached levels for better performance.
-/// This function is primarily for manual `RFactor` implementations.
-#[inline]
-pub fn factor_to_sexp<T: RFactor>(value: T) -> SEXP {
-    let idx = value.to_level_index();
-    build_factor(&[idx], T::LEVELS)
-}
-
-/// Convert a Vec of RFactor values to an R factor SEXP.
-#[inline]
-pub fn factor_vec_to_sexp<T: RFactor>(values: &[T]) -> SEXP {
-    let indices: Vec<i32> = values.iter().map(|v| v.to_level_index()).collect();
-    build_factor(&indices, T::LEVELS)
-}
-
-/// Convert a Vec of Option<RFactor> values to an R factor SEXP.
-#[inline]
-pub fn factor_option_vec_to_sexp<T: RFactor>(values: &[Option<T>]) -> SEXP {
-    let indices: Vec<i32> = values
-        .iter()
-        .map(|v| match v {
-            Some(val) => val.to_level_index(),
-            None => NA_INTEGER,
-        })
-        .collect();
-    build_factor(&indices, T::LEVELS)
-}
-
-/// Convert an R factor SEXP to a single RFactor value.
-///
-/// This is used by the derive macro to implement TryFromSexp.
+/// Convert an R factor SEXP to a single enum value.
 #[inline]
 pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
-    // Validate factor structure
     validate_factor_levels(sexp, T::LEVELS)?;
 
-    // Check length
     let len = unsafe { Rf_xlength(sexp) };
     if len != 1 {
         return Err(SexpError::InvalidValue(format!(
-            "expected factor of length 1, got length {}",
+            "expected length 1, got {}",
             len
         )));
     }
 
-    // Get index
     let idx = unsafe { INTEGER_ELT(sexp, 0) };
     if idx == NA_INTEGER {
-        return Err(SexpError::InvalidValue(
-            "NA value in non-Option factor".into(),
-        ));
+        return Err(SexpError::InvalidValue("unexpected NA".into()));
     }
 
-    T::from_level_index(idx)
-        .ok_or_else(|| SexpError::InvalidValue(format!("factor index {} out of range", idx)))
+    T::from_level_index(idx).ok_or_else(|| SexpError::InvalidValue("index out of range".into()))
 }
 
-/// Convert an R factor SEXP to an Option<RFactor> value.
-///
-/// This is used by the derive macro to implement TryFromSexp for Option<T>.
-#[inline]
-pub fn factor_option_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Option<T>, SexpError> {
-    // Validate factor structure
-    validate_factor_levels(sexp, T::LEVELS)?;
-
-    // Check length
-    let len = unsafe { Rf_xlength(sexp) };
-    if len != 1 {
-        return Err(SexpError::InvalidValue(format!(
-            "expected factor of length 1, got length {}",
-            len
-        )));
-    }
-
-    // Get index
-    let idx = unsafe { INTEGER_ELT(sexp, 0) };
-    if idx == NA_INTEGER {
-        return Ok(None);
-    }
-
-    T::from_level_index(idx)
-        .map(Some)
-        .ok_or_else(|| SexpError::InvalidValue(format!("factor index {} out of range", idx)))
-}
-
-/// Convert an R factor SEXP to a Vec<RFactor>.
-///
-/// This is used by the derive macro to implement TryFromSexp for Vec<T>.
+/// Convert an R factor SEXP to a Vec of enum values.
 #[inline]
 pub fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
-    // Validate factor structure
     validate_factor_levels(sexp, T::LEVELS)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
@@ -349,29 +288,20 @@ pub fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError>
     for i in 0..len {
         let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
         if idx == NA_INTEGER {
-            return Err(SexpError::InvalidValue(format!(
-                "NA at index {} in non-Option factor",
-                i
-            )));
+            return Err(SexpError::InvalidValue(format!("NA at index {}", i)));
         }
-        let val = T::from_level_index(idx).ok_or_else(|| {
-            SexpError::InvalidValue(format!(
-                "factor index {} out of range at position {}",
-                idx, i
-            ))
-        })?;
-        result.push(val);
+        result.push(
+            T::from_level_index(idx)
+                .ok_or_else(|| SexpError::InvalidValue("index out of range".into()))?,
+        );
     }
 
     Ok(result)
 }
 
-/// Convert an R factor SEXP to a Vec<Option<RFactor>>.
-///
-/// This is used by the derive macro to implement TryFromSexp for Vec<Option<T>>.
+/// Convert an R factor SEXP to a Vec of Option enum values (NA → None).
 #[inline]
 pub fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError> {
-    // Validate factor structure
     validate_factor_levels(sexp, T::LEVELS)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
@@ -382,13 +312,10 @@ pub fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<Option<
         if idx == NA_INTEGER {
             result.push(None);
         } else {
-            let val = T::from_level_index(idx).ok_or_else(|| {
-                SexpError::InvalidValue(format!(
-                    "factor index {} out of range at position {}",
-                    idx, i
-                ))
-            })?;
-            result.push(Some(val));
+            result.push(Some(
+                T::from_level_index(idx)
+                    .ok_or_else(|| SexpError::InvalidValue("index out of range".into()))?,
+            ));
         }
     }
 
@@ -396,45 +323,18 @@ pub fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<Option<
 }
 
 // =============================================================================
-// Newtype wrappers for ergonomic trait impls
+// Newtype wrappers (for orphan rule workaround)
 // =============================================================================
-//
-// Due to Rust's orphan rules, we cannot implement IntoR for Vec<T: RFactor>
-// because neither IntoR nor Vec is local when the impl is generated by the
-// derive macro in the user's crate. The newtype wrapper approach gives us
-// a local type that can implement IntoR.
 
-use crate::from_r::TryFromSexp;
-use crate::into_r::IntoR;
-
-/// Wrapper for `Vec<T>` that enables `IntoR` and `TryFromSexp` implementations
-/// for factor vectors.
-///
-/// Due to Rust's orphan rules, we cannot implement `IntoR for Vec<T>` where
-/// `T: RFactor`. This newtype wrapper provides ergonomic trait-based conversion.
-///
-/// # Example
-///
-/// ```ignore
-/// use miniextendr_api::{FactorVec, RFactor};
-///
-/// #[derive(Copy, Clone, RFactor)]
-/// enum Color { Red, Green, Blue }
-///
-/// // Convert to R factor using trait method
-/// let colors = FactorVec(vec![Color::Red, Color::Green]);
-/// let sexp = colors.into_sexp();
-/// ```
+/// Wrapper for `Vec<T: RFactor>` enabling `IntoR`/`TryFromSexp`.
 #[derive(Debug, Clone)]
 pub struct FactorVec<T>(pub Vec<T>);
 
 impl<T> FactorVec<T> {
-    /// Create a new FactorVec from a Vec.
     pub fn new(vec: Vec<T>) -> Self {
         Self(vec)
     }
 
-    /// Unwrap into the inner Vec.
     pub fn into_inner(self) -> Vec<T> {
         self.0
     }
@@ -446,9 +346,8 @@ impl<T> From<Vec<T>> for FactorVec<T> {
     }
 }
 
-impl<T> std::ops::Deref for FactorVec<T> {
+impl<T> Deref for FactorVec<T> {
     type Target = Vec<T>;
-
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -462,30 +361,27 @@ impl<T> std::ops::DerefMut for FactorVec<T> {
 
 impl<T: RFactor> IntoR for FactorVec<T> {
     fn into_sexp(self) -> SEXP {
-        factor_vec_to_sexp(&self.0)
+        let indices: Vec<i32> = self.0.iter().map(|v| v.to_level_index()).collect();
+        build_factor(&indices, build_levels_sexp(T::LEVELS))
     }
 }
 
 impl<T: RFactor> TryFromSexp for FactorVec<T> {
     type Error = SexpError;
-
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         factor_vec_from_sexp(sexp).map(FactorVec)
     }
 }
 
-/// Wrapper for `Vec<Option<T>>` that enables `IntoR` and `TryFromSexp`
-/// implementations for factor vectors with NA support.
+/// Wrapper for `Vec<Option<T: RFactor>>` with NA support.
 #[derive(Debug, Clone)]
 pub struct FactorOptionVec<T>(pub Vec<Option<T>>);
 
 impl<T> FactorOptionVec<T> {
-    /// Create a new FactorOptionVec from a Vec.
     pub fn new(vec: Vec<Option<T>>) -> Self {
         Self(vec)
     }
 
-    /// Unwrap into the inner Vec.
     pub fn into_inner(self) -> Vec<Option<T>> {
         self.0
     }
@@ -497,9 +393,8 @@ impl<T> From<Vec<Option<T>>> for FactorOptionVec<T> {
     }
 }
 
-impl<T> std::ops::Deref for FactorOptionVec<T> {
+impl<T> Deref for FactorOptionVec<T> {
     type Target = Vec<Option<T>>;
-
     fn deref(&self) -> &Self::Target {
         &self.0
     }
@@ -513,20 +408,24 @@ impl<T> std::ops::DerefMut for FactorOptionVec<T> {
 
 impl<T: RFactor> IntoR for FactorOptionVec<T> {
     fn into_sexp(self) -> SEXP {
-        factor_option_vec_to_sexp(&self.0)
+        let indices: Vec<i32> = self
+            .0
+            .iter()
+            .map(|v| v.map_or(NA_INTEGER, |x| x.to_level_index()))
+            .collect();
+        build_factor(&indices, build_levels_sexp(T::LEVELS))
     }
 }
 
 impl<T: RFactor> TryFromSexp for FactorOptionVec<T> {
     type Error = SexpError;
-
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         factor_option_vec_from_sexp(sexp).map(FactorOptionVec)
     }
 }
 
 // =============================================================================
-// Unit tests
+// Tests
 // =============================================================================
 
 #[cfg(test)]

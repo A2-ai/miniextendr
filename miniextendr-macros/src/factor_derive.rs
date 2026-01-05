@@ -181,14 +181,15 @@ pub fn derive_r_factor(input: DeriveInput) -> syn::Result<TokenStream> {
         impl #impl_generics ::miniextendr_api::IntoR for #name #ty_generics #where_clause {
             fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
                 // Cache the levels STRSXP - allocated once and preserved from GC.
+                // CHARSXPs use symbol PRINTNAMEs for permanent protection.
                 static LEVELS_CACHE: ::std::sync::OnceLock<::miniextendr_api::ffi::SEXP> =
                     ::std::sync::OnceLock::new();
                 let levels = *LEVELS_CACHE.get_or_init(|| {
-                    ::miniextendr_api::build_levels_sexp_preserved(
+                    ::miniextendr_api::build_levels_sexp_cached(
                         <Self as ::miniextendr_api::RFactor>::LEVELS
                     )
                 });
-                ::miniextendr_api::build_factor_with_levels(&[self.to_level_index()], levels)
+                ::miniextendr_api::build_factor(&[self.to_level_index()], levels)
             }
         }
 

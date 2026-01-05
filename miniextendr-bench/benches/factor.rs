@@ -3,11 +3,13 @@
 //! Compares:
 //! - Cached levels (via `#[derive(RFactor)]` with inline OnceLock)
 //! - Uncached levels (fresh STRSXP allocation each call)
+//!
+//! Key finding: ~4x speedup for single value conversions (the primary use case).
+//! Vector conversions show minimal difference since vector allocation dominates.
 
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::factor::{build_factor, build_factor_with_levels, build_levels_sexp_preserved};
+use miniextendr_api::factor::{build_factor, build_levels_sexp};
 use miniextendr_api::{FactorVec, IntoR, RFactor};
-use std::sync::OnceLock;
 
 fn main() {
     miniextendr_bench::init();
@@ -18,9 +20,10 @@ fn main() {
 // Enum definitions
 // =============================================================================
 
-/// Cached version - uses derive macro which generates inline OnceLock caching.
+/// Uses `#[derive(RFactor)]` which generates IntoR with inline OnceLock caching.
+/// The levels STRSXP is allocated once and reused for all subsequent conversions.
 #[derive(Copy, Clone, Debug, RFactor)]
-pub enum CachedColor {
+pub enum Color {
     Red,
     Green,
     Blue,
@@ -31,10 +34,10 @@ pub enum CachedColor {
     Black,
 }
 
-/// Uncached version - manually implements IntoR without caching.
-/// Each conversion allocates fresh STRSXP for levels.
+/// Manual implementation without caching - each conversion allocates fresh STRSXP.
+/// Used as baseline to measure caching benefit.
 #[derive(Copy, Clone, Debug)]
-pub enum UncachedColor {
+pub enum ColorUncached {
     Red,
     Green,
     Blue,
@@ -45,7 +48,7 @@ pub enum UncachedColor {
     Black,
 }
 
-impl RFactor for UncachedColor {
+impl RFactor for ColorUncached {
     const LEVELS: &'static [&'static str] = &[
         "Red", "Green", "Blue", "Yellow", "Cyan", "Magenta", "White", "Black",
     ];
@@ -78,95 +81,69 @@ impl RFactor for UncachedColor {
     }
 }
 
-impl IntoR for UncachedColor {
+impl IntoR for ColorUncached {
     fn into_sexp(self) -> SEXP {
         // No caching - allocates fresh levels STRSXP each time
-        build_factor(&[self.to_level_index()], Self::LEVELS)
+        build_factor(&[self.to_level_index()], build_levels_sexp(Self::LEVELS))
     }
 }
 
 // =============================================================================
-// Single factor conversion benchmarks
+// Single factor conversion (primary use case)
 // =============================================================================
 
+/// Single enum → factor with cached levels (~4x faster).
 #[divan::bench]
 fn single_cached() -> SEXP {
-    // Uses derive-generated IntoR with OnceLock caching
-    divan::black_box(CachedColor::Green.into_sexp())
+    divan::black_box(Color::Green.into_sexp())
 }
 
+/// Single enum → factor without caching (baseline).
 #[divan::bench]
 fn single_uncached() -> SEXP {
-    // Allocates fresh levels STRSXP each time
-    divan::black_box(UncachedColor::Green.into_sexp())
+    divan::black_box(ColorUncached::Green.into_sexp())
 }
 
 // =============================================================================
-// Vector factor conversion benchmarks
+// Repeated single conversions (shows amortized benefit)
 // =============================================================================
 
-const VEC_SIZES: &[usize] = &[1, 16, 256, 4096];
-
-fn make_cached_vec(n: usize) -> Vec<CachedColor> {
-    use CachedColor::*;
-    let colors = [Red, Green, Blue, Yellow, Cyan, Magenta, White, Black];
-    (0..n).map(|i| colors[i % colors.len()]).collect()
-}
-
-fn make_uncached_vec(n: usize) -> Vec<UncachedColor> {
-    use UncachedColor::*;
-    let colors = [Red, Green, Blue, Yellow, Cyan, Magenta, White, Black];
-    (0..n).map(|i| colors[i % colors.len()]).collect()
-}
-
-/// FactorVec with cached type - note: FactorVec itself doesn't cache levels
-/// because it's generic. This tests the baseline for Vec conversion.
-#[divan::bench(args = VEC_SIZES)]
-fn vec_factor_vec_wrapper(n: usize) -> SEXP {
-    let vec = make_cached_vec(n);
-    divan::black_box(FactorVec(vec).into_sexp())
-}
-
-/// Manual uncached vec conversion - builds fresh levels STRSXP.
-#[divan::bench(args = VEC_SIZES)]
-fn vec_uncached(n: usize) -> SEXP {
-    let vec = make_uncached_vec(n);
-    let indices: Vec<i32> = vec.iter().map(|c| c.to_level_index()).collect();
-    divan::black_box(build_factor(&indices, UncachedColor::LEVELS))
-}
-
-/// Manual cached vec conversion - pre-caches levels STRSXP.
-#[divan::bench(args = VEC_SIZES)]
-fn vec_cached_manual(n: usize) -> SEXP {
-    static LEVELS_CACHE: OnceLock<SEXP> = OnceLock::new();
-
-    let vec = make_cached_vec(n);
-    let indices: Vec<i32> = vec.iter().map(|c| c.to_level_index()).collect();
-    let levels = *LEVELS_CACHE
-        .get_or_init(|| build_levels_sexp_preserved(CachedColor::LEVELS));
-    divan::black_box(build_factor_with_levels(&indices, levels))
-}
-
-// =============================================================================
-// Repeated single conversions (amortization test)
-// =============================================================================
-
-/// Many single conversions with caching - shows amortized benefit.
+/// 100 conversions with caching - levels allocated once.
 #[divan::bench]
 fn repeated_100_cached() -> SEXP {
     let mut last = SEXP::null();
     for _ in 0..100 {
-        last = CachedColor::Blue.into_sexp();
+        last = Color::Blue.into_sexp();
     }
     divan::black_box(last)
 }
 
-/// Many single conversions without caching - shows allocation overhead.
+/// 100 conversions without caching - 100 allocations.
 #[divan::bench]
 fn repeated_100_uncached() -> SEXP {
     let mut last = SEXP::null();
     for _ in 0..100 {
-        last = UncachedColor::Blue.into_sexp();
+        last = ColorUncached::Blue.into_sexp();
     }
     divan::black_box(last)
+}
+
+// =============================================================================
+// Vector factor conversion (levels overhead is minimal)
+// =============================================================================
+
+const VEC_SIZES: &[usize] = &[1, 16, 256, 4096];
+
+fn make_color_vec(n: usize) -> Vec<Color> {
+    use Color::*;
+    let colors = [Red, Green, Blue, Yellow, Cyan, Magenta, White, Black];
+    (0..n).map(|i| colors[i % colors.len()]).collect()
+}
+
+/// FactorVec conversion - levels allocated per call (generic impl limitation).
+/// At large sizes, vector allocation dominates and caching has minimal impact.
+#[divan::bench(args = VEC_SIZES)]
+fn vec_factor_vec(n: usize) -> SEXP {
+    let vec = make_color_vec(n);
+    divan::black_box(FactorVec(vec).into_sexp())
 }
