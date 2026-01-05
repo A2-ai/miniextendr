@@ -31,11 +31,9 @@ impl TryFromSexp for BigInt {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or_else(|| {
-            SexpError::Na(SexpNaError {
-                sexp_type: SEXPTYPE::STRSXP,
-            })
-        })?;
+        let s = s.ok_or(SexpError::Na(SexpNaError {
+            sexp_type: SEXPTYPE::STRSXP,
+        }))?;
         parse_bigint(&s)
     }
 }
@@ -45,11 +43,9 @@ impl TryFromSexp for BigUint {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-        let s = s.ok_or_else(|| {
-            SexpError::Na(SexpNaError {
-                sexp_type: SEXPTYPE::STRSXP,
-            })
-        })?;
+        let s = s.ok_or(SexpError::Na(SexpNaError {
+            sexp_type: SEXPTYPE::STRSXP,
+        }))?;
         parse_biguint(&s)
     }
 }
@@ -86,11 +82,9 @@ impl TryFromSexp for Vec<BigInt> {
         values
             .into_iter()
             .map(|opt| {
-                let s = opt.ok_or_else(|| {
-                    SexpError::Na(SexpNaError {
-                        sexp_type: SEXPTYPE::STRSXP,
-                    })
-                })?;
+                let s = opt.ok_or(SexpError::Na(SexpNaError {
+                    sexp_type: SEXPTYPE::STRSXP,
+                }))?;
                 parse_bigint(&s)
             })
             .collect()
@@ -105,11 +99,9 @@ impl TryFromSexp for Vec<BigUint> {
         values
             .into_iter()
             .map(|opt| {
-                let s = opt.ok_or_else(|| {
-                    SexpError::Na(SexpNaError {
-                        sexp_type: SEXPTYPE::STRSXP,
-                    })
-                })?;
+                let s = opt.ok_or(SexpError::Na(SexpNaError {
+                    sexp_type: SEXPTYPE::STRSXP,
+                }))?;
                 parse_biguint(&s)
             })
             .collect()

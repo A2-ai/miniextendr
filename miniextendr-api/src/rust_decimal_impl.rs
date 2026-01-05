@@ -72,31 +72,25 @@ impl TryFromSexp for Decimal {
             SEXPTYPE::REALSXP => {
                 // Numeric fast path (may lose precision for large values)
                 let f: Option<f64> = TryFromSexp::try_from_sexp(sexp)?;
-                let f = f.ok_or_else(|| {
-                    SexpError::Na(SexpNaError {
-                        sexp_type: SEXPTYPE::REALSXP,
-                    })
-                })?;
+                let f = f.ok_or(SexpError::Na(SexpNaError {
+                    sexp_type: SEXPTYPE::REALSXP,
+                }))?;
                 decimal_from_f64(f)
             }
             SEXPTYPE::INTSXP => {
                 // Integer path (lossless for i32 range)
                 let i: Option<i32> = TryFromSexp::try_from_sexp(sexp)?;
-                let i = i.ok_or_else(|| {
-                    SexpError::Na(SexpNaError {
-                        sexp_type: SEXPTYPE::INTSXP,
-                    })
-                })?;
+                let i = i.ok_or(SexpError::Na(SexpNaError {
+                    sexp_type: SEXPTYPE::INTSXP,
+                }))?;
                 Ok(Decimal::from(i))
             }
             _ => {
                 // Character path (lossless)
                 let s: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
-                let s = s.ok_or_else(|| {
-                    SexpError::Na(SexpNaError {
-                        sexp_type: SEXPTYPE::STRSXP,
-                    })
-                })?;
+                let s = s.ok_or(SexpError::Na(SexpNaError {
+                    sexp_type: SEXPTYPE::STRSXP,
+                }))?;
                 parse_decimal(&s)
             }
         }
@@ -140,11 +134,9 @@ impl TryFromSexp for Vec<Decimal> {
                 values
                     .into_iter()
                     .map(|opt| {
-                        let f = opt.ok_or_else(|| {
-                            SexpError::Na(SexpNaError {
-                                sexp_type: SEXPTYPE::REALSXP,
-                            })
-                        })?;
+                        let f = opt.ok_or(SexpError::Na(SexpNaError {
+                            sexp_type: SEXPTYPE::REALSXP,
+                        }))?;
                         decimal_from_f64(f)
                     })
                     .collect()
@@ -154,11 +146,9 @@ impl TryFromSexp for Vec<Decimal> {
                 values
                     .into_iter()
                     .map(|opt| {
-                        let i = opt.ok_or_else(|| {
-                            SexpError::Na(SexpNaError {
-                                sexp_type: SEXPTYPE::INTSXP,
-                            })
-                        })?;
+                        let i = opt.ok_or(SexpError::Na(SexpNaError {
+                            sexp_type: SEXPTYPE::INTSXP,
+                        }))?;
                         Ok(Decimal::from(i))
                     })
                     .collect()
@@ -168,11 +158,9 @@ impl TryFromSexp for Vec<Decimal> {
                 values
                     .into_iter()
                     .map(|opt| {
-                        let s = opt.ok_or_else(|| {
-                            SexpError::Na(SexpNaError {
-                                sexp_type: SEXPTYPE::STRSXP,
-                            })
-                        })?;
+                        let s = opt.ok_or(SexpError::Na(SexpNaError {
+                            sexp_type: SEXPTYPE::STRSXP,
+                        }))?;
                         parse_decimal(&s)
                     })
                     .collect()

@@ -255,7 +255,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             for k in 0..d2 {
                 for j in 0..d1 {
                     for i in 0..d0 {
-                        v.push(self[[i, j, k]].clone());
+                        v.push(self[[i, j, k]]);
                     }
                 }
             }
@@ -266,7 +266,7 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
             for k in 0..d2 {
                 for j in 0..d1 {
                     for i in 0..d0 {
-                        v.push(self[[i, j, k]].clone());
+                        v.push(self[[i, j, k]]);
                     }
                 }
             }
@@ -353,7 +353,7 @@ impl<T: RNativeType + Clone> IntoR for ArrayD<T> {
             // Use ndarray's built-in Fortran-order iteration
             // by creating indices in column-major order
             fortran_order_iter(&shape, |idx| {
-                v.push(self[IxDyn(&idx)].clone());
+                v.push(self[IxDyn(&idx)]);
             });
             v
         };

@@ -67,7 +67,7 @@ use crate::into_r::IntoR;
 // Helper functions
 // =============================================================================
 
-/// Parse a TOML string into a `TomlValue`.
+/// Parse a TOML document string into a `TomlValue`.
 ///
 /// # Errors
 ///
@@ -79,8 +79,12 @@ use crate::into_r::IntoR;
 /// let value = toml_from_str("[package]\nname = \"my-pkg\"")?;
 /// ```
 pub fn toml_from_str(s: &str) -> Result<TomlValue, SexpError> {
-    s.parse::<TomlValue>()
-        .map_err(|e| SexpError::InvalidValue(format!("invalid TOML: {}", e)))
+    // In toml 0.9+, Value::from_str expects a single value literal, not a document.
+    // To parse a document with key-value pairs, we parse into Table and convert.
+    let table: toml::Table = s
+        .parse()
+        .map_err(|e: toml::de::Error| SexpError::InvalidValue(format!("invalid TOML: {}", e)))?;
+    Ok(TomlValue::Table(table))
 }
 
 /// Serialize a `TomlValue` to a TOML string.
@@ -481,10 +485,7 @@ mod tests {
 
     #[test]
     fn test_toml_from_str_simple() {
-        let toml_str = r#"
-            name = "test"
-            value = 42
-        "#;
+        let toml_str = "name = \"test\"\nvalue = 42";
         let value = toml_from_str(toml_str).unwrap();
         assert!(value.is_table());
     }
@@ -546,10 +547,7 @@ mod tests {
 
     #[test]
     fn test_adapter_trait_table() {
-        let toml_str = r#"
-            alpha = 1
-            beta = 2
-        "#;
+        let toml_str = "alpha = 1\nbeta = 2";
         let value = toml_from_str(toml_str).unwrap();
         assert!(RTomlOps::is_table(&value));
         let keys = RTomlOps::table_keys(&value);

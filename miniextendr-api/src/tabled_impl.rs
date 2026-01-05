@@ -179,7 +179,10 @@ pub fn table_to_string_styled<T: Tabled>(rows: &[T], style: &str) -> String {
         "blank" => {
             table.with(Style::blank());
         }
-        "ascii" | _ => {
+        "ascii" => {
+            table.with(Style::ascii());
+        }
+        _ => {
             table.with(Style::ascii());
         }
     }

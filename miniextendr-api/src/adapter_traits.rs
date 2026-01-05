@@ -649,9 +649,7 @@ pub trait RIterator {
             return None;
         }
         for _ in 0..n {
-            if self.next().is_none() {
-                return None;
-            }
+            self.next()?;
         }
         self.next()
     }
@@ -733,6 +731,13 @@ pub trait RExtend<T> {
     /// Optional - returns -1 if not implemented.
     fn len(&self) -> i64 {
         -1 // Indicates "unknown" - implementers can override
+    }
+
+    /// Check if the collection is empty.
+    ///
+    /// Returns false when length is unknown.
+    fn is_empty(&self) -> bool {
+        self.len() == 0
     }
 }
 
@@ -1053,8 +1058,8 @@ mod tests {
         let result: Option<i32> = RFromStr::from_str("42");
         assert_eq!(result, Some(42));
 
-        let result: Option<f64> = RFromStr::from_str("std::f64::consts::PI");
-        assert_eq!(result, Some(std::f64::consts::PI));
+        let result: Option<f64> = RFromStr::from_str("3.141592653589793");
+        assert_eq!(result, Some(3.141592653589793));
 
         let result: Option<bool> = RFromStr::from_str("true");
         assert_eq!(result, Some(true));

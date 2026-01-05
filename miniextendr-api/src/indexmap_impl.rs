@@ -100,7 +100,7 @@ where
                     } else {
                         let name_str = unsafe { std::ffi::CStr::from_ptr(c_str) };
                         match name_str.to_str() {
-                            Ok(s) if s.is_empty() => format!("V{}", i + 1),
+                            Ok("") => format!("V{}", i + 1),
                             Ok(s) => s.to_owned(),
                             Err(_) => format!("V{}", i + 1),
                         }

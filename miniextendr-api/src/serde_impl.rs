@@ -292,7 +292,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
         SEXPTYPE::REALSXP => {
             if len == 1 {
                 let val = unsafe { REAL_ELT(sexp, 0) };
-                return real_to_json(val, strict, permissive);
+                real_to_json(val, strict, permissive)
             } else {
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {

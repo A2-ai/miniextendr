@@ -224,6 +224,7 @@ use ordered_float::FloatCore;
 /// ```
 pub trait ROrderedFloatOps {
     /// Get the inner float value.
+    #[allow(clippy::wrong_self_convention)]
     fn into_inner(&self) -> f64;
 
     /// Check if the value is NaN.

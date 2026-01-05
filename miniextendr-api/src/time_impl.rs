@@ -121,16 +121,16 @@ impl IntoR for OffsetDateTime {
             // Set class = c("POSIXct", "POSIXt")
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
-            let posixct = Rf_mkCharLenCE("POSIXct\0".as_ptr().cast(), 7, CE_UTF8);
-            let posixt = Rf_mkCharLenCE("POSIXt\0".as_ptr().cast(), 6, CE_UTF8);
+            let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
+            let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
             SET_STRING_ELT(class_vec, 0, posixct);
             SET_STRING_ELT(class_vec, 1, posixt);
-            let class_sym = Rf_install("class\0".as_ptr().cast());
+            let class_sym = Rf_install(c"class".as_ptr());
             Rf_setAttrib(vec, class_sym, class_vec);
 
             // Set tzone = "UTC" (we always output as UTC)
-            let tzone = Rf_mkString("UTC\0".as_ptr().cast());
-            let tzone_sym = Rf_install("tzone\0".as_ptr().cast());
+            let tzone = Rf_mkString(c"UTC".as_ptr());
+            let tzone_sym = Rf_install(c"tzone".as_ptr());
             Rf_setAttrib(vec, tzone_sym, tzone);
 
             Rf_unprotect(2);
@@ -191,15 +191,15 @@ impl IntoR for Option<OffsetDateTime> {
                 // Set class = c("POSIXct", "POSIXt")
                 let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
                 Rf_protect(class_vec);
-                let posixct = Rf_mkCharLenCE("POSIXct\0".as_ptr().cast(), 7, CE_UTF8);
-                let posixt = Rf_mkCharLenCE("POSIXt\0".as_ptr().cast(), 6, CE_UTF8);
+                let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
+                let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
                 SET_STRING_ELT(class_vec, 0, posixct);
                 SET_STRING_ELT(class_vec, 1, posixt);
-                let class_sym = Rf_install("class\0".as_ptr().cast());
+                let class_sym = Rf_install(c"class".as_ptr());
                 Rf_setAttrib(vec, class_sym, class_vec);
 
-                let tzone = Rf_mkString("UTC\0".as_ptr().cast());
-                let tzone_sym = Rf_install("tzone\0".as_ptr().cast());
+                let tzone = Rf_mkString(c"UTC".as_ptr());
+                let tzone_sym = Rf_install(c"tzone".as_ptr());
                 Rf_setAttrib(vec, tzone_sym, tzone);
 
                 Rf_unprotect(2);
@@ -271,15 +271,15 @@ impl IntoR for Vec<OffsetDateTime> {
             // Set class = c("POSIXct", "POSIXt")
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
-            let posixct = Rf_mkCharLenCE("POSIXct\0".as_ptr().cast(), 7, CE_UTF8);
-            let posixt = Rf_mkCharLenCE("POSIXt\0".as_ptr().cast(), 6, CE_UTF8);
+            let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
+            let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
             SET_STRING_ELT(class_vec, 0, posixct);
             SET_STRING_ELT(class_vec, 1, posixt);
-            let class_sym = Rf_install("class\0".as_ptr().cast());
+            let class_sym = Rf_install(c"class".as_ptr());
             Rf_setAttrib(vec, class_sym, class_vec);
 
-            let tzone = Rf_mkString("UTC\0".as_ptr().cast());
-            let tzone_sym = Rf_install("tzone\0".as_ptr().cast());
+            let tzone = Rf_mkString(c"UTC".as_ptr());
+            let tzone_sym = Rf_install(c"tzone".as_ptr());
             Rf_setAttrib(vec, tzone_sym, tzone);
 
             Rf_unprotect(2);
@@ -354,15 +354,15 @@ impl IntoR for Vec<Option<OffsetDateTime>> {
             // Set class = c("POSIXct", "POSIXt")
             let class_vec = Rf_allocVector(SEXPTYPE::STRSXP, 2);
             Rf_protect(class_vec);
-            let posixct = Rf_mkCharLenCE("POSIXct\0".as_ptr().cast(), 7, CE_UTF8);
-            let posixt = Rf_mkCharLenCE("POSIXt\0".as_ptr().cast(), 6, CE_UTF8);
+            let posixct = Rf_mkCharLenCE(c"POSIXct".as_ptr(), 7, CE_UTF8);
+            let posixt = Rf_mkCharLenCE(c"POSIXt".as_ptr(), 6, CE_UTF8);
             SET_STRING_ELT(class_vec, 0, posixct);
             SET_STRING_ELT(class_vec, 1, posixt);
-            let class_sym = Rf_install("class\0".as_ptr().cast());
+            let class_sym = Rf_install(c"class".as_ptr());
             Rf_setAttrib(vec, class_sym, class_vec);
 
-            let tzone = Rf_mkString("UTC\0".as_ptr().cast());
-            let tzone_sym = Rf_install("tzone\0".as_ptr().cast());
+            let tzone = Rf_mkString(c"UTC".as_ptr());
+            let tzone_sym = Rf_install(c"tzone".as_ptr());
             Rf_setAttrib(vec, tzone_sym, tzone);
 
             Rf_unprotect(2);
@@ -422,8 +422,8 @@ impl IntoR for Date {
             *REAL(vec) = days;
 
             // Set class = "Date"
-            let class_sym = Rf_install("class\0".as_ptr().cast());
-            let date_class = Rf_mkString("Date\0".as_ptr().cast());
+            let class_sym = Rf_install(c"class".as_ptr());
+            let date_class = Rf_mkString(c"Date".as_ptr());
             Rf_setAttrib(vec, class_sym, date_class);
 
             Rf_unprotect(1);
@@ -480,8 +480,8 @@ impl IntoR for Option<Date> {
                 Rf_protect(vec);
                 *REAL(vec) = f64::NAN;
 
-                let class_sym = Rf_install("class\0".as_ptr().cast());
-                let date_class = Rf_mkString("Date\0".as_ptr().cast());
+                let class_sym = Rf_install(c"class".as_ptr());
+                let date_class = Rf_mkString(c"Date".as_ptr());
                 Rf_setAttrib(vec, class_sym, date_class);
 
                 Rf_unprotect(1);
@@ -547,8 +547,8 @@ impl IntoR for Vec<Date> {
                 *ptr.add(i) = days;
             }
 
-            let class_sym = Rf_install("class\0".as_ptr().cast());
-            let date_class = Rf_mkString("Date\0".as_ptr().cast());
+            let class_sym = Rf_install(c"class".as_ptr());
+            let date_class = Rf_mkString(c"Date".as_ptr());
             Rf_setAttrib(vec, class_sym, date_class);
 
             Rf_unprotect(1);
@@ -617,8 +617,8 @@ impl IntoR for Vec<Option<Date>> {
                 }
             }
 
-            let class_sym = Rf_install("class\0".as_ptr().cast());
-            let date_class = Rf_mkString("Date\0".as_ptr().cast());
+            let class_sym = Rf_install(c"class".as_ptr());
+            let date_class = Rf_mkString(c"Date".as_ptr());
             Rf_setAttrib(vec, class_sym, date_class);
 
             Rf_unprotect(1);

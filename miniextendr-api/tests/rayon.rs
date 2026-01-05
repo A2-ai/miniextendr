@@ -389,15 +389,15 @@ fn test_with_r_array_slabs() {
     let ptr = unsafe { REAL(sexp) };
     let slice = unsafe { std::slice::from_raw_parts(ptr, 24) };
     // Slab 0: elements 0-5 -> values 0,1,2,3,4,5
-    for i in 0..6 {
-        assert_eq!(slice[i], i as f64, "slab 0, element {}", i);
+    for (i, val) in slice.iter().take(6).enumerate() {
+        assert_eq!(*val, i as f64, "slab 0, element {}", i);
     }
     // Slab 1: elements 6-11 -> values 100,101,102,103,104,105
-    for i in 0..6 {
-        assert_eq!(slice[6 + i], (100 + i) as f64, "slab 1, element {}", i);
+    for (i, val) in slice[6..12].iter().enumerate() {
+        assert_eq!(*val, (100 + i) as f64, "slab 1, element {}", i);
     }
     // Slab 3: elements 18-23 -> values 300,301,302,303,304,305
-    for i in 0..6 {
-        assert_eq!(slice[18 + i], (300 + i) as f64, "slab 3, element {}", i);
+    for (i, val) in slice[18..24].iter().enumerate() {
+        assert_eq!(*val, (300 + i) as f64, "slab 3, element {}", i);
     }
 }

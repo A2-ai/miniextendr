@@ -352,10 +352,8 @@ impl std::fmt::Display for REngineError {
         match self {
             REngineError::RHomeNotFound { stderr } => {
                 write!(f, "R_HOME is not set and `R RHOME` could not be resolved")?;
-                if let Some(stderr) = stderr {
-                    if !stderr.is_empty() {
-                        write!(f, "\nstderr: {}", stderr)?;
-                    }
+                if let Some(stderr) = stderr && !stderr.is_empty() {
+                    write!(f, "\nstderr: {}", stderr)?;
                 }
                 Ok(())
             }
