@@ -607,10 +607,22 @@ Standalone adapter traits not needed - use connection framework instead.
   - Blanket impl for all `FromIterator` types
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
-- [ ] Create `RIntoIterator` adapter trait for `IntoIterator`
-  - Returns wrapped `RIterator` from `into_iter()`
-  - Use case: Convert Rust collections into R-iterable objects
-  - Note: Complex due to associated type issues
+- [x] Create `RToVec` adapter trait for collection-to-vector conversion
+  - `r_to_vec(&self) -> Vec<T>` - collect elements by cloning (non-consuming)
+  - `r_len(&self) -> i64` - get element count
+  - `r_is_empty(&self) -> bool` - check if empty
+  - Blanket impl using HRTB for `&C: IntoIterator<Item = &T>` where `T: Clone`
+  - Complement to `RFromIter` (create from vec vs extract to vec)
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+  - Added 4 unit tests
+- [x] Create `RMakeIter` adapter trait for iterator factory
+  - `r_make_iter(&self) -> I` - create new iterator wrapper (I: RIterator)
+  - Use case: Create independent iterators from collections
+  - No blanket impl (requires user-defined iterator type with interior mutability)
+  - Implemented in `miniextendr-api/src/adapter_traits.rs`
+  - Re-exported from crate root
+  - Added 2 unit tests
 
 ==== rand trait adapters (with rand feature) ====
 

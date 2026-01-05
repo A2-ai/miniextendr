@@ -787,6 +787,165 @@ where
     }
 }
 
+/// Adapter trait for collections that can be converted to vectors.
+///
+/// This is the complement to [`RFromIter`]: while `RFromIter` creates collections
+/// from vectors, `RToVec` extracts vectors from collections.
+///
+/// # Methods
+///
+/// - `r_to_vec()` - Collect all elements into a vector (cloning elements)
+/// - `r_len()` - Get the number of elements
+/// - `r_is_empty()` - Check if the collection is empty
+///
+/// # Design Note
+///
+/// Unlike Rust's `IntoIterator::into_iter()` which consumes the collection,
+/// this trait borrows the collection and clones elements. This is necessary
+/// because R's `ExternalPtr` pattern provides `&self`, not owned `self`.
+///
+/// For consuming iteration, use [`RIterator`] with interior mutability.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::collections::HashSet;
+///
+/// #[derive(ExternalPtr)]
+/// struct MySet(HashSet<i32>);
+///
+/// // RToVec is automatically available via blanket impl
+/// #[miniextendr]
+/// impl RToVec<i32> for MySet {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RToVec<i32> for MySet;
+/// }
+/// ```
+///
+/// In R:
+/// ```r
+/// set <- MySet$new(...)
+/// vec <- set$r_to_vec()    # Get all elements as vector
+/// set$r_len()              # Number of elements
+/// set$r_is_empty()         # Check if empty
+/// ```
+pub trait RToVec<T> {
+    /// Collect all elements into a vector.
+    ///
+    /// Elements are cloned from the collection.
+    fn r_to_vec(&self) -> Vec<T>;
+
+    /// Get the number of elements in the collection.
+    fn r_len(&self) -> i64;
+
+    /// Check if the collection is empty.
+    fn r_is_empty(&self) -> bool {
+        self.r_len() == 0
+    }
+}
+
+// Blanket impl for any collection where:
+// - &C can be iterated over (yielding &T references)
+// - T: Clone (so we can clone elements into the Vec)
+// - The iterator knows its exact size
+//
+// Note: Using HRTB (higher-ranked trait bounds) to express that &C
+// can be iterated for any lifetime.
+impl<C, T> RToVec<T> for C
+where
+    T: Clone,
+    for<'a> &'a C: IntoIterator<Item = &'a T>,
+    for<'a> <&'a C as IntoIterator>::IntoIter: ExactSizeIterator,
+{
+    fn r_to_vec(&self) -> Vec<T> {
+        self.into_iter().cloned().collect()
+    }
+
+    fn r_len(&self) -> i64 {
+        self.into_iter().len() as i64
+    }
+}
+
+/// Adapter trait for creating iterator wrappers from collections.
+///
+/// This trait provides a way to create an [`RIterator`] wrapper from a collection.
+/// Since `ExternalPtr` methods receive `&self`, this trait clones the underlying
+/// data to create an independent iterator.
+///
+/// # Type Parameters
+///
+/// - `T`: The element type yielded by the iterator
+/// - `I`: The iterator type returned (must implement [`RIterator`])
+///
+/// # Design Note
+///
+/// The returned iterator is independent from the source collection. Modifications
+/// to the original collection after calling `r_make_iter()` won't affect the
+/// iterator's output.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use std::cell::RefCell;
+///
+/// #[derive(ExternalPtr)]
+/// struct MyVec(Vec<i32>);
+///
+/// #[derive(ExternalPtr)]
+/// struct MyVecIter(RefCell<std::vec::IntoIter<i32>>);
+///
+/// impl RIterator for MyVecIter {
+///     type Item = i32;
+///     fn r_next(&self) -> Option<i32> {
+///         self.0.borrow_mut().next()
+///     }
+///     fn r_size_hint(&self) -> (i64, Option<i64>) {
+///         let (lo, hi) = self.0.borrow().size_hint();
+///         (lo as i64, hi.map(|h| h as i64))
+///     }
+/// }
+///
+/// impl RMakeIter<i32, MyVecIter> for MyVec {
+///     fn r_make_iter(&self) -> MyVecIter {
+///         MyVecIter(RefCell::new(self.0.clone().into_iter()))
+///     }
+/// }
+///
+/// #[miniextendr]
+/// impl RMakeIter<i32, MyVecIter> for MyVec {}
+///
+/// miniextendr_module! {
+///     mod mymodule;
+///     impl RMakeIter<i32, MyVecIter> for MyVec;
+/// }
+/// ```
+///
+/// In R:
+/// ```r
+/// v <- MyVec$new(c(1L, 2L, 3L))
+/// it <- v$r_make_iter()   # Create iterator
+/// it$r_next()             # 1L
+/// it$r_next()             # 2L
+/// v$r_to_vec()            # c(1L, 2L, 3L) - original unchanged
+/// ```
+pub trait RMakeIter<T, I>
+where
+    I: RIterator<Item = T>,
+{
+    /// Create a new iterator wrapper.
+    ///
+    /// The iterator is independent from this collection (typically by cloning
+    /// the underlying data).
+    fn r_make_iter(&self) -> I;
+}
+
+// Note: No blanket impl because:
+// 1. The iterator type I must be a concrete type that implements RIterator
+// 2. RIterator requires interior mutability (RefCell/Mutex)
+// 3. Users must define their own iterator wrapper type
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1137,5 +1296,97 @@ mod tests {
     fn test_rfromiter_empty() {
         let v: Vec<i32> = RFromIter::r_from_vec(vec![]);
         assert!(v.is_empty());
+    }
+
+    // Tests for RToVec
+    #[test]
+    fn test_rtovec_vec() {
+        let v = vec![1, 2, 3];
+        let collected: Vec<i32> = RToVec::r_to_vec(&v);
+        assert_eq!(collected, vec![1, 2, 3]);
+        assert_eq!(RToVec::<i32>::r_len(&v), 3);
+        assert!(!RToVec::<i32>::r_is_empty(&v));
+    }
+
+    #[test]
+    fn test_rtovec_empty() {
+        let v: Vec<i32> = vec![];
+        let collected: Vec<i32> = RToVec::r_to_vec(&v);
+        assert!(collected.is_empty());
+        assert_eq!(RToVec::<i32>::r_len(&v), 0);
+        assert!(RToVec::<i32>::r_is_empty(&v));
+    }
+
+    #[test]
+    fn test_rtovec_hashset() {
+        use std::collections::HashSet;
+        let mut set = HashSet::new();
+        set.insert(1);
+        set.insert(2);
+        set.insert(3);
+
+        let mut collected: Vec<i32> = RToVec::r_to_vec(&set);
+        collected.sort();
+        assert_eq!(collected, vec![1, 2, 3]);
+        assert_eq!(RToVec::<i32>::r_len(&set), 3);
+    }
+
+    #[test]
+    fn test_rtovec_slice() {
+        let arr = [10, 20, 30];
+        let collected: Vec<i32> = RToVec::r_to_vec(&arr);
+        assert_eq!(collected, vec![10, 20, 30]);
+        assert_eq!(RToVec::<i32>::r_len(&arr), 3);
+    }
+
+    // Tests for RMakeIter
+    struct TestCollection(Vec<i32>);
+
+    struct TestCollectionIter(RefCell<std::vec::IntoIter<i32>>);
+
+    impl RIterator for TestCollectionIter {
+        type Item = i32;
+
+        fn r_next(&self) -> Option<i32> {
+            self.0.borrow_mut().next()
+        }
+
+        fn r_size_hint(&self) -> (i64, Option<i64>) {
+            let (lo, hi) = self.0.borrow().size_hint();
+            (lo as i64, hi.map(|h| h as i64))
+        }
+    }
+
+    impl RMakeIter<i32, TestCollectionIter> for TestCollection {
+        fn r_make_iter(&self) -> TestCollectionIter {
+            TestCollectionIter(RefCell::new(self.0.clone().into_iter()))
+        }
+    }
+
+    #[test]
+    fn test_rmakeiter_basic() {
+        let coll = TestCollection(vec![1, 2, 3]);
+        let iter = coll.r_make_iter();
+
+        assert_eq!(iter.r_next(), Some(1));
+        assert_eq!(iter.r_next(), Some(2));
+        assert_eq!(iter.r_next(), Some(3));
+        assert_eq!(iter.r_next(), None);
+    }
+
+    #[test]
+    fn test_rmakeiter_independent() {
+        let coll = TestCollection(vec![1, 2, 3]);
+
+        // Create two independent iterators
+        let iter1 = coll.r_make_iter();
+        let iter2 = coll.r_make_iter();
+
+        // Consuming one doesn't affect the other
+        assert_eq!(iter1.r_next(), Some(1));
+        assert_eq!(iter1.r_next(), Some(2));
+
+        assert_eq!(iter2.r_next(), Some(1)); // iter2 starts fresh
+        assert_eq!(iter2.r_size_hint(), (2, Some(2))); // 2 remaining in iter2
     }
 }

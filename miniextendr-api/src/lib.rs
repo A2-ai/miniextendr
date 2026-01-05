@@ -263,7 +263,7 @@ pub use markers::{
 pub mod adapter_traits;
 pub use adapter_traits::{
     RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,
-    RIterator, ROrd, RPartialOrd,
+    RIterator, RMakeIter, ROrd, RPartialOrd, RToVec,
 };
 
 /// This is used to ensure the macros of `miniextendr-macros` treat this crate as a "user crate"
