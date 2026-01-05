@@ -925,7 +925,8 @@ mod tests {
         assert_eq!(formatted, "2024-06-20");
 
         // Test parsing
-        let parsed = <Date as RDateTimeFormat>::parse("2024-06-20", "[year]-[month]-[day]").unwrap();
+        let parsed =
+            <Date as RDateTimeFormat>::parse("2024-06-20", "[year]-[month]-[day]").unwrap();
         assert_eq!(parsed.year(), 2024);
         assert_eq!(parsed.month(), time::Month::June);
         assert_eq!(parsed.day(), 20);
