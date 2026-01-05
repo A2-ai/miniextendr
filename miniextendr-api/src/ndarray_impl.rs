@@ -114,6 +114,75 @@ use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
 
 // =============================================================================
+// Array0 conversions (0-dimensional scalar arrays)
+// =============================================================================
+
+/// Convert R scalar to `Array0<T>`.
+///
+/// R scalars (length-1 vectors) map to 0-dimensional ndarray scalars.
+impl<T: RNativeType + Clone> TryFromSexp for Array0<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        let slice: &[T] = unsafe { sexp.as_slice() };
+        Ok(Array0::from_elem((), slice[0].clone()))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        let slice: &[T] = unsafe { sexp.as_slice_unchecked() };
+        Ok(Array0::from_elem((), slice[0].clone()))
+    }
+}
+
+/// Convert `Array0<T>` to R scalar (length-1 vector).
+impl<T: RNativeType + Clone> IntoR for Array0<T> {
+    fn into_sexp(self) -> SEXP {
+        // Extract the single element and convert to R scalar via Vec
+        vec![self.into_scalar()].into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { vec![self.into_scalar()].into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
 // Array1 conversions
 // =============================================================================
 
@@ -1035,6 +1104,71 @@ fn fortran_order_iter<F: FnMut(Vec<usize>)>(shape: &[usize], mut f: F) {
 }
 
 // =============================================================================
+// ArcArray conversions (shared ownership)
+// =============================================================================
+
+/// Convert R vector to `ArcArray1<T>`.
+///
+/// ArcArray provides shared ownership via Arc, allowing multiple references
+/// to the same array data without copying.
+impl<T: RNativeType + Clone> TryFromSexp for ArcArray1<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let arr: Array1<T> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(arr.into_shared())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let arr: Array1<T> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(arr.into_shared())
+    }
+}
+
+/// Convert `ArcArray1<T>` to R vector.
+impl<T: RNativeType + Clone> IntoR for ArcArray1<T> {
+    fn into_sexp(self) -> SEXP {
+        // Convert to owned array, then to SEXP
+        // If we have unique ownership, this is efficient; otherwise it clones
+        let arr: Array1<T> = self.into_owned();
+        arr.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let arr: Array1<T> = self.into_owned();
+        unsafe { arr.into_sexp_unchecked() }
+    }
+}
+
+/// Convert R matrix to `ArcArray2<T>`.
+impl<T: RNativeType + Clone> TryFromSexp for ArcArray2<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let arr: Array2<T> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(arr.into_shared())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let arr: Array2<T> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(arr.into_shared())
+    }
+}
+
+/// Convert `ArcArray2<T>` to R matrix.
+impl<T: RNativeType + Clone> IntoR for ArcArray2<T> {
+    fn into_sexp(self) -> SEXP {
+        let arr: Array2<T> = self.into_owned();
+        arr.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let arr: Array2<T> = self.into_owned();
+        unsafe { arr.into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
 // Helper functions
 // =============================================================================
 
@@ -1327,7 +1461,8 @@ use crate::rarray::{RArray, RArray3D, RMatrix, RVector};
 impl<'a, T: RNativeType> From<&'a RVector<T>> for ArrayView1<'a, T> {
     #[inline]
     fn from(arr: &'a RVector<T>) -> Self {
-        // SAFETY: RArray is constructed from a valid SEXP and is !Send+!Sync
+        // SAFETY: RArray is constructed from a valid SEXP and is !Send+!Sync.
+        // For 1D, ArrayView1::from(slice) is already optimal.
         let slice = unsafe { arr.as_slice() };
         ArrayView1::from(slice)
     }
@@ -1352,10 +1487,11 @@ impl<'a, T: RNativeType> From<&'a RVector<T>> for ArrayView1<'a, T> {
 impl<'a, T: RNativeType> From<&'a RMatrix<T>> for ArrayView2<'a, T> {
     #[inline]
     fn from(arr: &'a RMatrix<T>) -> Self {
-        // SAFETY: RArray is constructed from a valid SEXP and is !Send+!Sync
+        // SAFETY: RArray is constructed from a valid, type-checked SEXP.
+        // The dims and slice are consistent by R's invariants.
         let slice = unsafe { arr.as_slice() };
         let dims = unsafe { arr.dims() };
-        ArrayView2::from_shape((dims[0], dims[1]).f(), slice).unwrap()
+        unsafe { ArrayView2::from_shape_ptr((dims[0], dims[1]).f(), slice.as_ptr()) }
     }
 }
 
@@ -1365,7 +1501,7 @@ impl<'a, T: RNativeType> From<&'a RArray3D<T>> for ArrayView3<'a, T> {
     fn from(arr: &'a RArray3D<T>) -> Self {
         let slice = unsafe { arr.as_slice() };
         let dims = unsafe { arr.dims() };
-        ArrayView3::from_shape((dims[0], dims[1], dims[2]).f(), slice).unwrap()
+        unsafe { ArrayView3::from_shape_ptr((dims[0], dims[1], dims[2]).f(), slice.as_ptr()) }
     }
 }
 
@@ -1378,7 +1514,7 @@ impl<'a, T: RNativeType, const NDIM: usize> From<&'a RArray<T, NDIM>> for ArrayV
         let slice = unsafe { arr.as_slice() };
         let dims = unsafe { arr.dims() };
         let shape = IxDyn(&dims);
-        ArrayViewD::from_shape(shape.f(), slice).unwrap()
+        unsafe { ArrayViewD::from_shape_ptr(shape.f(), slice.as_ptr()) }
     }
 }
 
