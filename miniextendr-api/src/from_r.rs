@@ -1109,45 +1109,6 @@ impl TryFromSexp for BTreeSet<String> {
 
 use crate::coerce::{Coerced, TryCoerce};
 
-/// Error type for coerced SEXP conversions.
-#[derive(Debug, Clone)]
-pub enum CoercedSexpError {
-    /// Error from the underlying SEXP conversion
-    Sexp(SexpError),
-    /// Error from the coercion step
-    Coerce(String),
-}
-
-impl std::fmt::Display for CoercedSexpError {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            CoercedSexpError::Sexp(e) => write!(f, "SEXP conversion failed: {}", e),
-            CoercedSexpError::Coerce(msg) => write!(f, "coercion failed: {}", msg),
-        }
-    }
-}
-
-impl std::error::Error for CoercedSexpError {
-    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
-        match self {
-            CoercedSexpError::Sexp(e) => Some(e),
-            CoercedSexpError::Coerce(_) => None,
-        }
-    }
-}
-
-impl From<SexpError> for CoercedSexpError {
-    fn from(e: SexpError) -> Self {
-        CoercedSexpError::Sexp(e)
-    }
-}
-
-impl From<SexpTypeError> for CoercedSexpError {
-    fn from(e: SexpTypeError) -> Self {
-        CoercedSexpError::Sexp(e.into())
-    }
-}
-
 /// Convert R value to `Coerced<T, R>` by reading `R` and coercing to `T`.
 ///
 /// This enables reading non-native Rust types from R with coercion:
@@ -1165,17 +1126,17 @@ impl<T, R> TryFromSexp for Coerced<T, R>
 where
     R: TryFromSexp,
     R: TryCoerce<T>,
-    <R as TryFromSexp>::Error: Into<CoercedSexpError>,
+    <R as TryFromSexp>::Error: Into<SexpError>,
     <R as TryCoerce<T>>::Error: std::fmt::Debug,
 {
-    type Error = CoercedSexpError;
+    type Error = SexpError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let r_val: R = R::try_from_sexp(sexp).map_err(Into::into)?;
         let value: T = r_val
             .try_coerce()
-            .map_err(|e| CoercedSexpError::Coerce(format!("{e:?}")))?;
+            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))?;
         Ok(Coerced::new(value))
     }
 
@@ -1184,7 +1145,174 @@ where
         let r_val: R = unsafe { R::try_from_sexp_unchecked(sexp).map_err(Into::into)? };
         let value: T = r_val
             .try_coerce()
-            .map_err(|e| CoercedSexpError::Coerce(format!("{e:?}")))?;
+            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))?;
         Ok(Coerced::new(value))
     }
 }
+
+// =============================================================================
+// Direct Vec coercion conversions
+// =============================================================================
+//
+// These provide direct `TryFromSexp for Vec<T>` where T is not an R native type
+// but can be coerced from one. This mirrors the `impl_into_r_via_coerce!` pattern
+// in into_r.rs for the reverse direction.
+
+/// Helper to coerce a slice element-wise into a Vec.
+#[inline]
+fn coerce_slice_to_vec<R, T>(slice: &[R]) -> Result<Vec<T>, SexpError>
+where
+    R: Copy + TryCoerce<T>,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    slice
+        .iter()
+        .copied()
+        .map(|v| {
+            v.try_coerce()
+                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+        })
+        .collect()
+}
+
+/// Implement `TryFromSexp for Vec<$target>` by reading R's native `$source` type and coercing.
+macro_rules! impl_vec_try_from_sexp_coerce {
+    ($source:ty => $target:ty) => {
+        impl TryFromSexp for Vec<$target> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$source as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$source as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let slice: &[$source] = unsafe { sexp.as_slice() };
+                coerce_slice_to_vec(slice)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+    };
+}
+
+// Integer coercions: R integer (i32) -> various Rust integer types
+impl_vec_try_from_sexp_coerce!(i32 => i8);
+impl_vec_try_from_sexp_coerce!(i32 => i16);
+impl_vec_try_from_sexp_coerce!(i32 => i64);
+impl_vec_try_from_sexp_coerce!(i32 => isize);
+impl_vec_try_from_sexp_coerce!(i32 => u16);
+impl_vec_try_from_sexp_coerce!(i32 => u32);
+impl_vec_try_from_sexp_coerce!(i32 => u64);
+impl_vec_try_from_sexp_coerce!(i32 => usize);
+
+// Float coercions: R numeric (f64) -> f32
+impl_vec_try_from_sexp_coerce!(f64 => f32);
+
+// Logical coercions: R logical (RLogical) -> bool
+impl_vec_try_from_sexp_coerce!(RLogical => bool);
+
+// =============================================================================
+// Direct HashSet coercion conversions
+// =============================================================================
+
+/// Implement `TryFromSexp for HashSet<$target>` by reading R's native `$source` type and coercing.
+macro_rules! impl_hashset_try_from_sexp_coerce {
+    ($source:ty => $target:ty) => {
+        impl TryFromSexp for HashSet<$target> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$source as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$source as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let slice: &[$source] = unsafe { sexp.as_slice() };
+                slice
+                    .iter()
+                    .copied()
+                    .map(|v| {
+                        v.try_coerce()
+                            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+                    })
+                    .collect()
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+    };
+}
+
+// Integer coercions: R integer (i32) -> various Rust integer types
+impl_hashset_try_from_sexp_coerce!(i32 => i8);
+impl_hashset_try_from_sexp_coerce!(i32 => i16);
+impl_hashset_try_from_sexp_coerce!(i32 => i64);
+impl_hashset_try_from_sexp_coerce!(i32 => isize);
+impl_hashset_try_from_sexp_coerce!(i32 => u16);
+impl_hashset_try_from_sexp_coerce!(i32 => u32);
+impl_hashset_try_from_sexp_coerce!(i32 => u64);
+impl_hashset_try_from_sexp_coerce!(i32 => usize);
+
+// Logical coercions: R logical (RLogical) -> bool
+impl_hashset_try_from_sexp_coerce!(RLogical => bool);
+
+// =============================================================================
+// Direct BTreeSet coercion conversions
+// =============================================================================
+
+/// Implement `TryFromSexp for BTreeSet<$target>` by reading R's native `$source` type and coercing.
+macro_rules! impl_btreeset_try_from_sexp_coerce {
+    ($source:ty => $target:ty) => {
+        impl TryFromSexp for BTreeSet<$target> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$source as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$source as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let slice: &[$source] = unsafe { sexp.as_slice() };
+                slice
+                    .iter()
+                    .copied()
+                    .map(|v| {
+                        v.try_coerce()
+                            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+                    })
+                    .collect()
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                Self::try_from_sexp(sexp)
+            }
+        }
+    };
+}
+
+// Integer coercions: R integer (i32) -> various Rust integer types
+impl_btreeset_try_from_sexp_coerce!(i32 => i8);
+impl_btreeset_try_from_sexp_coerce!(i32 => i16);
+impl_btreeset_try_from_sexp_coerce!(i32 => i64);
+impl_btreeset_try_from_sexp_coerce!(i32 => isize);
+impl_btreeset_try_from_sexp_coerce!(i32 => u16);
+impl_btreeset_try_from_sexp_coerce!(i32 => u32);
+impl_btreeset_try_from_sexp_coerce!(i32 => u64);
+impl_btreeset_try_from_sexp_coerce!(i32 => usize);
+
+// Logical coercions: R logical (RLogical) -> bool
+impl_btreeset_try_from_sexp_coerce!(RLogical => bool);

@@ -8,7 +8,7 @@ use miniextendr_api::ffi::{
     INTEGER, LOGICAL, R_NaString, R_xlen_t, RAW, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal,
     Rf_allocVector, Rf_mkChar, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
 };
-use miniextendr_api::from_r::{CoercedSexpError, TryFromSexp};
+use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::CString;
 
@@ -238,13 +238,13 @@ fn test_error_cases() {
         let err = <bool as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
         assert!(matches!(err, miniextendr_api::from_r::SexpError::Na(_)));
 
-        let coerced_err: Result<Coerced<i8, i32>, CoercedSexpError> =
+        let coerced_err: Result<Coerced<i8, i32>, SexpError> =
             TryFromSexp::try_from_sexp(int_scalar);
         assert!(coerced_err.is_ok());
 
         let big_int = guard.protect(Rf_ScalarInteger(1000));
-        let coerced_err: Result<Coerced<u8, i32>, CoercedSexpError> =
+        let coerced_err: Result<Coerced<u8, i32>, SexpError> =
             TryFromSexp::try_from_sexp(big_int);
-        assert!(matches!(coerced_err, Err(CoercedSexpError::Coerce(_))));
+        assert!(matches!(coerced_err, Err(SexpError::InvalidValue(_))));
     }
 }

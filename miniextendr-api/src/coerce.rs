@@ -466,6 +466,15 @@ impl TryCoerce<bool> for Rboolean {
     }
 }
 
+impl TryCoerce<bool> for crate::ffi::RLogical {
+    type Error = LogicalCoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<bool, LogicalCoerceError> {
+        self.to_i32().try_coerce()
+    }
+}
+
 // =============================================================================
 // Narrowing to i32 (fallible)
 // =============================================================================
