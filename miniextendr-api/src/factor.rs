@@ -115,7 +115,7 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
 }
 
 // =============================================================================
-// FactorRef - view into an R factor's data
+// Factor - view into an R factor's data
 // =============================================================================
 
 /// A borrowed view into an R factor's integer indices.
@@ -127,8 +127,8 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
 /// # Example
 ///
 /// ```ignore
-/// let factor_ref = FactorRef::try_from_sexp(sexp)?;
-/// for &idx in factor_ref.iter() {
+/// let factor = Factor::try_new(sexp)?;
+/// for &idx in factor.iter() {
 ///     if idx == NA_INTEGER {
 ///         println!("NA");
 ///     } else {
@@ -136,14 +136,14 @@ pub fn build_factor(indices: &[i32], levels: SEXP) -> SEXP {
 ///     }
 /// }
 /// ```
-pub struct FactorRef<'a> {
+pub struct Factor<'a> {
     indices: &'a [i32],
     levels_sexp: SEXP,
     _marker: PhantomData<&'a ()>,
 }
 
-impl<'a> FactorRef<'a> {
-    /// Create a FactorRef from a factor SEXP.
+impl<'a> Factor<'a> {
+    /// Create a Factor from a factor SEXP.
     ///
     /// Returns an error if the SEXP is not a factor.
     pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
@@ -195,7 +195,7 @@ impl<'a> FactorRef<'a> {
     }
 }
 
-impl Deref for FactorRef<'_> {
+impl Deref for Factor<'_> {
     type Target = [i32];
 
     #[inline]
@@ -204,7 +204,7 @@ impl Deref for FactorRef<'_> {
     }
 }
 
-impl<'a> TryFromSexp for FactorRef<'a> {
+impl<'a> TryFromSexp for Factor<'a> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -213,11 +213,104 @@ impl<'a> TryFromSexp for FactorRef<'a> {
 }
 
 // =============================================================================
+// FactorMut - mutable view into an R factor's data
+// =============================================================================
+
+/// A mutable borrowed view into an R factor's integer indices.
+///
+/// Provides `DerefMut` to `&mut [i32]` for direct mutable slice access.
+/// The indices are 1-based (matching R's convention) with `NA_INTEGER` for NA.
+///
+/// # Example
+///
+/// ```ignore
+/// let mut factor_mut = FactorMut::try_new(sexp)?;
+/// // Set all values to level 1
+/// for idx in factor_mut.iter_mut() {
+///     *idx = 1;
+/// }
+/// ```
+pub struct FactorMut<'a> {
+    indices: &'a mut [i32],
+    levels_sexp: SEXP,
+    _marker: PhantomData<&'a mut ()>,
+}
+
+impl<'a> FactorMut<'a> {
+    /// Create a FactorMut from a factor SEXP.
+    ///
+    /// Returns an error if the SEXP is not a factor.
+    pub fn try_new(sexp: SEXP) -> Result<Self, SexpError> {
+        if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
+            return Err(SexpError::InvalidValue("expected a factor".into()));
+        }
+
+        let len = unsafe { Rf_xlength(sexp) } as usize;
+        let ptr = unsafe { INTEGER(sexp) };
+        let indices = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+        let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
+
+        Ok(Self {
+            indices,
+            levels_sexp,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Number of elements in the factor.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.indices.len()
+    }
+
+    /// Whether the factor is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.indices.is_empty()
+    }
+
+    /// The levels STRSXP.
+    #[inline]
+    pub fn levels_sexp(&self) -> SEXP {
+        self.levels_sexp
+    }
+
+    /// Number of levels.
+    #[inline]
+    pub fn n_levels(&self) -> usize {
+        unsafe { Rf_xlength(self.levels_sexp) as usize }
+    }
+
+    /// Get level string at 0-based index.
+    #[inline]
+    pub fn level(&self, idx: usize) -> &'a str {
+        let charsxp = unsafe { STRING_ELT(self.levels_sexp, idx as isize) };
+        unsafe { charsxp_to_str(charsxp) }
+    }
+}
+
+impl Deref for FactorMut<'_> {
+    type Target = [i32];
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        self.indices
+    }
+}
+
+impl std::ops::DerefMut for FactorMut<'_> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        self.indices
+    }
+}
+
+// =============================================================================
 // Validation helper
 // =============================================================================
 
 /// Validate that a factor has the expected levels.
-pub fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<(), SexpError> {
+pub(crate) fn validate_factor_levels(sexp: SEXP, expected: &[&str]) -> Result<(), SexpError> {
     if unsafe { Rf_isFactor(sexp) } == Rboolean::FALSE {
         return Err(SexpError::InvalidValue("expected a factor".into()));
     }
@@ -279,7 +372,7 @@ pub fn factor_from_sexp<T: RFactor>(sexp: SEXP) -> Result<T, SexpError> {
 
 /// Convert an R factor SEXP to a Vec of enum values.
 #[inline]
-pub fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
+pub(crate) fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError> {
     validate_factor_levels(sexp, T::LEVELS)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
@@ -301,7 +394,7 @@ pub fn factor_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<T>, SexpError>
 
 /// Convert an R factor SEXP to a Vec of Option enum values (NA → None).
 #[inline]
-pub fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError> {
+pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError> {
     validate_factor_levels(sexp, T::LEVELS)?;
 
     let len = unsafe { Rf_xlength(sexp) } as usize;

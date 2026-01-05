@@ -797,7 +797,6 @@ pub use raw_conversions::{
 /// ```
 pub mod factor;
 pub use factor::{
-    FactorOptionVec, FactorRef, FactorVec, RFactor, build_factor, build_levels_sexp,
-    build_levels_sexp_cached, factor_from_sexp, factor_option_vec_from_sexp, factor_vec_from_sexp,
-    validate_factor_levels,
+    Factor, FactorMut, FactorOptionVec, FactorVec, RFactor, build_factor, build_levels_sexp,
+    build_levels_sexp_cached, factor_from_sexp,
 };
