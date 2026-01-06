@@ -92,6 +92,21 @@ Vendoring external crates.io dependencies:
 vendor_crates_io()
 ```
 
+### Vendor tarball and Git LFS
+
+For CRAN submission, the vendored crates are compressed into `inst/vendor.tar.xz`.
+This file is typically 5-10MB depending on enabled features.
+
+**Git LFS is NOT required** for this file because:
+- The file size (~7MB) is well below GitHub's 100MB limit
+- It changes infrequently (only when updating vendored crate versions)
+- Binary diffs work reasonably well for compressed archives
+
+If your vendor tarball grows significantly larger (>50MB), consider:
+1. Reducing enabled features in `Cargo.toml` to minimize dependencies
+2. Using Git LFS: `git lfs track "inst/vendor.tar.xz"`
+3. Hosting the tarball externally and downloading during `R CMD build`
+
 ## Cargo helpers
 
 These wrappers automatically use `src/rust/Cargo.toml` in the current project.
