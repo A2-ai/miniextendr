@@ -543,6 +543,11 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) s3_generic: Option<String>,
     /// S3 class suffix for the method (e.g., "my_vctr" or "my_vctr.my_vctr" for double-dispatch).
     pub(crate) s3_class: Option<String>,
+    /// Typed list validation spec for dots parameter.
+    ///
+    /// Use `#[miniextendr(dots = typed_list!(...))]` to automatically validate dots
+    /// at the start of the function and bind the result to `dots_typed`.
+    pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -626,10 +631,28 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 ));
                             }
                         }
+                    } else if nv.path.is_ident("dots") {
+                        // dots = typed_list!(...) - capture the macro invocation
+                        if let syn::Expr::Macro(expr_macro) = &nv.value {
+                            if expr_macro.mac.path.is_ident("typed_list") {
+                                // Capture the entire macro invocation as TokenStream
+                                out.dots_spec = Some(quote::quote!(#expr_macro));
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    &expr_macro.mac.path,
+                                    "dots expects `typed_list!(...)` macro",
+                                ));
+                            }
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "dots expects `typed_list!(...)` macro",
+                            ));
+                        }
                     } else {
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "this option does not take any arguments",
+                            "unknown option; expected `return` or `dots`",
                         ));
                     }
                 }

@@ -288,10 +288,30 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// the function itself is the C symbol and the R wrapper is prefixed with
 /// `unsafe_` to signal bypassed safety (no worker isolation or conversion).
 ///
-/// ## Variadics
+/// ## Variadics (`...`)
 ///
-/// Use `...` as the last argument. The Rust parameter becomes `&Dots` and is
-/// renamed to `_dots` in the generated R wrapper.
+/// Use `...` as the last argument. The Rust parameter becomes `_dots: &Dots`.
+/// Use `name @ ...` to give it a custom name (e.g., `args @ ...` → `args: &Dots`).
+///
+/// ### Typed Dots Validation
+///
+/// Use `#[miniextendr(dots = typed_list!(...))]` to automatically validate dots
+/// and create a `dots_typed` variable with typed accessors:
+///
+/// ```ignore
+/// #[miniextendr(dots = typed_list!(x => numeric(), y => integer(), z? => character()))]
+/// pub fn my_func(...) -> String {
+///     let x: f64 = dots_typed.get("x").expect("x");
+///     let y: i32 = dots_typed.get("y").expect("y");
+///     let z: Option<String> = dots_typed.get_opt("z").expect("z");
+///     format!("x={}, y={}", x, y)
+/// }
+/// ```
+///
+/// Type specs: `numeric()`, `integer()`, `logical()`, `character()`, `list()`,
+/// `raw()`, `complex()`, or `"class_name"` for class inheritance checks.
+/// Add `(n)` for exact length: `numeric(4)`. Use `?` suffix for optional fields.
+/// Use `@exact;` prefix for strict mode (reject extra fields).
 ///
 /// ## Attributes
 ///
@@ -299,6 +319,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]`
 /// - `#[miniextendr(check_interrupt)]`
 /// - `#[miniextendr(coerce)]` (also usable per-parameter)
+/// - `#[miniextendr(dots = typed_list!(...))]` - validate dots, create `dots_typed`
 ///
 /// # Impl blocks (class systems)
 ///
@@ -344,6 +365,7 @@ pub fn miniextendr(
         return_pref,
         s3_generic,
         s3_class,
+        dots_spec,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -475,6 +497,16 @@ pub fn miniextendr(
             unsafe { ::miniextendr_api::ffi::R_CheckUserInterrupt(); }
         });
     }
+
+    // Validate dots_spec usage (actual injection happens later in the function body)
+    if dots_spec.is_some() && !has_dots {
+        let err = syn::Error::new(
+            proc_macro2::Span::call_site(),
+            "#[miniextendr(dots = typed_list!(...))] requires a `...` parameter in the function signature",
+        );
+        return err.into_compile_error().into();
+    }
+
     // Build conversion builder with coercion settings
     let mut conversion_builder = RustConversionBuilder::new();
     if coerce_all {
@@ -825,7 +857,7 @@ pub fn miniextendr(
     // Build R formal parameters and call arguments using shared builder
     let mut arg_builder = RArgumentBuilder::new(inputs);
     if has_dots {
-        arg_builder = arg_builder.with_dots(named_dots.map(|id| id.to_string()));
+        arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
     }
     // Add user-specified parameter defaults
     arg_builder = arg_builder.with_defaults(parsed.param_defaults().clone());
@@ -948,6 +980,19 @@ pub fn miniextendr(
     original_item
         .attrs
         .retain(|attr| !attr.path().is_ident("miniextendr"));
+
+    // Inject dots_typed binding into function body if dots = typed_list!(...) was specified
+    if let Some(ref spec_tokens) = dots_spec {
+        let dots_param = named_dots.clone().unwrap_or_else(|| {
+            syn::Ident::new("_dots", proc_macro2::Span::call_site())
+        });
+        let validation_stmt: syn::Stmt = syn::parse_quote! {
+            let dots_typed = #dots_param.typed(#spec_tokens)
+                .expect("dots validation failed");
+        };
+        original_item.block.stmts.insert(0, validation_stmt);
+    }
+
     let original_item = original_item;
 
     // Generate doc comment linking to C wrapper and R wrapper constant

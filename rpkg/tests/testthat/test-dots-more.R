@@ -89,3 +89,36 @@ test_that("validate_class_args checks R class", {
     "wrong type"
   )
 })
+
+# =============================================================================
+# Attribute sugar: #[miniextendr(dots = typed_list!(...))]
+# =============================================================================
+
+test_that("validate_with_attribute works with valid input", {
+  result <- validate_with_attribute(x = 1.0, y = 2.0)
+  expect_equal(result, "x=1, y=2")
+})
+
+test_that("validate_with_attribute fails on missing required field", {
+  expect_error(
+    validate_with_attribute(x = 1.0),
+    "Missing"
+  )
+})
+
+test_that("validate_with_attribute fails on wrong type", {
+  expect_error(
+    validate_with_attribute(x = "not a number", y = 2.0),
+    "WrongType"
+  )
+})
+
+test_that("validate_attr_optional works without optional field", {
+  result <- validate_attr_optional(name = "Alice")
+  expect_equal(result, "Hello, Alice!")
+})
+
+test_that("validate_attr_optional works with optional field", {
+  result <- validate_attr_optional(name = "Bob", greeting = "Hi")
+  expect_equal(result, "Hi, Bob!")
+})

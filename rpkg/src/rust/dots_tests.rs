@@ -125,6 +125,50 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
     Ok(ncol as i32)
 }
 
+// =============================================================================
+// Attribute sugar for typed_list validation
+// =============================================================================
+
+/// Test the `#[miniextendr(dots = typed_list!(...))]` attribute syntax.
+///
+/// This automatically validates dots and creates a `dots_typed` variable.
+///
+/// # Example from R
+/// ```r
+/// validate_with_attribute(x = 1.0, y = 2.0)
+/// # Returns "x=1, y=2"
+///
+/// validate_with_attribute(x = 1.0)
+/// # Error: missing required field: "y"
+/// ```
+#[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
+/// @param dots Named arguments: `x` (numeric), `y` (numeric).
+pub fn validate_with_attribute(...) -> String {
+    // dots_typed is automatically created by the attribute
+    let x: f64 = dots_typed.get("x").expect("x");
+    let y: f64 = dots_typed.get("y").expect("y");
+    format!("x={}, y={}", x, y)
+}
+
+/// Test attribute with optional field.
+///
+/// # Example from R
+/// ```r
+/// validate_attr_optional(name = "Alice")
+/// # Returns "Hello, Alice!"
+///
+/// validate_attr_optional(name = "Bob", greeting = "Hi")
+/// # Returns "Hi, Bob!"
+/// ```
+#[miniextendr(dots = typed_list!(name => character(), greeting? => character()))]
+/// @param dots Named arguments: `name` (character), `greeting` (optional character).
+pub fn validate_attr_optional(...) -> String {
+    let name: String = dots_typed.get("name").expect("name");
+    let greeting: Option<String> = dots_typed.get_opt("greeting").expect("greeting");
+    let greeting = greeting.unwrap_or_else(|| "Hello".to_string());
+    format!("{}, {}!", greeting, name)
+}
+
 miniextendr_module! {
     mod dots_tests;
 
@@ -139,4 +183,8 @@ miniextendr_module! {
     fn validate_numeric_args;
     fn validate_strict_args;
     fn validate_class_args;
+
+    // attribute sugar examples
+    fn validate_with_attribute;
+    fn validate_attr_optional;
 }
