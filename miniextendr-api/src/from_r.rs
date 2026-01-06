@@ -431,6 +431,121 @@ impl TryFromSexp for Option<f64> {
     }
 }
 
+// =============================================================================
+// Large integer scalar conversions (via f64)
+// =============================================================================
+//
+// R doesn't have native 64-bit integers, so these read from REALSXP (f64)
+// and convert with range/precision checking.
+
+impl TryFromSexp for i64 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::coerce::TryCoerce;
+        let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+        value
+            .try_coerce()
+            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::coerce::TryCoerce;
+        let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        value
+            .try_coerce()
+            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+    }
+}
+
+impl TryFromSexp for u64 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::coerce::TryCoerce;
+        let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+        value
+            .try_coerce()
+            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::coerce::TryCoerce;
+        let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        value
+            .try_coerce()
+            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+    }
+}
+
+impl TryFromSexp for usize {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Try i32 first (more common), fall back to f64 for large values
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                use crate::coerce::TryCoerce;
+                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+                value
+                    .try_coerce()
+                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+            }
+            SEXPTYPE::REALSXP => {
+                use crate::coerce::TryCoerce;
+                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+                let u: u64 = value
+                    .try_coerce()
+                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
+                u.try_into()
+                    .map_err(|_| SexpError::InvalidValue("value out of usize range".into()))
+            }
+            _ => Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into()),
+        }
+    }
+}
+
+impl TryFromSexp for isize {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Try i32 first (more common), fall back to f64 for large values
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                use crate::coerce::Coerce;
+                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value.coerce())
+            }
+            SEXPTYPE::REALSXP => {
+                use crate::coerce::TryCoerce;
+                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+                let i: i64 = value
+                    .try_coerce()
+                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
+                i.try_into()
+                    .map_err(|_| SexpError::InvalidValue("value out of isize range".into()))
+            }
+            _ => Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into()),
+        }
+    }
+}
+
 // Blanket implementation for slices of R native types
 impl<T: RNativeType> TryFromSexp for &'static [T] {
     type Error = SexpTypeError;
@@ -557,6 +672,44 @@ impl TryFromSexp for &'static str {
 
         // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
         Ok(unsafe { charsxp_to_str_unchecked(charsxp) })
+    }
+}
+
+/// Convert R character vector (STRSXP) to Rust char.
+///
+/// Extracts the first character of the first element of the character vector.
+/// Returns an error if the string is empty, NA, or has more than one character.
+impl TryFromSexp for char {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: &str = TryFromSexp::try_from_sexp(sexp)?;
+        let mut chars = s.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => Ok(c),
+            (None, _) => Err(SexpError::InvalidValue(
+                "empty string cannot be converted to char".to_string(),
+            )),
+            (Some(_), Some(_)) => Err(SexpError::InvalidValue(
+                "string has more than one character".to_string(),
+            )),
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: &str = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        let mut chars = s.chars();
+        match (chars.next(), chars.next()) {
+            (Some(c), None) => Ok(c),
+            (None, _) => Err(SexpError::InvalidValue(
+                "empty string cannot be converted to char".to_string(),
+            )),
+            (Some(_), Some(_)) => Err(SexpError::InvalidValue(
+                "string has more than one character".to_string(),
+            )),
+        }
     }
 }
 
