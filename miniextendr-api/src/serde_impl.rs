@@ -71,8 +71,8 @@ use crate::ffi::{
     Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
     SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
 };
-use crate::gc_protect::OwnedProtect;
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
+use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 
 /// Adapter trait for [`serde::Serialize`].

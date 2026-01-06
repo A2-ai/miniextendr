@@ -251,7 +251,10 @@ where
     slice
         .iter()
         .copied()
-        .map(|v| v.try_coerce().map_err(|e| SexpError::InvalidValue(format!("{e:?}"))))
+        .map(|v| {
+            v.try_coerce()
+                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+        })
         .collect()
 }
 
@@ -739,11 +742,9 @@ impl<T: RNativeType + Clone> TryFromSexp for Array4<T> {
             .into());
         }
 
-        let dims = get_array_dims(sexp).ok_or_else(|| {
-            SexpLengthError {
-                expected: 4,
-                actual: 1,
-            }
+        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+            expected: 4,
+            actual: 1,
         })?;
         if dims.len() != 4 {
             return Err(SexpLengthError {
@@ -824,11 +825,9 @@ impl<T: RNativeType + Clone> TryFromSexp for Array5<T> {
             .into());
         }
 
-        let dims = get_array_dims(sexp).ok_or_else(|| {
-            SexpLengthError {
-                expected: 5,
-                actual: 1,
-            }
+        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+            expected: 5,
+            actual: 1,
         })?;
         if dims.len() != 5 {
             return Err(SexpLengthError {
@@ -911,11 +910,9 @@ impl<T: RNativeType + Clone> TryFromSexp for Array6<T> {
             .into());
         }
 
-        let dims = get_array_dims(sexp).ok_or_else(|| {
-            SexpLengthError {
-                expected: 6,
-                actual: 1,
-            }
+        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+            expected: 6,
+            actual: 1,
         })?;
         if dims.len() != 6 {
             return Err(SexpLengthError {

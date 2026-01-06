@@ -780,7 +780,10 @@ macro_rules! impl_rarray_try_from_sexp_coerce {
                 slice
                     .iter()
                     .copied()
-                    .map(|v| <$source as TryCoerce<$target>>::try_coerce(v).expect("coercion should succeed"))
+                    .map(|v| {
+                        <$source as TryCoerce<$target>>::try_coerce(v)
+                            .expect("coercion should succeed")
+                    })
                     .collect()
             }
         }
@@ -802,8 +805,6 @@ impl_rarray_try_from_sexp_coerce!(f64 => f32);
 
 // Logical coercions: R logical (RLogical) -> bool
 impl_rarray_try_from_sexp_coerce!(RLogical => bool);
-
-
 
 // =============================================================================
 // IntoR implementation

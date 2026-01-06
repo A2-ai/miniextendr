@@ -243,8 +243,7 @@ fn test_error_cases() {
         assert!(coerced_err.is_ok());
 
         let big_int = guard.protect(Rf_ScalarInteger(1000));
-        let coerced_err: Result<Coerced<u8, i32>, SexpError> =
-            TryFromSexp::try_from_sexp(big_int);
+        let coerced_err: Result<Coerced<u8, i32>, SexpError> = TryFromSexp::try_from_sexp(big_int);
         assert!(matches!(coerced_err, Err(SexpError::InvalidValue(_))));
     }
 }
