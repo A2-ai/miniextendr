@@ -590,23 +590,16 @@ impl TryFromSexp for List {
     type Error = ListFromSexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Use R's helper to ensure list semantics first
-        let is_list = unsafe { ffi::Rf_isList(sexp) != Rboolean::FALSE };
         let actual = unsafe { ffi::TYPEOF(sexp) };
 
-        let list_sexp = if is_list {
-            if actual == VECSXP {
-                sexp
-            } else if actual == LISTSXP {
-                // Accept pairlists by coercing to a VECSXP list.
-                unsafe { ffi::Rf_coerceVector(sexp, VECSXP) }
-            } else {
-                return Err(crate::from_r::SexpTypeError {
-                    expected: VECSXP,
-                    actual,
-                }
-                .into());
-            }
+        // Accept VECSXP (generic list) directly
+        // Also accept LISTSXP (pairlist) by coercing to VECSXP
+        // Note: Rf_isList() only returns true for LISTSXP/NILSXP, not VECSXP
+        let list_sexp = if actual == VECSXP {
+            sexp
+        } else if actual == LISTSXP {
+            // Accept pairlists by coercing to a VECSXP list.
+            unsafe { ffi::Rf_coerceVector(sexp, VECSXP) }
         } else {
             return Err(crate::from_r::SexpTypeError {
                 expected: VECSXP,

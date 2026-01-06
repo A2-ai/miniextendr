@@ -56,6 +56,8 @@ pub use miniextendr_macros::miniextendr;
 pub use miniextendr_macros::miniextendr_module;
 #[doc(inline)]
 pub use miniextendr_macros::r_ffi_checked;
+#[doc(inline)]
+pub use miniextendr_macros::typed_list;
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)
 #[doc(inline)]
@@ -158,8 +160,13 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 pub mod convert;
 pub mod dots;
 pub mod list;
+pub mod typed_list;
 pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
 pub use list::{IntoList, List, TryFromList};
+pub use typed_list::{
+    TypedEntry, TypedList, TypedListError, TypedListSpec, TypeSpec, actual_type_string,
+    sexptype_name, validate_list,
+};
 
 // External pointer module - Box-like owned pointer wrapping R's EXTPTRSXP
 pub mod externalptr;

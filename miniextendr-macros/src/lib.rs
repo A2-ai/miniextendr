@@ -136,6 +136,7 @@
 mod altrep;
 mod c_wrapper_builder;
 mod miniextendr_fn;
+mod typed_list;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
 mod miniextendr_module;
@@ -2191,6 +2192,102 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
     factor_derive::derive_r_factor(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
+}
+
+/// Create a [`TypedListSpec`] for validating `...` arguments or lists.
+///
+/// This macro provides ergonomic syntax for defining typed list specifications
+/// that can be used with [`Dots::typed()`] to validate the structure of
+/// `...` arguments passed from R.
+///
+/// # Syntax
+///
+/// ```text
+/// typed_list!(
+///     name => type_spec,    // required field with type
+///     name? => type_spec,   // optional field with type
+///     name,                 // required field, any type
+///     name?,                // optional field, any type
+/// )
+/// ```
+///
+/// For strict mode (no extra fields allowed):
+/// ```text
+/// typed_list!(@exact; name => type_spec, ...)
+/// ```
+///
+/// # Type Specifications
+///
+/// ## Base types (with optional length)
+/// - `numeric()` / `numeric(4)` - Real/double vector
+/// - `integer()` / `integer(4)` - Integer vector
+/// - `logical()` / `logical(4)` - Logical vector
+/// - `character()` / `character(4)` - Character vector
+/// - `raw()` / `raw(4)` - Raw vector
+/// - `complex()` / `complex(4)` - Complex vector
+/// - `list()` / `list(4)` - List (VECSXP)
+///
+/// ## Special types
+/// - `data_frame()` - Data frame
+/// - `factor()` - Factor
+/// - `matrix()` - Matrix
+/// - `array()` - Array
+/// - `function()` - Function
+/// - `environment()` - Environment
+/// - `null()` - NULL only
+/// - `any()` - Any type
+///
+/// ## String literals
+/// - `"numeric"`, `"integer"`, etc. - Same as call syntax
+/// - `"data.frame"` - Data frame (alias)
+/// - `"MyClass"` - Any other string is treated as a class name (uses `Rf_inherits`)
+///
+/// # Examples
+///
+/// ## Basic usage
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, typed_list, Dots};
+///
+/// #[miniextendr]
+/// pub fn process_args(dots: ...) -> Result<i32, String> {
+///     let args = dots.typed(typed_list!(
+///         alpha => numeric(4),
+///         beta => list(),
+///         gamma? => "character",
+///     )).map_err(|e| e.to_string())?;
+///
+///     let alpha: Vec<f64> = args.get("alpha").map_err(|e| e.to_string())?;
+///     Ok(alpha.len() as i32)
+/// }
+/// ```
+///
+/// ## Strict mode
+///
+/// ```ignore
+/// // Reject any extra named fields
+/// let args = dots.typed(typed_list!(@exact;
+///     x => numeric(),
+///     y => numeric(),
+/// ))?;
+/// ```
+///
+/// ## Class checking
+///
+/// ```ignore
+/// // Check for specific R class (uses Rf_inherits semantics)
+/// let args = dots.typed(typed_list!(
+///     data => "data.frame",
+///     model => "lm",
+/// ))?;
+/// ```
+///
+/// [`TypedListSpec`]: miniextendr_api::typed_list::TypedListSpec
+/// [`Dots::typed()`]: miniextendr_api::dots::Dots::typed
+#[proc_macro]
+pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed = syn::parse_macro_input!(input as typed_list::TypedListInput);
+    typed_list::expand_typed_list(parsed).into()
 }
 
 #[cfg(test)]
