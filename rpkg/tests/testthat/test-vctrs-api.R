@@ -141,3 +141,214 @@ test_that("vctrs error messages are informative", {
     "main thread"
   )
 })
+
+# =============================================================================
+# Construction helper tests
+# =============================================================================
+
+test_that("new_vctr creates basic vctr from double", {
+  skip_if_vctrs_disabled()
+
+  data <- c(0.1, 0.2, 0.3)
+  result <- miniextendr:::test_new_vctr(data, "vctrs_percent")
+
+  # Check class structure: c("vctrs_percent", "vctrs_vctr")
+  # (inherit_base_type defaults to FALSE for non-list)
+  expect_equal(class(result), c("vctrs_percent", "vctrs_vctr"))
+
+  # Data should be preserved (use vec_data to access underlying data)
+  expect_equal(vctrs::vec_data(result), c(0.1, 0.2, 0.3))
+
+  # vctrs should recognize it as a vector
+  expect_true(vctrs::obj_is_vector(result))
+  expect_equal(vctrs::vec_size(result), 3L)
+})
+
+test_that("new_vctr with inherit_base_type=TRUE includes type", {
+  skip_if_vctrs_disabled()
+
+  data <- c(1.5, 2.5)
+  result <- miniextendr:::test_new_vctr_inherit(data, "my_class", TRUE)
+
+  # Class should include "double" at the end
+  expect_equal(class(result), c("my_class", "vctrs_vctr", "double"))
+})
+
+test_that("new_vctr with inherit_base_type=FALSE excludes type", {
+  skip_if_vctrs_disabled()
+
+  data <- 1:3
+  result <- miniextendr:::test_new_vctr_inherit(data, "my_class", FALSE)
+
+  # Class should NOT include base type
+  expect_equal(class(result), c("my_class", "vctrs_vctr"))
+})
+
+test_that("new_vctr on list defaults to inherit_base_type=TRUE", {
+  skip_if_vctrs_disabled()
+
+  data <- list(a = 1, b = 2)
+  result <- miniextendr:::test_new_vctr(data, "my_list_class")
+
+  # Class should include "list" at the end
+  expect_equal(class(result), c("my_list_class", "vctrs_vctr", "list"))
+
+  # vctrs should recognize it
+  expect_true(vctrs::obj_is_vector(result))
+})
+
+test_that("new_vctr on list with inherit_base_type=FALSE errors", {
+  skip_if_vctrs_disabled()
+
+  data <- list(1, 2, 3)
+  expect_error(
+    miniextendr:::test_new_vctr_inherit(data, "my_class", FALSE),
+    "list data requires inherit_base_type"
+  )
+})
+
+test_that("new_vctr with multiple class names", {
+  skip_if_vctrs_disabled()
+
+  data <- c(1, 2, 3)
+  result <- miniextendr:::test_new_vctr(data, c("subclass", "superclass"))
+
+  expect_equal(class(result), c("subclass", "superclass", "vctrs_vctr"))
+})
+
+test_that("new_rcrd creates basic record", {
+  skip_if_vctrs_disabled()
+
+  fields <- list(x = 1:3, y = c("a", "b", "c"))
+  result <- miniextendr:::test_new_rcrd(fields, "vctrs_rational")
+
+  # Check class structure
+  expect_equal(class(result), c("vctrs_rational", "vctrs_rcrd", "vctrs_vctr"))
+
+  # Fields should be preserved (use vctrs::field() to access record fields)
+  expect_equal(vctrs::field(result, "x"), 1:3)
+  expect_equal(vctrs::field(result, "y"), c("a", "b", "c"))
+
+  # vctrs should recognize it
+  expect_true(vctrs::obj_is_vector(result))
+  expect_equal(vctrs::vec_size(result), 3L)
+})
+
+test_that("new_rcrd errors on empty fields", {
+  skip_if_vctrs_disabled()
+
+  expect_error(
+    miniextendr:::test_new_rcrd(list(), "my_record"),
+    "record must have at least one field"
+  )
+})
+
+test_that("new_rcrd errors on unnamed fields", {
+  skip_if_vctrs_disabled()
+
+  expect_error(
+    miniextendr:::test_new_rcrd(list(1:3, 4:6), "my_record"),
+    "record fields must be named"
+  )
+})
+
+test_that("new_rcrd errors on mismatched field lengths", {
+  skip_if_vctrs_disabled()
+
+  expect_error(
+    miniextendr:::test_new_rcrd(list(x = 1:3, y = 1:5), "my_record"),
+    "field 'y' has length 5 but expected 3"
+  )
+})
+
+test_that("new_rcrd errors on duplicate field names", {
+  skip_if_vctrs_disabled()
+
+  expect_error(
+    miniextendr:::test_new_rcrd(list(x = 1:3, x = 4:6), "my_record"),
+    "duplicate field name"
+  )
+})
+
+test_that("new_list_of creates list_of with ptype", {
+  skip_if_vctrs_disabled()
+
+  x <- list(1:2, 3:4, 5:6)
+  ptype <- integer(0)
+  result <- miniextendr:::test_new_list_of_ptype(x, ptype, character(0))
+
+  # Check class structure
+  expect_equal(class(result), c("vctrs_list_of", "vctrs_vctr", "list"))
+
+  # Check ptype attribute
+  expect_equal(attr(result, "ptype"), integer(0))
+
+  # vctrs should recognize it
+  expect_true(vctrs::obj_is_vector(result))
+  expect_equal(vctrs::vec_size(result), 3L)
+})
+
+test_that("new_list_of creates list_of with size", {
+  skip_if_vctrs_disabled()
+
+  x <- list(1:2, 3:4)
+  result <- miniextendr:::test_new_list_of_size(x, 2L, character(0))
+
+  # Check class structure
+  expect_equal(class(result), c("vctrs_list_of", "vctrs_vctr", "list"))
+
+  # Check size attribute
+  expect_equal(attr(result, "size"), 2L)
+})
+
+test_that("new_list_of with custom class", {
+  skip_if_vctrs_disabled()
+
+  x <- list(c("a", "b"), c("c", "d"))
+  ptype <- character(0)
+  result <- miniextendr:::test_new_list_of_ptype(x, ptype, "my_list_of")
+
+  # Custom class should come first
+  expect_equal(class(result), c("my_list_of", "vctrs_list_of", "vctrs_vctr", "list"))
+})
+
+test_that("VctrsBuildError messages are informative", {
+  skip_if_vctrs_disabled()
+
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("not_initialized"),
+    "vctrs not initialized"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("not_a_vector"),
+    "not a vector"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("list_requires_inherit"),
+    "inherit_base_type"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("field_length_mismatch"),
+    "field 'x' has length 5"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("empty_record"),
+    "at least one field"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("duplicate_field"),
+    "duplicate field name"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("unnamed_fields"),
+    "must be named"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("missing_ptype_or_size"),
+    "requires at least one"
+  )
+  expect_match(
+    miniextendr:::test_vctrs_build_error_message("invalid_size"),
+    "invalid size"
+  )
+})
