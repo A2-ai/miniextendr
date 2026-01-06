@@ -67,6 +67,7 @@
 //! | **S3** | `#[miniextendr(s3)]` | `generic(obj)` dispatch | Idiomatic R generics |
 //! | **S4** | `#[miniextendr(s4)]` | `setClass`/`setMethod` | Formal OOP, multiple dispatch |
 //! | **S7** | `#[miniextendr(s7)]` | `new_class`/`new_generic` | Modern R OOP |
+//! | **vctrs** | `#[miniextendr(vctrs)]` | `new_vctr`/`new_rcrd`/`new_list_of` | vctrs-compatible vectors |
 //!
 //! ## Method Categorization
 //!
@@ -162,6 +163,8 @@ pub enum ClassSystem {
     S3,
     /// S4 setClass
     S4,
+    /// vctrs-compatible S3 class (vctr, rcrd, or list_of)
+    Vctrs,
 }
 
 impl std::str::FromStr for ClassSystem {
@@ -174,9 +177,53 @@ impl std::str::FromStr for ClassSystem {
             "s7" => Ok(ClassSystem::S7),
             "s3" => Ok(ClassSystem::S3),
             "s4" => Ok(ClassSystem::S4),
+            "vctrs" => Ok(ClassSystem::Vctrs),
             _ => Err(format!("unknown class system: {}", s)),
         }
     }
+}
+
+/// Kind of vctrs class being created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VctrsKind {
+    /// Simple vctr backed by a base vector (new_vctr)
+    #[default]
+    Vctr,
+    /// Record type with named fields (new_rcrd)
+    Rcrd,
+    /// Homogeneous list with ptype (new_list_of)
+    ListOf,
+}
+
+impl std::str::FromStr for VctrsKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "vctr" => Ok(VctrsKind::Vctr),
+            "rcrd" | "record" => Ok(VctrsKind::Rcrd),
+            "list_of" | "listof" => Ok(VctrsKind::ListOf),
+            _ => Err(format!(
+                "unknown vctrs kind: {} (expected vctr, rcrd, or list_of)",
+                s
+            )),
+        }
+    }
+}
+
+/// Attributes for vctrs class generation.
+#[derive(Debug, Clone, Default)]
+pub struct VctrsAttrs {
+    /// The vctrs kind (vctr, rcrd, list_of)
+    pub kind: VctrsKind,
+    /// Base type for vctr (e.g., "double", "integer", "character")
+    pub base: Option<String>,
+    /// Whether to inherit base type in class vector
+    pub inherit_base_type: Option<bool>,
+    /// Prototype type for list_of (R expression)
+    pub ptype: Option<String>,
+    /// Abbreviation for vec_ptype_abbr (for printing)
+    pub abbr: Option<String>,
 }
 
 /// Receiver kind for methods.
@@ -303,6 +350,8 @@ pub struct ParsedImpl {
     pub original_impl: syn::ItemImpl,
     /// cfg attributes to propagate
     pub cfg_attrs: Vec<syn::Attribute>,
+    /// vctrs-specific attributes (only used when class_system is Vctrs)
+    pub vctrs_attrs: VctrsAttrs,
 }
 
 /// Attributes on the impl block itself.
@@ -319,6 +368,8 @@ pub struct ImplAttrs {
     ///
     /// Single impl blocks don't require labels.
     pub label: Option<String>,
+    /// vctrs-specific attributes (only used when class_system is Vctrs)
+    pub vctrs_attrs: VctrsAttrs,
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -326,9 +377,10 @@ impl syn::parse::Parse for ImplAttrs {
         let mut class_system = ClassSystem::Env;
         let mut class_name = None;
         let mut label = None;
+        let mut vctrs_attrs = VctrsAttrs::default();
 
         // Parse attributes. The first identifier can be either:
-        // - A class system (env, r6, s3, s4, s7)
+        // - A class system (env, r6, s3, s4, s7, vctrs)
         // - A key in a key=value pair (class, label)
         //
         // Valid formats:
@@ -337,6 +389,8 @@ impl syn::parse::Parse for ImplAttrs {
         // - #[miniextendr(label = "foo")]
         // - #[miniextendr(r6, label = "foo")]
         // - #[miniextendr(r6, class = "CustomName", label = "foo")]
+        // - #[miniextendr(vctrs)]
+        // - #[miniextendr(vctrs(kind = "rcrd", base = "double", abbr = "my_abbr"))]
         while !input.is_empty() {
             let ident: syn::Ident = input.parse()?;
             let ident_str = ident.to_string();
@@ -360,6 +414,61 @@ impl syn::parse::Parse for ImplAttrs {
                         ));
                     }
                 }
+            } else if ident_str == "vctrs" {
+                // vctrs class system with optional nested attributes
+                class_system = ClassSystem::Vctrs;
+
+                // Check for nested vctrs options: vctrs(kind = "rcrd", base = "double", ...)
+                if input.peek(syn::token::Paren) {
+                    let content;
+                    syn::parenthesized!(content in input);
+
+                    while !content.is_empty() {
+                        let key: syn::Ident = content.parse()?;
+                        let _: syn::Token![=] = content.parse()?;
+                        let key_str = key.to_string();
+
+                        match key_str.as_str() {
+                            "kind" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.kind = value
+                                    .value()
+                                    .parse()
+                                    .map_err(|e| syn::Error::new(value.span(), e))?;
+                            }
+                            "base" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.base = Some(value.value());
+                            }
+                            "inherit_base_type" => {
+                                let value: syn::LitBool = content.parse()?;
+                                vctrs_attrs.inherit_base_type = Some(value.value());
+                            }
+                            "ptype" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.ptype = Some(value.value());
+                            }
+                            "abbr" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.abbr = Some(value.value());
+                            }
+                            _ => {
+                                return Err(syn::Error::new(
+                                    key.span(),
+                                    format!(
+                                        "unknown vctrs option: {} (expected kind, base, inherit_base_type, ptype, abbr)",
+                                        key_str
+                                    ),
+                                ));
+                            }
+                        }
+
+                        // Consume trailing comma if present
+                        if content.peek(syn::Token![,]) {
+                            let _: syn::Token![,] = content.parse()?;
+                        }
+                    }
+                }
             } else {
                 // This is a class system identifier
                 class_system = ident_str
@@ -377,6 +486,7 @@ impl syn::parse::Parse for ImplAttrs {
             class_system,
             class_name,
             label,
+            vctrs_attrs,
         })
     }
 }
@@ -431,7 +541,8 @@ impl ParsedMethod {
                     || meta.path.is_ident("r6")
                     || meta.path.is_ident("s7")
                     || meta.path.is_ident("s3")
-                    || meta.path.is_ident("s4");
+                    || meta.path.is_ident("s4")
+                    || meta.path.is_ident("vctrs");
 
                 if is_class_meta {
                     // Parse the inner options: r6(ignore, constructor, ...)
@@ -731,6 +842,7 @@ impl ParsedImpl {
             // Strip miniextendr attributes (and roxygen tags) before re-emitting.
             original_impl: strip_miniextendr_attrs_from_impl(item_impl),
             cfg_attrs,
+            vctrs_attrs: attrs.vctrs_attrs,
         })
     }
 
@@ -1625,7 +1737,224 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
-/// Expand a #[miniextendr(env|r6|s7|s3|s4)] impl block.
+/// Generate R wrapper string for vctrs-style class.
+///
+/// Creates a vctrs-compatible S3 class with:
+/// - Constructor using `vctrs::new_vctr()`, `vctrs::new_rcrd()`, or `vctrs::new_list_of()`
+/// - `vec_ptype2.<class>.<class>` and `vec_cast.<class>.<class>` for same-type coercion
+/// - `vec_ptype_abbr.<class>` for compact printing (if `abbr` is specified)
+/// - Instance methods as regular S3 methods
+pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
+    let class_name = parsed_impl.class_name();
+    let type_ident = &parsed_impl.type_ident;
+    let class_doc_tags = &parsed_impl.doc_tags;
+    let vctrs_attrs = &parsed_impl.vctrs_attrs;
+
+    // Constructor name follows vctrs convention: new_<class>
+    let ctor_name = format!("new_{}", class_name.to_lowercase());
+
+    let mut lines = Vec::new();
+
+    // Constructor with combined class and constructor documentation
+    if let Some(ctx) = parsed_impl.constructor_context() {
+        let mut ctor_doc_tags = Vec::new();
+        ctor_doc_tags.extend(class_doc_tags.iter().cloned());
+        ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
+
+        lines.extend(
+            ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "vctrs S3")
+                .with_imports("@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr")
+                .build(),
+        );
+
+        // Generate constructor body based on vctrs kind
+        lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
+        lines.push(format!("    data <- {}", ctx.static_call()));
+
+        match vctrs_attrs.kind {
+            VctrsKind::Vctr => {
+                // Build new_vctr call with optional inherit_base_type
+                let inherit_arg = match vctrs_attrs.inherit_base_type {
+                    Some(true) => ", inherit_base_type = TRUE",
+                    Some(false) => ", inherit_base_type = FALSE",
+                    None => "",
+                };
+                lines.push(format!(
+                    "    vctrs::new_vctr(data, class = \"{}\"{})",
+                    class_name, inherit_arg
+                ));
+            }
+            VctrsKind::Rcrd => {
+                // Record type - data should be a list
+                lines.push(format!(
+                    "    vctrs::new_rcrd(data, class = \"{}\")",
+                    class_name
+                ));
+            }
+            VctrsKind::ListOf => {
+                // list_of - needs ptype
+                let ptype_arg = vctrs_attrs
+                    .ptype
+                    .as_ref()
+                    .map(|p| format!(", ptype = {}", p))
+                    .unwrap_or_default();
+                lines.push(format!(
+                    "    vctrs::new_list_of(data, class = \"{}\"{})",
+                    class_name, ptype_arg
+                ));
+            }
+        }
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    // vec_ptype_abbr for compact printing (if abbr is specified)
+    if let Some(abbr) = &vctrs_attrs.abbr {
+        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
+        lines.push("#' @export".to_string());
+        lines.push(format!(
+            "vec_ptype_abbr.{} <- function(x, ...) \"{}\"",
+            class_name, abbr
+        ));
+        lines.push(String::new());
+    }
+
+    // Self-coercion methods (required for vctrs to work properly)
+    // vec_ptype2.<class>.<class> - returns prototype for combining same types
+    lines.push(format!("#' @rdname {}", class_name));
+    lines.push(format!(
+        "#' @method vec_ptype2 {}.{}",
+        class_name, class_name
+    ));
+    lines.push("#' @export".to_string());
+    match vctrs_attrs.kind {
+        VctrsKind::Vctr => {
+            let base_type = vctrs_attrs
+                .base
+                .as_ref()
+                .map(|b| format!("{}()", b))
+                .unwrap_or_else(|| "double()".to_string());
+            let inherit_arg = match vctrs_attrs.inherit_base_type {
+                Some(true) => ", inherit_base_type = TRUE",
+                Some(false) => ", inherit_base_type = FALSE",
+                None => "",
+            };
+            lines.push(format!(
+                "vec_ptype2.{c}.{c} <- function(x, y, ...) vctrs::new_vctr({base}, class = \"{c}\"{inherit})",
+                c = class_name,
+                base = base_type,
+                inherit = inherit_arg
+            ));
+        }
+        VctrsKind::Rcrd => {
+            // For records, return empty record with same field structure
+            lines.push(format!(
+                "vec_ptype2.{c}.{c} <- function(x, y, ...) x[0]",
+                c = class_name
+            ));
+        }
+        VctrsKind::ListOf => {
+            let ptype_arg = vctrs_attrs
+                .ptype
+                .as_ref()
+                .map(|p| format!(", ptype = {}", p))
+                .unwrap_or_default();
+            lines.push(format!(
+                "vec_ptype2.{c}.{c} <- function(x, y, ...) vctrs::new_list_of(list(), class = \"{c}\"{ptype})",
+                c = class_name,
+                ptype = ptype_arg
+            ));
+        }
+    }
+    lines.push(String::new());
+
+    // vec_cast.<class>.<class> - identity cast (no-op for same type)
+    lines.push(format!("#' @rdname {}", class_name));
+    lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
+    lines.push("#' @export".to_string());
+    lines.push(format!(
+        "vec_cast.{c}.{c} <- function(x, to, ...) x",
+        c = class_name
+    ));
+    lines.push(String::new());
+
+    // Instance methods as S3 generics + methods
+    for ctx in parsed_impl.instance_method_contexts() {
+        let generic_name = ctx.generic_name();
+        let s3_method_name = format!("{}.{}", generic_name, class_name);
+        let full_params = ctx.instance_formals(true); // adds x, ..., params
+
+        // Only create the S3 generic if no generic override was provided
+        if !ctx.has_generic_override() {
+            lines.push(format!("#' @title S3 generic for `{}`", generic_name));
+            lines.push(format!("#' S3 generic for `{}`", generic_name));
+            lines.push(format!("#' @rdname {}", class_name));
+            lines.push(format!("#' @name {}", generic_name));
+            lines.push("#' @param x An object".to_string());
+            lines.push("#' @param ... Additional arguments passed to methods".to_string());
+            lines.push(format!(
+                "#' @source Generated by miniextendr from `{}::{}`",
+                type_ident, ctx.method.ident
+            ));
+            lines.push("#' @export".to_string());
+            lines.push(format!(
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {{
+    {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
+}}"
+            ));
+            lines.push(String::new());
+        }
+
+        // Then create the S3 method
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+        lines.extend(method_doc.build());
+        lines.push(format!("#' @method {} {}", generic_name, class_name));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            s3_method_name, full_params
+        ));
+
+        let call = ctx.instance_call("x");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone())
+            .with_chain_var("x".to_string());
+        lines.extend(return_builder.build_s3_body());
+
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    // Static methods as regular functions
+    for ctx in parsed_impl.static_method_contexts() {
+        let fn_name = format!("{}_{}", class_name.to_lowercase(), ctx.method.ident);
+        let method_name = ctx.method.ident.to_string();
+
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
+        lines.extend(method_doc.build());
+
+        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone());
+        lines.extend(return_builder.build_s3_body());
+
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
+/// Expand a #[miniextendr(env|r6|s7|s3|s4|vctrs)] impl block.
 ///
 /// This handles two cases:
 /// 1. **Inherent impls** (`impl Type`): Generate class-system wrappers
@@ -1674,6 +2003,7 @@ pub fn expand_impl(
         ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
         ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
         ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+        ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
     };
     let call_defs_const = parsed.call_defs_const_ident();
 

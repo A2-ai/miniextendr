@@ -752,6 +752,8 @@ fn generate_trait_r_wrapper(
         ClassSystem::S4 => generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::S7 => generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::R6 => generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts),
+        // vctrs uses S3 under the hood, so use the S3 trait wrapper
+        ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
     }
 }
 
