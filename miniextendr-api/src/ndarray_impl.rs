@@ -143,7 +143,7 @@ impl<T: RNativeType + Clone> TryFromSexp for Array0<T> {
         }
 
         let slice: &[T] = unsafe { sexp.as_slice() };
-        Ok(Array0::from_elem((), slice[0].clone()))
+        Ok(Array0::from_elem((), slice[0]))
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -166,7 +166,7 @@ impl<T: RNativeType + Clone> TryFromSexp for Array0<T> {
         }
 
         let slice: &[T] = unsafe { sexp.as_slice_unchecked() };
-        Ok(Array0::from_elem((), slice[0].clone()))
+        Ok(Array0::from_elem((), slice[0]))
     }
 }
 
@@ -742,7 +742,7 @@ impl<T: RNativeType + Clone> TryFromSexp for Array4<T> {
             .into());
         }
 
-        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+        let dims = get_array_dims(sexp).ok_or(SexpLengthError {
             expected: 4,
             actual: 1,
         })?;
@@ -825,7 +825,7 @@ impl<T: RNativeType + Clone> TryFromSexp for Array5<T> {
             .into());
         }
 
-        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+        let dims = get_array_dims(sexp).ok_or(SexpLengthError {
             expected: 5,
             actual: 1,
         })?;
@@ -910,7 +910,7 @@ impl<T: RNativeType + Clone> TryFromSexp for Array6<T> {
             .into());
         }
 
-        let dims = get_array_dims(sexp).ok_or_else(|| SexpLengthError {
+        let dims = get_array_dims(sexp).ok_or(SexpLengthError {
             expected: 6,
             actual: 1,
         })?;

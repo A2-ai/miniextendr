@@ -84,7 +84,7 @@ These have blanket implementations so you just need to export them for your type
 | Trait | Wraps | Methods |
 |-------|-------|---------|
 | `RDebug` | `Debug` | `debug_str()`, `debug_str_pretty()` |
-| `RDisplay` | `Display` | `to_r_string()` |
+| `RDisplay` | `Display` | `as_r_string()` |
 | `RFromStr` | `FromStr` | `r_from_str(s) -> Option<Self>` |
 | `RHash` | `Hash` | `r_hash() -> i64` |
 | `ROrd` | `Ord` | `r_cmp(&self, other) -> i32` |
@@ -132,6 +132,7 @@ When designing adapter traits, keep these limitations in mind:
 | Static methods | Yes | But don't go through vtable |
 
 **Method arguments and return types** must implement:
+
 - `TryFromSexp` for parameters (R → Rust conversion)
 - `IntoR` for return values (Rust → R conversion)
 
@@ -219,6 +220,7 @@ impl DecimalOps for RDecimal {
 Adapter traits work with miniextendr's cross-package trait ABI:
 
 **Producer package** (defines trait + impl):
+
 ```rust
 // producer/src/lib.rs
 #[miniextendr]
@@ -237,6 +239,7 @@ miniextendr_module! {
 ```
 
 **Consumer package** (uses trait):
+
 ```rust
 // consumer/src/lib.rs
 use producer::RNum;
@@ -253,6 +256,7 @@ to be added in other packages without recompiling the consumer.
 ## Complete Example
 
 See `tests/cross-package/` for a working example of:
+
 - `producer.pkg`: Defines `Counter` trait and `SimpleCounter` impl
 - `consumer.pkg`: Uses `Counter` trait objects from producer
 
@@ -277,11 +281,11 @@ use std::str::FromStr;
 /// Adapter for Display - convert any Display type to R character
 #[miniextendr]
 pub trait RDisplay {
-    fn to_r_string(&self) -> String;
+    fn as_r_string(&self) -> String;
 }
 
 impl<T: Display> RDisplay for T {
-    fn to_r_string(&self) -> String {
+    fn as_r_string(&self) -> String {
         self.to_string()
     }
 }

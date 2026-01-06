@@ -631,11 +631,11 @@ mod tests {
             match self {
                 Self::Red(inner) => {
                     let inner_idx_0 = inner.to_level_index() - 1;
-                    0 * 2 + inner_idx_0 + 1
+                    inner_idx_0 + 1
                 }
                 Self::Green(inner) => {
                     let inner_idx_0 = inner.to_level_index() - 1;
-                    1 * 2 + inner_idx_0 + 1
+                    2 + inner_idx_0 + 1
                 }
                 Self::Blue(inner) => {
                     let inner_idx_0 = inner.to_level_index() - 1;

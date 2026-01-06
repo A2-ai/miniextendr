@@ -517,7 +517,7 @@ Iterator adapter:
 
 Display/FromStr adapters:
 - [x] Create `RDisplay` adapter trait for `Display`
-  - `to_r_string(&self) -> String` delegating to Display::fmt
+  - `as_r_string(&self) -> String` delegating to Display::fmt
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
 - [x] Create `RFromStr` adapter trait for `FromStr`

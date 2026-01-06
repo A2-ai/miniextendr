@@ -18,8 +18,8 @@ test_that("Point - RDebug works", {
 test_that("Point - RDisplay works", {
   p <- Point$new(3L, 4L)
 
-  # to_r_string() returns user-friendly format
-  s <- p$to_r_string()
+  # as_r_string() returns user-friendly format
+  s <- p$as_r_string()
   expect_equal(s, "(3, 4)")
 })
 

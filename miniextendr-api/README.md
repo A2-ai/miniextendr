@@ -91,7 +91,7 @@ See `tests/cross-package/README.md` for an end‑to‑end example.
 Built-in adapter traits provide blanket implementations for common std traits:
 
 - `RDebug` – Debug string output (`debug_str()`, `debug_str_pretty()`)
-- `RDisplay` – Display string output (`to_r_string()`)
+- `RDisplay` – Display string output (`as_r_string()`)
 - `RHash` – Hash computation (`r_hash() -> i64`)
 - `ROrd` – Total ordering comparison (`r_cmp() -> -1/0/1`)
 - `RPartialOrd` – Partial ordering (`r_partial_cmp() -> Option<i32>`)

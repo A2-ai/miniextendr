@@ -57,7 +57,7 @@ impl FromStr for Point {
 /// @examples
 /// p <- Point$new(3L, 4L)
 /// p$debug_str()
-/// p$to_r_string()
+/// p$as_r_string()
 /// p$hash()
 #[miniextendr]
 impl Point {
@@ -83,8 +83,8 @@ impl Point {
     }
 
     // RDisplay method
-    fn to_r_string(&self) -> String {
-        RDisplay::to_r_string(self)
+    fn as_r_string(&self) -> String {
+        RDisplay::as_r_string(self)
     }
 
     // RHash method

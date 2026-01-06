@@ -85,7 +85,7 @@ impl<T: Debug> RDebug for T {
 ///
 /// # Methods
 ///
-/// - `to_r_string()` - Returns the Display representation
+/// - `as_r_string()` - Returns the Display representation
 ///
 /// # Example
 ///
@@ -108,11 +108,11 @@ impl<T: Debug> RDebug for T {
 /// ```
 pub trait RDisplay {
     /// Convert to a user-friendly string.
-    fn to_r_string(&self) -> String;
+    fn as_r_string(&self) -> String;
 }
 
 impl<T: Display> RDisplay for T {
-    fn to_r_string(&self) -> String {
+    fn as_r_string(&self) -> String {
         self.to_string()
     }
 }
@@ -965,10 +965,10 @@ mod tests {
     #[test]
     fn test_rdisplay() {
         let s = "hello";
-        assert_eq!(s.to_r_string(), "hello");
+        assert_eq!(s.as_r_string(), "hello");
 
         let n = 42i32;
-        assert_eq!(n.to_r_string(), "42");
+        assert_eq!(n.as_r_string(), "42");
     }
 
     #[test]
@@ -1059,7 +1059,7 @@ mod tests {
         assert_eq!(result, Some(42));
 
         let result: Option<f64> = RFromStr::from_str("3.141592653589793");
-        assert_eq!(result, Some(3.141592653589793));
+        assert_eq!(result, Some(f64::consts::PI));
 
         let result: Option<bool> = RFromStr::from_str("true");
         assert_eq!(result, Some(true));
@@ -1121,6 +1121,7 @@ mod tests {
         assert_eq!(arr, arr2);
     }
 
+    use core::f64;
     // Tests for RIterator
     use std::cell::RefCell;
 
