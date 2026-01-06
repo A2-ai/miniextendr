@@ -216,25 +216,38 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
 }
 
 /// Known vctrs S3 generics that need `@importFrom vctrs` for roxygen registration.
+///
+/// This list includes all generics exported by vctrs that users might implement
+/// S3 methods for when creating custom vector types.
 const VCTRS_GENERICS: &[&str] = &[
-    // Core proxy/restore
+    // Core proxy/restore (required for most custom types)
     "vec_proxy",
     "vec_restore",
-    // Type coercion
+    // Type coercion (required for vec_c, vec_rbind, etc.)
     "vec_ptype2",
     "vec_cast",
-    // Printing
-    "vec_ptype_abbr",
-    "vec_ptype_full",
     // Equality/comparison/ordering proxies
     "vec_proxy_equal",
     "vec_proxy_compare",
     "vec_proxy_order",
-    // Arithmetic
+    // Printing/formatting
+    "vec_ptype_abbr",
+    "vec_ptype_full",
+    "obj_print_data",
+    "obj_print_footer",
+    "obj_print_header",
+    // str() output
+    "obj_str_data",
+    "obj_str_footer",
+    "obj_str_header",
+    // Arithmetic (for numeric-like types)
     "vec_arith",
     "vec_math",
     // Other
     "vec_ptype_finalise",
+    "vec_cbind_frame_ptype",
+    // List-of conversion
+    "as_list_of",
 ];
 
 /// Check if a generic name is a vctrs generic that needs `@importFrom vctrs`.
