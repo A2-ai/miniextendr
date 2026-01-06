@@ -453,7 +453,7 @@ fn try_coalesce_scalars(elements: &[SEXP], elem_type: SEXPTYPE) -> Option<SEXP> 
                 let val = unsafe { crate::ffi::INTEGER_ELT(elem, 0) };
                 unsafe { SET_INTEGER_ELT(sexp.get(), i as isize, val) };
             }
-            Some(sexp.into_inner())
+            Some(sexp.get())
         }
         SEXPTYPE::REALSXP => {
             let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, n as isize)) };
@@ -461,7 +461,7 @@ fn try_coalesce_scalars(elements: &[SEXP], elem_type: SEXPTYPE) -> Option<SEXP> 
                 let val = unsafe { crate::ffi::REAL_ELT(elem, 0) };
                 unsafe { SET_REAL_ELT(sexp.get(), i as isize, val) };
             }
-            Some(sexp.into_inner())
+            Some(sexp.get())
         }
         SEXPTYPE::LGLSXP => {
             let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::LGLSXP, n as isize)) };
@@ -469,7 +469,7 @@ fn try_coalesce_scalars(elements: &[SEXP], elem_type: SEXPTYPE) -> Option<SEXP> 
                 let val = unsafe { crate::ffi::LOGICAL_ELT(elem, 0) };
                 unsafe { SET_LOGICAL_ELT(sexp.get(), i as isize, val) };
             }
-            Some(sexp.into_inner())
+            Some(sexp.get())
         }
         SEXPTYPE::STRSXP => {
             let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, n as isize)) };
@@ -477,7 +477,7 @@ fn try_coalesce_scalars(elements: &[SEXP], elem_type: SEXPTYPE) -> Option<SEXP> 
                 let charsxp = unsafe { crate::ffi::STRING_ELT(elem, 0) };
                 unsafe { SET_STRING_ELT(sexp.get(), i as isize, charsxp) };
             }
-            Some(sexp.into_inner())
+            Some(sexp.get())
         }
         _ => None, // Not a coalesceable type
     }
@@ -492,7 +492,7 @@ fn create_r_list(elements: &[SEXP]) -> SEXP {
         unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, elem) };
     }
 
-    sexp.into_inner()
+    sexp.get()
 }
 
 /// Create a named R list from string keys and SEXP values.
@@ -512,7 +512,7 @@ fn create_named_list(keys: &[String], values: &[SEXP]) -> SEXP {
     }
 
     unsafe { Rf_setAttrib(list.get(), R_NamesSymbol, names.get()) };
-    list.into_inner()
+    list.get()
 }
 
 /// Create a named R list from static string keys and SEXP values.
@@ -532,7 +532,7 @@ fn create_named_list_static(keys: &[&str], values: &[SEXP]) -> SEXP {
     }
 
     unsafe { Rf_setAttrib(list.get(), R_NamesSymbol, names.get()) };
-    list.into_inner()
+    list.get()
 }
 
 /// Create a tagged list: `list(tag = value)`
@@ -547,7 +547,7 @@ fn make_tagged_list(tag: &str, value: SEXP) -> SEXP {
         Rf_setAttrib(list.get(), R_NamesSymbol, names.get());
     }
 
-    list.into_inner()
+    list.get()
 }
 
 /// Extract a string from a SEXP (must be STRSXP of length 1).

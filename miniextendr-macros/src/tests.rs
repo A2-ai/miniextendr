@@ -149,6 +149,13 @@ fn miniextendr_attr_accepts_multiple_flags() {
 }
 
 #[test]
+fn miniextendr_attr_accepts_unwrap_in_r() {
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unwrap_in_r))
+        .expect("should parse unwrap_in_r");
+    assert!(attrs.unwrap_in_r);
+}
+
+#[test]
 fn parsed_fn_adds_inline_never_for_rust_abi() {
     let mut parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn f() {} }).unwrap();
     parsed.add_inline_never_if_needed();

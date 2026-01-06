@@ -67,7 +67,7 @@ if test -z "${MINIEXTENDR_FEATURES+x}"; then
   dnl MINIEXTENDR_FEATURES not set at all - apply defaults based on mode
   if test "$NOT_CRAN" = "true"; then
     dnl Dev mode: enable all optional features for testing
-    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
     echo "configure: dev mode - enabling all optional features for testing"
   else
     dnl CRAN mode: no extra features

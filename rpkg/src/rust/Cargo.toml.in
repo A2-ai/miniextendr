@@ -28,9 +28,9 @@ rand_distr = ["miniextendr-api/rand_distr"]
 either = ["miniextendr-api/either"]
 ndarray = ["miniextendr-api/ndarray"]
 nalgebra = ["miniextendr-api/nalgebra"]
-serde = ["miniextendr-api/serde"]
-serde_r = ["miniextendr-api/serde_r"]
-serde_full = ["miniextendr-api/serde_full"]
+serde = ["miniextendr-api/serde", "dep:serde"]
+serde_r = ["miniextendr-api/serde_r", "dep:serde"]
+serde_full = ["miniextendr-api/serde_full", "dep:serde"]
 num-bigint = ["miniextendr-api/num-bigint"]
 rust_decimal = ["miniextendr-api/rust_decimal"]
 ordered-float = ["miniextendr-api/ordered-float"]
@@ -53,6 +53,7 @@ vctrs = ["miniextendr-api/vctrs"]
 
 [dependencies]
 miniextendr-api = { version = "*" }
+serde = { version = "1", optional = true, features = ["derive"] }
 
 [build-dependencies]
 miniextendr-lint = { version = "*" }

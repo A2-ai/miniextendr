@@ -119,6 +119,8 @@
 //! | `SEXP` | Pass through | Raw SEXP |
 //! | `()` | Invisible NULL | `invisible(NULL)` |
 //!
+//! Use `#[miniextendr(unwrap_in_r)]` to return `Result<T, E>` to R without unwrapping.
+//!
 //! ## Class Systems
 //!
 //! The [`r_class_formatter`] module generates R code for different class systems:
@@ -319,6 +321,7 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// - `#[miniextendr(invisible)]` / `#[miniextendr(visible)]`
 /// - `#[miniextendr(check_interrupt)]`
 /// - `#[miniextendr(coerce)]` (also usable per-parameter)
+/// - `#[miniextendr(unwrap_in_r)]` (return `Result<T, E>` to R without unwrapping)
 /// - `#[miniextendr(dots = typed_list!(...))]` - validate dots, create `dots_typed`
 ///
 /// # Impl blocks (class systems)
@@ -362,6 +365,7 @@ pub fn miniextendr(
         check_interrupt,
         coerce_all,
         rng,
+        unwrap_in_r,
         return_pref,
         s3_generic,
         s3_class,
@@ -567,6 +571,7 @@ pub fn miniextendr(
         &rust_result_ident,
         rust_ident,
         return_pref,
+        unwrap_in_r,
     );
 
     let returns_sexp = return_analysis.returns_sexp;
@@ -1814,17 +1819,21 @@ pub fn r_ffi_checked(
                             }
                         }
                     } else if returns_raw_pointer {
-                        // Pointer-returning functions MUST be called on main thread.
-                        // Routing would return a pointer that could become invalid when
-                        // R's GC runs on the main thread.
-                        let fn_name_str = fn_name.to_string();
+                        // Pointer-returning functions are routed to main thread.
+                        // SAFETY: Caller must ensure the pointer is used/copied before
+                        // returning to worker thread, as R's GC may invalidate it.
+                        // The pointer is valid during the with_r_thread callback.
                         quote::quote! {
                             #(#attrs)*
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
-                                ::miniextendr_api::worker::assert_r_main_thread_for_pointer_api(#fn_name_str);
-                                #unchecked_name(#(#arg_names),*)
+                                let result = ::miniextendr_api::worker::with_r_thread(move || {
+                                    ::miniextendr_api::worker::Sendable(unsafe {
+                                        #unchecked_name(#(#arg_names),*)
+                                    })
+                                });
+                                result.0
                             }
                         }
                     } else {

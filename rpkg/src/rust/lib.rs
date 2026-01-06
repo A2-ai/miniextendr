@@ -47,6 +47,12 @@ mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
+#[cfg(feature = "serde_r")]
+#[path = "serde_r_tests.rs"]
+mod serde_r_tests;
+#[cfg(not(feature = "serde_r"))]
+#[path = "serde_r_tests_disabled.rs"]
+mod serde_r_tests;
 mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
@@ -1101,6 +1107,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "serde") {
         features.push("serde");
     }
+    if cfg!(feature = "serde_r") {
+        features.push("serde_r");
+    }
     if cfg!(feature = "num-bigint") {
         features.push("num-bigint");
     }
@@ -1200,6 +1209,7 @@ miniextendr_module! {
     use convert_pref_tests;
     use rng_tests;
     use rayon_tests;
+    use serde_r_tests;
     use nonapi;
     use factor_tests;
     use vctrs_tests;

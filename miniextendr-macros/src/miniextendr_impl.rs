@@ -338,6 +338,8 @@ pub struct MethodAttrs {
     pub coerce: bool,
     /// Enable RNG state management (GetRNGstate/PutRNGstate)
     pub rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping.
+    pub unwrap_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
 }
@@ -581,6 +583,8 @@ impl ParsedMethod {
                             method_attrs.coerce = true;
                         } else if inner.path.is_ident("rng") {
                             method_attrs.rng = true;
+                        } else if inner.path.is_ident("unwrap_in_r") {
+                            method_attrs.unwrap_in_r = true;
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -607,6 +611,26 @@ impl ParsedMethod {
                         method_attrs.defaults.insert(param_name, value.value());
                         Ok(())
                     })?;
+                } else if meta.path.is_ident("unsafe") {
+                    // Parse unsafe(main_thread) - same syntax as standalone functions
+                    meta.parse_nested_meta(|inner| {
+                        if inner.path.is_ident("main_thread") {
+                            method_attrs.unsafe_main_thread = true;
+                        } else {
+                            return Err(inner.error(
+                                "unknown `unsafe(...)` option; only `main_thread` is supported",
+                            ));
+                        }
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("check_interrupt") {
+                    method_attrs.check_interrupt = true;
+                } else if meta.path.is_ident("coerce") {
+                    method_attrs.coerce = true;
+                } else if meta.path.is_ident("rng") {
+                    method_attrs.rng = true;
+                } else if meta.path.is_ident("unwrap_in_r") {
+                    method_attrs.unwrap_in_r = true;
                 }
                 Ok(())
             })?;
@@ -1034,6 +1058,8 @@ pub fn generate_method_c_wrapper(
     // Determine return handling strategy
     let return_handling = if method.returns_self() {
         ReturnHandling::ExternalPtr
+    } else if method.method_attrs.unwrap_in_r && output_is_result(&method.sig.output) {
+        ReturnHandling::IntoR
     } else {
         crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
     };
@@ -1067,6 +1093,21 @@ pub fn generate_method_c_wrapper(
     }
 
     builder.build().generate()
+}
+
+fn output_is_result(output: &syn::ReturnType) -> bool {
+    match output {
+        syn::ReturnType::Type(_, ty) => matches!(
+            ty.as_ref(),
+            syn::Type::Path(p)
+                if p.path
+                    .segments
+                    .last()
+                    .map(|s| s.ident == "Result")
+                    .unwrap_or(false)
+        ),
+        syn::ReturnType::Default => false,
+    }
 }
 
 /// Generate R wrapper string for env-style class.

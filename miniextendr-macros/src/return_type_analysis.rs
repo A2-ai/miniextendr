@@ -35,6 +35,7 @@ pub(crate) fn analyze_return_type(
     rust_result_ident: &syn::Ident,
     rust_ident: &syn::Ident,
     return_pref: crate::miniextendr_fn::ReturnPref,
+    unwrap_in_r: bool,
 ) -> ReturnTypeAnalysis {
     let mut returns_sexp = false;
     let mut is_invisible = false;
@@ -95,6 +96,7 @@ pub(crate) fn analyze_return_type(
                     &mut returns_sexp,
                     &mut is_invisible,
                     &mut post_call_statements,
+                    unwrap_in_r,
                 )
             }
 
@@ -192,12 +194,23 @@ fn analyze_result_type(
     returns_sexp: &mut bool,
     is_invisible: &mut bool,
     post_call_statements: &mut Vec<proc_macro2::TokenStream>,
+    unwrap_in_r: bool,
 ) -> proc_macro2::TokenStream {
     let seg = type_path.path.segments.last().unwrap();
     let ok_ty = crate::first_type_argument(seg);
     let ok_is_unit =
         ok_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
     let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
+
+    if unwrap_in_r {
+        // Result<T, E> - return the Result to R without unwrapping
+        *is_invisible = false;
+        if ok_is_sexp {
+            // Still require main thread for Result<SEXP, E>
+            *returns_sexp = true;
+        }
+        return quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) };
+    }
 
     if ok_is_unit {
         // Result<(), E> - invisible, panic on Err

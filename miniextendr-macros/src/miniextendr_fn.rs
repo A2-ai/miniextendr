@@ -515,6 +515,7 @@ impl MiniextendrFunctionParsed {
 /// - `worker`: explicitly request worker thread execution (default for most functions)
 /// - `coerce`: enable automatic coercion for supported parameter types
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
+/// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
 /// - `return = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
 ///
 /// # Note
@@ -534,6 +535,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) coerce_all: bool,
     /// Enable RNG state management (GetRNGstate/PutRNGstate).
     pub(crate) rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping.
+    pub(crate) unwrap_in_r: bool,
     /// Preferred return conversion.
     pub(crate) return_pref: ReturnPref,
     /// S3 generic name (if this function is an S3 method).
@@ -589,12 +592,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.coerce_all = true;
                         } else if ident == "rng" {
                             out.rng = true;
+                        } else if ident == "unwrap_in_r" {
+                            out.unwrap_in_r = true;
                         } else if ident == "worker" {
                             out.force_worker = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r",
                             ));
                         }
                     }

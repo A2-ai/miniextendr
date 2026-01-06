@@ -1240,3 +1240,15 @@ Standalone adapter traits not needed - use connection framework instead.
   - `f64 -> OrderedFloat<f32>` errors on precision loss
   - `i32 -> Decimal` succeeds; `f64 -> Decimal` errors on NaN/Inf
   - `i32 -> BigInt` succeeds; `f64 -> BigInt` errors on fractional/NaN
+
+== minirextendr Enhancements ==
+
+==== Feature Detection Generator ====
+
+- [ ] Add `rust_enabled_features()` generator to minirextendr
+  - Create function that generates `rpkg_enabled_features()` equivalent for user packages
+  - Function should scan Cargo.toml features and generate matching Rust code
+  - Allow re-running to sync with Cargo.toml feature changes
+  - Template: `inst/templates/rpkg/src/rust/feature_detection.rs`
+  - R wrapper: `minirextendr::update_feature_detection()`
+  - Should generate both Rust code and R helper (`has_feature()`, `skip_if_missing_feature()`)

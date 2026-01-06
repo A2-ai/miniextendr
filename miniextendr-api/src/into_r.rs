@@ -889,3 +889,31 @@ where
         self.into_sexp()
     }
 }
+
+// =============================================================================
+// Result conversions
+// =============================================================================
+
+/// Convert `Result<T, E>` to R:
+/// - `Ok(value)` → returns the converted value directly
+/// - `Err(msg)` → returns `list(error = msg)`
+///
+/// This allows methods returning `Result<T, E>` to be passed through to R
+/// when using `#[miniextendr(unwrap_in_r)]`.
+impl<T, E> IntoR for Result<T, E>
+where
+    T: IntoR,
+    E: std::fmt::Display,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Ok(value) => value.into_sexp(),
+            Err(msg) => {
+                // Create list(error = msg)
+                let mut map = HashMap::with_capacity(1);
+                map.insert("error".to_string(), msg.to_string());
+                map.into_sexp()
+            }
+        }
+    }
+}

@@ -358,8 +358,9 @@ impl CWrapperContext {
                 #rng_put
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
-                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
-                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_errorcall(
+                        ::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        __miniextendr_call,
                     ),
                 }
             }
