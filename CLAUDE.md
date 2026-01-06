@@ -174,6 +174,77 @@ just cross-test         # Run cross-package tests
 just cross-check        # R CMD check both packages
 ```
 
+## Adding New Rust Functions
+
+When adding new `#[miniextendr]` functions to rpkg:
+
+### Requirements for R export
+
+1. **Function must be `pub`** - only `pub` functions get `@export` in R wrappers
+2. **Function must be in `miniextendr_module!`** - list it in the module declaration
+3. **Sub-modules must be `use`d** - if functions are in a sub-module, add `use module_name;` to the parent's `miniextendr_module!`
+
+### Workflow for new functions
+
+```bash
+# 1. Add your #[miniextendr] function(s) to a .rs file
+# 2. Add fn declarations to miniextendr_module! in that file
+# 3. If new module, add `use module_name;` to lib.rs miniextendr_module!
+# 4. Rebuild and regenerate R wrappers:
+NOT_CRAN=true just configure
+NOT_CRAN=true just rcmdinstall
+NOT_CRAN=true just devtools-document   # Regenerates R/miniextendr_wrappers.R and NAMESPACE
+NOT_CRAN=true just rcmdinstall         # Rebuild with new wrappers
+
+# If permission issues, use local library path:
+R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
+```
+
+### Feature-gated modules
+
+For modules that only exist when a feature is enabled (like `rayon`):
+
+```rust
+// In lib.rs - use #[path] for conditional module inclusion
+#[cfg(feature = "my_feature")]
+#[path = "my_module.rs"]
+mod my_module;
+
+#[cfg(not(feature = "my_feature"))]
+#[path = "my_module_disabled.rs"]
+mod my_module;
+
+miniextendr_module! {
+    mod rpkg;
+    use my_module;  // Works for both enabled and disabled
+}
+```
+
+Create a stub module for when feature is disabled:
+
+```rust
+// my_module_disabled.rs
+use miniextendr_api::miniextendr_module;
+
+miniextendr_module! {
+    mod my_module;
+    // Empty - no functions when feature disabled
+}
+```
+
+### What `just devtools-document` does
+
+- Runs the `document` binary which executes proc macros to generate R code
+- Regenerates `rpkg/R/miniextendr_wrappers.R` with R wrapper functions
+- Runs roxygen2 to regenerate `rpkg/NAMESPACE` with exports
+
+### Verifying your changes
+
+```bash
+just lint                        # Check #[miniextendr] ↔ miniextendr_module! consistency
+NOT_CRAN=true just devtools-test # Run R tests
+```
+
 ## Key Concepts
 
 - **Worker thread pattern**: Rust code runs on worker thread for proper panic handling
@@ -270,6 +341,10 @@ The `miniextendr-lint` crate is a build-time static analysis tool that checks co
 - **Multiple impl blocks**: When a type has 2+ impl blocks, all must have distinct labels
 - **Class system compatibility**: Trait impls must be compatible with inherent impl class systems
 
+### What it does NOT check
+
+- **Missing `use submodule;`** in parent module - if a sub-module has its own `miniextendr_module!` with all functions listed, the lint passes even if the parent forgets to `use` it. You'll only discover this at runtime when R can't find the functions.
+
 ### Running the lint
 
 ```bash
@@ -294,6 +369,23 @@ MINIEXTENDR_LINT=0 cargo check --manifest-path=rpkg/src/rust/Cargo.toml
    - Add `#[miniextendr(label = "...")]` with unique labels to each impl block
 
 ## Common Issues
+
+### R tests fail with "could not find function"
+
+Functions exist in Rust but aren't callable from R. Check:
+
+1. **Function is `pub`** - non-pub functions don't get `@export`
+2. **Function is in `miniextendr_module!`** - check the module declaration
+3. **Sub-module is `use`d** - check parent module's `miniextendr_module!` has `use submodule;`
+4. **NAMESPACE is stale** - run `just devtools-document` to regenerate
+
+Quick fix:
+```bash
+NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
+# Or with local library path if permission issues:
+R_LIBS=/tmp/claude/R_lib NOT_CRAN=true just devtools-document
+R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
+```
 
 ### "configure: command not found"
 

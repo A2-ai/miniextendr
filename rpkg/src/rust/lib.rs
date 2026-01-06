@@ -34,6 +34,12 @@ mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
 mod panic_tests;
+#[cfg(feature = "rayon")]
+#[path = "rayon_tests.rs"]
+mod rayon_tests;
+#[cfg(not(feature = "rayon"))]
+#[path = "rayon_tests_disabled.rs"]
+mod rayon_tests;
 mod r6_default_tests;
 mod r6_tests;
 mod receiver_tests;
@@ -1193,6 +1199,7 @@ miniextendr_module! {
     use shared_trait_test;
     use convert_pref_tests;
     use rng_tests;
+    use rayon_tests;
     use nonapi;
     use factor_tests;
     use vctrs_tests;
