@@ -2510,6 +2510,11 @@ printf "%s\n" "$as_me: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&6;}
 fi
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
 printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
+if test -n "$MINIEXTENDR_FEATURES"
+then :
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
+printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
+fi
 
 pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
 PACKAGE_TARNAME_RS=$pkg_rs

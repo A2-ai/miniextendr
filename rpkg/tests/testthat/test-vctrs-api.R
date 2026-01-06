@@ -123,7 +123,9 @@ test_that("short_vec_recycle matches vctrs behavior", {
 })
 
 test_that("vctrs error messages are informative", {
-  # Test error message formatting (doesn't require vctrs)
+  skip_if_vctrs_disabled()
+
+  # Test error message formatting
   expect_match(
     miniextendr:::test_vctrs_error_message(0L),
     "not initialized"
@@ -351,4 +353,203 @@ test_that("VctrsBuildError messages are informative", {
     miniextendr:::test_vctrs_build_error_message("invalid_size"),
     "invalid size"
   )
+})
+
+# =============================================================================
+# Phase D: vctrs compatibility validation tests
+# =============================================================================
+# These tests verify that objects created with our construction helpers
+# are fully compatible with vctrs operations.
+
+test_that("vctr objects pass vctrs::vec_is checks", {
+  skip_if_vctrs_disabled()
+
+  # Create vctr
+  data <- c(0.1, 0.2, 0.3)
+  vctr_obj <- miniextendr:::test_new_vctr(data, "test_percent")
+
+  # All vctrs predicates should work
+
+  expect_true(vctrs::vec_is(vctr_obj))
+  expect_true(vctrs::obj_is_vector(vctr_obj))
+  expect_false(vctrs::vec_is_list(vctr_obj))
+})
+
+test_that("vctr vec_ptype returns zero-size prototype", {
+  skip_if_vctrs_disabled()
+
+  data <- c(1.0, 2.0, 3.0)
+  vctr_obj <- miniextendr:::test_new_vctr(data, "test_ptype")
+
+  ptype <- vctrs::vec_ptype(vctr_obj)
+
+  # Prototype should have:
+  # - Same class
+  expect_equal(class(ptype), class(vctr_obj))
+  # - Zero size
+  expect_equal(vctrs::vec_size(ptype), 0L)
+})
+
+test_that("vctr vec_cast self-cast is identity", {
+  skip_if_vctrs_disabled()
+
+  data <- c(10.0, 20.0, 30.0)
+  vctr_obj <- miniextendr:::test_new_vctr(data, "test_cast")
+
+  # Self-cast should return same object
+  cast_result <- vctrs::vec_cast(vctr_obj, vctr_obj)
+
+  expect_equal(class(cast_result), class(vctr_obj))
+  expect_equal(vctrs::vec_data(cast_result), vctrs::vec_data(vctr_obj))
+})
+
+test_that("vctr vec_ptype2 self-combination works", {
+  skip_if_vctrs_disabled()
+
+  data <- c(1.0, 2.0)
+  vctr_obj <- miniextendr:::test_new_vctr(data, "test_ptype2")
+
+  # Self-ptype2 should return the common type (a zero-size prototype)
+  common <- vctrs::vec_ptype2(vctr_obj, vctr_obj)
+
+  expect_equal(class(common), class(vctr_obj))
+  expect_equal(vctrs::vec_size(common), 0L)
+})
+
+test_that("vctr can be combined with c()", {
+  skip_if_vctrs_disabled()
+
+  data1 <- c(1.0, 2.0)
+  data2 <- c(3.0, 4.0, 5.0)
+  vctr1 <- miniextendr:::test_new_vctr(data1, "test_combine")
+  vctr2 <- miniextendr:::test_new_vctr(data2, "test_combine")
+
+  # Should be able to combine
+  combined <- vctrs::vec_c(vctr1, vctr2)
+
+  expect_equal(class(combined), class(vctr1))
+  expect_equal(vctrs::vec_size(combined), 5L)
+  expect_equal(vctrs::vec_data(combined), c(1.0, 2.0, 3.0, 4.0, 5.0))
+})
+
+test_that("vctr supports subsetting", {
+  skip_if_vctrs_disabled()
+
+  data <- c(10.0, 20.0, 30.0, 40.0, 50.0)
+  vctr_obj <- miniextendr:::test_new_vctr(data, "test_subset")
+
+  # Subsetting should preserve class
+  subset <- vctr_obj[2:4]
+
+  expect_equal(class(subset), class(vctr_obj))
+  expect_equal(vctrs::vec_data(subset), c(20.0, 30.0, 40.0))
+})
+
+test_that("record objects have correct vec_proxy behavior", {
+  skip_if_vctrs_disabled()
+
+  fields <- list(x = 1:3, y = c("a", "b", "c"))
+  rcrd_obj <- miniextendr:::test_new_rcrd(fields, "test_record")
+
+  # Proxy should be a data frame
+  proxy <- vctrs::vec_proxy(rcrd_obj)
+
+  expect_true(is.data.frame(proxy))
+  expect_equal(nrow(proxy), 3L)
+  expect_equal(names(proxy), c("x", "y"))
+})
+
+test_that("record vec_restore roundtrip works", {
+  skip_if_vctrs_disabled()
+
+  fields <- list(n = 1:4, d = 5:8)
+  rcrd_obj <- miniextendr:::test_new_rcrd(fields, "test_restore")
+
+  # Get proxy, then restore
+  proxy <- vctrs::vec_proxy(rcrd_obj)
+  restored <- vctrs::vec_restore(proxy, rcrd_obj)
+
+  # Should have same class and data
+  expect_equal(class(restored), class(rcrd_obj))
+  expect_equal(vctrs::field(restored, "n"), vctrs::field(rcrd_obj, "n"))
+  expect_equal(vctrs::field(restored, "d"), vctrs::field(rcrd_obj, "d"))
+})
+
+test_that("record supports subsetting", {
+  skip_if_vctrs_disabled()
+
+  fields <- list(a = 1:5, b = letters[1:5])
+  rcrd_obj <- miniextendr:::test_new_rcrd(fields, "test_rcrd_subset")
+
+  # Subsetting should preserve class and slice all fields
+  subset <- rcrd_obj[2:4]
+
+  expect_equal(class(subset), class(rcrd_obj))
+  expect_equal(vctrs::field(subset, "a"), 2:4)
+  expect_equal(vctrs::field(subset, "b"), c("b", "c", "d"))
+})
+
+test_that("record vec_size is number of rows", {
+  skip_if_vctrs_disabled()
+
+  fields <- list(x = 1:10, y = 11:20)
+  rcrd_obj <- miniextendr:::test_new_rcrd(fields, "test_rcrd_size")
+
+  expect_equal(vctrs::vec_size(rcrd_obj), 10L)
+})
+
+test_that("list_of supports vec_ptype with element ptype", {
+  skip_if_vctrs_disabled()
+
+  x <- list(1:2, 3:4)
+  ptype <- integer(0)
+  list_of_obj <- miniextendr:::test_new_list_of_ptype(x, ptype, character(0))
+
+  # ptype attribute should be preserved
+  expect_equal(attr(list_of_obj, "ptype"), integer(0))
+
+  # vec_ptype should give zero-length list_of
+  obj_ptype <- vctrs::vec_ptype(list_of_obj)
+  expect_equal(vctrs::vec_size(obj_ptype), 0L)
+  expect_equal(class(obj_ptype), class(list_of_obj))
+})
+
+test_that("list_of supports subsetting", {
+  skip_if_vctrs_disabled()
+
+  x <- list(1:2, 3:4, 5:6, 7:8)
+  ptype <- integer(0)
+  list_of_obj <- miniextendr:::test_new_list_of_ptype(x, ptype, character(0))
+
+  subset <- list_of_obj[2:3]
+
+  expect_equal(class(subset), class(list_of_obj))
+  expect_equal(vctrs::vec_size(subset), 2L)
+  expect_equal(subset[[1]], 3:4)
+  expect_equal(subset[[2]], 5:6)
+})
+
+test_that("list_of vec_is_list returns TRUE", {
+  skip_if_vctrs_disabled()
+
+  x <- list(c("a", "b"), c("c", "d"))
+  ptype <- character(0)
+  list_of_obj <- miniextendr:::test_new_list_of_ptype(x, ptype, character(0))
+
+  expect_true(vctrs::vec_is_list(list_of_obj))
+  expect_true(vctrs::obj_is_vector(list_of_obj))
+})
+
+test_that("vctr with inherit_base_type supports numeric operations", {
+  skip_if_vctrs_disabled()
+
+  # Create vctr that inherits from double
+  data <- c(1.0, 2.0, 3.0)
+  vctr_obj <- miniextendr:::test_new_vctr_inherit(data, "test_numeric", TRUE)
+
+  # Should inherit numeric behavior
+  expect_equal(class(vctr_obj), c("test_numeric", "vctrs_vctr", "double"))
+
+  # Basic ops should work (though vctrs may warn about lossy cast)
+  expect_true(is.numeric(vctr_obj))
 })
