@@ -5,11 +5,18 @@
 //! `vec_ptype2`, `vec_cast`, and `vec_ptype_abbr`.
 //!
 //! The example implements a `percent` class that stores numeric values as percentages.
+//!
+//! # Note on Coercion Behavior
+//!
+//! This example uses "percent wins" coercion: `percent + double = percent`.
+//! The vctrs documentation example uses "double wins" (`percent + double = double`).
+//! Both are valid design choices - we chose to preserve the specialized type.
 
 use miniextendr_api::ffi::{
     R_ClassSymbol, R_NilValue, Rf_allocVector, Rf_duplicate, Rf_getAttrib, Rf_setAttrib,
     SEXPTYPE, SEXP, SexpExt,
 };
+use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::vctrs::new_vctr;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -81,10 +88,12 @@ pub fn vec_proxy_percent(x: SEXP, _dots: ...) -> SEXP {
     // Return x without class attribute (strip vctrs class for operations)
     let class = unsafe { Rf_getAttrib(x, R_ClassSymbol) };
     if class != unsafe { R_NilValue } {
-        // Duplicate to avoid modifying original
-        let out = unsafe { Rf_duplicate(x) };
-        unsafe { Rf_setAttrib(out, R_ClassSymbol, R_NilValue) };
-        out
+        // Duplicate to avoid modifying original, with GC protection
+        let out = unsafe { OwnedProtect::new(Rf_duplicate(x)) };
+        unsafe { Rf_setAttrib(out.get(), R_ClassSymbol, R_NilValue) };
+        // OwnedProtect drops here, calling UNPROTECT(1). This is safe because
+        // R captures the return value before any GC can run.
+        out.get()
     } else {
         x
     }
@@ -104,9 +113,9 @@ pub fn vec_restore_percent(x: SEXP, _to: SEXP, _dots: ...) -> Result<SEXP, Strin
 /// Returns an empty percent prototype when combining two percent vectors.
 #[miniextendr(s3(generic = "vec_ptype2", class = "percent.percent"))]
 pub fn vec_ptype2_percent_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP, String> {
-    // Create empty prototype
-    let empty = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, 0) };
-    new_vctr(empty, &["percent"], &[], Some(false)).map_err(|e| e.to_string())
+    // Create empty prototype with GC protection
+    let empty = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, 0)) };
+    new_vctr(empty.get(), &["percent"], &[], Some(false)).map_err(|e| e.to_string())
 }
 
 /// Self-cast (percent -> percent is identity).
@@ -127,24 +136,25 @@ pub fn vec_cast_percent_double(x: SEXP, _to: SEXP, _dots: ...) -> Result<SEXP, S
 /// Coercion: double + percent = percent.
 #[miniextendr(s3(generic = "vec_ptype2", class = "percent.double"))]
 pub fn vec_ptype2_percent_double(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP, String> {
-    let empty = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, 0) };
-    new_vctr(empty, &["percent"], &[], Some(false)).map_err(|e| e.to_string())
+    let empty = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, 0)) };
+    new_vctr(empty.get(), &["percent"], &[], Some(false)).map_err(|e| e.to_string())
 }
 
 /// Coercion: double + percent = percent (symmetric).
 #[miniextendr(s3(generic = "vec_ptype2", class = "double.percent"))]
 pub fn vec_ptype2_double_percent(_x: SEXP, _y: SEXP, _dots: ...) -> Result<SEXP, String> {
-    let empty = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, 0) };
-    new_vctr(empty, &["percent"], &[], Some(false)).map_err(|e| e.to_string())
+    let empty = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::REALSXP, 0)) };
+    new_vctr(empty.get(), &["percent"], &[], Some(false)).map_err(|e| e.to_string())
 }
 
 /// Cast from percent to double.
 #[miniextendr(s3(generic = "vec_cast", class = "double.percent"))]
 pub fn vec_cast_double_percent(x: SEXP, _to: SEXP, _dots: ...) -> SEXP {
-    // Strip the class to get raw numeric
-    let out = unsafe { Rf_duplicate(x) };
-    unsafe { Rf_setAttrib(out, R_ClassSymbol, R_NilValue) };
-    out
+    // Strip the class to get raw numeric, with GC protection
+    let out = unsafe { OwnedProtect::new(Rf_duplicate(x)) };
+    unsafe { Rf_setAttrib(out.get(), R_ClassSymbol, R_NilValue) };
+    // OwnedProtect drops here, unprotecting. Safe because R captures return value.
+    out.get()
 }
 
 // =============================================================================
