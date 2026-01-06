@@ -536,6 +536,13 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) rng: bool,
     /// Preferred return conversion.
     pub(crate) return_pref: ReturnPref,
+    /// S3 generic name (if this function is an S3 method).
+    ///
+    /// Use `#[miniextendr(s3(generic = "vec_proxy", class = "my_vctr"))]` to mark a function
+    /// as an S3 method for an existing generic.
+    pub(crate) s3_generic: Option<String>,
+    /// S3 class suffix for the method (e.g., "my_vctr" or "my_vctr.my_vctr" for double-dispatch).
+    pub(crate) s3_class: Option<String>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -651,6 +658,31 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     } else if list.path.is_ident("defaults") {
                         // Ignore defaults(...) - it's handled by impl method parsing
                         // This allows #[miniextendr(defaults(...))] on impl methods
+                    } else if list.path.is_ident("s3") {
+                        // Parse s3(generic = "...", class = "...")
+                        list.parse_nested_meta(|meta| {
+                            if meta.path.is_ident("generic") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                out.s3_generic = Some(value.value());
+                            } else if meta.path.is_ident("class") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                out.s3_class = Some(value.value());
+                            } else {
+                                return Err(meta.error(
+                                    "unknown s3 option; expected `generic` or `class`",
+                                ));
+                            }
+                            Ok(())
+                        })?;
+                        // Validate: s3 requires at least generic or class
+                        if out.s3_generic.is_none() && out.s3_class.is_none() {
+                            return Err(syn::Error::new_spanned(
+                                list,
+                                "s3(...) requires at least `generic = \"...\"` or `class = \"...\"`",
+                            ));
+                        }
                     } else {
                         // invisible(something) etc
                         return Err(syn::Error::new_spanned(

@@ -1050,6 +1050,14 @@ mod vctrs_tests;
 #[path = "vctrs_tests_disabled.rs"]
 mod vctrs_tests;
 
+// vctrs class example: demonstrates implementing a vctrs-compatible S3 class in Rust
+#[cfg(feature = "vctrs")]
+mod vctrs_class_example;
+
+#[cfg(not(feature = "vctrs"))]
+#[path = "vctrs_class_example_disabled.rs"]
+mod vctrs_class_example;
+
 // endregion
 
 // region: Feature detection
@@ -1188,6 +1196,7 @@ miniextendr_module! {
     use nonapi;
     use factor_tests;
     use vctrs_tests;
+    use vctrs_class_example;
 
     // ALTREP entrypoints are called directly from R via R/altrep.R
     extern "C-unwind" fn rpkg_altrep_compact_int;

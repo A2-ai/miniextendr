@@ -314,6 +314,20 @@ pub struct MethodAttrs {
     /// ```
     /// This generates `print.MyType` that calls the `show` method.
     pub generic: Option<String>,
+    /// Override class suffix for S3 methods.
+    ///
+    /// Use this to implement double-dispatch methods (like vctrs coercion)
+    /// where the class suffix differs from the type name or contains multiple classes.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s3(generic = "vec_ptype2", class = "my_vctr.my_vctr"))]
+    /// fn ptype2_self(x: Robj, y: Robj, dots: ...) -> Robj {
+    ///     // Return prototype
+    /// }
+    /// ```
+    /// This generates `vec_ptype2.my_vctr.my_vctr` for vctrs double-dispatch.
+    pub class: Option<String>,
     /// Worker thread execution (default: auto-detect based on types)
     pub worker: bool,
     /// Force main thread execution (unsafe)
@@ -571,6 +585,10 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.generic = Some(value.value());
+                        } else if inner.path.is_ident("class") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.class = Some(value.value());
                         }
                         Ok(())
                     })?;
@@ -1378,11 +1396,17 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S3 generics + methods
     for ctx in parsed_impl.instance_method_contexts() {
         let generic_name = ctx.generic_name();
-        let s3_method_name = format!("{}.{}", generic_name, class_name);
+        // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
+        let method_class_suffix = ctx
+            .class_suffix()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| class_name.clone());
+        let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
         let full_params = ctx.instance_formals(true); // adds x, ..., params
 
-        // Only create the S3 generic if no generic override was provided
-        if !ctx.has_generic_override() {
+        // Only create the S3 generic if no generic/class override was provided
+        // (custom class suffix implies using an existing generic)
+        if !ctx.has_generic_override() && !ctx.has_class_override() {
             // Create the S3 generic (only for custom generics, not base R overrides)
             lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
@@ -1884,11 +1908,17 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods as S3 generics + methods
     for ctx in parsed_impl.instance_method_contexts() {
         let generic_name = ctx.generic_name();
-        let s3_method_name = format!("{}.{}", generic_name, class_name);
+        // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
+        let method_class_suffix = ctx
+            .class_suffix()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| class_name.clone());
+        let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
         let full_params = ctx.instance_formals(true); // adds x, ..., params
 
-        // Only create the S3 generic if no generic override was provided
-        if !ctx.has_generic_override() {
+        // Only create the S3 generic if no generic/class override was provided
+        // (custom class suffix implies using an existing generic)
+        if !ctx.has_generic_override() && !ctx.has_class_override() {
             lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
             lines.push(format!("#' @rdname {}", class_name));
@@ -1912,7 +1942,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_doc =
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
-        lines.push(format!("#' @method {} {}", generic_name, class_name));
+        lines.push(format!(
+            "#' @method {} {}",
+            generic_name, method_class_suffix
+        ));
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params

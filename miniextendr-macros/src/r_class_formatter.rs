@@ -114,6 +114,19 @@ impl<'a> MethodContext<'a> {
     pub fn has_generic_override(&self) -> bool {
         self.method.method_attrs.generic.is_some()
     }
+
+    /// Get custom class suffix if specified.
+    ///
+    /// This allows double-dispatch patterns like `vec_ptype2.my_class.my_class`
+    /// by specifying `#[miniextendr(s3(generic = "vec_ptype2", class = "my_class.my_class"))]`.
+    pub fn class_suffix(&self) -> Option<&str> {
+        self.method.method_attrs.class.as_deref()
+    }
+
+    /// Check if this method uses a custom class suffix.
+    pub fn has_class_override(&self) -> bool {
+        self.method.method_attrs.class.is_some()
+    }
 }
 
 /// Builder for class-level roxygen documentation header.
