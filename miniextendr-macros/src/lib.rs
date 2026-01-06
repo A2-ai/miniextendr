@@ -215,6 +215,34 @@ fn is_sexp_type(ty: &syn::Type) -> bool {
         .unwrap_or(false))
 }
 
+/// Known vctrs S3 generics that need `@importFrom vctrs` for roxygen registration.
+const VCTRS_GENERICS: &[&str] = &[
+    // Core proxy/restore
+    "vec_proxy",
+    "vec_restore",
+    // Type coercion
+    "vec_ptype2",
+    "vec_cast",
+    // Printing
+    "vec_ptype_abbr",
+    "vec_ptype_full",
+    // Equality/comparison/ordering proxies
+    "vec_proxy_equal",
+    "vec_proxy_compare",
+    "vec_proxy_order",
+    // Arithmetic
+    "vec_arith",
+    "vec_math",
+    // Other
+    "vec_ptype_finalise",
+];
+
+/// Check if a generic name is a vctrs generic that needs `@importFrom vctrs`.
+#[inline]
+fn is_vctrs_generic(generic: &str) -> bool {
+    VCTRS_GENERICS.contains(&generic)
+}
+
 /// Export Rust items to R.
 ///
 /// `#[miniextendr]` can be applied to:
@@ -825,7 +853,13 @@ pub fn miniextendr(
             panic!("s3(...) requires `class = \"...\"` to specify the S3 class suffix")
         });
         r_wrapper_ident_str = format!("{}.{}", generic, class);
-        s3_method_comment = format!("#' @method {} {}\n", generic, class);
+        // Add @importFrom for vctrs generics so roxygen registers the dependency
+        let import_comment = if is_vctrs_generic(&generic) {
+            format!("#' @importFrom vctrs {}\n", generic)
+        } else {
+            String::new()
+        };
+        s3_method_comment = format!("{}#' @method {} {}\n", import_comment, generic, class);
     } else if abi.is_some() {
         r_wrapper_ident_str = format!("unsafe_{}", rust_ident);
         s3_method_comment = String::new();

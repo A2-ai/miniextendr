@@ -120,10 +120,13 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
     let has_name = tag_names_set.contains("name") || tag_names_set.contains("rdname");
     let has_title = tag_names_set.contains("title");
     let has_description = tag_names_set.contains("description");
+    let has_any_tags = !tags.is_empty();
 
-    // Auto-generate @title from implicit title if we have @name but no @title
+    // Auto-generate @title from implicit title if:
+    // - We have @name but no @title, OR
+    // - We have any tags (like @param/@return) but no @title (user is writing roxygen docs)
     // Use implicit_title_from_attrs which respects paragraph breaks
-    if has_name
+    if (has_name || has_any_tags)
         && !has_title
         && let Some(title) = implicit_title_from_attrs(attrs)
     {
