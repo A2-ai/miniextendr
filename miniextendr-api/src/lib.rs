@@ -583,6 +583,20 @@ pub use serde_impl::{
     json_from_sexp_strict, json_into_sexp,
 };
 
+/// Direct R serialization via serde (no JSON intermediate).
+///
+/// Provides efficient type-preserving conversions between Rust types and native R objects:
+/// - [`RSerializeNative`][serde_r::RSerializeNative] - Convert Rust → R (struct → named list)
+/// - [`RDeserializeNative`][serde_r::RDeserializeNative] - Convert R → Rust (named list → struct)
+///
+/// Enable with `features = ["serde_r"]`.
+///
+/// See the [`serde_r`] module documentation for type mappings and examples.
+#[cfg(feature = "serde_r")]
+pub mod serde_r;
+#[cfg(feature = "serde_r")]
+pub use serde_r::{RDeserializeNative, RDeserializer, RSerdeError, RSerializeNative, RSerializer};
+
 /// Integration with the `num-traits` crate for generic numeric operations.
 ///
 /// Provides adapter traits for generic numeric types:
