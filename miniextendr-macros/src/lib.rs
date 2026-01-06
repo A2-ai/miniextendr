@@ -2327,6 +2327,28 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 /// ))?;
 /// ```
 ///
+/// ## Attribute sugar
+///
+/// Instead of calling `.typed()` manually, you can use `typed_list!` directly in the
+/// `#[miniextendr]` attribute for automatic validation:
+///
+/// ```ignore
+/// #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
+/// pub fn my_func(...) -> String {
+///     // `dots_typed` is automatically created and validated
+///     let x: f64 = dots_typed.get("x").expect("x");
+///     let y: f64 = dots_typed.get("y").expect("y");
+///     format!("x={}, y={}", x, y)
+/// }
+/// ```
+///
+/// This injects validation at the start of the function body:
+/// ```ignore
+/// let dots_typed = _dots.typed(typed_list!(...)).expect("dots validation failed");
+/// ```
+///
+/// See the [`#[miniextendr]`](macro@miniextendr) attribute documentation for more details.
+///
 /// [`TypedListSpec`]: miniextendr_api::typed_list::TypedListSpec
 /// [`Dots::typed()`]: miniextendr_api::dots::Dots::typed
 #[proc_macro]
