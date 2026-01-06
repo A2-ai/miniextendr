@@ -246,7 +246,23 @@ pub mod trait_abi;
 pub mod vctrs;
 #[cfg(feature = "vctrs")]
 pub use vctrs::{
-    VctrsBuildError, VctrsError, VctrsSexpExt, init_vctrs, new_list_of, new_rcrd, new_vctr,
+    // Phase C traits
+    IntoVctrs,
+    // Error types
+    VctrsBuildError,
+    VctrsClass,
+    VctrsError,
+    VctrsKind,
+    VctrsListOf,
+    VctrsRecord,
+    // Extension trait
+    VctrsSexpExt,
+    // Initialization
+    init_vctrs,
+    // Construction helpers
+    new_list_of,
+    new_rcrd,
+    new_vctr,
 };
 
 // Stub for miniextendr_init_vctrs when vctrs feature is disabled.

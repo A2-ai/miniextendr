@@ -973,6 +973,223 @@ pub fn new_list_of(
 }
 
 // =============================================================================
+// Phase C: Traits for ergonomic vctrs type creation
+// =============================================================================
+
+/// The kind of vctrs class being created.
+///
+/// This corresponds to the different vctrs constructors:
+/// - [`Vctr`](VctrsKind::Vctr): Simple vector backed by a base type (`vctrs::new_vctr`)
+/// - [`Rcrd`](VctrsKind::Rcrd): Record type with named fields (`vctrs::new_rcrd`)
+/// - [`ListOf`](VctrsKind::ListOf): Homogeneous list with prototype (`vctrs::new_list_of`)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VctrsKind {
+    /// Simple vctr backed by a base vector (double, integer, character, etc.).
+    ///
+    /// Created with [`new_vctr`]. The class structure is:
+    /// `c(user_class, "vctrs_vctr", base_type?)`
+    #[default]
+    Vctr,
+
+    /// Record type with named fields of equal length.
+    ///
+    /// Created with [`new_rcrd`]. The class structure is:
+    /// `c(user_class, "vctrs_rcrd", "vctrs_vctr")`
+    ///
+    /// Record types are useful for compound objects like rational numbers,
+    /// date-times with timezone, or any data with multiple parallel fields.
+    Rcrd,
+
+    /// Homogeneous list where all elements share a common prototype.
+    ///
+    /// Created with [`new_list_of`]. The class structure is:
+    /// `c(user_class, "vctrs_list_of", "vctrs_vctr", "list")`
+    ///
+    /// Useful for storing lists of vectors of the same type.
+    ListOf,
+}
+
+/// Trait for types that can describe their vctrs class metadata.
+///
+/// Implement this trait to define how a Rust type should be represented
+/// as a vctrs-compatible R object.
+///
+/// # Example
+///
+/// ```ignore
+/// struct Percent(Vec<f64>);
+///
+/// impl VctrsClass for Percent {
+///     const CLASS_NAME: &'static str = "vctrs_percent";
+///     const KIND: VctrsKind = VctrsKind::Vctr;
+///     const BASE_TYPE: Option<SEXPTYPE> = Some(SEXPTYPE::REALSXP);
+///     const INHERIT_BASE_TYPE: bool = false;
+/// }
+/// ```
+pub trait VctrsClass {
+    /// The primary class name for this type.
+    ///
+    /// This becomes the first element in the R class vector.
+    /// Convention: use snake_case with a "vctrs_" prefix for custom classes.
+    const CLASS_NAME: &'static str;
+
+    /// The kind of vctrs class (vctr, rcrd, or list_of).
+    const KIND: VctrsKind;
+
+    /// The base R SEXP type for vctr kinds.
+    ///
+    /// - For `Vctr`: The underlying vector type (e.g., `REALSXP` for doubles)
+    /// - For `Rcrd` and `ListOf`: Usually `None` (they use list internally)
+    const BASE_TYPE: Option<SEXPTYPE> = None;
+
+    /// Whether to include the base type in the class vector.
+    ///
+    /// - `true`: Class is `c("my_class", "vctrs_vctr", "double")`
+    /// - `false`: Class is `c("my_class", "vctrs_vctr")`
+    ///
+    /// For list-backed types, this must be `true`.
+    const INHERIT_BASE_TYPE: bool = false;
+
+    /// Optional abbreviation for `vec_ptype_abbr` (used in printing).
+    ///
+    /// If `None`, vctrs will use a default based on the class name.
+    const ABBR: Option<&'static str> = None;
+
+    /// Additional class names to include (after the primary class).
+    ///
+    /// Useful for inheritance hierarchies. These appear between the
+    /// primary class and "vctrs_vctr" in the class vector.
+    fn additional_classes() -> &'static [&'static str] {
+        &[]
+    }
+
+    /// Additional attributes to set on the object.
+    ///
+    /// Override this to add custom attributes like "digits", "units", etc.
+    /// The default implementation returns an empty slice.
+    fn attrs(&self) -> Vec<(&'static str, SEXP)> {
+        Vec::new()
+    }
+}
+
+/// Trait for converting Rust types into vctrs-compatible R objects.
+///
+/// This trait provides the `into_vctrs()` method which converts a Rust
+/// value into an R SEXP with proper vctrs class structure.
+///
+/// # Implementation
+///
+/// Types implementing this trait should:
+/// 1. Convert their data to the appropriate R SEXP type
+/// 2. Apply the vctrs class structure using [`new_vctr`], [`new_rcrd`], or [`new_list_of`]
+///
+/// # Example
+///
+/// ```ignore
+/// struct Percent(Vec<f64>);
+///
+/// impl VctrsClass for Percent {
+///     const CLASS_NAME: &'static str = "vctrs_percent";
+///     const KIND: VctrsKind = VctrsKind::Vctr;
+///     const BASE_TYPE: Option<SEXPTYPE> = Some(SEXPTYPE::REALSXP);
+/// }
+///
+/// impl IntoVctrs for Percent {
+///     fn into_vctrs(self) -> Result<SEXP, VctrsBuildError> {
+///         use miniextendr_api::IntoR;
+///         let data = self.0.into_r();
+///         new_vctr(
+///             data,
+///             &[Self::CLASS_NAME],
+///             &self.attrs(),
+///             Some(Self::INHERIT_BASE_TYPE),
+///         )
+///     }
+/// }
+/// ```
+pub trait IntoVctrs: VctrsClass {
+    /// Convert this value into a vctrs-compatible R object.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`VctrsBuildError`] if:
+    /// - vctrs is not initialized
+    /// - The data is not a valid vector
+    /// - Other construction errors occur
+    fn into_vctrs(self) -> Result<SEXP, VctrsBuildError>;
+}
+
+/// Marker trait for vctrs record types.
+///
+/// Record types are vctrs classes backed by named lists where all fields
+/// have equal length. Each "element" of the record is a row across all fields.
+///
+/// # Example
+///
+/// ```ignore
+/// /// A rational number represented as numerator/denominator
+/// struct Rational {
+///     n: Vec<i32>,  // numerators
+///     d: Vec<i32>,  // denominators
+/// }
+///
+/// impl VctrsClass for Rational {
+///     const CLASS_NAME: &'static str = "vctrs_rational";
+///     const KIND: VctrsKind = VctrsKind::Rcrd;
+/// }
+///
+/// impl VctrsRecord for Rational {
+///     fn field_names() -> &'static [&'static str] {
+///         &["n", "d"]
+///     }
+/// }
+/// ```
+pub trait VctrsRecord: VctrsClass {
+    /// The names of the record fields.
+    ///
+    /// These must match the order in which fields are added to the
+    /// underlying list when implementing [`IntoVctrs`].
+    fn field_names() -> &'static [&'static str];
+}
+
+/// Marker trait for vctrs list_of types.
+///
+/// list_of types are lists where all elements are expected to share
+/// a common prototype (element type).
+///
+/// # Example
+///
+/// ```ignore
+/// /// A list of integer vectors
+/// struct IntVecList(Vec<Vec<i32>>);
+///
+/// impl VctrsClass for IntVecList {
+///     const CLASS_NAME: &'static str = "vctrs_int_list";
+///     const KIND: VctrsKind = VctrsKind::ListOf;
+/// }
+///
+/// impl VctrsListOf for IntVecList {
+///     fn ptype_expr() -> &'static str {
+///         "integer()"
+///     }
+/// }
+/// ```
+pub trait VctrsListOf: VctrsClass {
+    /// An R expression that evaluates to the prototype.
+    ///
+    /// This is used in generated R code for `vec_ptype2` and `vec_cast`.
+    /// Common values: "integer()", "double()", "character()", etc.
+    fn ptype_expr() -> &'static str;
+
+    /// Optional fixed size for list elements.
+    ///
+    /// If `Some(n)`, all list elements are expected to have exactly `n` elements.
+    fn fixed_size() -> Option<i32> {
+        None
+    }
+}
+
+// =============================================================================
 // Unit tests
 // =============================================================================
 
