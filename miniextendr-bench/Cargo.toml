@@ -110,6 +110,3 @@ harness = false
 [[bench]]
 name = "factor"
 harness = false
-
-[profile.release]
-debug-assertions = true

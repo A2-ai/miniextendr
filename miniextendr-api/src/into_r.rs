@@ -491,7 +491,7 @@ unsafe fn vec_to_sexp_unchecked<T: crate::ffi::RNativeType>(slice: &[T]) -> crat
 // Vec coercion for non-native types (i8, i16, u16 → i32; f32 → f64)
 // =============================================================================
 
-/// Macro for Vec<T> where T coerces to a native R type.
+/// Macro for `Vec<T>` where `T` coerces to a native R type.
 macro_rules! impl_vec_coerce_into_r {
     ($from:ty => $to:ty) => {
         impl IntoR for Vec<$from> {
@@ -631,7 +631,7 @@ impl IntoR for BTreeSet<String> {
 // Set coercion for non-native types (i8, i16, u16 → i32)
 // =============================================================================
 
-/// Macro for HashSet/BTreeSet<T> where T coerces to i32 (R's native integer type).
+/// Macro for `HashSet<T>`/`BTreeSet<T>` where `T` coerces to i32 (R's native integer type).
 macro_rules! impl_set_coerce_into_r {
     ($from:ty) => {
         impl IntoR for HashSet<$from> {

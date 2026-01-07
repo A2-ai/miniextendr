@@ -253,6 +253,7 @@ fn test_error_cases() {
 // =============================================================================
 
 /// Helper to create a VECSXP (R list) from SEXPs
+#[cfg(any(feature = "serde", feature = "aho-corasick"))]
 unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
     use miniextendr_api::ffi::SET_VECTOR_ELT;
     let len = elements.len() as R_xlen_t;

@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{OnceLock, mpsc};
 

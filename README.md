@@ -44,26 +44,44 @@ Highlights:
 - Re-exports macros from `miniextendr-macros` so downstream crates can depend
   on a single crate.
 
-Feature flags:
+Feature flags (core):
 
-- `nonapi` – enable feature‑gated non‑API R symbols (e.g., stack controls).
-- `rayon` – parallel helpers for R vectors.
-- `connections` – experimental R connection framework (unstable API).
-- `indicatif` – progress bar integration via R console (requires `nonapi`).
+| Feature | Description |
+|---------|-------------|
+| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`). May break with R updates. |
+| `rayon` | Parallel iterators via Rayon. Adds `RParallelIterator`, `RParallelExtend`. |
+| `connections` | Experimental R connection framework. **Unstable R API.** |
+| `indicatif` | Progress bars via R console. Requires `nonapi`. |
+| `vctrs` | Access to vctrs C API (`obj_is_vector`, `short_vec_size`, `short_vec_recycle`). |
 
-Optional type integrations:
-- `rand` / `rand_distr` – R RNG with rand traits.
-- `either` – `Either<L, R>` conversions.
-- `ndarray` – `Array1`, `Array2` conversions.
-- `nalgebra` – `DVector`, `DMatrix` conversions.
-- `serde` – re-exports serde for derive macros.
-- `num-bigint` – `BigInt`/`BigUint` ⇄ character.
-- `rust_decimal` – `Decimal` ⇄ character.
-- `ordered-float` – `OrderedFloat` ⇄ numeric.
-- `uuid` – `Uuid` ⇄ character.
-- `regex` – compiled `Regex` from R patterns.
-- `indexmap` – `IndexMap<String, T>` ⇄ named list.
-- `time` – `OffsetDateTime` ⇄ POSIXct, `Date` conversions.
+Feature flags (type conversions):
+
+| Feature | Rust Type | R Type |
+|---------|-----------|--------|
+| `either` | `Either<L, R>` | Tries L then R |
+| `uuid` | `Uuid`, `Vec<Uuid>` | `character` |
+| `regex` | `Regex` | `character(1)` |
+| `url` | `Url`, `Vec<Url>` | `character` |
+| `time` | `OffsetDateTime`, `Date` | `POSIXct`, `Date` |
+| `ordered-float` | `OrderedFloat<f64>` | `numeric` |
+| `num-bigint` | `BigInt`, `BigUint` | `character` |
+| `rust_decimal` | `Decimal` | `character` |
+| `num-complex` | `Complex<f64>` | `complex` |
+| `indexmap` | `IndexMap<String, T>` | named `list` |
+| `bitflags` | `RFlags<T>` | `integer` |
+| `bitvec` | `RBitVec` | `logical` |
+| `ndarray` | `Array1`–`Array6`, views | R vectors/matrices |
+| `nalgebra` | `DVector`, `DMatrix` | R vectors/matrices |
+| `rand` / `rand_distr` | `RRng`, `RDistributions` | R's RNG with rand traits |
+| `serde` | `RSerialize`, `RDeserialize` | JSON via serde_json |
+| `serde_r` | `RSerializeNative`, `RDeserializeNative` | Direct Rust ↔ R |
+| `num-traits` | `RNum`, `RSigned`, `RFloat` | Generic numeric ops |
+| `bytes` | `RBuf`, `RBufMut` | Byte buffer ops |
+| `aho-corasick` | `AhoCorasick` | Multi-pattern search |
+| `toml` | `TomlValue` | TOML parsing |
+| `tabled` | `table_to_string` | Table formatting |
+| `sha2` | `sha256_str`, `sha512_bytes` | Cryptographic hashing |
+| `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD ↔ raw vectors |
 
 ### `miniextendr-macros`
 

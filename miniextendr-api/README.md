@@ -184,27 +184,78 @@ parallel work when you need to touch R.
 An experimental framework for defining custom R connections. This API is
 unstable in R itself; use only when you control the runtime environment.
 
-## Feature flags
+## Feature Flags
 
-Core features:
-- `nonapi` – enable non‑API R symbols (stack controls and mutable `DATAPTR`).
-- `rayon` – parallel helpers and Rayon integration.
-- `connections` – experimental R connection framework.
-- `indicatif` – progress bar integration via R console (requires `nonapi`).
+### Core Features
 
-Optional type integrations:
-- `rand` / `rand_distr` – R RNG wrapped with rand traits, distributions.
-- `either` – `Either<L, R>` ⇄ R conversions.
-- `ndarray` – `Array1`, `Array2`, `ArrayView1`, `ArrayView2` conversions.
-- `nalgebra` – `DVector`, `DMatrix` conversions.
-- `serde` – re-exports serde for derive macros.
-- `num-bigint` – `BigInt`/`BigUint` ⇄ character (lossless).
-- `rust_decimal` – `Decimal` ⇄ character (lossless).
-- `ordered-float` – `OrderedFloat<f64>` ⇄ numeric.
-- `uuid` – `Uuid` ⇄ character.
-- `regex` – compiled `Regex` from R character patterns.
-- `indexmap` – `IndexMap<String, T>` ⇄ named list.
-- `time` – `OffsetDateTime` ⇄ POSIXct, `Date` ⇄ day counts.
+| Feature | Description |
+|---------|-------------|
+| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`). May break with R updates. |
+| `rayon` | Parallel iterators via Rayon. Adds `RParallelIterator`, `RParallelExtend`. |
+| `connections` | Experimental R connection framework. **Unstable R API.** |
+| `indicatif` | Progress bars via R console. Requires `nonapi`. |
+| `vctrs` | Access to vctrs C API (`obj_is_vector`, `short_vec_size`, `short_vec_recycle`). |
+
+### Type Conversions (Scalars & Vectors)
+
+| Feature | Rust Type | R Type | Notes |
+|---------|-----------|--------|-------|
+| `either` | `Either<L, R>` | Tries L then R | Union-like dispatch |
+| `uuid` | `Uuid`, `Vec<Uuid>` | `character` | UUID ↔ string |
+| `regex` | `Regex` | `character(1)` | Compiles pattern from R |
+| `url` | `Url`, `Vec<Url>` | `character` | Validated URLs |
+| `time` | `OffsetDateTime`, `Date` | `POSIXct`, `Date` | Date/time conversions |
+| `ordered-float` | `OrderedFloat<f64>` | `numeric` | NaN-orderable floats |
+| `num-bigint` | `BigInt`, `BigUint` | `character` | Arbitrary precision via strings |
+| `rust_decimal` | `Decimal` | `character` | Fixed-point decimals |
+| `num-complex` | `Complex<f64>` | `complex` | Native R complex support |
+| `indexmap` | `IndexMap<String, T>` | named `list` | Preserves insertion order |
+| `bitflags` | `RFlags<T>` | `integer` | Bitflags ↔ integer |
+| `bitvec` | `RBitVec` | `logical` | Bit vectors ↔ logical |
+
+### Matrix & Array Libraries
+
+| Feature | Types | Conversions |
+|---------|-------|-------------|
+| `ndarray` | `Array1`–`Array6`, `ArrayD`, views | R vectors/matrices ↔ ndarray |
+| `nalgebra` | `DVector`, `DMatrix` | R vectors/matrices ↔ nalgebra |
+
+### Serialization
+
+| Feature | Traits/Modules | Description |
+|---------|----------------|-------------|
+| `serde` | `RSerialize`, `RDeserialize` | JSON serialization via serde_json |
+| `serde_r` | `RSerializeNative`, `RDeserializeNative` | Direct Rust ↔ R (no JSON) |
+| `serde_full` | Both above | Enables `serde` + `serde_r` |
+
+### Adapter Traits (Generic Operations)
+
+| Feature | Traits | Use Case |
+|---------|--------|----------|
+| `num-traits` | `RNum`, `RSigned`, `RFloat` | Generic numeric operations |
+| `bytes` | `RBuf`, `RBufMut` | Byte buffer operations |
+
+### Text & Data Processing
+
+| Feature | Types/Functions | Description |
+|---------|-----------------|-------------|
+| `aho-corasick` | `AhoCorasick`, `aho_compile` | Fast multi-pattern string search |
+| `toml` | `TomlValue`, `toml_from_str` | TOML parsing and serialization |
+| `tabled` | `table_to_string` | ASCII/Unicode table formatting |
+| `sha2` | `sha256_str`, `sha512_bytes` | Cryptographic hashing |
+
+### Random Number Generation
+
+| Feature | Types | Description |
+|---------|-------|-------------|
+| `rand` | `RRng`, `RDistributions` | Wraps R's RNG with `rand` traits |
+| `rand_distr` | Re-exports `rand_distr` | Additional distributions (Normal, Exp, etc.) |
+
+### Binary Data
+
+| Feature | Types | Description |
+|---------|-------|-------------|
+| `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD types ↔ raw vectors via bytemuck |
 
 ## Publishing to CRAN
 
