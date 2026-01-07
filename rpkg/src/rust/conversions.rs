@@ -826,17 +826,59 @@ pub fn conv_result_vec_i32_err() -> Result<Vec<i32>, ()> {
 }
 
 // =============================================================================
-// TODO: enable once conversions are implemented
+// UNSUPPORTED CONVERSIONS - Document what doesn't work and why
 // =============================================================================
-
+//
+// The following conversions are NOT currently supported in miniextendr:
+//
+// 1. NESTED OPTION TYPES (Option<Vec<T>>, Option<HashMap<K,V>>, etc.)
+//    - IntoR/TryFromSexp have specific impls for Option<scalar> that map None → NA
+//    - There's no blanket impl for Option<T> where T: IntoR because Option<Vec<T>>
+//      has different semantics (None → NULL, not NA)
+//    - Would need explicit impls for each nested type
+//
+// 2. &'static str AS ARGUMENT
+//    - TryFromSexp for &str requires borrowing from R's string internals
+//    - R strings can be freed/modified, so we can't safely give a &str reference
+//    - Use String instead: fn foo(s: String) -> ...
+//
+// 3. Vec<i8>/Vec<i16>/etc. AS RETURN (signed sub-i32 integers)
+//    - IntoR for Vec<T> uses atomic vector construction
+//    - R only has INTSXP (i32), REALSXP (f64), RAWSXP (u8), LGLSXP (i32)
+//    - Vec<i8> would need to coerce each element to i32, not implemented
+//    - Use Vec<i32> instead
+//
+// 4. HashSet<i8>/BTreeSet<i8> AS RETURN (same reason as Vec<i8>)
+//    - No IntoR impl for i8 to create atomic vector elements
+//
+// 5. Option<&'static T> AS RETURN
+//    - References don't own data, so can't be returned to R
+//    - Option<&T> as argument works (borrowed from R SEXP)
+//
+// 6. char AS SCALAR (Rust char != R character)
+//    - R has no single character type, only character vectors
+//    - Use String or &str instead
+//
+// 7. Complex nested types (Option<Option<T>>, Vec<Vec<T>>, HashMap<String, Vec<T>>)
+//    - Not implemented; use SEXP and manual conversion
+//
+// Example stubs (will fail to compile if uncommented):
+//
 // #[miniextendr]
 // pub fn conv_opt_vec_i32_is_some(x: Option<Vec<i32>>) -> i32 { if x.is_some() { 1 } else { 0 } }
+// // ERROR: TryFromSexp not implemented for Option<Vec<i32>>
+//
 // #[miniextendr]
 // pub fn conv_str_arg(x: &'static str) -> &'static str { x }
+// // ERROR: TryFromSexp for &str requires String internment
+//
 // #[miniextendr]
 // pub fn conv_vec_i8_ret() -> Vec<i8> { vec![1i8, 2i8] }
+// // ERROR: IntoR not implemented for Vec<i8>
+//
 // #[miniextendr]
 // pub fn conv_hashset_i8_ret() -> HashSet<i8> { vec![1i8, 2i8].into_iter().collect() }
+// // ERROR: IntoR not implemented for HashSet<i8>
 
 miniextendr_module! {
     mod conversions;

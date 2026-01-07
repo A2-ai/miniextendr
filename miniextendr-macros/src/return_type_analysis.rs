@@ -167,23 +167,20 @@ fn analyze_option_type(
             }
         });
         quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
-    } else {
-        // Option<T> - unwrap then convert
+    } else if is_sexp_inner {
+        // Option<SEXP> - return SEXP or R_NilValue for None
         *is_invisible = false;
-        if is_sexp_inner {
-            *returns_sexp = true;
-        }
-        post_call_statements.push(quote::quote! {
-            let #rust_result_ident = match #rust_result_ident {
+        *returns_sexp = true;
+        quote::quote! {
+            match #rust_result_ident {
                 Some(v) => v,
-                None => panic!(#option_none_error_msg),
-            };
-        });
-        if is_sexp_inner {
-            quote::quote! { #rust_result_ident }
-        } else {
-            quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+                None => unsafe { ::miniextendr_api::ffi::R_NilValue },
+            }
         }
+    } else {
+        // Option<T> - convert via IntoR which handles None → NA appropriately
+        *is_invisible = false;
+        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
     }
 }
 

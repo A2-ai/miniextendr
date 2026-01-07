@@ -33,14 +33,14 @@ R CMD check rpkg          # Checks include compilation
 
 ## Project Structure
 
-```
+```sh
 miniextendr/
 ├── miniextendr-api/      # Runtime library (FFI, ExternalPtr, ALTREP, worker thread)
 ├── miniextendr-macros/   # Proc macros (#[miniextendr], miniextendr_module!)
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
 ├── miniextendr-lint/     # Static analysis tool (copy of macros parser)
 ├── miniextendr-engine/   # Code generation engine
-├── rpkg/                 # Example R package demonstrating all features
+├── rpkg/                 # Example R package demonstrating all features (named `miniextendr`)
 ├── minirextendr/         # Helper R package for scaffolding new projects
 ├── tests/cross-package/  # Cross-package trait ABI tests
 │   ├── producer.pkg/     # Exports types with TypedExternal
@@ -62,7 +62,7 @@ just fmt                # Format Rust code
 
 # R package development (rpkg)
 just configure          # REQUIRED before any R CMD operations
-just rcmdinstall        # Build and install rpkg
+just rcmdinstall        # Build and install `library(miniextendr)` package in `rpkg` directory
 just devtools-test      # Run R tests
 just devtools-document  # Regenerate R wrappers
 
@@ -109,6 +109,9 @@ Set `NOT_CRAN=true` for development mode:
 cd rpkg && NOT_CRAN=true ./configure
 NOT_CRAN=true R CMD INSTALL rpkg
 ```
+
+This builds and checks a package called `miniextendr`,  i.e. you load it with
+`library(miniextendr)`, not `library(rpkg)`.
 
 **What NOT_CRAN does:**
 
@@ -278,7 +281,7 @@ The `background/` folder (gitignored) contains reference documentation.
 ### Official R Documentation
 
 | File | Use For |
-|------|---------|
+|<------|---------|
 | `R Internals.html` | R's internal structures, SEXP types, memory management |
 | `Writing R Extensions.html` | R package development, .Call interface, ALTREP |
 | `ALTREP_ Alternative Representations for R Objects.html` | ALTREP system deep dive |
@@ -288,7 +291,7 @@ The `background/` folder (gitignored) contains reference documentation.
 ### R Source Code
 
 | Directory | Use For |
-|-----------|---------|
+|<-----------|---------|
 | `r-source-tags-R-4-5-2/` | R 4.5.2 source with tags - lookup exact API behavior |
 
 Key paths in R source:
@@ -311,7 +314,7 @@ Key paths in R source:
 ### ALTREP Reference Implementations
 
 | Package | Use For |
-|---------|---------|
+|<---------|---------|
 | `Rpkg-mutable-master/` | Mutable R objects via ALTREP |
 | `Rpkg-simplemmap-master/` | Memory-mapped files via ALTREP |
 | `vectorwindow-main/` | Vector windowing/views via ALTREP |
@@ -397,6 +400,7 @@ Functions exist in Rust but aren't callable from R. Check:
 4. **NAMESPACE is stale** - run `just devtools-document` to regenerate
 
 Quick fix:
+
 ```bash
 NOT_CRAN=true just devtools-document && NOT_CRAN=true just rcmdinstall
 # Or with local library path if permission issues:
