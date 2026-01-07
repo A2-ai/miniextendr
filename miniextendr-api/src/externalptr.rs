@@ -50,7 +50,7 @@
 //! │                                                                 │
 //! │  Return to R → R now owns the EXTPTRSXP                         │
 //! │  ├── SEXP is live as long as R has references                   │
-//! │  └── Rust value is accessible via ExternalPtr::try_from_sexp()  │
+//! │  └── Rust value is accessible via ExternalPtr::wrap_sexp()      │
 //! │                                                                 │
 //! │  R GC runs → finalizer called → Rust Drop executes              │
 //! └─────────────────────────────────────────────────────────────────┘
@@ -818,18 +818,23 @@ impl<T: TypedExternal> ExternalPtr<T> {
     // Type checking
     // =========================================================================
 
-    /// Attempt to create an ExternalPtr from an SEXP with type checking.
+    /// Attempt to wrap a SEXP as an ExternalPtr with type checking.
     ///
     /// Returns `None` if:
     /// - The internal pointer is null
     /// - The `prot` slot doesn't contain a valid VECSXP with type symbol
     /// - The type symbol doesn't match T's type
     ///
+    /// This is a low-level method. For automatic conversions in `#[miniextendr]`
+    /// functions, use the [`TryFromSexp`] trait which requires `T: Send`.
+    ///
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP
     /// - The caller must ensure no other ExternalPtr owns this SEXP
-    pub unsafe fn try_from_sexp(sexp: SEXP) -> Option<Self> {
+    ///
+    /// [`TryFromSexp`]: crate::TryFromSexp
+    pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
@@ -863,16 +868,16 @@ impl<T: TypedExternal> ExternalPtr<T> {
         })
     }
 
-    /// Attempt to create an ExternalPtr from an SEXP (unchecked version).
+    /// Attempt to wrap a SEXP as an ExternalPtr (unchecked version).
     ///
-    /// Skips thread safety checks for performance-critical paths.
+    /// Skips thread safety checks for performance-critical paths like ALTREP callbacks.
     ///
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
-    pub unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Option<Self> {
+    pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
         use crate::ffi::{
             R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked,
         };
@@ -910,12 +915,16 @@ impl<T: TypedExternal> ExternalPtr<T> {
         })
     }
 
-    /// Attempt to create an ExternalPtr, returning an error with type info on mismatch.
+    /// Attempt to wrap a SEXP as an ExternalPtr, returning an error with type info on mismatch.
+    ///
+    /// This is used by the [`TryFromSexp`] trait implementation.
     ///
     /// # Safety
     ///
-    /// Same as `try_from_sexp`.
-    pub unsafe fn try_from_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
+    /// Same as [`wrap_sexp`](Self::wrap_sexp).
+    ///
+    /// [`TryFromSexp`]: crate::TryFromSexp
+    pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
@@ -1468,7 +1477,7 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 /// ```
 #[inline]
 pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data1(x)) }
+    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data1(x)) }
 }
 
 /// Extract the ALTREP data1 slot (unchecked version).
@@ -1482,7 +1491,7 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     use crate::ffi::R_altrep_data1_unchecked;
-    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data1_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data1_unchecked(x)) }
 }
 
 /// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
@@ -1495,7 +1504,7 @@ pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 /// - Must be called from the R main thread
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data2(x)) }
+    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data2(x)) }
 }
 
 /// Extract the ALTREP data2 slot (unchecked version).
@@ -1509,7 +1518,7 @@ pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     use crate::ffi::R_altrep_data2_unchecked;
-    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data2_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data2_unchecked(x)) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.

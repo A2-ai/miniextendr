@@ -13,7 +13,7 @@ Demonstrates miniextendr's cross-package trait dispatch capabilities. Provides g
 
 Other contributors:
 \itemize{
-  \item Eleanor Andersson [contributor]
+  \item A2-AI [copyright holder, funder]
 }
 
 }

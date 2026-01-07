@@ -3413,7 +3413,7 @@ impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
         }
 
         // Use ExternalPtr's type-checked constructor
-        unsafe { ExternalPtr::try_from_sexp_with_error(sexp) }.map_err(|e| match e {
+        unsafe { ExternalPtr::wrap_sexp_with_error(sexp) }.map_err(|e| match e {
             TypeMismatchError::NullPointer => {
                 SexpError::InvalidValue("external pointer is null".to_string())
             }
@@ -3438,7 +3438,7 @@ impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
         }
 
         // Use ExternalPtr's type-checked constructor (unchecked variant)
-        unsafe { ExternalPtr::try_from_sexp_unchecked(sexp) }.ok_or_else(|| {
+        unsafe { ExternalPtr::wrap_sexp_unchecked(sexp) }.ok_or_else(|| {
             SexpError::InvalidValue(
                 "failed to convert external pointer: type mismatch or null pointer".to_string(),
             )

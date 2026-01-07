@@ -54,7 +54,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::ffi::Rf_ScalarInteger;
     unsafe {
-        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+        match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(ext) => Rf_ScalarInteger(ext.value),
             None => Rf_ScalarInteger(i32::MIN), // NA_INTEGER equivalent
         }
@@ -100,7 +100,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::ffi::Rf_ScalarReal;
     unsafe {
-        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+        match ExternalPtr::<Point>::wrap_sexp(ptr) {
             Some(ext) => Rf_ScalarReal(ext.x),
             None => Rf_ScalarReal(f64::NAN),
         }
@@ -119,7 +119,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::ffi::Rf_ScalarReal;
     unsafe {
-        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+        match ExternalPtr::<Point>::wrap_sexp(ptr) {
             Some(ext) => Rf_ScalarReal(ext.y),
             None => Rf_ScalarReal(f64::NAN),
         }
@@ -139,7 +139,7 @@ pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::ffi::Rf_ScalarInteger;
     unsafe {
         // Try to interpret a Point as a Counter - should return None
-        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+        match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(_) => Rf_ScalarInteger(1), // Unexpected success
             None => Rf_ScalarInteger(0),    // Expected failure - type mismatch
         }
@@ -159,8 +159,8 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::ffi::Rf_ScalarInteger;
     unsafe {
         // R's new("externalptr") creates a null external pointer
-        // Our try_from_sexp should return None for it
-        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+        // Our wrap_sexp should return None for it
+        match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(_) => Rf_ScalarInteger(1), // Unexpected - null pointer should fail
             None => Rf_ScalarInteger(0),    // Expected - null pointer detected
         }
