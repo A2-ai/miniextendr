@@ -5,6 +5,7 @@ This document describes the trait ABI system for cross-package trait dispatch.
 ## Overview
 
 The trait ABI enables:
+
 1. **Trait-based dispatch**: R packages can call trait methods via vtables
 2. **Cross-package interop**: Objects from one package usable in another
 3. **Type safety**: Runtime type checking via 128-bit tags
@@ -69,6 +70,7 @@ pub trait Counter {
 ```
 
 Generates:
+
 - `TAG_COUNTER: mx_tag` - Trait identifier
 - `CounterVTable` - Function pointer table
 - `CounterView` - Runtime wrapper (data + vtable)
@@ -87,6 +89,7 @@ impl Counter for MyCounter {
 ```
 
 Generates:
+
 - `__VTABLE_COUNTER_FOR_MYCOUNTER: CounterVTable`
 
 ### 3. Register in Module
@@ -111,6 +114,7 @@ miniextendr_module! {
 ```
 
 The `impl Trait for Type;` line generates:
+
 - `__MxWrapperMyCounter` - Type-erased wrapper struct
 - `__MX_BASE_VTABLE_MYCOUNTER` - Base vtable with drop/query
 - `__mx_wrap_mycounter()` - Constructor returning `*mut mx_erased`
@@ -142,6 +146,7 @@ pub struct mx_erased {
 ## Implementation Milestones
 
 ### MVP (Complete)
+
 - [x] `abi.rs` with type definitions
 - [x] `trait_abi/` module structure
 - [x] C header and source stubs
@@ -153,16 +158,19 @@ pub struct mx_erased {
 - [x] Implement C-callables in `mx_abi.c.in`
 
 ### M1: Code Generation (Complete)
+
 - [x] `#[miniextendr]` on trait: generate TAG, VTable, View, shims
 - [x] `#[miniextendr]` on impl: generate vtable static
 
 ### M2: Integration (Complete)
+
 - [x] `impl Trait for Type;` syntax in `miniextendr_module!` for trait registration
 - [x] `.Call` wrapper generation (via existing miniextendr_module! + impl blocks)
 - [x] Panic handling in shims (catch_unwind)
 - [x] Tests and examples (see `rpkg/src/rust/trait_abi_tests.rs`)
 
 ### M3: Polish
+
 - [x] Cross-package example (documented in "Cross-Package Example" section)
 - [x] Documentation (TRAIT_AS_R.md updated with usage examples)
 - [x] Error diagnostics (improved runtime error messages for type mismatches)
@@ -181,6 +189,7 @@ pub struct mx_erased {
 ### Why `impl Trait for Type;` in miniextendr_module?
 
 The trait ABI wrapper generation is triggered by `impl Trait for Type;` in `miniextendr_module!` rather than a derive attribute because:
+
 1. **Explicit registration**: Only traits listed in the module are exposed to R
 2. **Single location**: All R-facing declarations in one place
 3. **Lint-friendly**: Easy to verify matching `#[miniextendr]` annotations
@@ -188,6 +197,7 @@ The trait ABI wrapper generation is triggered by `impl Trait for Type;` in `mini
 ### Why C-callables instead of direct linking?
 
 C-callables (`R_RegisterCCallable` / `R_GetCCallable`) enable:
+
 1. Cross-package dispatch without compile-time linking
 2. ABI stability across independently-compiled packages
 3. R's standard mechanism for native sharing
@@ -207,6 +217,7 @@ Imports: miniextendr
 ```
 
 **Why both?**
+
 - `LinkingTo`: Adds `miniextendr/inst/include` to compiler include paths, making `mx_abi.h` available
 - `Imports`: Ensures miniextendr is loaded before mypackage (so C-callables are registered)
 
@@ -252,6 +263,7 @@ miniextendr_api::trait_abi::init_ccallables();
 ### Version Compatibility Warning
 
 > **NB**: This mechanism is fragile. Changes to the interface in miniextendr must be recognized by consumer packages. Either:
+>
 > - Consumer packages depend on exact miniextendr version, OR
 > - Consumer packages check at runtime that the loaded version matches what they compiled against
 
@@ -333,7 +345,8 @@ SimpleCounter$Counter$increment <- function() { ... }
 ### Package B: Consumer (uses producer's objects)
 
 **DESCRIPTION:**
-```
+
+```yaml
 Package: consumer
 Imports: producer
 ```

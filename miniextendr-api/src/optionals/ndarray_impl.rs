@@ -846,7 +846,9 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
             let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
-            guard.into_inner()
+            // Return the SEXP - guard drops and unprotects
+            // (R manages protection of .Call return values)
+            guard.get()
         }
     }
 }
@@ -1184,7 +1186,9 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
             let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
-            guard.into_inner()
+            // Return the SEXP - guard drops and unprotects
+            // (R manages protection of .Call return values)
+            guard.get()
         }
     }
 }

@@ -12,10 +12,22 @@ extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 extern void miniextendr_init_ccallables(void);
 
+// Optional vctrs support initialization
+// Returns: 0=success, 1=not available, 2=not main thread, 3=already initialized
+// When vctrs feature is disabled, always returns 1 (not available)
+extern int miniextendr_init_vctrs(void);
+
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
+
+    // Load trait ABI C-callables from miniextendr package
+    // This loads mx_wrap, mx_get, mx_query function pointers
     miniextendr_init_ccallables();
+
+    // Optional: initialize vctrs C API support
+    // Status 1 (not available) is fine - vctrs is optional
+    (void)miniextendr_init_vctrs();
 
     // Main module's R_init calls nonapi's R_init via "use nonapi;" statement
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);

@@ -393,10 +393,12 @@ impl<'a> std::ops::Deref for Root<'a> {
 /// # Example
 ///
 /// ```ignore
-/// unsafe fn allocate_and_return() -> SEXP {
+/// unsafe fn allocate_and_fill() -> SEXP {
 ///     let guard = OwnedProtect::new(Rf_allocVector(REALSXP, 10));
 ///     fill_vector(guard.get());
-///     guard.into_inner()  // Still protected, but guard won't unprotect on drop
+///     // Return the SEXP - guard drops and unprotects on this line.
+///     // This is safe because no GC can occur between unprotect and return.
+///     guard.get()
 /// }
 /// ```
 ///
@@ -435,20 +437,6 @@ impl OwnedProtect {
     /// Get the protected SEXP.
     #[inline]
     pub fn get(&self) -> SEXP {
-        self.sexp
-    }
-
-    /// Consume the guard, returning the SEXP.
-    ///
-    /// The SEXP is **still protected** after this call. The guard's drop
-    /// will not run (it's consumed), so unprotection won't happen.
-    ///
-    /// Use this when returning a protected value from a function where the
-    /// caller will take over protection responsibility.
-    #[inline]
-    pub fn into_inner(mut self) -> SEXP {
-        // Disarm so drop doesn't unprotect
-        self.armed = false;
         self.sexp
     }
 
@@ -933,12 +921,6 @@ mod tests {
             scope.rearm();
             assert!(scope.armed.get());
         }
-    }
-
-    #[test]
-    fn owned_protect_into_inner_disarms() {
-        // This test verifies the API but can't test actual R behavior
-        // without R initialized
     }
 
     // -------------------------------------------------------------------------

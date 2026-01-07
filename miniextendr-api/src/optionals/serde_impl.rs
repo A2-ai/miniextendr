@@ -499,7 +499,8 @@ impl IntoR for Vec<JsonValue> {
         for (i, value) in self.iter().enumerate() {
             unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(value)) };
         }
-        sexp.into_inner()
+        // Return the SEXP - guard drops and unprotects
+        sexp.get()
     }
 }
 
@@ -514,7 +515,8 @@ impl IntoR for Vec<Option<JsonValue>> {
             };
             unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, elem) };
         }
-        sexp.into_inner()
+        // Return the SEXP - guard drops and unprotects
+        sexp.get()
     }
 }
 
@@ -559,7 +561,8 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             for (i, elem) in arr.iter().enumerate() {
                 unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(elem)) };
             }
-            sexp.into_inner()
+            // Return the SEXP - guard drops and unprotects
+            sexp.get()
         }
         JsonValue::Object(map) => {
             let len = map.len();
@@ -579,7 +582,8 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             }
 
             unsafe { Rf_setAttrib(sexp.get(), crate::ffi::R_NamesSymbol, names.get()) };
-            sexp.into_inner()
+            // Return the SEXP - guards drop and unprotect
+            sexp.get()
         }
     }
 }

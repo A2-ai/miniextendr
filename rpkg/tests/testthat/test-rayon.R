@@ -34,8 +34,8 @@ test_that("rayon_parallel_filter_positive returns empty for all negative", {
   expect_length(result, 0)
 })
 
-test_that("rayon_rvec_collect returns correct length and values", {
-  result <- rayon_rvec_collect(100L)
+test_that("rayon_vec_collect returns correct length and values", {
+  result <- rayon_vec_collect(100L)
   expect_length(result, 100)
   expect_equal(result[1], 0)
   expect_equal(result[2], 1)

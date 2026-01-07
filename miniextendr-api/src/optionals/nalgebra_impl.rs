@@ -183,7 +183,8 @@ impl<T: RNativeType + Scalar> IntoR for DMatrix<T> {
             let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
             std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
 
-            guard.into_inner()
+            // Return the SEXP - guard drops and unprotects
+            guard.get()
         }
     }
 }

@@ -238,7 +238,8 @@ impl IntoR for Vec<TomlValue> {
         for (i, value) in self.iter().enumerate() {
             unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, toml_value_to_sexp(value)) };
         }
-        sexp.into_inner()
+        // Return the SEXP - guard drops and unprotects
+        sexp.get()
     }
 }
 
@@ -253,7 +254,8 @@ impl IntoR for Vec<Option<TomlValue>> {
             };
             unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, elem) };
         }
-        sexp.into_inner()
+        // Return the SEXP - guard drops and unprotects
+        sexp.get()
     }
 }
 
@@ -275,7 +277,8 @@ fn string_to_sexp(s: &str) -> SEXP {
         let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
         let charsxp = Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8);
         SET_STRING_ELT(sexp.get(), 0, charsxp);
-        sexp.into_inner()
+        // Return the SEXP - guard drops and unprotects
+        sexp.get()
     }
 }
 
@@ -342,7 +345,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                         }
                     }
                 }
-                return sexp.into_inner();
+                // Return the SEXP - guard drops and unprotects
+                return sexp.get();
             }
             TomlValue::Integer(_) => {
                 let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
@@ -390,7 +394,8 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
     for (i, v) in arr.iter().enumerate() {
         unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, toml_value_to_sexp(v)) };
     }
-    sexp.into_inner()
+    // Return the SEXP - guard drops and unprotects
+    sexp.get()
 }
 
 fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
@@ -410,7 +415,8 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
     unsafe {
         Rf_setAttrib(sexp.get(), crate::ffi::R_NamesSymbol, names.get());
     }
-    sexp.into_inner()
+    // Return the SEXP - guards drop and unprotect
+    sexp.get()
 }
 
 // Helper to get a discriminant for type comparison

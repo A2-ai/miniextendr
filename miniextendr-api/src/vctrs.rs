@@ -677,7 +677,8 @@ unsafe fn repair_na_names(names: SEXP) -> SEXP {
         unsafe { SET_STRING_ELT(repaired.get(), i, new_elem) };
     }
 
-    repaired.into_inner()
+    // Return the SEXP - guard drops and unprotects
+    repaired.get()
 }
 
 // =============================================================================

@@ -204,7 +204,8 @@ impl IntoR for Table {
             let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
             let charsxp = Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8);
             SET_STRING_ELT(sexp.get(), 0, charsxp);
-            sexp.into_inner()
+            // Return the SEXP - guard drops and unprotects
+            sexp.get()
         }
     }
 }
