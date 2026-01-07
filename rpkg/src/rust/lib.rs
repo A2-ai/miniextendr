@@ -34,14 +34,14 @@ mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
 mod panic_tests;
+mod r6_default_tests;
+mod r6_tests;
 #[cfg(feature = "rayon")]
 #[path = "rayon_tests.rs"]
 mod rayon_tests;
 #[cfg(not(feature = "rayon"))]
 #[path = "rayon_tests_disabled.rs"]
 mod rayon_tests;
-mod r6_default_tests;
-mod r6_tests;
 mod receiver_tests;
 mod rng_tests;
 mod s3_tests;

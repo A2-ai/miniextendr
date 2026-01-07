@@ -136,7 +136,10 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 }
             }
             // Vectors
-            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::STRSXP
+            SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::STRSXP
             | SEXPTYPE::RAWSXP => visitor.visit_seq(VectorSeqAccess::new(self.sexp)),
             // Named list -> map
             SEXPTYPE::VECSXP if self.has_names() => {
@@ -472,7 +475,10 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         let sexp_type = self.sexp_type();
         match sexp_type {
             SEXPTYPE::VECSXP => visitor.visit_seq(ListSeqAccess::new(self.sexp)),
-            SEXPTYPE::LGLSXP | SEXPTYPE::INTSXP | SEXPTYPE::REALSXP | SEXPTYPE::STRSXP
+            SEXPTYPE::LGLSXP
+            | SEXPTYPE::INTSXP
+            | SEXPTYPE::REALSXP
+            | SEXPTYPE::STRSXP
             | SEXPTYPE::RAWSXP => visitor.visit_seq(VectorSeqAccess::new(self.sexp)),
             SEXPTYPE::NILSXP => visitor.visit_seq(EmptySeqAccess),
             _ => Err(RSerdeError::TypeMismatch {
@@ -482,7 +488,11 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
         }
     }
 
-    fn deserialize_tuple<V: Visitor<'de>>(self, len: usize, visitor: V) -> Result<V::Value, Self::Error> {
+    fn deserialize_tuple<V: Visitor<'de>>(
+        self,
+        len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
         if self.len() != len {
             return Err(RSerdeError::LengthMismatch {
                 expected: len,
@@ -897,13 +907,20 @@ impl<'de> de::VariantAccess<'de> for UnitVariantDeserializer {
         Ok(())
     }
 
-    fn newtype_variant_seed<T: DeserializeSeed<'de>>(self, _seed: T) -> Result<T::Value, Self::Error> {
+    fn newtype_variant_seed<T: DeserializeSeed<'de>>(
+        self,
+        _seed: T,
+    ) -> Result<T::Value, Self::Error> {
         Err(RSerdeError::Message(
             "expected unit variant, found newtype".to_string(),
         ))
     }
 
-    fn tuple_variant<V: Visitor<'de>>(self, _len: usize, _visitor: V) -> Result<V::Value, Self::Error> {
+    fn tuple_variant<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        _visitor: V,
+    ) -> Result<V::Value, Self::Error> {
         Err(RSerdeError::Message(
             "expected unit variant, found tuple".to_string(),
         ))
@@ -952,11 +969,18 @@ impl<'de> de::VariantAccess<'de> for DataVariantDeserializer {
         ))
     }
 
-    fn newtype_variant_seed<T: DeserializeSeed<'de>>(self, seed: T) -> Result<T::Value, Self::Error> {
+    fn newtype_variant_seed<T: DeserializeSeed<'de>>(
+        self,
+        seed: T,
+    ) -> Result<T::Value, Self::Error> {
         seed.deserialize(RDeserializer::from_sexp(self.value))
     }
 
-    fn tuple_variant<V: Visitor<'de>>(self, _len: usize, visitor: V) -> Result<V::Value, Self::Error> {
+    fn tuple_variant<V: Visitor<'de>>(
+        self,
+        _len: usize,
+        visitor: V,
+    ) -> Result<V::Value, Self::Error> {
         let de = RDeserializer::from_sexp(self.value);
         de.deserialize_seq(visitor)
     }

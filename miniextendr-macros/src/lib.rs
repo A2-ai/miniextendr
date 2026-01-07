@@ -942,9 +942,7 @@ pub fn miniextendr(
     if is_s3_method {
         // For S3 methods, function name is generic.class
         // generic defaults to Rust function name if not specified
-        let generic = s3_generic
-            .clone()
-            .unwrap_or_else(|| rust_ident.to_string());
+        let generic = s3_generic.clone().unwrap_or_else(|| rust_ident.to_string());
         let class = s3_class.as_ref().unwrap_or_else(|| {
             // If no class specified, error
             panic!("s3(...) requires `class = \"...\"` to specify the S3 class suffix")
@@ -1034,9 +1032,9 @@ pub fn miniextendr(
 
     // Inject dots_typed binding into function body if dots = typed_list!(...) was specified
     if let Some(ref spec_tokens) = dots_spec {
-        let dots_param = named_dots.clone().unwrap_or_else(|| {
-            syn::Ident::new("_dots", proc_macro2::Span::call_site())
-        });
+        let dots_param = named_dots
+            .clone()
+            .unwrap_or_else(|| syn::Ident::new("_dots", proc_macro2::Span::call_site()));
         let validation_stmt: syn::Stmt = syn::parse_quote! {
             let dots_typed = #dots_param.typed(#spec_tokens)
                 .expect("dots validation failed");

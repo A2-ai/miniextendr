@@ -13,8 +13,8 @@
 //! Both are valid design choices - we chose to preserve the specialized type.
 
 use miniextendr_api::ffi::{
-    R_ClassSymbol, R_NilValue, Rf_allocVector, Rf_duplicate, Rf_getAttrib, Rf_setAttrib,
-    SEXPTYPE, SEXP, SexpExt,
+    R_ClassSymbol, R_NilValue, Rf_allocVector, Rf_duplicate, Rf_getAttrib, Rf_setAttrib, SEXP,
+    SEXPTYPE, SexpExt,
 };
 use miniextendr_api::gc_protect::OwnedProtect;
 use miniextendr_api::vctrs::new_vctr;

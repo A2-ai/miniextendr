@@ -5,7 +5,7 @@ use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use miniextendr_api::rayon_bridge::{with_r_matrix, with_r_vec, RVec};
+use miniextendr_api::rayon_bridge::{RVec, with_r_matrix, with_r_vec};
 #[cfg(feature = "rayon")]
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -56,14 +56,11 @@ pub fn rayon_with_r_vec(n: i32) -> SEXP {
 #[miniextendr]
 pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
     with_r_matrix(nrow as usize, ncol as usize, |slice, nrow, _ncol| {
-        slice
-            .par_iter_mut()
-            .enumerate()
-            .for_each(|(i, slot)| {
-                let row = i % nrow;
-                let col = i / nrow;
-                *slot = (row * col) as f64;
-            });
+        slice.par_iter_mut().enumerate().for_each(|(i, slot)| {
+            let row = i % nrow;
+            let col = i / nrow;
+            *slot = (row * col) as f64;
+        });
     })
 }
 

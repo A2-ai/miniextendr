@@ -164,7 +164,7 @@ pub mod typed_list;
 pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
 pub use list::{IntoList, List, TryFromList};
 pub use typed_list::{
-    TypedEntry, TypedList, TypedListError, TypedListSpec, TypeSpec, actual_type_string,
+    TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
     sexptype_name, validate_list,
 };
 

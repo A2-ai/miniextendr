@@ -704,7 +704,10 @@ mod tests {
         assert_eq!(TypeSpec::Any.type_name(), "any");
         assert_eq!(TypeSpec::Numeric(None).type_name(), "numeric");
         assert_eq!(TypeSpec::Numeric(Some(4)).type_name(), "numeric(4)");
-        assert_eq!(TypeSpec::Class("data.frame").type_name(), "class: data.frame");
+        assert_eq!(
+            TypeSpec::Class("data.frame").type_name(),
+            "class: data.frame"
+        );
     }
 
     #[test]

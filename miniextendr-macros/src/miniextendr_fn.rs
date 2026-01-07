@@ -698,9 +698,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 let value: syn::LitStr = meta.input.parse()?;
                                 out.s3_class = Some(value.value());
                             } else {
-                                return Err(meta.error(
-                                    "unknown s3 option; expected `generic` or `class`",
-                                ));
+                                return Err(
+                                    meta.error("unknown s3 option; expected `generic` or `class`")
+                                );
                             }
                             Ok(())
                         })?;

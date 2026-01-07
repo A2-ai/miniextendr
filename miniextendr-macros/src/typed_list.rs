@@ -116,8 +116,21 @@ impl Parse for ParsedTypeSpec {
 
             // Validate it's a known type call
             let valid_types = [
-                "numeric", "integer", "logical", "character", "raw", "complex", "list",
-                "data_frame", "factor", "matrix", "array", "function", "environment", "null", "any",
+                "numeric",
+                "integer",
+                "logical",
+                "character",
+                "raw",
+                "complex",
+                "list",
+                "data_frame",
+                "factor",
+                "matrix",
+                "array",
+                "function",
+                "environment",
+                "null",
+                "any",
             ];
             if !valid_types.contains(&name_str.as_str()) {
                 return Err(syn::Error::new_spanned(
@@ -156,7 +169,9 @@ impl Parse for ParsedTypeSpec {
                 len,
             })
         } else {
-            Err(input.error("expected type specification: string literal or type call like `numeric(4)`"))
+            Err(input.error(
+                "expected type specification: string literal or type call like `numeric(4)`",
+            ))
         }
     }
 }
@@ -317,8 +332,7 @@ mod tests {
 
     #[test]
     fn test_parse_multiple_entries() {
-        let input: TypedListInput =
-            syn::parse_quote!(alpha => numeric(4), beta? => "list", gamma);
+        let input: TypedListInput = syn::parse_quote!(alpha => numeric(4), beta? => "list", gamma);
         assert_eq!(input.entries.len(), 3);
         assert!(!input.entries[0].optional);
         assert!(input.entries[1].optional);
