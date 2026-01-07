@@ -725,10 +725,11 @@ AC_CONFIG_COMMANDS([compress-vendor],
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
-      dnl Exclude unnecessary files: tests, examples, benchmarks, CI files
+      dnl Exclude unnecessary files: tests, benchmarks, CI files
+      dnl TODO: currently, winnow uses the examples folder in its compilation process.
+      dnl this is unexpected, and should be solved upstream
       tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
         --exclude='vendor/*/tests' \
-        --exclude='vendor/*/examples' \
         --exclude='vendor/*/benches' \
         --exclude='vendor/*/.github' \
         --exclude='vendor/*/.travis.yml' \

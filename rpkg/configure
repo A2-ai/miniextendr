@@ -4105,7 +4105,6 @@ VENDORED_CONFIG_EOF
       mkdir -p "$abs_rpkg_dir/inst"
             tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
         --exclude='vendor/*/tests' \
-        --exclude='vendor/*/examples' \
         --exclude='vendor/*/benches' \
         --exclude='vendor/*/.github' \
         --exclude='vendor/*/.travis.yml' \
