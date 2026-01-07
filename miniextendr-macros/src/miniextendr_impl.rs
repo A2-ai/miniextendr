@@ -1473,6 +1473,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
         lines.push(format!("#' @method {} {}", generic_name, class_name));
+        lines.push("#' @export".to_string());
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
@@ -1499,6 +1500,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
+        // Export static methods so users can call them
+        lines.push("#' @export".to_string());
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
@@ -1631,6 +1634,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ));
         } else {
             // Create new S7 generic if it doesn't exist
+            // Add @export so roxygen generates export() in NAMESPACE
+            lines.push("#' @export".to_string());
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
             ));
@@ -1656,6 +1661,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
+        // Export static methods so users can call them
+        lines.push("#' @export".to_string());
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
@@ -1714,6 +1721,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_doc =
             MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
+        // Export the constructor function so users can create instances
+        lines.push("#' @export".to_string());
 
         lines.push(format!("{} <- function({}) {{", class_name, ctx.params));
         lines.push(format!(
@@ -1785,6 +1794,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
+        // Export static methods so users can call them
+        lines.push("#' @export".to_string());
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
