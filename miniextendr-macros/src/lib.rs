@@ -121,6 +121,42 @@
 //!
 //! Use `#[miniextendr(unwrap_in_r)]` to return `Result<T, E>` to R without unwrapping.
 //!
+//! ## Thread Strategy
+//!
+//! By default, `#[miniextendr]` functions run on a **worker thread** for clean panic handling.
+//! The macro automatically switches to **main thread** when it detects:
+//!
+//! - Function takes or returns `SEXP`
+//! - Function uses variadic dots (`...`)
+//! - `check_interrupt` attribute is set
+//!
+//! ### When to use `#[miniextendr(unsafe(main_thread))]`
+//!
+//! Only use this attribute when your function calls R API **directly** using
+//! `_unchecked` variants (bypassing `with_r_thread`) and the macro can't auto-detect it.
+//! This is rare:
+//!
+//! ```rust,ignore
+//! // NEEDED: Calls _unchecked R API, but signature doesn't show it
+//! #[miniextendr(unsafe(main_thread))]
+//! fn call_r_api_internally() -> i32 {
+//!     // _unchecked variants assume we're on main thread
+//!     unsafe { miniextendr_api::ffi::Rf_ScalarInteger_unchecked(42); }
+//!     42
+//! }
+//!
+//! // NOT NEEDED: Macro auto-detects SEXP return
+//! #[miniextendr]
+//! fn returns_sexp() -> SEXP { /* ... */ }
+//!
+//! // NOT NEEDED: ExternalPtr is Send, can cross thread boundary
+//! #[miniextendr]
+//! fn returns_extptr() -> ExternalPtr<MyType> { /* ... */ }
+//! ```
+//!
+//! **Note**: `ExternalPtr<T>` is `Send` - it can be returned from worker thread functions.
+//! All R API operations on ExternalPtr are serialized through `with_r_thread`.
+//!
 //! ## Class Systems
 //!
 //! The [`r_class_formatter`] module generates R code for different class systems:
@@ -630,16 +666,14 @@ pub fn miniextendr(
     //      * Clean panic handling with proper destructors
     //      * Isolates user code from R's execution context
     //      * Catches panics from both user code and conversions
-    //    - Limitations:
-    //      * Cannot call R APIs directly (use ExternalPtr + main_thread if needed)
-    //      * All parameters and return types must be Send
+    //    - ExternalPtr<T> is Send: can be returned from worker thread functions
+    //    - R API calls from worker use with_r_thread (serialized to main thread)
     //
     // Default: Worker thread (safer, cleaner panic handling)
-    // Override: Use main thread when SEXP types or R APIs are involved
+    // Override: Use main thread when SEXP types are in the signature
     //
-    // Note: ExternalPtr<T> returning functions use worker thread by default.
-    // If they internally call R APIs, the debug FFI check will catch it at runtime.
-    // Users should add #[miniextendr(unsafe(main_thread))] in that case.
+    // Note: Functions that call R API directly (not through with_r_thread) and
+    // don't have SEXP in their signature need #[miniextendr(unsafe(main_thread))].
     //
     // Thread strategy:
     // - force_worker overrides the default, but cannot override hard requirements
