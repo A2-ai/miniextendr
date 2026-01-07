@@ -826,59 +826,181 @@ pub fn conv_result_vec_i32_err() -> Result<Vec<i32>, ()> {
 }
 
 // =============================================================================
-// UNSUPPORTED CONVERSIONS - Document what doesn't work and why
+// Extended conversions - nested types, coercion, char
 // =============================================================================
-//
-// The following conversions are NOT currently supported in miniextendr:
-//
-// 1. NESTED OPTION TYPES (Option<Vec<T>>, Option<HashMap<K,V>>, etc.)
-//    - IntoR/TryFromSexp have specific impls for Option<scalar> that map None → NA
-//    - There's no blanket impl for Option<T> where T: IntoR because Option<Vec<T>>
-//      has different semantics (None → NULL, not NA)
-//    - Would need explicit impls for each nested type
-//
-// 2. &'static str AS ARGUMENT
-//    - TryFromSexp for &str requires borrowing from R's string internals
-//    - R strings can be freed/modified, so we can't safely give a &str reference
-//    - Use String instead: fn foo(s: String) -> ...
-//
-// 3. Vec<i8>/Vec<i16>/etc. AS RETURN (signed sub-i32 integers)
-//    - IntoR for Vec<T> uses atomic vector construction
-//    - R only has INTSXP (i32), REALSXP (f64), RAWSXP (u8), LGLSXP (i32)
-//    - Vec<i8> would need to coerce each element to i32, not implemented
-//    - Use Vec<i32> instead
-//
-// 4. HashSet<i8>/BTreeSet<i8> AS RETURN (same reason as Vec<i8>)
-//    - No IntoR impl for i8 to create atomic vector elements
-//
-// 5. Option<&'static T> AS RETURN
-//    - References don't own data, so can't be returned to R
-//    - Option<&T> as argument works (borrowed from R SEXP)
-//
-// 6. char AS SCALAR (Rust char != R character)
-//    - R has no single character type, only character vectors
-//    - Use String or &str instead
-//
-// 7. Complex nested types (Option<Option<T>>, Vec<Vec<T>>, HashMap<String, Vec<T>>)
-//    - Not implemented; use SEXP and manual conversion
-//
-// Example stubs (will fail to compile if uncommented):
-//
-// #[miniextendr]
-// pub fn conv_opt_vec_i32_is_some(x: Option<Vec<i32>>) -> i32 { if x.is_some() { 1 } else { 0 } }
-// // ERROR: TryFromSexp not implemented for Option<Vec<i32>>
-//
-// #[miniextendr]
-// pub fn conv_str_arg(x: &'static str) -> &'static str { x }
-// // ERROR: TryFromSexp for &str requires String internment
-//
-// #[miniextendr]
-// pub fn conv_vec_i8_ret() -> Vec<i8> { vec![1i8, 2i8] }
-// // ERROR: IntoR not implemented for Vec<i8>
-//
-// #[miniextendr]
-// pub fn conv_hashset_i8_ret() -> HashSet<i8> { vec![1i8, 2i8].into_iter().collect() }
-// // ERROR: IntoR not implemented for HashSet<i8>
+
+// --- char conversions (char ↔ length-1 string) ---
+#[miniextendr]
+pub fn conv_char_arg(x: char) -> char {
+    x
+}
+
+#[miniextendr]
+pub fn conv_char_ret() -> char {
+    'α' // Unicode char to test UTF-8
+}
+
+// --- Vec coercion (i8/i16/u16 → i32, f32 → f64) ---
+#[miniextendr]
+pub fn conv_vec_i8_ret() -> Vec<i8> {
+    vec![1i8, -1i8, 127i8]
+}
+
+#[miniextendr]
+pub fn conv_vec_i16_ret() -> Vec<i16> {
+    vec![1i16, -1i16, 32767i16]
+}
+
+#[miniextendr]
+pub fn conv_vec_u16_ret() -> Vec<u16> {
+    vec![1u16, 100u16, 65535u16]
+}
+
+#[miniextendr]
+pub fn conv_vec_f32_ret() -> Vec<f32> {
+    vec![1.5f32, 2.5f32, -0.5f32]
+}
+
+// --- HashSet/BTreeSet coercion (i8/i16/u16 → i32) ---
+#[miniextendr]
+pub fn conv_hashset_i8_ret() -> HashSet<i8> {
+    vec![1i8, 2i8, -1i8].into_iter().collect()
+}
+
+#[miniextendr]
+pub fn conv_btreeset_i8_ret() -> BTreeSet<i8> {
+    vec![1i8, 2i8, -1i8].into_iter().collect()
+}
+
+#[miniextendr]
+pub fn conv_hashset_i16_ret() -> HashSet<i16> {
+    vec![1i16, 2i16, -1i16].into_iter().collect()
+}
+
+#[miniextendr]
+pub fn conv_btreeset_i16_ret() -> BTreeSet<i16> {
+    vec![1i16, 2i16, -1i16].into_iter().collect()
+}
+
+#[miniextendr]
+pub fn conv_hashset_u16_ret() -> HashSet<u16> {
+    vec![1u16, 2u16, 100u16].into_iter().collect()
+}
+
+#[miniextendr]
+pub fn conv_btreeset_u16_ret() -> BTreeSet<u16> {
+    vec![1u16, 2u16, 100u16].into_iter().collect()
+}
+
+// --- Option<&T> return (copies value, None → NULL) ---
+static OPT_REF_VALUE: i32 = 42;
+
+#[miniextendr]
+pub fn conv_opt_ref_i32_some_ret() -> Option<&'static i32> {
+    Some(&OPT_REF_VALUE)
+}
+
+#[miniextendr]
+pub fn conv_opt_ref_i32_none_ret() -> Option<&'static i32> {
+    None
+}
+
+// --- Option<Vec<T>> (None → NULL, Some → vector) ---
+#[miniextendr]
+pub fn conv_opt_vec_i32_arg(x: Option<Vec<i32>>) -> i32 {
+    match x {
+        Some(v) => v.iter().sum(),
+        None => -999,
+    }
+}
+
+#[miniextendr]
+pub fn conv_opt_vec_i32_some_ret() -> Option<Vec<i32>> {
+    Some(vec![1, 2, 3])
+}
+
+#[miniextendr]
+pub fn conv_opt_vec_i32_none_ret() -> Option<Vec<i32>> {
+    None
+}
+
+#[miniextendr]
+pub fn conv_opt_vec_string_arg(x: Option<Vec<String>>) -> i32 {
+    match x {
+        Some(v) => v.len() as i32,
+        None => -999,
+    }
+}
+
+#[miniextendr]
+pub fn conv_opt_vec_string_some_ret() -> Option<Vec<String>> {
+    Some(vec!["a".to_string(), "b".to_string()])
+}
+
+#[miniextendr]
+pub fn conv_opt_vec_string_none_ret() -> Option<Vec<String>> {
+    None
+}
+
+// --- Option<HashMap> (None → NULL, Some → named list) ---
+#[miniextendr]
+pub fn conv_opt_hashmap_i32_arg(x: Option<HashMap<String, i32>>) -> i32 {
+    match x {
+        Some(m) => m.values().sum(),
+        None => -999,
+    }
+}
+
+#[miniextendr]
+pub fn conv_opt_hashmap_i32_some_ret() -> Option<HashMap<String, i32>> {
+    let mut m = HashMap::new();
+    m.insert("a".to_string(), 1);
+    m.insert("b".to_string(), 2);
+    Some(m)
+}
+
+#[miniextendr]
+pub fn conv_opt_hashmap_i32_none_ret() -> Option<HashMap<String, i32>> {
+    None
+}
+
+// --- Option<HashSet> (None → NULL, Some → vector) ---
+#[miniextendr]
+pub fn conv_opt_hashset_i32_arg(x: Option<HashSet<i32>>) -> i32 {
+    match x {
+        Some(s) => s.iter().sum(),
+        None => -999,
+    }
+}
+
+#[miniextendr]
+pub fn conv_opt_hashset_i32_some_ret() -> Option<HashSet<i32>> {
+    Some(vec![1, 2, 3].into_iter().collect())
+}
+
+#[miniextendr]
+pub fn conv_opt_hashset_i32_none_ret() -> Option<HashSet<i32>> {
+    None
+}
+
+// --- Vec<Vec<T>> (list of vectors) ---
+#[miniextendr]
+pub fn conv_vec_vec_i32_arg(x: Vec<Vec<i32>>) -> i32 {
+    x.iter().map(|v| v.iter().sum::<i32>()).sum()
+}
+
+#[miniextendr]
+pub fn conv_vec_vec_i32_ret() -> Vec<Vec<i32>> {
+    vec![vec![1, 2], vec![3, 4, 5]]
+}
+
+#[miniextendr]
+pub fn conv_vec_vec_string_ret() -> Vec<Vec<String>> {
+    vec![
+        vec!["a".to_string(), "b".to_string()],
+        vec!["c".to_string()],
+    ]
+}
 
 miniextendr_module! {
     mod conversions;
@@ -1027,4 +1149,35 @@ miniextendr_module! {
     fn conv_result_string_err;
     fn conv_result_vec_i32_ok;
     fn conv_result_vec_i32_err;
+
+    // Extended conversions
+    fn conv_char_arg;
+    fn conv_char_ret;
+    fn conv_vec_i8_ret;
+    fn conv_vec_i16_ret;
+    fn conv_vec_u16_ret;
+    fn conv_vec_f32_ret;
+    fn conv_hashset_i8_ret;
+    fn conv_btreeset_i8_ret;
+    fn conv_hashset_i16_ret;
+    fn conv_btreeset_i16_ret;
+    fn conv_hashset_u16_ret;
+    fn conv_btreeset_u16_ret;
+    fn conv_opt_ref_i32_some_ret;
+    fn conv_opt_ref_i32_none_ret;
+    fn conv_opt_vec_i32_arg;
+    fn conv_opt_vec_i32_some_ret;
+    fn conv_opt_vec_i32_none_ret;
+    fn conv_opt_vec_string_arg;
+    fn conv_opt_vec_string_some_ret;
+    fn conv_opt_vec_string_none_ret;
+    fn conv_opt_hashmap_i32_arg;
+    fn conv_opt_hashmap_i32_some_ret;
+    fn conv_opt_hashmap_i32_none_ret;
+    fn conv_opt_hashset_i32_arg;
+    fn conv_opt_hashset_i32_some_ret;
+    fn conv_opt_hashset_i32_none_ret;
+    fn conv_vec_vec_i32_arg;
+    fn conv_vec_vec_i32_ret;
+    fn conv_vec_vec_string_ret;
 }

@@ -2948,6 +2948,177 @@ impl TryFromSexp for BTreeSet<String> {
 }
 
 // =============================================================================
+// Option<Collection> conversions
+// =============================================================================
+//
+// These convert NULL → None, and non-NULL to Some(collection).
+// This differs from Option<scalar> which converts NA → None.
+
+/// Convert R value to `Option<Vec<T>>`: NULL → None, otherwise Some(vec).
+impl<T> TryFromSexp for Option<Vec<T>>
+where
+    Vec<T>: TryFromSexp,
+    <Vec<T> as TryFromSexp>::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            Vec::<T>::try_from_sexp(sexp).map(Some).map_err(Into::into)
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            unsafe {
+                Vec::<T>::try_from_sexp_unchecked(sexp)
+                    .map(Some)
+                    .map_err(Into::into)
+            }
+        }
+    }
+}
+
+/// Convert R value to `Option<HashMap<String, V>>`: NULL → None, otherwise Some(map).
+impl<V: TryFromSexp> TryFromSexp for Option<HashMap<String, V>>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            HashMap::<String, V>::try_from_sexp(sexp).map(Some)
+        }
+    }
+}
+
+/// Convert R value to `Option<BTreeMap<String, V>>`: NULL → None, otherwise Some(map).
+impl<V: TryFromSexp> TryFromSexp for Option<BTreeMap<String, V>>
+where
+    V::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            BTreeMap::<String, V>::try_from_sexp(sexp).map(Some)
+        }
+    }
+}
+
+/// Convert R value to `Option<HashSet<T>>`: NULL → None, otherwise Some(set).
+impl<T> TryFromSexp for Option<HashSet<T>>
+where
+    HashSet<T>: TryFromSexp,
+    <HashSet<T> as TryFromSexp>::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            HashSet::<T>::try_from_sexp(sexp).map(Some).map_err(Into::into)
+        }
+    }
+}
+
+/// Convert R value to `Option<BTreeSet<T>>`: NULL → None, otherwise Some(set).
+impl<T> TryFromSexp for Option<BTreeSet<T>>
+where
+    BTreeSet<T>: TryFromSexp,
+    <BTreeSet<T> as TryFromSexp>::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            BTreeSet::<T>::try_from_sexp(sexp).map(Some).map_err(Into::into)
+        }
+    }
+}
+
+// =============================================================================
+// Nested vector conversions (list of vectors)
+// =============================================================================
+
+/// Convert R list (VECSXP) to `Vec<Vec<T>>`.
+///
+/// Each element of the R list must be convertible to `Vec<T>`.
+impl<T> TryFromSexp for Vec<Vec<T>>
+where
+    Vec<T>: TryFromSexp,
+    <Vec<T> as TryFromSexp>::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::VECTOR_ELT;
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::VECSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let inner: Vec<T> = Vec::<T>::try_from_sexp(elem).map_err(Into::into)?;
+            result.push(inner);
+        }
+
+        Ok(result)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::VECTOR_ELT;
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::VECSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::VECSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let elem = unsafe { VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            let inner: Vec<T> = unsafe { Vec::<T>::try_from_sexp_unchecked(elem).map_err(Into::into)? };
+            result.push(inner);
+        }
+
+        Ok(result)
+    }
+}
+
+// =============================================================================
 // Coerced wrapper - bridge between TryFromSexp and TryCoerce
 // =============================================================================
 

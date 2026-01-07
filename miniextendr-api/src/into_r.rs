@@ -401,6 +401,34 @@ impl IntoR for Option<String> {
     }
 }
 
+/// Convert `Option<&T>` to R SEXP by copying the value.
+///
+/// - `Some(&v)` → copies `v` and converts to R
+/// - `None` → returns `NULL` (R_NilValue)
+///
+/// Note: This returns NULL for None, not NA, since there's no reference to return.
+/// Use `Option<T>` directly if you want NA semantics for scalar types.
+impl<T> IntoR for Option<&T>
+where
+    T: Copy + IntoR,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(&v) => v.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(&v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
 // =============================================================================
 // Vector conversions
 // =============================================================================
@@ -458,6 +486,51 @@ unsafe fn vec_to_sexp_unchecked<T: crate::ffi::RNativeType>(slice: &[T]) -> crat
         vec
     }
 }
+
+// =============================================================================
+// Vec coercion for non-native types (i8, i16, u16 → i32; f32 → f64)
+// =============================================================================
+
+/// Macro for Vec<T> where T coerces to a native R type.
+macro_rules! impl_vec_coerce_into_r {
+    ($from:ty => $to:ty) => {
+        impl IntoR for Vec<$from> {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                let coerced: Vec<$to> = self.into_iter().map(|x| x as $to).collect();
+                coerced.into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                let coerced: Vec<$to> = self.into_iter().map(|x| x as $to).collect();
+                unsafe { coerced.into_sexp_unchecked() }
+            }
+        }
+
+        impl IntoR for &[$from] {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                let coerced: Vec<$to> = self.iter().map(|&x| x as $to).collect();
+                coerced.into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                let coerced: Vec<$to> = self.iter().map(|&x| x as $to).collect();
+                unsafe { coerced.into_sexp_unchecked() }
+            }
+        }
+    };
+}
+
+// Sub-i32 integer types coerce to i32 (R's INTSXP)
+impl_vec_coerce_into_r!(i8 => i32);
+impl_vec_coerce_into_r!(i16 => i32);
+impl_vec_coerce_into_r!(u16 => i32);
+
+// f32 coerces to f64 (R's REALSXP)
+impl_vec_coerce_into_r!(f32 => f64);
 
 // =============================================================================
 // Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
@@ -554,6 +627,143 @@ impl IntoR for BTreeSet<String> {
     }
 }
 
+// =============================================================================
+// Set coercion for non-native types (i8, i16, u16 → i32)
+// =============================================================================
+
+/// Macro for HashSet/BTreeSet<T> where T coerces to i32 (R's native integer type).
+macro_rules! impl_set_coerce_into_r {
+    ($from:ty) => {
+        impl IntoR for HashSet<$from> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                let vec: Vec<i32> = self.into_iter().map(|x| x as i32).collect();
+                vec.into_sexp()
+            }
+        }
+
+        impl IntoR for BTreeSet<$from> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                let vec: Vec<i32> = self.into_iter().map(|x| x as i32).collect();
+                vec.into_sexp()
+            }
+        }
+    };
+}
+
+// Sub-i32 integer types in sets coerce to i32 (R's INTSXP)
+impl_set_coerce_into_r!(i8);
+impl_set_coerce_into_r!(i16);
+impl_set_coerce_into_r!(u16);
+
+// =============================================================================
+// Option<Collection> conversions
+// =============================================================================
+//
+// These return NULL (R_NilValue) for None, and the converted collection for Some.
+// This differs from Option<scalar> which returns NA for None.
+
+/// Convert `Option<Vec<T>>` to R: Some(vec) → vector, None → NULL.
+impl<T: crate::ffi::RNativeType> IntoR for Option<Vec<T>> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => unsafe { v.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<Vec<String>>` to R: Some(vec) → character vector, None → NULL.
+impl IntoR for Option<Vec<String>> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(v) => v.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<HashMap<String, V>>` to R: Some(map) → named list, None → NULL.
+impl<V: IntoR> IntoR for Option<HashMap<String, V>> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(m) => m.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<BTreeMap<String, V>>` to R: Some(map) → named list, None → NULL.
+impl<V: IntoR> IntoR for Option<BTreeMap<String, V>> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(m) => m.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<HashSet<T>>` to R: Some(set) → vector, None → NULL.
+impl<T> IntoR for Option<HashSet<T>>
+where
+    T: crate::ffi::RNativeType + Eq + Hash,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(s) => s.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<BTreeSet<T>>` to R: Some(set) → vector, None → NULL.
+impl<T> IntoR for Option<BTreeSet<T>>
+where
+    T: crate::ffi::RNativeType + Ord,
+{
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(s) => s.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<HashSet<String>>` to R: Some(set) → character vector, None → NULL.
+impl IntoR for Option<HashSet<String>> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(s) => s.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Convert `Option<BTreeSet<String>>` to R: Some(set) → character vector, None → NULL.
+impl IntoR for Option<BTreeSet<String>> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        match self {
+            Some(s) => s.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
 /// Convert `Vec<String>` to R character vector (STRSXP).
 impl IntoR for Vec<String> {
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -630,6 +840,53 @@ impl IntoR for &[&str] {
 impl IntoR for Vec<&str> {
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.as_slice().into_sexp()
+    }
+}
+
+// =============================================================================
+// Nested vector conversions (list of vectors)
+// =============================================================================
+
+/// Convert `Vec<Vec<T>>` to R list of vectors (VECSXP of typed vectors).
+impl<T> IntoR for Vec<Vec<T>>
+where
+    T: crate::ffi::RNativeType,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, inner) in self.into_iter().enumerate() {
+                let inner_sexp = inner.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<Vec<String>>` to R list of character vectors.
+impl IntoR for Vec<Vec<String>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, inner) in self.into_iter().enumerate() {
+                let inner_sexp = inner.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
     }
 }
 

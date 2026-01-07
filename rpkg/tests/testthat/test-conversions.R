@@ -284,3 +284,134 @@ test_that("conversions result returns work", {
   expect_equal(conv_result_vec_i32_ok(), c(1L, 2L))
   expect_true(is.null(conv_result_vec_i32_err()))
 })
+
+# =============================================================================
+# Extended conversions tests
+# =============================================================================
+
+test_that("char conversions work", {
+  # char arg: single-character string to Rust char
+  expect_equal(conv_char_arg("a"), "a")
+  expect_equal(conv_char_arg("α"), "α")  # Unicode
+
+  # char ret: Rust char to single-character string
+  expect_equal(conv_char_ret(), "α")
+  expect_equal(nchar(conv_char_ret()), 1L)
+})
+
+test_that("Vec coercion (i8/i16/u16/f32) returns work", {
+  # Vec<i8> → integer (coerced to i32)
+  expect_equal(conv_vec_i8_ret(), c(1L, -1L, 127L))
+
+  # Vec<i16> → integer (coerced to i32)
+  expect_equal(conv_vec_i16_ret(), c(1L, -1L, 32767L))
+
+  # Vec<u16> → integer (coerced to i32)
+  expect_equal(conv_vec_u16_ret(), c(1L, 100L, 65535L))
+
+  # Vec<f32> → double (coerced to f64)
+  v <- conv_vec_f32_ret()
+  expect_equal(length(v), 3L)
+  expect_true(is.double(v))
+  expect_equal(v[1], 1.5, tolerance = 1e-6)
+  expect_equal(v[2], 2.5, tolerance = 1e-6)
+  expect_equal(v[3], -0.5, tolerance = 1e-6)
+})
+
+test_that("HashSet/BTreeSet coercion (i8/i16/u16) returns work", {
+  # HashSet<i8> → integer (coerced to i32, order not guaranteed)
+  expect_true(setequal(conv_hashset_i8_ret(), c(1L, 2L, -1L)))
+
+  # BTreeSet<i8> → integer (coerced to i32, sorted)
+  expect_equal(sort(conv_btreeset_i8_ret()), c(-1L, 1L, 2L))
+
+  # HashSet<i16> → integer
+  expect_true(setequal(conv_hashset_i16_ret(), c(1L, 2L, -1L)))
+
+  # BTreeSet<i16> → integer
+  expect_equal(sort(conv_btreeset_i16_ret()), c(-1L, 1L, 2L))
+
+  # HashSet<u16> → integer
+  expect_true(setequal(conv_hashset_u16_ret(), c(1L, 2L, 100L)))
+
+  # BTreeSet<u16> → integer
+  expect_equal(sort(conv_btreeset_u16_ret()), c(1L, 2L, 100L))
+})
+
+test_that("Option<&T> return (copies value) works", {
+  # Some(&i32) → integer (copied)
+  expect_equal(conv_opt_ref_i32_some_ret(), 42L)
+
+  # None → NULL (not NA, since there's no reference)
+  expect_true(is.null(conv_opt_ref_i32_none_ret()))
+})
+
+test_that("Option<Vec<T>> conversions work", {
+  # Arg: Some(vec) passes through
+  expect_equal(conv_opt_vec_i32_arg(c(1L, 2L, 3L)), 6L)  # sum
+
+  # Arg: NULL → None
+  expect_equal(conv_opt_vec_i32_arg(NULL), -999L)
+
+  # Ret: Some → vector
+  expect_equal(conv_opt_vec_i32_some_ret(), c(1L, 2L, 3L))
+
+  # Ret: None → NULL
+  expect_true(is.null(conv_opt_vec_i32_none_ret()))
+
+  # String vec
+  expect_equal(conv_opt_vec_string_arg(c("a", "b")), 2L)  # length
+  expect_equal(conv_opt_vec_string_arg(NULL), -999L)
+  expect_equal(conv_opt_vec_string_some_ret(), c("a", "b"))
+  expect_true(is.null(conv_opt_vec_string_none_ret()))
+})
+
+test_that("Option<HashMap> conversions work", {
+  # Arg: Some(map) passes through
+  expect_equal(conv_opt_hashmap_i32_arg(list(a = 1L, b = 2L)), 3L)  # sum
+
+  # Arg: NULL → None
+  expect_equal(conv_opt_hashmap_i32_arg(NULL), -999L)
+
+  # Ret: Some → named list
+  res <- conv_opt_hashmap_i32_some_ret()
+  expect_true(is.list(res))
+  expect_true(all(c("a", "b") %in% names(res)))
+  expect_equal(sum(unlist(res)), 3L)
+
+  # Ret: None → NULL
+  expect_true(is.null(conv_opt_hashmap_i32_none_ret()))
+})
+
+test_that("Option<HashSet> conversions work", {
+  # Arg: Some(set) passes through
+  expect_equal(conv_opt_hashset_i32_arg(c(1L, 2L, 3L)), 6L)  # sum
+
+  # Arg: NULL → None
+  expect_equal(conv_opt_hashset_i32_arg(NULL), -999L)
+
+  # Ret: Some → vector
+  expect_true(setequal(conv_opt_hashset_i32_some_ret(), c(1L, 2L, 3L)))
+
+  # Ret: None → NULL
+  expect_true(is.null(conv_opt_hashset_i32_none_ret()))
+})
+
+test_that("Vec<Vec<T>> (list of vectors) conversions work", {
+  # Arg: list of integer vectors
+  expect_equal(conv_vec_vec_i32_arg(list(c(1L, 2L), c(3L, 4L, 5L))), 15L)  # sum of sums
+
+  # Ret: Vec<Vec<i32>> → list of integer vectors
+  res <- conv_vec_vec_i32_ret()
+  expect_true(is.list(res))
+  expect_equal(length(res), 2L)
+  expect_equal(res[[1]], c(1L, 2L))
+  expect_equal(res[[2]], c(3L, 4L, 5L))
+
+  # Ret: Vec<Vec<String>> → list of character vectors
+  res_str <- conv_vec_vec_string_ret()
+  expect_true(is.list(res_str))
+  expect_equal(length(res_str), 2L)
+  expect_equal(res_str[[1]], c("a", "b"))
+  expect_equal(res_str[[2]], "c")
+})

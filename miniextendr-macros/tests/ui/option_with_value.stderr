@@ -1,4 +1,4 @@
-error: this option does not take any arguments
+error: unknown option; expected `return` or `dots`
  --> tests/ui/option_with_value.rs:5:15
   |
 5 | #[miniextendr(invisible = true)]

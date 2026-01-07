@@ -15,12 +15,12 @@ help: the trait `IntoExternalPtr` is not implemented for `NotIntoR`
   = help: the following other types implement trait `IntoR`:
             &[&str]
             &[T]
+            &[bool]
+            &[f32]
+            &[i16]
+            &[i8]
             &[std::string::String]
-            &str
-            ()
-            (A, B)
-            (A, B, C)
-            (A, B, C, D)
+            &[u16]
           and $N others
   = note: required for `NotIntoR` to implement `IntoR`
   = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)
