@@ -18,3 +18,27 @@ test_that("greet_hidden uses default and explicit names", {
   expect_equal(miniextendr:::greet_hidden(), "Hello, World!")
   expect_equal(miniextendr:::greet_hidden("Bob"), "Hello, Bob!")
 })
+
+# Result handling tests
+
+test_that("result_null_on_err returns value on Ok", {
+  expect_equal(result_null_on_err(5L), 10L)
+  expect_equal(result_null_on_err(0L), 0L)
+})
+
+test_that("result_null_on_err returns NULL on Err", {
+  expect_null(result_null_on_err(-1L))
+  expect_null(result_null_on_err(-100L))
+})
+
+test_that("result_unwrap_in_r returns value on Ok", {
+  expect_equal(result_unwrap_in_r(5L), 10L)
+  expect_equal(result_unwrap_in_r(0L), 0L)
+})
+
+test_that("result_unwrap_in_r returns list(error=...) on Err", {
+  res <- result_unwrap_in_r(-1L)
+  expect_type(res, "list")
+  expect_true("error" %in% names(res))
+  expect_true(grepl("negative input", res$error))
+})

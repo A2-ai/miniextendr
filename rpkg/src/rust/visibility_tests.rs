@@ -67,6 +67,17 @@ pub fn with_interrupt_check(x: i32) -> i32 {
     x * 2
 }
 
+/// Test `#[miniextendr(unwrap_in_r)]` - returns Result to R as value
+/// Ok(x) -> x, Err(e) -> list(error = "...")
+#[miniextendr(unwrap_in_r)]
+pub fn result_unwrap_in_r(x: i32) -> Result<i32, String> {
+    if x >= 0 {
+        Ok(x * 2)
+    } else {
+        Err(format!("negative input: {}", x))
+    }
+}
+
 miniextendr_module! {
     mod visibility_tests;
 
@@ -76,6 +87,7 @@ miniextendr_module! {
     fn invisibly_option_return_some;
     fn invisibly_result_return_ok;
     fn result_null_on_err;
+    fn result_unwrap_in_r;
     fn force_invisible_i32;
     fn force_visible_unit;
     fn with_interrupt_check;
