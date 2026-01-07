@@ -81,12 +81,8 @@ impl RTerm {
 
         unsafe {
             match self.stream {
-                RStream::Stdout => {
-                    crate::ffi::Rprintf(b"%s\0".as_ptr() as *const c_char, cstr.as_ptr())
-                }
-                RStream::Stderr => {
-                    crate::ffi::REprintf(b"%s\0".as_ptr() as *const c_char, cstr.as_ptr())
-                }
+                RStream::Stdout => crate::ffi::Rprintf(c"%s".as_ptr(), cstr.as_ptr()),
+                RStream::Stderr => crate::ffi::REprintf(c"%s".as_ptr(), cstr.as_ptr()),
             };
         }
 

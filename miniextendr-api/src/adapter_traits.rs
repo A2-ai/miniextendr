@@ -569,14 +569,14 @@ impl<T: Copy> RCopy for T {
 /// }
 /// ```
 ///
-/// In R:
+/// In R (note: `next` is a reserved word, so expose as `next_item` or similar):
 /// ```r
 /// it <- MyIter$new(c(1L, 2L, 3L))
-/// it$next()        # 1L
-/// it$next()        # 2L
+/// it$next_item()   # 1L
+/// it$next_item()   # 2L
 /// it$size_hint()   # c(1, 1) - one element remaining
-/// it$next()        # 3L
-/// it$next()        # NULL (exhausted)
+/// it$next_item()   # 3L
+/// it$next_item()   # NULL (exhausted)
 /// ```
 ///
 /// # Design Note
@@ -927,12 +927,12 @@ where
 /// }
 /// ```
 ///
-/// In R:
+/// In R (note: expose `next` as `next_item` since `next` is reserved):
 /// ```r
 /// v <- MyVec$new(c(1L, 2L, 3L))
 /// it <- v$make_iter()   # Create iterator
-/// it$next()             # 1L
-/// it$next()             # 2L
+/// it$next_item()        # 1L
+/// it$next_item()        # 2L
 /// v$to_vec()            # c(1L, 2L, 3L) - original unchanged
 /// ```
 pub trait RMakeIter<T, I>

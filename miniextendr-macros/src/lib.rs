@@ -1208,11 +1208,48 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             (cfg_attrs, syn::parse_quote!(#call_method_def))
         })
         .collect();
-    let call_entries: Vec<syn::Expr> = call_entries_with_attrs
+    let _call_entries: Vec<syn::Expr> = call_entries_with_attrs
         .iter()
         .map(|(_, expr)| expr.clone())
         .collect();
-    let call_entries_len = call_entries.len();
+
+    // Count entries without cfg attributes (always included)
+    let unconfigured_entries_len = call_entries_with_attrs
+        .iter()
+        .filter(|(cfg_attrs, _)| cfg_attrs.is_empty())
+        .count();
+
+    // Generate conditional length constants for entries with cfg attributes
+    let cfg_len_consts: Vec<proc_macro2::TokenStream> = call_entries_with_attrs
+        .iter()
+        .enumerate()
+        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
+        .map(|(i, (cfg_attrs, _))| {
+            let const_name = quote::format_ident!("__CFG_FN_LEN_{}", i);
+            // Generate both cfg and not(cfg) variants
+            let negated_attrs: Vec<proc_macro2::TokenStream> = cfg_attrs.iter().map(|attr| {
+                // Extract the meta from the cfg attribute and negate it
+                let meta = &attr.meta;
+                quote::quote!(#[cfg(not #meta)])
+            }).collect();
+            quote::quote! {
+                #(#cfg_attrs)*
+                const #const_name: usize = 1;
+                #(#negated_attrs)*
+                const #const_name: usize = 0;
+            }
+        })
+        .collect();
+
+    // Build the length expression: base + sum of conditional constants
+    let cfg_len_idents: Vec<syn::Ident> = call_entries_with_attrs
+        .iter()
+        .enumerate()
+        .filter(|(_, (cfg_attrs, _))| !cfg_attrs.is_empty())
+        .map(|(i, _)| quote::format_ident!("__CFG_FN_LEN_{}", i))
+        .collect();
+
+    let call_entries_len = unconfigured_entries_len;
 
     // Generate ALTREP registrations for struct items (if they implement RegisterAltrep)
     let altrep_regs: Vec<syn::Expr> = parsed_module
@@ -1239,13 +1276,14 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|(_, expr)| expr.clone())
         .collect();
 
-    // Generate impl R wrapper refs
-    let impl_r_wrappers: Vec<syn::Expr> = parsed_module
+    // Generate impl R wrapper refs with cfg attributes
+    let impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .impls
         .iter()
         .map(|i| {
             let r_wrapper_const = i.r_wrappers_const_ident();
-            syn::parse_quote!(#r_wrapper_const)
+            let cfg_attrs = extract_cfg_attrs(&i.attrs);
+            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
         })
         .collect();
 
@@ -1264,13 +1302,14 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|(_, expr)| expr.clone())
         .collect();
 
-    // Generate trait impl R wrapper refs
-    let trait_impl_r_wrappers: Vec<syn::Expr> = parsed_module
+    // Generate trait impl R wrapper refs with cfg attributes
+    let trait_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .trait_impls
         .iter()
         .map(|ti| {
             let r_wrapper_const = ti.r_wrappers_const_ident();
-            syn::parse_quote!(#r_wrapper_const)
+            let cfg_attrs = extract_cfg_attrs(&ti.attrs);
+            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
         })
         .collect();
 
@@ -1299,12 +1338,30 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     // region: r wrapper generation in `mod`
 
-    let r_wrapper_generators: Vec<syn::Expr> = parsed_module
+    // R wrapper generators with cfg attributes preserved
+    let r_wrapper_generators_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .functions
         .iter()
         .map(|x| {
             let r_wrapper_const = x.r_wrapper_const_ident();
-            syn::parse_quote!(#r_wrapper_const)
+            let cfg_attrs = extract_cfg_attrs(&x.attrs);
+            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
+        })
+        .collect();
+
+    // Generate conditional R wrapper array elements
+    // For functions without cfg: just include the const reference
+    // For functions with cfg: prefix with cfg attributes (Rust allows cfg on array elements)
+    let r_wrapper_generators: Vec<proc_macro2::TokenStream> = r_wrapper_generators_with_cfg
+        .iter()
+        .map(|(cfg_attrs, expr)| {
+            if cfg_attrs.is_empty() {
+                quote::quote!(#expr)
+            } else {
+                // Cfg attributes on array elements work in Rust:
+                // const ARR: &[&str] = &[FOO, #[cfg(feature = "x")] BAR];
+                quote::quote!(#(#cfg_attrs)* #expr)
+            }
         })
         .collect();
     // Collect child modules' function wrappers (PARTS)
@@ -1431,14 +1488,20 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
-    // Calculate total length expression
+    // Calculate total length expression, including conditional cfg lengths
+    let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
+        .iter()
+        .map(|ident| quote::quote!(#ident))
+        .collect();
     let all_len_exprs: Vec<proc_macro2::TokenStream> =
         std::iter::once(quote::quote!(#call_entries_len_lit))
+            .chain(cfg_len_exprs.iter().cloned())
             .chain(impl_call_defs_len_exprs.iter().cloned())
             .chain(trait_impl_call_defs_len_exprs.iter().cloned())
             .collect();
     let total_len_expr = if all_len_exprs.is_empty()
         || (call_entries_len == 0
+            && cfg_len_idents.is_empty()
             && impl_call_defs_len_exprs.is_empty()
             && trait_impl_call_defs_len_exprs.is_empty())
     {
@@ -1560,17 +1623,30 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
     // Generate R wrapper impls constant - includes both impl and trait impl wrappers
-    let mut all_impl_r_wrappers = Vec::new();
-    all_impl_r_wrappers.extend(impl_r_wrappers.clone());
-    all_impl_r_wrappers.extend(trait_impl_r_wrappers.clone());
+    // Combine both with cfg info and generate conditional array elements
+    let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
+    all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
+    all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
 
-    let r_wrappers_impls_const = if all_impl_r_wrappers.is_empty() {
+    // Generate array elements with cfg attributes where needed
+    let all_impl_r_wrapper_elements: Vec<proc_macro2::TokenStream> = all_impl_r_wrappers_with_cfg
+        .iter()
+        .map(|(cfg_attrs, expr)| {
+            if cfg_attrs.is_empty() {
+                quote::quote!(#expr)
+            } else {
+                quote::quote!(#(#cfg_attrs)* #expr)
+            }
+        })
+        .collect();
+
+    let r_wrappers_impls_const = if all_impl_r_wrapper_elements.is_empty() {
         quote::quote! {
             pub const #r_wrappers_impls_ident: &[&str] = &[];
         }
     } else {
         quote::quote! {
-            pub const #r_wrappers_impls_ident: &[&str] = &[#(#all_impl_r_wrappers),*];
+            pub const #r_wrappers_impls_ident: &[&str] = &[#(#all_impl_r_wrapper_elements),*];
         }
     };
 
@@ -1584,6 +1660,9 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
         #[doc(hidden)]
         pub const #r_wrappers_impl_deps_ident: &[&[&str]] = &[#(#r_wrappers_impl_use_other_modules),*];
+
+        // Conditional length constants for feature-gated function entries
+        #(#cfg_len_consts)*
 
         #call_entries_storage
         #all_call_entries_storage

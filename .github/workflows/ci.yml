@@ -167,7 +167,7 @@ jobs:
               - 'justfile'
             r:
               - 'rpkg/**'
-              - 'miniextendr/**'
+              - 'minirextendr/**'
               - '**/*.R'
               - '**/*.r'
               - 'Cargo.toml'

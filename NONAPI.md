@@ -26,6 +26,19 @@ Locations intentionally omit line numbers (they drift); use search on the symbol
 
 Note: `miniextendr-engine` is entirely non-API (uses Rembedded.h/Rinterface.h for embedding R) and is not tracked here.
 
+## Test Utilities (Not Part of R Package)
+
+The file `miniextendr-api/tests/r_test_utils.rs` contains a `disable_r_stack_checking()` function
+that directly accesses `R_CStackLimit`. This code is **never part of the R package** because:
+
+1. It's in the `tests/` directory of `miniextendr-api`, which is only compiled for `cargo test`
+2. It uses `miniextendr-engine` to embed R for Rust unit tests
+3. The R package (`rpkg`) only vendors `miniextendr-api/src/` and `miniextendr-macros/src/`
+4. Test directories are excluded from vendoring
+
+This test utility exists because `cargo test` embeds R in a non-standard way (not via `R CMD`),
+and R's stack checking needs to be disabled to prevent false positives on worker threads.
+
 ## API Functions (Safe to Use)
 
 These functions are NOT in the non-API list and are safe:

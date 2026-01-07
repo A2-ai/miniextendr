@@ -1144,6 +1144,139 @@ impl<T: RNativeType + Clone> IntoR for ArcArray2<T> {
 }
 
 // =============================================================================
+// ArrayView conversions (read-only views)
+// =============================================================================
+
+/// Convert `ArrayView1<T>` to R vector by copying.
+///
+/// This copies the view's data into a new R vector.
+/// Useful for returning a view of data to R.
+impl<'a, T: RNativeType + Clone> IntoR for ArrayView1<'a, T> {
+    fn into_sexp(self) -> SEXP {
+        let vec: Vec<T> = self.iter().cloned().collect();
+        vec.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let vec: Vec<T> = self.iter().cloned().collect();
+        unsafe { vec.into_sexp_unchecked() }
+    }
+}
+
+/// Convert `ArrayView2<T>` to R matrix by copying.
+///
+/// Creates a column-major R matrix from the view.
+/// Data is always written in column-major order regardless of the view's layout.
+impl<'a, T: RNativeType + Clone> IntoR for ArrayView2<'a, T> {
+    fn into_sexp(self) -> SEXP {
+        let (nrow, ncol) = self.dim();
+
+        // Iterate column-by-column for R's column-major storage
+        let mut data: Vec<T> = Vec::with_capacity(nrow * ncol);
+        for j in 0..ncol {
+            data.extend(self.column(j).iter().cloned());
+        }
+
+        unsafe {
+            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, nrow as i32, ncol as i32);
+            let guard = OwnedProtect::new(mat);
+
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+
+            guard.into_inner()
+        }
+    }
+}
+
+/// Convert `ArrayView3<T>` to R 3D array by copying.
+impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
+    fn into_sexp(self) -> SEXP {
+        let (d0, d1, d2) = self.dim();
+
+        // Iterate in Fortran (column-major) order
+        let data: Vec<T> = {
+            let mut v = Vec::with_capacity(d0 * d1 * d2);
+            for k in 0..d2 {
+                for j in 0..d1 {
+                    for i in 0..d0 {
+                        v.push(self[[i, j, k]].clone());
+                    }
+                }
+            }
+            v
+        };
+
+        unsafe {
+            let scope = ProtectScope::new();
+
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                data.len() as crate::ffi::R_xlen_t,
+            ));
+
+            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+
+            // Set dim attribute
+            let dim = scope.protect_raw(crate::ffi::Rf_allocVector(SEXPTYPE::INTSXP, 3));
+            let dim_ptr = crate::ffi::INTEGER(dim);
+            *dim_ptr = d0 as i32;
+            *dim_ptr.add(1) = d1 as i32;
+            *dim_ptr.add(2) = d2 as i32;
+            crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+
+            arr
+        }
+    }
+}
+
+/// Convert `ArrayViewD<T>` to R N-dimensional array by copying.
+impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
+    fn into_sexp(self) -> SEXP {
+        let shape: Vec<usize> = self.shape().to_vec();
+        let ndim = shape.len();
+        let total_len: usize = shape.iter().product();
+
+        // Iterate in Fortran (column-major) order
+        let data: Vec<T> = {
+            let mut v = Vec::with_capacity(total_len);
+            fortran_order_iter(&shape, |idx| {
+                v.push(self[IxDyn(&idx)].clone());
+            });
+            v
+        };
+
+        unsafe {
+            let scope = ProtectScope::new();
+
+            let arr = scope.protect_raw(crate::ffi::Rf_allocVector(
+                T::SEXP_TYPE,
+                total_len as crate::ffi::R_xlen_t,
+            ));
+
+            let ptr = crate::ffi::DATAPTR_RO(arr) as *mut T;
+            std::ptr::copy_nonoverlapping(data.as_ptr(), ptr, data.len());
+
+            // Set dim attribute if ndim > 1
+            if ndim > 1 {
+                let dim = scope.protect_raw(crate::ffi::Rf_allocVector(
+                    SEXPTYPE::INTSXP,
+                    ndim as crate::ffi::R_xlen_t,
+                ));
+                let dim_ptr = crate::ffi::INTEGER(dim);
+                for (i, &d) in shape.iter().enumerate() {
+                    *dim_ptr.add(i) = d as i32;
+                }
+                crate::ffi::Rf_setAttrib(arr, crate::ffi::R_DimSymbol, dim);
+            }
+
+            arr
+        }
+    }
+}
+
+// =============================================================================
 // Helper functions
 // =============================================================================
 
@@ -1874,6 +2007,188 @@ impl RNdArrayOps for ArrayD<f64> {
         }
         let mean = self.iter().sum::<f64>() / n;
         self.iter().map(|x| (x - mean).powi(2)).sum::<f64>() / n
+    }
+
+    fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+}
+
+// --- RNdArrayOps for i32 arrays (convert to f64 for stats) ---
+
+impl RNdArrayOps for Array1<i32> {
+    fn len(&self) -> i32 {
+        Array1::len(self) as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        Array1::is_empty(self)
+    }
+
+    fn ndim(&self) -> i32 {
+        Array1::ndim(self) as i32
+    }
+
+    fn shape(&self) -> Vec<i32> {
+        Array1::shape(self).iter().map(|&d| d as i32).collect()
+    }
+
+    fn sum(&self) -> f64 {
+        self.iter().map(|&x| x as f64).sum()
+    }
+
+    fn mean(&self) -> f64 {
+        if Array1::is_empty(self) {
+            f64::NAN
+        } else {
+            self.iter().map(|&x| x as f64).sum::<f64>() / Array1::len(self) as f64
+        }
+    }
+
+    fn min(&self) -> f64 {
+        self.iter().map(|&x| x as f64).fold(f64::INFINITY, f64::min)
+    }
+
+    fn max(&self) -> f64 {
+        self.iter()
+            .map(|&x| x as f64)
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    fn product(&self) -> f64 {
+        self.iter().map(|&x| x as f64).product()
+    }
+
+    fn var(&self) -> f64 {
+        let n = Array1::len(self) as f64;
+        if n == 0.0 {
+            return f64::NAN;
+        }
+        let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
+        self.iter()
+            .map(|&x| (x as f64 - mean).powi(2))
+            .sum::<f64>()
+            / n
+    }
+
+    fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+}
+
+impl RNdArrayOps for Array2<i32> {
+    fn len(&self) -> i32 {
+        Array2::len(self) as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        Array2::is_empty(self)
+    }
+
+    fn ndim(&self) -> i32 {
+        Array2::ndim(self) as i32
+    }
+
+    fn shape(&self) -> Vec<i32> {
+        Array2::shape(self).iter().map(|&d| d as i32).collect()
+    }
+
+    fn sum(&self) -> f64 {
+        self.iter().map(|&x| x as f64).sum()
+    }
+
+    fn mean(&self) -> f64 {
+        if Array2::is_empty(self) {
+            f64::NAN
+        } else {
+            self.iter().map(|&x| x as f64).sum::<f64>() / Array2::len(self) as f64
+        }
+    }
+
+    fn min(&self) -> f64 {
+        self.iter().map(|&x| x as f64).fold(f64::INFINITY, f64::min)
+    }
+
+    fn max(&self) -> f64 {
+        self.iter()
+            .map(|&x| x as f64)
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    fn product(&self) -> f64 {
+        self.iter().map(|&x| x as f64).product()
+    }
+
+    fn var(&self) -> f64 {
+        let n = Array2::len(self) as f64;
+        if n == 0.0 {
+            return f64::NAN;
+        }
+        let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
+        self.iter()
+            .map(|&x| (x as f64 - mean).powi(2))
+            .sum::<f64>()
+            / n
+    }
+
+    fn std(&self) -> f64 {
+        self.var().sqrt()
+    }
+}
+
+impl RNdArrayOps for ArrayD<i32> {
+    fn len(&self) -> i32 {
+        ArrayD::len(self) as i32
+    }
+
+    fn is_empty(&self) -> bool {
+        ArrayD::is_empty(self)
+    }
+
+    fn ndim(&self) -> i32 {
+        ArrayD::ndim(self) as i32
+    }
+
+    fn shape(&self) -> Vec<i32> {
+        ArrayD::shape(self).iter().map(|&d| d as i32).collect()
+    }
+
+    fn sum(&self) -> f64 {
+        self.iter().map(|&x| x as f64).sum()
+    }
+
+    fn mean(&self) -> f64 {
+        if ArrayD::is_empty(self) {
+            f64::NAN
+        } else {
+            self.iter().map(|&x| x as f64).sum::<f64>() / ArrayD::len(self) as f64
+        }
+    }
+
+    fn min(&self) -> f64 {
+        self.iter().map(|&x| x as f64).fold(f64::INFINITY, f64::min)
+    }
+
+    fn max(&self) -> f64 {
+        self.iter()
+            .map(|&x| x as f64)
+            .fold(f64::NEG_INFINITY, f64::max)
+    }
+
+    fn product(&self) -> f64 {
+        self.iter().map(|&x| x as f64).product()
+    }
+
+    fn var(&self) -> f64 {
+        let n = ArrayD::len(self) as f64;
+        if n == 0.0 {
+            return f64::NAN;
+        }
+        let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
+        self.iter()
+            .map(|&x| (x as f64 - mean).powi(2))
+            .sum::<f64>()
+            / n
     }
 
     fn std(&self) -> f64 {

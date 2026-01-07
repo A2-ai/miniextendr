@@ -141,6 +141,65 @@ impl R6Accumulator {
     }
 }
 
+/// An R6 class demonstrating active bindings for property-like access.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6Rectangle {
+    width: f64,
+    height: f64,
+}
+
+/// @title R6 Rectangle Class with Active Bindings
+/// @name R6Rectangle
+/// @rdname R6Rectangle
+/// @description R6 rectangle class demonstrating active bindings.
+/// Active bindings provide property-like access (obj$area instead of obj$area()).
+/// @aliases R6Rectangle
+/// @param width The width of the rectangle (numeric).
+/// @param height The height of the rectangle (numeric).
+/// @details
+/// **Methods:**
+/// - `$new(width, height)`: Creates a new rectangle with given dimensions.
+/// - `$get_width()`: Returns the width (regular method).
+/// - `$get_height()`: Returns the height (regular method).
+///
+/// **Active Bindings (properties):**
+/// - `$area`: Returns the area (width * height).
+/// - `$perimeter`: Returns the perimeter (2 * (width + height)).
+/// @examples
+/// r <- R6Rectangle$new(3, 4)
+/// r$area        # Property access (not r$area())
+/// r$perimeter   # Property access
+/// r$get_width() # Regular method
+#[miniextendr(r6)]
+impl R6Rectangle {
+    /// Creates a new rectangle with given dimensions.
+    pub fn new(width: f64, height: f64) -> Self {
+        R6Rectangle { width, height }
+    }
+
+    /// Returns the width (regular method).
+    pub fn get_width(&self) -> f64 {
+        self.width
+    }
+
+    /// Returns the height (regular method).
+    pub fn get_height(&self) -> f64 {
+        self.height
+    }
+
+    /// Returns the area (active binding - property access).
+    #[miniextendr(r6(active))]
+    pub fn area(&self) -> f64 {
+        self.width * self.height
+    }
+
+    /// Returns the perimeter (active binding - property access).
+    #[miniextendr(r6(active))]
+    pub fn perimeter(&self) -> f64 {
+        2.0 * (self.width + self.height)
+    }
+}
+
 miniextendr_module! {
     mod r6_tests;
 
@@ -150,4 +209,5 @@ miniextendr_module! {
     // Multiple impl blocks
     impl R6Counter;
     impl R6Accumulator;
+    impl R6Rectangle;
 }

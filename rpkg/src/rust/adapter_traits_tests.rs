@@ -490,8 +490,8 @@ impl RMakeIter<i32, IterableVecIter> for IterableVec {
 /// @return An ExternalPtr to an IterableVec.
 /// @examples
 /// v <- IterableVec$new(c(1L, 2L, 3L))
-/// it <- v$make_iter()
-/// it$next()
+/// v$len()
+/// v$to_vec()
 #[miniextendr]
 impl IterableVec {
     fn new(data: Vec<i32>) -> Self {

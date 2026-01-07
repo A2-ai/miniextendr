@@ -540,8 +540,7 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::DataFrame => {
-            let class = unsafe { CStr::from_bytes_with_nul_unchecked(b"data.frame\0") };
-            let inherits = unsafe { ffi::Rf_inherits(elem, class.as_ptr()) } != Rboolean::FALSE;
+            let inherits = unsafe { ffi::Rf_inherits(elem, c"data.frame".as_ptr()) } != Rboolean::FALSE;
             if !inherits {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),

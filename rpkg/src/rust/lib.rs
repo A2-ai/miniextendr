@@ -54,6 +54,69 @@ mod serde_r_tests;
 #[cfg(not(feature = "serde_r"))]
 #[path = "serde_r_tests_disabled.rs"]
 mod serde_r_tests;
+#[cfg(feature = "ndarray")]
+#[path = "ndarray_tests.rs"]
+mod ndarray_tests;
+#[cfg(not(feature = "ndarray"))]
+#[path = "ndarray_tests_disabled.rs"]
+mod ndarray_tests;
+// Feature adapter tests - each feature has its own enabled/disabled module
+#[cfg(feature = "uuid")]
+#[path = "uuid_adapter_tests.rs"]
+mod uuid_adapter_tests;
+#[cfg(not(feature = "uuid"))]
+#[path = "uuid_adapter_tests_disabled.rs"]
+mod uuid_adapter_tests;
+
+#[cfg(feature = "regex")]
+#[path = "regex_adapter_tests.rs"]
+mod regex_adapter_tests;
+#[cfg(not(feature = "regex"))]
+#[path = "regex_adapter_tests_disabled.rs"]
+mod regex_adapter_tests;
+
+#[cfg(feature = "time")]
+#[path = "time_adapter_tests.rs"]
+mod time_adapter_tests;
+#[cfg(not(feature = "time"))]
+#[path = "time_adapter_tests_disabled.rs"]
+mod time_adapter_tests;
+
+#[cfg(feature = "ordered-float")]
+#[path = "ordered_float_adapter_tests.rs"]
+mod ordered_float_adapter_tests;
+#[cfg(not(feature = "ordered-float"))]
+#[path = "ordered_float_adapter_tests_disabled.rs"]
+mod ordered_float_adapter_tests;
+
+#[cfg(feature = "num-bigint")]
+#[path = "bigint_adapter_tests.rs"]
+mod bigint_adapter_tests;
+#[cfg(not(feature = "num-bigint"))]
+#[path = "bigint_adapter_tests_disabled.rs"]
+mod bigint_adapter_tests;
+
+#[cfg(feature = "rust_decimal")]
+#[path = "decimal_adapter_tests.rs"]
+mod decimal_adapter_tests;
+#[cfg(not(feature = "rust_decimal"))]
+#[path = "decimal_adapter_tests_disabled.rs"]
+mod decimal_adapter_tests;
+
+#[cfg(feature = "indexmap")]
+#[path = "indexmap_adapter_tests.rs"]
+mod indexmap_adapter_tests;
+#[cfg(not(feature = "indexmap"))]
+#[path = "indexmap_adapter_tests_disabled.rs"]
+mod indexmap_adapter_tests;
+
+// Connection tests - requires connections feature
+#[cfg(feature = "connections")]
+#[path = "connection_tests.rs"]
+mod connection_tests;
+#[cfg(not(feature = "connections"))]
+#[path = "connection_tests_disabled.rs"]
+mod connection_tests;
 mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
@@ -1212,6 +1275,15 @@ miniextendr_module! {
     use rng_tests;
     use rayon_tests;
     use serde_r_tests;
+    use ndarray_tests;
+    use uuid_adapter_tests;
+    use regex_adapter_tests;
+    use time_adapter_tests;
+    use ordered_float_adapter_tests;
+    use bigint_adapter_tests;
+    use decimal_adapter_tests;
+    use indexmap_adapter_tests;
+    use connection_tests;
     use nonapi;
     use factor_tests;
     use vctrs_tests;

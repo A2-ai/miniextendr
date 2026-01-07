@@ -515,17 +515,11 @@ impl ParsedMethod {
         class_system: ClassSystem,
         span: proc_macro2::Span,
     ) -> syn::Result<()> {
-        // #[...(active)] is only meaningful for R6, and not yet implemented
-        if attrs.active {
-            if class_system != ClassSystem::R6 {
-                return Err(syn::Error::new(
-                    span,
-                    "#[r6(active)] is only valid for R6 class systems",
-                ));
-            }
+        // #[...(active)] is only meaningful for R6
+        if attrs.active && class_system != ClassSystem::R6 {
             return Err(syn::Error::new(
                 span,
-                "#[r6(active)] active bindings are not yet implemented",
+                "#[r6(active)] is only valid for R6 class systems",
             ));
         }
 
@@ -762,6 +756,12 @@ impl ParsedMethod {
         self.method_attrs.finalize || (self.env == ReceiverKind::Value && !self.returns_self())
     }
 
+    /// Returns true if this method should be an R6 active binding.
+    /// Active bindings provide property-like access (obj$name instead of obj$name()).
+    pub fn is_active(&self) -> bool {
+        self.method_attrs.active
+    }
+
     /// C wrapper identifier for this method.
     ///
     /// Format: `C_{Type}__{method}` or `C_{Type}_{label}__{method}` if labeled.
@@ -908,7 +908,7 @@ impl ParsedImpl {
             .find(|m| m.should_include() && m.is_constructor())
     }
 
-    /// Get public instance methods (have env, not private).
+    /// Get public instance methods (have env, not private, not active).
     pub fn public_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
@@ -916,10 +916,11 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && !m.is_private()
+                && !m.is_active()
         })
     }
 
-    /// Get private instance methods (have env, private visibility).
+    /// Get private instance methods (have env, private visibility, not active).
     pub fn private_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
@@ -927,6 +928,19 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_private()
+                && !m.is_active()
+        })
+    }
+
+    /// Get active binding methods for R6 (have env, marked active).
+    /// Active bindings provide property-like access (obj$name instead of obj$name()).
+    pub fn active_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods.iter().filter(|m| {
+            m.should_include()
+                && m.env.is_instance()
+                && !m.is_constructor()
+                && !m.is_finalizer()
+                && m.is_active()
         })
     }
 
@@ -1379,6 +1393,61 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("        .ptr = NULL".to_string());
     lines.push("    ),".to_string());
 
+    // Active bindings list (for property-like access)
+    let active_method_contexts: Vec<_> = parsed_impl.active_instance_method_contexts().collect();
+    if !active_method_contexts.is_empty() {
+        lines.push("    active = list(".to_string());
+
+        for (i, ctx) in active_method_contexts.iter().enumerate() {
+            let comma = if i < active_method_contexts.len() - 1 {
+                ","
+            } else {
+                ""
+            };
+
+            // Add inline @field documentation for active bindings
+            // roxygen2 requires @field tags (not @description) for active bindings
+            let method_name = ctx.method.ident.to_string();
+            for tag in &ctx.method.doc_tags {
+                for (line_idx, line) in tag.lines().enumerate() {
+                    // Convert @description/@title to @field on first line only
+                    let line = if line_idx == 0 {
+                        if let Some(desc) = line.strip_prefix("@description ") {
+                            format!("@field {} {}", method_name, desc)
+                        } else if let Some(desc) = line.strip_prefix("@title ") {
+                            format!("@field {} {}", method_name, desc)
+                        } else if !line.starts_with('@') {
+                            // Plain doc comment - treat as field description
+                            format!("@field {} {}", method_name, line)
+                        } else {
+                            line.to_string()
+                        }
+                    } else {
+                        // Continuation lines stay as-is
+                        line.to_string()
+                    };
+                    lines.push(format!("        #' {}", line));
+                }
+            }
+
+            // Active bindings are getter-only (no parameters besides self)
+            // Format: name = function() { ... }
+            lines.push(format!("        {} = function() {{", ctx.method.ident));
+
+            let call = ctx.instance_call("private$.ptr");
+            let strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let return_builder = crate::MethodReturnBuilder::new(call)
+                .with_strategy(strategy)
+                .with_class_name(class_name.clone())
+                .with_indent(12); // R6 active bindings have 12-space indent
+            lines.extend(return_builder.build_r6_body());
+
+            lines.push(format!("        }}{}", comma));
+        }
+
+        lines.push("    ),".to_string());
+    }
+
     // Class options
     lines.push("    lock_objects = TRUE,".to_string());
     lines.push("    lock_class = FALSE,".to_string());
@@ -1510,7 +1579,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_name = ctx.method.ident.to_string();
 
         let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
         lines.extend(method_doc.build());
         // Export static methods so users can call them
         lines.push("#' @export".to_string());
@@ -1671,7 +1741,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_name = ctx.method.ident.to_string();
 
         let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
         lines.extend(method_doc.build());
         // Export static methods so users can call them
         lines.push("#' @export".to_string());
@@ -1804,7 +1875,8 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_name = ctx.method.ident.to_string();
 
         let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
         lines.extend(method_doc.build());
         // Export static methods so users can call them
         lines.push("#' @export".to_string());
@@ -2033,7 +2105,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let method_name = ctx.method.ident.to_string();
 
         let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags);
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
         lines.extend(method_doc.build());
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));

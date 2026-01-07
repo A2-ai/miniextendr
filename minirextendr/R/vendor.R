@@ -88,21 +88,34 @@ download_miniextendr_archive <- function(version, dest_path) {
 
 #' Download and vendor miniextendr crates
 #'
-#' Downloads miniextendr-api, miniextendr-macros, and miniextendr-lint
-#' from GitHub and vendors them into src/vendor/. Also patches
-#' Cargo.toml files to remove workspace inheritance.
+#' Downloads miniextendr-api, miniextendr-macros, miniextendr-lint, and
+#' miniextendr-engine from GitHub and vendors them into src/vendor/. Also
+#' patches Cargo.toml files to remove workspace inheritance.
 #'
 #' Downloaded archives are cached in `rappdirs::user_cache_dir("minirextendr")`
 #' to avoid repeated downloads of the same version.
 #'
-#' @param version Version tag to download (default: "main" for latest)
+#' For local development (when GitHub repo is not available), set
+#' `local_path` to the path of the miniextendr repository.
+#'
+#' @param version Version tag to download (default: "main" for latest).
+#'   Ignored if `local_path` is provided.
 #' @param dest Destination directory for vendored crates
 #' @param refresh Force re-download even if cached (default: FALSE)
+#' @param local_path Path to local miniextendr repository. If provided,
+#'   copies crates from local path instead of downloading from GitHub.
 #' @return Invisibly returns TRUE on success
 #' @export
 vendor_miniextendr <- function(version = "main",
                                dest = usethis::proj_path("src", "vendor"),
-                               refresh = FALSE) {
+                               refresh = FALSE,
+                               local_path = NULL) {
+  # If local_path is provided, use local vendoring
+
+  if (!is.null(local_path)) {
+    return(vendor_miniextendr_local(local_path, dest))
+  }
+
   # Check cache first
   cache_dir <- rappdirs::user_cache_dir("minirextendr")
   fs::dir_create(cache_dir, recurse = TRUE)
@@ -137,7 +150,7 @@ vendor_miniextendr <- function(version = "main",
   ensure_dir(dest)
 
   # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
 
   for (crate in crates) {
     src_path <- fs::path(extracted_dir, crate)
@@ -221,7 +234,77 @@ patch_cargo_toml <- function(path, crate_name) {
     content <- gsub(pattern, dep_replacements[[pattern]], content)
   }
 
+  # Remove dev-dependencies that create circular references when vendored
+  # miniextendr-api in miniextendr-macros dev-deps is only for workspace testing
+  content <- content[!grepl("^miniextendr-api = \\{ workspace = true \\}", content)]
+
   writeLines(content, path)
+}
+
+#' Vendor miniextendr crates from local path
+#'
+#' Copies miniextendr crates from a local repository instead of downloading
+#' from GitHub. Used for development when the GitHub repo is not available.
+#'
+#' @param local_path Path to local miniextendr repository
+#' @param dest Destination directory for vendored crates
+#' @return Invisibly returns TRUE on success
+#' @noRd
+vendor_miniextendr_local <- function(local_path, dest) {
+  local_path <- normalizePath(local_path, mustWork = TRUE)
+
+  cli::cli_alert("Vendoring miniextendr from local path: {.path {local_path}}")
+
+  # Create vendor directory
+  ensure_dir(dest)
+
+  # Copy crates
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
+
+  for (crate in crates) {
+    src_path <- fs::path(local_path, crate)
+    dest_path <- fs::path(dest, crate)
+
+    if (!fs::dir_exists(src_path)) {
+      warn("Crate {crate} not found at {.path {src_path}}")
+      next
+    }
+
+    # Remove existing if present
+    if (fs::dir_exists(dest_path)) {
+      fs::dir_delete(dest_path)
+    }
+
+    # Copy crate (excluding target, .git, etc.)
+    fs::dir_copy(src_path, dest_path)
+
+    # Remove unwanted files and directories
+    unwanted <- c("target", ".git", ".gitignore", ".DS_Store")
+    for (u in unwanted) {
+      u_path <- fs::path(dest_path, u)
+      if (fs::dir_exists(u_path)) {
+        fs::dir_delete(u_path)
+      } else if (fs::file_exists(u_path)) {
+        fs::file_delete(u_path)
+      }
+    }
+
+    # Patch Cargo.toml to remove workspace inheritance
+    cargo_toml <- fs::path(dest_path, "Cargo.toml")
+    if (fs::file_exists(cargo_toml)) {
+      patch_cargo_toml(cargo_toml, crate)
+    }
+
+    # Create .cargo-checksum.json (required when crate is in a vendor directory
+    # that replaces crates-io via .cargo/config.toml)
+    checksum_file <- fs::path(dest_path, ".cargo-checksum.json")
+    writeLines('{"files": {}, "package": null}', checksum_file)
+
+    cli::cli_alert_success("Vendored {crate}")
+  }
+
+  cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
+  invisible(TRUE)
 }
 
 #' Update vendored miniextendr crates

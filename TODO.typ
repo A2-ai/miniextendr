@@ -753,14 +753,15 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented for `ArrayD<f64>`, `ArrayD<i32>`
   - Implemented in `miniextendr-api/src/ndarray_impl.rs`
   - Added 8 unit tests
-- [ ] Expand ndarray support to all dimension types
-  - Currently only Array1, Array2, ArrayD supported
-  - Add support for Array0 through Array6 (fixed dimensions)
-  - Add ArrayView types: ArrayView0 through ArrayViewD (read-only views)
-  - Add ArrayViewMut types: ArrayViewMut0 through ArrayViewMutD (mutable views)
-  - Add ArcArray types: ArcArray1, ArcArray2 (shared ownership)
-  - Index helper functions: Ix0() through Ix6(), IxDyn()
-  - All type aliases defined in ndarray's `type_aliases.rs`
+- [x] Expand ndarray support to all dimension types
+  - Array0 through Array6 and ArrayD: TryFromSexp, IntoR, TypedExternal - DONE
+  - ArrayView1-3, ArrayViewD: IntoR (copies to R native) - DONE
+  - ArrayViewMut types: re-exported (no IntoR - mutable views rarely returned)
+  - ArcArray1, ArcArray2: TryFromSexp, IntoR - DONE
+  - Index types Ix0-Ix6, IxDyn: re-exported from crate root - DONE
+  - RNdArrayOps for Array1/2/D<i32> in addition to f64 - DONE
+  - rpkg test types: NdVec, NdMatrix, NdArrayDyn, NdIntVec - DONE
+  - R test suite: rpkg/tests/testthat/test-ndarray.R - DONE
 
 ==== nalgebra trait adapters (with nalgebra feature) ====
 
@@ -1193,15 +1194,15 @@ Standalone adapter traits not needed - use connection framework instead.
   - Added to `rpkg/src/rust/lib.rs`
 - [x] Add R helper `rpkg_has_feature(name)` and `skip_if_missing_feature(name)`
   - Added `rpkg/R/feature_helpers.R`
-- [ ] Create `rpkg/src/rust/adapter_traits_tests.rs` with test types:
-  - RDebug/RDisplay: `DebugType`, `DisplayType`
-  - RHash/ROrd/RPartialOrd: `HashType`, `OrdType`, `PartialOrdType`
-  - RError: `MyError` with source chain
-  - RFromStr: `IpAddrType`
-  - RClone/RCopy/RDefault: `CloneType`, `CopyType`, `DefaultType`
-  - RIterator: `IterVec(RefCell<...>)`
-  - RExtend/RFromIter: `ExtendVec`, `FromIterSet`
-- [ ] Add R tests in `rpkg/tests/testthat/test-adapter-traits.R`
+- [x] Create `rpkg/src/rust/adapter_traits_tests.rs` with test types:
+  - Point: RDebug, RDisplay, RHash, ROrd, RClone, RDefault, RFromStr, RCopy
+  - MyFloat: RPartialOrd (NaN handling)
+  - ChainedError: RError (error chain walking)
+  - IntVecIter: RIterator (with RefCell interior mutability)
+  - GrowableVec: RExtend
+  - IntSet: RFromIter, RToVec
+  - IterableVec/IterableVecIter: RMakeIter
+- [x] Add R tests in `rpkg/tests/testthat/test-adapter-traits.R`
 - [ ] Add per-feature adapter demos (cfg-gated):
   - ordered-float, num-bigint, rust_decimal, uuid, regex, indexmap, time
 - [ ] Add per-feature R tests using `skip_if_missing_feature()`

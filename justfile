@@ -49,6 +49,11 @@ clean:
     -cd tests/cross-package && just clean
 
 # Clean build artifacts
+#
+# NOTE: The `tmp="$(mktemp -d)" && (cd "$tmp" && cargo ...)` pattern is used
+# throughout this file to run cargo from a neutral directory, preventing it
+# from picking up the wrong .cargo/config.toml. These temp dirs are empty
+# (just used as cwd) and cleaned by the OS periodically - not a significant leak.
 cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
@@ -92,7 +97,23 @@ clippy *cargo_flags:
 # - Multiple unlabeled impl blocks for the same type
 # - Class system incompatibilities between inherent and trait impls
 lint:
-    cd rpkg && NOT_CRAN=true cargo check --manifest-path=src/rust/Cargo.toml 2>&1 | grep -E "(warning.*miniextendr-lint|error)" || echo "miniextendr-lint: no issues found"
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd rpkg
+    output=$(NOT_CRAN=true cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
+        echo "$output"
+        echo ""
+        echo "::error::cargo check failed (see output above)"
+        exit 1
+    }
+    lint_issues=$(echo "$output" | grep -E "warning.*miniextendr-lint" || true)
+    if [[ -n "$lint_issues" ]]; then
+        echo "$lint_issues"
+        echo ""
+        echo "miniextendr-lint found issues (see above)"
+    else
+        echo "miniextendr-lint: no issues found"
+    fi
 
 # Check documentation builds
 alias cargo-doc-check := doc-check

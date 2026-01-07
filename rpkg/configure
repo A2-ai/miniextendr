@@ -1717,7 +1717,7 @@ fi
 ac_aux_files="config.guess config.sub"
 
 # Locations in which to look for auxiliary files.
-ac_aux_dir_candidates="${srcdir}${PATH_SEPARATOR}${srcdir}/..${PATH_SEPARATOR}${srcdir}/../.."
+ac_aux_dir_candidates="${srcdir}/tools"
 
 # Search for a directory containing all of the required auxiliary files,
 # $ac_aux_files, from the $PATH-style list $ac_aux_dir_candidates.
@@ -1878,6 +1878,8 @@ ac_cpp='$CPP $CPPFLAGS'
 ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
+
+
 
 
 
@@ -4004,6 +4006,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
             echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
     done
 
+            rm -f "$VENDOR_OUT/r-efi/Makefile"
+
     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
   else
     echo "configure: miniextendr source crates not found; switching to vendored sources" >&2
@@ -4035,6 +4039,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       fi
     done
     echo "configure: cleared vendor checksum files" >&2
+
+        rm -f "$VENDOR_OUT/r-efi/Makefile"
 
         if test -f "src/rust/Cargo.lock"; then
       $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
@@ -4103,7 +4109,7 @@ VENDORED_CONFIG_EOF
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
-            tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+                        tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
         --exclude='vendor/*/tests' \
         --exclude='vendor/*/benches' \
         --exclude='vendor/*/.github' \

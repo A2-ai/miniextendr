@@ -114,7 +114,10 @@ pub fn nested_panic() {
 /// try(add_panic(1L, 2L))
 /// try(add_r_error(1L, 2L))
 /// \dontrun{
-/// unsafe_C_r_error_in_thread()
+/// # These use checked FFI wrappers that detect wrong-thread usage,
+/// # but thread panic propagation causes runtime errors.
+/// miniextendr:::unsafe_C_r_error_in_thread()
+/// miniextendr:::unsafe_C_r_print_in_thread()
 /// }
 /// @aliases nested_panic add_panic add_panic_heap add_r_error add_r_error_heap
 ///   drop_message_on_success drop_on_panic drop_on_panic_with_move unsafe_C_just_panic
@@ -219,31 +222,49 @@ pub extern "C-unwind" fn C_r_error_in_catch() -> SEXP {
     }
 }
 
-/// This crashes immediately. R is simply not present on the spawned thread, hence the present segfault.
-/// With the checked `Rf_error`, this would panic instead (which is the correct behavior).
+/// Extract panic message from a thread join error.
+fn extract_panic_message(e: Box<dyn std::any::Any + Send>) -> String {
+    if let Some(s) = e.downcast_ref::<&str>() {
+        (*s).to_string()
+    } else if let Some(s) = e.downcast_ref::<String>() {
+        s.clone()
+    } else {
+        "thread panicked".to_string()
+    }
+}
+
+/// This panics cleanly because checked Rf_error detects wrong thread.
+/// The panic message is "Rf_error called from non-main thread".
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
-    // Use checked Rf_error - will panic with clear message about wrong thread
-    std::thread::spawn(|| unsafe {
+    // Use checked Rf_error - will panic with clear message about wrong thread.
+    // Since Rf_error returns !, the thread always panics, so unwrap_err is safe.
+    let e = std::thread::spawn(|| unsafe {
         miniextendr_api::ffi::Rf_error(c"%s".as_ptr(), c"arg1".as_ptr())
     })
     .join()
-    .unwrap();
-    unsafe { miniextendr_api::ffi::R_NilValue }
+    .unwrap_err();
+
+    panic!("{}", extract_panic_message(e));
 }
 
-/// This will segfault, as R is not present on the spawned thread.
+/// This panics cleanly because checked Rprintf detects wrong thread.
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {
-    std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf_unchecked(c"arg1".as_ptr()) })
-        .join()
-        .unwrap();
-    unsafe { miniextendr_api::ffi::R_NilValue }
+    // Use checked Rprintf - will panic with clear message about wrong thread.
+    let result =
+        std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"arg1".as_ptr()) })
+            .join();
+
+    match result {
+        Ok(()) => unsafe { miniextendr_api::ffi::R_NilValue },
+        Err(e) => panic!("{}", extract_panic_message(e)),
+    }
 }
 
 // endregion

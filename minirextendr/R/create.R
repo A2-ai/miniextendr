@@ -152,6 +152,12 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   # src/ files
   use_template("Makevars.in", save_as = file.path(rpkg_name, "src", "Makevars.in"), subdir = "rpkg")
   use_template("entrypoint.c.in", save_as = file.path(rpkg_name, "src", "entrypoint.c.in"), subdir = "rpkg")
+  use_template("mx_abi.c.in", save_as = file.path(rpkg_name, "src", "mx_abi.c.in"), subdir = "rpkg")
+
+  # inst/include/ for cross-package header
+  ensure_dir(usethis::proj_path(rpkg_name, "inst", "include"))
+  use_template("mx_abi.h", save_as = file.path(rpkg_name, "inst", "include", "mx_abi.h"),
+               subdir = file.path("rpkg", "inst_include"), data = data)
 
   # Rust project files
   use_template("Cargo.toml.in", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml.in"), subdir = "rpkg", data = data)
@@ -195,9 +201,13 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #'   Only used when template_type is "monorepo".
 #' @param miniextendr_version Version of miniextendr to vendor (default: "latest").
 #'   For monorepo projects, vendoring is only needed for CRAN submission.
+#' @param local_path Optional path to local miniextendr repository. If provided,
+#'   vendors from local path instead of downloading from GitHub. Useful for
+#'   development and testing before the package is published.
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg", miniextendr_version = "latest") {
+use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
+                            miniextendr_version = "latest", local_path = NULL) {
   cli::cli_h1("Setting up miniextendr")
 
   # Auto-detect template type if requested
@@ -232,7 +242,7 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg", miniexte
 
     # Vendor miniextendr crates
     cli::cli_h2("Vendoring miniextendr crates")
-    vendor_miniextendr(version = miniextendr_version)
+    vendor_miniextendr(version = miniextendr_version, local_path = local_path)
 
     cli::cli_h1("Setup complete!")
     cli::cli_alert_info("Next steps:")
@@ -265,6 +275,7 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg", miniexte
   use_miniextendr_cargo_config()
   use_miniextendr_document()
   use_miniextendr_entrypoint()
+  use_miniextendr_mx_abi()
 
   # R package files
   cli::cli_h2("Setting up R package")
@@ -274,7 +285,7 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg", miniexte
 
   # Vendor miniextendr crates
   cli::cli_h2("Vendoring miniextendr crates")
-  vendor_miniextendr(version = miniextendr_version)
+  vendor_miniextendr(version = miniextendr_version, local_path = local_path)
 
   # Summary
   cli::cli_h1("Setup complete!")

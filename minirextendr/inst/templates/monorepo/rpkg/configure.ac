@@ -2,7 +2,7 @@ AC_INIT([{{package}}], [1.0])
 
 dnl Verify we're running from the R package directory (not the monorepo root)
 dnl This prevents accidental creation of src/, config.log, etc. in the wrong place
-if test ! -f "DESCRIPTION" || test ! -f "NAMESPACE"; then
+if test ! -f "DESCRIPTION"; then
   AC_MSG_ERROR([configure must be run from the rpkg directory (where DESCRIPTION exists).
 
   If you're in the monorepo root, run:
@@ -397,7 +397,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       echo "configure: cargo vendor (Cargo.lock changed or vendor missing)"
       mkdir -p "$VENDOR_OUT"
       $CARGO_CMD vendor \
-        --sync "$MANIFEST" \
+        --manifest-path "$MANIFEST" \
         "$VENDOR_OUT"
       if test $? -ne 0; then
         echo "configure: error: cargo vendor failed" >&2

@@ -1,6 +1,9 @@
 ^LICENSE\.md$
 ^dev$
 
+# Vendored Makefiles with GNU extensions (not used by R package build)
+^src/vendor/r-efi/Makefile$
+
 # Build artifacts and generated files
 ^src/rust/target$
 ^src/rust/ra_target$

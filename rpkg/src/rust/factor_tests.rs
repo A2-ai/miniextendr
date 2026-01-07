@@ -1,12 +1,9 @@
 //! Factor tests - demonstrates RFactor derive macro for enum ↔ R factor conversions.
 //!
-//! These tests use manual SEXP conversion since `#[miniextendr]` doesn't yet support
-//! RFactor types directly as function parameters. The RFactor derive generates
-//! TryFromSexp and IntoR implementations that can be used manually.
+//! RFactor types can be used directly as function parameters since they implement
+//! TryFromSexp. The derive macro also generates IntoR for returning factors.
 
-use miniextendr_api::ffi::SEXP;
-use miniextendr_api::from_r::TryFromSexp;
-use miniextendr_api::{IntoR, RFactor, miniextendr_module};
+use miniextendr_api::{RFactor, miniextendr_module};
 
 /// Color enum demonstrating basic RFactor usage.
 #[derive(Copy, Clone, Debug, PartialEq, RFactor)]
@@ -37,61 +34,54 @@ pub enum Priority {
 }
 
 // ============================================================================
-// Test functions using SEXP for factor input/output
+// Test functions demonstrating direct RFactor parameter/return usage
 // ============================================================================
 
-/// Test: accepts a Color factor and returns a description.
+/// Test: accepts a Color factor directly and returns a description.
+/// This demonstrates that RFactor types work as direct parameters.
 #[miniextendr_api::miniextendr]
-pub fn factor_describe_color(color: SEXP) -> &'static str {
-    match Color::try_from_sexp(color) {
-        Ok(Color::Red) => "The color is red!",
-        Ok(Color::Green) => "The color is green!",
-        Ok(Color::Blue) => "The color is blue!",
-        Err(e) => {
-            eprintln!("Error: {}", e);
-            "unknown"
-        }
+pub fn factor_describe_color(color: Color) -> &'static str {
+    match color {
+        Color::Red => "The color is red!",
+        Color::Green => "The color is green!",
+        Color::Blue => "The color is blue!",
     }
 }
 
-/// Test: returns a Color factor.
+/// Test: returns a Color factor directly (IntoR converts it).
 #[miniextendr_api::miniextendr]
-pub fn factor_get_color(name: &str) -> SEXP {
-    let color = match name {
+pub fn factor_get_color(name: &str) -> Color {
+    match name {
         "red" => Color::Red,
         "green" => Color::Green,
         "blue" => Color::Blue,
         _ => Color::Red,
-    };
-    color.into_sexp()
-}
-
-/// Test: returns all colors as a factor vector.
-#[miniextendr_api::miniextendr]
-pub fn factor_get_all_colors() -> SEXP {
-    // Use FactorVec newtype wrapper since orphan rules prevent impl IntoR for Vec<T: RFactor>
-    miniextendr_api::FactorVec(vec![Color::Red, Color::Green, Color::Blue]).into_sexp()
-}
-
-/// Test: accepts a Status factor (with snake_case levels).
-#[miniextendr_api::miniextendr]
-pub fn factor_describe_status(status: SEXP) -> &'static str {
-    match Status::try_from_sexp(status) {
-        Ok(Status::InProgress) => "Work is in progress",
-        Ok(Status::Completed) => "Work is completed",
-        Ok(Status::NotStarted) => "Work has not started",
-        Err(_) => "unknown status",
     }
 }
 
-/// Test: accepts a Priority factor (with renamed levels).
+/// Test: returns all colors as a factor vector using FactorVec wrapper.
 #[miniextendr_api::miniextendr]
-pub fn factor_describe_priority(priority: SEXP) -> &'static str {
-    match Priority::try_from_sexp(priority) {
-        Ok(Priority::Low) => "Low priority",
-        Ok(Priority::Medium) => "Medium priority",
-        Ok(Priority::High) => "High priority",
-        Err(_) => "unknown priority",
+pub fn factor_get_all_colors() -> miniextendr_api::FactorVec<Color> {
+    miniextendr_api::FactorVec(vec![Color::Red, Color::Green, Color::Blue])
+}
+
+/// Test: accepts a Status factor directly (with snake_case levels).
+#[miniextendr_api::miniextendr]
+pub fn factor_describe_status(status: Status) -> &'static str {
+    match status {
+        Status::InProgress => "Work is in progress",
+        Status::Completed => "Work is completed",
+        Status::NotStarted => "Work has not started",
+    }
+}
+
+/// Test: accepts a Priority factor directly (with renamed levels).
+#[miniextendr_api::miniextendr]
+pub fn factor_describe_priority(priority: Priority) -> &'static str {
+    match priority {
+        Priority::Low => "Low priority",
+        Priority::Medium => "Medium priority",
+        Priority::High => "High priority",
     }
 }
 
@@ -113,14 +103,9 @@ pub fn factor_priority_levels() -> Vec<&'static str> {
     Priority::LEVELS.to_vec()
 }
 
-/// Test: accepts a vector of Colors and counts each.
+/// Test: accepts a vector of Colors directly using FactorVec wrapper.
 #[miniextendr_api::miniextendr]
-pub fn factor_count_colors(colors: SEXP) -> Vec<i32> {
-    // Use FactorVec wrapper for Vec<Color> deserialization
-    let colors: miniextendr_api::FactorVec<Color> = match TryFromSexp::try_from_sexp(colors) {
-        Ok(c) => c,
-        Err(_) => return vec![0, 0, 0],
-    };
+pub fn factor_count_colors(colors: miniextendr_api::FactorVec<Color>) -> Vec<i32> {
     let mut counts = [0i32; 3];
     for c in colors.iter() {
         match c {
@@ -132,14 +117,9 @@ pub fn factor_count_colors(colors: SEXP) -> Vec<i32> {
     counts.to_vec()
 }
 
-/// Test: accepts Colors with NA values and describes them.
+/// Test: accepts Colors with NA values directly using FactorOptionVec wrapper.
 #[miniextendr_api::miniextendr]
-pub fn factor_colors_with_na(colors: SEXP) -> Vec<&'static str> {
-    // Use FactorOptionVec wrapper for Vec<Option<Color>> deserialization
-    let colors: miniextendr_api::FactorOptionVec<Color> = match TryFromSexp::try_from_sexp(colors) {
-        Ok(c) => c,
-        Err(_) => return vec![],
-    };
+pub fn factor_colors_with_na(colors: miniextendr_api::FactorOptionVec<Color>) -> Vec<&'static str> {
     colors
         .iter()
         .map(|c| match c {

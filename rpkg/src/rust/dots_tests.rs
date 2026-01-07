@@ -15,7 +15,7 @@ use miniextendr_api::{miniextendr, miniextendr_module, typed_list};
 /// @aliases greetings_with_named_dots greetings_with_named_and_unused_dots
 ///   greetings_with_nameless_dots greetings_last_as_named_dots
 ///   greetings_last_as_named_and_unused_dots greetings_last_as_nameless_dots
-/// @param dots Additional arguments (captured as dots).
+/// @param ... Additional arguments (captured as dots).
 pub fn greetings_with_named_dots(dots: ...) {
     let _ = dots;
 }
@@ -59,7 +59,7 @@ pub fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 /// # Error: missing required field: "alpha"
 /// ```
 #[miniextendr]
-/// @param dots Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
+/// @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
 pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
     use miniextendr_api::ffi;
 
@@ -87,7 +87,7 @@ pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
 /// # Error: unexpected extra fields: ["z"]
 /// ```
 #[miniextendr]
-/// @param dots Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
+/// @param ... Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
 pub fn validate_strict_args(dots: ...) -> Result<String, String> {
     let args = dots
         .typed(typed_list!(@exact; x => numeric(), y => numeric()))
@@ -110,7 +110,7 @@ pub fn validate_strict_args(dots: ...) -> Result<String, String> {
 /// # Error: field "data" has wrong type: expected data.frame, got list
 /// ```
 #[miniextendr]
-/// @param dots Named arguments: `data` (data.frame).
+/// @param ... Named arguments: `data` (data.frame).
 pub fn validate_class_args(dots: ...) -> Result<i32, String> {
     use miniextendr_api::ffi;
 
@@ -142,7 +142,7 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 /// # Error: missing required field: "y"
 /// ```
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
-/// @param dots Named arguments: `x` (numeric), `y` (numeric).
+/// @param ... Named arguments: `x` (numeric), `y` (numeric).
 pub fn validate_with_attribute(...) -> String {
     // dots_typed is automatically created by the attribute
     let x: f64 = dots_typed.get("x").expect("x");
@@ -161,7 +161,7 @@ pub fn validate_with_attribute(...) -> String {
 /// # Returns "Hi, Bob!"
 /// ```
 #[miniextendr(dots = typed_list!(name => character(), greeting? => character()))]
-/// @param dots Named arguments: `name` (character), `greeting` (optional character).
+/// @param ... Named arguments: `name` (character), `greeting` (optional character).
 pub fn validate_attr_optional(...) -> String {
     let name: String = dots_typed.get("name").expect("name");
     let greeting: Option<String> = dots_typed.get_opt("greeting").expect("greeting");

@@ -17,12 +17,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: 
-
-Authors:
-\itemize{
-  \item Mossa M. Reimert \email{mossa@sund.ku.dk}
-}
+\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
 
 Other contributors:
 \itemize{

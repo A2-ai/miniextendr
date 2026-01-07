@@ -11,7 +11,6 @@
 \alias{s3_value.S3Counter}
 \alias{s3_inc.S3Counter}
 \alias{s3_add.S3Counter}
-\alias{default_counter}
 \title{Creates a new counter with the given initial value}
 \format{
 An object of class \code{environment} of length 0.

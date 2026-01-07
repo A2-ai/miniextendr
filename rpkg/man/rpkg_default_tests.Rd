@@ -27,6 +27,14 @@ with_flag(flag = FALSE)
 }
 \arguments{
 \item{name}{Name to greet (default: "World").}
+
+\item{x}{First integer to add.}
+
+\item{y}{Second integer to add (default: 0).}
+
+\item{z}{Third integer to add (default: 1).}
+
+\item{flag}{Boolean flag (default: FALSE).}
 }
 \value{
 A greeting string or computed value.

@@ -1,5 +1,9 @@
 AC_INIT([miniextendr], [1.0])
 
+dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
+dnl This avoids the CRAN NOTE about non-standard top-level files
+AC_CONFIG_AUX_DIR([tools])
+
 dnl Verify we're running from the R package directory (not the monorepo root)
 dnl This prevents accidental creation of src/, config.log, etc. in the wrong place
 if test ! -f "DESCRIPTION" || test ! -f "NAMESPACE"; then
@@ -598,6 +602,10 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
       echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
     done
 
+    dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
+    dnl These are vendored crate build files not used by the R package
+    rm -f "$VENDOR_OUT/r-efi/Makefile"
+
     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
   else
     echo "configure: miniextendr source crates not found; switching to vendored sources" >&2
@@ -638,6 +646,9 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
       fi
     done
     echo "configure: cleared vendor checksum files" >&2
+
+    dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
+    rm -f "$VENDOR_OUT/r-efi/Makefile"
 
     dnl Also strip checksums from Cargo.lock to avoid verification mismatch
     if test -f "src/rust/Cargo.lock"; then

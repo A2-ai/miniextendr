@@ -54,63 +54,19 @@ use_miniextendr_configure_win <- function() {
 
 #' Copy config.guess and config.sub scripts
 #'
-#' Copies the GNU autoconf helper scripts config.guess and config.sub
-#' from the system autoconf installation. These are required for
-#' cross-compilation support.
+#' Copies the bundled GNU autoconf helper scripts config.guess and config.sub.
+#' These are required for cross-compilation support.
 #'
 #' @return Invisibly returns TRUE if files were copied
 #' @export
 use_miniextendr_config_scripts <- function() {
-  check_autoconf()
-
-  # Find autoconf's data directory
-  autoconf_dir <- tryCatch(
-    {
-      dir <- system2("autoconf", "--print-datadir", stdout = TRUE, stderr = TRUE)
-      if (length(dir) == 0 || !dir.exists(dir)) {
-        # Fallback: try common locations
-        candidates <- c(
-          "/usr/share/autoconf",
-          "/usr/local/share/autoconf",
-          "/opt/homebrew/share/autoconf"
-        )
-        dir <- candidates[dir.exists(candidates)][1]
-      }
-      dir
-    },
-    error = function(e) NULL
-  )
-
-  if (is.null(autoconf_dir) || is.na(autoconf_dir)) {
-    # Use bundled copies as fallback
-    cli::cli_alert_info("Using bundled config.guess and config.sub")
+  for (script in c("config.guess", "config.sub")) {
     fs::file_copy(
-      script_path("config.guess"),
-      usethis::proj_path("config.guess"),
+      script_path(script),
+      usethis::proj_path(script),
       overwrite = TRUE
     )
-    fs::file_copy(
-      script_path("config.sub"),
-      usethis::proj_path("config.sub"),
-      overwrite = TRUE
-    )
-  } else {
-    # Copy from autoconf
-    for (script in c("config.guess", "config.sub")) {
-      src <- file.path(autoconf_dir, script)
-      if (file.exists(src)) {
-        fs::file_copy(src, usethis::proj_path(script), overwrite = TRUE)
-        bullet_created(script, "Copied")
-      } else {
-        # Try fallback to bundled
-        fs::file_copy(
-          script_path(script),
-          usethis::proj_path(script),
-          overwrite = TRUE
-        )
-        bullet_created(script, "Copied bundled")
-      }
-    }
+    bullet_created(script, "Copied")
   }
 
   invisible(TRUE)

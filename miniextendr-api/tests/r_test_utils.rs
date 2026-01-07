@@ -27,10 +27,28 @@ fn initialize_r() {
     }
 }
 
+/// Disable R's stack checking for test threads.
+///
+/// # Why This Exists
+///
+/// R's stack overflow detection uses `R_CStackLimit` which is calibrated for
+/// the main thread. When running R on a dedicated test thread (as we do in
+/// `cargo test`), these checks produce false positives. Setting `R_CStackLimit`
+/// to `usize::MAX` disables R's checks while the OS stack limit still applies.
+///
+/// # CRAN Compliance
+///
+/// **This code is never part of the R package.** It exists only in the `tests/`
+/// directory and is only compiled for `cargo test`. The R package (`rpkg`):
+///
+/// 1. Only vendors `miniextendr-api/src/` (not `tests/`)
+/// 2. Does not include `miniextendr-engine` (the R embedding crate)
+/// 3. Uses the `nonapi` feature gate for any `R_CStackLimit` access in library code
+///
+/// The direct `extern "C"` access to `R_CStackLimit` here (when `nonapi` feature
+/// is disabled) is acceptable because this code path only runs in `cargo test`,
+/// never in the CRAN package.
 fn disable_r_stack_checking() {
-    // R stack checks assume the main thread stack. Our tests run R on a
-    // dedicated thread, so disable R's own stack checks to avoid false
-    // overflow errors in CI (the OS stack limit still applies).
     #[cfg(feature = "nonapi")]
     {
         miniextendr_api::thread::disable_stack_checking_permanently();
@@ -38,7 +56,7 @@ fn disable_r_stack_checking() {
 
     #[cfg(not(feature = "nonapi"))]
     unsafe {
-        extern "C" {
+        unsafe extern "C" {
             static mut R_CStackLimit: usize;
         }
         R_CStackLimit = usize::MAX;

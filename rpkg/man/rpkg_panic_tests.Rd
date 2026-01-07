@@ -21,7 +21,10 @@ Panic and error handling tests (unsafe)
 try(add_panic(1L, 2L))
 try(add_r_error(1L, 2L))
 \dontrun{
-unsafe_C_r_error_in_thread()
+# These use checked FFI wrappers that detect wrong-thread usage,
+# but thread panic propagation causes runtime errors.
+miniextendr:::unsafe_C_r_error_in_thread()
+miniextendr:::unsafe_C_r_print_in_thread()
 }
 }
 \keyword{internal}
