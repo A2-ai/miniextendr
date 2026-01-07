@@ -16,6 +16,21 @@ A Rust-R interoperability framework for building R packages with Rust backends.
   - `rpkg/src/mx_abi.c` → edit `rpkg/src/mx_abi.c.in`
   - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
 
+## Sandbox Restrictions
+
+**IMPORTANT**: The Claude Code sandbox blocks compilation. Commands that compile code (like `just devtools-document`, `R CMD INSTALL`, `cargo build`) will fail with "Could not find tools necessary to compile a package" or similar errors.
+
+For any command that needs to compile, use `dangerouslyDisableSandbox: true`:
+
+```bash
+# These commands require sandbox disabled:
+just devtools-document    # Compiles via devtools::document()
+just rcmdinstall          # R CMD INSTALL compiles
+just devtools-test        # May need to recompile
+R CMD INSTALL rpkg        # Direct R installation
+R CMD check rpkg          # Checks include compilation
+```
+
 ## Project Structure
 
 ```

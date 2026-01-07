@@ -148,18 +148,29 @@ impl RustConversionBuilder {
                         let #mutability #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
                     };
                     (vec![owned_stmt], vec![borrow_stmt])
-                } else if pat_ident.mutability.is_some() {
-                    // &mut T: mutable scalar reference
-                    let stmt = quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#sexp_ident).cast() };
-                    };
-                    (vec![stmt], vec![])
                 } else {
-                    // &T: immutable scalar reference
-                    let stmt = quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#sexp_ident).cast() };
-                    };
-                    (vec![stmt], vec![])
+                    // &T for other types: use TryFromSexp
+                    // This handles ExternalPtr<T> and other custom types
+                    // that implement TryFromSexp.
+                    let inner_ty = r.elem.as_ref();
+                    let error_msg = format!(
+                        "failed to convert parameter '{}' to &{}: wrong type",
+                        ident,
+                        quote!(#inner_ty)
+                    );
+                    if pat_ident.mutability.is_some() {
+                        let stmt = quote! {
+                            let mut #ident: #inner_ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                                .expect(#error_msg);
+                        };
+                        (vec![stmt], vec![])
+                    } else {
+                        let stmt = quote! {
+                            let #ident: #inner_ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                                .expect(#error_msg);
+                        };
+                        (vec![stmt], vec![])
+                    }
                 }
             }
 

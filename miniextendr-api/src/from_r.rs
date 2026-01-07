@@ -1206,6 +1206,21 @@ where
     }
 }
 
+/// Convert R vector to `Vec<T>` for native R types.
+///
+/// This creates an owned copy of the R vector data.
+impl<T> TryFromSexp for Vec<T>
+where
+    T: RNativeType + Copy,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(slice.to_vec())
+    }
+}
+
 /// Convert R character vector to `Vec<String>`.
 ///
 /// # NA and Encoding Handling
@@ -1503,3 +1518,71 @@ impl_btreeset_try_from_sexp_coerce!(i32 => usize);
 
 // Logical coercions: R logical (RLogical) -> bool
 impl_btreeset_try_from_sexp_coerce!(RLogical => bool);
+
+// =============================================================================
+// ExternalPtr conversions
+// =============================================================================
+
+use crate::externalptr::{ExternalPtr, TypeMismatchError, TypedExternal};
+
+/// Convert R EXTPTRSXP to `ExternalPtr<T>`.
+///
+/// This enables using `ExternalPtr<T>` as parameter types in `#[miniextendr]` functions.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(ExternalPtr)]
+/// struct MyData { value: i32 }
+///
+/// #[miniextendr]
+/// fn process(data: ExternalPtr<MyData>) -> i32 {
+///     data.value
+/// }
+/// ```
+impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::EXTPTRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::EXTPTRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        // Use ExternalPtr's type-checked constructor
+        unsafe { ExternalPtr::try_from_sexp_with_error(sexp) }.map_err(|e| match e {
+            TypeMismatchError::NullPointer => {
+                SexpError::InvalidValue("external pointer is null".to_string())
+            }
+            TypeMismatchError::InvalidTypeId => {
+                SexpError::InvalidValue("external pointer has no valid type id".to_string())
+            }
+            TypeMismatchError::Mismatch { expected, found } => SexpError::InvalidValue(format!(
+                "type mismatch: expected `{}`, found `{}`",
+                expected, found
+            )),
+        })
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::EXTPTRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::EXTPTRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        // Use ExternalPtr's type-checked constructor (unchecked variant)
+        unsafe { ExternalPtr::try_from_sexp_unchecked(sexp) }.ok_or_else(|| {
+            SexpError::InvalidValue(
+                "failed to convert external pointer: type mismatch or null pointer".to_string(),
+            )
+        })
+    }
+}

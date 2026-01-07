@@ -1387,16 +1387,18 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let altrep_reg_fn_ident = quote::format_ident!("{module}_register_altrep");
 
     // Build const call entries array, including impl call defs and trait impl call defs.
+    // Use explicit usize suffix to avoid type inference issues with many additions
     let call_entries_len_lit = syn::LitInt::new(
-        &call_entries_len.to_string(),
+        &format!("{}usize", call_entries_len),
         proc_macro2::Span::call_site(),
     );
+    // Use UFCS to call slice's inherent len() instead of RToVec::len() which returns i64
     let impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
         .impls
         .iter()
         .map(|i| {
             let call_defs_static = i.call_defs_const_ident();
-            quote::quote!(#call_defs_static.len())
+            quote::quote!(<[_]>::len(&#call_defs_static))
         })
         .collect();
     let trait_impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
@@ -1404,7 +1406,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .iter()
         .map(|ti| {
             let call_defs_static = ti.call_defs_const_ident();
-            quote::quote!(#call_defs_static.len())
+            quote::quote!(<[_]>::len(&#call_defs_static))
         })
         .collect();
 
@@ -1453,7 +1455,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#impl_call_defs;
-                while j < slice.len() {
+                while j < <[_]>::len(slice) {
                     entries[idx] = slice[j];
                     idx += 1;
                     j += 1;
@@ -1462,7 +1464,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#trait_impl_call_defs;
-                while j < slice.len() {
+                while j < <[_]>::len(slice) {
                     entries[idx] = slice[j];
                     idx += 1;
                     j += 1;
@@ -1478,10 +1480,11 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     };
 
     // Build a combined const array including child modules and a sentinel.
+    // Use UFCS to call slice's inherent len() instead of RToVec::len()
     let use_module_call_entries_len_exprs: Vec<proc_macro2::TokenStream> =
         use_module_call_entries_consts
             .iter()
-            .map(|expr| quote::quote!(#expr.len()))
+            .map(|expr| quote::quote!(<[_]>::len(&#expr)))
             .collect();
     let all_call_entries_const_ident = quote::format_ident!("ALL_CALL_ENTRIES_{module_upper}");
     let all_entries_len_expr = if use_module_call_entries_len_exprs.is_empty() {
@@ -1504,7 +1507,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             // Local entries
             let mut j: usize = 0;
             let slice = &#call_entries_const_ident;
-            while j < slice.len() {
+            while j < <[_]>::len(slice) {
                 entries[idx] = slice[j];
                 idx += 1;
                 j += 1;
@@ -1514,7 +1517,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#use_module_call_entries_consts;
-                while j < slice.len() {
+                while j < <[_]>::len(slice) {
                     entries[idx] = slice[j];
                     idx += 1;
                     j += 1;
