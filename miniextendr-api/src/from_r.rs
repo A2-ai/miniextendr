@@ -2430,6 +2430,35 @@ impl TryFromSexp for Vec<Option<Rboolean>> {
     }
 }
 
+/// Convert R logical vector (LGLSXP) to `Vec<Logical>` (ALTREP-compatible).
+///
+/// This converts R's logical vector to a vector of [`Logical`] values,
+/// which is the native representation used by ALTREP logical vectors.
+/// Unlike `Vec<bool>`, this preserves NA values.
+impl TryFromSexp for Vec<crate::altrep_data::Logical> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| crate::altrep_data::Logical::from_r_int(v))
+            .collect())
+    }
+}
+
 /// Convert R logical vector (LGLSXP) to `Vec<Option<RLogical>>` with NA support.
 impl TryFromSexp for Vec<Option<RLogical>> {
     type Error = SexpError;
