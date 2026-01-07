@@ -495,7 +495,8 @@ templates-approve:
     rsync -a "{{local_root}}/" "$tmp/b/"
 
     # diff exits 1 when differences exist; that's expected here.
-    (cd "$tmp" && diff -ruN a b) > "{{patch_file}}" || true
+    # -U2 = 2 context lines (default is 3)
+    (cd "$tmp" && diff -ruN -U2 a b) > "{{patch_file}}" || true
     echo "Wrote {{patch_file}}"
 
 # Verify: upstream snapshot + approved patch == inst/templates
