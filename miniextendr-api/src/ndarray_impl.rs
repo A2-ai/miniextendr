@@ -1200,7 +1200,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayView3<'a, T> {
             for k in 0..d2 {
                 for j in 0..d1 {
                     for i in 0..d0 {
-                        v.push(self[[i, j, k]].clone());
+                        v.push(self[[i, j, k]]);
                     }
                 }
             }

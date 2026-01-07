@@ -11,7 +11,7 @@ mod r_test_utils;
 
 use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
 use miniextendr_api::rayon_bridge::{
-    RVec, new_r_array, new_r_matrix, with_r_array, with_r_array_slabs, with_r_matrix,
+    new_r_array, new_r_matrix, with_r_array, with_r_array_slabs, with_r_matrix,
     with_r_matrix_cols, with_r_vec,
 };
 use rayon::prelude::*;
@@ -36,8 +36,7 @@ fn rayon_suite() {
         test_with_r_vec_i32();
         test_with_r_vec_empty();
         test_with_r_vec_large();
-        test_rvec_parallel_collect();
-        test_rvec_into_sexp();
+        test_vec_parallel_collect();
         test_with_r_matrix_basic();
         test_with_r_matrix_parallel();
         test_with_r_array_basic();
@@ -94,23 +93,12 @@ fn test_with_r_vec_i32() {
     }
 }
 
-fn test_rvec_parallel_collect() {
-    let result: RVec<f64> = (0..1000).into_par_iter().map(|i| i as f64 * 0.5).collect();
+fn test_vec_parallel_collect() {
+    let result: Vec<f64> = (0..1000).into_par_iter().map(|i| i as f64 * 0.5).collect();
 
     assert_eq!(result.len(), 1000);
-    for (i, &v) in result.as_slice().iter().enumerate() {
-        assert_eq!(v, i as f64 * 0.5, "mismatch at index {}", i);
-    }
-}
-
-fn test_rvec_into_sexp() {
-    let rvec: RVec<f64> = (0..100).into_par_iter().map(|i| i as f64).collect();
-    let sexp = miniextendr_api::into_r::IntoR::into_sexp(rvec);
-
-    let result = unsafe { read_real_vec(sexp) };
-    assert_eq!(result.len(), 100);
     for (i, &v) in result.iter().enumerate() {
-        assert_eq!(v, i as f64);
+        assert_eq!(v, i as f64 * 0.5, "mismatch at index {}", i);
     }
 }
 

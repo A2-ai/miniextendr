@@ -1,19 +1,75 @@
 //! rpkg: Example R package demonstrating miniextendr features.
 //!
-//! This crate is organized into focused modules for different test categories:
-//! - `panic_tests`: Panic, drop, and R error handling tests
-//! - `unwind_protect_tests`: `with_r_unwind_protect` mechanism tests
-//! - `dots_tests`: R dots (`...`) handling tests
-//! - `interrupt_tests`: R interrupt checking tests
-//! - `conversion_tests`: Scalar and slice conversion tests
-//! - `externalptr_tests`: ExternalPtr functionality tests
-//! - `receiver_tests`: Receiver-style impl block tests
-//! - `worker_tests`: Worker thread and `with_r_thread` tests
-//! - `coerce_tests`: Coerce, TryCoerce, RNativeType trait tests
-//! - `visibility_tests`: R return value visibility tests
-//! - `thread_tests`: RThreadBuilder and thread safety tests
-//! - `misc_tests`: Miscellaneous test functions
-//! - `nonapi`: Feature-gated tests requiring nonapi feature
+//! This crate is organized into focused modules for different test categories.
+//!
+//! # Core Functionality
+//!
+//! - [`panic_tests`]: Panic, drop, and R error handling tests
+//! - [`unwind_protect_tests`]: `with_r_unwind_protect` mechanism tests
+//! - [`worker_tests`]: Worker thread and `with_r_thread` tests
+//! - [`thread_tests`]: RThreadBuilder and thread safety tests
+//! - [`interrupt_tests`]: R interrupt checking tests
+//!
+//! # Type Conversions
+//!
+//! - [`conversion_tests`]: Scalar and slice conversion tests
+//! - [`conversions`]: Additional conversion utilities
+//! - [`coerce_tests`]: Coerce, TryCoerce, RNativeType trait tests
+//! - [`convert_pref_tests`]: Conversion preference tests
+//! - [`adapter_traits_tests`]: Adapter trait implementations
+//!
+//! # Class Systems
+//!
+//! - [`r6_tests`]: R6 class system tests (including active bindings)
+//! - [`r6_default_tests`]: R6 default parameter tests
+//! - [`s3_tests`]: S3 class system tests
+//! - [`s4_tests`]: S4 class system tests
+//! - [`s7_tests`]: S7 class system tests
+//! - [`class_system_matrix`]: Cross-class-system compatibility matrix
+//! - [`receiver_tests`]: Receiver-style impl block tests
+//!
+//! # R Interface
+//!
+//! - [`dots_tests`]: R dots (`...`) handling tests
+//! - [`default_tests`]: Default parameter value tests
+//! - [`externalptr_tests`]: ExternalPtr functionality tests
+//! - [`visibility_tests`]: R return value visibility tests
+//! - [`identical_tests`]: R identical() comparison tests
+//! - [`factor_tests`]: R factor handling tests
+//! - [`rng_tests`]: R random number generator tests
+//!
+//! # Trait ABI
+//!
+//! - [`trait_abi_tests`]: Cross-package trait dispatch tests
+//! - [`shared_trait_test`]: Shared trait implementation tests
+//!
+//! # Feature-Gated Modules
+//!
+//! These modules require specific Cargo features to be enabled:
+//!
+//! - [`rayon_tests`]: Parallel iteration tests (feature: `rayon`)
+//! - [`serde_r_tests`]: Serde R serialization tests (feature: `serde_r`)
+//! - [`ndarray_tests`]: N-dimensional array tests (feature: `ndarray`)
+//! - [`vctrs_tests`]: vctrs compatibility tests (feature: `vctrs`)
+//! - [`vctrs_class_example`]: vctrs class implementation example (feature: `vctrs`)
+//! - [`nonapi`]: Non-API R internals tests (feature: `nonapi`)
+//! - [`connection_tests`]: R connection handling tests (feature: `connections`)
+//!
+//! # Adapter Tests (Feature-Gated)
+//!
+//! Each adapter has its own feature flag:
+//!
+//! - [`uuid_adapter_tests`]: UUID type adapter (feature: `uuid`)
+//! - [`regex_adapter_tests`]: Regex type adapter (feature: `regex`)
+//! - [`time_adapter_tests`]: Time/date type adapter (feature: `time`)
+//! - [`ordered_float_adapter_tests`]: OrderedFloat adapter (feature: `ordered-float`)
+//! - [`bigint_adapter_tests`]: BigInt type adapter (feature: `num-bigint`)
+//! - [`decimal_adapter_tests`]: Decimal type adapter (feature: `rust_decimal`)
+//! - [`indexmap_adapter_tests`]: IndexMap type adapter (feature: `indexmap`)
+//!
+//! # Miscellaneous
+//!
+//! - [`misc_tests`]: Miscellaneous test functions
 
 use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;

@@ -1,4 +1,4 @@
-//! Comprehensive conversions matrix for #[miniextendr] arguments and returns.
+//! Comprehensive conversions matrix for [`#[miniextendr]`](miniextendr_api::miniextendr) arguments and returns.
 
 //!
 //! Unsupported combinations are listed in the TODO section as commented stubs.

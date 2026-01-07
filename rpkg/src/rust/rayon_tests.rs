@@ -5,7 +5,7 @@ use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use miniextendr_api::rayon_bridge::{RVec, with_r_matrix, with_r_vec};
+use miniextendr_api::rayon_bridge::{with_r_matrix, with_r_vec};
 #[cfg(feature = "rayon")]
 use miniextendr_api::{miniextendr, miniextendr_module};
 
@@ -31,12 +31,11 @@ pub fn rayon_parallel_filter_positive(x: &[f64]) -> Vec<f64> {
     x.par_iter().filter(|&&v| v > 0.0).copied().collect()
 }
 
-/// Test RVec collection from parallel iterator.
+/// Test Vec collection from parallel iterator.
 #[cfg(feature = "rayon")]
 #[miniextendr]
-pub fn rayon_rvec_collect(n: i32) -> Vec<f64> {
-    let rvec: RVec<f64> = (0..n).into_par_iter().map(|i| (i as f64).sqrt()).collect();
-    rvec.into_inner()
+pub fn rayon_vec_collect(n: i32) -> Vec<f64> {
+    (0..n).into_par_iter().map(|i| (i as f64).sqrt()).collect()
 }
 
 /// Test with_r_vec for zero-copy parallel fill.
@@ -113,7 +112,7 @@ miniextendr_module! {
     fn rayon_parallel_sum;
     fn rayon_parallel_sqrt;
     fn rayon_parallel_filter_positive;
-    fn rayon_rvec_collect;
+    fn rayon_vec_collect;
     fn rayon_with_r_vec;
     fn rayon_with_r_matrix;
     fn rayon_parallel_stats;

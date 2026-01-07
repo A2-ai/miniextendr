@@ -175,81 +175,6 @@ pub use rayon;
 #[cfg(feature = "rayon")]
 use rayon::prelude::*;
 
-// region: RVec - Parallel collection container
-
-/// Container for parallel iterator results.
-///
-/// Implements `FromParallelIterator`, allowing:
-/// ```ignore
-/// let results: RVec<f64> = data.par_iter().map(f).collect();
-/// let vec = results.into_sexp();  // Uses IntoR trait
-/// ```
-///
-/// IntoR implementation is in `into_r.rs`.
-#[cfg(feature = "rayon")]
-#[derive(Debug, Clone)]
-pub struct RVec<T> {
-    data: Vec<T>,
-}
-
-#[cfg(feature = "rayon")]
-impl<T> RVec<T> {
-    /// Create from a Vec.
-    #[inline]
-    pub fn from_vec(data: Vec<T>) -> Self {
-        data.into()
-    }
-
-    /// Get length.
-    pub fn len(&self) -> usize {
-        self.data.len()
-    }
-
-    /// Check if empty.
-    pub fn is_empty(&self) -> bool {
-        self.data.is_empty()
-    }
-
-    /// Get slice view.
-    pub fn as_slice(&self) -> &[T] {
-        &self.data
-    }
-
-    /// Consume and get Vec.
-    #[inline]
-    pub fn into_inner(self) -> Vec<T> {
-        self.into()
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T> From<Vec<T>> for RVec<T> {
-    fn from(data: Vec<T>) -> Self {
-        Self { data }
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T> From<RVec<T>> for Vec<T> {
-    fn from(rvec: RVec<T>) -> Self {
-        rvec.data
-    }
-}
-
-#[cfg(feature = "rayon")]
-impl<T: Send> FromParallelIterator<T> for RVec<T> {
-    fn from_par_iter<I>(par_iter: I) -> Self
-    where
-        I: IntoParallelIterator<Item = T>,
-    {
-        Self {
-            data: par_iter.into_par_iter().collect(),
-        }
-    }
-}
-
-// endregion
-
 // region: Zero-copy pre-allocation
 
 /// Pre-allocate an R vector, fill in parallel, return the SEXP.
@@ -1370,20 +1295,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_rvec_creation() {
-        let vec = RVec::from_vec(vec![1, 2, 3]);
-        assert_eq!(vec.len(), 3);
-        assert_eq!(vec.as_slice(), &[1, 2, 3]);
-    }
-
-    #[test]
     fn test_parallel_collect() {
         use rayon::prelude::*;
 
-        let result: RVec<i32> = (0..100).into_par_iter().collect();
+        let result: Vec<i32> = (0..100).into_par_iter().collect();
         assert_eq!(result.len(), 100);
-        assert_eq!(result.as_slice()[0], 0);
-        assert_eq!(result.as_slice()[99], 99);
+        assert_eq!(result[0], 0);
+        assert_eq!(result[99], 99);
     }
 
     #[test]
@@ -1391,7 +1309,7 @@ mod tests {
         use rayon::prelude::*;
 
         let data = vec![1.0, 2.0, 3.0, 4.0];
-        let doubled: RVec<f64> = data.par_iter().map(|&x| x * 2.0).collect();
+        let doubled: Vec<f64> = data.par_iter().map(|&x| x * 2.0).collect();
 
         assert_eq!(doubled.as_slice(), &[2.0, 4.0, 6.0, 8.0]);
     }

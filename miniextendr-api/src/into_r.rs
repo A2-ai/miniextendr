@@ -1123,29 +1123,6 @@ impl_tuple_into_r!((A, B, C, D, E, F), (0, 1, 2, 3, 4, 5), 6);
 impl_tuple_into_r!((A, B, C, D, E, F, G), (0, 1, 2, 3, 4, 5, 6), 7);
 impl_tuple_into_r!((A, B, C, D, E, F, G, H), (0, 1, 2, 3, 4, 5, 6, 7), 8);
 
-// =============================================================================
-// Rayon RVec conversion
-// =============================================================================
-
-#[cfg(feature = "rayon")]
-impl<T> IntoR for crate::rayon_bridge::RVec<T>
-where
-    T: crate::ffi::RNativeType + Send,
-{
-    #[inline]
-    fn into_sexp(self) -> crate::ffi::SEXP {
-        // RVec was collected on Rayon threads, convert to R on main thread
-        let vec = self.into_inner();
-        // Use into_sexp_unchecked inside with_r_thread since we're guaranteed to be on main thread
-        crate::worker::with_r_thread(move || unsafe { vec.into_sexp_unchecked() })
-    }
-
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        // Still need to go through with_r_thread since we might be on a Rayon thread
-        self.into_sexp()
-    }
-}
 
 // =============================================================================
 // Result conversions
