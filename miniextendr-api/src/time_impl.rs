@@ -152,6 +152,10 @@ impl TryFromSexp for Option<OffsetDateTime> {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
+        // NULL -> None
+        if actual == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         if actual != SEXPTYPE::REALSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::REALSXP,
@@ -451,6 +455,10 @@ impl TryFromSexp for Option<Date> {
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
         let actual = sexp.type_of();
+        // NULL -> None
+        if actual == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         if actual != SEXPTYPE::REALSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::REALSXP,

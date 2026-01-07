@@ -144,6 +144,10 @@ impl TryFromSexp for Option<Complex<f64>> {
         use crate::ffi::COMPLEX_ELT;
 
         let actual = sexp.type_of();
+        // NULL -> None
+        if actual == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         if actual != SEXPTYPE::CPLXSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::CPLXSXP,

@@ -102,6 +102,10 @@ impl TryFromSexp for Option<Url> {
         use crate::ffi::STRING_ELT;
 
         let actual = sexp.type_of();
+        // NULL -> None
+        if actual == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::STRSXP,

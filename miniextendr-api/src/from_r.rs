@@ -372,12 +372,20 @@ impl TryFromSexp for Option<bool> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // NULL -> None
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
         Ok(raw.to_option_bool())
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        // NULL -> None
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         Ok(raw.to_option_bool())
     }
@@ -388,6 +396,10 @@ impl TryFromSexp for Option<i32> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // NULL -> None
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
         if value == crate::altrep_traits::NA_INTEGER {
             Ok(None)
@@ -398,6 +410,10 @@ impl TryFromSexp for Option<i32> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        // NULL -> None
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         if value == crate::altrep_traits::NA_INTEGER {
             Ok(None)
@@ -412,6 +428,10 @@ impl TryFromSexp for Option<f64> {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // NULL -> None
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
         if value.is_nan() {
             Ok(None)
@@ -422,6 +442,10 @@ impl TryFromSexp for Option<f64> {
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        // NULL -> None
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
         if value.is_nan() {
             Ok(None)
@@ -839,6 +863,10 @@ impl TryFromSexp for Option<String> {
         use crate::ffi::{Rf_translateCharUTF8, STRING_ELT};
 
         let actual = sexp.type_of();
+        // NULL -> None
+        if actual == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
         if actual != SEXPTYPE::STRSXP {
             return Err(SexpTypeError {
                 expected: SEXPTYPE::STRSXP,
