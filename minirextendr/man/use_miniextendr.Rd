@@ -7,7 +7,8 @@
 use_miniextendr(
   template_type = "auto",
   rpkg_name = "rpkg",
-  miniextendr_version = "latest"
+  miniextendr_version = "latest",
+  local_path = NULL
 )
 }
 \arguments{
@@ -20,6 +21,10 @@ Only used when template_type is "monorepo".}
 
 \item{miniextendr_version}{Version of miniextendr to vendor (default: "latest").
 For monorepo projects, vendoring is only needed for CRAN submission.}
+
+\item{local_path}{Optional path to local miniextendr repository. If provided,
+vendors from local path instead of downloading from GitHub. Useful for
+development and testing before the package is published.}
 }
 \value{
 Invisibly returns TRUE

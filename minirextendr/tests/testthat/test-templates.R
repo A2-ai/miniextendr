@@ -4,6 +4,43 @@
 # that can be built with the miniextendr toolchain.
 
 # -----------------------------------------------------------------------------
+# Templates patch sync check
+# -----------------------------------------------------------------------------
+
+test_that("templates patch is in sync with rpkg sources", {
+  skip_if_not(nzchar(Sys.which("just")), "just not available")
+
+  # Find the miniextendr repo root (parent of minirextendr)
+  pkg_path <- tryCatch(
+    rprojroot::find_package_root_file(),
+    error = function(e) NULL
+  )
+  skip_if(is.null(pkg_path), "Cannot find package root")
+
+  repo_root <- dirname(pkg_path)
+  skip_if(!file.exists(file.path(repo_root, "justfile")),
+          "Not in miniextendr monorepo")
+
+  # Run `just templates-check` from repo root
+  result <- withr::with_dir(repo_root, {
+    system2("just", c("templates-check"), stdout = TRUE, stderr = TRUE)
+  })
+  status <- attr(result, "status")
+
+  # If status is non-zero, the templates have drifted
+  if (!is.null(status) && status != 0) {
+    output <- paste(result, collapse = "\n")
+    fail(paste0(
+      "Templates patch is out of sync with rpkg sources.\n",
+      "Run `just templates-approve` to update the patch.\n\n",
+      "Diff output:\n", output
+    ))
+  }
+
+  expect_true(is.null(status) || status == 0)
+})
+
+# -----------------------------------------------------------------------------
 # Monorepo template tests
 # -----------------------------------------------------------------------------
 
@@ -17,7 +54,6 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   # Check root files
   expect_true(file.exists(file.path(tmp, "Cargo.toml")))
   expect_true(file.exists(file.path(tmp, "justfile")))
-  expect_true(file.exists(file.path(tmp, "CLAUDE.md")))
   expect_true(file.exists(file.path(tmp, ".gitignore")))
   expect_true(dir.exists(file.path(tmp, ".git")))
 

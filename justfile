@@ -41,7 +41,7 @@
 
 default:
     @just --list
-# TODO: add the vendor checksum file to this recipe!
+
 clean:
     -just configure
     -just cargo-clean

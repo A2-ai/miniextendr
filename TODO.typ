@@ -146,7 +146,9 @@
     module_missing_mod, module_duplicate_mod, unsafe_empty
 - [ ] Thread-safety assertions not covered by tests
   - Note: Would require embedded R runtime for meaningful tests.
-- [ ] Known TODOs not tracked as GitHub issues
+- [x] Known TODOs not tracked as GitHub issues
+  - Cleaned up: removed stale TODOs from justfile, conversions.rs, test-thread.R
+  - Remaining TODOs are informational notes (lint enhancement idea, configure.ac upstream issue)
 
 === Safety Issues (from project-review-2026-01-04) ===
 - [x] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding

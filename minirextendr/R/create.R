@@ -80,7 +80,6 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   cli::cli_h2("Creating workspace root")
   use_template("Cargo.toml", data = data)
   use_template("justfile", data = data)
-  use_template("CLAUDE.md", data = data)
   use_template("gitignore", save_as = ".gitignore", data = data)
 
   # Create main Rust crate

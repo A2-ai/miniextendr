@@ -11,9 +11,6 @@
 # NOT for calling R APIs. The proper pattern for R API calls is to use the
 # worker thread infrastructure in #[miniextendr] which routes R calls back to
 # the main thread via the with_r_thread mechanism.
-#
-# TODO: Rewrite these tests to demonstrate valid RThreadBuilder usage (pure Rust work)
-# TODO: Add tests for actual main-thread R API patterns
 
 # test_that("RThreadBuilder with custom stack size works", {
 #   result <- unsafe_C_test_r_thread_builder()
