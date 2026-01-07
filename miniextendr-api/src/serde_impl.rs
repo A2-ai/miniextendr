@@ -74,6 +74,7 @@ use crate::ffi::{
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
+use crate::{impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list};
 
 /// Adapter trait for [`serde::Serialize`].
 ///
@@ -464,12 +465,56 @@ impl TryFromSexp for JsonValue {
 }
 
 // =============================================================================
+// Option / Vec conversions
+// =============================================================================
+
+// Use macros to implement Option/Vec conversions
+impl_option_try_from_sexp!(JsonValue);
+impl_vec_try_from_sexp_list!(JsonValue);
+impl_vec_option_try_from_sexp_list!(JsonValue);
+
+// =============================================================================
 // IntoR for JsonValue
 // =============================================================================
 
 impl IntoR for JsonValue {
     fn into_sexp(self) -> SEXP {
         json_value_to_sexp(&self)
+    }
+}
+
+impl IntoR for Option<JsonValue> {
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(value) => json_value_to_sexp(&value),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+impl IntoR for Vec<JsonValue> {
+    fn into_sexp(self) -> SEXP {
+        let len = self.len();
+        let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
+        for (i, value) in self.iter().enumerate() {
+            unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(value)) };
+        }
+        sexp.into_inner()
+    }
+}
+
+impl IntoR for Vec<Option<JsonValue>> {
+    fn into_sexp(self) -> SEXP {
+        let len = self.len();
+        let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
+        for (i, value) in self.iter().enumerate() {
+            let elem = match value {
+                Some(v) => json_value_to_sexp(v),
+                None => unsafe { crate::ffi::R_NilValue },
+            };
+            unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, elem) };
+        }
+        sexp.into_inner()
     }
 }
 

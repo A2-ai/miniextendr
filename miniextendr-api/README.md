@@ -1,11 +1,11 @@
 # miniextendr-api
 
-Core runtime crate for Rust ↔ R interop.
+Core runtime crate for Rust <-> R interop.
 
 This crate provides:
 
 - FFI bindings to R’s C API.
-- Safe(ish) conversions between Rust and R types.
+- Conversions between Rust and R types.
 - The worker‑thread pattern for panic isolation and Drop safety.
 - ALTREP traits, registration helpers, and iterator‑backed ALTREP data types.
 - Re-exports of `miniextendr-macros` for ergonomic use.
@@ -135,7 +135,7 @@ Iterator‑backed ALTREP data types are provided for common vector kinds:
 
 ## Conversions and coercion
 
-This crate exposes conversion traits for Rust ↔ R data:
+This crate exposes conversion traits for Rust <-> R data:
 
 - `IntoR` / `FromR` for standard conversions.
 - `Coerce<R>` for infallible, widening conversions.

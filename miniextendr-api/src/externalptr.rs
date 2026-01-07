@@ -211,7 +211,7 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
 ///
 /// # Type ID vs Type Name
 ///
-/// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in prot[0]).
+    /// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in `prot[0]`).
 ///   Format: `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`
 ///
 ///   The crate name and version ensure:

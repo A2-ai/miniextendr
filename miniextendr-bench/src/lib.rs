@@ -1,9 +1,19 @@
-//! Benchmark harness helpers for `miniextendr`.
+//! miniextendr-bench: benchmark harness helpers for miniextendr.
 //!
-//! This crate is **not** part of the main workspace build. It's intended to be
-//! invoked directly via `cargo bench` from `miniextendr-bench/`.
+//! This crate embeds R via `miniextendr-engine` and provides fixtures and
+//! helpers for `divan` benchmarks in `miniextendr-bench/benches/`. It is
+//! intended for local development and performance investigation, not for
+//! publishing or CRAN builds.
 //!
-//! The benchmark plan is documented in `bench_plan` (module-level docs only).
+//! ## Running benchmarks
+//!
+//! ```ignore
+//! cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench translate
+//! ```
+//!
+//! Notes:
+//! - Requires R installed and available on PATH.
+//! - The benchmark plan lives in `bench_plan` (module-level docs).
 
 use std::os::raw::c_char;
 use std::sync::OnceLock;

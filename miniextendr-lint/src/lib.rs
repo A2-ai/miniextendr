@@ -1,6 +1,10 @@
-//! Lint helpers for miniextendr usage in a crate.
+//! miniextendr-lint: internal build-time lint helpers for the workspace.
 //!
-//! # Usage in build.rs
+//! This crate scans Rust sources for miniextendr macro usage and emits
+//! cargo warnings with actionable diagnostics. It is intended for local
+//! development and CI, not as a public API.
+//!
+//! ## Usage in build.rs
 //!
 //! ```ignore
 //! fn main() {
@@ -8,19 +12,23 @@
 //! }
 //! ```
 //!
-//! # Architecture Note: Parser Duplication
+//! ## Configuration
+//! - Controlled by the `MINIEXTENDR_LINT` env var (enabled by default).
+//! - Set it to `0`, `false`, `no`, or `off` to disable.
 //!
-//! This crate contains a **copy** of `miniextendr_module.rs` from `miniextendr-macros`.
+//! ## Architecture note: parser duplication
+//!
+//! This crate contains a **copy** of `miniextendr_module.rs` from
+//! `miniextendr-macros` so it can be published independently.
 //!
 //! - **Source**: `miniextendr-macros/src/miniextendr_module.rs`
 //! - **Copy**: `miniextendr-lint/src/miniextendr_module.rs` (this file)
-//! - **Requirement**: The parser imports `call_method_def_ident_for` and
-//!   `r_wrapper_const_ident_for` from `crate::`, so we must define stubs below
+//! - **Requirement**: the parser imports `call_method_def_ident_for` and
+//!   `r_wrapper_const_ident_for` from `crate::`, so we define stubs below
 //!
 //! **Why duplicate instead of sharing?**
-//! - Allows miniextendr-lint to be published independently to crates.io
-//! - `#[path = "../../"]` includes don't work in published packages
-//! - Trade-off: Code duplication vs. independent publishing
+//! - Allows `miniextendr-lint` to be published independently to crates.io
+//! - `#[path = "../../"]` includes do not work in published packages
 //!
 //! **Keeping in sync:**
 //! When `miniextendr-macros/src/miniextendr_module.rs` changes, manually copy to

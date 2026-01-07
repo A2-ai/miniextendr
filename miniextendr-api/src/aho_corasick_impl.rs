@@ -43,6 +43,7 @@ pub use aho_corasick::{AhoCorasick, MatchKind};
 use crate::ffi::{Rf_xlength, SEXP, SEXPTYPE, STRING_ELT, SexpExt};
 use crate::from_r::charsxp_to_str;
 use crate::from_r::{SexpError, TryFromSexp};
+use crate::{impl_option_try_from_sexp, impl_vec_option_try_from_sexp_list, impl_vec_try_from_sexp_list};
 
 // =============================================================================
 // TryFromSexp for AhoCorasick (from Vec<String> patterns)
@@ -92,6 +93,11 @@ impl TryFromSexp for AhoCorasick {
             .map_err(|e| SexpError::InvalidValue(format!("failed to build AhoCorasick: {}", e)))
     }
 }
+
+// Use macros to implement Option/Vec conversions
+impl_option_try_from_sexp!(AhoCorasick);
+impl_vec_try_from_sexp_list!(AhoCorasick);
+impl_vec_option_try_from_sexp_list!(AhoCorasick);
 
 // =============================================================================
 // Helper functions

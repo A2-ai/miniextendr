@@ -1,6 +1,6 @@
 //! Factor tests - demonstrates RFactor derive macro for enum ↔ R factor conversions.
 //!
-//! These tests use manual SEXP conversion since #[miniextendr] doesn't yet support
+//! These tests use manual SEXP conversion since `#[miniextendr]` doesn't yet support
 //! RFactor types directly as function parameters. The RFactor derive generates
 //! TryFromSexp and IntoR implementations that can be used manually.
 

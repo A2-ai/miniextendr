@@ -3,7 +3,7 @@
 Procedural macros for exporting Rust functions and types to R.
 
 Most users should depend on `miniextendr-api` and use its re-exports, but this
-crate can be used directly if you want only the macros.
+crate can be used directly if you only need the macros.
 
 ## Macros
 
@@ -55,6 +55,12 @@ thread when invoked from a non-main thread (requires a worker context).
 
 - `ExternalPtr` – implement `TypedExternal` for external pointers.
 - `RNativeType` – mark newtypes as R-native for vector conversions.
+- ALTREP derives (e.g., `AltrepInteger`, `AltrepReal`, `AltrepString`).
+- `RFactor` – enum <-> factor conversions.
+
+### Helpers
+
+- `typed_list` – derive typed list builders from a Rust struct.
 
 ## Notes
 

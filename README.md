@@ -1,21 +1,21 @@
 # `miniextendr`
 
-Rust + R interoperability workspace. This repo contains the core Rust crates, an
-example R package, and build tooling for embedding R, exporting Rust functions
-into R, ALTREP support, and safe threading patterns.
+Rust <-> R interoperability workspace. This repo contains the core Rust crates,
+an example R package, and build tooling for embedding R, exporting Rust
+functions into R, ALTREP support, and safe threading patterns.
 
 ## Workspace layout
 
 ### Rust crates
 
-- `miniextendr-api/` – Runtime crate: R FFI bindings, type conversions, worker
-  thread pattern, ALTREP traits, and re-exported macros.
-- `miniextendr-macros/` – Procedural macros (`#[miniextendr]`,
+- `miniextendr-api/` - Core runtime: R FFI bindings, conversions, worker-thread
+  pattern, ALTREP traits, and macro re-exports.
+- `miniextendr-macros/` - Procedural macros (`#[miniextendr]`,
   `miniextendr_module!`, `#[r_ffi_checked]`, `ExternalPtr`, `RNativeType`).
-- `miniextendr-engine/` – Standalone R embedding engine (initialization and
-  lifecycle) for Rust-only binaries/tests; uses non-API R internals.
-- `miniextendr-bench/` – Benchmarks for conversions and R interop.
-- `miniextendr-lint/` – Internal build-time linter (proc-macro helper); not
+- `miniextendr-engine/` - Standalone R embedding engine for Rust-only
+  binaries/tests; uses non-API R internals.
+- `miniextendr-bench/` - Benchmarks for conversions and R interop.
+- `miniextendr-lint/` - Internal build-time linter (proc-macro helper); not
   intended for external consumption.
 
 ### R packages and tooling
@@ -36,7 +36,7 @@ Core runtime crate for R interop.
 
 Highlights:
 
-- Safe(ish) Rust-to-R and R-to-Rust conversions.
+- Rust <-> R conversions for common types.
 - Worker-thread pattern for panic isolation and Drop safety under R longjmp.
 - ALTREP traits and utilities.
 - Adapter traits (`RDebug`, `RDisplay`, `RHash`, `ROrd`, `RPartialOrd`) with
@@ -87,6 +87,7 @@ Notes:
   use inside R packages.
 - Centralizes `R_HOME` discovery/linking and avoids double-calling
   `setup_Rmainloop()` while keeping initialization order consistent.
+- Intentionally does not call `Rf_endEmbeddedR` on drop (non-reentrant cleanup).
 
 ### `miniextendr-bench`
 

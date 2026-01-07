@@ -21,7 +21,19 @@
 //! - Inside `#[miniextendr(unsafe(main_thread))]` functions
 //! - Inside `extern "C-unwind"` functions called directly by R
 
+use crate::altrep_traits::NA_REAL;
+use crate::coerce::TryCoerce;
 use crate::ffi::{RLogical, RNativeType, Rboolean, SEXP, SEXPTYPE, SexpExt};
+
+/// Check if an f64 value is R's NA_real_ (a specific NaN bit pattern).
+///
+/// This is different from `f64::is_nan()` which returns true for ALL NaN values.
+/// R's `NA_real_` is a specific NaN with a particular bit pattern, while regular
+/// NaN values (e.g., from `0.0/0.0`) should be preserved as valid values.
+#[inline]
+fn is_na_real(value: f64) -> bool {
+    value.to_bits() == NA_REAL.to_bits()
+}
 
 // =============================================================================
 // CHARSXP to &str conversion helpers
@@ -217,77 +229,85 @@ pub trait TryFromSexp: Sized {
     }
 }
 
-// Blanket implementation for scalar R native types
-impl<T: RNativeType> TryFromSexp for T {
-    type Error = SexpError;
+macro_rules! impl_try_from_sexp_scalar_native {
+    ($t:ty, $sexptype:ident) => {
+        impl TryFromSexp for $t {
+            type Error = SexpError;
 
-    #[inline]
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        // SAFETY: sexp is a .Call argument, protected by R's calling convention
-        unsafe { sexp.as_slice::<T>() }
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                SexpLengthError {
-                    expected: 1,
-                    actual: 0,
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::$sexptype {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::$sexptype,
+                        actual,
+                    }
+                    .into());
                 }
-                .into()
-            })
-    }
+                let len = sexp.len();
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                unsafe { sexp.as_slice::<$t>() }
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| {
+                        SexpLengthError {
+                            expected: 1,
+                            actual: 0,
+                        }
+                        .into()
+                    })
+            }
 
-    #[inline]
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-        unsafe { sexp.as_slice_unchecked::<T>() }
-            .first()
-            .cloned()
-            .ok_or_else(|| {
-                SexpLengthError {
-                    expected: 1,
-                    actual: 0,
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::$sexptype {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::$sexptype,
+                        actual,
+                    }
+                    .into());
                 }
-                .into()
-            })
-    }
+                let len = unsafe { sexp.len_unchecked() };
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                unsafe { sexp.as_slice_unchecked::<$t>() }
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| {
+                        SexpLengthError {
+                            expected: 1,
+                            actual: 0,
+                        }
+                        .into()
+                    })
+            }
+        }
+    };
 }
+
+impl_try_from_sexp_scalar_native!(i32, INTSXP);
+impl_try_from_sexp_scalar_native!(f64, REALSXP);
+impl_try_from_sexp_scalar_native!(u8, RAWSXP);
+impl_try_from_sexp_scalar_native!(RLogical, LGLSXP);
+impl_try_from_sexp_scalar_native!(crate::ffi::Rcomplex, CPLXSXP);
 
 /// Pass-through conversion for raw SEXP values.
 ///
 /// This allows SEXP to be used directly in `#[miniextendr]` function signatures.
 /// A blanket impl `impl<T: From<SEXP>> TryFromSexp for T` would conflict with
-/// the existing `impl<T: RNativeType> TryFromSexp for T`, so we use an explicit impl.
+/// many explicit conversions in this module, so we use an explicit impl.
 ///
 /// # Safety
 ///
@@ -304,6 +324,24 @@ impl TryFromSexp for SEXP {
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
         Ok(sexp)
+    }
+}
+
+impl TryFromSexp for Option<SEXP> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            Ok(None)
+        } else {
+            Ok(Some(sexp))
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
     }
 }
 
@@ -337,6 +375,36 @@ impl TryFromSexp for Rboolean {
                 sexp_type: SEXPTYPE::LGLSXP,
             }
             .into()),
+        }
+    }
+}
+
+impl TryFromSexp for Option<Rboolean> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+        match raw.to_option_bool() {
+            Some(false) => Ok(Some(Rboolean::FALSE)),
+            Some(true) => Ok(Some(Rboolean::TRUE)),
+            None => Ok(None),
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        match raw.to_option_bool() {
+            Some(false) => Ok(Some(Rboolean::FALSE)),
+            Some(true) => Ok(Some(Rboolean::TRUE)),
+            None => Ok(None),
         }
     }
 }
@@ -391,6 +459,36 @@ impl TryFromSexp for Option<bool> {
     }
 }
 
+impl TryFromSexp for Option<RLogical> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let raw: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+        if raw.is_na() {
+            Ok(None)
+        } else {
+            Ok(Some(raw))
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let raw: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        if raw.is_na() {
+            Ok(None)
+        } else {
+            Ok(Some(raw))
+        }
+    }
+}
+
 impl TryFromSexp for Option<i32> {
     type Error = SexpError;
 
@@ -433,7 +531,7 @@ impl TryFromSexp for Option<f64> {
             return Ok(None);
         }
         let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-        if value.is_nan() {
+        if is_na_real(value) {
             Ok(None)
         } else {
             Ok(Some(value))
@@ -447,10 +545,513 @@ impl TryFromSexp for Option<f64> {
             return Ok(None);
         }
         let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        if value.is_nan() {
+        if is_na_real(value) {
             Ok(None)
         } else {
             Ok(Some(value))
+        }
+    }
+}
+
+impl TryFromSexp for Option<u8> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Some(value))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Some(value))
+    }
+}
+
+impl TryFromSexp for Option<crate::ffi::Rcomplex> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::altrep_traits::NA_REAL;
+
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let value: crate::ffi::Rcomplex = TryFromSexp::try_from_sexp(sexp)?;
+        let na_bits = NA_REAL.to_bits();
+        if value.r.to_bits() == na_bits || value.i.to_bits() == na_bits {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::altrep_traits::NA_REAL;
+
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let value: crate::ffi::Rcomplex = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        let na_bits = NA_REAL.to_bits();
+        if value.r.to_bits() == na_bits || value.i.to_bits() == na_bits {
+            Ok(None)
+        } else {
+            Ok(Some(value))
+        }
+    }
+}
+
+// =============================================================================
+// Coerced scalar conversions (multi-source numeric)
+// =============================================================================
+
+#[inline]
+fn coerce_value<R, T>(value: R) -> Result<T, SexpError>
+where
+    R: TryCoerce<T>,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    value
+        .try_coerce()
+        .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+}
+
+#[inline]
+fn try_from_sexp_numeric_scalar<T>(sexp: SEXP) -> Result<T, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+            coerce_value(value)
+        }
+        SEXPTYPE::REALSXP => {
+            let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+            coerce_value(value)
+        }
+        SEXPTYPE::RAWSXP => {
+            let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+            coerce_value(value)
+        }
+        SEXPTYPE::LGLSXP => {
+            let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+            coerce_value(value.to_i32())
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
+#[inline]
+unsafe fn try_from_sexp_numeric_scalar_unchecked<T>(sexp: SEXP) -> Result<T, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            coerce_value(value)
+        }
+        SEXPTYPE::REALSXP => {
+            let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            coerce_value(value)
+        }
+        SEXPTYPE::RAWSXP => {
+            let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            coerce_value(value)
+        }
+        SEXPTYPE::LGLSXP => {
+            let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            coerce_value(value.to_i32())
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
+#[inline]
+fn try_from_sexp_numeric_option<T>(sexp: SEXP) -> Result<Option<T>, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        return Ok(None);
+    }
+
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+            if value == crate::altrep_traits::NA_INTEGER {
+                Ok(None)
+            } else {
+                coerce_value(value).map(Some)
+            }
+        }
+        SEXPTYPE::REALSXP => {
+            let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+            if is_na_real(value) {
+                Ok(None)
+            } else {
+                coerce_value(value).map(Some)
+            }
+        }
+        SEXPTYPE::RAWSXP => {
+            let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+            coerce_value(value).map(Some)
+        }
+        SEXPTYPE::LGLSXP => {
+            let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+            if value.is_na() {
+                Ok(None)
+            } else {
+                coerce_value(value.to_i32()).map(Some)
+            }
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
+#[inline]
+unsafe fn try_from_sexp_numeric_option_unchecked<T>(sexp: SEXP) -> Result<Option<T>, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    if sexp.type_of() == SEXPTYPE::NILSXP {
+        return Ok(None);
+    }
+
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            if value == crate::altrep_traits::NA_INTEGER {
+                Ok(None)
+            } else {
+                coerce_value(value).map(Some)
+            }
+        }
+        SEXPTYPE::REALSXP => {
+            let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            if is_na_real(value) {
+                Ok(None)
+            } else {
+                coerce_value(value).map(Some)
+            }
+        }
+        SEXPTYPE::RAWSXP => {
+            let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            coerce_value(value).map(Some)
+        }
+        SEXPTYPE::LGLSXP => {
+            let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+            if value.is_na() {
+                Ok(None)
+            } else {
+                coerce_value(value.to_i32()).map(Some)
+            }
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
+impl TryFromSexp for i8 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_scalar(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for i16 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_scalar(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for u16 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_scalar(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for u32 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_scalar(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for f32 {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value as f32)
+            }
+            SEXPTYPE::REALSXP => {
+                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value as f32)
+            }
+            SEXPTYPE::RAWSXP => {
+                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value as f32)
+            }
+            SEXPTYPE::LGLSXP => {
+                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value.to_i32() as f32)
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(value as f32)
+            }
+            SEXPTYPE::REALSXP => {
+                let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(value as f32)
+            }
+            SEXPTYPE::RAWSXP => {
+                let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(value as f32)
+            }
+            SEXPTYPE::LGLSXP => {
+                let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(value.to_i32() as f32)
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
+        }
+    }
+}
+
+impl TryFromSexp for Option<i8> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_option(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for Option<i16> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_option(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for Option<u16> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_option(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for Option<u32> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_option(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for Option<f32> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+                if value == crate::altrep_traits::NA_INTEGER {
+                    Ok(None)
+                } else {
+                    Ok(Some(value as f32))
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+                if is_na_real(value) {
+                    Ok(None)
+                } else {
+                    Ok(Some(value as f32))
+                }
+            }
+            SEXPTYPE::RAWSXP => {
+                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(Some(value as f32))
+            }
+            SEXPTYPE::LGLSXP => {
+                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                if value.is_na() {
+                    Ok(None)
+                } else {
+                    Ok(Some(value.to_i32() as f32))
+                }
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                let value: i32 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                if value == crate::altrep_traits::NA_INTEGER {
+                    Ok(None)
+                } else {
+                    Ok(Some(value as f32))
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                if is_na_real(value) {
+                    Ok(None)
+                } else {
+                    Ok(Some(value as f32))
+                }
+            }
+            SEXPTYPE::RAWSXP => {
+                let value: u8 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(Some(value as f32))
+            }
+            SEXPTYPE::LGLSXP => {
+                let value: RLogical = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                if value.is_na() {
+                    Ok(None)
+                } else {
+                    Ok(Some(value.to_i32() as f32))
+                }
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
         }
     }
 }
@@ -467,20 +1068,12 @@ impl TryFromSexp for i64 {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::coerce::TryCoerce;
-        let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-        value
-            .try_coerce()
-            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+        try_from_sexp_numeric_scalar(sexp)
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::coerce::TryCoerce;
-        let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        value
-            .try_coerce()
-            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
     }
 }
 
@@ -489,20 +1082,40 @@ impl TryFromSexp for u64 {
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::coerce::TryCoerce;
-        let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
-        value
-            .try_coerce()
-            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+        try_from_sexp_numeric_scalar(sexp)
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        use crate::coerce::TryCoerce;
-        let value: f64 = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        value
-            .try_coerce()
-            .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+        unsafe { try_from_sexp_numeric_scalar_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for Option<i64> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_option(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
+    }
+}
+
+impl TryFromSexp for Option<u64> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        try_from_sexp_numeric_option(sexp)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        unsafe { try_from_sexp_numeric_option_unchecked(sexp) }
     }
 }
 
@@ -530,12 +1143,90 @@ impl TryFromSexp for usize {
                 u.try_into()
                     .map_err(|_| SexpError::InvalidValue("value out of usize range".into()))
             }
-            _ => Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
+            SEXPTYPE::RAWSXP => {
+                use crate::coerce::Coerce;
+                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value.coerce())
             }
-            .into()),
+            SEXPTYPE::LGLSXP => {
+                use crate::coerce::TryCoerce;
+                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                value
+                    .to_i32()
+                    .try_coerce()
+                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
         }
+    }
+}
+
+impl TryFromSexp for Option<usize> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                use crate::coerce::TryCoerce;
+                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+                if value == crate::altrep_traits::NA_INTEGER {
+                    Ok(None)
+                } else {
+                    value
+                        .try_coerce()
+                        .map(Some)
+                        .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                use crate::coerce::TryCoerce;
+                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+                if is_na_real(value) {
+                    return Ok(None);
+                }
+                let u: u64 = value
+                    .try_coerce()
+                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
+                u.try_into()
+                    .map(Some)
+                    .map_err(|_| SexpError::InvalidValue("value out of usize range".into()))
+            }
+            SEXPTYPE::RAWSXP => {
+                use crate::coerce::Coerce;
+                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(Some(value.coerce()))
+            }
+            SEXPTYPE::LGLSXP => {
+                use crate::coerce::TryCoerce;
+                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                if value.is_na() {
+                    Ok(None)
+                } else {
+                    value
+                        .to_i32()
+                        .try_coerce()
+                        .map(Some)
+                        .map_err(|e| SexpError::InvalidValue(format!("{e}")))
+                }
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
+        }
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
     }
 }
 
@@ -561,44 +1252,617 @@ impl TryFromSexp for isize {
                 i.try_into()
                     .map_err(|_| SexpError::InvalidValue("value out of isize range".into()))
             }
-            _ => Err(SexpTypeError {
-                expected: SEXPTYPE::INTSXP,
-                actual,
+            SEXPTYPE::RAWSXP => {
+                use crate::coerce::Coerce;
+                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value.coerce())
             }
-            .into()),
+            SEXPTYPE::LGLSXP => {
+                use crate::coerce::Coerce;
+                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(value.to_i32().coerce())
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
         }
     }
 }
 
-// Blanket implementation for slices of R native types
-impl<T: RNativeType> TryFromSexp for &'static [T] {
-    type Error = SexpTypeError;
+impl TryFromSexp for Option<isize> {
+    type Error = SexpError;
 
     #[inline]
     fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            });
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
         }
-        // SAFETY: sexp is a .Call argument, protected by R's calling convention
-        Ok(unsafe { sexp.as_slice::<T>() })
+        let actual = sexp.type_of();
+        match actual {
+            SEXPTYPE::INTSXP => {
+                use crate::coerce::Coerce;
+                let value: i32 = TryFromSexp::try_from_sexp(sexp)?;
+                if value == crate::altrep_traits::NA_INTEGER {
+                    Ok(None)
+                } else {
+                    Ok(Some(value.coerce()))
+                }
+            }
+            SEXPTYPE::REALSXP => {
+                use crate::coerce::TryCoerce;
+                let value: f64 = TryFromSexp::try_from_sexp(sexp)?;
+                if is_na_real(value) {
+                    return Ok(None);
+                }
+                let i: i64 = value
+                    .try_coerce()
+                    .map_err(|e| SexpError::InvalidValue(format!("{e}")))?;
+                i.try_into()
+                    .map(Some)
+                    .map_err(|_| SexpError::InvalidValue("value out of isize range".into()))
+            }
+            SEXPTYPE::RAWSXP => {
+                use crate::coerce::Coerce;
+                let value: u8 = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(Some(value.coerce()))
+            }
+            SEXPTYPE::LGLSXP => {
+                use crate::coerce::Coerce;
+                let value: RLogical = TryFromSexp::try_from_sexp(sexp)?;
+                if value.is_na() {
+                    Ok(None)
+                } else {
+                    Ok(Some(value.to_i32().coerce()))
+                }
+            }
+            _ => Err(SexpError::InvalidValue(format!(
+                "expected integer, numeric, logical, or raw; got {:?}",
+                actual
+            ))),
+        }
     }
 
     #[inline]
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            });
-        }
-        Ok(unsafe { sexp.as_slice_unchecked::<T>() })
+        Self::try_from_sexp(sexp)
     }
 }
+
+// =============================================================================
+// Reference conversions (borrowed views)
+// =============================================================================
+
+macro_rules! impl_ref_conversions_for {
+    ($t:ty) => {
+        impl TryFromSexp for &'static $t {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let len = sexp.len();
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                unsafe { sexp.as_slice::<$t>() }
+                    .first()
+                    .ok_or_else(|| SexpLengthError { expected: 1, actual: 0 }.into())
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let len = unsafe { sexp.len_unchecked() };
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                unsafe { sexp.as_slice_unchecked::<$t>() }
+                    .first()
+                    .ok_or_else(|| SexpLengthError { expected: 1, actual: 0 }.into())
+            }
+        }
+
+        impl TryFromSexp for &'static mut $t {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let len = sexp.len();
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
+                Ok(unsafe { &mut *ptr })
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    }
+                    .into());
+                }
+                let len = unsafe { sexp.len_unchecked() };
+                if len != 1 {
+                    return Err(SexpLengthError {
+                        expected: 1,
+                        actual: len,
+                    }
+                    .into());
+                }
+                let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
+                Ok(unsafe { &mut *ptr })
+            }
+        }
+
+        impl TryFromSexp for &'static [$t] {
+            type Error = SexpTypeError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    });
+                }
+                Ok(unsafe { sexp.as_slice::<$t>() })
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    });
+                }
+                Ok(unsafe { sexp.as_slice_unchecked::<$t>() })
+            }
+        }
+
+        impl TryFromSexp for &'static mut [$t] {
+            type Error = SexpTypeError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    });
+                }
+                let len = sexp.len();
+                let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
+                Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != <$t as RNativeType>::SEXP_TYPE {
+                    return Err(SexpTypeError {
+                        expected: <$t as RNativeType>::SEXP_TYPE,
+                        actual,
+                    });
+                }
+                let len = unsafe { sexp.len_unchecked() };
+                let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
+                Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+            }
+        }
+
+        impl TryFromSexp for Option<&'static $t> {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let value: &'static $t = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(Some(value))
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let value: &'static $t = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(Some(value))
+            }
+        }
+
+        impl TryFromSexp for Option<&'static mut $t> {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let value: &'static mut $t = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(Some(value))
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let value: &'static mut $t =
+                    unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+                Ok(Some(value))
+            }
+        }
+
+        impl TryFromSexp for Option<&'static [$t]> {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let slice: &'static [$t] =
+                    TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
+                Ok(Some(slice))
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let slice: &'static [$t] = unsafe {
+                    TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
+                };
+                Ok(Some(slice))
+            }
+        }
+
+        impl TryFromSexp for Option<&'static mut [$t]> {
+            type Error = SexpError;
+
+            #[inline]
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let slice: &'static mut [$t] =
+                    TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
+                Ok(Some(slice))
+            }
+
+            #[inline]
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                let slice: &'static mut [$t] = unsafe {
+                    TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
+                };
+                Ok(Some(slice))
+            }
+        }
+
+        impl TryFromSexp for Vec<&'static $t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
+                    out.push(value);
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<Option<&'static $t>> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    if elem.type_of() == SEXPTYPE::NILSXP {
+                        out.push(None);
+                    } else {
+                        let value: &'static $t = TryFromSexp::try_from_sexp(elem)?;
+                        out.push(Some(value));
+                    }
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<&'static mut $t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+                let mut ptrs: Vec<*mut $t> = Vec::new();
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
+                    let ptr = value as *mut $t;
+                    if ptrs.iter().any(|&p| p == ptr) {
+                        return Err(SexpError::InvalidValue(
+                            "list contains duplicate elements; cannot create multiple mutable references"
+                                .to_string(),
+                        ));
+                    }
+                    ptrs.push(ptr);
+                    out.push(value);
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<Option<&'static mut $t>> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+                let mut ptrs: Vec<*mut $t> = Vec::new();
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    if elem.type_of() == SEXPTYPE::NILSXP {
+                        out.push(None);
+                        continue;
+                    }
+                    let value: &'static mut $t = TryFromSexp::try_from_sexp(elem)?;
+                    let ptr = value as *mut $t;
+                    if ptrs.iter().any(|&p| p == ptr) {
+                        return Err(SexpError::InvalidValue(
+                            "list contains duplicate elements; cannot create multiple mutable references"
+                                .to_string(),
+                        ));
+                    }
+                    ptrs.push(ptr);
+                    out.push(Some(value));
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<&'static [$t]> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let slice: &'static [$t] =
+                        TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
+                    out.push(slice);
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<Option<&'static [$t]>> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    if elem.type_of() == SEXPTYPE::NILSXP {
+                        out.push(None);
+                    } else {
+                        let slice: &'static [$t] =
+                            TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
+                        out.push(Some(slice));
+                    }
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<&'static mut [$t]> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+                let mut ptrs: Vec<*mut $t> = Vec::new();
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    let slice: &'static mut [$t] =
+                        TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
+                    if !slice.is_empty() {
+                        let ptr = slice.as_mut_ptr();
+                        if ptrs.iter().any(|&p| p == ptr) {
+                            return Err(SexpError::InvalidValue(
+                                "list contains duplicate elements; cannot create multiple mutable references"
+                                    .to_string(),
+                            ));
+                        }
+                        ptrs.push(ptr);
+                    }
+                    out.push(slice);
+                }
+
+                Ok(out)
+            }
+        }
+
+        impl TryFromSexp for Vec<Option<&'static mut [$t]>> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut out = Vec::with_capacity(len);
+                let mut ptrs: Vec<*mut $t> = Vec::new();
+
+                for i in 0..len {
+                    let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as crate::ffi::R_xlen_t) };
+                    if elem.type_of() == SEXPTYPE::NILSXP {
+                        out.push(None);
+                        continue;
+                    }
+                    let slice: &'static mut [$t] =
+                        TryFromSexp::try_from_sexp(elem).map_err(SexpError::from)?;
+                    if !slice.is_empty() {
+                        let ptr = slice.as_mut_ptr();
+                        if ptrs.iter().any(|&p| p == ptr) {
+                            return Err(SexpError::InvalidValue(
+                                "list contains duplicate elements; cannot create multiple mutable references"
+                                    .to_string(),
+                            ));
+                        }
+                        ptrs.push(ptr);
+                    }
+                    out.push(Some(slice));
+                }
+
+                Ok(out)
+            }
+        }
+    };
+}
+
+impl_ref_conversions_for!(i32);
+impl_ref_conversions_for!(f64);
+impl_ref_conversions_for!(u8);
+impl_ref_conversions_for!(RLogical);
+impl_ref_conversions_for!(crate::ffi::Rcomplex);
 
 // =============================================================================
 // String conversions - STRSXP requires special handling via STRING_ELT
@@ -696,6 +1960,84 @@ impl TryFromSexp for &'static str {
 
         // Use LENGTH-based conversion (O(1)) instead of CStr::from_ptr (O(n) strlen)
         Ok(unsafe { charsxp_to_str_unchecked(charsxp) })
+    }
+}
+
+impl TryFromSexp for Option<&'static str> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::STRING_ELT;
+
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        let charsxp = unsafe { STRING_ELT(sexp, 0) };
+        if charsxp == unsafe { crate::ffi::R_NaString } {
+            return Ok(None);
+        }
+        if charsxp == unsafe { crate::ffi::R_BlankString } {
+            return Ok(Some(""));
+        }
+
+        Ok(Some(unsafe { charsxp_to_str(charsxp) }))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::STRING_ELT_unchecked;
+
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = unsafe { sexp.len_unchecked() };
+        if len != 1 {
+            return Err(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }
+            .into());
+        }
+
+        let charsxp = unsafe { STRING_ELT_unchecked(sexp, 0) };
+        if charsxp == unsafe { crate::ffi::R_NaString } {
+            return Ok(None);
+        }
+        if charsxp == unsafe { crate::ffi::R_BlankString } {
+            return Ok(Some(""));
+        }
+
+        Ok(Some(unsafe { charsxp_to_str_unchecked(charsxp) }))
     }
 }
 
@@ -914,6 +2256,36 @@ impl TryFromSexp for Option<String> {
 }
 
 // =============================================================================
+// Result conversions (NULL -> Err(()))
+// =============================================================================
+
+impl<T> TryFromSexp for Result<T, ()>
+where
+    T: TryFromSexp,
+    T::Error: Into<SexpError>,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(Err(()));
+        }
+        let value = T::try_from_sexp(sexp).map_err(Into::into)?;
+        Ok(Ok(value))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(Err(()));
+        }
+        let value = unsafe { T::try_from_sexp_unchecked(sexp).map_err(Into::into)? };
+        Ok(Ok(value))
+    }
+}
+
+// =============================================================================
 // NA-aware vector conversions
 // =============================================================================
 
@@ -946,7 +2318,7 @@ macro_rules! impl_vec_option_try_from_sexp {
     };
 }
 
-impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, |v: f64| v.is_nan());
+impl_vec_option_try_from_sexp!(f64, REALSXP, REAL, is_na_real);
 impl_vec_option_try_from_sexp!(i32, INTSXP, INTEGER, |v: i32| v == i32::MIN);
 
 /// Convert R logical vector (LGLSXP) to `Vec<Option<bool>>` with NA support.
@@ -990,6 +2362,102 @@ impl TryFromSexp for Vec<Option<bool>> {
         Ok(slice
             .iter()
             .map(|&v| RLogical::from_i32(v).to_option_bool())
+            .collect())
+    }
+}
+
+/// Convert R logical vector (LGLSXP) to `Vec<Rboolean>` (errors on NA).
+impl TryFromSexp for Vec<Rboolean> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        slice
+            .iter()
+            .map(|&v| {
+                let raw = RLogical::from_i32(v);
+                match raw.to_option_bool() {
+                    Some(false) => Ok(Rboolean::FALSE),
+                    Some(true) => Ok(Rboolean::TRUE),
+                    None => Err(SexpNaError {
+                        sexp_type: SEXPTYPE::LGLSXP,
+                    }
+                    .into()),
+                }
+            })
+            .collect()
+    }
+}
+
+/// Convert R logical vector (LGLSXP) to `Vec<Option<Rboolean>>` with NA support.
+impl TryFromSexp for Vec<Option<Rboolean>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| match RLogical::from_i32(v).to_option_bool() {
+                Some(false) => Some(Rboolean::FALSE),
+                Some(true) => Some(Rboolean::TRUE),
+                None => None,
+            })
+            .collect())
+    }
+}
+
+/// Convert R logical vector (LGLSXP) to `Vec<Option<RLogical>>` with NA support.
+impl TryFromSexp for Vec<Option<RLogical>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice
+            .iter()
+            .map(|&v| {
+                let raw = RLogical::from_i32(v);
+                if raw.is_na() {
+                    None
+                } else {
+                    Some(raw)
+                }
+            })
             .collect())
     }
 }
@@ -1040,16 +2508,125 @@ impl TryFromSexp for Vec<Option<String>> {
     }
 }
 
+/// Convert R raw vector (RAWSXP) to `Vec<Option<u8>>`.
+impl TryFromSexp for Vec<Option<u8>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::RAWSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::RAWSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let ptr = unsafe { crate::ffi::RAW(sexp) };
+        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+
+        Ok(slice.iter().map(|&v| Some(v)).collect())
+    }
+}
+
+#[inline]
+fn try_from_sexp_numeric_option_vec<T>(sexp: SEXP) -> Result<Vec<Option<T>>, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let slice: &[i32] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .map(|&v| {
+                    if v == crate::altrep_traits::NA_INTEGER {
+                        Ok(None)
+                    } else {
+                        coerce_value(v).map(Some)
+                    }
+                })
+                .collect()
+        }
+        SEXPTYPE::REALSXP => {
+            let slice: &[f64] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .map(|&v| {
+                    if is_na_real(v) {
+                        Ok(None)
+                    } else {
+                        coerce_value(v).map(Some)
+                    }
+                })
+                .collect()
+        }
+        SEXPTYPE::RAWSXP => {
+            let slice: &[u8] = unsafe { sexp.as_slice() };
+            slice.iter().map(|&v| coerce_value(v).map(Some)).collect()
+        }
+        SEXPTYPE::LGLSXP => {
+            let slice: &[RLogical] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .map(|&v| {
+                    if v.is_na() {
+                        Ok(None)
+                    } else {
+                        coerce_value(v.to_i32()).map(Some)
+                    }
+                })
+                .collect()
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
+macro_rules! impl_vec_option_try_from_sexp_numeric {
+    ($t:ty) => {
+        impl TryFromSexp for Vec<Option<$t>> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                try_from_sexp_numeric_option_vec(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                try_from_sexp_numeric_option_vec(sexp)
+            }
+        }
+    };
+}
+
+impl_vec_option_try_from_sexp_numeric!(i8);
+impl_vec_option_try_from_sexp_numeric!(i16);
+impl_vec_option_try_from_sexp_numeric!(u16);
+impl_vec_option_try_from_sexp_numeric!(u32);
+impl_vec_option_try_from_sexp_numeric!(i64);
+impl_vec_option_try_from_sexp_numeric!(u64);
+impl_vec_option_try_from_sexp_numeric!(isize);
+impl_vec_option_try_from_sexp_numeric!(usize);
+impl_vec_option_try_from_sexp_numeric!(f32);
+
 // =============================================================================
 // Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
 // =============================================================================
 
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
-use std::hash::Hash;
 
 /// Convert R named list (VECSXP) to HashMap<String, V>.
 ///
-/// See [`named_list_to_map`] for NA/empty name handling (elements with NA/empty
+/// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
 /// names map to key `""` and may silently overwrite each other).
 impl<V: TryFromSexp> TryFromSexp for HashMap<String, V>
 where
@@ -1064,7 +2641,7 @@ where
 
 /// Convert R named list (VECSXP) to BTreeMap<String, V>.
 ///
-/// See [`named_list_to_map`] for NA/empty name handling (elements with NA/empty
+/// See `named_list_to_map` for NA/empty name handling (elements with NA/empty
 /// names map to key `""` and may silently overwrite each other).
 impl<V: TryFromSexp> TryFromSexp for BTreeMap<String, V>
 where
@@ -1180,46 +2757,43 @@ where
     Ok(map)
 }
 
-/// Convert R vector to `HashSet<T>`.
-impl<T> TryFromSexp for HashSet<T>
-where
-    T: RNativeType + Eq + Hash,
-{
-    type Error = SexpTypeError;
+macro_rules! impl_set_try_from_sexp_native {
+    ($set:ident<$t:ty>) => {
+        impl TryFromSexp for $set<$t> {
+            type Error = SexpTypeError;
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(slice.iter().copied().collect())
-    }
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(slice.iter().copied().collect())
+            }
+        }
+    };
 }
 
-/// Convert R vector to `BTreeSet<T>`.
-impl<T> TryFromSexp for BTreeSet<T>
-where
-    T: RNativeType + Ord,
-{
-    type Error = SexpTypeError;
+impl_set_try_from_sexp_native!(HashSet<i32>);
+impl_set_try_from_sexp_native!(HashSet<u8>);
+impl_set_try_from_sexp_native!(HashSet<RLogical>);
+impl_set_try_from_sexp_native!(BTreeSet<i32>);
+impl_set_try_from_sexp_native!(BTreeSet<u8>);
 
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(slice.iter().copied().collect())
-    }
+macro_rules! impl_vec_try_from_sexp_native {
+    ($t:ty) => {
+        impl TryFromSexp for Vec<$t> {
+            type Error = SexpTypeError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(slice.to_vec())
+            }
+        }
+    };
 }
 
-/// Convert R vector to `Vec<T>` for native R types.
-///
-/// This creates an owned copy of the R vector data.
-impl<T> TryFromSexp for Vec<T>
-where
-    T: RNativeType + Copy,
-{
-    type Error = SexpTypeError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(slice.to_vec())
-    }
-}
+impl_vec_try_from_sexp_native!(i32);
+impl_vec_try_from_sexp_native!(f64);
+impl_vec_try_from_sexp_native!(u8);
+impl_vec_try_from_sexp_native!(RLogical);
+impl_vec_try_from_sexp_native!(crate::ffi::Rcomplex);
 
 /// Convert R character vector to `Vec<String>`.
 ///
@@ -1279,6 +2853,80 @@ impl TryFromSexp for Vec<String> {
     }
 }
 
+/// Convert R character vector to `Vec<&str>`.
+///
+/// **Warning:** `NA_character_` values are converted to empty string `""`.
+impl TryFromSexp for Vec<&'static str> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::STRING_ELT;
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            if charsxp == unsafe { crate::ffi::R_NaString } {
+                result.push("");
+                continue;
+            }
+            if charsxp == unsafe { crate::ffi::R_BlankString } {
+                result.push("");
+                continue;
+            }
+            result.push(unsafe { charsxp_to_str(charsxp) });
+        }
+
+        Ok(result)
+    }
+}
+
+/// Convert R character vector to `Vec<Option<&str>>`.
+impl TryFromSexp for Vec<Option<&'static str>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::STRING_ELT;
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::STRSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::STRSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        let mut result = Vec::with_capacity(len);
+
+        for i in 0..len {
+            let charsxp = unsafe { STRING_ELT(sexp, i as crate::ffi::R_xlen_t) };
+            if charsxp == unsafe { crate::ffi::R_NaString } {
+                result.push(None);
+                continue;
+            }
+            if charsxp == unsafe { crate::ffi::R_BlankString } {
+                result.push(Some(""));
+                continue;
+            }
+            result.push(Some(unsafe { charsxp_to_str(charsxp) }));
+        }
+
+        Ok(result)
+    }
+}
+
 /// Convert R character vector to `HashSet<String>`.
 impl TryFromSexp for HashSet<String> {
     type Error = SexpError;
@@ -1303,7 +2951,7 @@ impl TryFromSexp for BTreeSet<String> {
 // Coerced wrapper - bridge between TryFromSexp and TryCoerce
 // =============================================================================
 
-use crate::coerce::{Coerced, TryCoerce};
+use crate::coerce::Coerced;
 
 /// Convert R value to `Coerced<T, R>` by reading `R` and coercing to `T`.
 ///
@@ -1371,153 +3019,193 @@ where
         .collect()
 }
 
-/// Implement `TryFromSexp for Vec<$target>` by reading R's native `$source` type and coercing.
-macro_rules! impl_vec_try_from_sexp_coerce {
-    ($source:ty => $target:ty) => {
+/// Convert numeric/logical/raw vectors to `Vec<T>` with element-wise coercion.
+#[inline]
+fn try_from_sexp_numeric_vec<T>(sexp: SEXP) -> Result<Vec<T>, SexpError>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let slice: &[i32] = unsafe { sexp.as_slice() };
+            coerce_slice_to_vec(slice)
+        }
+        SEXPTYPE::REALSXP => {
+            let slice: &[f64] = unsafe { sexp.as_slice() };
+            coerce_slice_to_vec(slice)
+        }
+        SEXPTYPE::RAWSXP => {
+            let slice: &[u8] = unsafe { sexp.as_slice() };
+            coerce_slice_to_vec(slice)
+        }
+        SEXPTYPE::LGLSXP => {
+            let slice: &[RLogical] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .map(|v| coerce_value(v.to_i32()))
+                .collect()
+        }
+        _ => Err(SexpError::InvalidValue(format!(
+            "expected integer, numeric, logical, or raw; got {:?}",
+            actual
+        ))),
+    }
+}
+
+/// Implement `TryFromSexp for Vec<$target>` by coercing from integer/real/logical/raw.
+macro_rules! impl_vec_try_from_sexp_numeric {
+    ($target:ty) => {
         impl TryFromSexp for Vec<$target> {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$source as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$source as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let slice: &[$source] = unsafe { sexp.as_slice() };
-                coerce_slice_to_vec(slice)
+                try_from_sexp_numeric_vec(sexp)
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                Self::try_from_sexp(sexp)
+                try_from_sexp_numeric_vec(sexp)
             }
         }
     };
 }
 
-// Integer coercions: R integer (i32) -> various Rust integer types
-impl_vec_try_from_sexp_coerce!(i32 => i8);
-impl_vec_try_from_sexp_coerce!(i32 => i16);
-impl_vec_try_from_sexp_coerce!(i32 => i64);
-impl_vec_try_from_sexp_coerce!(i32 => isize);
-impl_vec_try_from_sexp_coerce!(i32 => u16);
-impl_vec_try_from_sexp_coerce!(i32 => u32);
-impl_vec_try_from_sexp_coerce!(i32 => u64);
-impl_vec_try_from_sexp_coerce!(i32 => usize);
+impl_vec_try_from_sexp_numeric!(i8);
+impl_vec_try_from_sexp_numeric!(i16);
+impl_vec_try_from_sexp_numeric!(i64);
+impl_vec_try_from_sexp_numeric!(isize);
+impl_vec_try_from_sexp_numeric!(u16);
+impl_vec_try_from_sexp_numeric!(u32);
+impl_vec_try_from_sexp_numeric!(u64);
+impl_vec_try_from_sexp_numeric!(usize);
+impl_vec_try_from_sexp_numeric!(f32);
 
-// Float coercions: R numeric (f64) -> f32
-impl_vec_try_from_sexp_coerce!(f64 => f32);
+/// Convert R logical vector (LGLSXP) to `Vec<bool>` (errors on NA).
+impl TryFromSexp for Vec<bool> {
+    type Error = SexpError;
 
-// Logical coercions: R logical (RLogical) -> bool
-impl_vec_try_from_sexp_coerce!(RLogical => bool);
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::LGLSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::LGLSXP,
+                actual,
+            }
+            .into());
+        }
+        let slice: &[RLogical] = unsafe { sexp.as_slice() };
+        coerce_slice_to_vec(slice)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
 
 // =============================================================================
 // Direct HashSet coercion conversions
 // =============================================================================
 
-/// Implement `TryFromSexp for HashSet<$target>` by reading R's native `$source` type and coercing.
-macro_rules! impl_hashset_try_from_sexp_coerce {
-    ($source:ty => $target:ty) => {
+/// Convert numeric/logical/raw vectors to a set type with element-wise coercion.
+#[inline]
+fn try_from_sexp_numeric_set<T, S>(sexp: SEXP) -> Result<S, SexpError>
+where
+    S: std::iter::FromIterator<T>,
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    u8: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <u8 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let vec = try_from_sexp_numeric_vec(sexp)?;
+    Ok(vec.into_iter().collect())
+}
+
+macro_rules! impl_hashset_try_from_sexp_numeric {
+    ($target:ty) => {
         impl TryFromSexp for HashSet<$target> {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$source as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$source as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let slice: &[$source] = unsafe { sexp.as_slice() };
-                slice
-                    .iter()
-                    .copied()
-                    .map(|v| {
-                        v.try_coerce()
-                            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
-                    })
-                    .collect()
+                try_from_sexp_numeric_set(sexp)
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                Self::try_from_sexp(sexp)
+                try_from_sexp_numeric_set(sexp)
             }
         }
     };
 }
 
-// Integer coercions: R integer (i32) -> various Rust integer types
-impl_hashset_try_from_sexp_coerce!(i32 => i8);
-impl_hashset_try_from_sexp_coerce!(i32 => i16);
-impl_hashset_try_from_sexp_coerce!(i32 => i64);
-impl_hashset_try_from_sexp_coerce!(i32 => isize);
-impl_hashset_try_from_sexp_coerce!(i32 => u16);
-impl_hashset_try_from_sexp_coerce!(i32 => u32);
-impl_hashset_try_from_sexp_coerce!(i32 => u64);
-impl_hashset_try_from_sexp_coerce!(i32 => usize);
+impl_hashset_try_from_sexp_numeric!(i8);
+impl_hashset_try_from_sexp_numeric!(i16);
+impl_hashset_try_from_sexp_numeric!(i64);
+impl_hashset_try_from_sexp_numeric!(isize);
+impl_hashset_try_from_sexp_numeric!(u16);
+impl_hashset_try_from_sexp_numeric!(u32);
+impl_hashset_try_from_sexp_numeric!(u64);
+impl_hashset_try_from_sexp_numeric!(usize);
 
-// Float coercions: R numeric (f64) -> f32
-// Note: f32 doesn't implement Hash, so no HashSet<f32>
+impl TryFromSexp for HashSet<bool> {
+    type Error = SexpError;
 
-// Logical coercions: R logical (RLogical) -> bool
-impl_hashset_try_from_sexp_coerce!(RLogical => bool);
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
 
 // =============================================================================
 // Direct BTreeSet coercion conversions
 // =============================================================================
 
-/// Implement `TryFromSexp for BTreeSet<$target>` by reading R's native `$source` type and coercing.
-macro_rules! impl_btreeset_try_from_sexp_coerce {
-    ($source:ty => $target:ty) => {
+macro_rules! impl_btreeset_try_from_sexp_numeric {
+    ($target:ty) => {
         impl TryFromSexp for BTreeSet<$target> {
             type Error = SexpError;
 
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$source as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$source as RNativeType>::SEXP_TYPE,
-                        actual,
-                    }
-                    .into());
-                }
-                let slice: &[$source] = unsafe { sexp.as_slice() };
-                slice
-                    .iter()
-                    .copied()
-                    .map(|v| {
-                        v.try_coerce()
-                            .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
-                    })
-                    .collect()
+                try_from_sexp_numeric_set(sexp)
             }
 
             unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                Self::try_from_sexp(sexp)
+                try_from_sexp_numeric_set(sexp)
             }
         }
     };
 }
 
-// Integer coercions: R integer (i32) -> various Rust integer types
-impl_btreeset_try_from_sexp_coerce!(i32 => i8);
-impl_btreeset_try_from_sexp_coerce!(i32 => i16);
-impl_btreeset_try_from_sexp_coerce!(i32 => i64);
-impl_btreeset_try_from_sexp_coerce!(i32 => isize);
-impl_btreeset_try_from_sexp_coerce!(i32 => u16);
-impl_btreeset_try_from_sexp_coerce!(i32 => u32);
-impl_btreeset_try_from_sexp_coerce!(i32 => u64);
-impl_btreeset_try_from_sexp_coerce!(i32 => usize);
+impl_btreeset_try_from_sexp_numeric!(i8);
+impl_btreeset_try_from_sexp_numeric!(i16);
+impl_btreeset_try_from_sexp_numeric!(i64);
+impl_btreeset_try_from_sexp_numeric!(isize);
+impl_btreeset_try_from_sexp_numeric!(u16);
+impl_btreeset_try_from_sexp_numeric!(u32);
+impl_btreeset_try_from_sexp_numeric!(u64);
+impl_btreeset_try_from_sexp_numeric!(usize);
 
-// Float coercions: R numeric (f64) -> f32
-// Note: f32 doesn't implement Ord (only PartialOrd due to NaN), so no BTreeSet<f32>
+impl TryFromSexp for BTreeSet<bool> {
+    type Error = SexpError;
 
-// Logical coercions: R logical (RLogical) -> bool
-impl_btreeset_try_from_sexp_coerce!(RLogical => bool);
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<bool> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
 
 // =============================================================================
 // ExternalPtr conversions
@@ -1585,4 +3273,184 @@ impl<T: TypedExternal + Send> TryFromSexp for ExternalPtr<T> {
             )
         })
     }
+}
+
+impl<T: TypedExternal + Send> TryFromSexp for Option<ExternalPtr<T>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let ptr: ExternalPtr<T> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Some(ptr))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let ptr: ExternalPtr<T> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Some(ptr))
+    }
+}
+
+// =============================================================================
+// Helper macros for feature-gated modules
+// =============================================================================
+
+/// Implement `TryFromSexp for Option<T>` where T already implements TryFromSexp.
+///
+/// NULL → None, otherwise delegates to T::try_from_sexp and wraps in Some.
+#[macro_export]
+macro_rules! impl_option_try_from_sexp {
+    ($t:ty) => {
+        impl $crate::from_r::TryFromSexp for Option<$t> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
+                use $crate::ffi::{SexpExt, SEXPTYPE};
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                <$t as $crate::from_r::TryFromSexp>::try_from_sexp(sexp).map(Some)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
+                use $crate::ffi::{SexpExt, SEXPTYPE};
+                if sexp.type_of() == SEXPTYPE::NILSXP {
+                    return Ok(None);
+                }
+                unsafe {
+                    <$t as $crate::from_r::TryFromSexp>::try_from_sexp_unchecked(sexp).map(Some)
+                }
+            }
+        }
+    };
+}
+
+/// Implement `TryFromSexp for Vec<T>` from R list (VECSXP).
+///
+/// Each element is converted via T::try_from_sexp.
+#[macro_export]
+macro_rules! impl_vec_try_from_sexp_list {
+    ($t:ty) => {
+        impl $crate::from_r::TryFromSexp for Vec<$t> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
+                use $crate::ffi::{SexpExt, SEXPTYPE, VECTOR_ELT};
+                use $crate::from_r::SexpTypeError;
+
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut result = Vec::with_capacity(len);
+                for i in 0..len {
+                    let elem = unsafe { VECTOR_ELT(sexp, i as $crate::ffi::R_xlen_t) };
+                    result.push(<$t as $crate::from_r::TryFromSexp>::try_from_sexp(elem)?);
+                }
+                Ok(result)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
+                use $crate::ffi::{SexpExt, SEXPTYPE, VECTOR_ELT_unchecked};
+                use $crate::from_r::SexpTypeError;
+
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = unsafe { sexp.len_unchecked() };
+                let mut result = Vec::with_capacity(len);
+                for i in 0..len {
+                    let elem = unsafe { VECTOR_ELT_unchecked(sexp, i as $crate::ffi::R_xlen_t) };
+                    result.push(unsafe {
+                        <$t as $crate::from_r::TryFromSexp>::try_from_sexp_unchecked(elem)?
+                    });
+                }
+                Ok(result)
+            }
+        }
+    };
+}
+
+/// Implement `TryFromSexp for Vec<Option<T>>` from R list (VECSXP).
+///
+/// NULL elements become None, others are converted via T::try_from_sexp.
+#[macro_export]
+macro_rules! impl_vec_option_try_from_sexp_list {
+    ($t:ty) => {
+        impl $crate::from_r::TryFromSexp for Vec<Option<$t>> {
+            type Error = $crate::from_r::SexpError;
+
+            fn try_from_sexp(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
+                use $crate::ffi::{SexpExt, SEXPTYPE, VECTOR_ELT};
+                use $crate::from_r::SexpTypeError;
+
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = sexp.len();
+                let mut result = Vec::with_capacity(len);
+                for i in 0..len {
+                    let elem = unsafe { VECTOR_ELT(sexp, i as $crate::ffi::R_xlen_t) };
+                    if elem == unsafe { $crate::ffi::R_NilValue } {
+                        result.push(None);
+                    } else {
+                        result.push(Some(
+                            <$t as $crate::from_r::TryFromSexp>::try_from_sexp(elem)?,
+                        ));
+                    }
+                }
+                Ok(result)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: $crate::ffi::SEXP) -> Result<Self, Self::Error> {
+                use $crate::ffi::{SexpExt, SEXPTYPE, VECTOR_ELT_unchecked};
+                use $crate::from_r::SexpTypeError;
+
+                let actual = sexp.type_of();
+                if actual != SEXPTYPE::VECSXP {
+                    return Err(SexpTypeError {
+                        expected: SEXPTYPE::VECSXP,
+                        actual,
+                    }
+                    .into());
+                }
+
+                let len = unsafe { sexp.len_unchecked() };
+                let mut result = Vec::with_capacity(len);
+                for i in 0..len {
+                    let elem = unsafe { VECTOR_ELT_unchecked(sexp, i as $crate::ffi::R_xlen_t) };
+                    if elem == unsafe { $crate::ffi::R_NilValue } {
+                        result.push(None);
+                    } else {
+                        result.push(Some(unsafe {
+                            <$t as $crate::from_r::TryFromSexp>::try_from_sexp_unchecked(elem)?
+                        }));
+                    }
+                }
+                Ok(result)
+            }
+        }
+    };
 }

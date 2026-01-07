@@ -114,61 +114,347 @@ use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
 
 // =============================================================================
-// Array0 conversions (0-dimensional scalar arrays)
+// R-native Array<T> conversions (explicit)
 // =============================================================================
 
-/// Convert R scalar to `Array0<T>`.
-///
-/// R scalars (length-1 vectors) map to 0-dimensional ndarray scalars.
-impl<T: RNativeType + Clone> TryFromSexp for Array0<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
+fn array0_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array0<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
         }
-
-        let len = sexp.len();
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-        Ok(Array0::from_elem((), slice[0]))
+        .into());
     }
 
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
+    let len = sexp.len();
+    if len != 1 {
+        return Err(SexpLengthError {
+            expected: 1,
+            actual: len,
         }
-
-        let len = unsafe { sexp.len_unchecked() };
-        if len != 1 {
-            return Err(SexpLengthError {
-                expected: 1,
-                actual: len,
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice_unchecked() };
-        Ok(Array0::from_elem((), slice[0]))
+        .into());
     }
+
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Ok(Array0::from_elem((), slice[0]))
 }
+
+fn array1_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array1<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Ok(Array1::from_vec(slice.to_vec()))
+}
+
+fn array2_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array2<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let (nrow, ncol) = get_matrix_dims(sexp)?;
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Array2::from_shape_vec((nrow, ncol).f(), slice.to_vec()).map_err(|_| {
+        SexpLengthError {
+            expected: nrow * ncol,
+            actual: slice.len(),
+        }
+        .into()
+    })
+}
+
+fn array3_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array3<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let (d0, d1, d2) = get_array3_dims(sexp)?;
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Array3::from_shape_vec((d0, d1, d2).f(), slice.to_vec()).map_err(|_| {
+        SexpLengthError {
+            expected: d0 * d1 * d2,
+            actual: slice.len(),
+        }
+        .into()
+    })
+}
+
+fn array4_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array4<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let dims = get_array_dims(sexp).ok_or(SexpLengthError {
+        expected: 4,
+        actual: 1,
+    })?;
+    if dims.len() != 4 {
+        return Err(SexpLengthError {
+            expected: 4,
+            actual: dims.len(),
+        }
+        .into());
+    }
+
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec()).map_err(
+        |_| SexpLengthError {
+            expected: dims.iter().product(),
+            actual: slice.len(),
+        }
+        .into(),
+    )
+}
+
+fn array5_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array5<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let dims = get_array_dims(sexp).ok_or(SexpLengthError {
+        expected: 5,
+        actual: 1,
+    })?;
+    if dims.len() != 5 {
+        return Err(SexpLengthError {
+            expected: 5,
+            actual: dims.len(),
+        }
+        .into());
+    }
+
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Array5::from_shape_vec(
+        (dims[0], dims[1], dims[2], dims[3], dims[4]).f(),
+        slice.to_vec(),
+    )
+    .map_err(|_| SexpLengthError {
+        expected: dims.iter().product(),
+        actual: slice.len(),
+    }
+    .into())
+}
+
+fn array6_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array6<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let dims = get_array_dims(sexp).ok_or(SexpLengthError {
+        expected: 6,
+        actual: 1,
+    })?;
+    if dims.len() != 6 {
+        return Err(SexpLengthError {
+            expected: 6,
+            actual: dims.len(),
+        }
+        .into());
+    }
+
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Array6::from_shape_vec(
+        (dims[0], dims[1], dims[2], dims[3], dims[4], dims[5]).f(),
+        slice.to_vec(),
+    )
+    .map_err(|_| SexpLengthError {
+        expected: dims.iter().product(),
+        actual: slice.len(),
+    }
+    .into())
+}
+
+fn arrayd_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<ArrayD<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let dims = get_array_dims(sexp).unwrap_or_else(|| vec![sexp.len()]);
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    let shape = IxDyn(&dims);
+    ArrayD::from_shape_vec(shape.f(), slice.to_vec()).map_err(|_| {
+        SexpLengthError {
+            expected: dims.iter().product(),
+            actual: slice.len(),
+        }
+        .into()
+    })
+}
+
+macro_rules! impl_array_try_from_sexp_native {
+    ($t:ty) => {
+        impl TryFromSexp for Array0<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array0_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array0_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for Array1<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array1_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array1_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for Array2<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array2_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array2_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for Array3<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array3_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array3_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for Array4<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array4_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array4_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for Array5<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array5_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array5_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for Array6<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                array6_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                array6_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for ArrayD<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                arrayd_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                arrayd_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for ArcArray1<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let arr: Array1<$t> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(arr.into_shared())
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let arr: Array1<$t> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(arr.into_shared())
+            }
+        }
+
+        impl TryFromSexp for ArcArray2<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                let arr: Array2<$t> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(arr.into_shared())
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                let arr: Array2<$t> = TryFromSexp::try_from_sexp(sexp)?;
+                Ok(arr.into_shared())
+            }
+        }
+    };
+}
+
+impl_array_try_from_sexp_native!(i32);
+impl_array_try_from_sexp_native!(f64);
+impl_array_try_from_sexp_native!(u8);
+impl_array_try_from_sexp_native!(RLogical);
+impl_array_try_from_sexp_native!(crate::ffi::Rcomplex);
+
+// =============================================================================
+// Array0 conversions (0-dimensional scalar arrays)
+// =============================================================================
 
 /// Convert `Array0<T>` to R scalar (length-1 vector).
 impl<T: RNativeType + Clone> IntoR for Array0<T> {
@@ -185,39 +471,6 @@ impl<T: RNativeType + Clone> IntoR for Array0<T> {
 // =============================================================================
 // Array1 conversions
 // =============================================================================
-
-/// Convert R vector to `Array1<T>`.
-impl<T: RNativeType + Clone> TryFromSexp for Array1<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-        Ok(Array1::from_vec(slice.to_vec()))
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice_unchecked() };
-        Ok(Array1::from_vec(slice.to_vec()))
-    }
-}
 
 /// Convert `Array1<T>` to R vector.
 impl<T: RNativeType> IntoR for Array1<T> {
@@ -566,47 +819,6 @@ impl_all_arrays_try_from_sexp_coerce!(crate::ffi::RLogical => bool);
 // Array2 conversions
 // =============================================================================
 
-/// Convert R matrix to `Array2<T>`.
-///
-/// R stores matrices in column-major order. This function reads the data
-/// and creates an ndarray with the correct shape.
-impl<T: RNativeType + Clone> TryFromSexp for Array2<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        // Get dimensions
-        let dims = get_matrix_dims(sexp)?;
-        let (nrow, ncol) = dims;
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-
-        // R stores in column-major order, so we create in Fortran order
-        // then can optionally convert to standard order
-        let arr = Array2::from_shape_vec((nrow, ncol).f(), slice.to_vec()).map_err(|_| {
-            SexpLengthError {
-                expected: nrow * ncol,
-                actual: slice.len(),
-            }
-        })?;
-
-        Ok(arr)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Type check is still needed for safety
-        Self::try_from_sexp(sexp)
-    }
-}
-
 /// Convert `Array2<T>` to R matrix.
 ///
 /// Creates a column-major R matrix from the ndarray.
@@ -642,42 +854,6 @@ impl<T: RNativeType + Clone> IntoR for Array2<T> {
 // =============================================================================
 // Array3 conversions (3D arrays)
 // =============================================================================
-
-/// Convert R 3D array to `Array3<T>`.
-///
-/// R stores arrays in column-major order. This function reads the data
-/// and creates an ndarray with Fortran layout matching R.
-impl<T: RNativeType + Clone> TryFromSexp for Array3<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let (d0, d1, d2) = get_array3_dims(sexp)?;
-        let slice: &[T] = unsafe { sexp.as_slice() };
-
-        // R stores in column-major order, so we create in Fortran order
-        let arr = Array3::from_shape_vec((d0, d1, d2).f(), slice.to_vec()).map_err(|_| {
-            SexpLengthError {
-                expected: d0 * d1 * d2,
-                actual: slice.len(),
-            }
-        })?;
-
-        Ok(arr)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
 
 /// Convert `Array3<T>` to R 3D array.
 ///
@@ -728,47 +904,6 @@ impl<T: RNativeType + Clone> IntoR for Array3<T> {
 // Array4 conversions (4D arrays)
 // =============================================================================
 
-/// Convert R 4D array to `Array4<T>`.
-impl<T: RNativeType + Clone> TryFromSexp for Array4<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let dims = get_array_dims(sexp).ok_or(SexpLengthError {
-            expected: 4,
-            actual: 1,
-        })?;
-        if dims.len() != 4 {
-            return Err(SexpLengthError {
-                expected: 4,
-                actual: dims.len(),
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-        let arr = Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec())
-            .map_err(|_| SexpLengthError {
-                expected: dims.iter().product(),
-                actual: slice.len(),
-            })?;
-
-        Ok(arr)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
-
 /// Convert `Array4<T>` to R 4D array.
 impl<T: RNativeType + Clone> IntoR for Array4<T> {
     fn into_sexp(self) -> SEXP {
@@ -811,50 +946,6 @@ impl<T: RNativeType + Clone> IntoR for Array4<T> {
 // Array5 conversions (5D arrays)
 // =============================================================================
 
-/// Convert R 5D array to `Array5<T>`.
-impl<T: RNativeType + Clone> TryFromSexp for Array5<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let dims = get_array_dims(sexp).ok_or(SexpLengthError {
-            expected: 5,
-            actual: 1,
-        })?;
-        if dims.len() != 5 {
-            return Err(SexpLengthError {
-                expected: 5,
-                actual: dims.len(),
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-        let arr = Array5::from_shape_vec(
-            (dims[0], dims[1], dims[2], dims[3], dims[4]).f(),
-            slice.to_vec(),
-        )
-        .map_err(|_| SexpLengthError {
-            expected: dims.iter().product(),
-            actual: slice.len(),
-        })?;
-
-        Ok(arr)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
-
 /// Convert `Array5<T>` to R 5D array.
 impl<T: RNativeType + Clone> IntoR for Array5<T> {
     fn into_sexp(self) -> SEXP {
@@ -896,50 +987,6 @@ impl<T: RNativeType + Clone> IntoR for Array5<T> {
 // Array6 conversions (6D arrays)
 // =============================================================================
 
-/// Convert R 6D array to `Array6<T>`.
-impl<T: RNativeType + Clone> TryFromSexp for Array6<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let dims = get_array_dims(sexp).ok_or(SexpLengthError {
-            expected: 6,
-            actual: 1,
-        })?;
-        if dims.len() != 6 {
-            return Err(SexpLengthError {
-                expected: 6,
-                actual: dims.len(),
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-        let arr = Array6::from_shape_vec(
-            (dims[0], dims[1], dims[2], dims[3], dims[4], dims[5]).f(),
-            slice.to_vec(),
-        )
-        .map_err(|_| SexpLengthError {
-            expected: dims.iter().product(),
-            actual: slice.len(),
-        })?;
-
-        Ok(arr)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
-
 /// Convert `Array6<T>` to R 6D array.
 impl<T: RNativeType + Clone> IntoR for Array6<T> {
     fn into_sexp(self) -> SEXP {
@@ -980,42 +1027,6 @@ impl<T: RNativeType + Clone> IntoR for Array6<T> {
 // =============================================================================
 // ArrayD conversions (N-dimensional arrays)
 // =============================================================================
-
-/// Convert R N-dimensional array to `ArrayD<T>`.
-///
-/// This is the most flexible conversion, accepting arrays of any dimension.
-/// Plain vectors (no dim attribute) are treated as 1D arrays.
-impl<T: RNativeType + Clone> TryFromSexp for ArrayD<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let dims = get_array_dims(sexp).unwrap_or_else(|| vec![sexp.len()]);
-        let slice: &[T] = unsafe { sexp.as_slice() };
-
-        // R stores in column-major order, so we create in Fortran order
-        let shape = IxDyn(&dims);
-        let arr =
-            ArrayD::from_shape_vec(shape.f(), slice.to_vec()).map_err(|_| SexpLengthError {
-                expected: dims.iter().product(),
-                actual: slice.len(),
-            })?;
-
-        Ok(arr)
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        Self::try_from_sexp(sexp)
-    }
-}
 
 /// Convert `ArrayD<T>` to R N-dimensional array.
 ///
@@ -1104,24 +1115,6 @@ fn fortran_order_iter<F: FnMut(Vec<usize>)>(shape: &[usize], mut f: F) {
 // ArcArray conversions (shared ownership)
 // =============================================================================
 
-/// Convert R vector to `ArcArray1<T>`.
-///
-/// ArcArray provides shared ownership via Arc, allowing multiple references
-/// to the same array data without copying.
-impl<T: RNativeType + Clone> TryFromSexp for ArcArray1<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let arr: Array1<T> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(arr.into_shared())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let arr: Array1<T> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(arr.into_shared())
-    }
-}
-
 /// Convert `ArcArray1<T>` to R vector.
 impl<T: RNativeType + Clone> IntoR for ArcArray1<T> {
     fn into_sexp(self) -> SEXP {
@@ -1134,21 +1127,6 @@ impl<T: RNativeType + Clone> IntoR for ArcArray1<T> {
     unsafe fn into_sexp_unchecked(self) -> SEXP {
         let arr: Array1<T> = self.into_owned();
         unsafe { arr.into_sexp_unchecked() }
-    }
-}
-
-/// Convert R matrix to `ArcArray2<T>`.
-impl<T: RNativeType + Clone> TryFromSexp for ArcArray2<T> {
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let arr: Array2<T> = TryFromSexp::try_from_sexp(sexp)?;
-        Ok(arr.into_shared())
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let arr: Array2<T> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
-        Ok(arr.into_shared())
     }
 }
 

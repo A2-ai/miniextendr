@@ -61,51 +61,91 @@
 
 pub use nalgebra::{DMatrix, DVector};
 
-use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use nalgebra::Scalar;
 
 // =============================================================================
-// DVector conversions
+// R-native DVector/DMatrix conversions (explicit)
 // =============================================================================
 
-/// Convert R vector to `DVector<T>`.
-impl<T> TryFromSexp for DVector<T>
-where
-    T: RNativeType + Scalar + Clone,
-{
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
+fn dvector_from_sexp<T: RNativeType + Scalar + Copy>(sexp: SEXP) -> Result<DVector<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
         }
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-        Ok(DVector::from_column_slice(slice))
+        .into());
     }
 
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        let slice: &[T] = unsafe { sexp.as_slice_unchecked() };
-        Ok(DVector::from_column_slice(slice))
-    }
+    let slice: &[T] = unsafe { sexp.as_slice() };
+    Ok(DVector::from_column_slice(slice))
 }
+
+fn dmatrix_from_sexp<T: RNativeType + Scalar + Copy>(sexp: SEXP) -> Result<DMatrix<T>, SexpError> {
+    let actual = sexp.type_of();
+    if actual != T::SEXP_TYPE {
+        return Err(SexpTypeError {
+            expected: T::SEXP_TYPE,
+            actual,
+        }
+        .into());
+    }
+
+    let (nrow, ncol) = get_matrix_dims(sexp)?;
+    let slice: &[T] = unsafe { sexp.as_slice() };
+
+    if slice.len() != nrow * ncol {
+        return Err(SexpLengthError {
+            expected: nrow * ncol,
+            actual: slice.len(),
+        }
+        .into());
+    }
+
+    Ok(DMatrix::from_column_slice(nrow, ncol, slice))
+}
+
+macro_rules! impl_nalgebra_try_from_sexp_native {
+    ($t:ty) => {
+        impl TryFromSexp for DVector<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                dvector_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                dvector_from_sexp::<$t>(sexp)
+            }
+        }
+
+        impl TryFromSexp for DMatrix<$t> {
+            type Error = SexpError;
+
+            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+                dmatrix_from_sexp::<$t>(sexp)
+            }
+
+            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+                dmatrix_from_sexp::<$t>(sexp)
+            }
+        }
+    };
+}
+
+impl_nalgebra_try_from_sexp_native!(i32);
+impl_nalgebra_try_from_sexp_native!(f64);
+impl_nalgebra_try_from_sexp_native!(u8);
+impl_nalgebra_try_from_sexp_native!(RLogical);
+impl_nalgebra_try_from_sexp_native!(crate::ffi::Rcomplex);
+
+// =============================================================================
+// DVector conversions
+// =============================================================================
 
 /// Convert `DVector<T>` to R vector.
 impl<T: RNativeType + Scalar> IntoR for DVector<T> {
@@ -123,48 +163,6 @@ impl<T: RNativeType + Scalar> IntoR for DVector<T> {
 // =============================================================================
 // DMatrix conversions
 // =============================================================================
-
-/// Convert R matrix to `DMatrix<T>`.
-///
-/// Both R and nalgebra use column-major storage, so this is efficient.
-impl<T> TryFromSexp for DMatrix<T>
-where
-    T: RNativeType + Scalar + Clone,
-{
-    type Error = SexpError;
-
-    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-        let actual = sexp.type_of();
-        if actual != T::SEXP_TYPE {
-            return Err(SexpTypeError {
-                expected: T::SEXP_TYPE,
-                actual,
-            }
-            .into());
-        }
-
-        // Get dimensions
-        let (nrow, ncol) = get_matrix_dims(sexp)?;
-
-        let slice: &[T] = unsafe { sexp.as_slice() };
-
-        if slice.len() != nrow * ncol {
-            return Err(SexpLengthError {
-                expected: nrow * ncol,
-                actual: slice.len(),
-            }
-            .into());
-        }
-
-        // nalgebra uses column-major by default, same as R
-        Ok(DMatrix::from_column_slice(nrow, ncol, slice))
-    }
-
-    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-        // Type check is still needed
-        Self::try_from_sexp(sexp)
-    }
-}
 
 /// Convert `DMatrix<T>` to R matrix.
 ///

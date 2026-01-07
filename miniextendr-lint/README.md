@@ -2,7 +2,7 @@
 
 Internal build-time linter for the `miniextendr` workspace.
 
-This crate provides proc-macro helpers used by the workspace tooling and is not
+This crate provides proc-macro helpers used by workspace tooling and is not
 intended for external use as a standalone library.
 
 ## Usage
@@ -12,6 +12,9 @@ Typically invoked indirectly via workspace checks/tests:
 ```sh
 cargo test -p miniextendr-lint
 ```
+
+The build-script entrypoint is `miniextendr_lint::build_script()` and can be
+disabled by setting `MINIEXTENDR_LINT=0`.
 
 ## Publishing to CRAN
 

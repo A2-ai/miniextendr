@@ -1,41 +1,52 @@
-//! miniextendr-engine: R runtime initialization and embedding
+//! miniextendr-engine: standalone R embedding for Rust binaries and tests.
 //!
-//! This crate provides utilities for embedding the R runtime in Rust applications.
-//! It handles initialization, configuration, and lifecycle management of R.
+//! This crate centralizes `libR` linking (via `build.rs`), R initialization, and
+//! a minimal runtime handle for processing events and interrupts. It is intended
+//! for Rust-only executables and integration tests that embed R.
 //!
-//! ## Features
+//! **Not for R packages:** this crate uses non-API R internals
+//! (`Rembedded.h`, `Rinterface.h`). For R packages, depend on `miniextendr-api`
+//! and keep `nonapi` disabled.
 //!
-//! - Initialize R runtime with custom arguments
-//! - Configure R environment variables
-//! - Manage R event loop
-//! - Clean shutdown
+//! ## When to use
+//! - Rust binaries that embed R.
+//! - Integration tests or benchmarks that need full control over R startup.
+//!
+//! ## Quick start
+//!
+//! ```ignore
+//! // SAFETY: Must be called once, from the main thread.
+//! let engine = unsafe {
+//!     miniextendr_engine::REngine::build()
+//!         .with_args(&["R", "--quiet", "--vanilla"])
+//!         .init()
+//!         .expect("Failed to initialize R")
+//! };
+//!
+//! // ... use R APIs from the main thread ...
+//!
+//! std::mem::forget(engine); // optional: intentionally leak the handle
+//! ```
+//!
+//! ## Initialization details
+//! - Ensures `R_HOME` (via `R RHOME`) if missing.
+//! - Calls `Rf_initialize_R` directly to avoid double `setup_Rmainloop()`.
+//! - Calls `setup_Rmainloop()` exactly once after initialization.
+//!
+//! ## Runtime sentinel
+//!
+//! ```ignore
+//! if miniextendr_engine::r_initialized_sentinel() {
+//!     // R has been initialized in this process.
+//! }
+//! ```
 //!
 //! ## Safety
 //!
-//! This crate uses non-API R internals for runtime initialization. All functions
-//! are inherently unsafe as they manipulate global R state.
-//!
-//! ## Example
-//!
-//! ```ignore
-//! use miniextendr_engine::REngine;
-//!
-//! fn main() {
-//!     // SAFETY: Must be called once from main thread at startup.
-//!     let engine = unsafe {
-//!         REngine::build()
-//!             .with_args(&["R", "--quiet", "--vanilla"])
-//!             .init()
-//!             .expect("Failed to initialize R")
-//!     };
-//!
-//!     // Use R here...
-//!
-//!     // Note: No explicit shutdown needed. R cleanup is skipped intentionally
-//!     // because Rf_endEmbeddedR is not reentrant-safe. The OS reclaims resources
-//!     // when the process exits.
-//! }
-//! ```
+//! - Must only be initialized once per process.
+//! - Must be called from the main thread.
+//! - No shutdown: `Rf_endEmbeddedR` is intentionally not called because the
+//!   cleanup path is not reentrant-safe. The OS reclaims resources on exit.
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};

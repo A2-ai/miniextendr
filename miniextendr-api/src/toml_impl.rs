@@ -62,6 +62,7 @@ use crate::ffi::{
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
+use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
 
 // =============================================================================
@@ -152,6 +153,57 @@ impl TryFromSexp for TomlValue {
 }
 
 // =============================================================================
+// Option / Vec conversions
+// =============================================================================
+
+// Use macro for Option<TomlValue>
+impl_option_try_from_sexp!(TomlValue);
+
+// Vec conversions have custom logic (parse from Vec<String>, not VECSXP)
+impl TryFromSexp for Vec<TomlValue> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let strings: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+        strings
+            .into_iter()
+            .enumerate()
+            .map(|(i, opt)| {
+                let s = opt.ok_or_else(|| {
+                    SexpError::InvalidValue(format!(
+                        "NA at index {} not allowed for TOML parsing",
+                        i
+                    ))
+                })?;
+                toml_from_str(&s).map_err(|e| {
+                    SexpError::InvalidValue(format!("invalid TOML at index {}: {}", i, e))
+                })
+            })
+            .collect()
+    }
+}
+
+impl TryFromSexp for Vec<Option<TomlValue>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let strings: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+        strings
+            .into_iter()
+            .enumerate()
+            .map(|(i, opt)| match opt {
+                None => Ok(None),
+                Some(s) => toml_from_str(&s)
+                    .map(Some)
+                    .map_err(|e| {
+                        SexpError::InvalidValue(format!("invalid TOML at index {}: {}", i, e))
+                    }),
+            })
+            .collect()
+    }
+}
+
+// =============================================================================
 // IntoR for TomlValue
 // =============================================================================
 
@@ -167,6 +219,41 @@ impl IntoR for TomlValue {
     /// - Datetime -> character(1)
     fn into_sexp(self) -> SEXP {
         toml_value_to_sexp(&self)
+    }
+}
+
+impl IntoR for Option<TomlValue> {
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(value) => toml_value_to_sexp(&value),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+impl IntoR for Vec<TomlValue> {
+    fn into_sexp(self) -> SEXP {
+        let len = self.len();
+        let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
+        for (i, value) in self.iter().enumerate() {
+            unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, toml_value_to_sexp(value)) };
+        }
+        sexp.into_inner()
+    }
+}
+
+impl IntoR for Vec<Option<TomlValue>> {
+    fn into_sexp(self) -> SEXP {
+        let len = self.len();
+        let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
+        for (i, value) in self.iter().enumerate() {
+            let elem = match value {
+                Some(v) => toml_value_to_sexp(v),
+                None => unsafe { crate::ffi::R_NilValue },
+            };
+            unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, elem) };
+        }
+        sexp.into_inner()
     }
 }
 

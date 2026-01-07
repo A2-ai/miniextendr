@@ -1,12 +1,55 @@
-//! miniextendr-api: core runtime, FFI, ALTREP, and macros
+//! miniextendr-api: core runtime for Rust <-> R interop.
 //!
-//! Note: ALTREP trait methods receive raw SEXP pointers from R's runtime.
-//! These are safe to dereference because R guarantees valid SEXPs in ALTREP callbacks.
+//! This crate provides the FFI surface, safety wrappers, and macro re-exports
+//! used by most miniextendr users. It is the primary dependency for building
+//! Rust-powered R packages and exposing Rust types to R.
 //!
-//! # GC Protection Strategies
+//! At a glance:
+//! - FFI bindings + checked wrappers for R's C API (`ffi`, `r_ffi_checked`).
+//! - Conversions between Rust and R types (`IntoR`, `TryFromSexp`, `Coerce`).
+//! - ALTREP traits, registration helpers, and iterator-backed ALTREP data types.
+//! - Wrapper generation from Rust signatures (`#[miniextendr]`, `miniextendr_module!`).
+//! - Worker-thread pattern for panic isolation and `Drop` safety (`worker`).
+//! - Class system support (S3, S4, S7, R6, env-style impl blocks).
+//! - Cross-package trait ABI for type-erased dispatch (`trait_abi`).
+//!
+//! Most users should depend on this crate directly. For embedding R in
+//! standalone binaries or integration tests, see `miniextendr-engine`.
+//!
+//! ## Quick start
+//!
+//! ```ignore
+//! use miniextendr_api::miniextendr;
+//!
+//! #[miniextendr]
+//! fn add(a: i32, b: i32) -> i32 {
+//!     a + b
+//! }
+//! ```
+//!
+//! Register exports in your package/module:
+//!
+//! ```ignore
+//! use miniextendr_api::miniextendr_module;
+//!
+//! miniextendr_module! {
+//!     mod mypkg;
+//!     fn add;
+//! }
+//! ```
+//!
+//! ## R wrapper generation
+//!
+//! `#[miniextendr]` and `miniextendr_module!` generate C-ABI wrappers plus
+//! R functions that call `.Call(...)` using the original argument names.
+//! Wrapper R code is produced from Rust doc comments (roxygen tags are
+//! extracted) by the `document` binary and committed into
+//! `R/miniextendr_wrappers.R` so CRAN builds do not require codegen.
+//!
+//! ## GC protection and ownership
 //!
 //! R's garbage collector can reclaim any SEXP that isn't protected. miniextendr
-//! provides three complementary protection mechanisms for different scenarios:
+//! provides three complementary protection mechanisms:
 //!
 //! | Strategy | Module | Lifetime | Release Order | Use Case |
 //! |----------|--------|----------|---------------|----------|
@@ -14,9 +57,9 @@
 //! | **Preserve list** | [`preserve`] | Across `.Call`s | Any order | Long-lived R objects |
 //! | **R ownership** | [`ExternalPtr`](struct@ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
 //!
-//! ## Quick Guide
+//! Quick guide:
 //!
-//! **Temporary allocations during computation** → [`ProtectScope`]
+//! **Temporary allocations during computation** -> [`ProtectScope`]
 //! ```ignore
 //! unsafe fn compute(x: SEXP) -> SEXP {
 //!     let scope = ProtectScope::new();
@@ -26,7 +69,7 @@
 //! } // UNPROTECT(n) called automatically
 //! ```
 //!
-//! **R objects surviving across `.Call`s** → [`preserve`]
+//! **R objects surviving across `.Call`s** -> [`preserve`]
 //! ```ignore
 //! // In RAllocator or similar long-lived context
 //! let cell = unsafe { preserve::insert(backing_vec) };
@@ -34,7 +77,7 @@
 //! unsafe { preserve::release(cell) };
 //! ```
 //!
-//! **Rust data owned by R** → [`ExternalPtr`](struct@ExternalPtr)
+//! **Rust data owned by R** -> [`ExternalPtr`](struct@ExternalPtr)
 //! ```ignore
 //! #[miniextendr]
 //! fn create_model() -> ExternalPtr<MyModel> {
@@ -42,7 +85,31 @@
 //! } // R owns it; Drop runs when R GCs
 //! ```
 //!
-//! See each module's documentation for detailed usage and safety requirements.
+//! Note: ALTREP trait methods receive raw SEXP pointers from R's runtime.
+//! These are safe to dereference because R guarantees valid SEXPs in ALTREP callbacks.
+//!
+//! ## Threading and safety
+//!
+//! R uses `longjmp` for errors, which can bypass Rust destructors. The default
+//! pattern is to run Rust logic on a worker thread and marshal R API calls back
+//! to the main R thread via `with_r_thread`. Most FFI wrappers are
+//! main-thread routed via `#[r_ffi_checked]`. Use unchecked variants only when
+//! you have arranged a safe context.
+//!
+//! With the `nonapi` feature, miniextendr can disable R's stack checking to allow
+//! calls from other threads. R is still not thread-safe; serialize all R API use.
+//!
+//! ## Feature flags
+//!
+//! Core features:
+//! - `nonapi` - enable non-API R symbols (stack controls and mutable `DATAPTR`).
+//! - `rayon` - parallel helpers and Rayon integration.
+//! - `connections` - experimental R connection framework.
+//! - `indicatif` - progress bar integration via R console (requires `nonapi`).
+//!
+//! Optional type integrations are exposed through dedicated modules (for example,
+//! `ndarray`, `nalgebra`, `uuid`, `regex`, `serde`, and more). See each module's
+//! documentation and the crate README for the full list and examples.
 #![allow(clippy::not_unsafe_ptr_arg_deref)]
 
 // Procedural macros (re-exported from miniextendr-macros)
@@ -162,7 +229,7 @@ pub mod dots;
 pub mod list;
 pub mod typed_list;
 pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
-pub use list::{IntoList, List, TryFromList};
+pub use list::{IntoList, List, ListMut, TryFromList};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
     sexptype_name, validate_list,

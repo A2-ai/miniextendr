@@ -1,9 +1,32 @@
-//! # miniextendr-macros - Procedural Macros for R-Rust Interop
+//! # miniextendr-macros - Procedural macros for Rust <-> R interop
 //!
-//! This crate provides the procedural macros that power miniextendr's code generation.
-//! The primary macros are `#[miniextendr]` and `miniextendr_module!`.
+//! This crate provides the procedural macros that power miniextendr's code
+//! generation. Most users should depend on `miniextendr-api` and use its
+//! re-exports, but this crate can be used directly when you only need macros.
 //!
-//! ## Macro Expansion Pipeline
+//! Primary macros and derives:
+//! - `#[miniextendr]` on functions, impl blocks, trait defs, and trait impls.
+//! - `miniextendr_module!` for registration and wrapper aggregation.
+//! - `#[r_ffi_checked]` for main-thread routing of C-ABI wrappers.
+//! - Derives: `ExternalPtr`, `RNativeType`, ALTREP derives, `RFactor`.
+//! - Helpers: `typed_list` for typed list builders.
+//!
+//! R wrapper generation is driven by Rust doc comments (roxygen tags are
+//! extracted). The `document` binary collects these wrappers and writes
+//! `R/miniextendr_wrappers.R` during package build.
+//!
+//! ## Quick start
+//!
+//! ```ignore
+//! use miniextendr_api::miniextendr;
+//!
+//! #[miniextendr]
+//! fn add(a: i32, b: i32) -> i32 {
+//!     a + b
+//! }
+//! ```
+//!
+//! ## Macro expansion pipeline
 //!
 //! ### Overview
 //!
@@ -82,18 +105,18 @@
 //!
 //! | Module | Purpose |
 //! |--------|---------|
-//! | [`miniextendr_fn`] | Function parsing and attribute handling |
-//! | [`c_wrapper_builder`] | C wrapper generation (`extern "C-unwind"`) |
-//! | [`r_wrapper_builder`] | R wrapper code generation |
-//! | [`rust_conversion_builder`] | Rust→SEXP return value conversion |
-//! | [`miniextendr_impl`] | `impl Type` block processing |
-//! | [`r_class_formatter`] | Class system code generation (env/r6/s3/s4/s7) |
-//! | [`miniextendr_trait`] | Trait ABI metadata generation |
-//! | [`miniextendr_impl_trait`] | `impl Trait for Type` vtable generation |
-//! | [`miniextendr_module`] | Module macro parsing and codegen |
-//! | [`altrep`] / [`altrep_derive`] | ALTREP struct derivation |
-//! | [`externalptr_derive`] | `#[derive(ExternalPtr)]` |
-//! | [`roxygen`] | Roxygen doc comment handling |
+//! | `miniextendr_fn` | Function parsing and attribute handling |
+//! | `c_wrapper_builder` | C wrapper generation (`extern "C-unwind"`) |
+//! | `r_wrapper_builder` | R wrapper code generation |
+//! | `rust_conversion_builder` | Rust→SEXP return value conversion |
+//! | `miniextendr_impl` | `impl Type` block processing |
+//! | `r_class_formatter` | Class system code generation (env/r6/s3/s4/s7) |
+//! | `miniextendr_trait` | Trait ABI metadata generation |
+//! | `miniextendr_impl_trait` | `impl Trait for Type` vtable generation |
+//! | `miniextendr_module` | Module macro parsing and codegen |
+//! | `altrep` / `altrep_derive` | ALTREP struct derivation |
+//! | `externalptr_derive` | `#[derive(ExternalPtr)]` |
+//! | `roxygen` | Roxygen doc comment handling |
 //!
 //! ### Generated Symbol Naming
 //!
@@ -109,7 +132,7 @@
 //!
 //! ## Return Type Handling
 //!
-//! The [`return_type_analysis`] module determines how to convert Rust returns to SEXP:
+//! The `return_type_analysis` module determines how to convert Rust returns to SEXP:
 //!
 //! | Rust Type | Strategy | R Result |
 //! |-----------|----------|----------|
@@ -159,7 +182,7 @@
 //!
 //! ## Class Systems
 //!
-//! The [`r_class_formatter`] module generates R code for different class systems:
+//! The `r_class_formatter` module generates R code for different class systems:
 //!
 //! | System | Generated R Code | Self Parameter |
 //! |--------|------------------|----------------|
@@ -2295,10 +2318,10 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
         .into()
 }
 
-/// Create a [`TypedListSpec`] for validating `...` arguments or lists.
+/// Create a `TypedListSpec` for validating `...` arguments or lists.
 ///
 /// This macro provides ergonomic syntax for defining typed list specifications
-/// that can be used with [`Dots::typed()`] to validate the structure of
+/// that can be used with `Dots::typed()` to validate the structure of
 /// `...` arguments passed from R.
 ///
 /// # Syntax
@@ -2405,8 +2428,6 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 ///
 /// See the [`#[miniextendr]`](macro@miniextendr) attribute documentation for more details.
 ///
-/// [`TypedListSpec`]: miniextendr_api::typed_list::TypedListSpec
-/// [`Dots::typed()`]: miniextendr_api::dots::Dots::typed
 #[proc_macro]
 pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as typed_list::TypedListInput);

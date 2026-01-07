@@ -10,19 +10,19 @@
 //! | Derive Macro | Marker Trait |
 //! |--------------|--------------|
 //! | `#[derive(ExternalPtr)]` | [`IntoExternalPtr`](crate::externalptr::IntoExternalPtr) |
-//! | `#[derive(RNativeType)]` | [`IsRNativeType`] |
-//! | `#[derive(AltrepInteger)]` | [`IsAltrepIntegerData`] |
-//! | `#[derive(AltrepReal)]` | [`IsAltrepRealData`] |
-//! | `#[derive(AltrepLogical)]` | [`IsAltrepLogicalData`] |
-//! | `#[derive(AltrepRaw)]` | [`IsAltrepRawData`] |
-//! | `#[derive(AltrepString)]` | [`IsAltrepStringData`] |
-//! | `#[derive(AltrepComplex)]` | [`IsAltrepComplexData`] |
-//! | `#[derive(AltrepList)]` | [`IsAltrepListData`] |
-//! | `#[derive(IntoList)]` | [`IsIntoList`] |
-//! | `#[derive(PreferList)]` | [`PrefersList`] |
-//! | `#[derive(PreferExternalPtr)]` | [`PrefersExternalPtr`] |
-//! | `#[derive(PreferRNativeType)]` | [`PrefersRNativeType`] |
-//! | `#[derive(PreferList)]` | [`PrefersList`] |
+//! | `#[derive(RNativeType)]` | [`crate::markers::IsRNativeType`] |
+//! | `#[derive(AltrepInteger)]` | [`crate::markers::IsAltrepIntegerData`] |
+//! | `#[derive(AltrepReal)]` | [`crate::markers::IsAltrepRealData`] |
+//! | `#[derive(AltrepLogical)]` | [`crate::markers::IsAltrepLogicalData`] |
+//! | `#[derive(AltrepRaw)]` | [`crate::markers::IsAltrepRawData`] |
+//! | `#[derive(AltrepString)]` | [`crate::markers::IsAltrepStringData`] |
+//! | `#[derive(AltrepComplex)]` | [`crate::markers::IsAltrepComplexData`] |
+//! | `#[derive(AltrepList)]` | [`crate::markers::IsAltrepListData`] |
+//! | `#[derive(IntoList)]` | [`crate::markers::IsIntoList`] |
+//! | `#[derive(PreferList)]` | [`crate::markers::PrefersList`] |
+//! | `#[derive(PreferExternalPtr)]` | [`crate::markers::PrefersExternalPtr`] |
+//! | `#[derive(PreferRNativeType)]` | [`crate::markers::PrefersRNativeType`] |
+//! | `#[derive(PreferList)]` | [`crate::markers::PrefersList`] |
 
 /// Marker trait for types derived with `#[derive(RNativeType)]`.
 ///

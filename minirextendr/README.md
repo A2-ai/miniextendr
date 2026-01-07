@@ -1,7 +1,7 @@
 # minirextendr
 
 minirextendr is an R helper package for scaffolding and maintaining R packages
-that use the miniextendr Rust integration. It provides templates, autoconf /
+that use miniextendr for Rust <-> R interop. It provides templates, autoconf /
 configure wiring, vendoring helpers, and cargo command wrappers tailored to
 R package workflows.
 

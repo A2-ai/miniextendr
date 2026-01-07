@@ -108,7 +108,13 @@ doc *cargo_flags: configure-all
     cargo doc --document-private-items --workspace {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
     cargo doc --document-private-items --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
+    cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    if command -v open >/dev/null 2>&1; then \
+      open rpkg/src/rust/target/doc/rpkg/index.html >/dev/null 2>&1 || \
+        echo "doc: unable to open generated docs (skipping)"; \
+    else \
+      echo "doc: open not found; docs at rpkg/src/rust/target/doc/rpkg/index.html"; \
+    fi
 
 # Check formatting
 alias cargo-fmt-check := fmt-check

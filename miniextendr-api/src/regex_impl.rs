@@ -100,6 +100,53 @@ impl TryFromSexp for Option<Regex> {
 }
 
 // =============================================================================
+// Vec conversions
+// =============================================================================
+
+impl TryFromSexp for Vec<Regex> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let patterns: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+        patterns
+            .into_iter()
+            .enumerate()
+            .map(|(i, pattern)| {
+                Regex::new(&pattern).map_err(|e| {
+                    SexpError::InvalidValue(format!(
+                        "invalid regex pattern at index {}: {}",
+                        i, e
+                    ))
+                })
+            })
+            .collect()
+    }
+}
+
+impl TryFromSexp for Vec<Option<Regex>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let patterns: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+        patterns
+            .into_iter()
+            .enumerate()
+            .map(|(i, opt)| match opt {
+                None => Ok(None),
+                Some(pattern) => Regex::new(&pattern)
+                    .map(Some)
+                    .map_err(|e| {
+                        SexpError::InvalidValue(format!(
+                            "invalid regex pattern at index {}: {}",
+                            i, e
+                        ))
+                    }),
+            })
+            .collect()
+    }
+}
+
+// =============================================================================
 // Helper functions
 // =============================================================================
 

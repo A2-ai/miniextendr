@@ -20,7 +20,7 @@ pub trait AltIntegerData: AltrepLen {
 
     /// Optional: bulk read into buffer. Returns number of elements read.
     ///
-    /// Bounds are clamped to the vector length; see [`fill_region`] for the
+    /// Bounds are clamped to the vector length; see `fill_region` for the
     /// shared safety contract.
     fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
         fill_region(start, len, self.len(), buf, |idx| self.elt(idx))

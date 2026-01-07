@@ -49,6 +49,7 @@ pub use bitvec::vec::BitVec;
 use crate::altrep_traits::NA_LOGICAL;
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
+use crate::impl_option_try_from_sexp;
 use crate::into_r::IntoR;
 
 /// Standard bit vector type for R interop.
@@ -93,6 +94,8 @@ impl TryFromSexp for RBitVec {
     }
 }
 
+impl_option_try_from_sexp!(RBitVec);
+
 // =============================================================================
 // IntoR for RBitVec
 // =============================================================================
@@ -110,6 +113,15 @@ impl IntoR for RBitVec {
         }
 
         sexp
+    }
+}
+
+impl IntoR for Option<RBitVec> {
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(bits) => bits.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
     }
 }
 
@@ -150,6 +162,8 @@ impl TryFromSexp for BitVec<u8, Msb0> {
     }
 }
 
+impl_option_try_from_sexp!(BitVec<u8, Msb0>);
+
 impl IntoR for BitVec<u8, Msb0> {
     fn into_sexp(self) -> SEXP {
         use crate::ffi::{Rf_allocVector, SET_LOGICAL_ELT};
@@ -163,6 +177,15 @@ impl IntoR for BitVec<u8, Msb0> {
         }
 
         sexp
+    }
+}
+
+impl IntoR for Option<BitVec<u8, Msb0>> {
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(bits) => bits.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
     }
 }
 

@@ -149,24 +149,21 @@ impl RustConversionBuilder {
                     };
                     (vec![owned_stmt], vec![borrow_stmt])
                 } else {
-                    // &T for other types: use TryFromSexp
-                    // This handles ExternalPtr<T> and other custom types
-                    // that implement TryFromSexp.
-                    let inner_ty = r.elem.as_ref();
+                    // &T for other types: use TryFromSexp for the reference type.
                     let error_msg = format!(
-                        "failed to convert parameter '{}' to &{}: wrong type",
+                        "failed to convert parameter '{}' to {}: wrong type",
                         ident,
-                        quote!(#inner_ty)
+                        quote!(#ty)
                     );
                     if pat_ident.mutability.is_some() {
                         let stmt = quote! {
-                            let mut #ident: #inner_ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                            let mut #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                 .expect(#error_msg);
                         };
                         (vec![stmt], vec![])
                     } else {
                         let stmt = quote! {
-                            let #ident: #inner_ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                            let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                 .expect(#error_msg);
                         };
                         (vec![stmt], vec![])

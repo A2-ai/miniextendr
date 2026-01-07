@@ -25,6 +25,7 @@ mod adapter_traits_tests;
 mod class_system_matrix;
 mod coerce_tests;
 mod conversion_tests;
+mod conversions;
 mod convert_pref_tests;
 mod default_tests;
 mod dots_tests;
@@ -1189,6 +1190,7 @@ miniextendr_module! {
     use dots_tests;
     use interrupt_tests;
     use conversion_tests;
+    use conversions;
     use default_tests;
     use externalptr_tests;
     use identical_tests;

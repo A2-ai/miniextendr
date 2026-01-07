@@ -3,7 +3,7 @@
 
 use crate::ffi::SEXPTYPE::{LISTSXP, STRSXP, VECSXP};
 use crate::ffi::{self, Rboolean, SEXP};
-use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
+use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::hash::Hash;
@@ -11,6 +11,13 @@ use std::hash::Hash;
 /// Owned handle to an R list (`VECSXP`).
 #[derive(Clone, Copy, Debug)]
 pub struct List(SEXP);
+
+/// Mutable view of an R list (`VECSXP`).
+///
+/// This is a wrapper type instead of `&mut [SEXP]` to avoid exposing a raw slice
+/// that could become invalid if list elements are replaced with `NULL`.
+#[derive(Debug)]
+pub struct ListMut(SEXP);
 
 impl List {
     /// Return true if the underlying SEXP is a list (VECSXP) according to R.
@@ -266,6 +273,55 @@ impl List {
     pub fn set_levels(self, levels: SEXP) -> Self {
         unsafe { ffi::Rf_setAttrib(self.0, ffi::R_LevelsSymbol, levels) };
         self
+    }
+}
+
+impl ListMut {
+    /// Wrap an existing `VECSXP` without additional checks.
+    ///
+    /// # Safety
+    ///
+    /// Caller must ensure `sexp` is a valid `VECSXP` and remains managed by R.
+    #[inline]
+    pub const unsafe fn from_raw(sexp: SEXP) -> Self {
+        ListMut(sexp)
+    }
+
+    /// Get the underlying `SEXP`.
+    #[inline]
+    pub const fn as_sexp(&self) -> SEXP {
+        self.0
+    }
+
+    /// Length of the list (number of elements).
+    #[inline]
+    pub fn len(&self) -> isize {
+        unsafe { ffi::Rf_xlength(self.0) }
+    }
+
+    /// Returns true if the list is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+
+    /// Get raw SEXP element at 0-based index. Returns `None` if out of bounds.
+    #[inline]
+    pub fn get(&self, idx: isize) -> Option<SEXP> {
+        if idx < 0 || idx >= self.len() {
+            return None;
+        }
+        Some(unsafe { ffi::VECTOR_ELT(self.0, idx) })
+    }
+
+    /// Set raw SEXP element at 0-based index.
+    #[inline]
+    pub fn set(&mut self, idx: isize, value: SEXP) -> Result<(), SexpError> {
+        if idx < 0 || idx >= self.len() {
+            return Err(SexpError::InvalidValue("index out of bounds".into()));
+        }
+        unsafe { ffi::SET_VECTOR_ELT(self.0, idx, value) };
+        Ok(())
     }
 }
 
@@ -545,6 +601,13 @@ impl IntoR for List {
     }
 }
 
+impl IntoR for ListMut {
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.0
+    }
+}
+
 /// Error when a list has duplicate non-NA names.
 #[derive(Debug, Clone)]
 pub struct DuplicateNameError {
@@ -637,5 +700,45 @@ impl TryFromSexp for List {
         }
 
         Ok(List(list_sexp))
+    }
+}
+
+impl TryFromSexp for Option<List> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp == unsafe { ffi::R_NilValue } {
+            return Ok(None);
+        }
+        let list = List::try_from_sexp(sexp).map_err(|e| SexpError::InvalidValue(e.to_string()))?;
+        Ok(Some(list))
+    }
+}
+
+impl TryFromSexp for Option<ListMut> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp == unsafe { ffi::R_NilValue } {
+            return Ok(None);
+        }
+        let list = ListMut::try_from_sexp(sexp)?;
+        Ok(Some(list))
+    }
+}
+
+impl TryFromSexp for ListMut {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = unsafe { ffi::TYPEOF(sexp) };
+        if actual != VECSXP {
+            return Err(SexpTypeError {
+                expected: VECSXP,
+                actual,
+            }
+            .into());
+        }
+        Ok(ListMut(sexp))
     }
 }

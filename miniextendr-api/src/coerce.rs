@@ -159,6 +159,52 @@ impl_widen_f64!(u16);
 impl_widen_f64!(u32);
 
 // =============================================================================
+// Widening from u8 to larger integer/float types
+// =============================================================================
+
+impl Coerce<i64> for u8 {
+    #[inline(always)]
+    fn coerce(self) -> i64 {
+        self.into()
+    }
+}
+
+impl Coerce<isize> for u8 {
+    #[inline(always)]
+    fn coerce(self) -> isize {
+        self.into()
+    }
+}
+
+impl Coerce<u64> for u8 {
+    #[inline(always)]
+    fn coerce(self) -> u64 {
+        self.into()
+    }
+}
+
+impl Coerce<usize> for u8 {
+    #[inline(always)]
+    fn coerce(self) -> usize {
+        self.into()
+    }
+}
+
+impl Coerce<f32> for u8 {
+    #[inline(always)]
+    fn coerce(self) -> f32 {
+        self.into()
+    }
+}
+
+impl Coerce<f32> for i32 {
+    #[inline(always)]
+    fn coerce(self) -> f32 {
+        self as f32
+    }
+}
+
+// =============================================================================
 // bool coercions
 // =============================================================================
 
@@ -849,6 +895,48 @@ impl TryCoerce<u64> for f64 {
             return Err(CoerceError::PrecisionLoss);
         }
         Ok(self as u64)
+    }
+}
+
+impl TryCoerce<isize> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<isize, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
+        if self < isize::MIN as f64 || self > isize::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(self as isize)
+    }
+}
+
+impl TryCoerce<usize> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<usize, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
+        if self < 0.0 || self > usize::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(self as usize)
     }
 }
 

@@ -5,7 +5,7 @@ pub type R_xlen_t = isize;
 pub type Rbyte = ::std::os::raw::c_uchar;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rcomplex {
     pub r: f64,
     pub i: f64,

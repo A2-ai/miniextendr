@@ -218,6 +218,149 @@ where
     }
 }
 
+impl<T> TryFromSexp for Option<RFlags<T>>
+where
+    T: Flags,
+    T::Bits: TryFrom<i32>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        use crate::ffi::INTEGER_ELT;
+
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::INTSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let len = sexp.len();
+        if len != 1 {
+            return Err(SexpError::Length(SexpLengthError {
+                expected: 1,
+                actual: len,
+            }));
+        }
+
+        let int_val = unsafe { INTEGER_ELT(sexp, 0) };
+        if int_val == NA_INTEGER {
+            return Ok(None);
+        }
+
+        let bits = T::Bits::try_from(int_val).map_err(|_| {
+            SexpError::InvalidValue(format!("value {} out of range for bitflags", int_val))
+        })?;
+
+        T::from_bits(bits)
+            .map(RFlags)
+            .ok_or_else(|| SexpError::InvalidValue(format!("invalid bits 0x{:x}", int_val)))
+            .map(Some)
+    }
+}
+
+impl<T> TryFromSexp for Vec<RFlags<T>>
+where
+    T: Flags,
+    T::Bits: TryFrom<i32>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::INTSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let slice: &[i32] = unsafe { sexp.as_slice() };
+        slice
+            .iter()
+            .enumerate()
+            .map(|(i, &int_val)| {
+                if int_val == NA_INTEGER {
+                    return Err(SexpError::InvalidValue(format!(
+                        "NA at index {} not allowed for bitflags",
+                        i
+                    )));
+                }
+
+                let bits = T::Bits::try_from(int_val).map_err(|_| {
+                    SexpError::InvalidValue(format!(
+                        "value {} out of range for bitflags at index {}",
+                        int_val, i
+                    ))
+                })?;
+
+                T::from_bits(bits)
+                    .map(RFlags)
+                    .ok_or_else(|| {
+                        SexpError::InvalidValue(format!(
+                            "invalid bits 0x{:x} at index {}",
+                            int_val, i
+                        ))
+                    })
+            })
+            .collect()
+    }
+}
+
+impl<T> TryFromSexp for Vec<Option<RFlags<T>>>
+where
+    T: Flags,
+    T::Bits: TryFrom<i32>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != SEXPTYPE::INTSXP {
+            return Err(SexpTypeError {
+                expected: SEXPTYPE::INTSXP,
+                actual,
+            }
+            .into());
+        }
+
+        let slice: &[i32] = unsafe { sexp.as_slice() };
+        slice
+            .iter()
+            .enumerate()
+            .map(|(i, &int_val)| {
+                if int_val == NA_INTEGER {
+                    return Ok(None);
+                }
+
+                let bits = T::Bits::try_from(int_val).map_err(|_| {
+                    SexpError::InvalidValue(format!(
+                        "value {} out of range for bitflags at index {}",
+                        int_val, i
+                    ))
+                })?;
+
+                T::from_bits(bits)
+                    .map(RFlags)
+                    .ok_or_else(|| {
+                        SexpError::InvalidValue(format!(
+                            "invalid bits 0x{:x} at index {}",
+                            int_val, i
+                        ))
+                    })
+                    .map(Some)
+            })
+            .collect()
+    }
+}
+
 impl<T> IntoR for RFlags<T>
 where
     T: Flags,
@@ -232,6 +375,49 @@ where
                 NA_INTEGER.into_sexp()
             }
         }
+    }
+}
+
+impl<T> IntoR for Option<RFlags<T>>
+where
+    T: Flags,
+    T::Bits: TryInto<i32>,
+{
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(flags) => flags.into_sexp(),
+            None => NA_INTEGER.into_sexp(),
+        }
+    }
+}
+
+impl<T> IntoR for Vec<RFlags<T>>
+where
+    T: Flags,
+    T::Bits: TryInto<i32>,
+{
+    fn into_sexp(self) -> SEXP {
+        let ints: Vec<i32> = self
+            .into_iter()
+            .map(|flags| flags.0.bits().try_into().unwrap_or(NA_INTEGER))
+            .collect();
+        ints.into_sexp()
+    }
+}
+
+impl<T> IntoR for Vec<Option<RFlags<T>>>
+where
+    T: Flags,
+    T::Bits: TryInto<i32>,
+{
+    fn into_sexp(self) -> SEXP {
+        let ints: Vec<Option<i32>> = self
+            .into_iter()
+            .map(|opt| {
+                opt.and_then(|flags| flags.0.bits().try_into().ok())
+            })
+            .collect();
+        ints.into_sexp()
     }
 }
 

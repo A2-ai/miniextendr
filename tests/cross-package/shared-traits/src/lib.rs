@@ -1,17 +1,15 @@
-//! Shared trait definitions for cross-package testing.
+//! Shared trait definitions for cross-package trait ABI tests.
 //!
-//! This crate defines traits that can be implemented by types in different
-//! R packages and dispatched across package boundaries.
+//! This crate defines traits that are implemented by types in different test
+//! packages and dispatched across package boundaries.
 //!
-//! # Cross-Package Trait Dispatch
+//! The `#[miniextendr]` macro on traits generates ABI-compatible items:
+//! - `TAG_*` - type tag constants (stable hash for ABI compatibility)
+//! - `*VTable` - vtable structs with function pointers
+//! - `*View` - view types for dynamic dispatch
 //!
-//! The `#[miniextendr]` macro on traits generates ABI-compatible infrastructure:
-//! - `TAG_*` - Type tag constant (128-bit hash for ABI compatibility)
-//! - `*VTable` - Vtable struct with function pointers
-//! - `*View` - View struct for trait dispatch
-//!
-//! By depending on this crate, both producer and consumer packages use the
-//! same generated items, ensuring ABI compatibility across package boundaries.
+//! Both producer and consumer test packages depend on this crate so they share
+//! the same generated tags and vtables, ensuring ABI compatibility.
 
 use miniextendr_api::miniextendr;
 
