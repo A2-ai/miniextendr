@@ -198,10 +198,22 @@ fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
 }
 
 fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
+    nth_type_argument(seg, 0)
+}
+
+fn second_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
+    nth_type_argument(seg, 1)
+}
+
+fn nth_type_argument(seg: &syn::PathSegment, n: usize) -> Option<&syn::Type> {
     if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
+        let mut count = 0;
         for arg in ab.args.iter() {
             if let syn::GenericArgument::Type(ty) = arg {
-                return Some(ty);
+                if count == n {
+                    return Some(ty);
+                }
+                count += 1;
             }
         }
     }

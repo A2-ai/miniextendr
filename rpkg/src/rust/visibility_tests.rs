@@ -40,6 +40,17 @@ pub fn invisibly_result_return_ok() -> Result<(), ()> {
     Ok(())
 }
 
+/// Test Result<i32, ()> - Err returns NULL instead of erroring
+#[miniextendr]
+#[allow(clippy::result_unit_err)]
+pub fn result_null_on_err(x: i32) -> Result<i32, ()> {
+    if x >= 0 {
+        Ok(x * 2)
+    } else {
+        Err(()) // Should return NULL
+    }
+}
+
 // Test explicit invisible attribute (force i32 return to be invisible)
 #[miniextendr(invisible)]
 pub fn force_invisible_i32() -> i32 {
@@ -64,6 +75,7 @@ miniextendr_module! {
     fn invisibly_option_return_none;
     fn invisibly_option_return_some;
     fn invisibly_result_return_ok;
+    fn result_null_on_err;
     fn force_invisible_i32;
     fn force_visible_unit;
     fn with_interrupt_check;

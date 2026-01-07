@@ -198,22 +198,46 @@ fn analyze_result_type(
 ) -> proc_macro2::TokenStream {
     let seg = type_path.path.segments.last().unwrap();
     let ok_ty = crate::first_type_argument(seg);
+    let err_ty = crate::second_type_argument(seg);
     let ok_is_unit =
         ok_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
     let ok_is_sexp = ok_ty.is_some_and(is_sexp_type);
+    let err_is_unit =
+        err_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
 
-    if unwrap_in_r {
+    // Special case: Result<T, ()> - convert to Result<T, NullOnErr> which returns NULL on Err
+    if err_is_unit {
+        if ok_is_unit {
+            // Result<(), ()> - invisible, always returns NULL
+            *is_invisible = true;
+            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+        } else {
+            // Result<T, ()> - convert to Result<T, NullOnErr> and use IntoR
+            // IntoR for Result<T, NullOnErr> returns NULL on Err
+            *is_invisible = false;
+            if ok_is_sexp {
+                *returns_sexp = true;
+            }
+            // Convert Err(()) to Err(NullOnErr) so IntoR can return NULL
+            post_call_statements.push(quote::quote! {
+                let #rust_result_ident = #rust_result_ident.map_err(|()| ::miniextendr_api::into_r::NullOnErr);
+            });
+            // Use IntoR which returns NULL on Err(NullOnErr)
+            quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+        }
+    } else if unwrap_in_r {
         // Result<T, E> - return the Result to R without unwrapping
+        // Uses IntoR impl which returns list(error=...) on Err
+        // Note: Requires E: Display for the IntoR impl
         *is_invisible = false;
         if ok_is_sexp {
             // Still require main thread for Result<SEXP, E>
             *returns_sexp = true;
         }
-        return quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) };
-    }
-
-    if ok_is_unit {
+        quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
+    } else if ok_is_unit {
         // Result<(), E> - invisible, panic on Err
+        // Uses Debug format so it works with any E: Debug
         *is_invisible = true;
         post_call_statements.push(quote::quote! {
             if let Err(e) = #rust_result_ident {
@@ -223,6 +247,7 @@ fn analyze_result_type(
         quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
     } else {
         // Result<T, E> - unwrap then convert
+        // Uses Debug format so it works with any E: Debug
         *is_invisible = false;
         if ok_is_sexp {
             *returns_sexp = true;

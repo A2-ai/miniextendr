@@ -48,7 +48,7 @@ pub(crate) fn coverage_result_unit(flag: i32) -> Result<(), &'static str> {
     }
 }
 
-/// Macro coverage: `Result<T, E>` with arithmetic.
+/// Macro coverage: `Result<T, E>` with arithmetic (unit error returns NULL).
 #[miniextendr]
 pub(crate) fn coverage_result_value(left: i32, right: i32) -> Result<i32, ()> {
     left.checked_add(right).ok_or(())
@@ -121,7 +121,7 @@ pub(crate) fn coverage_invisible_option() -> Option<()> {
     Some(())
 }
 
-/// Macro coverage: invisible return inferred from `Result<(), E>`.
+/// Macro coverage: invisible return inferred from `Result<(), E>` (unit error).
 #[miniextendr]
 pub(crate) fn coverage_invisible_result() -> Result<(), ()> {
     Ok(())
