@@ -45,6 +45,6 @@ A vector that can create independent iterators.
 \examples{
 v <- IterableVec$new(c(1L, 2L, 3L))
 it <- v$make_iter()
-it$next()
+it$`next`()
 }
 \keyword{datasets}

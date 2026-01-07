@@ -512,6 +512,7 @@ jobs:
       - name: Configure
         shell: C:\rtools44\usr\bin\bash.exe --login -e -o pipefail {0}
         run: |
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           if [ -n "${CARGO_HOME:-}" ]; then
             export PATH="$(cygpath -u "$CARGO_HOME")/bin:$PATH"
           fi

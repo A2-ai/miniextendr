@@ -18,11 +18,30 @@ fn initialize_r() {
         // Initialize in same order as rpkg/src/entrypoint.c.in
         miniextendr_api::backtrace::miniextendr_panic_hook();
         miniextendr_api::worker::miniextendr_worker_init();
+        disable_r_stack_checking();
         assert!(
             miniextendr_engine::r_initialized_sentinel(),
             "Rf_initialize_R did not set C stack sentinels"
         );
         std::mem::forget(engine);
+    }
+}
+
+fn disable_r_stack_checking() {
+    // R stack checks assume the main thread stack. Our tests run R on a
+    // dedicated thread, so disable R's own stack checks to avoid false
+    // overflow errors in CI (the OS stack limit still applies).
+    #[cfg(feature = "nonapi")]
+    {
+        miniextendr_api::thread::disable_stack_checking_permanently();
+    }
+
+    #[cfg(not(feature = "nonapi"))]
+    unsafe {
+        extern "C" {
+            static mut R_CStackLimit: usize;
+        }
+        R_CStackLimit = usize::MAX;
     }
 }
 

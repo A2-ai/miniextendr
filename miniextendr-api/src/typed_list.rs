@@ -139,7 +139,7 @@ pub enum TypeSpec {
     /// Object inheriting from a specific class.
     /// Uses `Rf_inherits` semantics (checks class attribute).
     Class(&'static str),
-    /// Data frame (uses `Rf_isDataFrame`).
+    /// Data frame (inherits `data.frame`).
     DataFrame,
     /// Factor (uses `Rf_isFactor`).
     Factor,
@@ -540,7 +540,9 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::DataFrame => {
-            if unsafe { ffi::Rf_isDataFrame(elem) } == Rboolean::FALSE {
+            let class = unsafe { CStr::from_bytes_with_nul_unchecked(b"data.frame\0") };
+            let inherits = unsafe { ffi::Rf_inherits(elem, class.as_ptr()) } != Rboolean::FALSE;
+            if !inherits {
                 return Err(TypedListError::WrongType {
                     name: entry.name.to_string(),
                     expected: entry.spec.type_name(),

@@ -3,7 +3,7 @@ Type: Package
 Title: Cross-Package Trait Dispatch Consumer Example
 Version: 0.1.0
 Authors@R: c(
-    person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = "aut"),
+    person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
     person("A2-AI", role = c("cph", "fnd"))
     )
 Description: Demonstrates miniextendr's cross-package trait dispatch capabilities.
