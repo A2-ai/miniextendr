@@ -400,6 +400,54 @@ fn is_vctrs_generic(generic: &str) -> bool {
 /// Apply `#[miniextendr(env|r6|s7|s3|s4)]` to an `impl Type` block and list
 /// `impl Type;` in `miniextendr_module!`.
 ///
+/// ## R6 Active Bindings
+///
+/// For R6 classes, use `#[miniextendr(r6(active))]` on methods to create
+/// active bindings (computed properties accessed without parentheses):
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, miniextendr_module};
+///
+/// pub struct Rectangle {
+///     width: f64,
+///     height: f64,
+/// }
+///
+/// #[miniextendr(r6)]
+/// impl Rectangle {
+///     pub fn new(width: f64, height: f64) -> Self {
+///         Self { width, height }
+///     }
+///
+///     /// Returns the area (width * height).
+///     #[miniextendr(r6(active))]
+///     pub fn area(&self) -> f64 {
+///         self.width * self.height
+///     }
+///
+///     /// Regular method (requires parentheses).
+///     pub fn scale(&mut self, factor: f64) {
+///         self.width *= factor;
+///         self.height *= factor;
+///     }
+/// }
+///
+/// miniextendr_module! {
+///     mod mypkg;
+///     impl Rectangle;
+/// }
+/// ```
+///
+/// In R:
+/// ```r
+/// r <- Rectangle$new(3, 4)
+/// r$area        # 12 (active binding - no parentheses!)
+/// r$scale(2)    # Regular method call
+/// r$area        # 24
+/// ```
+///
+/// Active bindings must be getter-only methods taking only `&self`.
+///
 /// # Traits (ABI)
 ///
 /// Apply `#[miniextendr]` to a trait to generate ABI metadata, then use
