@@ -1268,8 +1268,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Constructor (initialize) - accepts either normal params or a pre-made .ptr
     if let Some(ctx) = parsed_impl.constructor_context() {
         // Add inline roxygen documentation for initialize method
+        // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
         for tag in &ctx.method.doc_tags {
             for line in tag.lines() {
+                let line = if line.starts_with("@title ") {
+                    line.replacen("@title ", "@description ", 1)
+                } else {
+                    line.to_string()
+                };
                 lines.push(format!("        #' {}", line));
             }
         }
@@ -1309,8 +1315,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         };
 
         // Add inline roxygen documentation for this method
+        // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
         for tag in &ctx.method.doc_tags {
             for line in tag.lines() {
+                let line = if line.starts_with("@title ") {
+                    line.replacen("@title ", "@description ", 1)
+                } else {
+                    line.to_string()
+                };
                 lines.push(format!("        #' {}", line));
             }
         }

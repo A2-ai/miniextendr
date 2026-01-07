@@ -2171,7 +2171,7 @@ R6Accumulator <- R6::R6Class("R6Accumulator",
 #' @export
 Calculator <- R6::R6Class("Calculator",
     public = list(
-        #' @title Creates a new calculator
+        #' @description Creates a new calculator
         #' @param initial Starting value (defaults to 0.0).
         initialize = function(initial = 0.0, .ptr = NULL) {
             if (!is.null(.ptr)) {
@@ -2184,12 +2184,12 @@ Calculator <- R6::R6Class("Calculator",
         get = function() {
             .Call(C_Calculator__get, .call = match.call(), private$.ptr)
         },
-        #' @title Adds to the current value
+        #' @description Adds to the current value
         #' @param amount Amount to add (defaults to 1.0).
         add = function(amount = 1.0) {
             .Call(C_Calculator__add, .call = match.call(), private$.ptr, amount)
         },
-        #' @title Sets a new value
+        #' @description Sets a new value
         #' @param new_value New value to set (defaults to 0.0).
         set = function(new_value = 0.0) {
             .Call(C_Calculator__set, .call = match.call(), private$.ptr, new_value)
