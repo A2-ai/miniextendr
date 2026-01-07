@@ -24,7 +24,7 @@ pub struct Point {
 /// External pointer helpers.
 ///
 /// Create a new Counter wrapped in an ExternalPtr.
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 /// @name rpkg_externalptr
 /// @examples
 /// ptr <- extptr_counter_new(1L)
@@ -83,7 +83,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
 }
 
 /// Create a new Point wrapped in an ExternalPtr
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn extptr_point_new(x: f64, y: f64) -> miniextendr_api::externalptr::ExternalPtr<Point> {
     miniextendr_api::externalptr::ExternalPtr::new(Point { x, y })
 }
@@ -207,8 +207,10 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test ExternalPtr creation and usage on main thread.
-/// Note: ExternalPtr is !Send, so it can only be used on main thread.
+/// Test ExternalPtr creation on main thread.
+/// This function needs `unsafe(main_thread)` because `ExternalPtr::new` calls R API
+/// internally. Functions that call R API (directly or via types like ExternalPtr)
+/// must run on main thread.
 #[miniextendr(unsafe(main_thread))]
 pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;

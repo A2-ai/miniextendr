@@ -486,49 +486,49 @@ pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, st
 /// z <- altrep_from_strings(c("a", "b"))
 /// altrep_lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
 /// }
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
     unsafe { rpkg_altrep_compact_int(n, start, step) }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_from_doubles(x: SEXP) -> SEXP {
     unsafe { rpkg_altrep_from_doubles(x) }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_from_strings(x: SEXP) -> SEXP {
     unsafe { rpkg_altrep_from_strings(x) }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_from_logicals(x: SEXP) -> SEXP {
     unsafe { rpkg_altrep_from_logicals(x) }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_from_raw(x: SEXP) -> SEXP {
     unsafe { rpkg_altrep_from_raw(x) }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_from_list(x: SEXP) -> SEXP {
     unsafe { rpkg_altrep_from_list(x) }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_constant_int() -> SEXP {
     unsafe { rpkg_constant_int() }
 }
 
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 fn altrep_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
     unsafe { rpkg_lazy_int_seq_is_materialized(x) }
 }

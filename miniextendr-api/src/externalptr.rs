@@ -93,7 +93,6 @@ use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
-use std::rc::Rc;
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
@@ -322,11 +321,6 @@ impl TypedExternal for () {
 // ExternalPtr<T>
 // =============================================================================
 
-/// Marker type to make ExternalPtr !Send and !Sync without nightly features.
-/// Uses Rc<()> because Rc has explicit negative impls for Send and Sync,
-/// making this more robust than relying on raw pointer auto-trait inference.
-type PhantomUnsend = PhantomData<Rc<()>>;
-
 /// An owned pointer stored in R's external pointer SEXP.
 ///
 /// This is conceptually similar to `Box<T>`, but with the following differences:
@@ -336,9 +330,9 @@ type PhantomUnsend = PhantomData<Rc<()>>;
 ///
 /// # Thread Safety
 ///
-/// `ExternalPtr` is `!Send` and `!Sync` because it wraps an R SEXP, and R's
-/// runtime is single-threaded. Attempting to use an `ExternalPtr` from multiple
-/// threads would be undefined behavior.
+/// `ExternalPtr` is `Send` to allow returning from worker thread functions.
+/// However, **concurrent access is not allowed** - R's runtime is single-threaded.
+/// All R API calls are serialized through the main thread via `with_r_thread`.
 ///
 /// # Safety
 ///
@@ -348,9 +342,13 @@ type PhantomUnsend = PhantomData<Rc<()>>;
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,
     _marker: PhantomData<T>,
-    /// Makes this type !Send and !Sync
-    _unsend: PhantomUnsend,
 }
+
+// SAFETY: ExternalPtr can be sent between threads because:
+// 1. All R API operations are serialized through the main thread via with_r_thread
+// 2. The worker thread is blocked while the main thread processes R calls
+// 3. There is no concurrent access - only sequential hand-off between threads
+unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
 impl<T: TypedExternal> ExternalPtr<T> {
     /// Allocates memory on the heap and places `x` into it.
@@ -386,7 +384,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -410,7 +407,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -523,7 +519,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -541,7 +536,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -866,7 +860,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Some(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
@@ -914,7 +907,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Some(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
@@ -957,7 +949,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Ok(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
@@ -972,7 +963,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
