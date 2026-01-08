@@ -1,10 +1,11 @@
 use std::ops::Range;
 
 use crate::ffi::Rcomplex;
+use crate::ffi::SEXP;
 
 use super::{
     AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
-    AltrepDataptr, AltrepLen, Logical, Sortedness,
+    AltrepDataptr, AltrepLen, AltrepSerialize, Logical, Sortedness,
 };
 
 // =============================================================================
@@ -83,6 +84,129 @@ macro_rules! impl_dataptr_boxed {
             }
         }
     };
+}
+
+/// Implement AltrepSerialize for types that can be cloned and converted to/from R.
+///
+/// This serializes by converting to a native R vector, ensuring the data survives
+/// even if the Rust package isn't loaded when unserializing.
+macro_rules! impl_serialize {
+    ($ty:ty) => {
+        impl AltrepSerialize for $ty {
+            fn serialized_state(&self) -> SEXP {
+                use crate::into_r::IntoR;
+                self.clone().into_sexp()
+            }
+
+            fn unserialize(state: SEXP) -> Option<Self> {
+                use crate::from_r::TryFromSexp;
+                <$ty>::try_from_sexp(state).ok()
+            }
+        }
+    };
+}
+
+// =============================================================================
+// AltrepSerialize implementations for Vec<T>
+// =============================================================================
+
+impl_serialize!(Vec<i32>);
+impl_serialize!(Vec<f64>);
+impl_serialize!(Vec<u8>);
+impl_serialize!(Vec<bool>);
+impl_serialize!(Vec<String>);
+impl_serialize!(Vec<Option<String>>);
+impl_serialize!(Vec<Rcomplex>);
+
+// =============================================================================
+// AltrepSerialize implementations for Box<[T]>
+// =============================================================================
+
+// Box<[T]> types don't have direct TryFromSexp implementations, so we manually
+// implement serialization by converting to Vec and back.
+
+impl AltrepSerialize for Box<[i32]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<i32>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[f64]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<f64>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[u8]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<u8>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[bool]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<bool>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[String]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<String>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[Rcomplex]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<Rcomplex>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
 }
 
 // =============================================================================
