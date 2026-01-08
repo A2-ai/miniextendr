@@ -231,10 +231,46 @@ pub use altrep_data::{
 };
 // Re-export RBase enum
 pub use altrep::RBase;
+
+// ALTREP package name global - set by C entrypoint before ALTREP registration
+// This is a pointer to a null-terminated C string provided by C code.
+// Default: c"unknown" for safety if not set.
+use std::sync::atomic::{AtomicPtr, Ordering};
+static ALTREP_PKG_NAME_PTR: AtomicPtr<std::ffi::c_char> =
+    AtomicPtr::new(c"unknown".as_ptr() as *mut _);
+
+/// Returns the current ALTREP package name as a C string pointer.
+/// This is set by the C entrypoint before ALTREP registration.
+#[doc(hidden)]
+pub struct AltrepPkgName;
+
+impl AltrepPkgName {
+    /// Get the package name pointer.
+    #[inline]
+    pub fn as_ptr() -> *const std::ffi::c_char {
+        ALTREP_PKG_NAME_PTR.load(Ordering::Acquire)
+    }
+}
+
+/// Opaque handle for ALTREP package name.
+/// Use `ALTREP_PKG_NAME.as_ptr()` to get the C string pointer.
+#[doc(hidden)]
+pub static ALTREP_PKG_NAME: AltrepPkgName = AltrepPkgName;
+
+/// Set the ALTREP package name. Called from C entrypoint.
+/// # Safety
+/// The provided pointer must point to a valid null-terminated C string
+/// that lives for the duration of the R session.
+#[doc(hidden)]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::c_char) {
+    ALTREP_PKG_NAME_PTR.store(name as *mut _, Ordering::Release);
+}
+
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
-pub use into_r::IntoR;
+pub use into_r::{Altrep, IntoR};
 pub mod unwind_protect;
 pub mod worker;
 

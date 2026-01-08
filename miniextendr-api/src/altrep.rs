@@ -24,8 +24,6 @@ pub enum RBase {
 pub trait AltrepClass {
     /// The class name (null-terminated C string).
     const CLASS_NAME: &'static std::ffi::CStr;
-    /// The package name (null-terminated C string).
-    const PKG_NAME: &'static std::ffi::CStr;
     /// The base R type (Int, Real, Logical, etc.).
     const BASE: RBase;
 

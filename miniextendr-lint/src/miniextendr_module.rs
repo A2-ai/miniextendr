@@ -69,6 +69,10 @@
 //! - Parser should be as self-contained as possible
 //!
 //! See `miniextendr-lint/src/lib.rs` module docs for more details.
+
+// Note: In miniextendr-macros, this imports {call_method_def_ident_for, r_wrapper_const_ident_for}
+// from crate::, but the lint crate doesn't need those functions.
+
 /// A single `fn ...;` line inside `miniextendr_module! { ... }`.
 ///
 /// Registers a function that has the `#[miniextendr]` attribute.
@@ -84,7 +88,6 @@
 /// on the function definition itself, not in this module declaration.
 pub(crate) struct MiniextendrModuleFunction {
     /// Attributes attached to the module entry (e.g., cfg/doc mirrors from the function).
-    #[allow(dead_code)]
     pub attrs: Vec<syn::Attribute>,
     /// Optional extern ABI when the declaration uses `extern "C-unwind"`.
     pub _abi: Option<syn::Abi>,
@@ -110,6 +113,10 @@ impl syn::parse::Parse for MiniextendrModuleFunction {
         })
     }
 }
+
+// Note: In miniextendr-macros, MiniextendrModuleFunction has methods
+// call_method_def_ident() and r_wrapper_const_ident() that use helper
+// functions from crate::. The lint crate doesn't need codegen helpers.
 
 /// A single `struct ...;` line inside `miniextendr_module! { ... }`.
 ///
@@ -142,7 +149,6 @@ impl syn::parse::Parse for MiniextendrModuleStruct {
 pub(crate) struct MiniextendrModuleName {
     _mod_token: syn::Token![mod],
     /// Base name that drives `R_init_<name>_miniextendr` symbol generation.
-    #[allow(dead_code)]
     pub ident: syn::Ident,
 }
 
@@ -168,7 +174,6 @@ impl syn::parse::Parse for MiniextendrModuleName {
 /// with its distinct label using the `as "label"` syntax.
 pub(crate) struct MiniextendrModuleImpl {
     /// Attributes on the impl entry (passed through for cfg/doc parity).
-    #[allow(dead_code)]
     pub attrs: Vec<syn::Attribute>,
     _impl_token: syn::Token![impl],
     /// Type that has a `#[miniextendr(...)]` impl block.
@@ -208,6 +213,7 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
 ///
 /// ```text
 /// impl Counter for SimpleCounter;
+/// impl AltIntegerData for Vec<i32>;  // Generic types supported
 /// ```
 ///
 /// Requirements:
@@ -216,7 +222,6 @@ impl syn::parse::Parse for MiniextendrModuleImpl {
 /// - The type should have `#[derive(ExternalPtr)]`
 pub(crate) struct MiniextendrModuleTraitImpl {
     /// Attributes on the trait impl entry (for cfg propagation).
-    #[allow(dead_code)]
     pub attrs: Vec<syn::Attribute>,
     /// Token span for `impl` retained for diagnostics.
     pub _impl_token: syn::Token![impl],
@@ -225,7 +230,8 @@ pub(crate) struct MiniextendrModuleTraitImpl {
     /// Token span for `for` retained for diagnostics.
     pub _for_token: syn::Token![for],
     /// Concrete type providing the trait implementation.
-    pub type_ident: syn::Ident,
+    /// Supports simple types (`MyType`) and generic types (`Vec<i32>`, `Range<i32>`).
+    pub impl_type: syn::Type,
 }
 
 impl syn::parse::Parse for MiniextendrModuleTraitImpl {
@@ -236,17 +242,45 @@ impl syn::parse::Parse for MiniextendrModuleTraitImpl {
             _impl_token: input.parse()?,
             trait_path: input.parse()?,
             _for_token: input.parse()?,
-            type_ident: input.parse()?,
+            impl_type: input.parse()?,
         })
     }
 }
 
+/// ALTREP base type, determined from the trait name.
+///
+/// Used by `altrep_module.rs` to select which `impl_alt*_from_data!` macro to invoke.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum AltrepBase {
+    Integer,
+    Real,
+    Logical,
+    Raw,
+    String,
+    Complex,
+    List,
+}
+
 impl MiniextendrModuleTraitImpl {
+    /// Returns a sanitized string name for the type, suitable for identifier generation.
+    ///
+    /// Converts generic types like `Vec<i32>` to `Vec_i32`, `Range<i32>` to `Range_i32`, etc.
+    pub(crate) fn type_name_sanitized(&self) -> String {
+        use quote::ToTokens;
+        let type_str = self.impl_type.to_token_stream().to_string();
+        // Replace special characters with underscores for valid identifiers
+        type_str
+            .replace(['<', '>', ' ', ':'], "_")
+            .replace(',', "_")
+            .replace("__", "_")
+            .trim_matches('_')
+            .to_string()
+    }
+
     /// Returns the identifier for the call defs const.
     /// Format: `{TYPE}_{TRAIT}_CALL_DEFS`
-    #[allow(dead_code)]
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
-        let type_upper = self.type_ident.to_string().to_uppercase();
+        let type_upper = self.type_name_sanitized().to_uppercase();
         let trait_name = self
             .trait_path
             .segments
@@ -258,9 +292,8 @@ impl MiniextendrModuleTraitImpl {
 
     /// Returns the identifier for the R wrappers const.
     /// Format: `R_WRAPPERS_{TYPE}_{TRAIT}_IMPL`
-    #[allow(dead_code)]
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
-        let type_upper = self.type_ident.to_string().to_uppercase();
+        let type_upper = self.type_name_sanitized().to_uppercase();
         let trait_name = self
             .trait_path
             .segments
@@ -269,13 +302,55 @@ impl MiniextendrModuleTraitImpl {
             .unwrap_or_default();
         quote::format_ident!("R_WRAPPERS_{}_{}_IMPL", type_upper, trait_name)
     }
+
+    /// Returns the trait name (last segment of the path).
+    pub(crate) fn trait_name(&self) -> String {
+        self.trait_path
+            .segments
+            .last()
+            .map(|s| s.ident.to_string())
+            .unwrap_or_default()
+    }
+
+    /// Checks if this trait impl is for an ALTREP data trait.
+    /// Returns the ALTREP base type if so.
+    pub(crate) fn altrep_base(&self) -> Option<AltrepBase> {
+        match self.trait_name().as_str() {
+            "AltIntegerData" => Some(AltrepBase::Integer),
+            "AltRealData" => Some(AltrepBase::Real),
+            "AltLogicalData" => Some(AltrepBase::Logical),
+            "AltRawData" => Some(AltrepBase::Raw),
+            "AltStringData" => Some(AltrepBase::String),
+            "AltComplexData" => Some(AltrepBase::Complex),
+            "AltListData" => Some(AltrepBase::List),
+            _ => None,
+        }
+    }
+
+    /// For simple types (non-generic), returns the type identifier.
+    ///
+    /// Returns `Some(ident)` for types like `MyType` or `Counter`.
+    /// Returns `None` for generic types like `Vec<i32>` or `Range<i32>`.
+    ///
+    /// This is used for cross-package trait dispatch which requires simple types.
+    pub(crate) fn simple_type_ident(&self) -> Option<&syn::Ident> {
+        if let syn::Type::Path(type_path) = &self.impl_type {
+            // Simple type: single segment with no generic arguments
+            if type_path.qself.is_none() && type_path.path.segments.len() == 1 {
+                let segment = &type_path.path.segments[0];
+                if matches!(segment.arguments, syn::PathArguments::None) {
+                    return Some(&segment.ident);
+                }
+            }
+        }
+        None
+    }
 }
 
 impl MiniextendrModuleImpl {
     /// Returns the identifier for the call defs const.
     ///
     /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
-    #[allow(dead_code)]
     pub(crate) fn call_defs_const_ident(&self) -> syn::Ident {
         let type_upper = self.ident.to_string().to_uppercase();
         if let Some(ref label) = self.label {
@@ -289,7 +364,6 @@ impl MiniextendrModuleImpl {
     /// Returns the identifier for the R wrappers const.
     ///
     /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
-    #[allow(dead_code)]
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
         let type_upper = self.ident.to_string().to_uppercase();
         if let Some(ref label) = self.label {
@@ -316,7 +390,6 @@ impl MiniextendrModuleImpl {
 pub(crate) struct MiniextendrModuleUse {
     _use_token: syn::Token![use],
     /// Target module to re-export wrappers from.
-    #[allow(dead_code)]
     pub use_name: syn::UseName,
 }
 
@@ -359,10 +432,8 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// ```
 pub(crate) struct MiniextendrModule {
     /// The module header (`mod <name>;`) that drives symbol generation.
-    #[allow(dead_code)]
     pub(crate) module_name: MiniextendrModuleName,
     /// Submodules to re-export wrappers from (`use foo;`).
-    #[allow(dead_code)]
     pub(crate) uses: Vec<MiniextendrModuleUse>,
     /// Functions registered via `fn name;`.
     pub(crate) functions: Vec<MiniextendrModuleFunction>,

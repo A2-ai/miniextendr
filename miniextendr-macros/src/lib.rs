@@ -195,6 +195,7 @@
 // miniextendr-macros procedural macros
 
 mod altrep;
+mod altrep_module;
 mod c_wrapper_builder;
 mod miniextendr_fn;
 mod typed_list;
@@ -1335,9 +1336,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Separate ALTREP trait impls from regular cross-package trait impls
+    let (altrep_impls, regular_trait_impls) =
+        altrep_module::extract_altrep_impls(&parsed_module.trait_impls);
+
+    // Generate ALTREP code (low-level traits, registration, IntoR)
+    let (altrep_generated_code, altrep_registration_exprs) =
+        altrep_module::generate_altrep_code(&altrep_impls);
+
     // Generate trait impl call defs for registration with cfg attributes
-    let trait_impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .trait_impls
+    // (only for regular trait impls, not ALTREP)
+    let trait_impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = regular_trait_impls
         .iter()
         .map(|ti| {
             let call_defs_static = ti.call_defs_const_ident();
@@ -1351,8 +1360,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect();
 
     // Generate trait impl R wrapper refs with cfg attributes
-    let trait_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
-        .trait_impls
+    // (only for regular trait impls, not ALTREP)
+    let trait_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = regular_trait_impls
         .iter()
         .map(|ti| {
             let r_wrapper_const = ti.r_wrappers_const_ident();
@@ -1484,15 +1493,20 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     let _has_impls = !parsed_module.impls.is_empty();
 
     // Generate trait ABI wrapper infrastructure grouped by concrete type.
+    // Only for regular trait impls (not ALTREP). Generic types are skipped since
+    // cross-package trait dispatch requires named types with ExternalPtr.
     let mut trait_impl_groups: Vec<(syn::Ident, Vec<syn::Path>)> = Vec::new();
-    for ti in &parsed_module.trait_impls {
-        if let Some((_, traits)) = trait_impl_groups
-            .iter_mut()
-            .find(|(ty, _)| ty == &ti.type_ident)
-        {
-            traits.push(ti.trait_path.clone());
-        } else {
-            trait_impl_groups.push((ti.type_ident.clone(), vec![ti.trait_path.clone()]));
+    for ti in regular_trait_impls.iter() {
+        // Only process simple types (non-generic)
+        if let Some(type_ident) = ti.simple_type_ident() {
+            if let Some((_, traits)) = trait_impl_groups
+                .iter_mut()
+                .find(|(ty, _)| ty == type_ident)
+            {
+                traits.push(ti.trait_path.clone());
+            } else {
+                trait_impl_groups.push((type_ident.clone(), vec![ti.trait_path.clone()]));
+            }
         }
     }
     let trait_impl_wrappers: Vec<proc_macro2::TokenStream> = trait_impl_groups
@@ -1527,8 +1541,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             quote::quote!(<[_]>::len(&#call_defs_static))
         })
         .collect();
-    let trait_impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
-        .trait_impls
+    // Only include regular trait impls (not ALTREP) in call defs length
+    let trait_impl_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = regular_trait_impls
         .iter()
         .map(|ti| {
             let call_defs_static = ti.call_defs_const_ident();
@@ -1718,9 +1732,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         // Trait ABI wrapper infrastructure
         #(#trait_impl_wrappers)*
 
+        // ALTREP trait implementations generated from `impl AltXxxData for Type;`
+        #altrep_generated_code
+
         /// Register ALTREP classes declared in this module.
         pub(crate) fn #altrep_reg_fn_ident() {
+            // From `struct Type;` declarations (old style)
             #(#altrep_regs;)*
+            // From `impl AltXxxData for Type;` declarations (new style)
+            #(#altrep_registration_exprs;)*
         }
 
         #[doc = #module_doc]

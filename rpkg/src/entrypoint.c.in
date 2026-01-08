@@ -11,6 +11,9 @@ extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 
+// Set ALTREP package name before ALTREP registration
+extern void miniextendr_set_altrep_pkg_name(const char* name);
+
 // Optional vctrs support initialization
 // Returns: 0=success, 1=not available, 2=not main thread, 3=already initialized
 // When vctrs feature is disabled, always returns 1 (not available)
@@ -22,6 +25,10 @@ extern void mx_abi_register(void);
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
+
+    // Set ALTREP package name before ALTREP registration
+    // The string "@PACKAGE_TARNAME_RS@" is substituted by configure
+    miniextendr_set_altrep_pkg_name("@PACKAGE_TARNAME_RS@");
 
     // Optional: initialize vctrs C API support
     // Status 1 (not available) is fine - vctrs is optional

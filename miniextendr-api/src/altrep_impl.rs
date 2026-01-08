@@ -692,23 +692,11 @@ macro_rules! impl_altlist_from_data {
     };
 }
 
-/// Generate ALTREP trait implementations for a type that implements AltComplexData.
+/// Internal macro: impl AltComplex methods (elt, get_region)
 #[macro_export]
-macro_rules! impl_altcomplex_from_data {
+#[doc(hidden)]
+macro_rules! __impl_altcomplex_methods {
     ($ty:ty) => {
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        impl $crate::altrep_traits::Altrep for $ty {
-            fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-        }
-
-        impl $crate::altrep_traits::AltVec for $ty {}
-
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltComplex for $ty {
             const HAS_ELT: bool = true;
@@ -743,8 +731,58 @@ macro_rules! impl_altcomplex_from_data {
                     .unwrap_or(0)
             }
         }
+    };
+}
 
+/// Generate ALTREP trait implementations for a type that implements AltComplexData.
+///
+/// Optional features can be enabled by passing additional arguments:
+/// - `dataptr`: Enable `Dataptr` and `Dataptr_or_null` methods (requires `AltrepDataptr<Rcomplex>`)
+/// - `serialize`: Enable serialization support (requires `AltrepSerialize`)
+/// - `subset`: Enable optimized subsetting (requires `AltrepExtractSubset`)
+#[macro_export]
+macro_rules! impl_altcomplex_from_data {
+    ($ty:ty) => {
+        $crate::__impl_altrep_base!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altcomplex_methods!($ty);
         $crate::impl_inferbase_complex!($ty);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_dataptr!($ty, $crate::ffi::Rcomplex);
+        $crate::__impl_altcomplex_methods!($ty);
+        $crate::impl_inferbase_complex!($ty);
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altcomplex_methods!($ty);
+        $crate::impl_inferbase_complex!($ty);
+    };
+    ($ty:ty, subset) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_extract_subset!($ty);
+        $crate::__impl_altcomplex_methods!($ty);
+        $crate::impl_inferbase_complex!($ty);
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_dataptr!($ty, $crate::ffi::Rcomplex);
+        $crate::__impl_altcomplex_methods!($ty);
+        $crate::impl_inferbase_complex!($ty);
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altcomplex_from_data!($ty, dataptr, serialize);
+    };
+    ($ty:ty, subset, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_extract_subset!($ty);
+        $crate::__impl_altcomplex_methods!($ty);
+        $crate::impl_inferbase_complex!($ty);
+    };
+    ($ty:ty, serialize, subset) => {
+        $crate::impl_altcomplex_from_data!($ty, subset, serialize);
     };
 }
 
@@ -1449,3 +1487,66 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
 }
 
 crate::impl_inferbase_string!(&'static [&'static str]);
+
+// =============================================================================
+// RegisterAltrep implementations for builtin types
+// =============================================================================
+//
+// These implementations provide ALTREP class registration for Vec<T>, Box<[T]>,
+// and Range<T> types. They allow using these types with ALTREP via wrapper structs.
+//
+// Note: IntoR is NOT implemented here for Vec types because there are already
+// existing IntoR implementations that copy data to R eagerly. To get ALTREP
+// behavior, use wrapper structs:
+//   #[miniextendr(class = "MyVec", pkg = "mypkg")]
+//   pub struct MyVecClass(pub Vec<i32>);
+//
+// Each type uses a static OnceLock to cache the ALTREP class handle, which is
+// registered on first use with the current package's name (from ALTREP_PKG_NAME).
+
+use crate::altrep_registration::RegisterAltrep;
+
+/// Helper macro to implement RegisterAltrep for a builtin type.
+macro_rules! impl_register_altrep_builtin {
+    ($ty:ty, $class_name:expr) => {
+        impl RegisterAltrep for $ty {
+            fn get_or_init_class() -> crate::ffi::altrep::R_altrep_class_t {
+                use std::sync::OnceLock;
+                static CLASS: OnceLock<crate::ffi::altrep::R_altrep_class_t> = OnceLock::new();
+                *CLASS.get_or_init(|| {
+                    // Class name as null-terminated C string
+                    const CLASS_NAME: &[u8] = concat!($class_name, "\0").as_bytes();
+                    let cls = unsafe {
+                        <$ty as crate::altrep_data::InferBase>::make_class(
+                            CLASS_NAME.as_ptr() as *const std::ffi::c_char,
+                            crate::AltrepPkgName::as_ptr(),
+                        )
+                    };
+                    unsafe {
+                        <$ty as crate::altrep_data::InferBase>::install_methods(cls);
+                    }
+                    cls
+                })
+            }
+        }
+    };
+}
+
+// Vec types - RegisterAltrep only (IntoR exists elsewhere, copies data)
+impl_register_altrep_builtin!(Vec<i32>, "Vec_i32");
+impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");
+impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
+impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
+impl_register_altrep_builtin!(Vec<String>, "Vec_String");
+
+// Range types - RegisterAltrep only
+impl_register_altrep_builtin!(std::ops::Range<i32>, "Range_i32");
+impl_register_altrep_builtin!(std::ops::Range<i64>, "Range_i64");
+impl_register_altrep_builtin!(std::ops::Range<f64>, "Range_f64");
+
+// Box types - RegisterAltrep only
+impl_register_altrep_builtin!(Box<[i32]>, "Box_i32");
+impl_register_altrep_builtin!(Box<[f64]>, "Box_f64");
+impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
+impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
+impl_register_altrep_builtin!(Box<[String]>, "Box_String");

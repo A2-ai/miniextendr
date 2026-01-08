@@ -1,7 +1,21 @@
 //! ALTREP struct expansion for `#[miniextendr]`.
 //!
-//! This module handles the expansion of `#[miniextendr(class = "...", pkg = "...")]`
-//! when applied to structs, generating the necessary trait implementations for ALTREP.
+//! This module handles the expansion of `#[miniextendr]` when applied to structs,
+//! generating the necessary trait implementations for ALTREP.
+//!
+//! # Usage
+//!
+//! Simple 1-field wrapper struct (recommended):
+//! ```ignore
+//! #[miniextendr]
+//! pub struct MyInts(Vec<i32>);
+//! ```
+//!
+//! With explicit class name (optional):
+//! ```ignore
+//! #[miniextendr(class = "CustomClassName")]
+//! pub struct MyInts(Vec<i32>);
+//! ```
 
 pub fn expand_altrep_struct(
     attr: proc_macro::TokenStream,
@@ -34,8 +48,8 @@ pub fn expand_altrep_struct(
         }
     };
 
-    // Parse attr list: class = "...", pkg = "..."
-    // base is optional - inferred from InferBase if not provided
+    // Parse attr list: class = "..." (optional), base = "..." (optional)
+    // pkg is no longer needed - we use ALTREP_PKG_NAME at runtime
     use syn::parse::Parser;
     let parser =
         syn::punctuated::Punctuated::<syn::MetaNameValue, syn::Token![,]>::parse_terminated;
@@ -44,7 +58,6 @@ pub fn expand_altrep_struct(
         Err(e) => return e.into_compile_error().into(),
     };
     let mut class_name = None::<String>;
-    let mut pkg_name = None::<String>;
     let mut base_name = None::<String>;
     for nv in args {
         let key = nv
@@ -59,15 +72,16 @@ pub fn expand_altrep_struct(
         {
             match key.as_str() {
                 "class" => class_name = Some(s.value()),
-                "pkg" => pkg_name = Some(s.value()),
                 "base" => base_name = Some(s.value()),
+                // Silently ignore "pkg" for backwards compatibility, but it's no longer used
+                "pkg" => {}
                 _ => {}
             }
         }
     }
 
-    let class_name = class_name.expect("#[miniextendr] missing class = \"...\"");
-    let pkg_name = pkg_name.expect("#[miniextendr] missing pkg = \"...\"");
+    // Default class name to struct name if not provided
+    let class_name = class_name.unwrap_or_else(|| ident.to_string());
     // base is now OPTIONAL - inferred from InferBase if not provided
 
     // Validate base if provided, otherwise use InferBase inference
@@ -151,40 +165,40 @@ pub fn expand_altrep_struct(
             let make = match base_name.as_str() {
                 "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    ::miniextendr_api::AltrepPkgName::as_ptr(),
                     core::ptr::null_mut(),
                 ) },
                 "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    ::miniextendr_api::AltrepPkgName::as_ptr(),
                     core::ptr::null_mut(),
                 ) },
                 "Logical" => {
                     quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                        ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
                     ) }
                 }
                 "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    ::miniextendr_api::AltrepPkgName::as_ptr(),
                     core::ptr::null_mut(),
                 ) },
                 "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    ::miniextendr_api::AltrepPkgName::as_ptr(),
                     core::ptr::null_mut(),
                 ) },
                 "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    ::miniextendr_api::AltrepPkgName::as_ptr(),
                     core::ptr::null_mut(),
                 ) },
                 "Complex" => {
                     quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                        ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
                     ) }
                 }
@@ -200,7 +214,7 @@ pub fn expand_altrep_struct(
             let make = quote::quote! {
                 <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::make_class(
                     <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::PKG_NAME.as_ptr(),
+                    ::miniextendr_api::AltrepPkgName::as_ptr(),
                 )
             };
             (setters, make)
@@ -214,10 +228,7 @@ pub fn expand_altrep_struct(
         &std::ffi::CString::new(class_name.as_str()).unwrap(),
         ident.span(),
     );
-    let pkg_cstr = syn::LitCStr::new(
-        &std::ffi::CString::new(pkg_name.as_str()).unwrap(),
-        ident.span(),
-    );
+    // pkg_name is now obtained at runtime via AltrepPkgName::as_ptr()
 
     // No trait forwarding: rely on trampoline type's trait impls.
     // The ALTREP trait implementations for the data type must already exist.
@@ -364,8 +375,8 @@ pub fn expand_altrep_struct(
         .map(|b| b.to_string())
         .unwrap_or_else(|| "inferred".to_string());
     let altrep_class_doc = format!(
-        "ALTREP class descriptor for [`{}`] (class: `{}`, pkg: `{}`, base: `{}`).",
-        ident, class_name, pkg_name, base_doc
+        "ALTREP class descriptor for [`{}`] (class: `{}`, base: `{}`).",
+        ident, class_name, base_doc
     );
     let method_registrar_doc = format!("Method installer for [`{}`] ALTREP class.", ident);
     let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
@@ -405,7 +416,6 @@ pub fn expand_altrep_struct(
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
-            const PKG_NAME: &'static std::ffi::CStr = #pkg_cstr;
             const BASE: ::miniextendr_api::altrep::RBase = #base_variant;
             unsafe fn length(x: ::miniextendr_api::ffi::SEXP) -> ::miniextendr_api::ffi::R_xlen_t {
                 <#tramp_ty as ::miniextendr_api::altrep_traits::Altrep>::length(x)

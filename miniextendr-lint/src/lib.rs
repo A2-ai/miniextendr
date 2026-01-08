@@ -781,7 +781,7 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
 
     // Trait implementations (impl Trait for Type;)
     for trait_impl in parsed.trait_impls {
-        let line = trait_impl.type_ident.span().start().line;
+        let line = trait_impl.impl_type.span().start().line;
         // Get trait name from path
         let trait_name = trait_impl
             .trait_path
@@ -789,7 +789,9 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
             .last()
             .map(|s| s.ident.to_string())
             .unwrap_or_default();
-        let full_name = format!("{} for {}", trait_name, trait_impl.type_ident);
+        // Use type_name_sanitized for consistent display of generic types
+        let type_name = trait_impl.type_name_sanitized();
+        let full_name = format!("{} for {}", trait_name, type_name);
         items.push(LintItem::new(LintKind::TraitImpl, full_name, line));
     }
 

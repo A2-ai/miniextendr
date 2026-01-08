@@ -1044,3 +1044,16 @@ impl<const N: usize> AltStringData for [String; N] {
         Some(self[i].as_str())
     }
 }
+
+// =============================================================================
+// Low-level ALTREP trait implementations
+// =============================================================================
+//
+// The low-level trait impls (Altrep, AltVec, Alt*, InferBase) for builtin types
+// are located in altrep_impl.rs. This is because the impl_alt*_from_data! macros
+// are defined there and need to be in the same module.
+//
+// See altrep_impl.rs for:
+// - Vec<i32>, Vec<f64>, Vec<bool>, Vec<u8>, Vec<String>
+// - Box<[i32]>, Box<[f64]>, Box<[bool]>, Box<[u8]>, Box<[String]>
+// - Range<i32>, Range<i64>, Range<f64> (needs to be added)

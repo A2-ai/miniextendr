@@ -400,12 +400,17 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
         quote! {
             ::miniextendr_api::impl_altcomplex_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altcomplex_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {

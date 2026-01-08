@@ -71,6 +71,7 @@
 //!
 //! - [`misc_tests`]: Miscellaneous test functions
 
+use miniextendr_api::Altrep;
 use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;
 use miniextendr_api::{miniextendr, miniextendr_module};
@@ -234,14 +235,14 @@ impl AltIntegerData for ConstantIntData {
 miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
 
 /// ALTREP wrapper for ConstantIntData
-#[miniextendr(class = "ConstantInt", pkg = "rpkg")]
+#[miniextendr(class = "ConstantInt")]
 pub struct ConstantIntClass(pub ConstantIntData);
 
 /// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
 ///
 /// Test fixture for ALTREP integer vectors where all elements have the same value.
 #[miniextendr]
-fn constant_int() -> ConstantIntClass {
+pub fn constant_int() -> ConstantIntClass {
     ConstantIntClass(ConstantIntData { value: 42, len: 10 })
 }
 
@@ -288,14 +289,14 @@ impl AltRealData for ConstantRealData {
 
 miniextendr_api::impl_altreal_from_data!(ConstantRealData);
 
-#[miniextendr(class = "ConstantReal", pkg = "rpkg")]
+#[miniextendr(class = "ConstantReal")]
 pub struct ConstantRealClass(pub ConstantRealData);
 
 /// Create a ConstantReal ALTREP instance (all elements are PI, length 10).
 ///
 /// Test fixture for ALTREP real vectors where all elements have the same value.
 #[miniextendr]
-fn constant_real() -> ConstantRealClass {
+pub fn constant_real() -> ConstantRealClass {
     ConstantRealClass(ConstantRealData {
         value: std::f64::consts::PI,
         len: 10,
@@ -330,7 +331,7 @@ impl AltRealData for ArithSeqData {
 
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 
-#[miniextendr(class = "ArithSeq", pkg = "rpkg")]
+#[miniextendr(class = "ArithSeq")]
 pub struct ArithSeqClass(pub ArithSeqData);
 
 #[miniextendr]
@@ -486,7 +487,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
 miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
 
 /// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
-#[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
+#[miniextendr(class = "LazyIntSeq")]
 pub struct LazyIntSeqClass(pub LazyIntSeqData);
 
 /// Create a lazy integer sequence (similar to R's seq())
@@ -512,7 +513,7 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
 /// Returns TRUE if the lazy sequence has been materialized (full buffer allocated),
 /// FALSE if still lazy or not a LazyIntSeq ALTREP object.
 #[miniextendr]
-fn lazy_int_seq_is_materialized(x: SEXP) -> bool {
+pub fn lazy_int_seq_is_materialized(x: SEXP) -> bool {
     use miniextendr_api::altrep_data1_as;
     use miniextendr_api::ffi::ALTREP;
 
@@ -649,7 +650,7 @@ impl AltLogicalData for ConstantLogicalData {
 
 miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
 
-#[miniextendr(class = "ConstantLogical", pkg = "rpkg")]
+#[miniextendr(class = "ConstantLogical")]
 pub struct ConstantLogicalClass(pub ConstantLogicalData);
 
 #[miniextendr]
@@ -709,7 +710,7 @@ impl AltLogicalData for LogicalVecData {
 
 miniextendr_api::impl_altlogical_from_data!(LogicalVecData);
 
-#[miniextendr(class = "LogicalVec", pkg = "rpkg")]
+#[miniextendr(class = "LogicalVec")]
 pub struct LogicalVecClass(pub LogicalVecData);
 
 // -----------------------------------------------------------------------------
@@ -742,7 +743,7 @@ impl AltStringData for LazyStringData {
 
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
 
-#[miniextendr(class = "LazyString", pkg = "rpkg")]
+#[miniextendr(class = "LazyString")]
 pub struct LazyStringClass(pub LazyStringData);
 
 #[miniextendr]
@@ -782,7 +783,7 @@ impl AltRawData for RepeatingRawData {
 
 miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 
-#[miniextendr(class = "RepeatingRaw", pkg = "rpkg")]
+#[miniextendr(class = "RepeatingRaw")]
 pub struct RepeatingRawClass(pub RepeatingRawData);
 
 #[miniextendr]
@@ -836,7 +837,7 @@ impl AltComplexData for UnitCircleData {
 miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
 
 /// ALTREP wrapper for UnitCircleData - generates complex numbers on unit circle
-#[miniextendr(class = "UnitCircle", pkg = "rpkg")]
+#[miniextendr(class = "UnitCircle")]
 pub struct UnitCircleClass(pub UnitCircleData);
 
 /// ALTREP Example Constructors
@@ -865,7 +866,7 @@ pub fn unit_circle(n: i32) -> SEXP {
 // SimpleVecInt: Vec<i32> wrapper (simplest example)
 // -----------------------------------------------------------------------------
 
-#[miniextendr(class = "SimpleVecInt", pkg = "rpkg")]
+#[miniextendr(class = "SimpleVecInt")]
 pub struct SimpleVecIntClass(pub Vec<i32>);
 
 // -----------------------------------------------------------------------------
@@ -895,14 +896,14 @@ impl AltStringData for StringVecData {
 
 miniextendr_api::impl_altstring_from_data!(StringVecData);
 
-#[miniextendr(class = "SimpleVecString", pkg = "rpkg")]
+#[miniextendr(class = "SimpleVecString")]
 pub struct SimpleVecStringClass(pub StringVecData);
 
 // -----------------------------------------------------------------------------
 // SimpleVecRaw: Vec<u8> wrapper
 // -----------------------------------------------------------------------------
 
-#[miniextendr(class = "SimpleVecRaw", pkg = "rpkg")]
+#[miniextendr(class = "SimpleVecRaw")]
 pub struct SimpleVecRawClass(pub Vec<u8>);
 
 // -----------------------------------------------------------------------------
@@ -910,7 +911,7 @@ pub struct SimpleVecRawClass(pub Vec<u8>);
 // -----------------------------------------------------------------------------
 
 /// Test case for auto-inferred base type (no explicit `base = "..."` attribute)
-#[miniextendr(class = "InferredVecReal", pkg = "rpkg")]
+#[miniextendr(class = "InferredVecReal")]
 pub struct InferredVecRealClass(pub Vec<f64>);
 
 // -----------------------------------------------------------------------------
@@ -918,7 +919,7 @@ pub struct InferredVecRealClass(pub Vec<f64>);
 // -----------------------------------------------------------------------------
 
 /// ALTREP class wrapping a Box<[i32]> - fixed-size heap allocation
-#[miniextendr(class = "BoxedInts", pkg = "rpkg")]
+#[miniextendr(class = "BoxedInts")]
 pub struct BoxedIntsClass(pub Box<[i32]>);
 
 /// Create an ALTREP backed by a boxed slice.
@@ -937,7 +938,7 @@ pub fn boxed_ints(n: i32) -> SEXP {
 static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
 
 /// ALTREP class wrapping a static slice - demonstrates `&'static [T]` support
-#[miniextendr(class = "StaticInts", pkg = "rpkg")]
+#[miniextendr(class = "StaticInts")]
 pub struct StaticIntsClass(pub &'static [i32]);
 
 /// Create an ALTREP backed by static data.
@@ -969,7 +970,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
 static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
 /// ALTREP class wrapping static string slices
-#[miniextendr(class = "StaticStrings", pkg = "rpkg")]
+#[miniextendr(class = "StaticStrings")]
 pub struct StaticStringsClass(pub &'static [&'static str]);
 
 /// Create a string ALTREP backed by static data.
@@ -1014,8 +1015,98 @@ impl AltListData for ListData {
 
 miniextendr_api::impl_altlist_from_data!(ListData);
 
-#[miniextendr(class = "ListData", pkg = "rpkg")]
+#[miniextendr(class = "ListData")]
 pub struct ListDataClass(pub ListData);
+
+// region: Builtin ALTREP test fixtures
+//
+// These demonstrate ALTREP support using the `Altrep<T>` marker type.
+// The marker type opts into ALTREP representation for standard types
+// that would otherwise be eagerly copied to R.
+//
+// Without `Altrep<T>`:
+//   fn foo() -> Vec<i32>  // Copies all data to R immediately
+//
+// With `Altrep<T>`:
+//   fn foo() -> Altrep<Vec<i32>>  // Data stays in Rust, accessed on-demand
+
+/// Create a Vec-backed integer ALTREP from a range-like sequence.
+/// Uses `Altrep<Vec<i32>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_int_range(from: i32, to: i32) -> Altrep<Vec<i32>> {
+    Altrep((from..to).collect())
+}
+
+/// Create a Vec-backed real ALTREP from squared values.
+/// Uses `Altrep<Vec<f64>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_real_squares(n: i32) -> Altrep<Vec<f64>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| (i * i) as f64).collect())
+}
+
+/// Create a Vec-backed logical ALTREP (alternating TRUE/FALSE).
+/// Uses `Altrep<Vec<bool>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_logical_alternating(n: i32) -> Altrep<Vec<bool>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| i % 2 == 0).collect())
+}
+
+/// Create a Vec-backed raw ALTREP (bytes 0-255 cycling).
+/// Uses `Altrep<Vec<u8>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_raw_bytes(n: i32) -> Altrep<Vec<u8>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| (i % 256) as u8).collect())
+}
+
+/// Create a Vec-backed string ALTREP.
+/// Uses `Altrep<Vec<String>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_string_items(n: i32) -> Altrep<Vec<String>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| format!("item_{}", i)).collect())
+}
+
+// Note: iter_complex_spiral removed - Vec<Rcomplex> doesn't have builtin ALTREP support
+// Use unit_circle() for complex ALTREP testing instead
+
+/// Create a Vec-backed integer ALTREP with values from u16 coercion.
+#[miniextendr]
+pub fn iter_int_from_u16(n: i32) -> Altrep<Vec<i32>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| (i * 100) as i32).collect())
+}
+
+/// Create a Vec-backed real ALTREP with values from f32 coercion.
+#[miniextendr]
+pub fn iter_real_from_f32(n: i32) -> Altrep<Vec<f64>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| i as f64 * 1.5).collect())
+}
+
+/// Create a Vec-backed integer ALTREP (has dataptr support).
+#[miniextendr]
+pub fn vec_int_altrep(n: i32) -> Altrep<Vec<i32>> {
+    let len = n.max(0) as usize;
+    Altrep((1..=len as i32).collect())
+}
+
+/// Create a Vec-backed real ALTREP (has dataptr support).
+#[miniextendr]
+pub fn vec_real_altrep(n: i32) -> Altrep<Vec<f64>> {
+    let len = n.max(0) as usize;
+    Altrep((1..=len).map(|i| i as f64 * 0.5).collect())
+}
+
+/// Create a Range-backed integer ALTREP (O(1) sum/min/max).
+#[miniextendr]
+pub fn range_int_altrep(from: i32, to: i32) -> Altrep<std::ops::Range<i32>> {
+    Altrep(from..to)
+}
+
+// endregion
 
 // region: Nonapi module for lean-stack thread tests
 
@@ -1264,6 +1355,18 @@ miniextendr_module! {
     fn leaked_ints;
     struct StaticStringsClass;
     fn static_strings;
+
+    // ALTREP test functions (return Altrep<T> marker type)
+    fn iter_int_range;
+    fn iter_real_squares;
+    fn iter_logical_alternating;
+    fn iter_raw_bytes;
+    fn iter_string_items;
+    fn iter_int_from_u16;
+    fn iter_real_from_f32;
+    fn vec_int_altrep;
+    fn vec_real_altrep;
+    fn range_int_altrep;
 
     // Feature detection
     fn rpkg_enabled_features;
