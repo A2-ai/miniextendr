@@ -84,3 +84,40 @@ test_that("percent coerces to double", {
   expect_type(as_double, "double")
   expect_equal(as_double, 0.25)
 })
+
+test_that("percent vctrs helpers expose direct S3 functions", {
+  skip_if_vctrs_disabled()
+
+  x <- new_percent(c(0.25, 0.5))
+  proxy <- vec_proxy.percent(x)
+  expect_false(inherits(proxy, "percent"))
+  expect_equal(as.numeric(proxy), as.numeric(x))
+
+  restored <- vec_restore.percent(proxy, x)
+  expect_s3_class(restored, "percent")
+  expect_equal(as.numeric(restored), as.numeric(x))
+
+  ptype <- vec_ptype2.percent.percent(x, x)
+  expect_s3_class(ptype, "percent")
+  expect_equal(length(ptype), 0L)
+
+  identity_cast <- vec_cast.percent.percent(x, new_percent(numeric(0)))
+  expect_identical(identity_cast, x)
+
+  percent_cast <- vec_cast.percent.double(x, double())
+  expect_s3_class(percent_cast, "percent")
+  expect_equal(as.numeric(percent_cast), as.numeric(x))
+
+  ptype2_pd <- vec_ptype2.percent.double(x, 0.75)
+  expect_s3_class(ptype2_pd, "percent")
+  expect_equal(length(ptype2_pd), 0L)
+
+  ptype2_dp <- vec_ptype2.double.percent(0.5, x)
+  expect_s3_class(ptype2_dp, "percent")
+  expect_equal(length(ptype2_dp), 0L)
+
+  double_cast <- vec_cast.double.percent(0.5, x)
+  expect_type(double_cast, "double")
+  expect_false(inherits(double_cast, "percent"))
+  expect_equal(double_cast, 0.5)
+})

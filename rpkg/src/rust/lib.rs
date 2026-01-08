@@ -627,28 +627,28 @@ fn altrep_from_list(x: SEXP) -> ListDataClass {
 // ConstantLogical: All TRUE or all FALSE
 // -----------------------------------------------------------------------------
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepLogical)]
+#[altrep(len = "len", elt = "value", dataptr)]
 pub struct ConstantLogicalData {
     value: Logical,
     len: usize,
+    materialized: Option<Vec<i32>>,
 }
 
-impl AltrepLen for ConstantLogicalData {
-    fn len(&self) -> usize {
-        self.len
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for ConstantLogicalData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        if self.materialized.is_none() {
+            let value = self.value.to_r_int();
+            let data = vec![value; self.len];
+            self.materialized = Some(data);
+        }
+        self.materialized.as_mut().map(|v| v.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        self.materialized.as_ref().map(|v| v.as_ptr())
     }
 }
-
-impl AltLogicalData for ConstantLogicalData {
-    fn elt(&self, _i: usize) -> Logical {
-        self.value
-    }
-    fn no_na(&self) -> Option<bool> {
-        Some(!matches!(self.value, Logical::Na))
-    }
-}
-
-miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
 
 #[miniextendr(class = "ConstantLogical")]
 pub struct ConstantLogicalClass(pub ConstantLogicalData);
@@ -663,6 +663,7 @@ fn constant_logical(value: i32, n: i32) -> SEXP {
     let data = ConstantLogicalData {
         value: logical_value,
         len: n as usize,
+        materialized: None,
     };
     ConstantLogicalClass(data).into_sexp()
 }

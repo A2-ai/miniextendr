@@ -6,6 +6,13 @@ test_that("S3Counter lifecycle works", {
   expect_equal(s3_value(s3counter_default_counter()), 0L)
 })
 
+test_that("S3Counter S3 helpers exist through method names", {
+  c <- new_s3counter(2L)
+  expect_equal(s3_value.S3Counter(c), 2L)
+  expect_equal(s3_inc.S3Counter(c), 3L)
+  expect_equal(s3_add.S3Counter(c, 4L), 7L)
+})
+
 test_that("S4Counter lifecycle works", {
   c <- S4Counter(2L)
   expect_equal(s4_value(c), 2L)

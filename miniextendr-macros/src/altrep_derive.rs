@@ -228,7 +228,7 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
     let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
         quote! {
             fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical {
-                ::miniextendr_api::altrep_data::Logical::from_bool(self.#elt_field)
+                self.#elt_field.into()
             }
         }
     } else {

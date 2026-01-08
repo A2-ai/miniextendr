@@ -128,6 +128,17 @@ test_that("S3TraitCounter trait methods work via S3 dispatch", {
   expect_equal(counter$get_value(), value(counter))
 })
 
+test_that("S3TraitCounter S3 names work directly", {
+  counter <- S3TraitCounter$new_s3trait(5L)
+  expect_equal(value.S3TraitCounter(counter), 5L)
+
+  increment.S3TraitCounter(counter)
+  expect_equal(value.S3TraitCounter(counter), 6L)
+
+  checked_add.S3TraitCounter(counter, 7L)
+  expect_equal(value.S3TraitCounter(counter), 13L)
+})
+
 test_that("S3 trait methods work with multiple instances independently", {
   counter1 <- S3TraitCounter$new_s3trait(0L)
   counter2 <- S3TraitCounter$new_s3trait(100L)

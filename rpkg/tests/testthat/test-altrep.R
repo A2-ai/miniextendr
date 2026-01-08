@@ -142,6 +142,41 @@ test_that("static string slice ALTREP works", {
   expect_equal(s[4], "delta")
 })
 
+test_that("constant logical ALTREP works", {
+  true_vec <- constant_logical(1L, 3L)
+  expect_equal(length(true_vec), 3L)
+  expect_true(all(true_vec))
+  expect_true(true_vec[1])
+  expect_true(true_vec[3])
+
+  false_vec <- constant_logical(0L, 2L)
+  expect_true(all(!false_vec))
+  expect_false(false_vec[1])
+  expect_false(false_vec[2])
+
+  na_vec <- constant_logical(NA_integer_, 2L)
+  expect_true(is.na(na_vec[1]))
+  expect_true(is.na(na_vec[2]))
+})
+
+test_that("lazy string ALTREP yields NA", {
+  lazy <- lazy_string("prefix", 4L)
+
+  expect_equal(length(lazy), 4L)
+  expect_true(all(is.na(lazy)))
+})
+
+test_that("repeating raw ALTREP cycles pattern", {
+  pattern <- as.raw(c(0xAA, 0x00))
+  repeated <- repeating_raw(pattern, 5L)
+
+  expect_equal(length(repeated), 5L)
+  expect_equal(repeated[1:2], pattern)
+  expect_equal(repeated[3], pattern[1])
+  expect_equal(repeated[4], pattern[2])
+  expect_equal(repeated[5], pattern[1])
+})
+
 # =============================================================================
 # Box<[T]> ALTREP tests
 # =============================================================================

@@ -111,6 +111,12 @@ test_that("serde_r deserializes numeric vector to Vec<f64>", {
   expect_equal(result, c(1.5, 2.5, 3.5))
 })
 
+test_that("serde_r deserializes scalar primitives", {
+  expect_equal(serde_r_deserialize_i32(99L), 99L)
+  expect_equal(serde_r_deserialize_f64(3.14), 3.14)
+  expect_equal(serde_r_deserialize_string("serde"), "serde")
+})
+
 # =============================================================================
 # 4. Nested Structs (Lists within Lists)
 # =============================================================================

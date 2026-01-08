@@ -463,19 +463,24 @@ macro_rules! __impl_altreal_methods {
 #[macro_export]
 macro_rules! impl_altlogical_from_data {
     ($ty:ty) => {
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        impl $crate::altrep_traits::Altrep for $ty {
-            fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-        }
-
+        $crate::__impl_altrep_base!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altlogical_methods!($ty);
+        $crate::impl_inferbase_logical!($ty);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_dataptr!($ty, i32);
+        $crate::__impl_altlogical_methods!($ty);
+        $crate::impl_inferbase_logical!($ty);
+    };
+}
 
+/// Internal macro: impl AltLogical methods from AltLogicalData
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altlogical_methods {
+    ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltLogical for $ty {
             const HAS_ELT: bool = true;
@@ -543,8 +548,6 @@ macro_rules! impl_altlogical_from_data {
                     .unwrap_or($crate::ffi::SEXP::null())
             }
         }
-
-        $crate::impl_inferbase_logical!($ty);
     };
 }
 

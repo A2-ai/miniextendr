@@ -195,6 +195,13 @@ test_that("conversions vec and vec-option work", {
   expect_equal(conv_vec_opt_u8_len(as.raw(c(1, 2, 3))), 3L)
 })
 
+test_that("conversion helpers count optional-length inputs", {
+  expect_equal(conv_vec_opt_i32_len(c(4L, NA_integer_, 6L)), 3L)
+  expect_equal(conv_vec_opt_f64_len(c(1.5, NA_real_, 2.5)), 3L)
+  expect_equal(conv_vec_opt_bool_len(c(FALSE, NA, TRUE)), 3L)
+  expect_equal(conv_vec_opt_string_len(c("a", NA_character_, "b")), 3L)
+})
+
 test_that("conversions sets work", {
   expect_equal(conv_hashset_i32_len(c(1L, 1L, 2L)), 2L)
   expect_true(setequal(conv_hashset_i32_ret(), c(1L, 2L, 3L)))
