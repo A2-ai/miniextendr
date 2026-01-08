@@ -2,7 +2,7 @@
 //!
 //! Measures the cost of creating, accessing, and managing ExternalPtr values.
 
-use miniextendr_api::externalptr::ExternalPtr;
+use miniextendr_api::externalptr::{ErasedExternalPtr, ExternalPtr};
 
 fn main() {
     miniextendr_bench::init();
@@ -29,6 +29,13 @@ pub struct MediumPayload {
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct LargePayload {
     pub data: Box<[u8; 65536]>,
+}
+
+/// Another small payload type to benchmark downcast miss paths.
+#[derive(miniextendr_api::ExternalPtr)]
+struct OtherPayload {
+    #[allow(dead_code)]
+    value: i64,
 }
 
 // =============================================================================
@@ -190,4 +197,81 @@ fn baseline_box_large() {
         data: Box::new([0u8; 65536]),
     });
     divan::black_box(boxed);
+}
+
+// =============================================================================
+// Type-erased checks + downcasts
+// =============================================================================
+
+struct ProtectedSexp {
+    sexp: miniextendr_api::ffi::SEXP,
+}
+
+impl Drop for ProtectedSexp {
+    fn drop(&mut self) {
+        unsafe { miniextendr_api::ffi::Rf_unprotect(1) };
+    }
+}
+
+#[divan::bench]
+fn erased_is_hit(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| unsafe {
+            let ptr = ExternalPtr::new(SmallPayload { value: 42 });
+            let sexp = ptr.as_sexp();
+            miniextendr_api::ffi::Rf_protect(sexp);
+            ProtectedSexp { sexp }
+        })
+        .bench_local_refs(|p| {
+            let erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
+            divan::black_box(erased.is::<SmallPayload>());
+        });
+}
+
+#[divan::bench]
+fn erased_is_miss(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| unsafe {
+            let ptr = ExternalPtr::new(SmallPayload { value: 42 });
+            let sexp = ptr.as_sexp();
+            miniextendr_api::ffi::Rf_protect(sexp);
+            ProtectedSexp { sexp }
+        })
+        .bench_local_refs(|p| {
+            let erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
+            divan::black_box(erased.is::<OtherPayload>());
+        });
+}
+
+#[divan::bench]
+fn erased_downcast_ref_hit(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| unsafe {
+            let ptr = ExternalPtr::new(SmallPayload { value: 42 });
+            let sexp = ptr.as_sexp();
+            miniextendr_api::ffi::Rf_protect(sexp);
+            ProtectedSexp { sexp }
+        })
+        .bench_local_refs(|p| {
+            let erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
+            let r = erased.downcast_ref::<SmallPayload>().unwrap();
+            divan::black_box(r.value);
+        });
+}
+
+#[divan::bench]
+fn erased_downcast_mut_hit(bencher: divan::Bencher) {
+    bencher
+        .with_inputs(|| unsafe {
+            let ptr = ExternalPtr::new(SmallPayload { value: 42 });
+            let sexp = ptr.as_sexp();
+            miniextendr_api::ffi::Rf_protect(sexp);
+            ProtectedSexp { sexp }
+        })
+        .bench_local_refs(|p| {
+            let mut erased = unsafe { ErasedExternalPtr::from_sexp(p.sexp) };
+            let r = erased.downcast_mut::<SmallPayload>().unwrap();
+            r.value += 1;
+            divan::black_box(r.value);
+        });
 }

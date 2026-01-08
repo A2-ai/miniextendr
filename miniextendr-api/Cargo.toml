@@ -12,19 +12,111 @@ documentation = "https://docs.rs/miniextendr-api"
 rust-version = "1.85"
 
 [features]
-default = ["doc-lint", "rayon"]
+default = ["doc-lint"]
 ## Enable non-API R functions. These may break with R updates and cause
 ## `R CMD check` warnings. See NONAPI.md for details.
 nonapi = []
+## Enable rayon integration for parallel iterators. Pulls in crossbeam-* crates.
+## Add `features = ["rayon"]` to your dependency if needed.
 rayon = ["dep:rayon"]
 ## Enable custom R connection framework. WARNING: R's connection API is explicitly
 ## marked as unstable and may change between R versions without notice.
 connections = []
 doc-lint = ["miniextendr-macros/doc-lint"]
+## Enable rand crate integration. Provides RRng which wraps R's RNG with rand traits.
+rand = ["dep:rand"]
+## Enable rand_distr for additional distributions (Normal, Exp, etc.). Requires `rand` feature.
+rand_distr = ["rand", "dep:rand_distr"]
+## Enable either crate integration. Provides TryFromSexp/IntoR for Either<L, R>.
+either = ["dep:either"]
+## Enable ndarray integration. Provides conversions for Array1, Array2, ArrayView1, ArrayView2.
+ndarray = ["dep:ndarray"]
+## Enable nalgebra integration. Provides conversions for DVector, DMatrix.
+nalgebra = ["dep:nalgebra"]
+## Enable serde integration. Re-exports serde for derive macros. Includes serde_json for JSON.
+serde = ["dep:serde", "dep:serde_json"]
+## Enable direct R serialization via serde (no JSON intermediate).
+## Provides RSerializeNative/RDeserializeNative traits for Rust<->R conversions.
+serde_r = ["dep:serde"]
+## Enable both JSON and native R serialization.
+serde_full = ["serde", "serde_r"]
+## Enable num-bigint integration. Provides BigInt/BigUint conversions.
+num-bigint = ["dep:num-bigint", "dep:num-integer"]
+## Enable rust_decimal integration. Provides Decimal conversions.
+rust_decimal = ["dep:rust_decimal"]
+## Enable ordered-float integration. Provides OrderedFloat conversions.
+ordered-float = ["dep:ordered-float"]
+## Enable uuid integration. Provides Uuid conversions (character <-> UUID).
+uuid = ["dep:uuid"]
+## Enable regex integration. Provides compiled Regex from R character patterns.
+regex = ["dep:regex"]
+## Enable indexmap integration. Provides IndexMap<String, T> ⇄ named list conversions.
+indexmap = ["dep:indexmap"]
+## Enable time crate integration. Provides OffsetDateTime ⇄ POSIXct, Date conversions.
+time = ["dep:time"]
+## Enable indicatif progress bar integration (R console).
+## Requires non-API console hooks (ptr_R_WriteConsoleEx).
+indicatif = ["dep:indicatif", "nonapi"]
+## Enable num-traits integration. Provides RNum and RFloat adapter traits for generic numeric operations.
+num-traits = ["dep:num-traits"]
+## Enable bytes crate integration. Provides RBuf and RBufMut adapter traits for byte buffer operations.
+bytes = ["dep:bytes"]
+## Enable num-complex integration. Provides Complex<f64> ⇄ CPLXSXP conversions.
+num-complex = ["dep:num-complex"]
+## Enable url integration. Provides Url ⇄ character conversions with strict validation.
+url = ["dep:url"]
+## Enable sha2 integration. Provides SHA-256/SHA-512 hashing helpers.
+sha2 = ["dep:sha2"]
+## Enable bitflags integration. Provides RFlags<T> wrapper for bitflags ↔ integer conversions.
+bitflags = ["dep:bitflags"]
+## Enable bitvec integration. Provides BitVec ↔ logical vector conversions.
+bitvec = ["dep:bitvec"]
+## Enable aho-corasick integration. Provides fast multi-pattern string search.
+aho-corasick = ["dep:aho-corasick"]
+## Enable toml integration. Provides TOML value ↔ R list/string conversions.
+toml = ["dep:toml"]
+## Enable tabled integration. Provides table formatting to strings.
+tabled = ["dep:tabled"]
+## Enable raw_conversions integration. Provides bytemuck-based POD ↔ raw vector conversions.
+raw_conversions = ["dep:bytemuck"]
+## Enable vctrs integration. Provides access to vctrs' maturing C API (obj_is_vector,
+## short_vec_size, short_vec_recycle) via R_GetCCallable. Requires vctrs R package.
+vctrs = []
 
 [dependencies]
 miniextendr-macros = { workspace = true }
 rayon = { version = "1.11.0", optional = true }
+rand = { version = "0.9.2", optional = true }
+rand_distr = { version = "0.5.1", optional = true }
+either = { version = "1.15.0", optional = true }
+ndarray = { version = "0.17.1", optional = true }
+nalgebra = { version = "0.34.1", optional = true }
+serde = { version = "1.0.228", optional = true, features = ["derive"] }
+serde_json = { version = "1.0.148", optional = true }
+indicatif = { version = "0.18.3", optional = true }
+num-bigint = { version = "0.4.6", optional = true }
+num-integer = { version = "0.1.46", optional = true }
+rust_decimal = { version = "1.39.0", optional = true }
+ordered-float = { version = "5.1.0", optional = true }
+uuid = { version = "1.19.0", optional = true, features = ["v4"] }
+regex = { version = "1.12.2", optional = true }
+indexmap = { version = "2.12.1", optional = true }
+time = { version = "0.3.44", optional = true, features = [
+    "formatting",
+    "parsing",
+    "macros",
+] }
+num-traits = { version = "0.2.19", optional = true }
+bytes = { version = "1.11.0", optional = true }
+num-complex = { version = "0.4.6", optional = true }
+url = { version = "2.5.7", optional = true }
+sha2 = { version = "0.10.9", optional = true }
+bitflags = { version = "2.10.0", optional = true }
+bitvec = { version = "1.0.1", optional = true }
+aho-corasick = { version = "1.1.4", optional = true }
+toml = { version = "0.9.8", optional = true }
+tabled = { version = "0.20.0", optional = true }
+bytemuck = { version = "1.23.0", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }

@@ -1,12 +1,141 @@
 # Internal utility functions for minirextendr
 
+# Template type for current session (used by template functions)
+.template_type <- new.env(parent = emptyenv())
+.template_type$current <- "rpkg"
+
+#' Set template type for scaffolding
+#'
+#' @param type Either "rpkg" (standalone R package) or "monorepo" (Rust workspace)
+#' @noRd
+set_template_type <- function(type = c("rpkg", "monorepo")) {
+  type <- match.arg(type)
+  .template_type$current <- type
+  invisible(type)
+}
+
+#' Get current template type
+#'
+#' @return Current template type
+#' @noRd
+get_template_type <- function() {
+  .template_type$current
+}
+
+#' Detect project type from directory structure
+#'
+#' Auto-detects whether the current project is:
+#' - "monorepo": Has a Cargo.toml anywhere in the parent tree
+#'   (indicates Rust project context where rpkg/ will be embedded)
+#' - "rpkg": Is a standalone R package (has DESCRIPTION, no Cargo.toml in tree)
+#'
+#' Uses rprojroot for reliable tree-walking detection.
+#'
+#' @param path Path to check (default: current project)
+#' @return "monorepo" or "rpkg", or NULL if can't detect
+#' @noRd
+detect_project_type <- function(path = usethis::proj_get()) {
+  # Check if we're in a Rust project (has Cargo.toml in current dir)
+  cargo_toml <- file.path(path, "Cargo.toml")
+  if (file.exists(cargo_toml)) {
+    # Current directory is a Rust crate/workspace - this is a monorepo
+    return("monorepo")
+  }
+
+  # Check if we're in an R package directory
+  if (file.exists(file.path(path, "DESCRIPTION"))) {
+    # Check if this rpkg is embedded in a Rust project (Cargo.toml anywhere up the tree)
+    rust_root <- find_rust_root(path)
+    if (!is.null(rust_root)) {
+      # This is an rpkg inside a Rust project (monorepo)
+      return("monorepo")
+    }
+    # Standalone R package
+    return("rpkg")
+  }
+
+  NULL
+}
+
+#' Check if project is inside a Rust project
+#'
+#' Walks up the directory tree to find a Cargo.toml, indicating
+#' the R package is embedded in a Rust project context.
+#'
+#' @param path Path to check
+#' @return TRUE if inside a Rust project, FALSE otherwise
+#' @noRd
+is_in_rust_project <- function(path = usethis::proj_get()) {
+  rust_root <- find_rust_root(path)
+  !is.null(rust_root)
+}
+
+#' Find the root of a Rust project
+#'
+#' Walks up the directory tree to find a directory containing Cargo.toml.
+#' Uses rprojroot for reliable detection.
+#'
+#' @param path Path to start searching from
+#' @return Path to Rust project root, or NULL if not found
+#' @noRd
+find_rust_root <- function(path = usethis::proj_get()) {
+  tryCatch(
+    {
+      rprojroot::find_root(rprojroot::has_file("Cargo.toml"), path = path)
+    },
+    error = function(e) {
+      NULL
+    }
+  )
+}
+
+#' Check if project is inside a Cargo workspace
+#'
+#' Looks for a Cargo.toml with [workspace] in the current directory or parent.
+#' A workspace allows multiple crates to share dependencies.
+#'
+#' @param path Path to check
+#' @return TRUE if inside a workspace, FALSE otherwise
+#' @noRd
+is_in_rust_workspace <- function(path = usethis::proj_get()) {
+  # Check current directory
+  cargo_toml <- file.path(path, "Cargo.toml")
+  if (file.exists(cargo_toml)) {
+    cargo_content <- readLines(cargo_toml, warn = FALSE)
+    if (any(grepl("^\\[workspace\\]", cargo_content))) {
+      return(TRUE)
+    }
+  }
+
+  # Check parent (for rpkg/ inside monorepo)
+  parent_cargo <- file.path(dirname(path), "Cargo.toml")
+  if (file.exists(parent_cargo)) {
+    parent_content <- readLines(parent_cargo, warn = FALSE)
+    if (any(grepl("^\\[workspace\\]", parent_content))) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
 #' Get path to package template
 #'
-#' @param name Name of the template file
+#' For "rpkg" templates, returns templates from `templates/rpkg/`.
+#' For "monorepo" templates, returns templates from `templates/monorepo/`.
+#'
+#' @param name Name of the template file (relative to template type directory)
+#' @param subdir Optional subdirectory within the template type
 #' @return Full path to the template
 #' @noRd
-template_path <- function(name) {
-  system.file("templates", name, package = "minirextendr", mustWork = TRUE)
+template_path <- function(name, subdir = NULL) {
+  type <- get_template_type()
+  if (!is.null(subdir)) {
+    path <- file.path("templates", type, subdir, name)
+  } else {
+    path <- file.path("templates", type, name)
+  }
+  system.file(path, package = "minirextendr", mustWork = TRUE)
 }
 
 #' Get path to bundled script
@@ -20,22 +149,36 @@ script_path <- function(name) {
 
 #' Use a minirextendr template
 #'
-#' Wrapper around usethis::use_template that defaults to minirextendr package.
+#' Uses usethis' templating machinery to render and write a template from
+#' the current template type directory.
 #'
-#' @param template Name of template file in inst/templates
+#' @param template Name of template file (relative to template type directory)
 #' @param save_as Path to save the file (relative to project root)
-#' @param data Named list of template variables
+#' @param data Named list of template variables for {{variable}} substitution
+#' @param subdir Optional subdirectory within the template type (e.g., "rpkg" for monorepo)
 #' @param open Whether to open the file after creation
 #' @return Invisibly returns TRUE if file was created
 #' @noRd
-use_template <- function(template, save_as = template, data = list(), open = FALSE) {
-  usethis::use_template(
-    template = template,
+use_template <- function(template, save_as = template, data = list(),
+                         subdir = NULL, open = FALSE) {
+  template_rel <- if (is.null(subdir)) {
+    file.path(get_template_type(), template)
+  } else {
+    file.path(get_template_type(), subdir, template)
+  }
+
+  target_path <- usethis::proj_path(save_as)
+  ensure_dir(dirname(target_path))
+
+  new <- usethis::use_template(
+    template = template_rel,
     save_as = save_as,
     data = data,
-    open = open,
+    open = open && rlang::is_interactive(),
     package = "minirextendr"
   )
+
+  invisible(new)
 }
 
 #' Check if a system command is available
@@ -105,18 +248,69 @@ to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
 }
 
+#' Get package name from Cargo.toml
+#'
+#' @param cargo_path Path to Cargo.toml file
+#' @return Package name from Cargo.toml, with hyphens replaced by dots for R
+#' @noRd
+get_package_name_from_cargo <- function(cargo_path = file.path(usethis::proj_get(), "Cargo.toml")) {
+  if (!file.exists(cargo_path)) {
+    abort("Cargo.toml not found")
+  }
+
+  lines <- readLines(cargo_path, warn = FALSE)
+
+  # Look for: name = "package-name"
+  name_line <- grep('^name\\s*=\\s*"', lines, value = TRUE)[1]
+  if (is.na(name_line)) {
+    abort("Could not find package name in Cargo.toml")
+  }
+
+  # Extract name from: name = "my-crate"
+  name <- sub('^name\\s*=\\s*"([^"]+)".*$', '\\1', name_line)
+
+  # Convert Rust naming (hyphens) to R naming (dots)
+  gsub("-", ".", name)
+}
+
 #' Standard template data for current project
 #'
-#' @return Named list with package, package_rs, year, etc.
+#' @param crate_name Optional crate name for monorepo template
+#' @param package Optional package name override (for when DESCRIPTION doesn't exist yet)
+#' @param rpkg_name Optional R package subdirectory name for monorepo template
+#' @return Named list with package, package_rs, crate_name, year, etc.
 #' @noRd
-template_data <- function() {
- pkg <- get_package_name()
-  list(
+template_data <- function(crate_name = NULL, package = NULL, rpkg_name = NULL) {
+  # Get package name: use provided, or read from DESCRIPTION
+  if (is.null(package)) {
+    pkg <- get_package_name()
+  } else {
+    pkg <- package
+  }
+
+  data <- list(
     package = pkg,
     package_rs = to_rust_name(pkg),
     Package = tools::toTitleCase(pkg),
     year = format(Sys.Date(), "%Y")
   )
+
+  # Add monorepo-specific data
+  if (!is.null(crate_name)) {
+    data$crate_name <- crate_name
+  } else if (get_template_type() == "monorepo") {
+    # Default crate name is package name with dashes
+    data$crate_name <- gsub("\\.", "-", pkg)
+  }
+
+  if (!is.null(rpkg_name)) {
+    data$rpkg_name <- rpkg_name
+  } else if (get_template_type() == "monorepo") {
+    # Default rpkg directory name
+    data$rpkg_name <- "rpkg"
+  }
+
+  data
 }
 
 #' Ensure directory exists

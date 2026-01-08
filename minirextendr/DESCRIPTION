@@ -2,23 +2,26 @@ Package: minirextendr
 Title: Scaffold miniextendr R Packages
 Version: 0.1.0
 Authors@R:
-    person("Mossa", "Merhi Reimert", role = c("aut", "cre"),
-           comment = c(ORCID = "YOUR-ORCID-ID"))
+    c(
+        person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
+        person("A2-AI", role = c("cph", "fnd"))
+    )
 Description: Utility functions for creating and maintaining R packages
     that use miniextendr for Rust integration. Similar to usethis but
     specialized for the miniextendr framework. Provides scaffolding
     templates, workflow helpers, and GitHub-based vendoring of miniextendr
     crates.
 License: MIT + file LICENSE
-URL: https://github.com/miniextendr/miniextendr
-BugReports: https://github.com/miniextendr/miniextendr/issues
+URL: https://github.com/CGMossa/miniextendr
+BugReports: https://github.com/CGMossa/miniextendr/issues
 Imports:
     cli,
     curl,
     desc,
     fs,
+    gh,
     glue,
-    jsonlite,
+    rappdirs,
     rlang (>= 1.1.0),
     rprojroot,
     usethis (>= 2.0.0),
@@ -31,4 +34,4 @@ SystemRequirements: autoconf, Rust (>= 1.85)
 Config/testthat/edition: 3
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3

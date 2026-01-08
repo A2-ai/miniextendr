@@ -92,7 +92,7 @@ pub struct CWrapperContext {
     pub r_wrapper_const: syn::Ident,
     /// Function inputs (without self receiver)
     pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    /// Return type (used for future return handling detection)
+    /// Return type (stored for builder pattern but read via detect_return_handling)
     #[allow(dead_code)]
     pub output: syn::ReturnType,
     /// Pre-call statements (e.g., self extraction for methods)
@@ -109,6 +109,8 @@ pub struct CWrapperContext {
     pub coerce_params: Vec<String>,
     /// Check interrupt before call
     pub check_interrupt: bool,
+    /// Use RNG state management (GetRNGstate/PutRNGstate)
+    pub rng: bool,
     /// cfg attributes to propagate
     pub cfg_attrs: Vec<syn::Attribute>,
     /// Type identifier for method context (for doc generation)
@@ -135,6 +137,7 @@ impl CWrapperContext {
             coerce_all: false,
             coerce_params: Vec::new(),
             check_interrupt: false,
+            rng: false,
             cfg_attrs: Vec::new(),
             type_context: None,
             has_self: false,
@@ -205,6 +208,37 @@ impl CWrapperContext {
         builder.build_conversions(&self.inputs, sexp_idents)
     }
 
+    /// Build conversion statements split for worker thread execution.
+    ///
+    /// Returns (pre_closure, in_closure) statements:
+    /// - pre_closure: Run on main thread, produce owned values to move
+    /// - in_closure: Run inside worker closure, create borrows
+    fn build_conversion_stmts_split(
+        &self,
+        sexp_idents: &[syn::Ident],
+    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
+        let mut builder = crate::RustConversionBuilder::new();
+        if self.coerce_all {
+            builder = builder.with_coerce_all();
+        }
+        for param in &self.coerce_params {
+            builder = builder.with_coerce_param(param.clone());
+        }
+
+        let mut all_pre = Vec::new();
+        let mut all_in = Vec::new();
+
+        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents.iter()) {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                let (owned, borrowed) = builder.build_conversion_split(pat_type, sexp_ident);
+                all_pre.extend(owned);
+                all_in.extend(borrowed);
+            }
+        }
+
+        (all_pre, all_in)
+    }
+
     /// Generate the main thread wrapper body.
     fn generate_main_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
@@ -225,19 +259,48 @@ impl CWrapperContext {
 
         let doc = self.generate_doc_comment("main thread");
 
-        quote! {
-            #[doc = #doc]
-            #[unsafe(no_mangle)]
-            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                    || {
-                        #pre_call_checks
-                        #(#pre_call)*
-                        #(#conversion_stmts)*
-                        #return_handling
-                    },
-                    Some(__miniextendr_call),
-                )
+        if self.rng {
+            // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
+            quote! {
+                #[doc = #doc]
+                #[unsafe(no_mangle)]
+                extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                    unsafe { ::miniextendr_api::ffi::GetRNGstate(); }
+                    let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            || {
+                                #pre_call_checks
+                                #(#pre_call)*
+                                #(#conversion_stmts)*
+                                #return_handling
+                            },
+                            Some(__miniextendr_call),
+                        )
+                    }));
+                    // PutRNGstate runs after catch_unwind, before error handling
+                    unsafe { ::miniextendr_api::ffi::PutRNGstate(); }
+                    match __result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => ::std::panic::resume_unwind(payload),
+                    }
+                }
+            }
+        } else {
+            // Non-RNG variant: direct call to with_r_unwind_protect
+            quote! {
+                #[doc = #doc]
+                #[unsafe(no_mangle)]
+                extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        || {
+                            #pre_call_checks
+                            #(#pre_call)*
+                            #(#conversion_stmts)*
+                            #return_handling
+                        },
+                        Some(__miniextendr_call),
+                    )
+                }
             }
         }
     }
@@ -246,7 +309,7 @@ impl CWrapperContext {
     fn generate_worker_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let (c_params, _, sexp_idents) = self.build_c_params();
-        let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
+        let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -262,25 +325,42 @@ impl CWrapperContext {
 
         let doc = self.generate_doc_comment("worker thread");
 
+        // RNG state management: GetRNGstate at start, PutRNGstate before returning/error handling
+        let (rng_get, rng_put) = if self.rng {
+            (
+                quote! { unsafe { ::miniextendr_api::ffi::GetRNGstate(); } },
+                quote! { unsafe { ::miniextendr_api::ffi::PutRNGstate(); } },
+            )
+        } else {
+            (TokenStream::new(), TokenStream::new())
+        };
+
         quote! {
             #[doc = #doc]
             #[unsafe(no_mangle)]
             extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                #rng_get
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #pre_call_checks
                     #(#pre_call)*
-                    #(#conversion_stmts)*
+                    // Pre-closure: conversions on main thread (owned values to move)
+                    #(#pre_closure_stmts)*
 
                     let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
+                        // In-closure: borrows from moved storage
+                        #(#in_closure_stmts)*
                         #worker_body
                     });
 
                     #return_conversion
                 }));
+                // PutRNGstate runs after catch_unwind, before error conversion
+                #rng_put
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
-                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
-                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_errorcall(
+                        ::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        __miniextendr_call,
                     ),
                 }
             }
@@ -625,6 +705,7 @@ pub struct CWrapperContextBuilder {
     coerce_all: bool,
     coerce_params: Vec<String>,
     check_interrupt: bool,
+    rng: bool,
     cfg_attrs: Vec<syn::Attribute>,
     type_context: Option<syn::Ident>,
     has_self: bool,
@@ -697,6 +778,12 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Enable RNG state management (GetRNGstate/PutRNGstate).
+    pub fn rng(mut self) -> Self {
+        self.rng = true;
+        self
+    }
+
     /// Set cfg attributes.
     pub fn cfg_attrs(mut self, attrs: Vec<syn::Attribute>) -> Self {
         self.cfg_attrs = attrs;
@@ -759,6 +846,7 @@ impl CWrapperContextBuilder {
             coerce_all: self.coerce_all,
             coerce_params: self.coerce_params,
             check_interrupt: self.check_interrupt,
+            rng: self.rng,
             cfg_attrs: self.cfg_attrs,
             type_context: self.type_context,
             has_self: self.has_self,
@@ -898,73 +986,4 @@ pub fn has_sexp_inputs(inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::Tok
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn thread_strategy_detection() {
-        // Worker by default
-        assert_eq!(ThreadStrategy::detect(false), ThreadStrategy::WorkerThread);
-
-        // Main thread only when explicitly forced
-        assert_eq!(ThreadStrategy::detect(true), ThreadStrategy::MainThread);
-    }
-
-    #[test]
-    fn return_handling_detection() {
-        // Default (no return type) -> Unit
-        assert!(matches!(
-            detect_return_handling(&syn::ReturnType::Default),
-            ReturnHandling::Unit
-        ));
-
-        // -> () -> Unit
-        let unit_ty: syn::ReturnType = syn::parse_quote!(-> ());
-        assert!(matches!(
-            detect_return_handling(&unit_ty),
-            ReturnHandling::Unit
-        ));
-
-        // -> i32 -> IntoR
-        let i32_ty: syn::ReturnType = syn::parse_quote!(-> i32);
-        assert!(matches!(
-            detect_return_handling(&i32_ty),
-            ReturnHandling::IntoR
-        ));
-
-        // -> Self -> ExternalPtr
-        let self_ty: syn::ReturnType = syn::parse_quote!(-> Self);
-        assert!(matches!(
-            detect_return_handling(&self_ty),
-            ReturnHandling::ExternalPtr
-        ));
-
-        // -> Option<i32> -> OptionIntoR
-        let option_ty: syn::ReturnType = syn::parse_quote!(-> Option<i32>);
-        assert!(matches!(
-            detect_return_handling(&option_ty),
-            ReturnHandling::OptionIntoR
-        ));
-
-        // -> Option<()> -> OptionUnit
-        let option_unit_ty: syn::ReturnType = syn::parse_quote!(-> Option<()>);
-        assert!(matches!(
-            detect_return_handling(&option_unit_ty),
-            ReturnHandling::OptionUnit
-        ));
-
-        // -> Result<i32, E> -> ResultIntoR
-        let result_ty: syn::ReturnType = syn::parse_quote!(-> Result<i32, E>);
-        assert!(matches!(
-            detect_return_handling(&result_ty),
-            ReturnHandling::ResultIntoR
-        ));
-
-        // -> Result<(), E> -> ResultUnit
-        let result_unit_ty: syn::ReturnType = syn::parse_quote!(-> Result<(), E>);
-        assert!(matches!(
-            detect_return_handling(&result_unit_ty),
-            ReturnHandling::ResultUnit
-        ));
-    }
-}
+mod tests;

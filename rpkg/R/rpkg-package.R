@@ -2,6 +2,6 @@
 "_PACKAGE"
 
 ## usethis namespace: start
-#' @useDynLib rpkg, .registration = TRUE
+#' @useDynLib miniextendr, .registration = TRUE
 ## usethis namespace: end
 NULL

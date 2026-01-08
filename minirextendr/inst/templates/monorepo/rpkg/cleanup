@@ -1,0 +1,17 @@
+#!/bin/sh
+# Variables that are present from R build process
+# Sys.setenv(R_PACKAGE_NAME = pkgname)
+# Sys.setenv(R_PACKAGE_DIR = pkgdir)
+# Sys.setenv(R_LIBRARY_DIR = dirname(pkgdir))
+
+# Only clean when on CRAN or during R CMD check
+if [ "$NOT_CRAN" != "true" ]; then
+  rm -f  src/Makevars
+  rm -rf src/rust/target
+  rm -rf src/rust/ra_target
+  rm -rf src/rust/.cargo
+  rm     src/rust/Cargo.toml
+  rm -rf src/rust/document.rs
+  rm -rf src/entrypoint.c
+  rm -rf src/miniextendr_wrappers.R
+fi

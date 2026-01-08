@@ -1,0 +1,85 @@
+# Cross-package trait dispatch testing
+
+default:
+    @just --list
+
+# Build and install both packages in sequence
+build-all: configure-producer build-producer configure-consumer build-consumer
+
+# Alias for build-all
+install-all: build-all
+
+# Document both packages (regenerate R wrappers)
+document-all: document-producer document-consumer
+
+# Document producer.pkg
+document-producer: configure-producer
+    cd producer.pkg && Rscript -e 'devtools::document()'
+
+# Document consumer.pkg
+document-consumer: configure-consumer
+    cd consumer.pkg && Rscript -e 'devtools::document()'
+
+# Configure both packages
+configure-all: configure-producer configure-consumer
+
+# Configure producer.pkg
+configure-producer:
+    cd producer.pkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=true ./configure
+
+# Build and install producer.pkg
+build-producer:
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
+
+# Configure consumer.pkg
+configure-consumer:
+    cd consumer.pkg && \
+    if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
+    NOT_CRAN=true ./configure
+
+# Build and install consumer.pkg
+build-consumer: configure-consumer
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
+
+# Test producer.pkg
+test-producer: configure-producer
+    cd producer.pkg && Rscript -e 'devtools::test()'
+
+# Test consumer.pkg (includes cross-package tests)
+test-consumer: configure-consumer
+    cd consumer.pkg && Rscript -e 'devtools::test()'
+
+# Run all tests
+test-all: test-producer test-consumer
+
+# Clean build artifacts from both packages
+clean:
+    cd producer.pkg && ./cleanup
+    cd consumer.pkg && ./cleanup
+    rm -rf producer.pkg/src/rust/target
+    rm -rf consumer.pkg/src/rust/target
+
+# Alias for clean
+clean-all: clean
+
+# Full development cycle
+dev: clean build-all test-all
+
+# Quick rebuild (assumes configure already run)
+rebuild: build-producer build-consumer
+
+# Alias for rebuild
+rebuild-all: rebuild
+
+# Run R CMD check on producer.pkg
+check-producer: configure-producer
+    cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::check()'
+
+# Run R CMD check on consumer.pkg
+check-consumer: configure-consumer
+    cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::check()'
+
+# Run R CMD check on both packages
+check-all: check-producer check-consumer

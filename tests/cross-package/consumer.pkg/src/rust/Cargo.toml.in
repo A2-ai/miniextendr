@@ -1,0 +1,31 @@
+[package]
+name = "consumer-pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
+[[bin]]
+name = "document"
+path = "document.rs"
+bench = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+nonapi = ["miniextendr-api/nonapi"]
+connections = ["miniextendr-api/connections"]
+
+[dependencies]
+# Use the configure-selected vendor dir (rpkg/src/vendor in this monorepo)
+miniextendr-api = { path = "@VENDOR_OUT@/miniextendr-api" }
+# Shared traits at cross-package root level for path consistency
+shared-traits = { path = "../../../shared-traits" }
+
+[build-dependencies]
+miniextendr-lint = { path = "@VENDOR_OUT@/miniextendr-lint" }

@@ -1,15 +1,14 @@
 //! Build script for miniextendr-api
 //!
 //! Sets appropriate stack size linker flags for R-compatible binaries and links
-//! against libR when the `nonapi` feature is enabled (needed for stack globals).
-//! This affects tests, examples, and cdylib crates that depend on miniextendr-api.
+//! against libR. This affects tests, examples, and cdylib crates that depend on
+//! miniextendr-api.
 
 use std::env;
 use std::process::Command;
 
 fn main() {
-    // Only set stack size flags when nonapi feature is enabled
-    // (since that's where thread utilities live)
+    // Set stack size flags for R compatibility (R expects larger stacks)
     set_stack_size_flags();
 
     // Always link to R. This keeps tests/binaries consistent and avoids

@@ -67,3 +67,30 @@ use_miniextendr_entrypoint <- function() {
   use_template("entrypoint.c.in", save_as = "src/entrypoint.c.in")
   invisible(TRUE)
 }
+
+#' Add mx_abi.c.in and mx_abi.h templates
+#'
+#' Creates src/mx_abi.c.in and inst/include/mx_abi.h which provide the
+#' C ABI for cross-package trait dispatch. These files enable other packages
+#' to interact with miniextendr's trait system.
+#'
+#' @return Invisibly returns TRUE if files were created
+#' @export
+use_miniextendr_mx_abi <- function() {
+  data <- template_data()
+
+  # Create src/ directory if needed
+
+  ensure_dir(usethis::proj_path("src"))
+
+  # mx_abi.c.in template
+  use_template("mx_abi.c.in", save_as = "src/mx_abi.c.in")
+
+
+  # inst/include/ directory and header
+  ensure_dir(usethis::proj_path("inst", "include"))
+  use_template("mx_abi.h", save_as = "inst/include/mx_abi.h",
+               subdir = "inst_include", data = data)
+
+  invisible(TRUE)
+}
