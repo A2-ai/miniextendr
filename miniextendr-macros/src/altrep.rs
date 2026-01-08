@@ -209,7 +209,8 @@ pub fn expand_altrep_struct(
             // No explicit base: use InferBase trait for compile-time dispatch
             // This is auto-implemented via impl_inferbase_* macros alongside impl_alt*_from_data!
             let setters = quote::quote! {
-                <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::install_methods(cls);
+                // SAFETY: Called during R initialization while holding exclusive R access
+                unsafe { <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::install_methods(cls); }
             };
             let make = quote::quote! {
                 <#tramp_ty as ::miniextendr_api::altrep_data::InferBase>::make_class(
@@ -378,7 +379,6 @@ pub fn expand_altrep_struct(
         "ALTREP class descriptor for [`{}`] (class: `{}`, base: `{}`).",
         ident, class_name, base_doc
     );
-    let method_registrar_doc = format!("Method installer for [`{}`] ALTREP class.", ident);
     let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
 
     let method_registrar_install_body: proc_macro2::TokenStream = if base_name.is_some() {
@@ -422,21 +422,6 @@ pub fn expand_altrep_struct(
             }
         }
 
-        #[doc = #method_registrar_doc]
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        impl ::miniextendr_api::altrep_registration::MethodRegistrar for #ident #ty_generics #where_clause {
-            unsafe fn install(cls: ::miniextendr_api::ffi::altrep::R_altrep_class_t) {
-                #[allow(unused_imports)]
-                use ::miniextendr_api::altrep_bridge as bridge;
-                #[allow(unused_imports)]
-                use ::miniextendr_api::ffi::altrep::*;
-                // Local helper to reduce boilerplate
-                #[allow(unused_macros)]
-                macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
-                #method_registrar_install_body
-            }
-        }
-
         #[doc = #register_altrep_doc]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
             fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
@@ -444,7 +429,17 @@ pub fn expand_altrep_struct(
                 static CLASS: OnceLock<::miniextendr_api::ffi::altrep::R_altrep_class_t> = OnceLock::new();
                 *CLASS.get_or_init(move || {
                     let cls = unsafe { #make_class };
-                    unsafe { <#ident as ::miniextendr_api::altrep_registration::MethodRegistrar>::install(cls); }
+                    // Install ALTREP methods
+                    {
+                        #[allow(unused_imports)]
+                        use ::miniextendr_api::altrep_bridge as bridge;
+                        #[allow(unused_imports)]
+                        use ::miniextendr_api::ffi::altrep::*;
+                        // Local helper to reduce boilerplate
+                        #[allow(unused_macros)]
+                        macro_rules! set_if { ($cond:expr, $setter:path, $tramp:expr) => { if $cond { unsafe { $setter(cls, Some($tramp)) } } } }
+                        #method_registrar_install_body
+                    }
                     cls
                 })
             }

@@ -810,6 +810,9 @@ impl_altraw_from_data!(Vec<u8>);
 // String types
 impl_altstring_from_data!(Vec<String>);
 
+// Complex types - Vec<Rcomplex> supports dataptr
+impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr);
+
 // =============================================================================
 // Box<[T]> implementations
 // =============================================================================
@@ -822,6 +825,7 @@ impl_altreal_from_data!(Box<[f64]>, dataptr);
 impl_altlogical_from_data!(Box<[bool]>);
 impl_altraw_from_data!(Box<[u8]>);
 impl_altstring_from_data!(Box<[String]>);
+impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr);
 
 // =============================================================================
 // Array implementations (const generics - can't use macros)
@@ -1064,6 +1068,188 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
             }
             None => unsafe { crate::ffi::R_NaString },
         }
+    }
+}
+
+// Complex arrays
+impl<const N: usize> crate::altrep_traits::Altrep for [crate::ffi::Rcomplex; N] {
+    fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
+            .map(|d| crate::altrep_data::AltrepLen::len(&*d) as crate::ffi::R_xlen_t)
+            .unwrap_or(0)
+    }
+}
+
+impl<const N: usize> crate::altrep_traits::AltVec for [crate::ffi::Rcomplex; N] {
+    const HAS_DATAPTR: bool = true;
+
+    fn dataptr(x: crate::ffi::SEXP, _writable: bool) -> *mut std::ffi::c_void {
+        unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
+            .and_then(|d| {
+                <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::as_slice(&*d)
+                    .map(|s| s.as_ptr() as *mut std::ffi::c_void)
+            })
+            .unwrap_or(std::ptr::null_mut())
+    }
+}
+
+impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex; N] {
+    const HAS_ELT: bool = true;
+
+    fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::Rcomplex {
+        unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
+            .map(|d| {
+                <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::elt(
+                    &*d,
+                    i as usize,
+                )
+            })
+            .unwrap_or(crate::ffi::Rcomplex {
+                r: f64::NAN,
+                i: f64::NAN,
+            })
+    }
+
+    const HAS_GET_REGION: bool = true;
+
+    fn get_region(
+        x: crate::ffi::SEXP,
+        start: crate::ffi::R_xlen_t,
+        len: crate::ffi::R_xlen_t,
+        buf: *mut crate::ffi::Rcomplex,
+    ) -> crate::ffi::R_xlen_t {
+        unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
+            .map(|d| {
+                let slice = unsafe { std::slice::from_raw_parts_mut(buf, len as usize) };
+                <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::get_region(
+                    &*d,
+                    start as usize,
+                    len as usize,
+                    slice,
+                ) as crate::ffi::R_xlen_t
+            })
+            .unwrap_or(0)
+    }
+}
+
+// =============================================================================
+// InferBase implementations for arrays (const generics)
+// =============================================================================
+//
+// These allow arrays to be registered as ALTREP classes.
+// Note: Macros don't work with const generics, so these are hand-written.
+
+impl<const N: usize> crate::altrep_data::InferBase for [i32; N] {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Int;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_int::<Self>(cls) };
+    }
+}
+
+impl<const N: usize> crate::altrep_data::InferBase for [f64; N] {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Real;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_real::<Self>(cls) };
+    }
+}
+
+impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Logical;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_lgl::<Self>(cls) };
+    }
+}
+
+impl<const N: usize> crate::altrep_data::InferBase for [u8; N] {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Raw;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_raw::<Self>(cls) };
+    }
+}
+
+impl<const N: usize> crate::altrep_data::InferBase for [String; N] {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::String;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altstring_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_str::<Self>(cls) };
+    }
+}
+
+impl<const N: usize> crate::altrep_data::InferBase for [crate::ffi::Rcomplex; N] {
+    const BASE: crate::altrep::RBase = crate::altrep::RBase::Complex;
+
+    unsafe fn make_class(
+        class_name: *const i8,
+        pkg_name: *const i8,
+    ) -> crate::ffi::altrep::R_altrep_class_t {
+        unsafe {
+            crate::ffi::altrep::R_make_altcomplex_class(class_name, pkg_name, core::ptr::null_mut())
+        }
+    }
+
+    unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
+        unsafe { crate::altrep_bridge::install_base::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_vec::<Self>(cls) };
+        unsafe { crate::altrep_bridge::install_cplx::<Self>(cls) };
     }
 }
 
@@ -1504,7 +1690,7 @@ crate::impl_inferbase_string!(&'static [&'static str]);
 // Each type uses a static OnceLock to cache the ALTREP class handle, which is
 // registered on first use with the current package's name (from ALTREP_PKG_NAME).
 
-use crate::altrep_registration::RegisterAltrep;
+use crate::altrep::RegisterAltrep;
 
 /// Helper macro to implement RegisterAltrep for a builtin type.
 macro_rules! impl_register_altrep_builtin {
@@ -1538,6 +1724,7 @@ impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");
 impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
 impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
 impl_register_altrep_builtin!(Vec<String>, "Vec_String");
+impl_register_altrep_builtin!(Vec<crate::ffi::Rcomplex>, "Vec_Rcomplex");
 
 // Range types - RegisterAltrep only
 impl_register_altrep_builtin!(std::ops::Range<i32>, "Range_i32");
@@ -1550,3 +1737,4 @@ impl_register_altrep_builtin!(Box<[f64]>, "Box_f64");
 impl_register_altrep_builtin!(Box<[bool]>, "Box_bool");
 impl_register_altrep_builtin!(Box<[u8]>, "Box_u8");
 impl_register_altrep_builtin!(Box<[String]>, "Box_String");
+impl_register_altrep_builtin!(Box<[crate::ffi::Rcomplex]>, "Box_Rcomplex");

@@ -198,8 +198,13 @@ pub mod altrep;
 pub mod altrep_bridge;
 pub mod altrep_data;
 pub mod altrep_impl;
-pub mod altrep_registration;
 pub mod altrep_traits;
+
+// Re-export for backward compatibility - RegisterAltrep was moved from altrep_registration to altrep
+#[doc(hidden)]
+pub mod altrep_registration {
+    pub use crate::altrep::RegisterAltrep;
+}
 pub mod ffi;
 
 // Re-export high-level ALTREP data traits

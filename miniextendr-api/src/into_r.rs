@@ -1272,7 +1272,7 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 /// # Supported Types
 ///
 /// `Altrep<T>` works with any type that implements both:
-/// - [`RegisterAltrep`](crate::altrep_registration::RegisterAltrep) - for ALTREP class registration
+/// - [`RegisterAltrep`](crate::altrep::RegisterAltrep) - for ALTREP class registration
 /// - [`TypedExternal`](crate::externalptr::TypedExternal) - for wrapping in ExternalPtr
 ///
 /// Built-in supported types:
@@ -1326,10 +1326,10 @@ impl<T> std::ops::DerefMut for Altrep<T> {
 /// provided to R on-demand through ALTREP callbacks.
 impl<T> IntoR for Altrep<T>
 where
-    T: crate::altrep_registration::RegisterAltrep + crate::externalptr::TypedExternal,
+    T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
 {
     fn into_sexp(self) -> crate::ffi::SEXP {
-        let cls = <T as crate::altrep_registration::RegisterAltrep>::get_or_init_class();
+        let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
         let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
         let data1 = ext_ptr.as_sexp();
         unsafe { crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null()) }
