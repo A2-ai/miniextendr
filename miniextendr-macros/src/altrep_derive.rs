@@ -228,7 +228,7 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
     let elt_impl = if let Some(ref elt_field) = attrs.elt_field {
         quote! {
             fn elt(&self, _i: usize) -> ::miniextendr_api::altrep_data::Logical {
-                ::miniextendr_api::altrep_data::Logical::from_bool(self.#elt_field)
+                self.#elt_field.into()
             }
         }
     } else {
@@ -400,12 +400,17 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.lowlevel_options.is_empty() {
         quote! {
             ::miniextendr_api::impl_altcomplex_from_data!(#name);
         }
     } else {
-        quote! {}
+        let options = &attrs.lowlevel_options;
+        quote! {
+            ::miniextendr_api::impl_altcomplex_from_data!(#name, #(#options),*);
+        }
     };
 
     Ok(quote! {

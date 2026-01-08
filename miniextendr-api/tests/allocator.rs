@@ -62,10 +62,11 @@ unsafe fn test_various_alignments() {
             let ptr = RAllocator.alloc(layout);
             assert!(!ptr.is_null(), "alloc failed for align {}", align);
             assert_eq!(
-                ptr as usize % align,
+                ptr.align_offset(align),
                 0,
-                "pointer {} not aligned",
-                ptr as usize
+                "pointer {:p} not aligned to {}",
+                ptr,
+                align
             );
             std::ptr::write_bytes(ptr, 0xAA, size);
             let slice = std::slice::from_raw_parts(ptr, size);

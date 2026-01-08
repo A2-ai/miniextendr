@@ -1,44 +1,56 @@
-//! miniextendr-engine: R runtime initialization and embedding
+//! miniextendr-engine: standalone R embedding for Rust binaries and tests.
 //!
-//! This crate provides utilities for embedding the R runtime in Rust applications.
-//! It handles initialization, configuration, and lifecycle management of R.
+//! This crate centralizes `libR` linking (via `build.rs`), R initialization, and
+//! a minimal runtime handle for processing events and interrupts. It is intended
+//! for Rust-only executables and integration tests that embed R.
 //!
-//! ## Features
+//! **Not for R packages:** this crate uses non-API R internals
+//! (`Rembedded.h`, `Rinterface.h`). For R packages, depend on `miniextendr-api`
+//! and keep `nonapi` disabled.
 //!
-//! - Initialize R runtime with custom arguments
-//! - Configure R environment variables
-//! - Manage R event loop
-//! - Clean shutdown
+//! ## When to use
+//! - Rust binaries that embed R.
+//! - Integration tests or benchmarks that need full control over R startup.
+//!
+//! ## Quick start
+//!
+//! ```ignore
+//! // SAFETY: Must be called once, from the main thread.
+//! let engine = unsafe {
+//!     miniextendr_engine::REngine::build()
+//!         .with_args(&["R", "--quiet", "--vanilla"])
+//!         .init()
+//!         .expect("Failed to initialize R")
+//! };
+//!
+//! // ... use R APIs from the main thread ...
+//!
+//! std::mem::forget(engine); // optional: intentionally leak the handle
+//! ```
+//!
+//! ## Initialization details
+//! - Ensures `R_HOME` (via `R RHOME`) if missing.
+//! - Calls `Rf_initialize_R` directly to avoid double `setup_Rmainloop()`.
+//! - Calls `setup_Rmainloop()` exactly once after initialization.
+//!
+//! ## Runtime sentinel
+//!
+//! ```ignore
+//! if miniextendr_engine::r_initialized_sentinel() {
+//!     // R has been initialized in this process.
+//! }
+//! ```
 //!
 //! ## Safety
 //!
-//! This crate uses non-API R internals for runtime initialization. All functions
-//! are inherently unsafe as they manipulate global R state.
-//!
-//! ## Example
-//!
-//! ```ignore
-//! use miniextendr_engine::REngine;
-//!
-//! fn main() {
-//!     // SAFETY: Must be called once from main thread at startup.
-//!     let engine = unsafe {
-//!         REngine::build()
-//!             .with_args(&["R", "--quiet", "--vanilla"])
-//!             .init()
-//!             .expect("Failed to initialize R")
-//!     };
-//!
-//!     // Use R here...
-//!
-//!     // Note: No explicit shutdown needed. R cleanup is skipped intentionally
-//!     // because Rf_endEmbeddedR is not reentrant-safe. The OS reclaims resources
-//!     // when the process exits.
-//! }
-//! ```
+//! - Must only be initialized once per process.
+//! - Must be called from the main thread.
+//! - No shutdown: `Rf_endEmbeddedR` is intentionally not called because the
+//!   cleanup path is not reentrant-safe. The OS reclaims resources on exit.
 
 use std::ffi::CString;
 use std::os::raw::{c_char, c_int};
+use std::path::PathBuf;
 use std::process::Command;
 
 // Note: This entire crate uses non-API R functions (Rembedded.h, Rinterface.h)
@@ -57,9 +69,9 @@ unsafe extern "C" {
     fn setup_Rmainloop();
 
     // Global state from Rinterface.h (non-API)
-    // Declared as immutable static; written via raw pointer
-    static R_Interactive: c_int;
-    static R_SignalHandlers: c_int;
+    // Use UnsafeCell for interior mutability without static mut
+    static R_Interactive: std::cell::UnsafeCell<c_int>;
+    static R_SignalHandlers: std::cell::UnsafeCell<c_int>;
     static R_CStackStart: usize;
     static R_CStackDir: c_int;
 }
@@ -71,8 +83,7 @@ unsafe extern "C" {
 #[inline]
 unsafe fn set_r_interactive(value: c_int) {
     unsafe {
-        let ptr = &raw const R_Interactive as *mut c_int;
-        ptr.write(value);
+        *R_Interactive.get() = value;
     }
 }
 
@@ -83,8 +94,7 @@ unsafe fn set_r_interactive(value: c_int) {
 #[inline]
 unsafe fn set_r_signal_handlers(value: c_int) {
     unsafe {
-        let ptr = &raw const R_SignalHandlers as *mut c_int;
-        ptr.write(value);
+        *R_SignalHandlers.get() = value;
     }
 }
 
@@ -116,6 +126,7 @@ pub struct REngineBuilder {
     args: Vec<String>,
     interactive: bool,
     signal_handlers: bool,
+    r_home: Option<PathBuf>,
 }
 
 impl Default for REngineBuilder {
@@ -137,6 +148,7 @@ impl REngineBuilder {
             ],
             interactive: false,
             signal_handlers: false,
+            r_home: None,
         }
     }
 
@@ -164,6 +176,25 @@ impl REngineBuilder {
         self
     }
 
+    /// Set the R_HOME directory explicitly.
+    ///
+    /// By default, R_HOME is auto-detected by running `R RHOME` or reading
+    /// the `R_HOME` environment variable. Use this method to override that
+    /// behavior with an explicit path.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let engine = REngine::build()
+    ///     .r_home("/opt/R/4.4.0/lib/R")
+    ///     .init()
+    ///     .expect("Failed to initialize R");
+    /// ```
+    pub fn r_home(mut self, path: impl Into<PathBuf>) -> Self {
+        self.r_home = Some(path.into());
+        self
+    }
+
     /// Initialize the R runtime with the configured settings.
     ///
     /// # Safety
@@ -176,7 +207,12 @@ impl REngineBuilder {
     ///
     /// Returns an error if R initialization fails.
     pub unsafe fn init(self) -> Result<REngine, REngineError> {
-        ensure_r_home_env()?;
+        // Guard against re-initialization
+        if r_initialized_sentinel() {
+            return Err(REngineError::AlreadyInitialized);
+        }
+
+        ensure_r_home_env(self.r_home.as_ref())?;
 
         // Convert args to C strings
         let c_args: Vec<CString> = self
@@ -312,42 +348,75 @@ impl REngine {
 #[derive(Debug)]
 pub enum REngineError {
     /// Could not determine / set `R_HOME` for embedding.
-    RHomeNotFound,
+    RHomeNotFound {
+        /// Optional stderr from `R RHOME` command for diagnostics.
+        stderr: Option<String>,
+    },
     /// R initialization failed.
     InitializationFailed,
+    /// R is already initialized. Re-initialization is not supported.
+    AlreadyInitialized,
 }
 
 impl std::fmt::Display for REngineError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            REngineError::RHomeNotFound => {
-                write!(f, "R_HOME is not set and `R RHOME` could not be resolved")
+            REngineError::RHomeNotFound { stderr } => {
+                write!(f, "R_HOME is not set and `R RHOME` could not be resolved")?;
+                if let Some(stderr) = stderr
+                    && !stderr.is_empty()
+                {
+                    write!(f, "\nstderr: {}", stderr)?;
+                }
+                Ok(())
             }
             REngineError::InitializationFailed => write!(f, "R initialization failed"),
+            REngineError::AlreadyInitialized => {
+                write!(
+                    f,
+                    "R is already initialized. Multiple calls to REngineBuilder::init() are not supported."
+                )
+            }
         }
     }
 }
 
 impl std::error::Error for REngineError {}
 
-fn ensure_r_home_env() -> Result<(), REngineError> {
+fn ensure_r_home_env(explicit_path: Option<&PathBuf>) -> Result<(), REngineError> {
+    // If an explicit path was provided, use it
+    if let Some(path) = explicit_path {
+        // SAFETY: We call this during single-threaded startup (before initializing
+        // R and before spawning any worker threads).
+        unsafe {
+            std::env::set_var("R_HOME", path);
+        }
+        return Ok(());
+    }
+
+    // If R_HOME is already set, use it
     if std::env::var_os("R_HOME").is_some() {
         return Ok(());
     }
 
+    // Auto-detect via `R RHOME`
     let output = Command::new("R")
         .args(["RHOME"])
         .output()
-        .map_err(|_| REngineError::RHomeNotFound)?;
+        .map_err(|_| REngineError::RHomeNotFound { stderr: None })?;
 
     if !output.status.success() {
-        return Err(REngineError::RHomeNotFound);
+        let stderr = String::from_utf8_lossy(&output.stderr).to_string();
+        return Err(REngineError::RHomeNotFound {
+            stderr: Some(stderr),
+        });
     }
 
-    let r_home = String::from_utf8(output.stdout).map_err(|_| REngineError::RHomeNotFound)?;
+    let r_home = String::from_utf8(output.stdout)
+        .map_err(|_| REngineError::RHomeNotFound { stderr: None })?;
     let r_home = r_home.trim();
     if r_home.is_empty() {
-        return Err(REngineError::RHomeNotFound);
+        return Err(REngineError::RHomeNotFound { stderr: None });
     }
 
     // SAFETY: We call this during single-threaded startup (before initializing
@@ -357,3 +426,6 @@ fn ensure_r_home_env() -> Result<(), REngineError> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests;

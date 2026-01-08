@@ -363,30 +363,37 @@ impl MiniextendrFunctionParsed {
     // Accessors for signature components
     // -------------------------------------------------------------------------
 
+    /// Original attributes on the function item (doc comments, cfgs, etc.).
     pub(crate) fn attrs(&self) -> &[syn::Attribute] {
         &self.item.attrs
     }
 
+    /// Visibility of the function (`pub`, `pub(crate)`, or private).
     pub(crate) fn vis(&self) -> &syn::Visibility {
         &self.item.vis
     }
 
+    /// Explicit ABI, if the function was declared `extern "C-unwind"`.
     pub(crate) fn abi(&self) -> Option<&syn::Abi> {
         self.item.sig.abi.as_ref()
     }
 
+    /// Function identifier after normalization.
     pub(crate) fn ident(&self) -> &syn::Ident {
         &self.item.sig.ident
     }
 
+    /// Generic parameters on the function signature.
     pub(crate) fn generics(&self) -> &syn::Generics {
         &self.item.sig.generics
     }
 
+    /// Function inputs after normalization (dots rewritten, wildcards renamed).
     pub(crate) fn inputs(&self) -> &syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]> {
         &self.item.sig.inputs
     }
 
+    /// Function return type.
     pub(crate) fn output(&self) -> &syn::ReturnType {
         &self.item.sig.output
     }
@@ -494,7 +501,6 @@ impl MiniextendrFunctionParsed {
 // Attribute parsing
 // =============================================================================
 
-#[derive(Default)]
 /// Parsed arguments for the `#[miniextendr(...)]` attribute on functions.
 ///
 /// This is intentionally a small, "data-only" struct that:
@@ -506,16 +512,59 @@ impl MiniextendrFunctionParsed {
 /// - `invisible` / `visible`: control whether the generated R wrapper returns invisibly
 /// - `check_interrupt`: insert `R_CheckUserInterrupt()` before calling Rust
 /// - `unsafe(main_thread)`: force execution on R's main thread (unsafe: panics will leak resources)
+/// - `worker`: explicitly request worker thread execution (default for most functions)
 /// - `coerce`: enable automatic coercion for supported parameter types
+/// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
+/// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
+/// - `return = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
 ///
 /// # Note
 ///
 /// Unknown flags are rejected with a compile error to avoid silently ignoring typos.
+#[derive(Default)]
 pub(crate) struct MiniextendrFnAttrs {
+    /// Force execution on R's main thread (set by `unsafe(main_thread)`).
     pub(crate) force_main_thread: bool,
+    /// Force execution on worker thread (set by `worker`).
+    pub(crate) force_worker: bool,
+    /// Override visibility; `Some(true)` makes the wrapper return invisibly, `Some(false)` forces visibility.
     pub(crate) force_invisible: Option<bool>,
+    /// Insert `R_CheckUserInterrupt()` before calling the Rust function.
     pub(crate) check_interrupt: bool,
+    /// Enable automatic coercion for all parameters that support it.
     pub(crate) coerce_all: bool,
+    /// Enable RNG state management (GetRNGstate/PutRNGstate).
+    pub(crate) rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping.
+    pub(crate) unwrap_in_r: bool,
+    /// Preferred return conversion.
+    pub(crate) return_pref: ReturnPref,
+    /// S3 generic name (if this function is an S3 method).
+    ///
+    /// Use `#[miniextendr(s3(generic = "vec_proxy", class = "my_vctr"))]` to mark a function
+    /// as an S3 method for an existing generic.
+    pub(crate) s3_generic: Option<String>,
+    /// S3 class suffix for the method (e.g., "my_vctr" or "my_vctr.my_vctr" for double-dispatch).
+    pub(crate) s3_class: Option<String>,
+    /// Typed list validation spec for dots parameter.
+    ///
+    /// Use `#[miniextendr(dots = typed_list!(...))]` to automatically validate dots
+    /// at the start of the function and bind the result to `dots_typed`.
+    pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
+}
+
+#[derive(Clone, Copy, Default)]
+/// Preferred return-conversion path for `IntoR`.
+pub(crate) enum ReturnPref {
+    /// Use the default `IntoR` implementation for the type.
+    #[default]
+    Auto,
+    /// Force list conversion via the `AsList` wrapper.
+    List,
+    /// Force external pointer conversion via the `AsExternalPtr` wrapper.
+    ExternalPtr,
+    /// Force native vector/scalar conversion via the `AsRNative` wrapper.
+    Native,
 }
 
 impl syn::parse::Parse for MiniextendrFnAttrs {
@@ -530,7 +579,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
 
         for meta in metas {
             match meta {
-                // Simple identifiers: invisible, visible, check_interrupt, coerce
+                // Simple identifiers: invisible, visible, check_interrupt, coerce, worker, rng
                 syn::Meta::Path(path) => {
                     if let Some(ident) = path.get_ident() {
                         if ident == "invisible" {
@@ -541,20 +590,76 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.check_interrupt = true;
                         } else if ident == "coerce" {
                             out.coerce_all = true;
+                        } else if ident == "rng" {
+                            out.rng = true;
+                        } else if ident == "unwrap_in_r" {
+                            out.unwrap_in_r = true;
+                        } else if ident == "worker" {
+                            out.force_worker = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), coerce",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r",
                             ));
                         }
                     }
                 }
-                // Handle invisible(true) - should be rejected
                 syn::Meta::NameValue(nv) => {
-                    return Err(syn::Error::new_spanned(
-                        nv,
-                        "this option does not take any arguments",
-                    ));
+                    if nv.path.is_ident("return") {
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    let v = lit.value();
+                                    out.return_pref = match v.as_str() {
+                                        "list" => ReturnPref::List,
+                                        "externalptr" => ReturnPref::ExternalPtr,
+                                        "vector" | "native" => ReturnPref::Native,
+                                        "auto" => ReturnPref::Auto,
+                                        _ => {
+                                            return Err(syn::Error::new_spanned(
+                                                lit,
+                                                "return must be one of: auto, list, externalptr, vector/native",
+                                            ));
+                                        }
+                                    };
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "return expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "return expects a string literal",
+                                ));
+                            }
+                        }
+                    } else if nv.path.is_ident("dots") {
+                        // dots = typed_list!(...) - capture the macro invocation
+                        if let syn::Expr::Macro(expr_macro) = &nv.value {
+                            if expr_macro.mac.path.is_ident("typed_list") {
+                                // Capture the entire macro invocation as TokenStream
+                                out.dots_spec = Some(quote::quote!(#expr_macro));
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    &expr_macro.mac.path,
+                                    "dots expects `typed_list!(...)` macro",
+                                ));
+                            }
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "dots expects `typed_list!(...)` macro",
+                            ));
+                        }
+                    } else {
+                        return Err(syn::Error::new_spanned(
+                            nv,
+                            "unknown option; expected `return` or `dots`",
+                        ));
+                    }
                 }
                 // Nested: unsafe(main_thread)
                 syn::Meta::List(list) => {
@@ -581,6 +686,31 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     } else if list.path.is_ident("defaults") {
                         // Ignore defaults(...) - it's handled by impl method parsing
                         // This allows #[miniextendr(defaults(...))] on impl methods
+                    } else if list.path.is_ident("s3") {
+                        // Parse s3(generic = "...", class = "...")
+                        list.parse_nested_meta(|meta| {
+                            if meta.path.is_ident("generic") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                out.s3_generic = Some(value.value());
+                            } else if meta.path.is_ident("class") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                out.s3_class = Some(value.value());
+                            } else {
+                                return Err(
+                                    meta.error("unknown s3 option; expected `generic` or `class`")
+                                );
+                            }
+                            Ok(())
+                        })?;
+                        // Validate: s3 requires at least generic or class
+                        if out.s3_generic.is_none() && out.s3_class.is_none() {
+                            return Err(syn::Error::new_spanned(
+                                list,
+                                "s3(...) requires at least `generic = \"...\"` or `class = \"...\"`",
+                            ));
+                        }
                     } else {
                         // invisible(something) etc
                         return Err(syn::Error::new_spanned(

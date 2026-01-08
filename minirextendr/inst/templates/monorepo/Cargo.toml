@@ -1,0 +1,20 @@
+[workspace]
+resolver = "3"
+members = [
+    "{{crate_name}}",
+]
+exclude = ["{{rpkg_name}}/src/rust", "{{rpkg_name}}/src/vendor"]
+
+[workspace.dependencies]
+miniextendr-api = { version = "*" }
+miniextendr-macros = { version = "*" }
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+
+[profile.release]
+lto = true
+strip = "symbols"
+panic = "abort"

@@ -1,0 +1,7 @@
+[package]
+name = "{{crate_name}}"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+miniextendr-api.workspace = true

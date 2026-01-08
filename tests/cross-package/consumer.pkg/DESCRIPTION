@@ -1,0 +1,24 @@
+Package: consumer.pkg
+Type: Package
+Title: Cross-Package Trait Dispatch Consumer Example
+Version: 0.1.0
+Authors@R: c(
+    person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
+    person("A2-AI", role = c("cph", "fnd"))
+    )
+Description: Demonstrates miniextendr's cross-package trait dispatch capabilities.
+    Provides generic functions that operate on the Counter trait interface. Works
+    with Counter implementations from any package (like producer.pkg), proving
+    ABI compatibility via type tag matching and vtable dispatch.
+License: MIT + file LICENSE
+Config/build/bootstrap: TRUE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
+Imports:
+    methods,
+    miniextendr
+Suggests:
+    producer.pkg,
+    testthat (>= 3.0.0)

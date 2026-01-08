@@ -13,6 +13,49 @@
 //! `ptr_eq` when you care about pointer identity, and `as_ref()`/`as_mut()` for
 //! explicit by-value comparisons.
 //!
+//! # Protection Strategies in miniextendr
+//!
+//! miniextendr provides three complementary protection mechanisms for different scenarios:
+//!
+//! | Strategy | Module | Lifetime | Release Order | Use Case |
+//! |----------|--------|----------|---------------|----------|
+//! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
+//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **R ownership** | [`ExternalPtr`](struct@crate::externalptr::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
+//!
+//! ## When to Use ExternalPtr
+//!
+//! **Use `ExternalPtr` (this module) when:**
+//! - You want R to own a Rust value
+//! - The Rust value should be dropped when R garbage collects the pointer
+//! - You're exposing Rust structs to R code
+//!
+//! **Use [`gc_protect`](crate::gc_protect) instead when:**
+//! - You're allocating temporary R objects during computation
+//! - Protection is short-lived (within a single `.Call`)
+//!
+//! **Use [`preserve`](crate::preserve) instead when:**
+//! - You need R objects (not Rust values) to survive across `.Call`s
+//! - You need arbitrary-order release of protections
+//!
+//! ## How ExternalPtr Protection Works
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────┐
+//! │  ExternalPtr<MyStruct>::new(value)                              │
+//! │  ├── Rf_protect() during construction (temporary)               │
+//! │  ├── R_MakeExternalPtr() creates EXTPTRSXP                      │
+//! │  ├── R_RegisterCFinalizerEx() registers cleanup callback        │
+//! │  └── Rf_unprotect() after construction complete                 │
+//! │                                                                 │
+//! │  Return to R → R now owns the EXTPTRSXP                         │
+//! │  ├── SEXP is live as long as R has references                   │
+//! │  └── Rust value is accessible via ExternalPtr::wrap_sexp()      │
+//! │                                                                 │
+//! │  R GC runs → finalizer called → Rust Drop executes              │
+//! └─────────────────────────────────────────────────────────────────┘
+//! ```
+//!
 //! # Type Identification
 //!
 //! Type identification uses R's interned symbols (`Rf_install`). Since R interns
@@ -23,6 +66,23 @@
 //! The `prot` slot holds a VECSXP (list) with two elements:
 //!   - Index 0: SYMSXP (interned symbol) for fast pointer-based type comparison
 //!   - Index 1: User-protected SEXP slot (for preventing GC of R objects)
+//!
+//! # ExternalPtr is Not an R Native Type
+//!
+//! Unlike R's native atomic types (`integer`, `double`, `character`, etc.),
+//! external pointers cannot be coerced to vectors or used in R's vectorized
+//! operations. This is an R limitation, not a miniextendr limitation:
+//!
+//! ```r
+//! > matrix(new("externalptr"), 1, 1)
+//! Error in `as.vector()`:
+//! ! cannot coerce type 'externalptr' to vector of type 'any'
+//! ```
+//!
+//! If you need your Rust type to participate in R's vector/matrix operations,
+//! consider implementing [`IntoList`](crate::list::IntoList) (via `#[derive(IntoList)]`)
+//! to convert your struct to a named R list, or use ALTREP to expose Rust
+//! iterators as lazy R vectors.
 
 use std::alloc::Layout;
 use std::any::TypeId;
@@ -33,7 +93,6 @@ use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
-use std::rc::Rc;
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
@@ -104,6 +163,28 @@ unsafe fn type_symbol_unchecked<T: TypedExternal>() -> SEXP {
     unsafe { Rf_install_unchecked(T::TYPE_NAME_CSTR.as_ptr().cast()) }
 }
 
+/// Get the namespaced type ID symbol for type checking.
+///
+/// Uses `TYPE_ID_CSTR` which includes the module path for uniqueness.
+///
+/// # Safety
+///
+/// Must be called from R's main thread.
+#[inline]
+unsafe fn type_id_symbol<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install(T::TYPE_ID_CSTR.as_ptr().cast()) }
+}
+
+/// Unchecked version of [`type_id_symbol`].
+///
+/// # Safety
+///
+/// Must be called from R's main thread. No debug assertions.
+#[inline]
+unsafe fn type_id_symbol_unchecked<T: TypedExternal>() -> SEXP {
+    unsafe { Rf_install_unchecked(T::TYPE_ID_CSTR.as_ptr().cast()) }
+}
+
 /// Get the type name from a stored symbol SEXP.
 ///
 /// # Safety
@@ -127,24 +208,77 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
 /// This provides the type identification needed for runtime type checking.
 /// Type identification uses R's symbol interning (`Rf_install`) for fast
 /// pointer-based comparison.
+///
+/// # Type ID vs Type Name
+///
+/// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in `prot[0]`).
+///   Format: `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`
+///
+///   The crate name and version ensure:
+///   - Same type from same crate+version → compatible (can share ExternalPtr)
+///   - Same type name from different crates → incompatible
+///   - Same type from different crate versions → incompatible
+///
+/// - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
+///   Just the type identifier for readability.
 pub trait TypedExternal: 'static {
-    /// The type name as a static string (for debugging)
+    /// The type name as a static string (for debugging and display)
     const TYPE_NAME: &'static str;
 
-    /// The type name as a null-terminated C string (for R symbol creation)
+    /// The type name as a null-terminated C string (for R tag display)
     const TYPE_NAME_CSTR: &'static [u8];
+
+    /// Namespaced type ID as a null-terminated C string (for type checking).
+    ///
+    /// This should include the module path to prevent cross-package collisions.
+    /// Use `concat!(module_path!(), "::", stringify!(Type), "\0").as_bytes()`
+    /// when implementing manually, or use `#[derive(ExternalPtr)]`.
+    const TYPE_ID_CSTR: &'static [u8];
 }
 
-/// Implement TypedExternal for a type.
+/// Marker trait for types that should be converted to R as ExternalPtr.
 ///
-/// This macro generates the type name as both a Rust string and a null-terminated
-/// C string for use with R's symbol interning (`Rf_install`).
+/// When a type implements this trait (via `#[derive(ExternalPtr)]`), it gets a
+/// blanket `IntoR` implementation that wraps the value in `ExternalPtr<T>`.
+///
+/// This allows returning the type directly from `#[miniextendr]` functions:
+///
+/// ```ignore
+/// #[derive(ExternalPtr)]
+/// struct MyData { value: i32 }
+///
+/// #[miniextendr]
+/// fn create_data(v: i32) -> MyData {
+///     MyData { value: v }  // Automatically wrapped in ExternalPtr
+/// }
+/// ```
+pub trait IntoExternalPtr: TypedExternal {}
+
+/// Implement TypedExternal for a type with automatic namespacing.
+///
+/// This macro generates:
+/// - `TYPE_NAME`: Short display name (just the type identifier)
+/// - `TYPE_NAME_CSTR`: Null-terminated display name for R tag
+/// - `TYPE_ID_CSTR`: Namespaced ID using crate name, version, and module path
+///
+/// Format: `<crate_name>@<crate_version>::<module_path>::<type_name>`
 #[macro_export]
 macro_rules! impl_typed_external {
     ($ty:ty) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = stringify!($ty);
             const TYPE_NAME_CSTR: &'static [u8] = concat!(stringify!($ty), "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!(
+                env!("CARGO_PKG_NAME"),
+                "@",
+                env!("CARGO_PKG_VERSION"),
+                "::",
+                module_path!(),
+                "::",
+                stringify!($ty),
+                "\0"
+            )
+            .as_bytes();
         }
     };
 }
@@ -153,12 +287,25 @@ macro_rules! impl_typed_external {
 ///
 /// Use this when you want the R tag to display a specific name
 /// (e.g., without module path).
+///
+/// Format: `<crate_name>@<crate_version>::<module_path>::<tag>`
 #[macro_export]
 macro_rules! impl_typed_external_with_tag {
     ($ty:ty, $tag:expr) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = $tag;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!(
+                env!("CARGO_PKG_NAME"),
+                "@",
+                env!("CARGO_PKG_VERSION"),
+                "::",
+                module_path!(),
+                "::",
+                $tag,
+                "\0"
+            )
+            .as_bytes();
         }
     };
 }
@@ -166,16 +313,13 @@ macro_rules! impl_typed_external_with_tag {
 impl TypedExternal for () {
     const TYPE_NAME: &'static str = "()";
     const TYPE_NAME_CSTR: &'static [u8] = b"()\0";
+    // Unit type is special - same ID as name since it's only used for type-erased ptrs
+    const TYPE_ID_CSTR: &'static [u8] = b"()\0";
 }
 
 // =============================================================================
 // ExternalPtr<T>
 // =============================================================================
-
-/// Marker type to make ExternalPtr !Send and !Sync without nightly features.
-/// Uses Rc<()> because Rc has explicit negative impls for Send and Sync,
-/// making this more robust than relying on raw pointer auto-trait inference.
-type PhantomUnsend = PhantomData<Rc<()>>;
 
 /// An owned pointer stored in R's external pointer SEXP.
 ///
@@ -186,9 +330,9 @@ type PhantomUnsend = PhantomData<Rc<()>>;
 ///
 /// # Thread Safety
 ///
-/// `ExternalPtr` is `!Send` and `!Sync` because it wraps an R SEXP, and R's
-/// runtime is single-threaded. Attempting to use an `ExternalPtr` from multiple
-/// threads would be undefined behavior.
+/// `ExternalPtr` is `Send` to allow returning from worker thread functions.
+/// However, **concurrent access is not allowed** - R's runtime is single-threaded.
+/// All R API calls are serialized through the main thread via `with_r_thread`.
 ///
 /// # Safety
 ///
@@ -198,9 +342,13 @@ type PhantomUnsend = PhantomData<Rc<()>>;
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,
     _marker: PhantomData<T>,
-    /// Makes this type !Send and !Sync
-    _unsend: PhantomUnsend,
 }
+
+// SAFETY: ExternalPtr can be sent between threads because:
+// 1. All R API operations are serialized through the main thread via with_r_thread
+// 2. The worker thread is blocked while the main thread processes R calls
+// 3. There is no concurrent access - only sequential hand-off between threads
+unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
 impl<T: TypedExternal> ExternalPtr<T> {
     /// Allocates memory on the heap and places `x` into it.
@@ -229,13 +377,13 @@ impl<T: TypedExternal> ExternalPtr<T> {
         let sexp = crate::worker::with_r_thread(move || {
             // This runs on main thread - unwrap the pointer
             let ptr: *mut T = sendable_ptr_into_ptr(sendable_ptr);
-            unsafe { Self::create_extptr_sexp(ptr) }
+            // Use _unchecked since with_r_thread guarantees we're on main thread
+            unsafe { Self::create_extptr_sexp_unchecked(ptr) }
         });
 
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -259,7 +407,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -270,18 +417,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
     unsafe fn create_extptr_sexp(ptr: *mut T) -> SEXP {
         debug_assert!(!ptr.is_null(), "create_extptr_sexp received null pointer");
 
-        // Create the type symbol (R interns symbols, so same string = same pointer)
+        // Create two symbols:
+        // - type_sym (TYPE_NAME_CSTR): short name for display in R
+        // - type_id_sym (TYPE_ID_CSTR): namespaced ID for type checking
         let type_sym = unsafe { type_symbol::<T>() };
+        let type_id_sym = unsafe { type_id_symbol::<T>() };
 
-        // Create the prot VECSXP: [type_symbol, user_protected]
+        // Create the prot VECSXP: [type_id_symbol, user_protected]
         let prot = unsafe { Rf_allocVector(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect(prot) };
 
-        // Store type symbol in slot 0 for fast pointer-based type checking
-        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_sym) };
+        // Store namespaced type ID in slot 0 for type checking
+        unsafe { SET_VECTOR_ELT(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
         // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with tag (same symbol) and prot
+        // Create the external pointer with short display tag and prot
         let sexp = unsafe { R_MakeExternalPtr(ptr.cast(), type_sym, prot) };
         unsafe { Rf_protect(sexp) };
 
@@ -305,18 +455,21 @@ impl<T: TypedExternal> ExternalPtr<T> {
             "create_extptr_sexp_unchecked received null pointer"
         );
 
-        // Create the type symbol (R interns symbols, so same string = same pointer)
+        // Create two symbols:
+        // - type_sym (TYPE_NAME_CSTR): short name for display in R
+        // - type_id_sym (TYPE_ID_CSTR): namespaced ID for type checking
         let type_sym = unsafe { type_symbol_unchecked::<T>() };
+        let type_id_sym = unsafe { type_id_symbol_unchecked::<T>() };
 
-        // Create the prot VECSXP: [type_symbol, user_protected]
+        // Create the prot VECSXP: [type_id_symbol, user_protected]
         let prot = unsafe { Rf_allocVector_unchecked(SEXPTYPE::VECSXP, PROT_VEC_LEN) };
         unsafe { Rf_protect_unchecked(prot) };
 
-        // Store type symbol in slot 0 for fast pointer-based type checking
-        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_sym) };
+        // Store namespaced type ID in slot 0 for type checking
+        unsafe { SET_VECTOR_ELT_unchecked(prot, PROT_TYPE_ID_INDEX, type_id_sym) };
         // Slot 1 (user protected) starts as R_NilValue (already default)
 
-        // Create the external pointer with tag (same symbol) and prot
+        // Create the external pointer with short display tag and prot
         let sexp = unsafe { R_MakeExternalPtr_unchecked(ptr.cast(), type_sym, prot) };
         unsafe { Rf_protect_unchecked(sexp) };
 
@@ -366,7 +519,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -384,7 +536,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -667,18 +818,23 @@ impl<T: TypedExternal> ExternalPtr<T> {
     // Type checking
     // =========================================================================
 
-    /// Attempt to create an ExternalPtr from an SEXP with type checking.
+    /// Attempt to wrap a SEXP as an ExternalPtr with type checking.
     ///
     /// Returns `None` if:
     /// - The internal pointer is null
     /// - The `prot` slot doesn't contain a valid VECSXP with type symbol
     /// - The type symbol doesn't match T's type
     ///
+    /// This is a low-level method. For automatic conversions in `#[miniextendr]`
+    /// functions, use the [`TryFromSexp`] trait which requires `T: Send`.
+    ///
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP
     /// - The caller must ensure no other ExternalPtr owns this SEXP
-    pub unsafe fn try_from_sexp(sexp: SEXP) -> Option<Self> {
+    ///
+    /// [`TryFromSexp`]: crate::TryFromSexp
+    pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
@@ -701,7 +857,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_symbol::<T>() };
+        let expected_sym = unsafe { type_id_symbol::<T>() };
         if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
@@ -709,20 +865,19 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Some(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
-    /// Attempt to create an ExternalPtr from an SEXP (unchecked version).
+    /// Attempt to wrap a SEXP as an ExternalPtr (unchecked version).
     ///
-    /// Skips thread safety checks for performance-critical paths.
+    /// Skips thread safety checks for performance-critical paths like ALTREP callbacks.
     ///
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
-    pub unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Option<Self> {
+    pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
         use crate::ffi::{
             R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked,
         };
@@ -749,7 +904,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_symbol::<T>() };
+        let expected_sym = unsafe { type_id_symbol::<T>() };
         if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return None;
         }
@@ -757,16 +912,19 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Some(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
-    /// Attempt to create an ExternalPtr, returning an error with type info on mismatch.
+    /// Attempt to wrap a SEXP as an ExternalPtr, returning an error with type info on mismatch.
+    ///
+    /// This is used by the [`TryFromSexp`] trait implementation.
     ///
     /// # Safety
     ///
-    /// Same as `try_from_sexp`.
-    pub unsafe fn try_from_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
+    /// Same as [`wrap_sexp`](Self::wrap_sexp).
+    ///
+    /// [`TryFromSexp`]: crate::TryFromSexp
+    pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
@@ -789,7 +947,7 @@ impl<T: TypedExternal> ExternalPtr<T> {
         }
 
         // Compare symbols by pointer (R interns symbols)
-        let expected_sym = unsafe { type_symbol::<T>() };
+        let expected_sym = unsafe { type_id_symbol::<T>() };
         if !is_type_erased::<T>() && !std::ptr::eq(stored_sym.0, expected_sym.0) {
             return Err(TypeMismatchError::Mismatch {
                 expected: T::TYPE_NAME,
@@ -800,7 +958,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Ok(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
@@ -815,7 +972,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -879,7 +1035,8 @@ impl ExternalPtr<()> {
             if stored_sym.type_of() != SEXPTYPE::SYMSXP {
                 return false;
             }
-            let expected_sym = type_symbol::<T>();
+            // Must use type_id_symbol (namespaced) to match what new() stores
+            let expected_sym = type_id_symbol::<T>();
             std::ptr::eq(stored_sym.0, expected_sym.0)
         }
     }
@@ -1320,7 +1477,7 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 /// ```
 #[inline]
 pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data1(x)) }
+    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data1(x)) }
 }
 
 /// Extract the ALTREP data1 slot (unchecked version).
@@ -1334,7 +1491,7 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     use crate::ffi::R_altrep_data1_unchecked;
-    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data1_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data1_unchecked(x)) }
 }
 
 /// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
@@ -1347,7 +1504,7 @@ pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 /// - Must be called from the R main thread
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data2(x)) }
+    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data2(x)) }
 }
 
 /// Extract the ALTREP data2 slot (unchecked version).
@@ -1361,7 +1518,7 @@ pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     use crate::ffi::R_altrep_data2_unchecked;
-    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data2_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data2_unchecked(x)) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.

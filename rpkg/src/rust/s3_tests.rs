@@ -21,6 +21,7 @@ pub struct S3Counter {
 #[miniextendr(s3)]
 impl S3Counter {
     /// Creates a new counter with the given initial value.
+    /// @param initial Initial value for the counter.
     pub fn new(initial: i32) -> Self {
         S3Counter { value: initial }
     }
@@ -37,6 +38,7 @@ impl S3Counter {
     }
 
     /// Adds the given amount to the counter and returns the new value.
+    /// @param amount The amount to add to the counter.
     pub fn s3_add(&mut self, amount: i32) -> i32 {
         self.value += amount;
         self.value

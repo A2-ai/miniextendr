@@ -3,19 +3,19 @@ test_that("SimpleCounter trait methods work via .Call wrappers", {
   counter <- SimpleCounter$new_counter(10L)
   expect_true(inherits(counter, "SimpleCounter"))
 
-  # Test trait method: value
-  expect_equal(counter$Counter$value(), 10L)
+  # Test trait method: value (Type$Trait$method(x) style)
+  expect_equal(SimpleCounter$Counter$value(counter), 10L)
 
   # Test trait method: increment
-  counter$Counter$increment()
-  expect_equal(counter$Counter$value(), 11L)
+  SimpleCounter$Counter$increment(counter)
+  expect_equal(SimpleCounter$Counter$value(counter), 11L)
 
   # Test trait method: checked_add
-  counter$Counter$checked_add(5L)
-  expect_equal(counter$Counter$value(), 16L)
+  SimpleCounter$Counter$checked_add(counter, 5L)
+  expect_equal(SimpleCounter$Counter$value(counter), 16L)
 
   # Verify inherent method and trait method return same value
-  expect_equal(counter$get_value(), counter$Counter$value())
+  expect_equal(counter$get_value(), SimpleCounter$Counter$value(counter))
 })
 
 test_that("PanickyCounter trait methods work via .Call wrappers", {
@@ -23,16 +23,16 @@ test_that("PanickyCounter trait methods work via .Call wrappers", {
   counter <- PanickyCounter$new_panicky(5L)
   expect_true(inherits(counter, "PanickyCounter"))
 
-  # Test trait method: value
-  expect_equal(counter$Counter$value(), 5L)
+  # Test trait method: value (Type$Trait$method(x) style)
+  expect_equal(PanickyCounter$Counter$value(counter), 5L)
 
   # Test trait method: increment
-  counter$Counter$increment()
-  expect_equal(counter$Counter$value(), 6L)
+  PanickyCounter$Counter$increment(counter)
+  expect_equal(PanickyCounter$Counter$value(counter), 6L)
 
   # Test trait method: checked_add with positive value (should work)
-  counter$Counter$checked_add(10L)
-  expect_equal(counter$Counter$value(), 16L)
+  PanickyCounter$Counter$checked_add(counter, 10L)
+  expect_equal(PanickyCounter$Counter$value(counter), 16L)
 })
 
 test_that("PanickyCounter trait method panics are caught and converted to R errors", {
@@ -41,12 +41,12 @@ test_that("PanickyCounter trait method panics are caught and converted to R erro
   # Adding a negative value that would go below zero should panic
   # The panic should be caught and converted to an R error
   expect_error(
-    counter$Counter$checked_add(-10L),
+    PanickyCounter$Counter$checked_add(counter, -10L),
     "cannot go below zero"
   )
 
   # Counter value should be unchanged after the caught panic
-  expect_equal(counter$Counter$value(), 5L)
+  expect_equal(PanickyCounter$Counter$value(counter), 5L)
 })
 
 test_that("trait methods work with multiple instances independently", {
@@ -54,17 +54,16 @@ test_that("trait methods work with multiple instances independently", {
   counter2 <- SimpleCounter$new_counter(100L)
 
   # Modify counter1 via trait methods
-  counter1$Counter$increment()
-  counter1$Counter$increment()
-  counter1$Counter$checked_add(10L)
+  SimpleCounter$Counter$increment(counter1)
+  SimpleCounter$Counter$increment(counter1)
+  SimpleCounter$Counter$checked_add(counter1, 10L)
 
   # Modify counter2 via trait methods
-  counter2$Counter$checked_add(-50L)
+  SimpleCounter$Counter$checked_add(counter2, -50L)
 
   # Verify independence
-
-  expect_equal(counter1$Counter$value(), 12L)  # 0 + 1 + 1 + 10
-  expect_equal(counter2$Counter$value(), 50L) # 100 - 50
+  expect_equal(SimpleCounter$Counter$value(counter1), 12L)  # 0 + 1 + 1 + 10
+  expect_equal(SimpleCounter$Counter$value(counter2), 50L) # 100 - 50
 })
 
 test_that("trait methods via inherent and via trait namespace return same results", {
@@ -74,9 +73,9 @@ test_that("trait methods via inherent and via trait namespace return same result
   counter$trait_add(8L)
   val_after_inherent <- counter$get_value()
 
-  # Call checked_add via trait namespace
-  counter$Counter$checked_add(8L)
-  val_after_trait <- counter$Counter$value()
+  # Call checked_add via trait namespace (Type$Trait$method(x) style)
+  SimpleCounter$Counter$checked_add(counter, 8L)
+  val_after_trait <- SimpleCounter$Counter$value(counter)
 
   # Both should have added 8
   expect_equal(val_after_inherent, 50L)
@@ -127,6 +126,17 @@ test_that("S3TraitCounter trait methods work via S3 dispatch", {
 
   # Verify inherent method and S3 trait method return same value
   expect_equal(counter$get_value(), value(counter))
+})
+
+test_that("S3TraitCounter S3 names work directly", {
+  counter <- S3TraitCounter$new_s3trait(5L)
+  expect_equal(value.S3TraitCounter(counter), 5L)
+
+  increment.S3TraitCounter(counter)
+  expect_equal(value.S3TraitCounter(counter), 6L)
+
+  checked_add.S3TraitCounter(counter, 7L)
+  expect_equal(value.S3TraitCounter(counter), 13L)
 })
 
 test_that("S3 trait methods work with multiple instances independently", {

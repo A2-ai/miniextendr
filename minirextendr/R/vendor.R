@@ -6,15 +6,19 @@ MINIEXTENDR_REPO <- "CGMossa/miniextendr"
 #' List available miniextendr versions
 #'
 #' Queries GitHub to find available releases/tags of miniextendr.
+#' Uses the gh package for proper auth token handling and rate limit awareness.
 #'
 #' @return Character vector of available version tags
 #' @export
 miniextendr_available_versions <- function() {
-  url <- paste0("https://api.github.com/repos/", MINIEXTENDR_REPO, "/tags")
-
   response <- tryCatch(
     {
-      jsonlite::fromJSON(url)
+      # gh handles pagination, auth tokens (GITHUB_TOKEN/GITHUB_PAT), and rate limits
+      gh::gh("GET /repos/{owner}/{repo}/tags",
+        owner = strsplit(MINIEXTENDR_REPO, "/")[[1]][1],
+        repo = strsplit(MINIEXTENDR_REPO, "/")[[1]][2],
+        .limit = 100
+      )
     },
     error = function(e) {
       warn(c(
@@ -30,42 +34,27 @@ miniextendr_available_versions <- function() {
     return("main")
   }
 
-  tags <- response$name
+  tags <- vapply(response, function(x) x$name, character(1))
   cli::cli_alert_info("Available versions: {paste(tags, collapse = ', ')}")
   tags
 }
 
-#' Download and vendor miniextendr crates
+#' Download miniextendr archive from GitHub
 #'
-#' Downloads miniextendr-api, miniextendr-macros, and miniextendr-lint
-#' from GitHub and vendors them into src/vendor/. Also patches
-#' Cargo.toml files to remove workspace inheritance.
-#'
-#' @param version Version tag to download (default: "main" for latest)
-#' @param dest Destination directory for vendored crates
-#' @return Invisibly returns TRUE on success
-#' @export
-vendor_miniextendr <- function(version = "main",
-                               dest = usethis::proj_path("src", "vendor")) {
-  cli::cli_alert("Downloading miniextendr {version} from GitHub...")
-
-  # Create temp directory for download
-  tmp_dir <- fs::path_temp("miniextendr")
-  on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
-  fs::dir_create(tmp_dir)
-
-  # Download archive
+#' @param version Version tag to download
+#' @param dest_path Path to save the archive
+#' @return Path to downloaded archive
+#' @noRd
+download_miniextendr_archive <- function(version, dest_path) {
+  # Try heads first (for branch names like "main")
   archive_url <- paste0(
     "https://github.com/", MINIEXTENDR_REPO,
     "/archive/refs/heads/", version, ".tar.gz"
   )
 
-  # Try tags if heads fails
-  archive_path <- fs::path(tmp_dir, "miniextendr.tar.gz")
-
   download_result <- tryCatch(
     {
-      curl::curl_download(archive_url, archive_path, quiet = TRUE)
+      curl::curl_download(archive_url, dest_path, quiet = TRUE)
       TRUE
     },
     error = function(e) {
@@ -76,7 +65,7 @@ vendor_miniextendr <- function(version = "main",
       )
       tryCatch(
         {
-          curl::curl_download(tag_url, archive_path, quiet = TRUE)
+          curl::curl_download(tag_url, dest_path, quiet = TRUE)
           TRUE
         },
         error = function(e2) {
@@ -92,6 +81,58 @@ vendor_miniextendr <- function(version = "main",
       "i" = "Check that version '{version}' exists at github.com/{MINIEXTENDR_REPO}"
     ))
   }
+
+  cli::cli_alert_success("Downloaded and cached miniextendr {version}")
+  dest_path
+}
+
+#' Download and vendor miniextendr crates
+#'
+#' Downloads miniextendr-api, miniextendr-macros, miniextendr-lint, and
+#' miniextendr-engine from GitHub and vendors them into src/vendor/. Also
+#' patches Cargo.toml files to remove workspace inheritance.
+#'
+#' Downloaded archives are cached in `rappdirs::user_cache_dir("minirextendr")`
+#' to avoid repeated downloads of the same version.
+#'
+#' For local development (when GitHub repo is not available), set
+#' `local_path` to the path of the miniextendr repository.
+#'
+#' @param version Version tag to download (default: "main" for latest).
+#'   Ignored if `local_path` is provided.
+#' @param dest Destination directory for vendored crates
+#' @param refresh Force re-download even if cached (default: FALSE)
+#' @param local_path Path to local miniextendr repository. If provided,
+#'   copies crates from local path instead of downloading from GitHub.
+#' @return Invisibly returns TRUE on success
+#' @export
+vendor_miniextendr <- function(version = "main",
+                               dest = usethis::proj_path("src", "vendor"),
+                               refresh = FALSE,
+                               local_path = NULL) {
+  # If local_path is provided, use local vendoring
+
+  if (!is.null(local_path)) {
+    return(vendor_miniextendr_local(local_path, dest))
+  }
+
+  # Check cache first
+  cache_dir <- rappdirs::user_cache_dir("minirextendr")
+  fs::dir_create(cache_dir, recurse = TRUE)
+  cache_file <- fs::path(cache_dir, paste0("miniextendr-", version, ".tar.gz"))
+
+  if (fs::file_exists(cache_file) && !refresh) {
+    cli::cli_alert_success("Using cached miniextendr {version}")
+    archive_path <- cache_file
+  } else {
+    cli::cli_alert("Downloading miniextendr {version} from GitHub...")
+    archive_path <- download_miniextendr_archive(version, cache_file)
+  }
+
+  # Create temp directory for extraction
+  tmp_dir <- fs::path_temp("miniextendr")
+  on.exit(unlink(tmp_dir, recursive = TRUE), add = TRUE)
+  fs::dir_create(tmp_dir)
 
   # Extract archive
   cli::cli_alert("Extracting archive...")
@@ -109,7 +150,7 @@ vendor_miniextendr <- function(version = "main",
   ensure_dir(dest)
 
   # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
 
   for (crate in crates) {
     src_path <- fs::path(extracted_dir, crate)
@@ -128,11 +169,13 @@ vendor_miniextendr <- function(version = "main",
     # Copy crate (excluding target, .git)
     fs::dir_copy(src_path, dest_path)
 
-    # Remove unwanted files
+    # Remove unwanted files and directories
     unwanted <- c("target", ".git", ".gitignore", ".DS_Store")
     for (u in unwanted) {
       u_path <- fs::path(dest_path, u)
-      if (fs::file_exists(u_path) || fs::dir_exists(u_path)) {
+      if (fs::dir_exists(u_path)) {
+        fs::dir_delete(u_path)
+      } else if (fs::file_exists(u_path)) {
         fs::file_delete(u_path)
       }
     }
@@ -191,7 +234,77 @@ patch_cargo_toml <- function(path, crate_name) {
     content <- gsub(pattern, dep_replacements[[pattern]], content)
   }
 
+  # Remove dev-dependencies that create circular references when vendored
+  # miniextendr-api in miniextendr-macros dev-deps is only for workspace testing
+  content <- content[!grepl("^miniextendr-api = \\{ workspace = true \\}", content)]
+
   writeLines(content, path)
+}
+
+#' Vendor miniextendr crates from local path
+#'
+#' Copies miniextendr crates from a local repository instead of downloading
+#' from GitHub. Used for development when the GitHub repo is not available.
+#'
+#' @param local_path Path to local miniextendr repository
+#' @param dest Destination directory for vendored crates
+#' @return Invisibly returns TRUE on success
+#' @noRd
+vendor_miniextendr_local <- function(local_path, dest) {
+  local_path <- normalizePath(local_path, mustWork = TRUE)
+
+  cli::cli_alert("Vendoring miniextendr from local path: {.path {local_path}}")
+
+  # Create vendor directory
+  ensure_dir(dest)
+
+  # Copy crates
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
+
+  for (crate in crates) {
+    src_path <- fs::path(local_path, crate)
+    dest_path <- fs::path(dest, crate)
+
+    if (!fs::dir_exists(src_path)) {
+      warn("Crate {crate} not found at {.path {src_path}}")
+      next
+    }
+
+    # Remove existing if present
+    if (fs::dir_exists(dest_path)) {
+      fs::dir_delete(dest_path)
+    }
+
+    # Copy crate (excluding target, .git, etc.)
+    fs::dir_copy(src_path, dest_path)
+
+    # Remove unwanted files and directories
+    unwanted <- c("target", ".git", ".gitignore", ".DS_Store")
+    for (u in unwanted) {
+      u_path <- fs::path(dest_path, u)
+      if (fs::dir_exists(u_path)) {
+        fs::dir_delete(u_path)
+      } else if (fs::file_exists(u_path)) {
+        fs::file_delete(u_path)
+      }
+    }
+
+    # Patch Cargo.toml to remove workspace inheritance
+    cargo_toml <- fs::path(dest_path, "Cargo.toml")
+    if (fs::file_exists(cargo_toml)) {
+      patch_cargo_toml(cargo_toml, crate)
+    }
+
+    # Create .cargo-checksum.json (required when crate is in a vendor directory
+    # that replaces crates-io via .cargo/config.toml)
+    checksum_file <- fs::path(dest_path, ".cargo-checksum.json")
+    writeLines('{"files": {}, "package": null}', checksum_file)
+
+    cli::cli_alert_success("Vendored {crate}")
+  }
+
+  cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")
+  invisible(TRUE)
 }
 
 #' Update vendored miniextendr crates
@@ -248,4 +361,78 @@ vendor_crates_io <- function() {
 
   cli::cli_alert_success("External dependencies vendored")
   invisible(TRUE)
+}
+
+#' Clear miniextendr download cache
+#'
+#' Removes cached miniextendr archives from the user cache directory.
+#'
+#' @param version Optional version to clear. If NULL, clears all cached versions.
+#' @return Invisibly returns TRUE
+#' @export
+miniextendr_clear_cache <- function(version = NULL) {
+  cache_dir <- rappdirs::user_cache_dir("minirextendr")
+
+  if (!fs::dir_exists(cache_dir)) {
+    cli::cli_alert_info("No cache directory found")
+    return(invisible(TRUE))
+  }
+
+  if (is.null(version)) {
+    # Clear all
+    files <- fs::dir_ls(cache_dir, glob = "*.tar.gz")
+    if (length(files) == 0) {
+      cli::cli_alert_info("Cache is empty")
+    } else {
+      fs::file_delete(files)
+      cli::cli_alert_success("Cleared {length(files)} cached archive(s)")
+    }
+  } else {
+    # Clear specific version
+    cache_file <- fs::path(cache_dir, paste0("miniextendr-", version, ".tar.gz"))
+    if (fs::file_exists(cache_file)) {
+      fs::file_delete(cache_file)
+      cli::cli_alert_success("Cleared cached miniextendr {version}")
+    } else {
+      cli::cli_alert_info("No cached archive for version {version}")
+    }
+  }
+
+  invisible(TRUE)
+}
+
+#' Show miniextendr cache info
+#'
+#' Displays information about cached miniextendr archives.
+#'
+#' @return Invisibly returns a data frame with cache info
+#' @export
+miniextendr_cache_info <- function() {
+  cache_dir <- rappdirs::user_cache_dir("minirextendr")
+
+  cli::cli_h2("miniextendr cache")
+  cli::cli_alert_info("Cache directory: {.path {cache_dir}}")
+
+  if (!fs::dir_exists(cache_dir)) {
+    cli::cli_alert_info("Cache directory does not exist")
+    return(invisible(data.frame()))
+  }
+
+  files <- fs::dir_ls(cache_dir, glob = "*.tar.gz")
+
+  if (length(files) == 0) {
+    cli::cli_alert_info("No cached archives")
+    return(invisible(data.frame()))
+  }
+
+  info <- fs::file_info(files)
+  info$version <- gsub("^miniextendr-|\\.tar\\.gz$", "", basename(files))
+
+  cli::cli_alert_success("{length(files)} cached archive(s):")
+  for (i in seq_along(files)) {
+    size_mb <- round(info$size[i] / 1024 / 1024, 2)
+    cli::cli_bullets(c(" " = "{info$version[i]} ({size_mb} MB)"))
+  }
+
+  invisible(info[, c("version", "size", "modification_time")])
 }

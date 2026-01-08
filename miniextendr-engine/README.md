@@ -37,6 +37,10 @@ let engine = unsafe {
 std::mem::forget(engine); // optional: intentionally leak the handle
 ```
 
+R shutdown is intentionally skipped: `Rf_endEmbeddedR` is not reentrant-safe
+and can crash if called during Drop or test teardown. Let the OS reclaim
+resources on process exit.
+
 ### Initialization details
 
 - `R_HOME` is ensured (via `R RHOME`) if missing.

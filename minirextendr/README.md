@@ -1,7 +1,7 @@
 # minirextendr
 
 minirextendr is an R helper package for scaffolding and maintaining R packages
-that use the miniextendr Rust integration. It provides templates, autoconf /
+that use miniextendr for Rust <-> R interop. It provides templates, autoconf /
 configure wiring, vendoring helpers, and cargo command wrappers tailored to
 R package workflows.
 
@@ -10,8 +10,10 @@ R package workflows.
 From GitHub:
 
 ```r
-remotes::install_github("miniextendr/miniextendr", subdir = "minirextendr")
+remotes::install_github("CGMossa/miniextendr", subdir = "minirextendr")
 ```
+
+If you're using a fork, replace the owner/repo in the install command.
 
 From a local checkout:
 
@@ -55,6 +57,11 @@ Or run the full workflow:
 miniextendr_build()
 ```
 
+## Templates
+
+See `inst/templates/README.md` for the standalone package and monorepo layouts
+used by the scaffolder.
+
 ## Status and validation
 
 ```r
@@ -71,11 +78,34 @@ miniextendr_available_versions()
 vendor_miniextendr("main")
 ```
 
+Downloaded archives are cached to avoid repeated downloads:
+
+```r
+miniextendr_cache_info()      # Show cached versions
+miniextendr_clear_cache()     # Clear all cached archives
+vendor_miniextendr("main", refresh = TRUE)  # Force re-download
+```
+
 Vendoring external crates.io dependencies:
 
 ```r
 vendor_crates_io()
 ```
+
+### Vendor tarball and Git LFS
+
+For CRAN submission, the vendored crates are compressed into `inst/vendor.tar.xz`.
+This file is typically 5-10MB depending on enabled features.
+
+**Git LFS is NOT required** for this file because:
+- The file size (~7MB) is well below GitHub's 100MB limit
+- It changes infrequently (only when updating vendored crate versions)
+- Binary diffs work reasonably well for compressed archives
+
+If your vendor tarball grows significantly larger (>50MB), consider:
+1. Reducing enabled features in `Cargo.toml` to minimize dependencies
+2. Using Git LFS: `git lfs track "inst/vendor.tar.xz"`
+3. Hosting the tarball externally and downloading during `R CMD build`
 
 ## Cargo helpers
 
