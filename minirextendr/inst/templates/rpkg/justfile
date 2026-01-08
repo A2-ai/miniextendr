@@ -1,0 +1,139 @@
+# {{{package}}} - R package with Rust backend
+#
+# Quick reference:
+#   just                  - Show available recipes
+#   just cargo check      - Run cargo check
+#   just cargo test       - Run cargo tests
+#   just cargo clippy     - Run lints
+#   just cargo fmt        - Format Rust code
+#   just configure        - Configure R package build
+#   just install          - Build and install R package
+#   just rtest            - Run R package tests
+#   just rdoc             - Generate R documentation
+#   just version-sync     - Sync versions across DESCRIPTION/Cargo.toml
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# Rust manifest location
+manifest := "src/rust/Cargo.toml"
+
+# Default recipe - show available commands
+default:
+    @just --list
+
+# ============================================================================
+# Rust development
+# ============================================================================
+
+# Run any cargo subcommand (e.g., just cargo check, just cargo test --release)
+cargo subcmd *args:
+    cargo {{subcmd}} --manifest-path={{manifest}} {{args}}
+
+# Common cargo shortcuts
+check *args: (cargo "check" args)
+test *args: (cargo "test" args)
+clippy *args: (cargo "clippy" args)
+fmt *args: (cargo "fmt" args)
+build *args: (cargo "build" "--release" args)
+doc *args: (cargo "doc" "--document-private-items" args)
+tree *args: (cargo "tree" args)
+expand *args: (cargo "expand" "--lib" args)
+
+# Clean Rust build artifacts
+clean:
+    cargo clean --manifest-path={{manifest}}
+    rm -rf src/vendor
+
+# ============================================================================
+# R package development
+# ============================================================================
+
+# Configure the R package (vendor dependencies, generate Makevars)
+#
+# This must be run before any R CMD operation. It:
+# 1. Vendors crates.io dependencies to src/vendor/
+# 2. Generates src/Makevars from src/Makevars.in
+configure:
+    NOT_CRAN=true ./configure
+
+# Configure in CRAN mode (for testing CRAN submission)
+configure-cran:
+    ./configure
+
+# Build and install R package with R CMD INSTALL
+install *args: configure
+    NOT_CRAN=true R CMD INSTALL {{args}} .
+
+# Run R package tests with devtools
+rtest FILTER="": configure
+    #!/usr/bin/env bash
+    if [ -z "{{FILTER}}" ]; then
+      Rscript -e 'devtools::test(".")'
+    else
+      Rscript -e 'devtools::test(".", filter = "{{FILTER}}")'
+    fi
+
+# Generate R documentation with devtools/roxygen2
+rdoc: configure
+    Rscript -e 'devtools::document(".")'
+
+# Load package with devtools::load_all (for interactive development)
+load: configure
+    Rscript -e 'devtools::load_all(".")'
+
+# Install with devtools::install
+devtools-install: configure
+    Rscript -e 'devtools::install(".")'
+
+# Build R package tarball
+rbuild *args: configure
+    R CMD build {{args}} .
+
+# Run R CMD check
+rcheck: configure
+    Rscript -e "rcmdcheck::rcmdcheck('.', args = c('--as-cran', '--no-manual'), error_on = 'warning')"
+
+# Run devtools::check
+devtools-check: configure
+    NOT_CRAN=true Rscript -e 'devtools::check(".", error_on = "error")'
+
+# ============================================================================
+# Development workflow shortcuts
+# ============================================================================
+
+# Full development cycle: check Rust, test Rust, install R package
+dev: check test install
+
+# Quick iteration: just reinstall R package
+reinstall: install
+
+# Prepare for CRAN submission: configure in CRAN mode, build, check
+cran-prep: configure-cran rbuild rcheck
+
+# ============================================================================
+# Version management
+# ============================================================================
+
+# Sync Cargo.toml and configure.ac versions to match DESCRIPTION
+version-sync:
+    Rscript tools/bump-version.R --sync
+
+# Bump patch version (0.1.0 -> 0.1.1)
+version-bump-patch:
+    Rscript tools/bump-version.R --bump=patch
+
+# Bump minor version (0.1.0 -> 0.2.0)
+version-bump-minor:
+    Rscript tools/bump-version.R --bump=minor
+
+# Bump major version (0.1.0 -> 1.0.0)
+version-bump-major:
+    Rscript tools/bump-version.R --bump=major
+
+# Add/increment dev version (0.1.0 -> 0.1.0.9000, or 0.1.0.9000 -> 0.1.0.9001)
+version-bump-dev:
+    Rscript tools/bump-version.R --bump=dev+
+
+# Set specific version (e.g., just version-set 1.2.3)
+version-set ver:
+    Rscript tools/bump-version.R --set={{ver}}

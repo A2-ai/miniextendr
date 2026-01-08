@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::{OnceLock, mpsc};
 
@@ -16,11 +18,48 @@ fn initialize_r() {
         // Initialize in same order as rpkg/src/entrypoint.c.in
         miniextendr_api::backtrace::miniextendr_panic_hook();
         miniextendr_api::worker::miniextendr_worker_init();
+        disable_r_stack_checking();
         assert!(
             miniextendr_engine::r_initialized_sentinel(),
             "Rf_initialize_R did not set C stack sentinels"
         );
         std::mem::forget(engine);
+    }
+}
+
+/// Disable R's stack checking for test threads.
+///
+/// # Why This Exists
+///
+/// R's stack overflow detection uses `R_CStackLimit` which is calibrated for
+/// the main thread. When running R on a dedicated test thread (as we do in
+/// `cargo test`), these checks produce false positives. Setting `R_CStackLimit`
+/// to `usize::MAX` disables R's checks while the OS stack limit still applies.
+///
+/// # CRAN Compliance
+///
+/// **This code is never part of the R package.** It exists only in the `tests/`
+/// directory and is only compiled for `cargo test`. The R package (`rpkg`):
+///
+/// 1. Only vendors `miniextendr-api/src/` (not `tests/`)
+/// 2. Does not include `miniextendr-engine` (the R embedding crate)
+/// 3. Uses the `nonapi` feature gate for any `R_CStackLimit` access in library code
+///
+/// The direct `extern "C"` access to `R_CStackLimit` here (when `nonapi` feature
+/// is disabled) is acceptable because this code path only runs in `cargo test`,
+/// never in the CRAN package.
+fn disable_r_stack_checking() {
+    #[cfg(feature = "nonapi")]
+    {
+        miniextendr_api::thread::disable_stack_checking_permanently();
+    }
+
+    #[cfg(not(feature = "nonapi"))]
+    unsafe {
+        unsafe extern "C" {
+            static mut R_CStackLimit: usize;
+        }
+        R_CStackLimit = usize::MAX;
     }
 }
 

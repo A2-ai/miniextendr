@@ -1,14 +1,113 @@
-//! Impl-block parsing and wrapper generation for class-like Rust structs.
+//! # Impl-block Parsing and Wrapper Generation
 //!
-//! This module provides shared infrastructure for all class system support:
-//! - Env (environment-style with `$`/`[[` dispatch)
-//! - R6 (`R6::R6Class`)
-//! - S7 (`S7::new_class`)
-//! - S3 (`structure()` with class attr)
-//! - S4 (`setClass`)
+//! This module handles `#[miniextendr]` applied to inherent impl blocks,
+//! generating R wrappers for different class systems.
 //!
-//! The impl-block parser extracts methods and categorizes them by env type,
-//! then class-system adapters generate appropriate R wrapper code.
+//! ## Architecture Overview
+//!
+//! ```text
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                         #[miniextendr(r6)]                              │
+//! │                         impl MyType { ... }                             │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                                    │
+//!                                    ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                           PARSING PHASE                                 │
+//! │  ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────────┐ │
+//! │  │   ImplAttrs     │    │  ParsedMethod   │    │    ParsedImpl       │ │
+//! │  │ - class_system  │    │ - ident         │───▶│ - type_ident        │ │
+//! │  │ - class_name    │    │ - receiver      │    │ - class_system      │ │
+//! │  └─────────────────┘    │ - sig           │    │ - methods[]         │ │
+//! │                         │ - doc_tags      │    │ - doc_tags          │ │
+//! │                         │ - method_attrs  │    └─────────────────────┘ │
+//! │                         └─────────────────┘                             │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                                    │
+//!                                    ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                        CODE GENERATION PHASE                            │
+//! │                                                                         │
+//! │  For each method:                                                       │
+//! │  ┌─────────────────────────────────────────────────────────────────┐   │
+//! │  │ generate_c_wrapper_for_method()                                 │   │
+//! │  │   └─▶ CWrapperContext (shared builder from c_wrapper_builder)   │   │
+//! │  │         - thread strategy (main vs worker)                      │   │
+//! │  │         - SEXP→Rust conversion                                  │   │
+//! │  │         - return handling                                       │   │
+//! │  └─────────────────────────────────────────────────────────────────┘   │
+//! │                                                                         │
+//! │  For the whole impl:                                                    │
+//! │  ┌─────────────────────────────────────────────────────────────────┐   │
+//! │  │ generate_{class_system}_r_wrapper()                             │   │
+//! │  │   - generate_env_r_wrapper()   → Type$method(self, ...)         │   │
+//! │  │   - generate_r6_r_wrapper()    → R6Class with methods           │   │
+//! │  │   - generate_s3_r_wrapper()    → generic + method.Type          │   │
+//! │  │   - generate_s4_r_wrapper()    → setClass + setMethod           │   │
+//! │  │   - generate_s7_r_wrapper()    → new_class + method<-           │   │
+//! │  └─────────────────────────────────────────────────────────────────┘   │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//!                                    │
+//!                                    ▼
+//! ┌─────────────────────────────────────────────────────────────────────────┐
+//! │                              OUTPUTS                                    │
+//! │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────┐ │
+//! │  │ C wrapper fns   │  │ R wrapper code  │  │  R_CallMethodDef       │ │
+//! │  │ C_Type__method  │  │ (as const str)  │  │  registration entries  │ │
+//! │  └─────────────────┘  └─────────────────┘  └─────────────────────────┘ │
+//! └─────────────────────────────────────────────────────────────────────────┘
+//! ```
+//!
+//! ## Supported Class Systems
+//!
+//! | System | Syntax | R Pattern | Use Case |
+//! |--------|--------|-----------|----------|
+//! | **Env** | `#[miniextendr]` | `obj$method()` | Simple, environment-based dispatch |
+//! | **R6** | `#[miniextendr(r6)]` | `R6Class` with `$new()` | OOP with encapsulation |
+//! | **S3** | `#[miniextendr(s3)]` | `generic(obj)` dispatch | Idiomatic R generics |
+//! | **S4** | `#[miniextendr(s4)]` | `setClass`/`setMethod` | Formal OOP, multiple dispatch |
+//! | **S7** | `#[miniextendr(s7)]` | `new_class`/`new_generic` | Modern R OOP |
+//! | **vctrs** | `#[miniextendr(vctrs)]` | `new_vctr`/`new_rcrd`/`new_list_of` | vctrs-compatible vectors |
+//!
+//! ## Method Categorization
+//!
+//! Methods are categorized by their receiver type:
+//!
+//! | Receiver | [`ReceiverKind`] | Generated as |
+//! |----------|------------------|--------------|
+//! | `&self` | `Ref` | Instance method (immutable) |
+//! | `&mut self` | `RefMut` | Instance method (mutable, chainable) |
+//! | `self` | `Value` | Consuming method (not supported in v1) |
+//! | (none) | `None` | Static method or constructor |
+//!
+//! Special methods:
+//! - **Constructor**: Returns `Self`, marked with `#[miniextendr(constructor)]` or named `new`
+//! - **Finalizer**: R6 only, marked with `#[miniextendr(r6(finalize))]`
+//! - **Private**: R6 only, marked with `#[miniextendr(r6(private))]`
+//!
+//! ## Shared Builders
+//!
+//! This module uses shared infrastructure from:
+//! - [`crate::c_wrapper_builder`]: C wrapper generation with thread strategy
+//! - [`crate::r_wrapper_builder`]: R function signatures and `.Call()` args
+//! - [`crate::method_return_builder`]: Return value handling per class system
+//! - [`crate::roxygen`]: Documentation extraction from Rust doc comments
+//!
+//! ## Example
+//!
+//! ```ignore
+//! #[miniextendr(r6)]
+//! impl Counter {
+//!     fn new(value: i32) -> Self { Counter { value } }
+//!     fn get(&self) -> i32 { self.value }
+//!     fn increment(&mut self) { self.value += 1; }
+//! }
+//! ```
+//!
+//! Generates:
+//! - C wrappers: `C_Counter__new`, `C_Counter__get`, `C_Counter__increment`
+//! - R6Class with `initialize`, `get`, `increment` methods
+//! - Registration entries for R's `.Call()` interface
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
@@ -64,6 +163,8 @@ pub enum ClassSystem {
     S3,
     /// S4 setClass
     S4,
+    /// vctrs-compatible S3 class (vctr, rcrd, or list_of)
+    Vctrs,
 }
 
 impl std::str::FromStr for ClassSystem {
@@ -76,9 +177,53 @@ impl std::str::FromStr for ClassSystem {
             "s7" => Ok(ClassSystem::S7),
             "s3" => Ok(ClassSystem::S3),
             "s4" => Ok(ClassSystem::S4),
+            "vctrs" => Ok(ClassSystem::Vctrs),
             _ => Err(format!("unknown class system: {}", s)),
         }
     }
+}
+
+/// Kind of vctrs class being created.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum VctrsKind {
+    /// Simple vctr backed by a base vector (new_vctr)
+    #[default]
+    Vctr,
+    /// Record type with named fields (new_rcrd)
+    Rcrd,
+    /// Homogeneous list with ptype (new_list_of)
+    ListOf,
+}
+
+impl std::str::FromStr for VctrsKind {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.to_lowercase().as_str() {
+            "vctr" => Ok(VctrsKind::Vctr),
+            "rcrd" | "record" => Ok(VctrsKind::Rcrd),
+            "list_of" | "listof" => Ok(VctrsKind::ListOf),
+            _ => Err(format!(
+                "unknown vctrs kind: {} (expected vctr, rcrd, or list_of)",
+                s
+            )),
+        }
+    }
+}
+
+/// Attributes for vctrs class generation.
+#[derive(Debug, Clone, Default)]
+pub struct VctrsAttrs {
+    /// The vctrs kind (vctr, rcrd, list_of)
+    pub kind: VctrsKind,
+    /// Base type for vctr (e.g., "double", "integer", "character")
+    pub base: Option<String>,
+    /// Whether to inherit base type in class vector
+    pub inherit_base_type: Option<bool>,
+    /// Prototype type for list_of (R expression)
+    pub ptype: Option<String>,
+    /// Abbreviation for vec_ptype_abbr (for printing)
+    pub abbr: Option<String>,
 }
 
 /// Receiver kind for methods.
@@ -169,6 +314,20 @@ pub struct MethodAttrs {
     /// ```
     /// This generates `print.MyType` that calls the `show` method.
     pub generic: Option<String>,
+    /// Override class suffix for S3 methods.
+    ///
+    /// Use this to implement double-dispatch methods (like vctrs coercion)
+    /// where the class suffix differs from the type name or contains multiple classes.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s3(generic = "vec_ptype2", class = "my_vctr.my_vctr"))]
+    /// fn ptype2_self(x: Robj, y: Robj, dots: ...) -> Robj {
+    ///     // Return prototype
+    /// }
+    /// ```
+    /// This generates `vec_ptype2.my_vctr.my_vctr` for vctrs double-dispatch.
+    pub class: Option<String>,
     /// Worker thread execution (default: auto-detect based on types)
     pub worker: bool,
     /// Force main thread execution (unsafe)
@@ -177,6 +336,10 @@ pub struct MethodAttrs {
     pub check_interrupt: bool,
     /// Enable coercion for this method's parameters
     pub coerce: bool,
+    /// Enable RNG state management (GetRNGstate/PutRNGstate)
+    pub rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping.
+    pub unwrap_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
 }
@@ -193,6 +356,8 @@ pub struct ParsedImpl {
     pub class_system: ClassSystem,
     /// Override class name (else type name)
     pub class_name: Option<String>,
+    /// Optional label for distinguishing multiple impl blocks of the same type.
+    pub label: Option<String>,
     /// Roxygen tag lines extracted from impl doc comments
     pub doc_tags: Vec<String>,
     /// All parsed methods
@@ -201,6 +366,8 @@ pub struct ParsedImpl {
     pub original_impl: syn::ItemImpl,
     /// cfg attributes to propagate
     pub cfg_attrs: Vec<syn::Attribute>,
+    /// vctrs-specific attributes (only used when class_system is Vctrs)
+    pub vctrs_attrs: VctrsAttrs,
 }
 
 /// Attributes on the impl block itself.
@@ -208,48 +375,134 @@ pub struct ParsedImpl {
 pub struct ImplAttrs {
     pub class_system: ClassSystem,
     pub class_name: Option<String>,
+    /// Optional label for distinguishing multiple impl blocks of the same type.
+    ///
+    /// When a type has multiple `#[miniextendr]` impl blocks, each must have a
+    /// distinct label. The label is used in:
+    /// - Generated wrapper names (e.g., `C_Type_label__method`)
+    /// - Module registration (e.g., `impl Type as "label"`)
+    ///
+    /// Single impl blocks don't require labels.
+    pub label: Option<String>,
+    /// vctrs-specific attributes (only used when class_system is Vctrs)
+    pub vctrs_attrs: VctrsAttrs,
 }
 
 impl syn::parse::Parse for ImplAttrs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut class_system = ClassSystem::Env;
         let mut class_name = None;
+        let mut label = None;
+        let mut vctrs_attrs = VctrsAttrs::default();
 
-        // Parse the first identifier (class system)
-        if !input.is_empty() {
-            let first: syn::Ident = input.parse()?;
-            class_system = first
-                .to_string()
-                .parse()
-                .map_err(|e| syn::Error::new(first.span(), e))?;
+        // Parse attributes. The first identifier can be either:
+        // - A class system (env, r6, s3, s4, s7, vctrs)
+        // - A key in a key=value pair (class, label)
+        //
+        // Valid formats:
+        // - #[miniextendr]
+        // - #[miniextendr(r6)]
+        // - #[miniextendr(label = "foo")]
+        // - #[miniextendr(r6, label = "foo")]
+        // - #[miniextendr(r6, class = "CustomName", label = "foo")]
+        // - #[miniextendr(vctrs)]
+        // - #[miniextendr(vctrs(kind = "rcrd", base = "double", abbr = "my_abbr"))]
+        while !input.is_empty() {
+            let ident: syn::Ident = input.parse()?;
+            let ident_str = ident.to_string();
 
-            // Parse optional key=value pairs
-            while !input.is_empty() {
-                let _: syn::Token![,] = input.parse()?;
-                if input.is_empty() {
-                    break;
-                }
-                let key: syn::Ident = input.parse()?;
+            // Check if this is a key=value pair
+            if input.peek(syn::Token![=]) {
                 let _: syn::Token![=] = input.parse()?;
-
-                match key.to_string().as_str() {
+                match ident_str.as_str() {
                     "class" => {
                         let value: syn::LitStr = input.parse()?;
                         class_name = Some(value.value());
                     }
+                    "label" => {
+                        let value: syn::LitStr = input.parse()?;
+                        label = Some(value.value());
+                    }
                     _ => {
                         return Err(syn::Error::new(
-                            key.span(),
-                            format!("unknown option: {}", key),
+                            ident.span(),
+                            format!("unknown option: {}", ident_str),
                         ));
                     }
                 }
+            } else if ident_str == "vctrs" {
+                // vctrs class system with optional nested attributes
+                class_system = ClassSystem::Vctrs;
+
+                // Check for nested vctrs options: vctrs(kind = "rcrd", base = "double", ...)
+                if input.peek(syn::token::Paren) {
+                    let content;
+                    syn::parenthesized!(content in input);
+
+                    while !content.is_empty() {
+                        let key: syn::Ident = content.parse()?;
+                        let _: syn::Token![=] = content.parse()?;
+                        let key_str = key.to_string();
+
+                        match key_str.as_str() {
+                            "kind" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.kind = value
+                                    .value()
+                                    .parse()
+                                    .map_err(|e| syn::Error::new(value.span(), e))?;
+                            }
+                            "base" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.base = Some(value.value());
+                            }
+                            "inherit_base_type" => {
+                                let value: syn::LitBool = content.parse()?;
+                                vctrs_attrs.inherit_base_type = Some(value.value());
+                            }
+                            "ptype" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.ptype = Some(value.value());
+                            }
+                            "abbr" => {
+                                let value: syn::LitStr = content.parse()?;
+                                vctrs_attrs.abbr = Some(value.value());
+                            }
+                            _ => {
+                                return Err(syn::Error::new(
+                                    key.span(),
+                                    format!(
+                                        "unknown vctrs option: {} (expected kind, base, inherit_base_type, ptype, abbr)",
+                                        key_str
+                                    ),
+                                ));
+                            }
+                        }
+
+                        // Consume trailing comma if present
+                        if content.peek(syn::Token![,]) {
+                            let _: syn::Token![,] = content.parse()?;
+                        }
+                    }
+                }
+            } else {
+                // This is a class system identifier
+                class_system = ident_str
+                    .parse()
+                    .map_err(|e| syn::Error::new(ident.span(), e))?;
+            }
+
+            // Consume trailing comma if present
+            if input.peek(syn::Token![,]) {
+                let _: syn::Token![,] = input.parse()?;
             }
         }
 
         Ok(ImplAttrs {
             class_system,
             class_name,
+            label,
+            vctrs_attrs,
         })
     }
 }
@@ -262,17 +515,11 @@ impl ParsedMethod {
         class_system: ClassSystem,
         span: proc_macro2::Span,
     ) -> syn::Result<()> {
-        // #[...(active)] is only meaningful for R6, and not yet implemented
-        if attrs.active {
-            if class_system != ClassSystem::R6 {
-                return Err(syn::Error::new(
-                    span,
-                    "#[r6(active)] is only valid for R6 class systems",
-                ));
-            }
+        // #[...(active)] is only meaningful for R6
+        if attrs.active && class_system != ClassSystem::R6 {
             return Err(syn::Error::new(
                 span,
-                "#[r6(active)] active bindings are not yet implemented",
+                "#[r6(active)] is only valid for R6 class systems",
             ));
         }
 
@@ -304,7 +551,8 @@ impl ParsedMethod {
                     || meta.path.is_ident("r6")
                     || meta.path.is_ident("s7")
                     || meta.path.is_ident("s3")
-                    || meta.path.is_ident("s4");
+                    || meta.path.is_ident("s4")
+                    || meta.path.is_ident("vctrs");
 
                 if is_class_meta {
                     // Parse the inner options: r6(ignore, constructor, ...)
@@ -327,10 +575,18 @@ impl ParsedMethod {
                             method_attrs.check_interrupt = true;
                         } else if inner.path.is_ident("coerce") {
                             method_attrs.coerce = true;
+                        } else if inner.path.is_ident("rng") {
+                            method_attrs.rng = true;
+                        } else if inner.path.is_ident("unwrap_in_r") {
+                            method_attrs.unwrap_in_r = true;
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.generic = Some(value.value());
+                        } else if inner.path.is_ident("class") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.class = Some(value.value());
                         }
                         Ok(())
                     })?;
@@ -349,6 +605,26 @@ impl ParsedMethod {
                         method_attrs.defaults.insert(param_name, value.value());
                         Ok(())
                     })?;
+                } else if meta.path.is_ident("unsafe") {
+                    // Parse unsafe(main_thread) - same syntax as standalone functions
+                    meta.parse_nested_meta(|inner| {
+                        if inner.path.is_ident("main_thread") {
+                            method_attrs.unsafe_main_thread = true;
+                        } else {
+                            return Err(inner.error(
+                                "unknown `unsafe(...)` option; only `main_thread` is supported",
+                            ));
+                        }
+                        Ok(())
+                    })?;
+                } else if meta.path.is_ident("check_interrupt") {
+                    method_attrs.check_interrupt = true;
+                } else if meta.path.is_ident("coerce") {
+                    method_attrs.coerce = true;
+                } else if meta.path.is_ident("rng") {
+                    method_attrs.rng = true;
+                } else if meta.path.is_ident("unwrap_in_r") {
+                    method_attrs.unwrap_in_r = true;
                 }
                 Ok(())
             })?;
@@ -436,9 +712,6 @@ impl ParsedMethod {
         // Auto-convert regular doc comments to @description for all class systems
         let doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
 
-        // Check for @title/@description conflicts with implicit values
-        crate::roxygen::warn_on_doc_conflicts(&item.attrs, item.sig.ident.span());
-
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
@@ -483,14 +756,36 @@ impl ParsedMethod {
         self.method_attrs.finalize || (self.env == ReceiverKind::Value && !self.returns_self())
     }
 
+    /// Returns true if this method should be an R6 active binding.
+    /// Active bindings provide property-like access (obj$name instead of obj$name()).
+    pub fn is_active(&self) -> bool {
+        self.method_attrs.active
+    }
+
     /// C wrapper identifier for this method.
-    pub fn c_wrapper_ident(&self, type_ident: &syn::Ident) -> syn::Ident {
-        format_ident!("C_{}__{}", type_ident, self.ident)
+    ///
+    /// Format: `C_{Type}__{method}` or `C_{Type}_{label}__{method}` if labeled.
+    pub fn c_wrapper_ident(&self, type_ident: &syn::Ident, label: Option<&str>) -> syn::Ident {
+        if let Some(label) = label {
+            format_ident!("C_{}_{}_{}", type_ident, label, self.ident)
+        } else {
+            format_ident!("C_{}__{}", type_ident, self.ident)
+        }
     }
 
     /// Call method def identifier for registration.
-    pub fn call_method_def_ident(&self, type_ident: &syn::Ident) -> syn::Ident {
-        format_ident!("call_method_def_{}_{}", type_ident, self.ident)
+    ///
+    /// Format: `call_method_def_{type}_{method}` or `call_method_def_{type}_{label}_{method}` if labeled.
+    pub fn call_method_def_ident(
+        &self,
+        type_ident: &syn::Ident,
+        label: Option<&str>,
+    ) -> syn::Ident {
+        if let Some(label) = label {
+            format_ident!("call_method_def_{}_{}_{}", type_ident, label, self.ident)
+        } else {
+            format_ident!("call_method_def_{}_{}", type_ident, self.ident)
+        }
     }
 
     /// Returns true if this method returns Self.
@@ -583,11 +878,13 @@ impl ParsedImpl {
             generics: item_impl.generics.clone(),
             class_system: attrs.class_system,
             class_name: attrs.class_name,
+            label: attrs.label,
             doc_tags,
             methods,
             // Strip miniextendr attributes (and roxygen tags) before re-emitting.
             original_impl: strip_miniextendr_attrs_from_impl(item_impl),
             cfg_attrs,
+            vctrs_attrs: attrs.vctrs_attrs,
         })
     }
 
@@ -611,7 +908,7 @@ impl ParsedImpl {
             .find(|m| m.should_include() && m.is_constructor())
     }
 
-    /// Get public instance methods (have env, not private).
+    /// Get public instance methods (have env, not private, not active).
     pub fn public_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
@@ -619,10 +916,11 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && !m.is_private()
+                && !m.is_active()
         })
     }
 
-    /// Get private instance methods (have env, private visibility).
+    /// Get private instance methods (have env, private visibility, not active).
     pub fn private_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
             m.should_include()
@@ -630,6 +928,19 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_private()
+                && !m.is_active()
+        })
+    }
+
+    /// Get active binding methods for R6 (have env, marked active).
+    /// Active bindings provide property-like access (obj$name instead of obj$name()).
+    pub fn active_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods.iter().filter(|m| {
+            m.should_include()
+                && m.env.is_instance()
+                && !m.is_constructor()
+                && !m.is_finalizer()
+                && m.is_active()
         })
     }
 
@@ -658,16 +969,34 @@ impl ParsedImpl {
     }
 
     /// Module constant identifier for all call method defs.
+    ///
+    /// Format: `{TYPE}_CALL_DEFS` or `{TYPE}_{LABEL}_CALL_DEFS` if labeled.
     pub fn call_defs_const_ident(&self) -> syn::Ident {
-        format_ident!("{}_CALL_DEFS", self.type_ident.to_string().to_uppercase())
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            format_ident!("{}_{}_CALL_DEFS", type_upper, label_upper)
+        } else {
+            format_ident!("{}_CALL_DEFS", type_upper)
+        }
     }
 
     /// Module constant identifier for R wrapper parts.
+    ///
+    /// Format: `R_WRAPPERS_IMPL_{TYPE}` or `R_WRAPPERS_IMPL_{TYPE}_{LABEL}` if labeled.
     pub fn r_wrappers_const_ident(&self) -> syn::Ident {
-        format_ident!(
-            "R_WRAPPERS_IMPL_{}",
-            self.type_ident.to_string().to_uppercase()
-        )
+        let type_upper = self.type_ident.to_string().to_uppercase();
+        if let Some(ref label) = self.label {
+            let label_upper = label.to_uppercase();
+            format_ident!("R_WRAPPERS_IMPL_{}_{}", type_upper, label_upper)
+        } else {
+            format_ident!("R_WRAPPERS_IMPL_{}", type_upper)
+        }
+    }
+
+    /// Returns the label if present.
+    pub fn label(&self) -> Option<&str> {
+        self.label.as_deref()
     }
 }
 
@@ -681,7 +1010,7 @@ pub fn generate_method_c_wrapper(
 
     let type_ident = &parsed_impl.type_ident;
     let method_ident = &method.ident;
-    let c_ident = method.c_wrapper_ident(type_ident);
+    let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
 
     // Determine thread strategy
     // Instance methods must use main thread because self_ref is a borrow that can't cross threads
@@ -743,6 +1072,8 @@ pub fn generate_method_c_wrapper(
     // Determine return handling strategy
     let return_handling = if method.returns_self() {
         ReturnHandling::ExternalPtr
+    } else if method.method_attrs.unwrap_in_r && output_is_result(&method.sig.output) {
+        ReturnHandling::IntoR
     } else {
         crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
     };
@@ -771,65 +1102,50 @@ pub fn generate_method_c_wrapper(
         builder = builder.check_interrupt();
     }
 
+    if method.method_attrs.rng {
+        builder = builder.rng();
+    }
+
     builder.build().generate()
+}
+
+fn output_is_result(output: &syn::ReturnType) -> bool {
+    match output {
+        syn::ReturnType::Type(_, ty) => matches!(
+            ty.as_ref(),
+            syn::Type::Path(p)
+                if p.path
+                    .segments
+                    .last()
+                    .map(|s| s.ident == "Result")
+                    .unwrap_or(false)
+        ),
+        syn::ReturnType::Default => false,
+    }
 }
 
 /// Generate R wrapper string for env-style class.
 pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
-    let class_doc_tags = &parsed_impl.doc_tags;
-    let class_has_title = crate::roxygen::has_roxygen_tag(class_doc_tags, "title");
-    let class_has_name = crate::roxygen::has_roxygen_tag(class_doc_tags, "name");
-    let class_has_rdname = crate::roxygen::has_roxygen_tag(class_doc_tags, "rdname");
-    let class_has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
 
     let mut lines = Vec::new();
 
-    // Class environment
-    if !class_has_title {
-        lines.push(format!("#' @title {} Class", class_name));
-    }
-    if !class_has_name {
-        lines.push(format!("#' @name {}", class_name));
-    }
-    if !class_has_rdname {
-        lines.push(format!("#' @rdname {}", class_name));
-    }
-    crate::roxygen::push_roxygen_tags(&mut lines, class_doc_tags);
-    lines.push(format!(
-        "#' @source Generated by miniextendr from Rust type `{}`",
-        type_ident
-    ));
-    if !class_has_export {
-        lines.push("#' @export".to_string());
-    }
+    // Class environment documentation and definition
+    lines.extend(ClassDocBuilder::new(&class_name, type_ident, &parsed_impl.doc_tags, "").build());
     lines.push(format!("{} <- new.env(parent = emptyenv())", class_name));
     lines.push(String::new());
 
     // Constructor
-    if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
-        if !ctor.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &ctor.doc_tags);
-        }
-        // Add @name and @rdname to combine methods into one doc page
-        if !crate::roxygen::has_roxygen_tag(&ctor.doc_tags, "name") {
-            lines.push(format!("#' @name {}$new", class_name));
-        }
-        if !crate::roxygen::has_roxygen_tag(&ctor.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!("{}$new <- function({}) {{", class_name, params));
-        lines.push(format!("    self <- {}", call));
+    if let Some(ctx) = parsed_impl.constructor_context() {
+        let method_doc =
+            MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
+                .with_name_prefix("$");
+        lines.extend(method_doc.build());
+        lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
+        lines.push(format!("    self <- {}", ctx.static_call()));
         lines.push(format!("    class(self) <- \"{}\"", class_name));
         lines.push("    self".to_string());
         lines.push("}".to_string());
@@ -837,33 +1153,20 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Instance methods
-    for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call(), self)", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), self, {})", c_ident, args)
-        };
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        // Add @name and @rdname to combine methods into one doc page
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
-            lines.push(format!("#' @name {}${}", class_name, method.ident));
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
+    for ctx in parsed_impl.instance_method_contexts() {
+        let method_name = ctx.method.ident.to_string();
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_name_prefix("$");
+        lines.extend(method_doc.build());
+
         lines.push(format!(
             "{}${} <- function({}) {{",
-            class_name, method.ident, params
+            class_name, method_name, ctx.params
         ));
 
-        // Use shared return builder
-        let strategy = crate::ReturnStrategy::for_method(method);
+        let call = ctx.instance_call("self");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone());
@@ -874,34 +1177,20 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Static methods
-    for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        // Add @name and @rdname to combine methods into one doc page
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
-            lines.push(format!("#' @name {}${}", class_name, method.ident));
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
+    for ctx in parsed_impl.static_method_contexts() {
+        let method_name = ctx.method.ident.to_string();
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_name_prefix("$");
+        lines.extend(method_doc.build());
+
         lines.push(format!(
             "{}${} <- function({}) {{",
-            class_name, method.ident, params
+            class_name, method_name, ctx.params
         ));
 
-        // Use shared return builder (static methods use same logic)
-        let strategy = crate::ReturnStrategy::for_method(method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone());
         lines.extend(return_builder.build());
@@ -913,6 +1202,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
     lines.push(format!("#' @rdname {}", class_name));
+    lines.push("#' @param self The object instance.".to_string());
+    lines.push("#' @param name Method name for dispatch.".to_string());
     lines.push("#' @export".to_string());
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("    obj <- {}[[name]]", class_name));
@@ -946,13 +1237,11 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// - Public methods for all instance methods
 /// - Private `.ptr` field holding the ExternalPtr
 pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
-    let class_has_title = crate::roxygen::has_roxygen_tag(class_doc_tags, "title");
-    let class_has_name = crate::roxygen::has_roxygen_tag(class_doc_tags, "name");
-    let class_has_rdname = crate::roxygen::has_roxygen_tag(class_doc_tags, "rdname");
-    let class_has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
 
     // Check if .ptr parameter will be added to initialize (for static methods returning Self)
     let has_self_returning_methods = parsed_impl
@@ -963,113 +1252,102 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
-    // Start R6Class definition
-    if !class_has_title {
-        lines.push(format!("#' @title {} R6 Class", class_name));
-    }
-    if !class_has_name {
-        lines.push(format!("#' @name {}", class_name));
-    }
-    if !class_has_rdname {
-        lines.push(format!("#' @rdname {}", class_name));
-    }
-    crate::roxygen::push_roxygen_tags(&mut lines, class_doc_tags);
-    lines.push(format!(
-        "#' @source Generated by miniextendr from Rust type `{}`",
-        type_ident
-    ));
-    lines.push("#' @importFrom R6 R6Class".to_string());
+    // Start R6Class definition with documentation
+    lines.extend(
+        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "R6")
+            .with_imports("@importFrom R6 R6Class")
+            .build(),
+    );
+
     // Document .ptr param if initialize will have it (for static methods returning Self)
     if has_self_returning_methods && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr")
     {
-        lines.push(
+        // Insert before @export (which is last)
+        let insert_pos = lines.len().saturating_sub(1);
+        lines.insert(
+            insert_pos,
             "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
                 .to_string(),
         );
-    }
-    if !class_has_export {
-        lines.push("#' @export".to_string());
     }
     lines.push(format!("{} <- R6::R6Class(\"{}\",", class_name, class_name));
 
     // Public list
     lines.push("    public = list(".to_string());
 
-    // Constructor (initialize) - accepts either normal params or a pre-made .ptr
-    // Note: has_self_returning_methods was calculated above for @param .ptr documentation
-    if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
+    // Public instance methods (collect first to know if we need trailing comma on initialize)
+    let public_method_contexts: Vec<_> = parsed_impl.public_instance_method_contexts().collect();
+    let has_public_methods = !public_method_contexts.is_empty();
 
+    // Constructor (initialize) - accepts either normal params or a pre-made .ptr
+    if let Some(ctx) = parsed_impl.constructor_context() {
         // Add inline roxygen documentation for initialize method
-        for tag in &ctor.doc_tags {
+        // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
+        for tag in &ctx.method.doc_tags {
             for line in tag.lines() {
+                let line = if line.starts_with("@title ") {
+                    line.replacen("@title ", "@description ", 1)
+                } else {
+                    line.to_string()
+                };
                 lines.push(format!("        #' {}", line));
             }
         }
 
+        // Only add trailing comma if there are public methods after initialize
+        let comma = if has_public_methods { "," } else { "" };
+
         if has_self_returning_methods {
-            let full_params = if params.is_empty() {
+            let full_params = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
             } else {
-                format!("{}, .ptr = NULL", params)
+                format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!("        initialize = function({}) {{", full_params));
             lines.push("            if (!is.null(.ptr)) {".to_string());
             lines.push("                private$.ptr <- .ptr".to_string());
             lines.push("            } else {".to_string());
-            lines.push(format!("                private$.ptr <- {}", call));
+            lines.push(format!(
+                "                private$.ptr <- {}",
+                ctx.static_call()
+            ));
             lines.push("            }".to_string());
-            lines.push("        },".to_string());
+            lines.push(format!("        }}{}", comma));
         } else {
-            lines.push(format!("        initialize = function({}) {{", params));
-            lines.push(format!("            private$.ptr <- {}", call));
-            lines.push("        },".to_string());
+            lines.push(format!("        initialize = function({}) {{", ctx.params));
+            lines.push(format!("            private$.ptr <- {}", ctx.static_call()));
+            lines.push(format!("        }}{}", comma));
         }
     }
 
     // Public instance methods
-    let public_methods: Vec<_> = parsed_impl.public_instance_methods().collect();
-    for (i, method) in public_methods.iter().enumerate() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call(), private$.ptr)", c_ident)
-        } else {
-            format!(
-                ".Call({}, .call = match.call(), private$.ptr, {})",
-                c_ident, args
-            )
-        };
-        let comma = if i < public_methods.len() - 1 {
+    for (i, ctx) in public_method_contexts.iter().enumerate() {
+        let comma = if i < public_method_contexts.len() - 1 {
             ","
         } else {
             ""
         };
 
         // Add inline roxygen documentation for this method
-        for tag in &method.doc_tags {
+        // Note: @title is replaced with @description for R6 inline docs (roxygen requirement)
+        for tag in &ctx.method.doc_tags {
             for line in tag.lines() {
+                let line = if line.starts_with("@title ") {
+                    line.replacen("@title ", "@description ", 1)
+                } else {
+                    line.to_string()
+                };
                 lines.push(format!("        #' {}", line));
             }
         }
 
         lines.push(format!(
             "        {} = function({}) {{",
-            method.ident, params
+            ctx.method.ident, ctx.params
         ));
 
-        // Use shared return builder (R6-specific)
-        let strategy = crate::ReturnStrategy::for_method(method);
+        let call = ctx.instance_call("private$.ptr");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
@@ -1085,26 +1363,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    private = list(".to_string());
 
     // Private instance methods
-    let private_methods: Vec<_> = parsed_impl.private_instance_methods().collect();
-    for method in &private_methods {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call(), private$.ptr)", c_ident)
-        } else {
-            format!(
-                ".Call({}, .call = match.call(), private$.ptr, {})",
-                c_ident, args
-            )
-        };
+    for ctx in parsed_impl.private_instance_method_contexts() {
         lines.push(format!(
             "        {} = function({}) {{",
-            method.ident, params
+            ctx.method.ident, ctx.params
         ));
 
-        let strategy = crate::ReturnStrategy::for_method(method);
+        let call = ctx.instance_call("private$.ptr");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
@@ -1116,7 +1382,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Finalizer (if any)
     if let Some(finalizer) = parsed_impl.finalizer() {
-        let c_ident = finalizer.c_wrapper_ident(type_ident);
+        let c_ident = finalizer.c_wrapper_ident(type_ident, parsed_impl.label());
         lines.push(format!(
             "        finalize = function() .Call({}, .call = match.call(), private$.ptr),",
             c_ident
@@ -1127,6 +1393,61 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("        .ptr = NULL".to_string());
     lines.push("    ),".to_string());
 
+    // Active bindings list (for property-like access)
+    let active_method_contexts: Vec<_> = parsed_impl.active_instance_method_contexts().collect();
+    if !active_method_contexts.is_empty() {
+        lines.push("    active = list(".to_string());
+
+        for (i, ctx) in active_method_contexts.iter().enumerate() {
+            let comma = if i < active_method_contexts.len() - 1 {
+                ","
+            } else {
+                ""
+            };
+
+            // Add inline @field documentation for active bindings
+            // roxygen2 requires @field tags (not @description) for active bindings
+            let method_name = ctx.method.ident.to_string();
+            for tag in &ctx.method.doc_tags {
+                for (line_idx, line) in tag.lines().enumerate() {
+                    // Convert @description/@title to @field on first line only
+                    let line = if line_idx == 0 {
+                        if let Some(desc) = line.strip_prefix("@description ") {
+                            format!("@field {} {}", method_name, desc)
+                        } else if let Some(desc) = line.strip_prefix("@title ") {
+                            format!("@field {} {}", method_name, desc)
+                        } else if !line.starts_with('@') {
+                            // Plain doc comment - treat as field description
+                            format!("@field {} {}", method_name, line)
+                        } else {
+                            line.to_string()
+                        }
+                    } else {
+                        // Continuation lines stay as-is
+                        line.to_string()
+                    };
+                    lines.push(format!("        #' {}", line));
+                }
+            }
+
+            // Active bindings are getter-only (no parameters besides self)
+            // Format: name = function() { ... }
+            lines.push(format!("        {} = function() {{", ctx.method.ident));
+
+            let call = ctx.instance_call("private$.ptr");
+            let strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let return_builder = crate::MethodReturnBuilder::new(call)
+                .with_strategy(strategy)
+                .with_class_name(class_name.clone())
+                .with_indent(12); // R6 active bindings have 12-space indent
+            lines.extend(return_builder.build_r6_body());
+
+            lines.push(format!("        }}{}", comma));
+        }
+
+        lines.push("    ),".to_string());
+    }
+
     // Class options
     lines.push("    lock_objects = TRUE,".to_string());
     lines.push("    lock_class = FALSE,".to_string());
@@ -1134,34 +1455,23 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(")".to_string());
 
     // Static methods as separate functions on the class object
-    for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
-        // Static method name like "R6Counter$default_counter"
-        let static_method_name = format!("{}${}", class_name, method.ident);
+    for ctx in parsed_impl.static_method_contexts() {
+        let method_name = ctx.method.ident.to_string();
+        let static_method_name = format!("{}${}", class_name, method_name);
         lines.push(String::new());
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        // Add @name so roxygen knows what the block documents (attached to Class$method assignment)
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
-            lines.push(format!("#' @name {}", static_method_name));
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!("{} <- function({}) {{", static_method_name, params));
 
-        // Use shared return builder (R6-specific)
-        let strategy = crate::ReturnStrategy::for_method(method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_name_prefix("$");
+        lines.extend(method_doc.build());
+
+        lines.push(format!(
+            "{} <- function({}) {{",
+            static_method_name, ctx.params
+        ));
+
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone());
         lines.extend(return_builder.build_r6_body());
@@ -1178,6 +1488,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// - Constructor function `new_<class>()` that returns an ExternalPtr with class attribute
 /// - S3 generic methods `<method>.<class>` for each instance method
 pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     // S3 convention: lowercase constructor name
@@ -1186,95 +1498,47 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
-    // Constructor
-    if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
+    // Constructor with combined class and constructor documentation
+    if let Some(ctx) = parsed_impl.constructor_context() {
         let mut ctor_doc_tags = Vec::new();
         ctor_doc_tags.extend(class_doc_tags.iter().cloned());
-        ctor_doc_tags.extend(ctor.doc_tags.iter().cloned());
-        let has_title = crate::roxygen::has_roxygen_tag(&ctor_doc_tags, "title");
-        let has_name = crate::roxygen::has_roxygen_tag(&ctor_doc_tags, "name");
-        let has_rdname = crate::roxygen::has_roxygen_tag(&ctor_doc_tags, "rdname");
-        let has_export = crate::roxygen::has_roxygen_tag(&ctor_doc_tags, "export");
-        if !has_title {
-            lines.push(format!("#' @title {} S3 Class", class_name));
-        }
-        if !has_name {
-            lines.push(format!("#' @name {}", class_name));
-        }
-        if !has_rdname {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        crate::roxygen::push_roxygen_tags(&mut lines, &ctor_doc_tags);
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::new`",
-            type_ident
-        ));
-        if !has_export {
-            lines.push("#' @export".to_string());
-        }
-        lines.push(format!("{} <- function({}) {{", ctor_name, params));
+        ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
+
+        lines.extend(ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "S3").build());
+        lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
         lines.push(format!(
             "    structure({}, class = \"{}\")",
-            call, class_name
+            ctx.static_call(),
+            class_name
         ));
         lines.push("}".to_string());
         lines.push(String::new());
     }
 
     // Instance methods as S3 generics + methods
-    for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
+    for ctx in parsed_impl.instance_method_contexts() {
+        let generic_name = ctx.generic_name();
+        // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
+        let method_class_suffix = ctx
+            .class_suffix()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| class_name.clone());
+        let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
+        let full_params = ctx.instance_formals(true); // adds x, ..., params
 
-        // Use generic override if provided, otherwise use method name
-        let generic_name = method
-            .method_attrs
-            .generic
-            .clone()
-            .unwrap_or_else(|| method.ident.to_string());
-
-        // S3 method: generic.class
-        let s3_method_name = format!("{}.{}", generic_name, class_name);
-
-        // Build full parameter list (x first, then others)
-        let full_params = if params.is_empty() {
-            "x, ...".to_string()
-        } else {
-            format!("x, {}, ...", params)
-        };
-
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call(), x)", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), x, {})", c_ident, args)
-        };
-
-        // Only create the S3 generic if no generic override was provided
-        // (i.e., we're creating a new generic, not implementing a method for an existing one)
-        let skip_generic_creation = method.method_attrs.generic.is_some();
-
-        if !skip_generic_creation {
+        // Only create the S3 generic if no generic/class override was provided
+        // (custom class suffix implies using an existing generic)
+        if !ctx.has_generic_override() && !ctx.has_class_override() {
             // Create the S3 generic (only for custom generics, not base R overrides)
-            // Use conditional definition to avoid overwriting existing generics.
-            // @name is required because roxygen2 can't parse conditional definitions.
+            lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
+            lines.push(format!("#' @rdname {}", class_name));
             lines.push(format!("#' @name {}", generic_name));
             lines.push("#' @param x An object".to_string());
             lines.push("#' @param ... Additional arguments passed to methods".to_string());
             lines.push(format!(
                 "#' @source Generated by miniextendr from `{}::{}`",
-                type_ident, method.ident
+                type_ident, ctx.method.ident
             ));
             lines.push("#' @export".to_string());
             lines.push(format!(
@@ -1286,23 +1550,18 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         // Then create the S3 method
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+        lines.extend(method_doc.build());
         lines.push(format!("#' @method {} {}", generic_name, class_name));
+        lines.push("#' @export".to_string());
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
         ));
 
-        // Use shared return builder (S3-specific)
-        let strategy = crate::ReturnStrategy::for_method(method);
+        let call = ctx.instance_call("x");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
@@ -1314,38 +1573,22 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Static methods as regular functions
-    for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
-
+    for ctx in parsed_impl.static_method_contexts() {
         // Static methods get a prefix to avoid naming conflicts
-        let fn_name = format!("{}_{}", class_name.to_lowercase(), method.ident);
+        let fn_name = format!("{}_{}", class_name.to_lowercase(), ctx.method.ident);
+        let method_name = ctx.method.ident.to_string();
 
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::{}`",
-            type_ident, method.ident
-        ));
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
-        lines.push(format!("{} <- function({}) {{", fn_name, params));
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
+        lines.extend(method_doc.build());
+        // Export static methods so users can call them
+        lines.push("#' @export".to_string());
 
-        // Use shared return builder (S3-specific)
-        let strategy = crate::ReturnStrategy::for_method(method);
-        let return_builder = crate::MethodReturnBuilder::new(call)
+        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone());
         lines.extend(return_builder.build_s3_body());
@@ -1353,6 +1596,14 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("}".to_string());
         lines.push(String::new());
     }
+
+    // Create class environment for static methods and trait namespace compatibility
+    lines.push(format!(
+        "#' @rdname {}
+{} <- new.env(parent = emptyenv())",
+        class_name, class_name
+    ));
+    lines.push(String::new());
 
     lines.join("\n")
 }
@@ -1363,37 +1614,22 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// - S7::new_class with constructor and .ptr property
 /// - S7::new_generic + S7::method for each instance method
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
-    let class_has_title = crate::roxygen::has_roxygen_tag(class_doc_tags, "title");
-    let class_has_name = crate::roxygen::has_roxygen_tag(class_doc_tags, "name");
-    let class_has_rdname = crate::roxygen::has_roxygen_tag(class_doc_tags, "rdname");
-    let class_has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
 
     let mut lines = Vec::new();
 
-    // Class definition
-    if !class_has_title {
-        lines.push(format!("#' @title {} S7 Class", class_name));
-    }
-    if !class_has_name {
-        lines.push(format!("#' @name {}", class_name));
-    }
-    if !class_has_rdname {
-        lines.push(format!("#' @rdname {}", class_name));
-    }
-    crate::roxygen::push_roxygen_tags(&mut lines, class_doc_tags);
-    lines.push(format!(
-        "#' @source Generated by miniextendr from Rust type `{}`",
-        type_ident
-    ));
-    lines.push(
-        "#' @importFrom S7 new_class class_any new_object S7_object new_generic method".to_string(),
+    // Class definition with documentation
+    lines.extend(
+        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
+            .with_imports(
+                "@importFrom S7 new_class class_any new_object S7_object new_generic method",
+            )
+            .build(),
     );
-    if !class_has_export {
-        lines.push("#' @export".to_string());
-    }
     lines.push(format!(
         "{} <- S7::new_class(\"{}\",",
         class_name, class_name
@@ -1411,21 +1647,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .filter(|m| m.should_include())
         .any(|m| m.returns_self());
 
-    if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
+    if let Some(ctx) = parsed_impl.constructor_context() {
         if has_self_returning_methods {
-            let params_with_ptr = if params.is_empty() {
+            let params_with_ptr = if ctx.params.is_empty() {
                 ".ptr = NULL".to_string()
             } else {
-                format!("{}, .ptr = NULL", params)
+                format!("{}, .ptr = NULL", ctx.params)
             };
             lines.push(format!(
                 "    constructor = function({}) {{",
@@ -1436,15 +1663,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.push("        } else {".to_string());
             lines.push(format!(
                 "            S7::new_object(S7::S7_object(), .ptr = {})",
-                call
+                ctx.static_call()
             ));
             lines.push("        }".to_string());
             lines.push("    }".to_string());
         } else {
-            lines.push(format!("    constructor = function({}) {{", params));
+            lines.push(format!("    constructor = function({}) {{", ctx.params));
             lines.push(format!(
                 "        S7::new_object(S7::S7_object(), .ptr = {})",
-                call
+                ctx.static_call()
             ));
             lines.push("    }".to_string());
         }
@@ -1454,58 +1681,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(String::new());
 
     // Instance methods as S7 generics + methods
-    for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
+    for ctx in parsed_impl.instance_method_contexts() {
+        let generic_name = ctx.generic_name();
+        let full_params = ctx.instance_formals(true); // adds x, ..., params
+        let call = ctx.instance_call("x@.ptr");
 
-        // Use generic override if provided, otherwise use method name
-        let generic_name = method
-            .method_attrs
-            .generic
-            .clone()
-            .unwrap_or_else(|| method.ident.to_string());
+        // Documentation
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+        lines.extend(method_doc.build());
 
-        // Check if this references an external generic (e.g., "base::print" or "pkg::func")
-        let is_external_generic = method.method_attrs.generic.is_some();
-
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call(), x@.ptr)", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), x@.ptr, {})", c_ident, args)
-        };
-
-        // Build full parameter list (x first, then others, then ...)
-        let full_params = if params.is_empty() {
-            "x, ...".to_string()
-        } else {
-            format!("x, {}, ...", params)
-        };
-
-        // Define generic (only if doesn't exist)
-        // Note: The second arg to new_generic is the dispatch argument name (e.g., "x"), not the class
-        // Add @name so roxygen knows what the block documents (it's attached to an if statement)
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
-            lines.push(format!("#' @name {}", generic_name));
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::{}`",
-            type_ident, method.ident
-        ));
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
-
-        if is_external_generic {
+        if ctx.has_generic_override() {
             // Parse "pkg::name" format for external generics
-            // If no "::" present, assume base R
             let (pkg, gen_name) = if generic_name.contains("::") {
                 let parts: Vec<&str> = generic_name.split("::").collect();
                 (parts[0].to_string(), parts[1].to_string())
@@ -1519,8 +1706,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ));
 
             // Define method using the resolved generic name
-            let strategy = crate::ReturnStrategy::for_method(method);
-            let return_expr = crate::MethodReturnBuilder::new(call.clone())
+            let strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
@@ -1529,13 +1716,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ));
         } else {
             // Create new S7 generic if it doesn't exist
+            // Add @export so roxygen generates export() in NAMESPACE
+            lines.push("#' @export".to_string());
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
             ));
 
             // Define method
-            let strategy = crate::ReturnStrategy::for_method(method);
-            let return_expr = crate::MethodReturnBuilder::new(call.clone())
+            let strategy = crate::ReturnStrategy::for_method(ctx.method);
+            let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
@@ -1547,37 +1736,21 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Static methods as regular functions
-    for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
+    for ctx in parsed_impl.static_method_contexts() {
+        let fn_name = format!("{}_{}", class_name, ctx.method.ident);
+        let method_name = ctx.method.ident.to_string();
 
-        let fn_name = format!("{}_{}", class_name, method.ident);
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
+        lines.extend(method_doc.build());
+        // Export static methods so users can call them
+        lines.push("#' @export".to_string());
 
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::{}`",
-            type_ident, method.ident
-        ));
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
-        lines.push(format!("{} <- function({}) {{", fn_name, params));
+        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
-        // Use shared return builder (S7-specific inline)
-        let strategy = crate::ReturnStrategy::for_method(method);
-        let return_expr = crate::MethodReturnBuilder::new(call)
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
             .build_s7_inline();
@@ -1597,33 +1770,25 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 /// - Constructor function
 /// - setMethod for each instance method
 pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
-    let class_has_title = crate::roxygen::has_roxygen_tag(class_doc_tags, "title");
-    let class_has_name = crate::roxygen::has_roxygen_tag(class_doc_tags, "name");
-    let class_has_rdname = crate::roxygen::has_roxygen_tag(class_doc_tags, "rdname");
-    // S4 uses setClass() which doesn't need @export on the class definition
-    let _class_has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
 
     let mut lines = Vec::new();
 
-    // Class definition
-    if !class_has_title {
-        lines.push(format!("#' @title {} S4 Class", class_name));
+    // Class definition with documentation (S4 uses setClass, no @export on class definition)
+    let has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
+    lines.extend(
+        ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S4")
+            .with_imports("@importFrom methods setClass setGeneric setMethod new isGeneric")
+            .build(),
+    );
+    // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
+    if !has_export {
+        lines.pop();
     }
-    if !class_has_name {
-        lines.push(format!("#' @name {}", class_name));
-    }
-    if !class_has_rdname {
-        lines.push(format!("#' @rdname {}", class_name));
-    }
-    crate::roxygen::push_roxygen_tags(&mut lines, class_doc_tags);
-    lines.push(format!(
-        "#' @source Generated by miniextendr from Rust type `{}`",
-        type_ident
-    ));
-    lines.push("#' @importFrom methods setClass setGeneric setMethod new isGeneric".to_string());
     lines.push(format!(
         "#' @slot ptr External pointer to Rust `{}` struct",
         type_ident
@@ -1635,84 +1800,55 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(String::new());
 
     // Constructor function
-    if let Some(ctor) = parsed_impl.constructor() {
-        let c_ident = ctor.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&ctor.sig, &ctor.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&ctor.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
-        if !ctor.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &ctor.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&ctor.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::new`",
-            type_ident
-        ));
-        if !crate::roxygen::has_roxygen_tag(&ctor.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
-        lines.push(format!("{} <- function({}) {{", class_name, params));
+    if let Some(ctx) = parsed_impl.constructor_context() {
+        let method_doc =
+            MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags);
+        lines.extend(method_doc.build());
+        // Export the constructor function so users can create instances
+        lines.push("#' @export".to_string());
+
+        lines.push(format!("{} <- function({}) {{", class_name, ctx.params));
         lines.push(format!(
             "    methods::new(\"{}\", ptr = {})",
-            class_name, call
+            class_name,
+            ctx.static_call()
         ));
         lines.push("}".to_string());
         lines.push(String::new());
     }
 
     // Instance methods as S4 methods
+    // Note: S4 uses empty param_defaults for method signatures (different from other systems)
     for method in parsed_impl.instance_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
+        let c_ident = method.c_wrapper_ident(type_ident, parsed_impl.label());
         let method_name = if let Some(ref generic) = method.method_attrs.generic {
             generic.clone()
         } else {
             format!("s4_{}", method.ident)
         };
+        // S4 methods use empty defaults for consistency with setMethod
         let params = crate::r_wrapper_builder::build_r_formals_from_sig(
             &method.sig,
             &std::collections::HashMap::new(),
         );
         let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-
         let call = if args.is_empty() {
             format!(".Call({}, .call = match.call(), x@ptr)", c_ident)
         } else {
             format!(".Call({}, .call = match.call(), x@ptr, {})", c_ident, args)
         };
-
-        // Build full parameter list (x first, then others, then ...)
         let full_params = if params.is_empty() {
             "x, ...".to_string()
         } else {
             format!("x, {}, ...", params)
         };
 
-        // Define generic if needed (setGeneric is idempotent for existing generics)
-        // Use roxygen block to export the generic
-        // Add @name so roxygen knows what the block documents (it's attached to an if statement)
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "name") {
-            lines.push(format!("#' @name {}", method_name));
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::{}`",
-            type_ident, method.ident
-        ));
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
+        // Documentation for the generic
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags);
+        lines.extend(method_doc.build());
+
+        // Define generic if needed
         lines.push(format!(
             "if (!methods::isGeneric(\"{}\")) methods::setGeneric(\"{}\", function(x, ...) standardGeneric(\"{}\"))",
             method_name, method_name, method_name
@@ -1721,7 +1857,6 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Define method with @exportMethod for proper S4 dispatch
         lines.push(format!("#' @exportMethod {}", method_name));
 
-        // Use shared return builder (S4-specific inline)
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_expr = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
@@ -1735,37 +1870,21 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Static methods as regular functions
-    for method in parsed_impl.static_methods() {
-        let c_ident = method.c_wrapper_ident(type_ident);
-        let params =
-            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
-        let args = crate::r_wrapper_builder::build_r_call_args_from_sig(&method.sig);
-        let call = if args.is_empty() {
-            format!(".Call({}, .call = match.call())", c_ident)
-        } else {
-            format!(".Call({}, .call = match.call(), {})", c_ident, args)
-        };
+    for ctx in parsed_impl.static_method_contexts() {
+        let fn_name = format!("{}_{}", class_name, ctx.method.ident);
+        let method_name = ctx.method.ident.to_string();
 
-        let fn_name = format!("{}_{}", class_name, method.ident);
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
+        lines.extend(method_doc.build());
+        // Export static methods so users can call them
+        lines.push("#' @export".to_string());
 
-        if !method.doc_tags.is_empty() {
-            crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
-        }
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "rdname") {
-            lines.push(format!("#' @rdname {}", class_name));
-        }
-        lines.push(format!(
-            "#' @source Generated by miniextendr from `{}::{}`",
-            type_ident, method.ident
-        ));
-        if !crate::roxygen::has_roxygen_tag(&method.doc_tags, "export") {
-            lines.push("#' @export".to_string());
-        }
-        lines.push(format!("{} <- function({}) {{", fn_name, params));
+        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
-        // Use shared return builder (S4-specific inline)
-        let strategy = crate::ReturnStrategy::for_method(method);
-        let return_expr = crate::MethodReturnBuilder::new(call)
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
             .build_s4_inline();
@@ -1778,7 +1897,234 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
-/// Expand a #[miniextendr(env|r6|s7|s3|s4)] impl block.
+/// Generate R wrapper string for vctrs-style class.
+///
+/// Creates a vctrs-compatible S3 class with:
+/// - Constructor using `vctrs::new_vctr()`, `vctrs::new_rcrd()`, or `vctrs::new_list_of()`
+/// - `vec_ptype2.<class>.<class>` and `vec_cast.<class>.<class>` for same-type coercion
+/// - `vec_ptype_abbr.<class>` for compact printing (if `abbr` is specified)
+/// - Instance methods as regular S3 methods
+pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+
+    let class_name = parsed_impl.class_name();
+    let type_ident = &parsed_impl.type_ident;
+    let class_doc_tags = &parsed_impl.doc_tags;
+    let vctrs_attrs = &parsed_impl.vctrs_attrs;
+
+    // Constructor name follows vctrs convention: new_<class>
+    let ctor_name = format!("new_{}", class_name.to_lowercase());
+
+    let mut lines = Vec::new();
+
+    // Constructor with combined class and constructor documentation
+    if let Some(ctx) = parsed_impl.constructor_context() {
+        let mut ctor_doc_tags = Vec::new();
+        ctor_doc_tags.extend(class_doc_tags.iter().cloned());
+        ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
+
+        lines.extend(
+            ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "vctrs S3")
+                .with_imports("@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr")
+                .build(),
+        );
+
+        // Generate constructor body based on vctrs kind
+        lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
+        lines.push(format!("    data <- {}", ctx.static_call()));
+
+        match vctrs_attrs.kind {
+            VctrsKind::Vctr => {
+                // Build new_vctr call with optional inherit_base_type
+                let inherit_arg = match vctrs_attrs.inherit_base_type {
+                    Some(true) => ", inherit_base_type = TRUE",
+                    Some(false) => ", inherit_base_type = FALSE",
+                    None => "",
+                };
+                lines.push(format!(
+                    "    vctrs::new_vctr(data, class = \"{}\"{})",
+                    class_name, inherit_arg
+                ));
+            }
+            VctrsKind::Rcrd => {
+                // Record type - data should be a list
+                lines.push(format!(
+                    "    vctrs::new_rcrd(data, class = \"{}\")",
+                    class_name
+                ));
+            }
+            VctrsKind::ListOf => {
+                // list_of - needs ptype
+                let ptype_arg = vctrs_attrs
+                    .ptype
+                    .as_ref()
+                    .map(|p| format!(", ptype = {}", p))
+                    .unwrap_or_default();
+                lines.push(format!(
+                    "    vctrs::new_list_of(data, class = \"{}\"{})",
+                    class_name, ptype_arg
+                ));
+            }
+        }
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    // vec_ptype_abbr for compact printing (if abbr is specified)
+    if let Some(abbr) = &vctrs_attrs.abbr {
+        lines.push(format!("#' @rdname {}", class_name));
+        lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
+        lines.push("#' @export".to_string());
+        lines.push(format!(
+            "vec_ptype_abbr.{} <- function(x, ...) \"{}\"",
+            class_name, abbr
+        ));
+        lines.push(String::new());
+    }
+
+    // Self-coercion methods (required for vctrs to work properly)
+    // vec_ptype2.<class>.<class> - returns prototype for combining same types
+    lines.push(format!("#' @rdname {}", class_name));
+    lines.push(format!(
+        "#' @method vec_ptype2 {}.{}",
+        class_name, class_name
+    ));
+    lines.push("#' @export".to_string());
+    match vctrs_attrs.kind {
+        VctrsKind::Vctr => {
+            let base_type = vctrs_attrs
+                .base
+                .as_ref()
+                .map(|b| format!("{}()", b))
+                .unwrap_or_else(|| "double()".to_string());
+            let inherit_arg = match vctrs_attrs.inherit_base_type {
+                Some(true) => ", inherit_base_type = TRUE",
+                Some(false) => ", inherit_base_type = FALSE",
+                None => "",
+            };
+            lines.push(format!(
+                "vec_ptype2.{c}.{c} <- function(x, y, ...) vctrs::new_vctr({base}, class = \"{c}\"{inherit})",
+                c = class_name,
+                base = base_type,
+                inherit = inherit_arg
+            ));
+        }
+        VctrsKind::Rcrd => {
+            // For records, return empty record with same field structure
+            lines.push(format!(
+                "vec_ptype2.{c}.{c} <- function(x, y, ...) x[0]",
+                c = class_name
+            ));
+        }
+        VctrsKind::ListOf => {
+            let ptype_arg = vctrs_attrs
+                .ptype
+                .as_ref()
+                .map(|p| format!(", ptype = {}", p))
+                .unwrap_or_default();
+            lines.push(format!(
+                "vec_ptype2.{c}.{c} <- function(x, y, ...) vctrs::new_list_of(list(), class = \"{c}\"{ptype})",
+                c = class_name,
+                ptype = ptype_arg
+            ));
+        }
+    }
+    lines.push(String::new());
+
+    // vec_cast.<class>.<class> - identity cast (no-op for same type)
+    lines.push(format!("#' @rdname {}", class_name));
+    lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
+    lines.push("#' @export".to_string());
+    lines.push(format!(
+        "vec_cast.{c}.{c} <- function(x, to, ...) x",
+        c = class_name
+    ));
+    lines.push(String::new());
+
+    // Instance methods as S3 generics + methods
+    for ctx in parsed_impl.instance_method_contexts() {
+        let generic_name = ctx.generic_name();
+        // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
+        let method_class_suffix = ctx
+            .class_suffix()
+            .map(|s| s.to_string())
+            .unwrap_or_else(|| class_name.clone());
+        let s3_method_name = format!("{}.{}", generic_name, method_class_suffix);
+        let full_params = ctx.instance_formals(true); // adds x, ..., params
+
+        // Only create the S3 generic if no generic/class override was provided
+        // (custom class suffix implies using an existing generic)
+        if !ctx.has_generic_override() && !ctx.has_class_override() {
+            lines.push(format!("#' @title S3 generic for `{}`", generic_name));
+            lines.push(format!("#' S3 generic for `{}`", generic_name));
+            lines.push(format!("#' @rdname {}", class_name));
+            lines.push(format!("#' @name {}", generic_name));
+            lines.push("#' @param x An object".to_string());
+            lines.push("#' @param ... Additional arguments passed to methods".to_string());
+            lines.push(format!(
+                "#' @source Generated by miniextendr from `{}::{}`",
+                type_ident, ctx.method.ident
+            ));
+            lines.push("#' @export".to_string());
+            lines.push(format!(
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {{
+    {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
+}}"
+            ));
+            lines.push(String::new());
+        }
+
+        // Then create the S3 method
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+        lines.extend(method_doc.build());
+        lines.push(format!(
+            "#' @method {} {}",
+            generic_name, method_class_suffix
+        ));
+        lines.push(format!(
+            "{} <- function({}) {{",
+            s3_method_name, full_params
+        ));
+
+        let call = ctx.instance_call("x");
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone())
+            .with_chain_var("x".to_string());
+        lines.extend(return_builder.build_s3_body());
+
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    // Static methods as regular functions
+    for ctx in parsed_impl.static_method_contexts() {
+        let fn_name = format!("{}_{}", class_name.to_lowercase(), ctx.method.ident);
+        let method_name = ctx.method.ident.to_string();
+
+        let method_doc =
+            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                .with_r_name(fn_name.clone());
+        lines.extend(method_doc.build());
+
+        lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        let strategy = crate::ReturnStrategy::for_method(ctx.method);
+        let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone());
+        lines.extend(return_builder.build_s3_body());
+
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
+/// Expand a #[miniextendr(env|r6|s7|s3|s4|vctrs)] impl block.
 ///
 /// This handles two cases:
 /// 1. **Inherent impls** (`impl Type`): Generate class-system wrappers
@@ -1827,12 +2173,14 @@ pub fn expand_impl(
         ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
         ClassSystem::S7 => generate_s7_r_wrapper(&parsed),
         ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
+        ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
     };
     let call_defs_const = parsed.call_defs_const_ident();
 
+    let label = parsed.label();
     let call_def_idents: Vec<syn::Ident> = parsed
         .included_methods()
-        .map(|m| m.call_method_def_ident(type_ident))
+        .map(|m| m.call_method_def_ident(type_ident, label))
         .collect();
     let call_defs_len = call_def_idents.len();
     let call_defs_len_lit =
@@ -1876,37 +2224,4 @@ pub fn expand_impl(
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn env_wrappers_preserve_static_params() {
-        let attrs = ImplAttrs {
-            class_system: ClassSystem::Env,
-            class_name: None,
-        };
-
-        let item_impl: syn::ItemImpl = syn::parse_quote! {
-            impl ReceiverCounter {
-                pub fn new(initial: i32) -> Self {
-                    unimplemented!()
-                }
-
-                pub fn add(&self, amount: i32) -> i32 {
-                    amount
-                }
-
-                pub fn default_counter(step: i32) -> Self {
-                    unimplemented!()
-                }
-            }
-        };
-
-        let parsed = ParsedImpl::parse(attrs, item_impl).expect("failed to parse impl");
-        let wrapper = generate_env_r_wrapper(&parsed);
-
-        assert!(wrapper.contains("ReceiverCounter$new <- function(initial)"));
-        assert!(wrapper.contains("ReceiverCounter$add <- function(amount)"));
-        assert!(wrapper.contains("ReceiverCounter$default_counter <- function(step)"));
-    }
-}
+mod tests;

@@ -1,0 +1,125 @@
+/*
+ * mx_abi.c - miniextendr Trait ABI C Implementation
+ *
+ * This file implements the C-callable functions for the trait ABI.
+ * These functions are registered with R_RegisterCCallable and loaded
+ * by other packages via R_GetCCallable.
+ *
+ * NOTE: This file is generated from mx_abi.c.in by configure.
+ *       Do not edit mx_abi.c directly.
+ */
+
+#include <R.h>
+#include <Rinternals.h>
+#include <R_ext/Rdynload.h>
+
+/* Include our own header */
+#include "../inst/include/mx_abi.h"
+
+/* ============================================================================
+ * Tag for miniextendr-wrapped objects
+ * ============================================================================
+ *
+ * We use a symbol to tag our external pointers for type safety.
+ * This prevents confusion with external pointers from other packages.
+ */
+
+static SEXP MX_EXTERNALPTR_TAG = NULL;
+
+/**
+ * Initialize the external pointer tag symbol.
+ * Called once during registration.
+ */
+static void init_tag(void) {
+    if (MX_EXTERNALPTR_TAG == NULL) {
+        MX_EXTERNALPTR_TAG = Rf_install("miniextendr::mx_erased");
+        R_PreserveObject(MX_EXTERNALPTR_TAG);
+    }
+}
+
+/* ============================================================================
+ * External Pointer Finalizer
+ * ============================================================================ */
+
+/**
+ * Weak reference / R finalizer callback.
+ *
+ * Called by R's garbage collector when the external pointer is collected.
+ * Calls the object's drop function to clean up.
+ *
+ * @param ptr The external pointer being finalized
+ */
+static void mx_externalptr_finalizer(SEXP ptr) {
+    mx_erased *erased = (mx_erased *)R_ExternalPtrAddr(ptr);
+    if (erased != NULL && erased->base != NULL) {
+        erased->base->drop(erased);
+    }
+    R_ClearExternalPtr(ptr);
+}
+
+/* ============================================================================
+ * C-Callable Implementations
+ * ============================================================================ */
+
+/**
+ * Wrap an erased object pointer in an R external pointer.
+ *
+ * @see mx_abi.h for full documentation
+ */
+SEXP mx_wrap(mx_erased *ptr) {
+    SEXP sexp = PROTECT(R_MakeExternalPtr(ptr, MX_EXTERNALPTR_TAG, R_NilValue));
+    R_RegisterCFinalizerEx(sexp, mx_externalptr_finalizer, TRUE);
+    UNPROTECT(1);
+    return sexp;
+}
+
+/**
+ * Extract an erased object pointer from an R external pointer.
+ *
+ * @see mx_abi.h for full documentation
+ */
+mx_erased *mx_get(SEXP sexp) {
+    if (TYPEOF(sexp) != EXTPTRSXP) {
+        return NULL;
+    }
+    if (R_ExternalPtrTag(sexp) != MX_EXTERNALPTR_TAG) {
+        return NULL;
+    }
+    return (mx_erased *)R_ExternalPtrAddr(sexp);
+}
+
+/**
+ * Query an object for an interface vtable by tag.
+ *
+ * @see mx_abi.h for full documentation
+ */
+const void *mx_query(SEXP sexp, mx_tag tag) {
+    mx_erased *erased = mx_get(sexp);
+    if (erased == NULL || erased->base == NULL) {
+        return NULL;
+    }
+    return erased->base->query(erased, tag);
+}
+
+/* ============================================================================
+ * Registration
+ * ============================================================================ */
+
+/**
+ * Register the mx_* C-callables with R.
+ *
+ * @see mx_abi.h for documentation
+ *
+ * The package name ("@PACKAGE_TARNAME@") is substituted by configure
+ * from the DESCRIPTION Package: field.
+ */
+void mx_abi_register(void) {
+    /* Initialize the external pointer tag */
+    init_tag();
+
+    /* Register C-callables for cross-package access
+     * Consumer packages use: R_GetCCallable("@PACKAGE_TARNAME@", "mx_wrap") */
+    R_RegisterCCallable("@PACKAGE_TARNAME@", "mx_wrap", (DL_FUNC)mx_wrap);
+    R_RegisterCCallable("@PACKAGE_TARNAME@", "mx_get", (DL_FUNC)mx_get);
+    R_RegisterCCallable("@PACKAGE_TARNAME@", "mx_query", (DL_FUNC)mx_query);
+}

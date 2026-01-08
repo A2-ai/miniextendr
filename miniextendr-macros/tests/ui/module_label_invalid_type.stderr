@@ -1,0 +1,5 @@
+error: expected string literal
+ --> tests/ui/module_label_invalid_type.rs:7:17
+  |
+7 |     impl Foo as methods;
+  |                 ^^^^^^^

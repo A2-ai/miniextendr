@@ -67,25 +67,15 @@ use_miniextendr_description <- function() {
 #' @return Invisibly returns TRUE
 #' @export
 use_miniextendr_rbuildignore <- function() {
-  # Read template content
+  # Read template content (already regex patterns, skip escaping)
   template_content <- readLines(template_path("Rbuildignore"))
 
-  rbuildignore_path <- usethis::proj_path(".Rbuildignore")
+  # Filter out empty lines and comments for usethis
+  patterns <- template_content[nzchar(template_content) & !grepl("^#", template_content)]
 
-  if (fs::file_exists(rbuildignore_path)) {
-    existing <- readLines(rbuildignore_path)
-    # Add patterns that aren't already present
-    new_patterns <- setdiff(template_content, existing)
-    if (length(new_patterns) > 0) {
-      cat(c("", new_patterns), file = rbuildignore_path, sep = "\n", append = TRUE)
-      cli::cli_alert_success("Added {length(new_patterns)} patterns to .Rbuildignore")
-    } else {
-      cli::cli_alert_info(".Rbuildignore already has all miniextendr patterns")
-    }
-  } else {
-    writeLines(template_content, rbuildignore_path)
-    bullet_created(".Rbuildignore")
-  }
+  # usethis handles deduplication and file creation automatically
+  # escape = FALSE because our template already contains regex patterns
+  usethis::use_build_ignore(patterns, escape = FALSE)
 
   invisible(TRUE)
 }
@@ -101,22 +91,11 @@ use_miniextendr_gitignore <- function() {
   # Read template content
   template_content <- readLines(template_path("gitignore"))
 
-  gitignore_path <- usethis::proj_path(".gitignore")
+  # Filter out empty lines and comments for usethis
+  patterns <- template_content[nzchar(template_content) & !grepl("^#", template_content)]
 
-  if (fs::file_exists(gitignore_path)) {
-    existing <- readLines(gitignore_path)
-    # Add patterns that aren't already present
-    new_patterns <- setdiff(template_content, existing)
-    if (length(new_patterns) > 0) {
-      cat(c("", "# miniextendr", new_patterns), file = gitignore_path, sep = "\n", append = TRUE)
-      cli::cli_alert_success("Added {length(new_patterns)} patterns to .gitignore")
-    } else {
-      cli::cli_alert_info(".gitignore already has all miniextendr patterns")
-    }
-  } else {
-    writeLines(template_content, gitignore_path)
-    bullet_created(".gitignore")
-  }
+  # usethis handles deduplication and file creation automatically
+  usethis::use_git_ignore(patterns, directory = ".")
 
   invisible(TRUE)
 }

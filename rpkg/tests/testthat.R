@@ -1,4 +1,4 @@
 library(testthat)
-library(rpkg)
+library(miniextendr)
 
-test_check("rpkg")
+test_check("miniextendr")

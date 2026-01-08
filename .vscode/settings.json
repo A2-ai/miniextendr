@@ -16,7 +16,25 @@
   "rust-analyzer.cargo.extraArgs": [
     "--release", "--tests", "--benches", "--examples"
   ],
-  "rust-analyzer.cargo.features": ["connections"],
+  "rust-analyzer.cargo.features": [
+    "connections",
+    "rayon",
+    "rand",
+    "rand_distr",
+    "either",
+    "ndarray",
+    "nalgebra",
+    "serde",
+    "num-bigint",
+    "rust_decimal",
+    "ordered-float",
+    "uuid",
+    "regex",
+    "indexmap",
+    "time",
+    "num-traits",
+    "bytes"
+  ],
   // "rust-analyzer.check.command": "check",
   "rust-analyzer.check.command": "clippy",
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",

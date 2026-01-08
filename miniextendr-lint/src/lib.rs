@@ -1,6 +1,10 @@
-//! Lint helpers for miniextendr usage in a crate.
+//! miniextendr-lint: internal build-time lint helpers for the workspace.
 //!
-//! # Usage in build.rs
+//! This crate scans Rust sources for miniextendr macro usage and emits
+//! cargo warnings with actionable diagnostics. It is intended for local
+//! development and CI, not as a public API.
+//!
+//! ## Usage in build.rs
 //!
 //! ```ignore
 //! fn main() {
@@ -8,30 +12,30 @@
 //! }
 //! ```
 //!
-//! # Architecture Note: Parser Duplication
+//! ## Configuration
+//! - Controlled by the `MINIEXTENDR_LINT` env var (enabled by default).
+//! - Set it to `0`, `false`, `no`, or `off` to disable.
 //!
-//! This crate contains a **copy** of `miniextendr_module.rs` from `miniextendr-macros`.
+//! ## Architecture note: parser duplication
+//!
+//! This crate contains a **copy** of `miniextendr_module.rs` from
+//! `miniextendr-macros` so it can be published independently.
 //!
 //! - **Source**: `miniextendr-macros/src/miniextendr_module.rs`
 //! - **Copy**: `miniextendr-lint/src/miniextendr_module.rs` (this file)
-//! - **Requirement**: The parser imports `call_method_def_ident_for` and
-//!   `r_wrapper_const_ident_for` from `crate::`, so we must define stubs below
+//! - **Requirement**: the parser imports `call_method_def_ident_for` and
+//!   `r_wrapper_const_ident_for` from `crate::`, so we define stubs below
 //!
 //! **Why duplicate instead of sharing?**
-//! - Allows miniextendr-lint to be published independently to crates.io
-//! - `#[path = "../../"]` includes don't work in published packages
-//! - Trade-off: Code duplication vs. independent publishing
+//! - Allows `miniextendr-lint` to be published independently to crates.io
+//! - `#[path = "../../"]` includes do not work in published packages
 //!
 //! **Keeping in sync:**
 //! When `miniextendr-macros/src/miniextendr_module.rs` changes, manually copy to
 //! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
 // Parser module (copied from miniextendr-macros for independent publishing).
-#[allow(dead_code)]
 mod miniextendr_module;
-
-// TODO: Check how many miniextendr_module! calls there is in a module
-// atmost 1
 
 // TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
 // is it altrep? is it too much?
@@ -43,19 +47,6 @@ use std::path::{Path, PathBuf};
 
 use syn::spanned::Spanned;
 use syn::{Attribute, Item, Macro};
-
-/// Required by `miniextendr_module.rs` shared parser (not called by lint).
-#[allow(dead_code)]
-fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    quote::format_ident!("call_method_def_{rust_ident}")
-}
-
-/// Required by `miniextendr_module.rs` shared parser (not called by lint).
-#[allow(dead_code)]
-fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    let rust_ident_upper = rust_ident.to_string().to_uppercase();
-    quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
-}
 
 fn cargo_warning(message: &str) {
     let message = message.replace(['\n', '\r'], " ");
@@ -183,12 +174,14 @@ enum LintKind {
 struct LintItem {
     kind: LintKind,
     name: String,
+    /// Optional label for impl blocks with multiple impl blocks for the same type.
+    label: Option<String>,
     line: usize,
 }
 
 impl PartialEq for LintItem {
     fn eq(&self, other: &Self) -> bool {
-        self.kind == other.kind && self.name == other.name
+        self.kind == other.kind && self.name == other.name && self.label == other.label
     }
 }
 
@@ -198,18 +191,39 @@ impl std::hash::Hash for LintItem {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         self.name.hash(state);
+        self.label.hash(state);
     }
 }
 
 impl LintItem {
     fn new(kind: LintKind, name: String, line: usize) -> Self {
-        Self { kind, name, line }
+        Self {
+            kind,
+            name,
+            label: None,
+            line,
+        }
+    }
+
+    fn with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self {
+        Self {
+            kind,
+            name,
+            label,
+            line,
+        }
     }
 
     fn display(&self) -> String {
         match self.kind {
             LintKind::Function => format!("fn {}", self.name),
-            LintKind::Impl => format!("impl {}", self.name),
+            LintKind::Impl => {
+                if let Some(ref label) = self.label {
+                    format!("impl {} as \"{}\"", self.name, label)
+                } else {
+                    format!("impl {}", self.name)
+                }
+            }
             LintKind::Struct => format!("struct {}", self.name),
             LintKind::TraitImpl => format!("impl {}", self.name), // "impl Trait for Type"
         }
@@ -254,6 +268,7 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
 
     let mut miniextendr_items = HashSet::new();
     let mut module_items = HashSet::new();
+    let mut module_macro_locations = Vec::new();
     let mut errors = Vec::new();
 
     collect_items(
@@ -261,11 +276,26 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
         path,
         &mut miniextendr_items,
         &mut module_items,
+        &mut module_macro_locations,
         &mut errors,
     );
 
     if !errors.is_empty() {
         return Err(errors);
+    }
+
+    // Check for multiple miniextendr_module! macros (at most 1 per file)
+    if module_macro_locations.len() > 1 {
+        errors.push(format!(
+            "{}: multiple miniextendr_module! macros found (at most 1 allowed per file). \
+             Found at lines: {}",
+            path.display(),
+            module_macro_locations
+                .iter()
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ));
     }
 
     if !miniextendr_items.is_empty() && module_items.is_empty() {
@@ -314,13 +344,147 @@ fn lint_file(path: &Path) -> Result<(), Vec<String>> {
     }
 }
 
+/// Resolve file path for an out-of-line module declaration.
+///
+/// For `mod foo;` in `/path/to/bar.rs`, tries:
+/// - `/path/to/foo.rs`
+/// - `/path/to/foo/mod.rs`
+///
+/// Returns None if neither exists.
+fn resolve_file_module(parent_path: &Path, mod_ident: &syn::Ident) -> Option<PathBuf> {
+    let parent_dir = parent_path.parent()?;
+    let mod_name = mod_ident.to_string();
+
+    // Try foo.rs
+    let sibling = parent_dir.join(format!("{}.rs", mod_name));
+    if sibling.exists() {
+        return Some(sibling);
+    }
+
+    // Try foo/mod.rs
+    let subdir_mod = parent_dir.join(&mod_name).join("mod.rs");
+    if subdir_mod.exists() {
+        return Some(subdir_mod);
+    }
+
+    None
+}
+
+/// Parse a module file and collect items from it.
+fn collect_items_from_file(
+    mod_path: &Path,
+    miniextendr_items: &mut HashSet<LintItem>,
+    module_items: &mut HashSet<LintItem>,
+    module_macro_locations: &mut Vec<usize>,
+    errors: &mut Vec<String>,
+) -> Result<(), String> {
+    let src = fs::read_to_string(mod_path).map_err(|e| format!("failed to read: {}", e))?;
+
+    let parsed = syn::parse_file(&src).map_err(|e| format!("failed to parse: {}", e))?;
+
+    collect_items(
+        &parsed.items,
+        mod_path,
+        miniextendr_items,
+        module_items,
+        module_macro_locations,
+        errors,
+    );
+    Ok(())
+}
+
+/// Parsed miniextendr attribute information for an impl block.
+#[derive(Debug, Default)]
+struct MiniextendrImplAttrs {
+    /// Class system (e.g., "r6", "s3", "s4", "s7", or empty for env)
+    class_system: Option<String>,
+    /// Optional label for distinguishing multiple impl blocks of the same type
+    label: Option<String>,
+}
+
+/// Parse the #[miniextendr(...)] attribute to extract class system and label.
+///
+/// Handles:
+/// - `#[miniextendr]` → default (env), no label
+/// - `#[miniextendr(env)]` → explicit env, no label
+/// - `#[miniextendr(r6)]` → r6 class system, no label
+/// - `#[miniextendr(label = "foo")]` → default (env), labeled
+/// - `#[miniextendr(env, label = "foo")]` → explicit env, labeled
+/// - `#[miniextendr(r6, label = "foo")]` → r6 class system, labeled
+fn parse_miniextendr_impl_attrs(attrs: &[Attribute]) -> MiniextendrImplAttrs {
+    let mut result = MiniextendrImplAttrs::default();
+
+    for attr in attrs {
+        if attr
+            .path()
+            .segments
+            .last()
+            .is_none_or(|seg| seg.ident != "miniextendr")
+        {
+            continue;
+        }
+
+        // Try to parse the attribute arguments
+        if let syn::Meta::List(meta_list) = &attr.meta {
+            let tokens = meta_list.tokens.to_string();
+            let tokens = tokens.trim();
+            if tokens.is_empty() {
+                continue;
+            }
+
+            // Parse tokens like: "r6, label = \"methods\"" or "label = \"foo\""
+            for part in tokens.split(',') {
+                let part = part.trim();
+                if part.is_empty() {
+                    continue;
+                }
+
+                if part.starts_with("label") {
+                    // Extract label value: label = "..."
+                    if let Some(eq_pos) = part.find('=') {
+                        let value = part[eq_pos + 1..].trim();
+                        // Remove quotes
+                        let value = value.trim_matches('"').trim_matches('\'');
+                        result.label = Some(value.to_string());
+                    }
+                } else if !part.contains('=') {
+                    // This is a class system identifier (env, r6, s3, s4, s7)
+                    // Note: "env" is valid even though it's the default
+                    result.class_system = Some(part.to_string());
+                }
+                // Skip other key=value pairs (like class = "CustomName")
+            }
+        }
+    }
+
+    result
+}
+
+/// Parse the class system from #[miniextendr(...)] attribute.
+/// Returns Some("s3"), Some("s4"), etc. or None for default (env).
+#[allow(dead_code)]
+fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
+    parse_miniextendr_impl_attrs(attrs).class_system
+}
+
 fn collect_items(
     items: &[Item],
     path: &Path,
     miniextendr_items: &mut HashSet<LintItem>,
     module_items: &mut HashSet<LintItem>,
+    module_macro_locations: &mut Vec<usize>,
     errors: &mut Vec<String>,
 ) {
+    // Track inherent impl class systems for compatibility checking
+    let mut inherent_impl_class_systems: std::collections::HashMap<String, (String, usize)> =
+        std::collections::HashMap::new();
+    // Track trait impls to check compatibility after all items are processed
+    let mut trait_impls_to_check: Vec<(String, String, Option<String>, usize)> = Vec::new();
+    // Track impl blocks per type for multiple impl block validation
+    // Maps type_name -> Vec<(label, line)>
+    let mut impl_blocks_per_type: std::collections::HashMap<String, Vec<(Option<String>, usize)>> =
+        std::collections::HashMap::new();
+
     for item in items {
         match item {
             Item::Fn(item_fn) => {
@@ -346,6 +510,10 @@ fn collect_items(
             Item::Impl(item_impl) => {
                 if has_miniextendr_attr(&item_impl.attrs) {
                     let line = item_impl.self_ty.span().start().line;
+                    let impl_attrs = parse_miniextendr_impl_attrs(&item_impl.attrs);
+                    let class_system = impl_attrs.class_system.clone();
+                    let label = impl_attrs.label.clone();
+
                     match impl_type_name(&item_impl.self_ty) {
                         Some(type_name) => {
                             // Check if this is a trait impl (impl Trait for Type)
@@ -359,12 +527,32 @@ fn collect_items(
                                         full_name,
                                         line,
                                     ));
+
+                                    // Store for compatibility checking
+                                    trait_impls_to_check.push((
+                                        type_name.clone(),
+                                        trait_name,
+                                        class_system,
+                                        line,
+                                    ));
                                 }
                             } else {
-                                // Regular impl block
-                                miniextendr_items.insert(LintItem::new(
+                                // Regular impl block - track its class system
+                                inherent_impl_class_systems.insert(
+                                    type_name.clone(),
+                                    (class_system.unwrap_or_default(), line),
+                                );
+
+                                // Track for multiple impl block validation
+                                impl_blocks_per_type
+                                    .entry(type_name.clone())
+                                    .or_default()
+                                    .push((label.clone(), line));
+
+                                miniextendr_items.insert(LintItem::with_label(
                                     LintKind::Impl,
                                     type_name,
+                                    label,
                                     line,
                                 ));
                             }
@@ -379,6 +567,9 @@ fn collect_items(
             }
             Item::Macro(item_macro) => {
                 if is_miniextendr_module_macro(&item_macro.mac) {
+                    let line = item_macro.mac.path.span().start().line;
+                    module_macro_locations.push(line);
+
                     match parse_miniextendr_module_items(&item_macro.mac) {
                         Ok(items) => {
                             module_items.extend(items);
@@ -392,10 +583,138 @@ fn collect_items(
             }
             Item::Mod(item_mod) => {
                 if let Some((_, items)) = &item_mod.content {
-                    collect_items(items, path, miniextendr_items, module_items, errors);
+                    // Inline module: mod foo { ... }
+                    collect_items(
+                        items,
+                        path,
+                        miniextendr_items,
+                        module_items,
+                        module_macro_locations,
+                        errors,
+                    );
+                } else {
+                    // File module: mod foo;
+                    // Resolve and parse the file, then recursively collect
+                    // Note: Each file module gets its own module_macro_locations
+                    // because "at most 1 per file" applies per-file, not per-crate
+                    if let Some(mod_path) = resolve_file_module(path, &item_mod.ident) {
+                        let mut child_module_macro_locations = Vec::new();
+                        if let Err(e) = collect_items_from_file(
+                            &mod_path,
+                            miniextendr_items,
+                            module_items,
+                            &mut child_module_macro_locations,
+                            errors,
+                        ) {
+                            errors.push(format!(
+                                "{}: failed to process module {}: {}",
+                                path.display(),
+                                item_mod.ident,
+                                e
+                            ));
+                        }
+                        // Check child file for multiple modules
+                        if child_module_macro_locations.len() > 1 {
+                            errors.push(format!(
+                                "{}: multiple miniextendr_module! macros found (at most 1 allowed per file). \
+                                 Found at lines: {}",
+                                mod_path.display(),
+                                child_module_macro_locations
+                                    .iter()
+                                    .map(|l| l.to_string())
+                                    .collect::<Vec<_>>()
+                                    .join(", ")
+                            ));
+                        }
+                    }
+                    // Silently skip if module file can't be resolved (might be cfg'd out or generated)
                 }
             }
             _ => {}
+        }
+    }
+
+    // Check class system compatibility for trait impls
+    // Env-style trait impls (default) require Env-style inherent impls
+    // because they use Type$Trait$method() patterns that need an environment
+    for (type_name, trait_name, trait_class_system, line) in trait_impls_to_check {
+        let trait_style = trait_class_system.as_deref().unwrap_or("env");
+
+        // Env trait impl requires Env inherent impl
+        if trait_style == "env"
+            && let Some((inherent_style, _inherent_line)) =
+                inherent_impl_class_systems.get(&type_name)
+            && !inherent_style.is_empty()
+            && inherent_style != "env"
+        {
+            errors.push(format!(
+                "{}:{}: #[miniextendr] impl {} for {} uses Env-style (default) which requires \
+                Env-style inherent impl, but {} uses #[miniextendr({})]. \
+                Env-style trait impls generate Type$Trait$method() patterns that need \
+                the type to be an environment. Either change the trait impl to use \
+                #[miniextendr({})] or change the inherent impl to #[miniextendr].",
+                path.display(),
+                line,
+                trait_name,
+                type_name,
+                type_name,
+                inherent_style,
+                inherent_style
+            ));
+        }
+
+        // S3/S4/S7/R6 trait impls are compatible with Env inherent impls
+        // because they use their own dispatch mechanisms (generics, methods, etc.)
+    }
+
+    // Validate multiple impl blocks: if a type has 2+ impl blocks, all must have labels
+    for (type_name, impl_blocks) in &impl_blocks_per_type {
+        if impl_blocks.len() > 1 {
+            // Check if any impl block is missing a label
+            let missing_labels: Vec<_> = impl_blocks
+                .iter()
+                .filter(|(label, _)| label.is_none())
+                .map(|(_, line)| *line)
+                .collect();
+
+            if !missing_labels.is_empty() {
+                errors.push(format!(
+                    "{}:{}: type `{}` has {} impl blocks but some are missing labels. \
+                     When a type has multiple #[miniextendr] impl blocks, all must have \
+                     distinct labels using #[miniextendr(label = \"...\")]. \
+                     Unlabeled impl blocks at lines: {}",
+                    path.display(),
+                    impl_blocks[0].1, // First occurrence line
+                    type_name,
+                    impl_blocks.len(),
+                    missing_labels
+                        .iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                ));
+            }
+
+            // Check for duplicate labels
+            let mut seen_labels: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
+            for (label, line) in impl_blocks {
+                if let Some(label) = label {
+                    if let Some(first_line) = seen_labels.get(label.as_str()) {
+                        errors.push(format!(
+                            "{}:{}: duplicate label \"{}\" for type `{}`. \
+                             First occurrence at line {}. Each impl block must have a unique label.",
+                            path.display(),
+                            line,
+                            label,
+                            type_name,
+                            first_line
+                        ));
+                    } else {
+                        seen_labels.insert(label.as_str(), *line);
+                    }
+                }
+            }
         }
     }
 }
@@ -452,16 +771,17 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
 
     for impl_block in parsed.impls {
         let line = impl_block.ident.span().start().line;
-        items.push(LintItem::new(
+        items.push(LintItem::with_label(
             LintKind::Impl,
             impl_block.ident.to_string(),
+            impl_block.label.clone(),
             line,
         ));
     }
 
     // Trait implementations (impl Trait for Type;)
     for trait_impl in parsed.trait_impls {
-        let line = trait_impl.type_ident.span().start().line;
+        let line = trait_impl.impl_type.span().start().line;
         // Get trait name from path
         let trait_name = trait_impl
             .trait_path
@@ -469,7 +789,9 @@ fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
             .last()
             .map(|s| s.ident.to_string())
             .unwrap_or_default();
-        let full_name = format!("{} for {}", trait_name, trait_impl.type_ident);
+        // Use type_name_sanitized for consistent display of generic types
+        let type_name = trait_impl.type_name_sanitized();
+        let full_name = format!("{} for {}", trait_name, type_name);
         items.push(LintItem::new(LintKind::TraitImpl, full_name, line));
     }
 

@@ -1,15 +1,15 @@
 ## Comprehensive ALTREP tests
-## Run from R: library(rpkg); source("dev/altrep.R")
+## Run from R: library(miniextendr); source("dev/altrep.R")
 
 test_altrep <- function() {
   # Use internal namespace for unexported functions
-  altrep_compact_int <- rpkg:::altrep_compact_int
-  altrep_from_doubles <- rpkg:::altrep_from_doubles
-  altrep_from_strings <- rpkg:::altrep_from_strings
-  altrep_from_logicals <- rpkg:::altrep_from_logicals
-  altrep_from_raw <- rpkg:::altrep_from_raw
-  altrep_from_list <- rpkg:::altrep_from_list
-  altrep_constant_int <- rpkg:::altrep_constant_int
+  altrep_compact_int <- miniextendr:::altrep_compact_int
+  altrep_from_doubles <- miniextendr:::altrep_from_doubles
+  altrep_from_strings <- miniextendr:::altrep_from_strings
+  altrep_from_logicals <- miniextendr:::altrep_from_logicals
+  altrep_from_raw <- miniextendr:::altrep_from_raw
+  altrep_from_list <- miniextendr:::altrep_from_list
+  altrep_constant_int <- miniextendr:::altrep_constant_int
 
   cat("========================================\n")
   cat("ALTREP Comprehensive Test Suite\n")

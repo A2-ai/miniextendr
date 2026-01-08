@@ -3,7 +3,6 @@
 //! Internal module that instantiates every macro path so `cargo expand`
 //! can be used as a living catalog of what gets generated.
 
-extern crate self as miniextendr_api;
 use crate::ffi;
 use crate::{miniextendr, miniextendr_module};
 
@@ -16,25 +15,30 @@ impl Drop for DropTracer {
     }
 }
 
+/// Macro coverage: function with no explicit return type.
 #[miniextendr]
 pub(crate) fn coverage_no_return() {
     let _guard = DropTracer("no_return");
 }
 
+/// Macro coverage: explicit unit return.
 #[miniextendr]
 #[allow(clippy::unused_unit)]
 pub(crate) fn coverage_unit_return() -> () {}
 
+/// Macro coverage: `Option<()>` return chosen by a flag.
 #[miniextendr]
 pub(crate) fn coverage_option_unit_selector(flag: i32) -> Option<()> {
     if flag % 2 == 0 { Some(()) } else { None }
 }
 
+/// Macro coverage: `Option<T>` value path.
 #[miniextendr]
 pub(crate) fn coverage_option_value(flag: i32, _unit: ()) -> Option<i32> {
     Some(flag.abs())
 }
 
+/// Macro coverage: `Result<(), E>` branch.
 #[miniextendr]
 pub(crate) fn coverage_result_unit(flag: i32) -> Result<(), &'static str> {
     if flag < 0 {
@@ -44,71 +48,86 @@ pub(crate) fn coverage_result_unit(flag: i32) -> Result<(), &'static str> {
     }
 }
 
+/// Macro coverage: `Result<T, E>` with arithmetic (unit error returns NULL).
 #[miniextendr]
 pub(crate) fn coverage_result_value(left: i32, right: i32) -> Result<i32, ()> {
     left.checked_add(right).ok_or(())
 }
 
+/// Macro coverage: plain value return.
 #[miniextendr]
 pub(crate) fn coverage_plain_value(mut base: i32, increment: i32) -> i32 {
     base += increment;
     base
 }
 
+/// Macro coverage: mutable argument binding.
 #[miniextendr]
 pub(crate) fn coverage_mut_argument(mut counter: i32) -> i32 {
     counter += 1;
     counter
 }
 
+/// Macro coverage: mutable + immutable parameters.
 #[miniextendr]
 pub(crate) fn coverage_mut_and_const(mut value: i32, delta: i32) -> i32 {
     value += delta;
     value
 }
 
+/// Macro coverage: reads a unit argument.
 #[miniextendr]
 pub(crate) fn coverage_reads_unit_argument(_unit: ()) -> i32 {
     7
 }
 
+/// Macro coverage: leading-underscore parameter preserved.
 #[miniextendr]
 pub(crate) fn coverage_leading_underscore_arg(_hidden: i32) -> i32 {
     _hidden
 }
 
+/// Macro coverage: named variadic dots parameter.
 #[miniextendr]
 pub(crate) fn coverage_named_dots(dots: ...) {
     let _ = dots.inner;
 }
 
+/// Macro coverage: named dots that are unused.
 #[miniextendr]
 pub(crate) fn coverage_unused_named_dots(_dots: ...) {}
 
+/// Macro coverage: unnamed variadic dots parameter.
 #[miniextendr]
 pub(crate) fn coverage_unnamed_dots(...) {}
 
+/// Macro coverage: regular arg plus named dots.
 #[miniextendr]
 pub(crate) fn coverage_argument_plus_dots(_count: i32, dots: ...) {
     let _ = dots.inner;
 }
 
+/// Macro coverage: regular arg plus unused named dots.
 #[miniextendr]
 pub(crate) fn coverage_argument_plus_unused_dots(_count: i32, _dots: ...) {}
 
+/// Macro coverage: regular arg plus unnamed dots.
 #[miniextendr]
 pub(crate) fn coverage_argument_plus_unnamed_dots(_count: i32, ...) {}
 
+/// Macro coverage: invisible return inferred from `Option<()>`.
 #[miniextendr]
 pub(crate) fn coverage_invisible_option() -> Option<()> {
     Some(())
 }
 
+/// Macro coverage: invisible return inferred from `Result<(), E>` (unit error).
 #[miniextendr]
 pub(crate) fn coverage_invisible_result() -> Result<(), ()> {
     Ok(())
 }
 
+/// Macro coverage: panic path to exercise unwind handling.
 #[miniextendr]
 pub(crate) fn coverage_panic_path() -> i32 {
     let _ = DropTracer("panic");
@@ -335,12 +354,14 @@ pub fn coverage_explicit_inline() -> i32 {
     43
 }
 
+/// Macro coverage: direct `extern \"C-unwind\"` export with no mangling.
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub(crate) extern "C-unwind" fn C_coverage_direct() -> ffi::SEXP {
     unsafe { ffi::R_NilValue }
 }
 
+/// Macro coverage: indirect `extern` export with non-snake-case name.
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]

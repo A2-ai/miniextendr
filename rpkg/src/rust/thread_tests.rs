@@ -4,6 +4,10 @@ use miniextendr_api::ffi::SEXP;
 use miniextendr_api::thread::RThreadBuilder;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
+/// Thread Builder Tests
+///
+/// Thread builder and lean-stack tests.
+///
 /// Test RThreadBuilder: spawn with large stack (16 MiB) and call _unchecked R APIs.
 /// Works WITHOUT nonapi feature by using large stacks to satisfy R's stack checking.
 ///
@@ -12,10 +16,8 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
-/// @title Thread Builder Tests
 /// @name rpkg_thread_builder
 /// @keywords internal
-/// @description Thread builder and lean-stack tests
 /// @examples
 /// \dontrun{
 /// unsafe_C_test_r_thread_builder()

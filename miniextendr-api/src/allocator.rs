@@ -1,7 +1,19 @@
 //! R-backed global allocator for Rust.
 //!
 //! Allocations are backed by R RAWSXP objects and protected from GC via the
-//! crate's preserve mechanism.
+//! crate's [`preserve`](crate::preserve) mechanism.
+//!
+//! # Protection Strategy
+//!
+//! This allocator uses the **preserve list** (not the PROTECT stack) because:
+//! - Allocations may need to survive across multiple `.Call` invocations
+//! - Deallocations can happen in any order (not LIFO like the PROTECT stack)
+//! - The preserve list supports arbitrary-order release
+//!
+//! See the [crate-level documentation](crate#gc-protection-strategies) for an
+//! overview of miniextendr's protection mechanisms.
+//!
+//! # Layout
 //!
 //! Layout inside the RAWSXP (bytes):
 //!   \[optional leading pad\]\[Header\]\[user bytes...\]
@@ -24,7 +36,7 @@
 //! For long-lived allocations or critical cleanup requirements, consider using
 //! Rust's standard allocator instead.
 
-use crate::ffi::{RAW, Rf_allocVector, SEXP, SEXPTYPE};
+use crate::ffi::{SEXP, SEXPTYPE};
 use crate::preserve::{insert, release};
 use crate::worker::{has_worker_context, is_r_main_thread, with_r_thread};
 use core::{
@@ -224,7 +236,8 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     // NOTE: Rf_allocVector can longjmp on failure instead of returning NULL.
     // If this happens inside run_on_worker, R_UnwindProtect will catch it.
     // Outside of that context, Rust destructors may be skipped.
-    let sexp = unsafe { Rf_allocVector(SEXPTYPE::RAWSXP, total_isize) };
+    // Use _unchecked since we're guaranteed to be on R main thread via with_r_thread_or_inline.
+    let sexp = unsafe { crate::ffi::Rf_allocVector_unchecked(SEXPTYPE::RAWSXP, total_isize) };
     if sexp.is_null() {
         return sendable_data_ptr_null();
     }
@@ -232,7 +245,8 @@ unsafe fn alloc_main_thread(layout: Layout) -> SendableDataPtr {
     // Protect from GC (must stay valid until dealloc()).
     let preserve_tag = unsafe { insert(sexp) };
 
-    let raw_base = unsafe { RAW(sexp) }.cast::<u8>();
+    // Use _unchecked since we're guaranteed to be on R main thread.
+    let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
 
     // Calculate header and data pointers with alignment
     let after_header = unsafe { raw_base.add(HEADER_SIZE) };
@@ -280,13 +294,14 @@ unsafe fn realloc_main_thread(
     let old = sendable_data_ptr_get(old_ptr);
 
     // Recover RAWSXP via preserve tag
+    // Use _unchecked since we're guaranteed to be on R main thread via with_r_thread_or_inline.
     let header = unsafe { old.sub(HEADER_SIZE) }.cast::<Header>();
     let preserve_tag = unsafe { (*header).preserve_tag };
-    let sexp = unsafe { crate::ffi::TAG(preserve_tag) };
+    let sexp = unsafe { crate::ffi::TAG_unchecked(preserve_tag) };
 
     // Check if existing allocation has capacity
-    let raw_base = unsafe { RAW(sexp) }.cast::<u8>();
-    let cap: usize = match unsafe { crate::ffi::Rf_xlength(sexp) }.try_into() {
+    let raw_base = unsafe { crate::ffi::RAW_unchecked(sexp) }.cast::<u8>();
+    let cap: usize = match unsafe { crate::ffi::Rf_xlength_unchecked(sexp) }.try_into() {
         Ok(n) => n,
         Err(_) => return sendable_data_ptr_null(),
     };

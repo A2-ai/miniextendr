@@ -19,11 +19,13 @@ pub struct Point {
     pub y: f64,
 }
 
-/// Create a new Counter wrapped in an ExternalPtr
-#[miniextendr(unsafe(main_thread))]
-/// @title External Pointer Tests
+/// External Pointer Tests
+///
+/// External pointer helpers.
+///
+/// Create a new Counter wrapped in an ExternalPtr.
+#[miniextendr]
 /// @name rpkg_externalptr
-/// @description External pointer helpers
 /// @examples
 /// ptr <- extptr_counter_new(1L)
 /// unsafe_C_extptr_counter_get(ptr)
@@ -35,6 +37,7 @@ pub struct Point {
 ///   unsafe_C_extptr_counter_increment unsafe_C_extptr_point_get_x unsafe_C_extptr_point_get_y
 ///   unsafe_C_extptr_type_mismatch_test unsafe_C_extptr_null_test unsafe_C_extptr_is_counter
 ///   unsafe_C_extptr_is_point test_extptr_on_main_thread
+/// @param initial Initial value for the counter.
 pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::ExternalPtr<Counter> {
     miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }
@@ -51,7 +54,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::ffi::Rf_ScalarInteger;
     unsafe {
-        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+        match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(ext) => Rf_ScalarInteger(ext.value),
             None => Rf_ScalarInteger(i32::MIN), // NA_INTEGER equivalent
         }
@@ -80,7 +83,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
 }
 
 /// Create a new Point wrapped in an ExternalPtr
-#[miniextendr(unsafe(main_thread))]
+#[miniextendr]
 pub fn extptr_point_new(x: f64, y: f64) -> miniextendr_api::externalptr::ExternalPtr<Point> {
     miniextendr_api::externalptr::ExternalPtr::new(Point { x, y })
 }
@@ -97,7 +100,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::ffi::Rf_ScalarReal;
     unsafe {
-        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+        match ExternalPtr::<Point>::wrap_sexp(ptr) {
             Some(ext) => Rf_ScalarReal(ext.x),
             None => Rf_ScalarReal(f64::NAN),
         }
@@ -116,7 +119,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
     use miniextendr_api::externalptr::ExternalPtr;
     use miniextendr_api::ffi::Rf_ScalarReal;
     unsafe {
-        match ExternalPtr::<Point>::try_from_sexp(ptr) {
+        match ExternalPtr::<Point>::wrap_sexp(ptr) {
             Some(ext) => Rf_ScalarReal(ext.y),
             None => Rf_ScalarReal(f64::NAN),
         }
@@ -136,7 +139,7 @@ pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::ffi::Rf_ScalarInteger;
     unsafe {
         // Try to interpret a Point as a Counter - should return None
-        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+        match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(_) => Rf_ScalarInteger(1), // Unexpected success
             None => Rf_ScalarInteger(0),    // Expected failure - type mismatch
         }
@@ -156,8 +159,8 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     use miniextendr_api::ffi::Rf_ScalarInteger;
     unsafe {
         // R's new("externalptr") creates a null external pointer
-        // Our try_from_sexp should return None for it
-        match ExternalPtr::<Counter>::try_from_sexp(ptr) {
+        // Our wrap_sexp should return None for it
+        match ExternalPtr::<Counter>::wrap_sexp(ptr) {
             Some(_) => Rf_ScalarInteger(1), // Unexpected - null pointer should fail
             None => Rf_ScalarInteger(0),    // Expected - null pointer detected
         }
@@ -204,8 +207,10 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test ExternalPtr creation and usage on main thread.
-/// Note: ExternalPtr is !Send, so it can only be used on main thread.
+/// Test ExternalPtr creation on main thread.
+/// This function needs `unsafe(main_thread)` because `ExternalPtr::new` calls R API
+/// internally. Functions that call R API (directly or via types like ExternalPtr)
+/// must run on main thread.
 #[miniextendr(unsafe(main_thread))]
 pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;

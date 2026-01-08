@@ -1,0 +1,148 @@
+//! Factor tests - demonstrates RFactor derive macro for enum ↔ R factor conversions.
+//!
+//! RFactor types can be used directly as function parameters since they implement
+//! TryFromSexp. The derive macro also generates IntoR for returning factors.
+
+use miniextendr_api::{RFactor, miniextendr_module};
+
+/// Color enum demonstrating basic RFactor usage.
+#[derive(Copy, Clone, Debug, PartialEq, RFactor)]
+pub enum Color {
+    Red,
+    Green,
+    Blue,
+}
+
+/// Status enum demonstrating rename_all attribute.
+#[derive(Copy, Clone, Debug, PartialEq, RFactor)]
+#[r_factor(rename_all = "snake_case")]
+pub enum Status {
+    InProgress,
+    Completed,
+    NotStarted,
+}
+
+/// Priority enum demonstrating individual rename attributes.
+#[derive(Copy, Clone, Debug, PartialEq, RFactor)]
+pub enum Priority {
+    #[r_factor(rename = "low")]
+    Low,
+    #[r_factor(rename = "med")]
+    Medium,
+    #[r_factor(rename = "high")]
+    High,
+}
+
+// ============================================================================
+// Test functions demonstrating direct RFactor parameter/return usage
+// ============================================================================
+
+/// Test: accepts a Color factor directly and returns a description.
+/// This demonstrates that RFactor types work as direct parameters.
+#[miniextendr_api::miniextendr]
+pub fn factor_describe_color(color: Color) -> &'static str {
+    match color {
+        Color::Red => "The color is red!",
+        Color::Green => "The color is green!",
+        Color::Blue => "The color is blue!",
+    }
+}
+
+/// Test: returns a Color factor directly (IntoR converts it).
+#[miniextendr_api::miniextendr]
+pub fn factor_get_color(name: &str) -> Color {
+    match name {
+        "red" => Color::Red,
+        "green" => Color::Green,
+        "blue" => Color::Blue,
+        _ => Color::Red,
+    }
+}
+
+/// Test: returns all colors as a factor vector using FactorVec wrapper.
+#[miniextendr_api::miniextendr]
+pub fn factor_get_all_colors() -> miniextendr_api::FactorVec<Color> {
+    miniextendr_api::FactorVec(vec![Color::Red, Color::Green, Color::Blue])
+}
+
+/// Test: accepts a Status factor directly (with snake_case levels).
+#[miniextendr_api::miniextendr]
+pub fn factor_describe_status(status: Status) -> &'static str {
+    match status {
+        Status::InProgress => "Work is in progress",
+        Status::Completed => "Work is completed",
+        Status::NotStarted => "Work has not started",
+    }
+}
+
+/// Test: accepts a Priority factor directly (with renamed levels).
+#[miniextendr_api::miniextendr]
+pub fn factor_describe_priority(priority: Priority) -> &'static str {
+    match priority {
+        Priority::Low => "Low priority",
+        Priority::Medium => "Medium priority",
+        Priority::High => "High priority",
+    }
+}
+
+/// Test: returns the level names for Color.
+#[miniextendr_api::miniextendr]
+pub fn factor_color_levels() -> Vec<&'static str> {
+    Color::LEVELS.to_vec()
+}
+
+/// Test: returns the level names for Status (snake_case).
+#[miniextendr_api::miniextendr]
+pub fn factor_status_levels() -> Vec<&'static str> {
+    Status::LEVELS.to_vec()
+}
+
+/// Test: returns the level names for Priority (custom renamed).
+#[miniextendr_api::miniextendr]
+pub fn factor_priority_levels() -> Vec<&'static str> {
+    Priority::LEVELS.to_vec()
+}
+
+/// Test: accepts a vector of Colors directly using FactorVec wrapper.
+#[miniextendr_api::miniextendr]
+pub fn factor_count_colors(colors: miniextendr_api::FactorVec<Color>) -> Vec<i32> {
+    let mut counts = [0i32; 3];
+    for c in colors.iter() {
+        match c {
+            Color::Red => counts[0] += 1,
+            Color::Green => counts[1] += 1,
+            Color::Blue => counts[2] += 1,
+        }
+    }
+    counts.to_vec()
+}
+
+/// Test: accepts Colors with NA values directly using FactorOptionVec wrapper.
+#[miniextendr_api::miniextendr]
+pub fn factor_colors_with_na(colors: miniextendr_api::FactorOptionVec<Color>) -> Vec<&'static str> {
+    colors
+        .iter()
+        .map(|c| match c {
+            Some(Color::Red) => "red",
+            Some(Color::Green) => "green",
+            Some(Color::Blue) => "blue",
+            None => "NA",
+        })
+        .collect()
+}
+
+// Module export for miniextendr_module! in lib.rs
+miniextendr_module! {
+    mod factor_tests;
+
+    fn factor_describe_color;
+    fn factor_get_color;
+    fn factor_get_all_colors;
+    fn factor_describe_status;
+    fn factor_describe_priority;
+    fn factor_color_levels;
+    fn factor_status_levels;
+    fn factor_priority_levels;
+    fn factor_count_colors;
+    fn factor_colors_with_na;
+}
