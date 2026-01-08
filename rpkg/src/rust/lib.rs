@@ -1101,9 +1101,93 @@ pub fn vec_real_altrep(n: i32) -> Altrep<Vec<f64>> {
     Altrep((1..=len).map(|i| i as f64 * 0.5).collect())
 }
 
+/// Create a Vec-backed complex ALTREP (has dataptr support).
+#[miniextendr]
+pub fn vec_complex_altrep(n: i32) -> Altrep<Vec<Rcomplex>> {
+    let len = n.max(0) as usize;
+    Altrep(
+        (0..len)
+            .map(|i| Rcomplex {
+                r: i as f64,
+                i: -(i as f64),
+            })
+            .collect(),
+    )
+}
+
+/// Create a Box<[f64]>-backed real ALTREP (has dataptr support).
+#[miniextendr]
+pub fn boxed_reals(n: i32) -> Altrep<Box<[f64]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[f64]> = (1..=len)
+        .map(|i| i as f64 * 1.5)
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[bool]>-backed logical ALTREP.
+#[miniextendr]
+pub fn boxed_logicals(n: i32) -> Altrep<Box<[bool]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[bool]> = (0..len)
+        .map(|i| i % 2 == 0)
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[u8]>-backed raw ALTREP (bytes 0-255 cycling).
+#[miniextendr]
+pub fn boxed_raw(n: i32) -> Altrep<Box<[u8]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[u8]> = (0..len)
+        .map(|i| (i % 256) as u8)
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[String]>-backed string ALTREP.
+#[miniextendr]
+pub fn boxed_strings(n: i32) -> Altrep<Box<[String]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[String]> = (0..len)
+        .map(|i| format!("boxed_{}", i))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[Rcomplex]>-backed complex ALTREP (has dataptr support).
+#[miniextendr]
+pub fn boxed_complex(n: i32) -> Altrep<Box<[Rcomplex]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[Rcomplex]> = (0..len)
+        .map(|i| Rcomplex {
+            r: i as f64 + 0.25,
+            i: i as f64 + 0.75,
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
 /// Create a Range-backed integer ALTREP (O(1) sum/min/max).
 #[miniextendr]
 pub fn range_int_altrep(from: i32, to: i32) -> Altrep<std::ops::Range<i32>> {
+    Altrep(from..to)
+}
+
+/// Create a Range-backed i64 ALTREP (O(1) sum/min/max).
+#[miniextendr]
+pub fn range_i64_altrep(from: i64, to: i64) -> Altrep<std::ops::Range<i64>> {
+    Altrep(from..to)
+}
+
+/// Create a Range-backed real ALTREP (O(1) sum/min/max).
+#[miniextendr]
+pub fn range_real_altrep(from: f64, to: f64) -> Altrep<std::ops::Range<f64>> {
     Altrep(from..to)
 }
 
@@ -1367,7 +1451,15 @@ miniextendr_module! {
     fn iter_real_from_f32;
     fn vec_int_altrep;
     fn vec_real_altrep;
+    fn vec_complex_altrep;
+    fn boxed_reals;
+    fn boxed_logicals;
+    fn boxed_raw;
+    fn boxed_strings;
+    fn boxed_complex;
     fn range_int_altrep;
+    fn range_i64_altrep;
+    fn range_real_altrep;
 
     // Feature detection
     fn rpkg_enabled_features;
