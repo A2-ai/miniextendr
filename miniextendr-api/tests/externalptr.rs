@@ -11,7 +11,7 @@ fn externalptr_suite() {
     r_test_utils::with_r_thread(|| {
         test_basic_access();
         test_tag_and_protected();
-        test_try_from_sexp();
+        test_wrap_sexp();
         test_into_raw();
     });
 }
@@ -43,14 +43,14 @@ fn test_tag_and_protected() {
     assert!(std::ptr::eq(stored.0, protected.0));
 }
 
-fn test_try_from_sexp() {
+fn test_wrap_sexp() {
     let ext = ExternalPtr::new(7i32);
     let sexp: SEXP = ext.as_sexp();
 
-    let same = unsafe { ExternalPtr::<i32>::try_from_sexp(sexp) };
+    let same = unsafe { ExternalPtr::<i32>::wrap_sexp(sexp) };
     assert!(same.is_some());
 
-    let wrong = unsafe { ExternalPtr::<f64>::try_from_sexp(sexp) };
+    let wrong = unsafe { ExternalPtr::<f64>::wrap_sexp(sexp) };
     assert!(wrong.is_none());
 }
 

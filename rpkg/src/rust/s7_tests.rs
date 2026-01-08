@@ -18,6 +18,8 @@ pub struct S7Counter {
 /// s7_inc(x)
 /// s7_add(x, 2L)
 /// s7_value(S7Counter_default_counter())
+/// @param initial Initial value for the counter.
+/// @param .ptr External pointer (used internally by S7).
 #[miniextendr(s7)]
 impl S7Counter {
     /// Creates a new counter with the given initial value.

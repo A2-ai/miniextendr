@@ -1,15 +1,41 @@
 //! R object preservation using a circular doubly-linked list.
 //!
 //! This module provides a protection scheme for R objects (SEXPs) that need to
-//! survive R's garbage collection. It uses a circular doubly-linked list approach
-//! similar to cpp11, which has advantages over the R protect stack:
+//! survive R's garbage collection **across multiple `.Call` invocations**.
+//!
+//! # Protection Strategies in miniextendr
+//!
+//! miniextendr provides three complementary protection mechanisms for different scenarios:
+//!
+//! | Strategy | Module | Lifetime | Release Order | Use Case |
+//! |----------|--------|----------|---------------|----------|
+//! | **PROTECT stack** | [`gc_protect`](crate::gc_protect) | Within `.Call` | LIFO (stack) | Temporary allocations |
+//! | **Preserve list** | [`preserve`](crate::preserve) | Across `.Call`s | Any order | Long-lived R objects |
+//! | **R ownership** | [`ExternalPtr`](struct@crate::ExternalPtr) | Until R GCs | R decides | Rust data owned by R |
+//!
+//! ## When to Use This Module
+//!
+//! **Use `preserve` (this module) when:**
+//! - Objects must survive across multiple `.Call` invocations
+//! - You need to release protections in arbitrary order (not LIFO)
+//! - Example: [`RAllocator`](crate::RAllocator) backing memory
+//!
+//! **Use [`gc_protect`](crate::gc_protect) instead when:**
+//! - Protection is short-lived (within a single `.Call`)
+//! - You want RAII-based automatic PROTECT/UNPROTECT balancing
+//!
+//! **Use [`ExternalPtr`](struct@crate::ExternalPtr) instead when:**
+//! - You want R to own a Rust value with automatic cleanup
+//!
+//! # Architecture
+//!
+//! This module uses a cpp11-style circular doubly-linked list approach,
+//! which has advantages over the R protect stack:
 //!
 //! - No balance requirement (PROTECT/UNPROTECT pairs must be balanced)
 //! - Can release protections in any order
 //! - Thread-local storage (each thread has its own preserve list)
 //! - More ergonomic with RAII patterns
-//!
-//! ## Architecture
 //!
 //! The preservation list is a circular doubly-linked cons list where:
 //! - The list itself is preserved with `R_PreserveObject` (never GC'd)
@@ -17,7 +43,7 @@
 //! - CAR points to previous cell, CDR points to next cell
 //! - Head and tail are sentinel nodes
 //!
-//! ## Safety
+//! # Safety
 //!
 //! All functions in this module are unsafe and must be called from the R main thread.
 
@@ -234,7 +260,6 @@ pub unsafe fn insert_unchecked(x: SEXP) -> SEXP {
 #[inline]
 pub unsafe fn release(cell: SEXP) {
     unsafe {
-        // TODO: compare pointer address
         if std::ptr::addr_eq(cell.0, R_NilValue.0) {
             return;
         }

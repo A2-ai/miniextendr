@@ -1,19 +1,21 @@
-Package: rpkg
-Title: What the Package Does (One Line, Title Case)
+Package: miniextendr
+Title: Rust-R Interoperability Runtime
 Version: 0.1.0
-Authors@R: 
-    person("First", "Last", , "first.last@example.com", role = c("aut", "cre"))
+Author: Package Developer
+Maintainer: Package Developer <package.developer@example.com>
 Description: What the package does (one paragraph).
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Imports:
     methods,
     R6,
-    S7
+    S7,
+    vctrs
 Suggests:
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    tibble
 Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
 Config/build/never-clean: true

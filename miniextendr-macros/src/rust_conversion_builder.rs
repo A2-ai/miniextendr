@@ -13,7 +13,7 @@ use quote::quote;
 /// - Unit types `()` → identity binding
 /// - `&Dots` → special wrapper with storage
 /// - Slices `&[T]` → TryFromSexp
-/// - `&str` → String storage + borrow
+/// - `&str` → String + Borrow (for worker thread compatibility)
 /// - Scalar references → DATAPTR_RO_unchecked
 /// - Coercion → extract R native type + TryCoerce
 /// - Default → TryFromSexp
@@ -52,33 +52,43 @@ impl RustConversionBuilder {
 
     /// Generate conversion statement for a single parameter.
     ///
-    /// # Arguments
-    /// * `pat_type` - The parameter pattern and type
-    /// * `sexp_ident` - The SEXP identifier to convert from (e.g., `arg_0`)
-    ///
-    /// # Returns
-    /// Vector of TokenStreams representing the conversion statements
+    /// Returns all statements flattened (for main-thread execution).
     pub fn build_conversion(
         &self,
         pat_type: &syn::PatType,
         sexp_ident: &syn::Ident,
     ) -> Vec<TokenStream> {
+        let (owned, borrowed) = self.build_conversion_split(pat_type, sexp_ident);
+        owned.into_iter().chain(borrowed).collect()
+    }
+
+    /// Generate conversion statements split for worker thread execution.
+    ///
+    /// For reference types like `&str`, we need to:
+    /// 1. Convert SEXP to owned type (String) - runs before closure, gets moved in
+    /// 2. Borrow from owned type (&str) - runs inside closure
+    ///
+    /// Returns: (owned_conversions, borrow_statements)
+    pub fn build_conversion_split(
+        &self,
+        pat_type: &syn::PatType,
+        sexp_ident: &syn::Ident,
+    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
         let syn::Pat::Ident(pat_ident) = pat_type.pat.as_ref() else {
-            return Vec::new();
+            return (vec![], vec![]);
         };
         let ident = &pat_ident.ident;
         let ty = pat_type.ty.as_ref();
 
-        let mut statements = Vec::new();
-
         match ty {
             // Unit type: ()
             syn::Type::Tuple(t) if t.elems.is_empty() => {
-                if pat_ident.mutability.is_some() {
-                    statements.push(quote! { let mut #ident = (); });
+                let stmt = if pat_ident.mutability.is_some() {
+                    quote! { let mut #ident = (); }
                 } else {
-                    statements.push(quote! { let #ident = (); });
-                }
+                    quote! { let #ident = (); }
+                };
+                (vec![stmt], vec![])
             }
 
             // Reference types: &T, &mut T
@@ -97,26 +107,28 @@ impl RustConversionBuilder {
                 );
 
                 if is_dots {
-                    // &Dots: create wrapper with storage
+                    // &Dots: create wrapper with storage (main thread only - requires SEXP)
                     let storage_ident = quote::format_ident!("{}_storage", ident);
-                    statements.push(quote! {
+                    let stmt = quote! {
                         let #storage_ident = ::miniextendr_api::dots::Dots { inner: #sexp_ident };
                         let #ident = &#storage_ident;
-                    });
+                    };
+                    (vec![stmt], vec![])
                 } else if is_slice {
                     // &[T]: use TryFromSexp (backed by DATAPTR_RO)
                     let error_msg = format!(
                         "failed to convert parameter '{}' to slice: wrong type or length",
                         ident
                     );
-                    statements.push(quote! {
+                    let stmt = quote! {
                         let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                             .expect(#error_msg);
-                    });
+                    };
+                    (vec![stmt], vec![])
                 } else if is_str {
-                    // &str: decode to String first, then borrow
-                    // This avoids returning a 'static borrow into R memory
-                    let storage_ident = quote::format_ident!("__miniextendr_{}_string", ident);
+                    // &str: Convert to String, then borrow using Borrow trait.
+                    // This allows the String to be moved into worker thread closures.
+                    let owned_ident = quote::format_ident!("__owned_{}", ident);
                     let mutability = if pat_ident.mutability.is_some() {
                         quote!(mut)
                     } else {
@@ -126,23 +138,36 @@ impl RustConversionBuilder {
                         "failed to convert parameter '{}' to string: expected character vector",
                         ident
                     );
-                    statements.push(quote! {
-                        let #storage_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                    // Owned conversion: SEXP -> String
+                    let owned_stmt = quote! {
+                        let #owned_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                             .expect(#error_msg);
-                    });
-                    statements.push(quote! {
-                        let #mutability #ident: &str = #storage_ident.as_str();
-                    });
-                } else if pat_ident.mutability.is_some() {
-                    // &mut T: mutable scalar reference
-                    statements.push(quote! {
-                        let mut #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_unchecked(#sexp_ident).cast() };
-                    });
+                    };
+                    // Borrow: String -> &str (using Borrow trait)
+                    let borrow_stmt = quote! {
+                        let #mutability #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
+                    };
+                    (vec![owned_stmt], vec![borrow_stmt])
                 } else {
-                    // &T: immutable scalar reference
-                    statements.push(quote! {
-                        let #ident = unsafe { *::miniextendr_api::ffi::DATAPTR_RO_unchecked(#sexp_ident).cast() };
-                    });
+                    // &T for other types: use TryFromSexp for the reference type.
+                    let error_msg = format!(
+                        "failed to convert parameter '{}' to {}: wrong type",
+                        ident,
+                        quote!(#ty)
+                    );
+                    if pat_ident.mutability.is_some() {
+                        let stmt = quote! {
+                            let mut #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                                .expect(#error_msg);
+                        };
+                        (vec![stmt], vec![])
+                    } else {
+                        let stmt = quote! {
+                            let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
+                                .expect(#error_msg);
+                        };
+                        (vec![stmt], vec![])
+                    }
                 }
             }
 
@@ -156,9 +181,8 @@ impl RustConversionBuilder {
                     None
                 };
 
-                match coercion_mapping {
+                let stmt = match coercion_mapping {
                     Some(CoercionMapping::Scalar { r_native, target }) => {
-                        // Scalar coercion: extract R native, coerce to target
                         let mutability = if pat_ident.mutability.is_some() {
                             quote!(mut)
                         } else {
@@ -173,20 +197,19 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#target)
                         );
-                        statements.push(quote! {
+                        quote! {
                             let #mutability #ident: #target = {
                                 let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg_convert);
                                 ::miniextendr_api::TryCoerce::<#target>::try_coerce(__r_val)
                                     .expect(#error_msg_coerce)
                             };
-                        });
+                        }
                     }
                     Some(CoercionMapping::Vec {
                         r_native_elem,
                         target_elem,
                     }) => {
-                        // Vec coercion: extract R native slice, coerce element-wise
                         let mutability = if pat_ident.mutability.is_some() {
                             quote!(mut)
                         } else {
@@ -201,7 +224,7 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#target_elem)
                         );
-                        statements.push(quote! {
+                        quote! {
                             let #mutability #ident: Vec<#target_elem> = {
                                 let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg_convert);
@@ -210,42 +233,33 @@ impl RustConversionBuilder {
                                     .collect::<Result<Vec<_>, _>>()
                                     .expect(#error_msg_coerce)
                             };
-                        });
+                        }
                     }
                     None => {
-                        // No coercion - use standard TryFromSexp
                         let error_msg = format!(
                             "failed to convert parameter '{}' to {}: wrong type, length, or contains NA",
                             param_name,
                             quote!(#ty)
                         );
                         if pat_ident.mutability.is_some() {
-                            statements.push(quote! {
+                            quote! {
                                 let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg);
-                            });
+                            }
                         } else {
-                            statements.push(quote! {
+                            quote! {
                                 let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg);
-                            });
+                            }
                         }
                     }
-                }
+                };
+                (vec![stmt], vec![])
             }
         }
-
-        statements
     }
 
     /// Generate conversion statements for all parameters in a function signature.
-    ///
-    /// # Arguments
-    /// * `inputs` - Function parameters
-    /// * `sexp_idents` - SEXP identifiers for each parameter (same length as inputs)
-    ///
-    /// # Returns
-    /// Vector of TokenStreams representing all conversion statements
     pub fn build_conversions(
         &self,
         inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
@@ -271,73 +285,4 @@ impl Default for RustConversionBuilder {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn parse_param(s: &str) -> syn::FnArg {
-        let sig: syn::Signature = syn::parse_str(&format!("fn test({})", s)).unwrap();
-        sig.inputs.into_iter().next().unwrap()
-    }
-
-    #[test]
-    fn test_unit_type() {
-        let builder = RustConversionBuilder::new();
-        let param = parse_param("_unused: ()");
-        if let syn::FnArg::Typed(pat_type) = param {
-            let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-            let stmts = builder.build_conversion(&pat_type, &sexp_ident);
-            assert_eq!(stmts.len(), 1);
-            assert!(stmts[0].to_string().contains("let"));
-        }
-    }
-
-    #[test]
-    fn test_basic_conversion() {
-        let builder = RustConversionBuilder::new();
-        let param = parse_param("x: i32");
-        if let syn::FnArg::Typed(pat_type) = param {
-            let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-            let stmts = builder.build_conversion(&pat_type, &sexp_ident);
-            assert_eq!(stmts.len(), 1);
-            assert!(stmts[0].to_string().contains("TryFromSexp"));
-        }
-    }
-
-    #[test]
-    fn test_slice_conversion() {
-        let builder = RustConversionBuilder::new();
-        let param = parse_param("x: &[i32]");
-        if let syn::FnArg::Typed(pat_type) = param {
-            let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-            let stmts = builder.build_conversion(&pat_type, &sexp_ident);
-            assert_eq!(stmts.len(), 1);
-            assert!(stmts[0].to_string().contains("TryFromSexp"));
-        }
-    }
-
-    #[test]
-    fn test_str_conversion() {
-        let builder = RustConversionBuilder::new();
-        let param = parse_param("s: &str");
-        if let syn::FnArg::Typed(pat_type) = param {
-            let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-            let stmts = builder.build_conversion(&pat_type, &sexp_ident);
-            assert_eq!(stmts.len(), 2); // String storage + borrow
-            assert!(stmts[0].to_string().contains("String"));
-            assert!(stmts[1].to_string().contains("as_str"));
-        }
-    }
-
-    #[test]
-    fn test_coercion() {
-        let builder = RustConversionBuilder::new().with_coerce_param("x".to_string());
-        let param = parse_param("x: u16");
-        if let syn::FnArg::Typed(pat_type) = param {
-            let sexp_ident = syn::Ident::new("arg_0", proc_macro2::Span::call_site());
-            let stmts = builder.build_conversion(&pat_type, &sexp_ident);
-            assert_eq!(stmts.len(), 1);
-            assert!(stmts[0].to_string().contains("TryCoerce"));
-            assert!(stmts[0].to_string().contains("u16"));
-        }
-    }
-}
+mod tests;

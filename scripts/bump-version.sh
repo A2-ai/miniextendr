@@ -9,6 +9,9 @@
 #   - Cargo.toml (workspace.package.version)
 #   - minirextendr/DESCRIPTION (Version:)
 #   - rpkg/DESCRIPTION (Version:)
+#   - tests/cross-package/producer.pkg/DESCRIPTION (Version:)
+#   - tests/cross-package/consumer.pkg/DESCRIPTION (Version:)
+#   - tests/cross-package/shared-traits/Cargo.toml (version)
 #
 set -euo pipefail
 
@@ -42,25 +45,39 @@ else
     echo "  Warning: $CARGO_TOML not found"
 fi
 
-# Update rpkg/DESCRIPTION
-DESCRIPTION="$ROOT_DIR/rpkg/DESCRIPTION"
-if [ -f "$DESCRIPTION" ]; then
-    sed -i.bak -E 's/^(Version: )[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?/\1'"$VERSION"'/' "$DESCRIPTION"
-    rm -f "$DESCRIPTION.bak"
-    echo "  Updated: $DESCRIPTION"
-else
-    echo "  Warning: $DESCRIPTION not found"
-fi
+# Function to update DESCRIPTION file
+update_description() {
+    local desc_file="$1"
+    if [ -f "$desc_file" ]; then
+        sed -i.bak -E 's/^(Version: )[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?/\1'"$VERSION"'/' "$desc_file"
+        rm -f "$desc_file.bak"
+        echo "  Updated: $desc_file"
+    else
+        echo "  Warning: $desc_file not found"
+    fi
+}
 
-DESCRIPTION="$ROOT_DIR/minirextendr"
-if [ -f "$DESCRIPTION" ]; then
-    sed -i.bak -E 's/^(Version: )[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?/\1'"$VERSION"'/' "$DESCRIPTION"
-    rm -f "$DESCRIPTION.bak"
-    echo "  Updated: $DESCRIPTION"
-else
-    echo "  Warning: $DESCRIPTION not found"
-fi
+# Function to update Cargo.toml version (for non-workspace crates)
+update_cargo_toml() {
+    local cargo_file="$1"
+    if [ -f "$cargo_file" ]; then
+        sed -i.bak -E 's/^(version = ")[0-9]+\.[0-9]+\.[0-9]+(")/\1'"$VERSION"'\2/' "$cargo_file"
+        rm -f "$cargo_file.bak"
+        echo "  Updated: $cargo_file"
+    else
+        echo "  Warning: $cargo_file not found"
+    fi
+}
+
+# Update all R package DESCRIPTION files
+update_description "$ROOT_DIR/rpkg/DESCRIPTION"
+update_description "$ROOT_DIR/minirextendr/DESCRIPTION"
+update_description "$ROOT_DIR/tests/cross-package/producer.pkg/DESCRIPTION"
+update_description "$ROOT_DIR/tests/cross-package/consumer.pkg/DESCRIPTION"
+
+# Update standalone Cargo.toml files (not part of workspace)
+update_cargo_toml "$ROOT_DIR/tests/cross-package/shared-traits/Cargo.toml"
 
 echo ""
 echo "Done! Verify changes with:"
-echo "  git diff Cargo.toml rpkg/DESCRIPTION minirextendr/DESCRIPTION"
+echo "  git diff Cargo.toml rpkg/DESCRIPTION minirextendr/DESCRIPTION tests/cross-package/*/DESCRIPTION tests/cross-package/shared-traits/Cargo.toml"

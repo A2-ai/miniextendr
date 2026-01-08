@@ -2,25 +2,58 @@
 //!
 //! This module provides builders for constructing R function signatures and call arguments
 //! consistently across both standalone functions and impl methods.
+//!
+//! ## Key Components
+//!
+//! - [`RArgumentBuilder`]: Builds R formals and `.Call()` arguments from Rust signatures
+//! - [`DotCallBuilder`]: Formats `.Call()` invocations with proper argument handling
+//! - [`RoxygenBuilder`]: Generates roxygen2 documentation tags
+//!
+//! ## Usage
+//!
+//! ```ignore
+//! // Build R function signature
+//! let formals = build_r_formals_from_sig(&method.sig, &defaults);
+//! let call_args = build_r_call_args_from_sig(&method.sig);
+//!
+//! // Build .Call() invocation
+//! let call = DotCallBuilder::new("C_MyType__method")
+//!     .with_self("self")
+//!     .with_args(&["x", "y"])
+//!     .build();
+//!
+//! // Build roxygen tags
+//! let tags = RoxygenBuilder::new("MyType")
+//!     .name("method")
+//!     .rdname("MyType")
+//!     .export()
+//!     .build();
+//! ```
 
 /// Normalizes Rust argument identifiers for R.
 ///
-/// - Leading `_` → prepends "unused"
-/// - Leading `__` → prepends "private"
+/// - Leading `_` → stripped (Rust convention for unused params)
+/// - Leading `__` → stripped
 /// - Otherwise → unchanged
 ///
 /// # Examples
-/// - `_x` → `unused_x`
-/// - `__field` → `private__field`
+/// - `_x` → `x`
+/// - `_to` → `to`
+/// - `__field` → `field`
 /// - `value` → `value`
+///
+/// Note: We strip underscores rather than prefixing "unused" because R callers
+/// (like vctrs) may use named arguments that must match the original name.
 pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
-    let mut arg_name = rust_ident.to_string();
-    if arg_name.starts_with("__") {
-        arg_name.insert_str(0, "private");
-    } else if arg_name.starts_with('_') {
-        arg_name.insert_str(0, "unused");
-    }
-    syn::Ident::new(&arg_name, rust_ident.span())
+    let arg_name = rust_ident.to_string();
+    let normalized = arg_name.trim_start_matches('_');
+    // Handle edge case of just underscores
+    let normalized = if normalized.is_empty() {
+        "arg"
+    } else {
+        normalized
+    };
+    syn::Ident::new(normalized, rust_ident.span())
 }
 
 /// Builder for R function formal parameters and call arguments.
@@ -98,12 +131,10 @@ impl<'a> RArgumentBuilder<'a> {
             };
 
             // Handle dots (must be last)
+            // Note: In R, `...` cannot have a name/default in formals - it must be just `...`
+            // The named_dots is only used on the Rust side. R formals always use plain `...`
             if self.has_dots && idx == last_idx {
-                if let Some(ref named) = self.named_dots {
-                    formals.push(format!("{} = ...", named));
-                } else {
-                    formals.push("...".to_string());
-                }
+                formals.push("...".to_string());
                 continue;
             }
 
@@ -159,12 +190,9 @@ impl<'a> RArgumentBuilder<'a> {
             };
 
             // Handle dots special case
+            // Always use list(...) since R formals always have plain `...`
             if self.has_dots && idx == last_idx {
-                if let Some(ref named) = self.named_dots {
-                    call_args.push(format!("list({})", named));
-                } else {
-                    call_args.push("list(...)".to_string());
-                }
+                call_args.push("list(...)".to_string());
                 continue;
             }
 
@@ -232,72 +260,225 @@ pub(crate) fn collect_param_idents(
     params
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+// =============================================================================
+// DotCallBuilder - .Call() invocation formatting
+// =============================================================================
 
-    fn parse_inputs(s: &str) -> syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma> {
-        let signature: syn::Signature = syn::parse_str(&format!("fn test({})", s)).unwrap();
-        signature.inputs
+/// Builder for formatting `.Call()` invocations in R wrapper code.
+///
+/// Handles the common pattern of `.Call(C_ident, .call = match.call(), args...)`.
+///
+/// # Example
+///
+/// ```ignore
+/// let call = DotCallBuilder::new("C_Counter__increment")
+///     .with_self("self")
+///     .build();
+/// // => ".Call(C_Counter__increment, .call = match.call(), self)"
+///
+/// let call = DotCallBuilder::new("C_Counter__add")
+///     .with_self("x")
+///     .with_args(&["n"])
+///     .build();
+/// // => ".Call(C_Counter__add, .call = match.call(), x, n)"
+/// ```
+pub struct DotCallBuilder {
+    c_ident: String,
+    self_var: Option<String>,
+    args: Vec<String>,
+}
+
+impl DotCallBuilder {
+    /// Create a new builder with the C function identifier.
+    pub fn new(c_ident: impl Into<String>) -> Self {
+        Self {
+            c_ident: c_ident.into(),
+            self_var: None,
+            args: Vec::new(),
+        }
     }
 
-    #[test]
-    fn test_normalize_arg_ident() {
-        let ident = syn::Ident::new("_x", proc_macro2::Span::call_site());
-        assert_eq!(normalize_r_arg_ident(&ident).to_string(), "unused_x");
-
-        let ident = syn::Ident::new("__private", proc_macro2::Span::call_site());
-        assert_eq!(
-            normalize_r_arg_ident(&ident).to_string(),
-            "private__private"
-        );
-
-        let ident = syn::Ident::new("value", proc_macro2::Span::call_site());
-        assert_eq!(normalize_r_arg_ident(&ident).to_string(), "value");
+    /// Add a self/x parameter (prepended to args).
+    pub fn with_self(mut self, var: impl Into<String>) -> Self {
+        self.self_var = Some(var.into());
+        self
     }
 
-    #[test]
-    fn test_basic_formals() {
-        let inputs = parse_inputs("x: i32, y: f64");
-        let builder = RArgumentBuilder::new(&inputs);
-        assert_eq!(builder.build_formals(), "x, y");
+    /// Add arguments after self (if any).
+    pub fn with_args(mut self, args: &[impl AsRef<str>]) -> Self {
+        self.args = args.iter().map(|s| s.as_ref().to_string()).collect();
+        self
     }
 
-    #[test]
-    fn test_unit_type_default() {
-        let inputs = parse_inputs("x: i32, _unused: ()");
-        let builder = RArgumentBuilder::new(&inputs);
-        assert_eq!(builder.build_formals(), "x, unused_unused = NULL");
-    }
+    /// Build the `.Call()` string.
+    pub fn build(&self) -> String {
+        let mut all_args = Vec::new();
 
-    #[test]
-    fn test_dots() {
-        let inputs = parse_inputs("x: i32, _dots: &Dots");
-        let builder = RArgumentBuilder::new(&inputs).with_dots(None);
-        assert_eq!(builder.build_formals(), "x, ...");
-        assert_eq!(builder.build_call_args(), "x, list(...)");
-    }
+        if let Some(ref self_var) = self.self_var {
+            all_args.push(self_var.clone());
+        }
+        all_args.extend(self.args.clone());
 
-    #[test]
-    fn test_named_dots() {
-        let inputs = parse_inputs("x: i32, _dots: &Dots");
-        let builder = RArgumentBuilder::new(&inputs).with_dots(Some("args".to_string()));
-        assert_eq!(builder.build_formals(), "x, args = ...");
-        assert_eq!(builder.build_call_args(), "x, list(args)");
-    }
-
-    #[test]
-    fn test_skip_first() {
-        let inputs = parse_inputs("&self, x: i32, y: f64");
-        let builder = RArgumentBuilder::new(&inputs).skip_first();
-        assert_eq!(builder.build_formals(), "x, y");
-        assert_eq!(builder.build_call_args(), "x, y");
-    }
-
-    #[test]
-    fn test_underscore_normalization() {
-        let inputs = parse_inputs("_x: i32, __private: String");
-        let builder = RArgumentBuilder::new(&inputs);
-        assert_eq!(builder.build_formals(), "unused_x, private__private");
+        if all_args.is_empty() {
+            format!(".Call({}, .call = match.call())", self.c_ident)
+        } else {
+            format!(
+                ".Call({}, .call = match.call(), {})",
+                self.c_ident,
+                all_args.join(", ")
+            )
+        }
     }
 }
+
+// =============================================================================
+// RoxygenBuilder - roxygen2 documentation tag generation
+// =============================================================================
+
+/// Builder for generating roxygen2 documentation tags.
+///
+/// Provides a fluent API for building common roxygen tag patterns used
+/// across all class systems.
+///
+/// # Example
+///
+/// ```ignore
+/// let tags = RoxygenBuilder::new()
+///     .name("Counter$increment")
+///     .rdname("Counter")
+///     .export()
+///     .build();
+/// // => vec!["#' @name Counter$increment", "#' @rdname Counter", "#' @export"]
+/// ```
+pub struct RoxygenBuilder {
+    name: Option<String>,
+    rdname: Option<String>,
+    title: Option<String>,
+    description: Option<String>,
+    source: Option<String>,
+    export: bool,
+    export_method: Option<String>,
+    method: Option<(String, String)>, // (generic, class)
+    custom_tags: Vec<String>,
+}
+
+impl RoxygenBuilder {
+    /// Create a new empty builder.
+    pub fn new() -> Self {
+        Self {
+            name: None,
+            rdname: None,
+            title: None,
+            description: None,
+            source: None,
+            export: false,
+            export_method: None,
+            method: None,
+            custom_tags: Vec::new(),
+        }
+    }
+
+    /// Set the `@name` tag.
+    pub fn name(mut self, name: impl Into<String>) -> Self {
+        self.name = Some(name.into());
+        self
+    }
+
+    /// Set the `@rdname` tag (groups docs into one page).
+    pub fn rdname(mut self, rdname: impl Into<String>) -> Self {
+        self.rdname = Some(rdname.into());
+        self
+    }
+
+    /// Set the `@title` tag.
+    pub fn title(mut self, title: impl Into<String>) -> Self {
+        self.title = Some(title.into());
+        self
+    }
+
+    /// Set the `@description` tag.
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn description(mut self, desc: impl Into<String>) -> Self {
+        self.description = Some(desc.into());
+        self
+    }
+
+    /// Set the `@source` tag (typically "Generated by miniextendr...").
+    pub fn source(mut self, source: impl Into<String>) -> Self {
+        self.source = Some(source.into());
+        self
+    }
+
+    /// Add `@export` tag.
+    pub fn export(mut self) -> Self {
+        self.export = true;
+        self
+    }
+
+    /// Add `@exportMethod` tag (for S4).
+    #[allow(dead_code)] // Public API for external consumers
+    pub fn export_method(mut self, method: impl Into<String>) -> Self {
+        self.export_method = Some(method.into());
+        self
+    }
+
+    /// Add `@method` tag (for S3).
+    pub fn method(mut self, generic: impl Into<String>, class: impl Into<String>) -> Self {
+        self.method = Some((generic.into(), class.into()));
+        self
+    }
+
+    /// Add a custom tag line (without the `#' ` prefix).
+    pub fn custom(mut self, tag: impl Into<String>) -> Self {
+        self.custom_tags.push(tag.into());
+        self
+    }
+
+    /// Build the roxygen tag lines (each prefixed with `#' `).
+    pub fn build(&self) -> Vec<String> {
+        let mut lines = Vec::new();
+
+        if let Some(ref title) = self.title {
+            lines.push(format!("#' @title {}", title));
+        }
+        if let Some(ref desc) = self.description {
+            lines.push(format!("#' @description {}", desc));
+        }
+        if let Some(ref name) = self.name {
+            lines.push(format!("#' @name {}", name));
+        }
+        if let Some(ref rdname) = self.rdname {
+            lines.push(format!("#' @rdname {}", rdname));
+        }
+        if let Some(ref source) = self.source {
+            lines.push(format!("#' @source {}", source));
+        }
+        if let Some((ref generic, ref class)) = self.method {
+            lines.push(format!("#' @method {} {}", generic, class));
+        }
+        for tag in &self.custom_tags {
+            lines.push(format!("#' {}", tag));
+        }
+        if self.export {
+            lines.push("#' @export".to_string());
+        }
+        if let Some(ref method) = self.export_method {
+            lines.push(format!("#' @exportMethod {}", method));
+        }
+
+        lines
+    }
+}
+
+impl Default for RoxygenBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+
+#[cfg(test)]
+mod tests;

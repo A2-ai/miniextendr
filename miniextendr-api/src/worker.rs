@@ -193,6 +193,15 @@ pub fn panic_message_to_r_error(msg: String) -> ! {
     }
 }
 
+/// Raise an R error (with call context) from a panic message. Does not return.
+pub fn panic_message_to_r_errorcall(msg: String, call: ffi::SEXP) -> ! {
+    let c_msg = std::ffi::CString::new(msg)
+        .unwrap_or_else(|_| std::ffi::CString::new("Rust panic (invalid message)").unwrap());
+    unsafe {
+        ffi::Rf_errorcall_unchecked(call, c"%s".as_ptr(), c_msg.as_ptr());
+    }
+}
+
 /// Execute a closure on R's main thread, returning the result.
 ///
 /// This function can be called from any thread:

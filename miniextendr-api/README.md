@@ -1,11 +1,11 @@
 # miniextendr-api
 
-Core runtime crate for Rust ↔ R interop.
+Core runtime crate for Rust <-> R interop.
 
 This crate provides:
 
 - FFI bindings to R’s C API.
-- Safe(ish) conversions between Rust and R types.
+- Conversions between Rust and R types.
 - The worker‑thread pattern for panic isolation and Drop safety.
 - ALTREP traits, registration helpers, and iterator‑backed ALTREP data types.
 - Re-exports of `miniextendr-macros` for ergonomic use.
@@ -43,6 +43,7 @@ miniextendr_module! {
 - **Connections** – experimental R connection framework (feature‑gated).
 - **Class systems** – S3, S4, S7, and R6 impl‑block methods plus an env
   impl‑block for `$`/`[[` dispatch.
+- **Trait ABI** – type‑erased, cross‑package trait dispatch via tags + vtables.
 - **Coerce** – infallible and fallible numeric coercion with clear errors.
 - **Generated R wrappers** – R functions and class methods are generated from
   Rust signatures and doc comments/roxygen tags.
@@ -74,6 +75,42 @@ miniextendr supports multiple class systems from Rust impl blocks:
 Per‑method attributes control behavior (constructor, finalizer, private/active
 bindings for R6, method name overrides, etc.).
 
+## Trait ABI (cross-package dispatch)
+
+`#[miniextendr]` can generate trait ABI metadata to allow type‑erased dispatch
+across package boundaries.
+
+- Apply `#[miniextendr]` to the trait definition to generate tags + vtable types.
+- Apply `#[miniextendr]` to `impl Trait for Type` to build vtables and wrappers.
+- Register `impl Trait for Type;` entries in `miniextendr_module!`.
+
+See `tests/cross-package/README.md` for an end‑to‑end example.
+
+## Adapter traits
+
+Built-in adapter traits provide blanket implementations for common std traits:
+
+- `RDebug` – Debug string output (`debug_str()`, `debug_str_pretty()`)
+- `RDisplay` – Display string output (`as_r_string()`)
+- `RHash` – Hash computation (`r_hash() -> i64`)
+- `ROrd` – Total ordering comparison (`r_cmp() -> -1/0/1`)
+- `RPartialOrd` – Partial ordering (`r_partial_cmp() -> Option<i32>`)
+
+Any type implementing the corresponding std trait automatically gets these methods:
+
+```rust
+#[derive(Debug, Hash, Ord, PartialOrd, Eq, PartialEq, ExternalPtr)]
+struct Version(u32, u32, u32);
+
+#[miniextendr]
+impl RDebug for Version {}
+
+#[miniextendr]
+impl ROrd for Version {}
+```
+
+See `ADAPTER_TRAITS.md` and `ADAPTER_COOKBOOK.md` for patterns and recipes.
+
 ## ALTREP support
 
 ALTREP support is built around a two‑layer trait model:
@@ -98,7 +135,7 @@ Iterator‑backed ALTREP data types are provided for common vector kinds:
 
 ## Conversions and coercion
 
-This crate exposes conversion traits for Rust ↔ R data:
+This crate exposes conversion traits for Rust <-> R data:
 
 - `IntoR` / `FromR` for standard conversions.
 - `Coerce<R>` for infallible, widening conversions.
@@ -147,11 +184,78 @@ parallel work when you need to touch R.
 An experimental framework for defining custom R connections. This API is
 unstable in R itself; use only when you control the runtime environment.
 
-## Feature flags
+## Feature Flags
 
-- `nonapi` – enable non‑API R symbols (stack controls and mutable `DATAPTR`).
-- `rayon` – parallel helpers and Rayon integration.
-- `connections` – experimental R connection framework.
+### Core Features
+
+| Feature | Description |
+|---------|-------------|
+| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`). May break with R updates. |
+| `rayon` | Parallel iterators via Rayon. Adds `RParallelIterator`, `RParallelExtend`. |
+| `connections` | Experimental R connection framework. **Unstable R API.** |
+| `indicatif` | Progress bars via R console. Requires `nonapi`. |
+| `vctrs` | Access to vctrs C API (`obj_is_vector`, `short_vec_size`, `short_vec_recycle`). |
+
+### Type Conversions (Scalars & Vectors)
+
+| Feature | Rust Type | R Type | Notes |
+|---------|-----------|--------|-------|
+| `either` | `Either<L, R>` | Tries L then R | Union-like dispatch |
+| `uuid` | `Uuid`, `Vec<Uuid>` | `character` | UUID ↔ string |
+| `regex` | `Regex` | `character(1)` | Compiles pattern from R |
+| `url` | `Url`, `Vec<Url>` | `character` | Validated URLs |
+| `time` | `OffsetDateTime`, `Date` | `POSIXct`, `Date` | Date/time conversions |
+| `ordered-float` | `OrderedFloat<f64>` | `numeric` | NaN-orderable floats |
+| `num-bigint` | `BigInt`, `BigUint` | `character` | Arbitrary precision via strings |
+| `rust_decimal` | `Decimal` | `character` | Fixed-point decimals |
+| `num-complex` | `Complex<f64>` | `complex` | Native R complex support |
+| `indexmap` | `IndexMap<String, T>` | named `list` | Preserves insertion order |
+| `bitflags` | `RFlags<T>` | `integer` | Bitflags ↔ integer |
+| `bitvec` | `RBitVec` | `logical` | Bit vectors ↔ logical |
+
+### Matrix & Array Libraries
+
+| Feature | Types | Conversions |
+|---------|-------|-------------|
+| `ndarray` | `Array1`–`Array6`, `ArrayD`, views | R vectors/matrices ↔ ndarray |
+| `nalgebra` | `DVector`, `DMatrix` | R vectors/matrices ↔ nalgebra |
+
+### Serialization
+
+| Feature | Traits/Modules | Description |
+|---------|----------------|-------------|
+| `serde` | `RSerialize`, `RDeserialize` | JSON serialization via serde_json |
+| `serde_r` | `RSerializeNative`, `RDeserializeNative` | Direct Rust ↔ R (no JSON) |
+| `serde_full` | Both above | Enables `serde` + `serde_r` |
+
+### Adapter Traits (Generic Operations)
+
+| Feature | Traits | Use Case |
+|---------|--------|----------|
+| `num-traits` | `RNum`, `RSigned`, `RFloat` | Generic numeric operations |
+| `bytes` | `RBuf`, `RBufMut` | Byte buffer operations |
+
+### Text & Data Processing
+
+| Feature | Types/Functions | Description |
+|---------|-----------------|-------------|
+| `aho-corasick` | `AhoCorasick`, `aho_compile` | Fast multi-pattern string search |
+| `toml` | `TomlValue`, `toml_from_str` | TOML parsing and serialization |
+| `tabled` | `table_to_string` | ASCII/Unicode table formatting |
+| `sha2` | `sha256_str`, `sha512_bytes` | Cryptographic hashing |
+
+### Random Number Generation
+
+| Feature | Types | Description |
+|---------|-------|-------------|
+| `rand` | `RRng`, `RDistributions` | Wraps R's RNG with `rand` traits |
+| `rand_distr` | Re-exports `rand_distr` | Additional distributions (Normal, Exp, etc.) |
+
+### Binary Data
+
+| Feature | Types | Description |
+|---------|-------|-------------|
+| `raw_conversions` | `Raw<T>`, `RawSlice<T>` | POD types ↔ raw vectors via bytemuck |
 
 ## Publishing to CRAN
 

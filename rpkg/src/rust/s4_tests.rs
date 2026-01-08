@@ -11,7 +11,7 @@ pub struct S4Counter {
 
 /// @rdname S4Counter
 /// @description S4 counter with `s4_value()`, `s4_inc()`, and `s4_add()` methods.
-/// @aliases S4Counter s4_value s4_inc s4_add S4Counter_default_counter
+/// @aliases S4Counter s4_value s4_inc s4_add S4Counter_default_counter s4_value,S4Counter-method s4_inc,S4Counter-method s4_add,S4Counter-method
 /// @examples
 /// x <- S4Counter(1L)
 /// s4_value(x)
@@ -21,6 +21,7 @@ pub struct S4Counter {
 #[miniextendr(s4)]
 impl S4Counter {
     /// Creates a new counter with the given initial value.
+    /// @param initial Initial value for the counter.
     pub fn new(initial: i32) -> Self {
         S4Counter { value: initial }
     }

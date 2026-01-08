@@ -97,11 +97,37 @@ fn generate_typed_external(input: &DeriveInput) -> TokenStream {
     let name_lit = syn::LitStr::new(&name_str, name.span());
     let name_cstr = syn::LitByteStr::new(format!("{}\0", name_str).as_bytes(), name.span());
 
+    // TYPE_ID_CSTR format: "<crate_name>@<crate_version>::<module_path>::<type_name>\0"
+    //
+    // Uses env!("CARGO_PKG_NAME") and env!("CARGO_PKG_VERSION") for the crate identifier,
+    // ensuring two packages with the same type name from the same crate+version are compatible,
+    // while different crate versions are considered distinct types.
+    //
+    // The module_path!() may include "crate::" prefix when compiled within the crate,
+    // but combined with the explicit crate@version prefix, this is unambiguous.
     quote::quote! {
         impl #impl_generics ::miniextendr_api::externalptr::TypedExternal for #name #ty_generics #where_clause {
             const TYPE_NAME: &'static str = #name_lit;
             const TYPE_NAME_CSTR: &'static [u8] = #name_cstr;
+            const TYPE_ID_CSTR: &'static [u8] =
+                concat!(
+                    env!("CARGO_PKG_NAME"), "@", env!("CARGO_PKG_VERSION"),
+                    "::", module_path!(), "::", #name_lit, "\0"
+                ).as_bytes();
         }
+    }
+}
+
+/// Generate the `IntoExternalPtr` marker trait impl.
+///
+/// This marker trait enables the blanket `impl<T: IntoExternalPtr> IntoR for T`
+/// in miniextendr-api, allowing the type to be returned directly from functions.
+fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    quote::quote! {
+        impl #impl_generics ::miniextendr_api::externalptr::IntoExternalPtr for #name #ty_generics #where_clause {}
     }
 }
 
@@ -110,8 +136,10 @@ pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
     ensure_no_externalptr_attrs(&input)?;
 
     let typed_external = generate_typed_external(&input);
+    let into_external_ptr = generate_into_external_ptr(&input);
 
     Ok(quote::quote! {
         #typed_external
+        #into_external_ptr
     })
 }

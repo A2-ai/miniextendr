@@ -5,7 +5,7 @@ pub type R_xlen_t = isize;
 pub type Rbyte = ::std::os::raw::c_uchar;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rcomplex {
     pub r: f64,
     pub i: f64,
@@ -114,8 +114,8 @@ pub struct SEXPREC(::std::os::raw::c_void);
 ///
 /// ```ignore
 /// // Store by pointer identity (common pattern for R symbol lookups)
-/// let mut map: HashMap<usize, Value> = HashMap::new();
-/// map.insert(sexp.as_ptr() as usize, value);
+/// let mut map: HashMap<*mut SEXPREC, Value> = HashMap::new();
+/// map.insert(sexp.as_ptr(), value);
 /// ```
 #[repr(transparent)]
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -681,6 +681,19 @@ unsafe extern "C-unwind" {
     pub fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
 }
 
+// Console hooks (non-API; declared in Rinterface.h)
+#[cfg(feature = "nonapi")]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    pub static ptr_R_WriteConsoleEx: Option<
+        unsafe extern "C-unwind" fn(
+            *const ::std::os::raw::c_char,
+            ::std::os::raw::c_int,
+            ::std::os::raw::c_int,
+        ),
+    >;
+}
+
 /// Checked wrapper for `Rf_error` - panics if called from non-main thread.
 /// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
 ///
@@ -750,11 +763,25 @@ pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os
     unsafe { Rprintf_unchecked(fmt, arg1) }
 }
 
+/// Print to R's stderr (via R_ShowMessage or error console).
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `fmt` and `arg1` must be valid null-terminated C strings
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("REprintf called from non-main thread");
+    }
+    unsafe { REprintf_unchecked(fmt, arg1) }
+}
+
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
-    #[allow(dead_code)]
     pub static R_NilValue: SEXP;
 
     #[doc(alias = "NA_STRING")]
@@ -766,10 +793,15 @@ unsafe extern "C-unwind" {
     pub static R_DimNamesSymbol: SEXP;
     pub static R_ClassSymbol: SEXP;
     pub static R_RowNamesSymbol: SEXP;
+    pub static R_LevelsSymbol: SEXP;
+    pub static R_TspSymbol: SEXP;
 
     pub static R_GlobalEnv: SEXP;
     pub static R_BaseEnv: SEXP;
     pub static R_EmptyEnv: SEXP;
+
+    // Rinterface.h
+    pub fn R_FlushConsole();
 
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.
@@ -1256,10 +1288,15 @@ unsafe extern "C-unwind" {
     pub fn R_CHAR(x: SEXP) -> *const ::std::os::raw::c_char;
 
     // Attribute access
+    /// Read an attribute from an object by symbol (e.g. `R_NamesSymbol`).
+    ///
+    /// Returns `R_NilValue` if the attribute is not set.
     #[doc(alias = "getAttrib")]
     pub fn Rf_getAttrib(vec: SEXP, name: SEXP) -> SEXP;
+    /// Set the `names` attribute; returns the updated object.
     #[doc(alias = "namesgets")]
     pub fn Rf_namesgets(vec: SEXP, val: SEXP) -> SEXP;
+    /// Set the `dim` attribute; returns the updated object.
     #[doc(alias = "dimgets")]
     pub fn Rf_dimgets(vec: SEXP, val: SEXP) -> SEXP;
 
@@ -2082,6 +2119,757 @@ pub unsafe fn Rf_lang6(s: SEXP, t: SEXP, u: SEXP, v: SEXP, w: SEXP, x: SEXP) -> 
         Rf_unprotect(1);
         result
     }
+}
+
+// endregion
+
+// region: RNG functions (R_ext/Random.h)
+
+/// RNG type enum from R_ext/Random.h
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum RNGtype {
+    WICHMANN_HILL = 0,
+    MARSAGLIA_MULTICARRY = 1,
+    SUPER_DUPER = 2,
+    MERSENNE_TWISTER = 3,
+    KNUTH_TAOCP = 4,
+    USER_UNIF = 5,
+    KNUTH_TAOCP2 = 6,
+    LECUYER_CMRG = 7,
+}
+
+/// Normal distribution generator type enum from R_ext/Random.h
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum N01type {
+    BUGGY_KINDERMAN_RAMAGE = 0,
+    AHRENS_DIETER = 1,
+    BOX_MULLER = 2,
+    USER_NORM = 3,
+    INVERSION = 4,
+    KINDERMAN_RAMAGE = 5,
+}
+
+/// Discrete uniform sample method enum from R_ext/Random.h
+#[repr(u32)]
+#[non_exhaustive]
+#[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum Sampletype {
+    ROUNDING = 0,
+    REJECTION = 1,
+}
+
+#[r_ffi_checked]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    /// Save the current RNG state from R's global state.
+    ///
+    /// Must be called before using `unif_rand()`, `norm_rand()`, etc.
+    /// The state is restored with `PutRNGstate()`.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// unsafe {
+    ///     GetRNGstate();
+    ///     let x = unif_rand();
+    ///     let y = norm_rand();
+    ///     PutRNGstate();
+    /// }
+    /// ```
+    pub fn GetRNGstate();
+
+    /// Restore the RNG state to R's global state.
+    ///
+    /// Must be called after using `unif_rand()`, `norm_rand()`, etc.
+    /// to ensure R's `.Random.seed` is updated.
+    pub fn PutRNGstate();
+
+    /// Generate a uniform random number in (0, 1).
+    ///
+    /// # Important
+    ///
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    pub fn unif_rand() -> f64;
+
+    /// Generate a standard normal random number (mean 0, sd 1).
+    ///
+    /// # Important
+    ///
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    pub fn norm_rand() -> f64;
+
+    /// Generate an exponential random number with rate 1.
+    ///
+    /// # Important
+    ///
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    pub fn exp_rand() -> f64;
+
+    /// Generate a uniform random index in [0, dn).
+    ///
+    /// Used for sampling without bias for large n.
+    ///
+    /// # Important
+    ///
+    /// Must call `GetRNGstate()` before and `PutRNGstate()` after.
+    pub fn R_unif_index(dn: f64) -> f64;
+
+    /// Get the current discrete uniform sample method.
+    pub fn R_sample_kind() -> Sampletype;
+}
+
+// endregion
+
+// region: Memory allocation (R_ext/Memory.h)
+
+#[r_ffi_checked]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    /// Get the current R memory stack watermark.
+    ///
+    /// Use with `vmaxset()` to restore memory stack state.
+    /// Memory allocated with `R_alloc()` between `vmaxget()` and `vmaxset()`
+    /// will be freed when `vmaxset()` is called.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// unsafe {
+    ///     let watermark = vmaxget();
+    ///     let buf = R_alloc(100, 1);
+    ///     // ... use buf ...
+    ///     vmaxset(watermark); // frees buf
+    /// }
+    /// ```
+    pub fn vmaxget() -> *mut ::std::os::raw::c_void;
+
+    /// Set the R memory stack watermark, freeing memory allocated since the mark.
+    ///
+    /// # Safety
+    ///
+    /// `ovmax` must be a value returned by `vmaxget()` called earlier in the
+    /// same R evaluation context.
+    pub fn vmaxset(ovmax: *const ::std::os::raw::c_void);
+
+    /// Run the R garbage collector.
+    ///
+    /// Forces a full garbage collection cycle.
+    pub fn R_gc();
+
+    /// Check if the garbage collector is currently running.
+    ///
+    /// Returns non-zero if GC is in progress.
+    pub fn R_gc_running() -> ::std::os::raw::c_int;
+
+    /// Allocate memory on R's memory stack.
+    ///
+    /// This memory is automatically freed when the calling R function returns,
+    /// or can be freed earlier with `vmaxset()`.
+    ///
+    /// # Parameters
+    ///
+    /// - `nelem`: Number of elements to allocate
+    /// - `eltsize`: Size of each element in bytes
+    ///
+    /// # Returns
+    ///
+    /// Pointer to allocated memory (as `char*` for compatibility with S).
+    pub fn R_alloc(nelem: usize, eltsize: ::std::os::raw::c_int) -> *mut ::std::os::raw::c_char;
+
+    /// Allocate an array of long doubles on R's memory stack.
+    ///
+    /// # Parameters
+    ///
+    /// - `nelem`: Number of long double elements to allocate
+    pub fn R_allocLD(nelem: usize) -> *mut f64; // Note: f64 is close enough for most uses
+
+    /// S compatibility: allocate zeroed memory on R's memory stack.
+    ///
+    /// # Parameters
+    ///
+    /// - `nelem`: Number of elements
+    /// - `eltsize`: Size of each element
+    pub fn S_alloc(
+        nelem: ::std::os::raw::c_long,
+        eltsize: ::std::os::raw::c_int,
+    ) -> *mut ::std::os::raw::c_char;
+
+    /// S compatibility: reallocate memory on R's memory stack.
+    ///
+    /// # Safety
+    ///
+    /// `ptr` must have been allocated by `S_alloc`.
+    pub fn S_realloc(
+        ptr: *mut ::std::os::raw::c_char,
+        newsize: ::std::os::raw::c_long,
+        oldsize: ::std::os::raw::c_long,
+        eltsize: ::std::os::raw::c_int,
+    ) -> *mut ::std::os::raw::c_char;
+
+    /// GC-aware malloc.
+    ///
+    /// Triggers GC if allocation fails, then retries.
+    /// Memory must be freed with `free()`.
+    pub fn R_malloc_gc(size: usize) -> *mut ::std::os::raw::c_void;
+
+    /// GC-aware calloc.
+    ///
+    /// Triggers GC if allocation fails, then retries.
+    /// Memory must be freed with `free()`.
+    pub fn R_calloc_gc(nelem: usize, eltsize: usize) -> *mut ::std::os::raw::c_void;
+
+    /// GC-aware realloc.
+    ///
+    /// Triggers GC if allocation fails, then retries.
+    /// Memory must be freed with `free()`.
+    pub fn R_realloc_gc(
+        ptr: *mut ::std::os::raw::c_void,
+        size: usize,
+    ) -> *mut ::std::os::raw::c_void;
+}
+
+// endregion
+
+// region: Sorting and utility functions (R_ext/Utils.h)
+
+#[r_ffi_checked]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    /// Sort an integer vector in place (ascending order).
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to integer array
+    /// - `n`: Number of elements
+    pub fn R_isort(x: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+
+    /// Sort a double vector in place (ascending order).
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to double array
+    /// - `n`: Number of elements
+    pub fn R_rsort(x: *mut f64, n: ::std::os::raw::c_int);
+
+    /// Sort a complex vector in place.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to Rcomplex array
+    /// - `n`: Number of elements
+    pub fn R_csort(x: *mut Rcomplex, n: ::std::os::raw::c_int);
+
+    /// Sort doubles in descending order, carrying along an index array.
+    ///
+    /// # Parameters
+    ///
+    /// - `a`: Pointer to double array (sorted in place, descending)
+    /// - `ib`: Pointer to integer array (permuted alongside `a`)
+    /// - `n`: Number of elements
+    #[doc(alias = "Rf_revsort")]
+    pub fn revsort(a: *mut f64, ib: *mut ::std::os::raw::c_int, n: ::std::os::raw::c_int);
+
+    /// Sort doubles with index array.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to double array (sorted in place)
+    /// - `indx`: Pointer to integer array (permuted alongside `x`)
+    /// - `n`: Number of elements
+    pub fn rsort_with_index(
+        x: *mut f64,
+        indx: *mut ::std::os::raw::c_int,
+        n: ::std::os::raw::c_int,
+    );
+
+    /// Partial sort integers (moves k-th smallest to position k).
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to integer array
+    /// - `n`: Number of elements
+    /// - `k`: Target position (0-indexed)
+    #[doc(alias = "Rf_iPsort")]
+    pub fn iPsort(
+        x: *mut ::std::os::raw::c_int,
+        n: ::std::os::raw::c_int,
+        k: ::std::os::raw::c_int,
+    );
+
+    /// Partial sort doubles (moves k-th smallest to position k).
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to double array
+    /// - `n`: Number of elements
+    /// - `k`: Target position (0-indexed)
+    #[doc(alias = "Rf_rPsort")]
+    pub fn rPsort(x: *mut f64, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+
+    /// Partial sort complex numbers.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Pointer to Rcomplex array
+    /// - `n`: Number of elements
+    /// - `k`: Target position (0-indexed)
+    #[doc(alias = "Rf_cPsort")]
+    pub fn cPsort(x: *mut Rcomplex, n: ::std::os::raw::c_int, k: ::std::os::raw::c_int);
+
+    /// Quicksort doubles in place.
+    ///
+    /// # Parameters
+    ///
+    /// - `v`: Pointer to double array
+    /// - `i`: Start index (1-indexed for R compatibility)
+    /// - `j`: End index (1-indexed)
+    pub fn R_qsort(v: *mut f64, i: usize, j: usize);
+
+    /// Quicksort doubles with index array.
+    ///
+    /// # Parameters
+    ///
+    /// - `v`: Pointer to double array
+    /// - `indx`: Pointer to index array (permuted alongside v)
+    /// - `i`: Start index (1-indexed)
+    /// - `j`: End index (1-indexed)
+    #[allow(non_snake_case)]
+    pub fn R_qsort_I(
+        v: *mut f64,
+        indx: *mut ::std::os::raw::c_int,
+        i: ::std::os::raw::c_int,
+        j: ::std::os::raw::c_int,
+    );
+
+    /// Quicksort integers in place.
+    ///
+    /// # Parameters
+    ///
+    /// - `iv`: Pointer to integer array
+    /// - `i`: Start index (1-indexed)
+    /// - `j`: End index (1-indexed)
+    pub fn R_qsort_int(iv: *mut ::std::os::raw::c_int, i: usize, j: usize);
+
+    /// Quicksort integers with index array.
+    ///
+    /// # Parameters
+    ///
+    /// - `iv`: Pointer to integer array
+    /// - `indx`: Pointer to index array
+    /// - `i`: Start index (1-indexed)
+    /// - `j`: End index (1-indexed)
+    #[allow(non_snake_case)]
+    pub fn R_qsort_int_I(
+        iv: *mut ::std::os::raw::c_int,
+        indx: *mut ::std::os::raw::c_int,
+        i: ::std::os::raw::c_int,
+        j: ::std::os::raw::c_int,
+    );
+
+    /// Expand a filename, resolving `~` and environment variables.
+    ///
+    /// # Returns
+    ///
+    /// Pointer to expanded path (in R's internal buffer, do not free).
+    pub fn R_ExpandFileName(s: *const ::std::os::raw::c_char) -> *const ::std::os::raw::c_char;
+
+    /// Convert string to double, always using '.' as decimal point.
+    ///
+    /// Also accepts "NA" as input, returning NA_REAL.
+    pub fn R_atof(str: *const ::std::os::raw::c_char) -> f64;
+
+    /// Convert string to double with end pointer, using '.' as decimal point.
+    ///
+    /// Like `strtod()` but locale-independent.
+    pub fn R_strtod(c: *const ::std::os::raw::c_char, end: *mut *mut ::std::os::raw::c_char)
+    -> f64;
+
+    /// Generate a temporary filename.
+    ///
+    /// # Parameters
+    ///
+    /// - `prefix`: Filename prefix
+    /// - `tempdir`: Directory for temp file
+    ///
+    /// # Returns
+    ///
+    /// Newly allocated string (must be freed with `R_free_tmpnam`).
+    pub fn R_tmpnam(
+        prefix: *const ::std::os::raw::c_char,
+        tempdir: *const ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_char;
+
+    /// Generate a temporary filename with extension.
+    ///
+    /// # Parameters
+    ///
+    /// - `prefix`: Filename prefix
+    /// - `tempdir`: Directory for temp file
+    /// - `fileext`: File extension (e.g., ".txt")
+    ///
+    /// # Returns
+    ///
+    /// Newly allocated string (must be freed with `R_free_tmpnam`).
+    pub fn R_tmpnam2(
+        prefix: *const ::std::os::raw::c_char,
+        tempdir: *const ::std::os::raw::c_char,
+        fileext: *const ::std::os::raw::c_char,
+    ) -> *mut ::std::os::raw::c_char;
+
+    /// Free a temporary filename allocated by `R_tmpnam` or `R_tmpnam2`.
+    pub fn R_free_tmpnam(name: *mut ::std::os::raw::c_char);
+
+    /// Check for R stack overflow.
+    ///
+    /// Throws an R error if stack is nearly exhausted.
+    pub fn R_CheckStack();
+
+    /// Check for R stack overflow with extra space requirement.
+    ///
+    /// # Parameters
+    ///
+    /// - `extra`: Additional bytes needed
+    pub fn R_CheckStack2(extra: usize);
+
+    /// Find the interval containing a value (binary search).
+    ///
+    /// Used for interpolation and binning.
+    ///
+    /// # Parameters
+    ///
+    /// - `xt`: Sorted breakpoints array
+    /// - `n`: Number of breakpoints
+    /// - `x`: Value to find
+    /// - `rightmost_closed`: If TRUE, rightmost interval is closed
+    /// - `all_inside`: If TRUE, out-of-bounds values map to endpoints
+    /// - `ilo`: Initial guess for interval (1-indexed)
+    /// - `mflag`: Output flag (see R documentation)
+    ///
+    /// # Returns
+    ///
+    /// Interval index (1-indexed).
+    pub fn findInterval(
+        xt: *const f64,
+        n: ::std::os::raw::c_int,
+        x: f64,
+        rightmost_closed: Rboolean,
+        all_inside: Rboolean,
+        ilo: ::std::os::raw::c_int,
+        mflag: *mut ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+
+    /// Extended interval finding with left-open option.
+    #[allow(clippy::too_many_arguments)]
+    pub fn findInterval2(
+        xt: *const f64,
+        n: ::std::os::raw::c_int,
+        x: f64,
+        rightmost_closed: Rboolean,
+        all_inside: Rboolean,
+        left_open: Rboolean,
+        ilo: ::std::os::raw::c_int,
+        mflag: *mut ::std::os::raw::c_int,
+    ) -> ::std::os::raw::c_int;
+
+    /// Find column maxima in a matrix.
+    ///
+    /// # Parameters
+    ///
+    /// - `matrix`: Column-major matrix data
+    /// - `nr`: Number of rows
+    /// - `nc`: Number of columns
+    /// - `maxes`: Output array for column maxima indices (1-indexed)
+    /// - `ties_meth`: How to handle ties (1=first, 2=random, 3=last)
+    pub fn R_max_col(
+        matrix: *const f64,
+        nr: *const ::std::os::raw::c_int,
+        nc: *const ::std::os::raw::c_int,
+        maxes: *mut ::std::os::raw::c_int,
+        ties_meth: *const ::std::os::raw::c_int,
+    );
+
+    /// Check if a string represents FALSE in R.
+    ///
+    /// Recognizes "FALSE", "false", "False", "F", "f", etc.
+    #[doc(alias = "Rf_StringFalse")]
+    pub fn StringFalse(s: *const ::std::os::raw::c_char) -> Rboolean;
+
+    /// Check if a string represents TRUE in R.
+    ///
+    /// Recognizes "TRUE", "true", "True", "T", "t", etc.
+    #[doc(alias = "Rf_StringTrue")]
+    pub fn StringTrue(s: *const ::std::os::raw::c_char) -> Rboolean;
+
+    /// Check if a string is blank (empty or only whitespace).
+    #[doc(alias = "Rf_isBlankString")]
+    pub fn isBlankString(s: *const ::std::os::raw::c_char) -> Rboolean;
+}
+
+// endregion
+
+// region: Additional Rinternals.h functions
+
+#[r_ffi_checked]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    // String/character functions
+
+    /// Create a CHARSXP with specified encoding.
+    ///
+    /// # Parameters
+    ///
+    /// - `s`: C string
+    /// - `encoding`: Character encoding (CE_UTF8, CE_LATIN1, etc.)
+    #[doc(alias = "mkCharCE")]
+    pub fn Rf_mkCharCE(s: *const ::std::os::raw::c_char, encoding: cetype_t) -> SEXP;
+
+    /// Get the number of characters in a string/character.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: A string SEXP
+    /// - `ntype`: Type of count (0=bytes, 1=chars, 2=width)
+    /// - `allowNA`: Whether to allow NA values
+    /// - `keepNA`: Whether to keep NA in result
+    /// - `msg_name`: Name for error messages
+    ///
+    /// # Returns
+    ///
+    /// Character count or -1 on error.
+    pub fn R_nchar(
+        x: SEXP,
+        ntype: ::std::os::raw::c_int,
+        allowNA: Rboolean,
+        keepNA: Rboolean,
+        msg_name: *const ::std::os::raw::c_char,
+    ) -> ::std::os::raw::c_int;
+
+    /// Convert SEXPTYPE to C string name.
+    ///
+    /// Returns a string like "INTSXP", "REALSXP", etc.
+    #[doc(alias = "type2char")]
+    pub fn Rf_type2char(sexptype: SEXPTYPE) -> *const ::std::os::raw::c_char;
+
+    /// Print an R value to the console.
+    ///
+    /// Uses R's standard print method for the object.
+    #[doc(alias = "PrintValue")]
+    pub fn Rf_PrintValue(x: SEXP);
+
+    // Environment functions
+
+    /// Create a new environment.
+    ///
+    /// # Parameters
+    ///
+    /// - `enclos`: Enclosing environment
+    /// - `hash`: Whether to use a hash table
+    /// - `size`: Initial hash table size (if hash is TRUE)
+    pub fn R_NewEnv(enclos: SEXP, hash: Rboolean, size: ::std::os::raw::c_int) -> SEXP;
+
+    /// Check if a variable exists in an environment frame.
+    ///
+    /// Does not search enclosing environments.
+    pub fn R_existsVarInFrame(rho: SEXP, symbol: SEXP) -> Rboolean;
+
+    /// Remove a variable from an environment frame.
+    ///
+    /// # Returns
+    ///
+    /// The removed value, or R_NilValue if not found.
+    pub fn R_removeVarFromFrame(symbol: SEXP, env: SEXP) -> SEXP;
+
+    /// Get the top-level environment.
+    ///
+    /// Walks up enclosing environments until reaching a top-level env
+    /// (global, namespace, or base).
+    #[doc(alias = "topenv")]
+    pub fn Rf_topenv(target: SEXP, envir: SEXP) -> SEXP;
+
+    // Matching functions
+
+    /// Match elements of first vector in second vector.
+    ///
+    /// Like R's `match()` function.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Vector of values to match
+    /// - `table`: Vector to match against
+    /// - `nomatch`: Value to return for non-matches
+    ///
+    /// # Returns
+    ///
+    /// Integer vector of match positions (1-indexed, nomatch for non-matches).
+    #[doc(alias = "match")]
+    pub fn Rf_match(x: SEXP, table: SEXP, nomatch: ::std::os::raw::c_int) -> SEXP;
+
+    // Duplication and copying
+
+    /// Copy most attributes from source to target.
+    ///
+    /// Copies all attributes except names, dim, and dimnames.
+    #[doc(alias = "copyMostAttrib")]
+    pub fn Rf_copyMostAttrib(source: SEXP, target: SEXP);
+
+    /// Find first duplicated element.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Vector to search
+    /// - `fromLast`: If TRUE, search from end
+    ///
+    /// # Returns
+    ///
+    /// 0 if no duplicates, otherwise 1-indexed position of first duplicate.
+    #[doc(alias = "any_duplicated")]
+    pub fn Rf_any_duplicated(x: SEXP, fromLast: Rboolean) -> R_xlen_t;
+
+    // S4 functions
+
+    /// Convert to an S4 object.
+    ///
+    /// # Parameters
+    ///
+    /// - `object`: Object to convert
+    /// - `flag`: Conversion flag
+    #[doc(alias = "asS4")]
+    pub fn Rf_asS4(object: SEXP, flag: Rboolean, complete: ::std::os::raw::c_int) -> SEXP;
+
+    /// Get the S3 class of an S4 object.
+    #[doc(alias = "S3Class")]
+    pub fn Rf_S3Class(object: SEXP) -> SEXP;
+
+    // Option access
+
+    /// Get an R option value.
+    ///
+    /// Equivalent to `getOption("name")` in R.
+    ///
+    /// # Parameters
+    ///
+    /// - `tag`: Symbol for option name
+    #[doc(alias = "GetOption1")]
+    pub fn Rf_GetOption1(tag: SEXP) -> SEXP;
+
+    /// Get the `digits` option.
+    ///
+    /// Returns the value of `getOption("digits")`.
+    #[doc(alias = "GetOptionDigits")]
+    pub fn Rf_GetOptionDigits() -> ::std::os::raw::c_int;
+
+    /// Get the `width` option.
+    ///
+    /// Returns the value of `getOption("width")`.
+    #[doc(alias = "GetOptionWidth")]
+    pub fn Rf_GetOptionWidth() -> ::std::os::raw::c_int;
+
+    // Factor functions
+
+    /// Check if a factor is ordered.
+    #[doc(alias = "isOrdered")]
+    pub fn Rf_isOrdered(s: SEXP) -> Rboolean;
+
+    /// Check if a factor is unordered.
+    #[doc(alias = "isUnordered")]
+    pub fn Rf_isUnordered(s: SEXP) -> Rboolean;
+
+    /// Check if a vector is unsorted.
+    ///
+    /// # Parameters
+    ///
+    /// - `x`: Vector to check
+    /// - `strictly`: If TRUE, check for strictly increasing
+    #[doc(alias = "isUnsorted")]
+    pub fn Rf_isUnsorted(x: SEXP, strictly: Rboolean) -> ::std::os::raw::c_int;
+
+    // Expression and evaluation
+
+    /// Substitute in an expression.
+    ///
+    /// Like R's `substitute()` function.
+    #[doc(alias = "substitute")]
+    pub fn Rf_substitute(lang: SEXP, rho: SEXP) -> SEXP;
+
+    /// Set vector length.
+    ///
+    /// For short vectors (length < 2^31).
+    #[doc(alias = "lengthgets")]
+    pub fn Rf_lengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+
+    /// Set vector length (long vector version).
+    #[doc(alias = "xlengthgets")]
+    pub fn Rf_xlengthgets(x: SEXP, newlen: R_xlen_t) -> SEXP;
+
+    // Protection
+
+    /// Protect with saved index for later reprotection.
+    ///
+    /// # Parameters
+    ///
+    /// - `s`: SEXP to protect
+    /// - `index`: Output parameter for protection index
+    #[doc(alias = "PROTECT_WITH_INDEX")]
+    pub fn R_ProtectWithIndex(s: SEXP, index: *mut ::std::os::raw::c_int);
+
+    /// Reprotect a SEXP using a saved index.
+    ///
+    /// Allows updating a protected slot without unprotecting.
+    ///
+    /// # Safety
+    ///
+    /// `index` must be from a previous `R_ProtectWithIndex` call.
+    #[doc(alias = "REPROTECT")]
+    pub fn R_Reprotect(s: SEXP, index: ::std::os::raw::c_int);
+
+    // Weak references
+
+    /// Create a weak reference.
+    ///
+    /// # Parameters
+    ///
+    /// - `key`: The key object (weak reference target)
+    /// - `val`: The value to associate
+    /// - `fin`: Finalizer function (or R_NilValue)
+    /// - `onexit`: Whether to run finalizer on R exit
+    pub fn R_MakeWeakRef(key: SEXP, val: SEXP, fin: SEXP, onexit: Rboolean) -> SEXP;
+
+    /// Create a weak reference with C finalizer.
+    pub fn R_MakeWeakRefC(key: SEXP, val: SEXP, fin: R_CFinalizer_t, onexit: Rboolean) -> SEXP;
+
+    /// Get the key from a weak reference.
+    pub fn R_WeakRefKey(w: SEXP) -> SEXP;
+
+    /// Get the value from a weak reference.
+    pub fn R_WeakRefValue(w: SEXP) -> SEXP;
+
+    /// Run pending finalizers.
+    pub fn R_RunPendingFinalizers();
+
+    // Conversion list/vector
+
+    /// Convert a pairlist to a generic vector (list).
+    #[doc(alias = "PairToVectorList")]
+    pub fn Rf_PairToVectorList(x: SEXP) -> SEXP;
+
+    /// Convert a generic vector (list) to a pairlist.
+    #[doc(alias = "VectorToPairList")]
+    pub fn Rf_VectorToPairList(x: SEXP) -> SEXP;
+
+    // Install with CHARSXP
+
+    /// Install a symbol from a CHARSXP.
+    ///
+    /// Like `Rf_install()` but takes a CHARSXP instead of C string.
+    #[doc(alias = "installChar")]
+    pub fn Rf_installChar(x: SEXP) -> SEXP;
 }
 
 // endregion

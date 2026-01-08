@@ -149,6 +149,13 @@ fn miniextendr_attr_accepts_multiple_flags() {
 }
 
 #[test]
+fn miniextendr_attr_accepts_unwrap_in_r() {
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unwrap_in_r))
+        .expect("should parse unwrap_in_r");
+    assert!(attrs.unwrap_in_r);
+}
+
+#[test]
 fn parsed_fn_adds_inline_never_for_rust_abi() {
     let mut parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn f() {} }).unwrap();
     parsed.add_inline_never_if_needed();
@@ -198,6 +205,96 @@ fn parsed_fn_no_inline_for_extern_c() {
         !has_inline,
         "should not add #[inline] to extern C functions"
     );
+}
+
+fn normalize_tokens(ts: proc_macro2::TokenStream) -> String {
+    ts.to_string()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect()
+}
+
+#[test]
+fn derive_into_list_skips_ignored_named_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            a: i32,
+            #[into_list(ignore)]
+            b: i32,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_into_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("\"a\""));
+    assert!(!s.contains("\"b\""));
+}
+
+#[test]
+fn derive_try_from_list_defaults_ignored_named_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            a: i32,
+            #[into_list(ignore)]
+            b: i32,
+        }
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("get_named(\"a\")"));
+    assert!(!s.contains("get_named(\"b\")"));
+    assert!(s.contains("b:::core::default::Default::default()"));
+}
+
+#[test]
+fn derive_into_list_skips_ignored_tuple_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo(i32, #[into_list(ignore)] i32, i32);
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_into_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("_field0"));
+    assert!(s.contains("_field2"));
+    assert!(!s.contains("_field1"));
+}
+
+#[test]
+fn derive_try_from_list_defaults_ignored_tuple_fields() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo(i32, #[into_list(ignore)] i32, i32);
+    })
+    .unwrap();
+
+    let expanded = crate::list_derive::derive_try_from_list(input).unwrap();
+    let s = normalize_tokens(expanded);
+
+    assert!(s.contains("expected:2"));
+    assert!(s.contains("get_index(0"));
+    assert!(s.contains("get_index(1"));
+    assert!(!s.contains("get_index(2"));
+    assert!(s.contains("Self(_field0,::core::default::Default::default(),_field2)"));
+}
+
+#[test]
+fn list_attrs_error_on_unknown_options() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        struct Foo {
+            #[into_list(typo)]
+            a: i32,
+        }
+    })
+    .unwrap();
+
+    let err = crate::list_derive::derive_into_list(input).unwrap_err();
+    assert!(err.to_string().contains("unknown #[into_list(...)] option"));
 }
 
 // =============================================================================
@@ -263,4 +360,64 @@ fn test_derive_altrep_integer_with_options() {
     // Should pass options to macro
     assert!(output_str.contains("dataptr"));
     assert!(output_str.contains("serialize"));
+}
+
+#[test]
+fn test_derive_altrep_logical_basic() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestLogical {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_logical(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should generate AltrepLen impl
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("fn len"));
+
+    // Should generate AltLogicalData impl with default NA
+    assert!(output_str.contains("AltLogicalData"));
+    assert!(output_str.contains("Logical :: Na"));
+
+    // Should call impl_altlogical_from_data!
+    assert!(output_str.contains("impl_altlogical_from_data"));
+}
+
+#[test]
+fn test_derive_altrep_logical_with_elt_field() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(elt = "value")]
+        pub struct LogicalValue {
+            value: miniextendr_api::altrep_data::Logical,
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_logical(input).unwrap();
+    let output_str = normalize_tokens(output);
+
+    // Should use field conversion via Into<Logical>
+    assert!(output_str.contains("self.value.into()"));
+}
+
+#[test]
+fn test_derive_altrep_logical_with_options() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(dataptr)]
+        pub struct LogicalVecData {
+            value: bool,
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_logical(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should pass options to macro
+    assert!(output_str.contains("dataptr"));
 }

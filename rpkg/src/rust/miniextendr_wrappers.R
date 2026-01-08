@@ -1,713 +1,3359 @@
-#' @export
-add <- function(left, right) {
-    .Call(C_add, .call = match.call(), left, right)
-}
-
-#' @export
-add2 <- function(left, right, unused_dummy = NULL) {
-    .Call(C_add2, .call = match.call(), left, right, unused_dummy)
-}
-
-#' @export
-add3 <- function(left, right, unused_dummy = NULL) {
-    .Call(C_add3, .call = match.call(), left, right, unused_dummy)
-}
-
-#' @export
-add4 <- function(left, right) {
-    .Call(C_add4, .call = match.call(), left, right)
-}
-
-#' @export
-nested_panic <- function() {
-    invisible(.Call(C_nested_panic, .call = match.call()))
-}
-
-#' @export
-add_panic <- function(unused_left, unused_right) {
-    .Call(C_add_panic, .call = match.call(), unused_left, unused_right)
-}
-
-#' @export
-add_r_error <- function(unused_left, unused_right) {
-    .Call(C_add_r_error, .call = match.call(), unused_left, unused_right)
-}
-
-#' @export
-add_panic_heap <- function(unused_left, unused_right) {
-    .Call(C_add_panic_heap, .call = match.call(), unused_left, unused_right)
-}
-
-#' @export
-add_r_error_heap <- function(unused_left, unused_right) {
-    .Call(C_add_r_error_heap, .call = match.call(), unused_left, unused_right)
-}
-
-unsafe_C_unwind_protect_normal <- function() {
-    .Call(C_unwind_protect_normal)
-}
-
-unsafe_C_unwind_protect_r_error <- function() {
-    .Call(C_unwind_protect_r_error)
-}
-
-unsafe_C_unwind_protect_lowlevel_test <- function() {
-    .Call(C_unwind_protect_lowlevel_test)
-}
-
-#' @export
-add_left_mut <- function(left, right) {
-    .Call(C_add_left_mut, .call = match.call(), left, right)
-}
-
-#' @export
-add_right_mut <- function(left, right) {
-    .Call(C_add_right_mut, .call = match.call(), left, right)
-}
-
-#' @export
-add_left_right_mut <- function(left, right) {
-    .Call(C_add_left_right_mut, .call = match.call(), left, right)
-}
-
-take_and_return_nothing <- function() {
-    invisible(.Call(C_take_and_return_nothing, .call = match.call()))
-}
-
-unsafe_C_just_panic <- function() {
-    .Call(C_just_panic)
-}
-
-unsafe_C_panic_and_catch <- function() {
-    .Call(C_panic_and_catch)
-}
-
-#' @export
-drop_message_on_success <- function() {
-    .Call(C_drop_message_on_success, .call = match.call())
-}
-
-#' @export
-drop_on_panic <- function() {
-    invisible(.Call(C_drop_on_panic, .call = match.call()))
-}
-
-#' @export
-drop_on_panic_with_move <- function() {
-    invisible(.Call(C_drop_on_panic_with_move, .call = match.call()))
-}
-
-#' @export
-greetings_with_named_dots <- function(dots = ...) {
-    invisible(.Call(C_greetings_with_named_dots, .call = match.call(), list(dots)))
-}
-
-#' @export
-greetings_with_named_and_unused_dots <- function(unused_dots = ...) {
-    invisible(.Call(C_greetings_with_named_and_unused_dots, .call = match.call(), list(unused_dots)))
-}
-
-#' @export
-greetings_with_nameless_dots <- function(...) {
-    invisible(.Call(C_greetings_with_nameless_dots, .call = match.call(), list(...)))
-}
-
-#' @export
-greetings_last_as_named_dots <- function(unused_exclamations, dots = ...) {
-    invisible(.Call(C_greetings_last_as_named_dots, .call = match.call(), unused_exclamations, list(dots)))
-}
-
-#' @export
-greetings_last_as_named_and_unused_dots <- function(unused_exclamations, unused_dots = ...) {
-    invisible(.Call(C_greetings_last_as_named_and_unused_dots, .call = match.call(), unused_exclamations, list(unused_dots)))
-}
-
-#' @export
-greetings_last_as_nameless_dots <- function(unused_exclamations, ...) {
-    invisible(.Call(C_greetings_last_as_nameless_dots, .call = match.call(), unused_exclamations, list(...)))
-}
-
-#' @export
-invisibly_return_no_arrow <- function() {
-    invisible(.Call(C_invisibly_return_no_arrow, .call = match.call()))
-}
-
-#' @export
-invisibly_return_arrow <- function() {
-    invisible(.Call(C_invisibly_return_arrow, .call = match.call()))
-}
-
-#' @export
-invisibly_option_return_none <- function() {
-    invisible(.Call(C_invisibly_option_return_none, .call = match.call()))
-}
-
-#' @export
-invisibly_option_return_some <- function() {
-    invisible(.Call(C_invisibly_option_return_some, .call = match.call()))
-}
-
-#' @export
-invisibly_result_return_ok <- function() {
-    invisible(.Call(C_invisibly_result_return_ok, .call = match.call()))
-}
-
-#' @export
-force_invisible_i32 <- function() {
-    invisible(.Call(C_force_invisible_i32, .call = match.call()))
-}
-
-#' @export
-force_visible_unit <- function() {
-    .Call(C_force_visible_unit, .call = match.call())
-}
-
-#' @export
-with_interrupt_check <- function(x) {
-    .Call(C_with_interrupt_check, .call = match.call(), x)
-}
-
-unsafe_C_r_error <- function() {
-    .Call(C_r_error)
-}
-
-unsafe_C_r_error_in_catch <- function() {
-    .Call(C_r_error_in_catch)
-}
-
-unsafe_C_r_error_in_thread <- function() {
-    .Call(C_r_error_in_thread)
-}
-
-unsafe_C_r_print_in_thread <- function() {
-    .Call(C_r_print_in_thread)
-}
-
-unsafe_C_check_interupt_after <- function() {
-    .Call(C_check_interupt_after)
-}
-
-unsafe_C_check_interupt_unwind <- function() {
-    .Call(C_check_interupt_unwind)
-}
-
-#' @export
-unsafe_C_worker_drop_on_success <- function() {
-    .Call(C_worker_drop_on_success)
-}
-
-#' @export
-unsafe_C_worker_drop_on_panic <- function() {
-    .Call(C_worker_drop_on_panic)
-}
-
-#' @export
-unsafe_C_test_worker_simple <- function() {
-    .Call(C_test_worker_simple)
-}
-
-#' @export
-unsafe_C_test_worker_with_r_thread <- function() {
-    .Call(C_test_worker_with_r_thread)
-}
-
-#' @export
-unsafe_C_test_worker_multiple_r_calls <- function() {
-    .Call(C_test_worker_multiple_r_calls)
-}
-
-#' @export
-unsafe_C_test_worker_panic_simple <- function() {
-    .Call(C_test_worker_panic_simple)
-}
-
-#' @export
-unsafe_C_test_worker_panic_with_drops <- function() {
-    .Call(C_test_worker_panic_with_drops)
-}
-
-#' @export
-unsafe_C_test_worker_panic_in_r_thread <- function() {
-    .Call(C_test_worker_panic_in_r_thread)
-}
-
-#' @export
-unsafe_C_test_worker_panic_in_r_thread_with_drops <- function() {
-    .Call(C_test_worker_panic_in_r_thread_with_drops)
-}
-
-#' @export
-unsafe_C_test_worker_r_error_in_r_thread <- function() {
-    .Call(C_test_worker_r_error_in_r_thread)
-}
-
-#' @export
-unsafe_C_test_worker_r_error_with_drops <- function() {
-    .Call(C_test_worker_r_error_with_drops)
-}
-
-#' @export
-unsafe_C_test_worker_r_calls_then_error <- function() {
-    .Call(C_test_worker_r_calls_then_error)
-}
-
-#' @export
-unsafe_C_test_worker_r_calls_then_panic <- function() {
-    .Call(C_test_worker_r_calls_then_panic)
-}
-
-#' @export
-test_worker_return_i32 <- function() {
-    .Call(C_test_worker_return_i32, .call = match.call())
-}
-
-#' @export
-test_worker_return_string <- function() {
-    .Call(C_test_worker_return_string, .call = match.call())
-}
-
-#' @export
-test_worker_return_f64 <- function() {
-    .Call(C_test_worker_return_f64, .call = match.call())
-}
-
-#' @export
-unsafe_C_test_extptr_from_worker <- function() {
-    .Call(C_test_extptr_from_worker)
-}
-
-#' @export
-unsafe_C_test_multiple_extptrs_from_worker <- function() {
-    .Call(C_test_multiple_extptrs_from_worker)
-}
-
-#' @export
-test_main_thread_r_api <- function() {
-    .Call(C_test_main_thread_r_api, .call = match.call())
-}
-
-#' @export
-test_main_thread_r_error <- function() {
-    .Call(C_test_main_thread_r_error, .call = match.call())
-}
-
-#' @export
-test_main_thread_r_error_with_drops <- function() {
-    .Call(C_test_main_thread_r_error_with_drops, .call = match.call())
-}
-
-#' @export
-unsafe_C_test_wrong_thread_r_api <- function() {
-    .Call(C_test_wrong_thread_r_api)
-}
-
-#' @export
-unsafe_C_test_nested_helper_from_worker <- function() {
-    .Call(C_test_nested_helper_from_worker)
-}
-
-#' @export
-unsafe_C_test_nested_multiple_helpers <- function() {
-    .Call(C_test_nested_multiple_helpers)
-}
-
-#' @export
-unsafe_C_test_nested_with_r_thread <- function() {
-    .Call(C_test_nested_with_r_thread)
-}
-
-#' @export
-unsafe_C_test_call_worker_fn_from_main <- function() {
-    .Call(C_test_call_worker_fn_from_main)
-}
-
-#' @export
-unsafe_C_test_nested_worker_calls <- function() {
-    .Call(C_test_nested_worker_calls)
-}
-
-#' @export
-unsafe_C_test_nested_with_error <- function() {
-    .Call(C_test_nested_with_error)
-}
-
-#' @export
-unsafe_C_test_nested_with_panic <- function() {
-    .Call(C_test_nested_with_panic)
-}
-
-#' @export
-unsafe_C_test_deep_with_r_thread_sequence <- function() {
-    .Call(C_test_deep_with_r_thread_sequence)
-}
-
-#' @export
-test_i32_identity <- function(x) {
-    .Call(C_test_i32_identity, .call = match.call(), x)
-}
-
-#' @export
-test_i32_add_one <- function(x) {
-    .Call(C_test_i32_add_one, .call = match.call(), x)
-}
-
-#' @export
-test_i32_sum <- function(a, b, c) {
-    .Call(C_test_i32_sum, .call = match.call(), a, b, c)
-}
-
-#' @export
-test_f64_identity <- function(x) {
-    .Call(C_test_f64_identity, .call = match.call(), x)
-}
-
-#' @export
-test_f64_add_one <- function(x) {
-    .Call(C_test_f64_add_one, .call = match.call(), x)
-}
-
-#' @export
-test_f64_multiply <- function(a, b) {
-    .Call(C_test_f64_multiply, .call = match.call(), a, b)
-}
+# ---- AUTO-GENERATED FILE - DO NOT EDIT ----
+# This file is generated by the miniextendr proc-macro during package build.
+# Any manual changes will be overwritten.
+#
+# To regenerate: run `just devtools-document` or rebuild the package.
+# nolint start
+# nocov start
 
+#' @title ALTREP Unsafe Entry Points
+#' @description ALTREP Unsafe Entry Points
+#' @name rpkg_altrep_unsafe
+#' @keywords internal
+#' @examples \dontrun{
+#' x <- unsafe_rpkg_altrep_from_doubles(c(1, 2, 3))
+#' unsafe_rpkg_lazy_int_seq_is_materialized(x)
+#' }
+#' @aliases unsafe_rpkg_altrep_compact_int unsafe_rpkg_altrep_from_doubles
+#' @source Generated by miniextendr from Rust fn `rpkg_altrep_compact_int`
 #' @export
-test_u8_identity <- function(x) {
-    .Call(C_test_u8_identity, .call = match.call(), x)
+unsafe_rpkg_altrep_compact_int <- function(n, start, step) {
+    .Call(rpkg_altrep_compact_int, n, start, step)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_altrep_from_doubles`
 #' @export
-test_u8_add_one <- function(x) {
-    .Call(C_test_u8_add_one, .call = match.call(), x)
+unsafe_rpkg_altrep_from_doubles <- function(x) {
+    .Call(rpkg_altrep_from_doubles, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_altrep_from_strings`
 #' @export
-test_logical_identity <- function(x) {
-    .Call(C_test_logical_identity, .call = match.call(), x)
+unsafe_rpkg_altrep_from_strings <- function(x) {
+    .Call(rpkg_altrep_from_strings, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_altrep_from_logicals`
 #' @export
-test_logical_not <- function(x) {
-    .Call(C_test_logical_not, .call = match.call(), x)
+unsafe_rpkg_altrep_from_logicals <- function(x) {
+    .Call(rpkg_altrep_from_logicals, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_altrep_from_raw`
 #' @export
-test_logical_and <- function(a, b) {
-    .Call(C_test_logical_and, .call = match.call(), a, b)
+unsafe_rpkg_altrep_from_raw <- function(x) {
+    .Call(rpkg_altrep_from_raw, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_altrep_from_list`
 #' @export
-test_i32_to_f64 <- function(x) {
-    .Call(C_test_i32_to_f64, .call = match.call(), x)
+unsafe_rpkg_altrep_from_list <- function(x) {
+    .Call(rpkg_altrep_from_list, x)
 }
 
-#' @export
-test_f64_to_i32 <- function(x) {
-    .Call(C_test_f64_to_i32, .call = match.call(), x)
-}
-
-#' @export
-test_i32_slice_len <- function(x) {
-    .Call(C_test_i32_slice_len, .call = match.call(), x)
-}
-
-#' @export
-test_i32_slice_sum <- function(x) {
-    .Call(C_test_i32_slice_sum, .call = match.call(), x)
-}
-
-#' @export
-test_i32_slice_first <- function(x) {
-    .Call(C_test_i32_slice_first, .call = match.call(), x)
-}
-
-#' @export
-test_i32_slice_last <- function(x) {
-    .Call(C_test_i32_slice_last, .call = match.call(), x)
-}
-
-#' @export
-test_f64_slice_len <- function(x) {
-    .Call(C_test_f64_slice_len, .call = match.call(), x)
-}
-
-#' @export
-test_f64_slice_sum <- function(x) {
-    .Call(C_test_f64_slice_sum, .call = match.call(), x)
-}
-
-#' @export
-test_f64_slice_mean <- function(x) {
-    .Call(C_test_f64_slice_mean, .call = match.call(), x)
-}
-
-#' @export
-test_u8_slice_len <- function(x) {
-    .Call(C_test_u8_slice_len, .call = match.call(), x)
-}
-
-#' @export
-test_u8_slice_sum <- function(x) {
-    .Call(C_test_u8_slice_sum, .call = match.call(), x)
-}
-
-#' @export
-test_logical_slice_len <- function(x) {
-    .Call(C_test_logical_slice_len, .call = match.call(), x)
-}
-
-#' @export
-test_logical_slice_any_true <- function(x) {
-    .Call(C_test_logical_slice_any_true, .call = match.call(), x)
-}
-
-#' @export
-test_logical_slice_all_true <- function(x) {
-    .Call(C_test_logical_slice_all_true, .call = match.call(), x)
-}
-
-underscore_it_all <- function(private__unused0, private__unused1) {
-    invisible(.Call(C_underscore_it_all, .call = match.call(), private__unused0, private__unused1))
-}
-
-#' @export
-test_coerce_identity <- function(x) {
-    .Call(C_test_coerce_identity, .call = match.call(), x)
-}
-
-#' @export
-test_coerce_widen <- function(x) {
-    .Call(C_test_coerce_widen, .call = match.call(), x)
-}
-
-#' @export
-test_coerce_bool_to_int <- function(x) {
-    .Call(C_test_coerce_bool_to_int, .call = match.call(), x)
-}
-
-#' @export
-test_coerce_via_helper <- function(x) {
-    .Call(C_test_coerce_via_helper, .call = match.call(), x)
-}
-
-#' @export
-test_try_coerce_f64_to_i32 <- function(x) {
-    .Call(C_test_try_coerce_f64_to_i32, .call = match.call(), x)
+#' @title ALTREP Helpers
+#' @name rpkg_altrep_helpers
+#' @keywords internal
+#' @description ALTREP convenience wrappers (internal)
+#' @examples
+#' \dontrun{
+#' x <- altrep_compact_int(5L, 1L, 2L)
+#' y <- altrep_from_doubles(c(1, 2, 3))
+#' z <- altrep_from_strings(c("a", "b"))
+#' altrep_lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
+#' }
+#' @source Generated by miniextendr from Rust fn `altrep_compact_int`
+altrep_compact_int <- function(n, start, step) {
+    .Call(C_altrep_compact_int, .call = match.call(), n, start, step)
 }
 
-#' @export
-test_rnative_newtype <- function(id) {
-    .Call(C_test_rnative_newtype, .call = match.call(), id)
-}
-
-#' @export
-test_rnative_named_field <- function(temp) {
-    .Call(C_test_rnative_named_field, .call = match.call(), temp)
-}
-
-#' @export
-test_coerce_attr_u16 <- function(x) {
-    .Call(C_test_coerce_attr_u16, .call = match.call(), x)
-}
-
-#' @export
-test_coerce_attr_i16 <- function(x) {
-    .Call(C_test_coerce_attr_i16, .call = match.call(), x)
-}
-
-#' @export
-test_coerce_attr_vec_u16 <- function(x) {
-    .Call(C_test_coerce_attr_vec_u16, .call = match.call(), x)
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_from_doubles`
+altrep_from_doubles <- function(x) {
+    .Call(C_altrep_from_doubles, .call = match.call(), x)
 }
 
-#' @export
-test_coerce_attr_f32 <- function(x) {
-    .Call(C_test_coerce_attr_f32, .call = match.call(), x)
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_from_strings`
+altrep_from_strings <- function(x) {
+    .Call(C_altrep_from_strings, .call = match.call(), x)
 }
 
-#' @export
-test_coerce_attr_with_invisible <- function(x) {
-    invisible(.Call(C_test_coerce_attr_with_invisible, .call = match.call(), x))
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_from_logicals`
+altrep_from_logicals <- function(x) {
+    .Call(C_altrep_from_logicals, .call = match.call(), x)
 }
 
-#' @export
-test_per_arg_coerce_first <- function(x, y) {
-    .Call(C_test_per_arg_coerce_first, .call = match.call(), x, y)
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_from_raw`
+altrep_from_raw <- function(x) {
+    .Call(C_altrep_from_raw, .call = match.call(), x)
 }
 
-#' @export
-test_per_arg_coerce_second <- function(x, y) {
-    .Call(C_test_per_arg_coerce_second, .call = match.call(), x, y)
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_from_list`
+altrep_from_list <- function(x) {
+    .Call(C_altrep_from_list, .call = match.call(), x)
 }
 
-#' @export
-test_per_arg_coerce_both <- function(x, y) {
-    .Call(C_test_per_arg_coerce_both, .call = match.call(), x, y)
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_constant_int`
+altrep_constant_int <- function() {
+    .Call(C_altrep_constant_int, .call = match.call())
 }
 
-#' @export
-test_per_arg_coerce_vec <- function(x, y) {
-    .Call(C_test_per_arg_coerce_vec, .call = match.call(), x, y)
+#' @rdname rpkg_altrep_helpers
+#' @source Generated by miniextendr from Rust fn `altrep_lazy_int_seq_is_materialized`
+altrep_lazy_int_seq_is_materialized <- function(x) {
+    .Call(C_altrep_lazy_int_seq_is_materialized, .call = match.call(), x)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_constant_int`
 #' @export
 unsafe_rpkg_constant_int <- function() {
     .Call(rpkg_constant_int)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_constant_real`
 #' @export
 unsafe_rpkg_constant_real <- function() {
     .Call(rpkg_constant_real)
 }
 
+#' @source Generated by miniextendr from Rust fn `arith_seq`
 arith_seq <- function(from, to, length_out) {
     .Call(C_arith_seq, .call = match.call(), from, to, length_out)
 }
 
+#' @source Generated by miniextendr from Rust fn `lazy_int_seq`
 #' @export
 lazy_int_seq <- function(from, to, by) {
     .Call(C_lazy_int_seq, .call = match.call(), from, to, by)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_lazy_int_seq_is_materialized`
 #' @export
 unsafe_rpkg_lazy_int_seq_is_materialized <- function(x) {
     .Call(rpkg_lazy_int_seq_is_materialized, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `constant_logical`
 constant_logical <- function(value, n) {
     .Call(C_constant_logical, .call = match.call(), value, n)
 }
 
+#' @source Generated by miniextendr from Rust fn `lazy_string`
 lazy_string <- function(prefix, n) {
     .Call(C_lazy_string, .call = match.call(), prefix, n)
 }
 
+#' @source Generated by miniextendr from Rust fn `repeating_raw`
 repeating_raw <- function(pattern, n) {
     .Call(C_repeating_raw, .call = match.call(), pattern, n)
 }
 
+#' @title ALTREP Example Constructors
+#' @description ALTREP Example Constructors
+#' @name rpkg_altrep_examples
+#' @return An ALTREP vector.
+#' @examples
+#' unit_circle(8L)
+#' lazy <- lazy_int_seq(1L, 5L, 1L)
+#' lazy[1:3]
+#' boxed_ints(3L)
+#' static_strings()
+#' @aliases unit_circle lazy_int_seq boxed_ints static_ints leaked_ints static_strings
+#' @param n Number of roots of unity (complex numbers on the unit circle).
+#' @source Generated by miniextendr from Rust fn `unit_circle`
 #' @export
 unit_circle <- function(n) {
     .Call(C_unit_circle, .call = match.call(), n)
 }
 
-extptr_counter_new <- function(initial) {
-    .Call(C_extptr_counter_new, .call = match.call(), initial)
-}
-
-#' @export
-unsafe_C_extptr_counter_get <- function(ptr) {
-    .Call(C_extptr_counter_get, ptr)
-}
-
-#' @export
-unsafe_C_extptr_counter_increment <- function(ptr) {
-    .Call(C_extptr_counter_increment, ptr)
-}
-
-extptr_point_new <- function(x, y) {
-    .Call(C_extptr_point_new, .call = match.call(), x, y)
-}
-
-#' @export
-unsafe_C_extptr_point_get_x <- function(ptr) {
-    .Call(C_extptr_point_get_x, ptr)
-}
-
-#' @export
-unsafe_C_extptr_point_get_y <- function(ptr) {
-    .Call(C_extptr_point_get_y, ptr)
-}
-
-#' @export
-unsafe_C_extptr_type_mismatch_test <- function(ptr) {
-    .Call(C_extptr_type_mismatch_test, ptr)
-}
-
-#' @export
-unsafe_C_extptr_null_test <- function(ptr) {
-    .Call(C_extptr_null_test, ptr)
-}
-
-#' @export
-unsafe_C_extptr_is_counter <- function(ptr) {
-    .Call(C_extptr_is_counter, ptr)
-}
-
-#' @export
-unsafe_C_extptr_is_point <- function(ptr) {
-    .Call(C_extptr_is_point, ptr)
-}
-
+#' @source Generated by miniextendr from Rust fn `rpkg_simple_vec_int`
 #' @export
 unsafe_rpkg_simple_vec_int <- function(x) {
     .Call(rpkg_simple_vec_int, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `rpkg_inferred_vec_real`
 #' @export
 unsafe_rpkg_inferred_vec_real <- function(x) {
     .Call(rpkg_inferred_vec_real, x)
 }
 
+#' @source Generated by miniextendr from Rust fn `boxed_ints`
 #' @export
 boxed_ints <- function(n) {
     .Call(C_boxed_ints, .call = match.call(), n)
 }
 
+#' @source Generated by miniextendr from Rust fn `static_ints`
 #' @export
 static_ints <- function() {
     .Call(C_static_ints, .call = match.call())
 }
 
+#' @source Generated by miniextendr from Rust fn `leaked_ints`
 #' @export
 leaked_ints <- function(n) {
     .Call(C_leaked_ints, .call = match.call(), n)
 }
 
+#' @source Generated by miniextendr from Rust fn `static_strings`
 #' @export
 static_strings <- function() {
     .Call(C_static_strings, .call = match.call())
 }
 
+#' @title Returns a vector of enabled feature names for this build
+#' @description Returns a vector of enabled feature names for this build.
+#' @name rpkg_enabled_features
+#' @return A character vector of enabled feature names.
+#' @examples
+#' rpkg_enabled_features()
+#' @source Generated by miniextendr from Rust fn `rpkg_enabled_features`
+#' @export
+rpkg_enabled_features <- function() {
+    .Call(C_rpkg_enabled_features, .call = match.call())
+}
+
+#' @title Arithmetic Tests
+#' @name rpkg_arithmetic
+#' @description Arithmetic and return-value tests
+#' @param left Integer input.
+#' @param right Integer input.
+#' @return A scalar integer result, or invisibly returns nothing for take_and_return_nothing().
+#' @examples
+#' add(1L, 2L)
+#' add2(1L, 2L, NULL)
+#' add3(1L, 2L, NULL)
+#' add4(10L, 2L)
+#' add_left_mut(1L, 2L)
+#' take_and_return_nothing()
+#' @aliases add add2 add3 add4 add_left_mut add_right_mut add_left_right_mut
+#' @source Generated by miniextendr from Rust fn `add`
+#' @export
+add <- function(left, right) {
+    .Call(C_add, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add2`
+#' @export
+add2 <- function(left, right, dummy = NULL) {
+    .Call(C_add2, .call = match.call(), left, right, dummy)
+}
+
+#' @source Generated by miniextendr from Rust fn `add3`
+#' @export
+add3 <- function(left, right, dummy = NULL) {
+    .Call(C_add3, .call = match.call(), left, right, dummy)
+}
+
+#' @source Generated by miniextendr from Rust fn `add4`
+#' @export
+add4 <- function(left, right) {
+    .Call(C_add4, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `nested_panic`
+#' @export
+nested_panic <- function() {
+    invisible(.Call(C_nested_panic, .call = match.call()))
+}
+
+#' @title Panic and Error Handling Tests
+#' @name rpkg_panic_tests
+#' @keywords internal
+#' @description Panic and error handling tests (unsafe)
+#' @examples
+#' try(add_panic(1L, 2L))
+#' try(add_r_error(1L, 2L))
+#' \dontrun{
+#' unsafe_C_r_error_in_thread()
+#' }
+#' @aliases nested_panic add_panic add_panic_heap add_r_error add_r_error_heap
+#' @source Generated by miniextendr from Rust fn `add_panic`
+#' @export
+add_panic <- function(left, right) {
+    .Call(C_add_panic, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add_r_error`
+#' @export
+add_r_error <- function(left, right) {
+    .Call(C_add_r_error, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add_panic_heap`
+#' @export
+add_panic_heap <- function(left, right) {
+    .Call(C_add_panic_heap, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add_r_error_heap`
+#' @export
+add_r_error_heap <- function(left, right) {
+    .Call(C_add_r_error_heap, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add_left_mut`
+#' @export
+add_left_mut <- function(left, right) {
+    .Call(C_add_left_mut, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add_right_mut`
+#' @export
+add_right_mut <- function(left, right) {
+    .Call(C_add_right_mut, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `add_left_right_mut`
+#' @export
+add_left_right_mut <- function(left, right) {
+    .Call(C_add_left_right_mut, .call = match.call(), left, right)
+}
+
+#' @source Generated by miniextendr from Rust fn `take_and_return_nothing`
+#' @export
+take_and_return_nothing <- function() {
+    invisible(.Call(C_take_and_return_nothing, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `C_just_panic`
+#' @export
+unsafe_C_just_panic <- function() {
+    .Call(C_just_panic)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_panic_and_catch`
+#' @export
+unsafe_C_panic_and_catch <- function() {
+    .Call(C_panic_and_catch)
+}
+
+#' @source Generated by miniextendr from Rust fn `drop_message_on_success`
+#' @export
+drop_message_on_success <- function() {
+    .Call(C_drop_message_on_success, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `drop_on_panic`
+#' @export
+drop_on_panic <- function() {
+    invisible(.Call(C_drop_on_panic, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `drop_on_panic_with_move`
+#' @export
+drop_on_panic_with_move <- function() {
+    invisible(.Call(C_drop_on_panic_with_move, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `C_r_error`
+#' @export
+unsafe_C_r_error <- function() {
+    .Call(C_r_error)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_r_error_in_catch`
+#' @export
+unsafe_C_r_error_in_catch <- function() {
+    .Call(C_r_error_in_catch)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_r_error_in_thread`
+#' @export
+unsafe_C_r_error_in_thread <- function() {
+    .Call(C_r_error_in_thread)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_r_print_in_thread`
+#' @export
+unsafe_C_r_print_in_thread <- function() {
+    .Call(C_r_print_in_thread)
+}
+
+#' @title Unwind Protect Tests
+#' @description Unwind Protect Tests
+#' @name rpkg_unwind_protect
+#' @keywords internal
+#' @examples
+#' \dontrun{
+#' unsafe_C_unwind_protect_normal()
+#' unsafe_C_unwind_protect_r_error()
+#' unsafe_C_unwind_protect_lowlevel_test()
+#' }
+#' @aliases unsafe_C_unwind_protect_normal unsafe_C_unwind_protect_r_error
+#' @source Generated by miniextendr from Rust fn `C_unwind_protect_normal`
+#' @export
+unsafe_C_unwind_protect_normal <- function() {
+    .Call(C_unwind_protect_normal)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_unwind_protect_r_error`
+#' @export
+unsafe_C_unwind_protect_r_error <- function() {
+    .Call(C_unwind_protect_r_error)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_unwind_protect_lowlevel_test`
+#' @export
+unsafe_C_unwind_protect_lowlevel_test <- function() {
+    .Call(C_unwind_protect_lowlevel_test)
+}
+
+#' @title Dots Handling Tests
+#' @name rpkg_dots
+#' @description Dots (`...`) handling tests
+#' @examples
+#' \dontrun{
+#' greetings_with_named_dots(a = 1, b = 2)
+#' greetings_with_nameless_dots(1, 2, 3)
+#' greetings_last_as_named_dots(1L, x = 1, y = 2)
+#' }
+#' @aliases greetings_with_named_dots greetings_with_named_and_unused_dots
+#' @param dots Additional arguments (captured as dots).
+#' @source Generated by miniextendr from Rust fn `greetings_with_named_dots`
+#' @export
+greetings_with_named_dots <- function(...) {
+    invisible(.Call(C_greetings_with_named_dots, .call = match.call(), list(...)))
+}
+
+#' @source Generated by miniextendr from Rust fn `greetings_with_named_and_unused_dots`
+#' @export
+greetings_with_named_and_unused_dots <- function(...) {
+    invisible(.Call(C_greetings_with_named_and_unused_dots, .call = match.call(), list(...)))
+}
+
+#' @source Generated by miniextendr from Rust fn `greetings_with_nameless_dots`
+#' @export
+greetings_with_nameless_dots <- function(...) {
+    invisible(.Call(C_greetings_with_nameless_dots, .call = match.call(), list(...)))
+}
+
+#' @source Generated by miniextendr from Rust fn `greetings_last_as_named_dots`
+#' @export
+greetings_last_as_named_dots <- function(exclamations, ...) {
+    invisible(.Call(C_greetings_last_as_named_dots, .call = match.call(), exclamations, list(...)))
+}
+
+#' @source Generated by miniextendr from Rust fn `greetings_last_as_named_and_unused_dots`
+#' @export
+greetings_last_as_named_and_unused_dots <- function(exclamations, ...) {
+    invisible(.Call(C_greetings_last_as_named_and_unused_dots, .call = match.call(), exclamations, list(...)))
+}
+
+#' @source Generated by miniextendr from Rust fn `greetings_last_as_nameless_dots`
+#' @export
+greetings_last_as_nameless_dots <- function(exclamations, ...) {
+    invisible(.Call(C_greetings_last_as_nameless_dots, .call = match.call(), exclamations, list(...)))
+}
+
+#' @title Validate dots with typed_list! macro
+#' @param dots Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
+#' @source Generated by miniextendr from Rust fn `validate_numeric_args`
+#' @export
+validate_numeric_args <- function(...) {
+    .Call(C_validate_numeric_args, .call = match.call(), list(...))
+}
+
+#' @title Validate dots in strict mode (no extra fields allowed)
+#' @param dots Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
+#' @source Generated by miniextendr from Rust fn `validate_strict_args`
+#' @export
+validate_strict_args <- function(...) {
+    .Call(C_validate_strict_args, .call = match.call(), list(...))
+}
+
+#' @title Validate with class checking
+#' @param dots Named arguments: `data` (data.frame).
+#' @source Generated by miniextendr from Rust fn `validate_class_args`
+#' @export
+validate_class_args <- function(...) {
+    .Call(C_validate_class_args, .call = match.call(), list(...))
+}
+
+#' @title Test the `#[miniextendr(dots = typed_list!(...))]` attribute syntax
+#' @param dots Named arguments: `x` (numeric), `y` (numeric).
+#' @source Generated by miniextendr from Rust fn `validate_with_attribute`
+#' @export
+validate_with_attribute <- function(...) {
+    .Call(C_validate_with_attribute, .call = match.call(), list(...))
+}
+
+#' @title Test attribute with optional field
+#' @param dots Named arguments: `name` (character), `greeting` (optional character).
+#' @source Generated by miniextendr from Rust fn `validate_attr_optional`
+#' @export
+validate_attr_optional <- function(...) {
+    .Call(C_validate_attr_optional, .call = match.call(), list(...))
+}
+
+#' @source Generated by miniextendr from Rust fn `C_check_interupt_after`
+#' @export
+unsafe_C_check_interupt_after <- function() {
+    .Call(C_check_interupt_after)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_check_interupt_unwind`
+#' @export
+unsafe_C_check_interupt_unwind <- function() {
+    .Call(C_check_interupt_unwind)
+}
+
+#' @title Conversion Tests
+#' @name rpkg_conversion_tests
+#' @keywords internal
+#' @description Scalar and slice conversion tests
+#' @examples
+#' test_i32_add_one(1L)
+#' test_f64_multiply(2, 3)
+#' test_u8_identity(as.raw(255))
+#' test_i32_slice_sum(1:5)
+#' test_f64_slice_mean(c(1, 2, 3))
+#' @aliases test_i32_identity test_i32_add_one test_i32_sum test_f64_identity test_f64_add_one
+#' @source Generated by miniextendr from Rust fn `test_i32_identity`
+#' @export
+test_i32_identity <- function(x) {
+    .Call(C_test_i32_identity, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_add_one`
+#' @export
+test_i32_add_one <- function(x) {
+    .Call(C_test_i32_add_one, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_sum`
+#' @export
+test_i32_sum <- function(a, b, c) {
+    .Call(C_test_i32_sum, .call = match.call(), a, b, c)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_identity`
+#' @export
+test_f64_identity <- function(x) {
+    .Call(C_test_f64_identity, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_add_one`
+#' @export
+test_f64_add_one <- function(x) {
+    .Call(C_test_f64_add_one, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_multiply`
+#' @export
+test_f64_multiply <- function(a, b) {
+    .Call(C_test_f64_multiply, .call = match.call(), a, b)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_u8_identity`
+#' @export
+test_u8_identity <- function(x) {
+    .Call(C_test_u8_identity, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_u8_add_one`
+#' @export
+test_u8_add_one <- function(x) {
+    .Call(C_test_u8_add_one, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_logical_identity`
+#' @export
+test_logical_identity <- function(x) {
+    .Call(C_test_logical_identity, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_logical_not`
+#' @export
+test_logical_not <- function(x) {
+    .Call(C_test_logical_not, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_logical_and`
+#' @export
+test_logical_and <- function(a, b) {
+    .Call(C_test_logical_and, .call = match.call(), a, b)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_to_f64`
+#' @export
+test_i32_to_f64 <- function(x) {
+    .Call(C_test_i32_to_f64, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_to_i32`
+#' @export
+test_f64_to_i32 <- function(x) {
+    .Call(C_test_f64_to_i32, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_slice_len`
+#' @export
+test_i32_slice_len <- function(x) {
+    .Call(C_test_i32_slice_len, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_slice_sum`
+#' @export
+test_i32_slice_sum <- function(x) {
+    .Call(C_test_i32_slice_sum, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_slice_first`
+#' @export
+test_i32_slice_first <- function(x) {
+    .Call(C_test_i32_slice_first, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_i32_slice_last`
+#' @export
+test_i32_slice_last <- function(x) {
+    .Call(C_test_i32_slice_last, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_slice_len`
+#' @export
+test_f64_slice_len <- function(x) {
+    .Call(C_test_f64_slice_len, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_slice_sum`
+#' @export
+test_f64_slice_sum <- function(x) {
+    .Call(C_test_f64_slice_sum, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_f64_slice_mean`
+#' @export
+test_f64_slice_mean <- function(x) {
+    .Call(C_test_f64_slice_mean, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_u8_slice_len`
+#' @export
+test_u8_slice_len <- function(x) {
+    .Call(C_test_u8_slice_len, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_u8_slice_sum`
+#' @export
+test_u8_slice_sum <- function(x) {
+    .Call(C_test_u8_slice_sum, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_logical_slice_len`
+#' @export
+test_logical_slice_len <- function(x) {
+    .Call(C_test_logical_slice_len, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_logical_slice_any_true`
+#' @export
+test_logical_slice_any_true <- function(x) {
+    .Call(C_test_logical_slice_any_true, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_logical_slice_all_true`
+#' @export
+test_logical_slice_all_true <- function(x) {
+    .Call(C_test_logical_slice_all_true, .call = match.call(), x)
+}
+
+#' @title Default Parameter Tests
+#' @name rpkg_default_tests
+#' @description Functions demonstrating default parameter support.
+#' @examples
+#' greet()
+#' greet("Claude")
+#' add_with_defaults(1L)
+#' add_with_defaults(1L, 2L, 3L)
+#' with_flag()
+#' @aliases greet greet_hidden add_with_defaults with_flag
+#' @param name Name to greet (default: "World").
+#' @return A greeting string or computed value.
+#' Greets a person by name.
+#' @source Generated by miniextendr from Rust fn `greet`
+#' @export
+greet <- function(name = "World") {
+    .Call(C_greet, .call = match.call(), name)
+}
+
+#' @rdname rpkg_default_tests
+#' @export
+#' @source Generated by miniextendr from Rust fn `greet_hidden`
+greet_hidden <- function(name = "World") {
+    .Call(C_greet_hidden, .call = match.call(), name)
+}
+
+#' @rdname rpkg_default_tests
+#' @export
+#' @source Generated by miniextendr from Rust fn `add_with_defaults`
+add_with_defaults <- function(x, y = 0L, z = 1L) {
+    .Call(C_add_with_defaults, .call = match.call(), x, y, z)
+}
+
+#' @rdname rpkg_default_tests
+#' @export
+#' @source Generated by miniextendr from Rust fn `with_flag`
+with_flag <- function(flag = FALSE) {
+    .Call(C_with_flag, .call = match.call(), flag)
+}
+
+#' @title External Pointer Tests
+#' @description External Pointer Tests
+#' @name rpkg_externalptr
+#' @examples
+#' ptr <- extptr_counter_new(1L)
+#' unsafe_C_extptr_counter_get(ptr)
+#' unsafe_C_extptr_counter_increment(ptr)
+#' p <- extptr_point_new(0.1, 0.2)
+#' unsafe_C_extptr_point_get_x(p)
+#' test_extptr_on_main_thread()
+#' @aliases extptr_counter_new extptr_point_new unsafe_C_extptr_counter_get
+#' @param initial Initial value for the counter.
+#' @source Generated by miniextendr from Rust fn `extptr_counter_new`
+#' @export
+extptr_counter_new <- function(initial) {
+    .Call(C_extptr_counter_new, .call = match.call(), initial)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_counter_get`
+#' @export
+unsafe_C_extptr_counter_get <- function(ptr) {
+    .Call(C_extptr_counter_get, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_counter_increment`
+#' @export
+unsafe_C_extptr_counter_increment <- function(ptr) {
+    .Call(C_extptr_counter_increment, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `extptr_point_new`
+#' @export
+extptr_point_new <- function(x, y) {
+    .Call(C_extptr_point_new, .call = match.call(), x, y)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_point_get_x`
+#' @export
+unsafe_C_extptr_point_get_x <- function(ptr) {
+    .Call(C_extptr_point_get_x, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_point_get_y`
+#' @export
+unsafe_C_extptr_point_get_y <- function(ptr) {
+    .Call(C_extptr_point_get_y, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_type_mismatch_test`
+#' @export
+unsafe_C_extptr_type_mismatch_test <- function(ptr) {
+    .Call(C_extptr_type_mismatch_test, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_null_test`
+#' @export
+unsafe_C_extptr_null_test <- function(ptr) {
+    .Call(C_extptr_null_test, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_is_counter`
+#' @export
+unsafe_C_extptr_is_counter <- function(ptr) {
+    .Call(C_extptr_is_counter, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_extptr_is_point`
+#' @export
+unsafe_C_extptr_is_point <- function(ptr) {
+    .Call(C_extptr_is_point, ptr)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_extptr_on_main_thread`
+#' @export
+test_extptr_on_main_thread <- function() {
+    .Call(C_test_extptr_on_main_thread, .call = match.call())
+}
+
+#' @title Test SEXP Equality Semantics
+#' @name unsafe_C_test_sexp_equality
+#' @description Demonstrates SEXP pointer equality vs semantic equality.
+#' @details
+#' This function shows:
+#' - Pointer equality (`==` in Rust) is fast but often wrong
+#' - Semantic equality (`R_compute_identical`) compares contents (correct R semantics)
+#' @param x First R object
+#' @param y Second R object
+#' @return List with `pointer_eq` and `semantic_eq` logical values
+#' @examples
+#' \dontrun{
+#' unsafe_C_test_sexp_equality(c(1, 2), c(1, 2))  # pointer_eq=FALSE, semantic_eq=TRUE
+#' x <- c(1, 2)
+#' unsafe_C_test_sexp_equality(x, x)               # pointer_eq=TRUE, semantic_eq=TRUE
+#' }
+#' @export
+#' @source Generated by miniextendr from Rust fn `C_test_sexp_equality`
+unsafe_C_test_sexp_equality <- function(x, y) {
+    .Call(C_test_sexp_equality, x, y)
+}
+
+#' @title R6 Standalone Function
+#' @description R6 Standalone Function
+#' @name rpkg_r6_standalone
+#' @keywords internal
+#' @examples
+#' r6_standalone_add(1L, 2L)
+#' @aliases r6_standalone_add
+#' @source Generated by miniextendr from Rust fn `r6_standalone_add`
+#' @export
+r6_standalone_add <- function(a, b) {
+    .Call(C_r6_standalone_add, .call = match.call(), a, b)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_worker_drop_on_success`
+#' @export
+unsafe_C_worker_drop_on_success <- function() {
+    .Call(C_worker_drop_on_success)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_worker_drop_on_panic`
+#' @export
+unsafe_C_worker_drop_on_panic <- function() {
+    .Call(C_worker_drop_on_panic)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_simple`
+#' @export
+unsafe_C_test_worker_simple <- function() {
+    .Call(C_test_worker_simple)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_with_r_thread`
+#' @export
+unsafe_C_test_worker_with_r_thread <- function() {
+    .Call(C_test_worker_with_r_thread)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_multiple_r_calls`
+#' @export
+unsafe_C_test_worker_multiple_r_calls <- function() {
+    .Call(C_test_worker_multiple_r_calls)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_panic_simple`
+#' @export
+unsafe_C_test_worker_panic_simple <- function() {
+    .Call(C_test_worker_panic_simple)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_panic_with_drops`
+#' @export
+unsafe_C_test_worker_panic_with_drops <- function() {
+    .Call(C_test_worker_panic_with_drops)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_panic_in_r_thread`
+#' @export
+unsafe_C_test_worker_panic_in_r_thread <- function() {
+    .Call(C_test_worker_panic_in_r_thread)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_panic_in_r_thread_with_drops`
+#' @export
+unsafe_C_test_worker_panic_in_r_thread_with_drops <- function() {
+    .Call(C_test_worker_panic_in_r_thread_with_drops)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_r_error_in_r_thread`
+#' @export
+unsafe_C_test_worker_r_error_in_r_thread <- function() {
+    .Call(C_test_worker_r_error_in_r_thread)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_r_error_with_drops`
+#' @export
+unsafe_C_test_worker_r_error_with_drops <- function() {
+    .Call(C_test_worker_r_error_with_drops)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_r_calls_then_error`
+#' @export
+unsafe_C_test_worker_r_calls_then_error <- function() {
+    .Call(C_test_worker_r_calls_then_error)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_worker_r_calls_then_panic`
+#' @export
+unsafe_C_test_worker_r_calls_then_panic <- function() {
+    .Call(C_test_worker_r_calls_then_panic)
+}
+
+#' @title Worker Thread Tests
+#' @description Worker Thread Tests
+#' @name rpkg_worker_tests
+#' @keywords internal
+#' @examples
+#' test_worker_return_i32()
+#' test_worker_return_string()
+#' test_worker_return_f64()
+#' try(test_main_thread_r_error())
+#' \dontrun{
+#' unsafe_C_test_worker_simple()
+#' }
+#' @aliases test_worker_return_i32 test_worker_return_string test_worker_return_f64
+#' @source Generated by miniextendr from Rust fn `test_worker_return_i32`
+#' @export
+test_worker_return_i32 <- function() {
+    .Call(C_test_worker_return_i32, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `test_worker_return_string`
+#' @export
+test_worker_return_string <- function() {
+    .Call(C_test_worker_return_string, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `test_worker_return_f64`
+#' @export
+test_worker_return_f64 <- function() {
+    .Call(C_test_worker_return_f64, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_extptr_from_worker`
+#' @export
+unsafe_C_test_extptr_from_worker <- function() {
+    .Call(C_test_extptr_from_worker)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_multiple_extptrs_from_worker`
+#' @export
+unsafe_C_test_multiple_extptrs_from_worker <- function() {
+    .Call(C_test_multiple_extptrs_from_worker)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_main_thread_r_api`
+#' @export
+test_main_thread_r_api <- function() {
+    .Call(C_test_main_thread_r_api, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `test_main_thread_r_error`
+#' @export
+test_main_thread_r_error <- function() {
+    .Call(C_test_main_thread_r_error, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `test_main_thread_r_error_with_drops`
+#' @export
+test_main_thread_r_error_with_drops <- function() {
+    .Call(C_test_main_thread_r_error_with_drops, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_wrong_thread_r_api`
+#' @export
+unsafe_C_test_wrong_thread_r_api <- function() {
+    .Call(C_test_wrong_thread_r_api)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_nested_helper_from_worker`
+#' @export
+unsafe_C_test_nested_helper_from_worker <- function() {
+    .Call(C_test_nested_helper_from_worker)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_nested_multiple_helpers`
+#' @export
+unsafe_C_test_nested_multiple_helpers <- function() {
+    .Call(C_test_nested_multiple_helpers)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_nested_with_r_thread`
+#' @export
+unsafe_C_test_nested_with_r_thread <- function() {
+    .Call(C_test_nested_with_r_thread)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_call_worker_fn_from_main`
+#' @export
+unsafe_C_test_call_worker_fn_from_main <- function() {
+    .Call(C_test_call_worker_fn_from_main)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_nested_worker_calls`
+#' @export
+unsafe_C_test_nested_worker_calls <- function() {
+    .Call(C_test_nested_worker_calls)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_nested_with_error`
+#' @export
+unsafe_C_test_nested_with_error <- function() {
+    .Call(C_test_nested_with_error)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_nested_with_panic`
+#' @export
+unsafe_C_test_nested_with_panic <- function() {
+    .Call(C_test_nested_with_panic)
+}
+
+#' @source Generated by miniextendr from Rust fn `C_test_deep_with_r_thread_sequence`
+#' @export
+unsafe_C_test_deep_with_r_thread_sequence <- function() {
+    .Call(C_test_deep_with_r_thread_sequence)
+}
+
+#' @title Coercion Tests
+#' @name rpkg_coercion_tests
+#' @keywords internal
+#' @description Coercion and RNativeType tests
+#' @examples
+#' test_coerce_identity(1L)
+#' test_coerce_widen(1L)
+#' test_try_coerce_f64_to_i32(1.2)
+#' test_coerce_attr_u16(10L)
+#' test_per_arg_coerce_first(10L, 5L)
+#' @aliases test_coerce_identity test_coerce_widen test_coerce_bool_to_int test_coerce_via_helper
+#' @source Generated by miniextendr from Rust fn `test_coerce_identity`
+#' @export
+test_coerce_identity <- function(x) {
+    .Call(C_test_coerce_identity, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_widen`
+#' @export
+test_coerce_widen <- function(x) {
+    .Call(C_test_coerce_widen, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_bool_to_int`
+#' @export
+test_coerce_bool_to_int <- function(x) {
+    .Call(C_test_coerce_bool_to_int, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_via_helper`
+#' @export
+test_coerce_via_helper <- function(x) {
+    .Call(C_test_coerce_via_helper, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_try_coerce_f64_to_i32`
+#' @export
+test_try_coerce_f64_to_i32 <- function(x) {
+    .Call(C_test_try_coerce_f64_to_i32, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_rnative_newtype`
+#' @export
+test_rnative_newtype <- function(id) {
+    .Call(C_test_rnative_newtype, .call = match.call(), id)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_rnative_named_field`
+#' @export
+test_rnative_named_field <- function(temp) {
+    .Call(C_test_rnative_named_field, .call = match.call(), temp)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_attr_u16`
+#' @export
+test_coerce_attr_u16 <- function(x) {
+    .Call(C_test_coerce_attr_u16, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_attr_i16`
+#' @export
+test_coerce_attr_i16 <- function(x) {
+    .Call(C_test_coerce_attr_i16, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_attr_vec_u16`
+#' @export
+test_coerce_attr_vec_u16 <- function(x) {
+    .Call(C_test_coerce_attr_vec_u16, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_attr_f32`
+#' @export
+test_coerce_attr_f32 <- function(x) {
+    .Call(C_test_coerce_attr_f32, .call = match.call(), x)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_coerce_attr_with_invisible`
+#' @export
+test_coerce_attr_with_invisible <- function(x) {
+    invisible(.Call(C_test_coerce_attr_with_invisible, .call = match.call(), x))
+}
+
+#' @source Generated by miniextendr from Rust fn `test_per_arg_coerce_first`
+#' @export
+test_per_arg_coerce_first <- function(x, y) {
+    .Call(C_test_per_arg_coerce_first, .call = match.call(), x, y)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_per_arg_coerce_second`
+#' @export
+test_per_arg_coerce_second <- function(x, y) {
+    .Call(C_test_per_arg_coerce_second, .call = match.call(), x, y)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_per_arg_coerce_both`
+#' @export
+test_per_arg_coerce_both <- function(x, y) {
+    .Call(C_test_per_arg_coerce_both, .call = match.call(), x, y)
+}
+
+#' @source Generated by miniextendr from Rust fn `test_per_arg_coerce_vec`
+#' @export
+test_per_arg_coerce_vec <- function(x, y) {
+    .Call(C_test_per_arg_coerce_vec, .call = match.call(), x, y)
+}
+
+#' @title Visibility and Interrupt Tests
+#' @name rpkg_visibility_interrupts
+#' @keywords internal
+#' @description Visibility and interrupt checks
+#' @examples
+#' invisibly_return_no_arrow()
+#' force_invisible_i32()
+#' with_interrupt_check(2L)
+#' try(invisibly_option_return_none())
+#' \dontrun{
+#' unsafe_C_check_interupt_after()
+#' }
+#' @aliases invisibly_return_no_arrow invisibly_return_arrow invisibly_option_return_none
+#' @source Generated by miniextendr from Rust fn `invisibly_return_no_arrow`
+#' @export
+invisibly_return_no_arrow <- function() {
+    invisible(.Call(C_invisibly_return_no_arrow, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `invisibly_return_arrow`
+#' @export
+invisibly_return_arrow <- function() {
+    invisible(.Call(C_invisibly_return_arrow, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `invisibly_option_return_none`
+#' @export
+invisibly_option_return_none <- function() {
+    invisible(.Call(C_invisibly_option_return_none, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `invisibly_option_return_some`
+#' @export
+invisibly_option_return_some <- function() {
+    invisible(.Call(C_invisibly_option_return_some, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `invisibly_result_return_ok`
+#' @export
+invisibly_result_return_ok <- function() {
+    invisible(.Call(C_invisibly_result_return_ok, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `force_invisible_i32`
+#' @export
+force_invisible_i32 <- function() {
+    invisible(.Call(C_force_invisible_i32, .call = match.call()))
+}
+
+#' @source Generated by miniextendr from Rust fn `force_visible_unit`
+#' @export
+force_visible_unit <- function() {
+    .Call(C_force_visible_unit, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `with_interrupt_check`
+#' @export
+with_interrupt_check <- function(x) {
+    .Call(C_with_interrupt_check, .call = match.call(), x)
+}
+
+#' @title Thread Builder Tests
+#' @description Thread Builder Tests
+#' @name rpkg_thread_builder
+#' @keywords internal
+#' @examples
+#' \dontrun{
+#' unsafe_C_test_r_thread_builder()
+#' unsafe_C_test_r_thread_builder_spawn_join()
+#' unsafe_C_test_spawn_with_r_lean_stack()
+#' unsafe_C_test_stack_check_guard_lean()
+#' }
+#' @aliases unsafe_C_test_r_thread_builder unsafe_C_test_r_thread_builder_spawn_join
+#' @source Generated by miniextendr from Rust fn `C_test_r_thread_builder`
 #' @export
 unsafe_C_test_r_thread_builder <- function() {
     .Call(C_test_r_thread_builder)
 }
 
+#' @source Generated by miniextendr from Rust fn `C_test_r_thread_builder_spawn_join`
 #' @export
 unsafe_C_test_r_thread_builder_spawn_join <- function() {
     .Call(C_test_r_thread_builder_spawn_join)
 }
 
+#' @title Miscellaneous Tests
+#' @name rpkg_misc
+#' @keywords internal
+#' @description Miscellaneous test helpers
+#' @examples
+#' underscore_it_all(1L, 2)
+#' do_nothing()
+#' @aliases underscore_it_all do_nothing
+#' @source Generated by miniextendr from Rust fn `underscore_it_all`
+#' @export
+underscore_it_all <- function(unused0, unused1) {
+    invisible(.Call(C_underscore_it_all, .call = match.call(), unused0, unused1))
+}
+
+#' @source Generated by miniextendr from Rust fn `do_nothing`
+#' @export
+do_nothing <- function() {
+    .Call(C_do_nothing, .call = match.call())
+}
+
+#' @title Prefer list conversion when multiple IntoR paths exist
+#' @name convert_pref_tests
+#' @rdname convert_pref_tests
+#' @description Wraps a type implementing ExternalPtr, IntoList, and RNativeType with `AsList` to force VECSXP.
+#' @keywords internal
+#' @examples
+#' hybrid_as_list(1L)
+#' @source Generated by miniextendr from Rust fn `hybrid_as_list`
+#' @export
+hybrid_as_list <- function(x) {
+    .Call(C_hybrid_as_list, .call = match.call(), x)
+}
+
+#' @title Prefer external pointer conversion when multiple IntoR paths exist
+#' @rdname convert_pref_tests
+#' @description Uses `AsExternalPtr` to force EXTPTRSXP even though list/native are available.
+#' @keywords internal
+#' @examples
+#' hybrid_as_ptr(1L)
+#' @source Generated by miniextendr from Rust fn `hybrid_as_ptr`
+#' @export
+hybrid_as_ptr <- function(x) {
+    .Call(C_hybrid_as_ptr, .call = match.call(), x)
+}
+
+#' @title Prefer native scalar conversion when multiple IntoR paths exist
+#' @rdname convert_pref_tests
+#' @description Uses `AsRNative` to force a length-1 integer vector.
+#' @keywords internal
+#' @examples
+#' hybrid_as_native(1L)
+#' @source Generated by miniextendr from Rust fn `hybrid_as_native`
+#' @export
+hybrid_as_native <- function(x) {
+    .Call(C_hybrid_as_native, .call = match.call(), x)
+}
+
+#' @title Prefer list when both ExternalPtr and IntoList exist
+#' @rdname convert_pref_tests
+#' @description `AsList` wins over the automatic ExternalPtr `IntoR` impl.
+#' @keywords internal
+#' @examples
+#' ptr_list_as_list(2L)
+#' @source Generated by miniextendr from Rust fn `ptr_list_as_list`
+#' @export
+ptr_list_as_list <- function(x) {
+    .Call(C_ptr_list_as_list, .call = match.call(), x)
+}
+
+#' @title Prefer external pointer when both ExternalPtr and IntoList exist
+#' @rdname convert_pref_tests
+#' @description `AsExternalPtr` wins over list conversion.
+#' @keywords internal
+#' @examples
+#' ptr_list_as_ptr(2L)
+#' @source Generated by miniextendr from Rust fn `ptr_list_as_ptr`
+#' @export
+ptr_list_as_ptr <- function(x) {
+    .Call(C_ptr_list_as_ptr, .call = match.call(), x)
+}
+
+#' @title Prefer list when both RNativeType and IntoList exist
+#' @rdname convert_pref_tests
+#' @description Forces VECSXP even though a native vector would be possible.
+#' @keywords internal
+#' @examples
+#' native_list_as_list(3L)
+#' @source Generated by miniextendr from Rust fn `native_list_as_list`
+#' @export
+native_list_as_list <- function(x) {
+    .Call(C_native_list_as_list, .call = match.call(), x)
+}
+
+#' @title Prefer native vector when both RNativeType and IntoList exist
+#' @rdname convert_pref_tests
+#' @description Forces an integer vector via `AsRNative`.
+#' @keywords internal
+#' @examples
+#' native_list_as_native(3L)
+#' @source Generated by miniextendr from Rust fn `native_list_as_native`
+#' @export
+native_list_as_native <- function(x) {
+    .Call(C_native_list_as_native, .call = match.call(), x)
+}
+
+#' @title RNG Tests
+#' @description RNG Tests
+#' @name rpkg_rng
+#' @return A numeric vector.
+#' @export
+#' @examples
+#' set.seed(42)
+#' rng_uniform(5L)
+#' @param n Number of values to generate.
+#' @source Generated by miniextendr from Rust fn `rng_uniform`
+rng_uniform <- function(n) {
+    .Call(C_rng_uniform, .call = match.call(), n)
+}
+
+#' @title Generate n normal random numbers
+#' @description Generate n normal random numbers.
+#' @rdname rpkg_rng
+#' @export
+#' @source Generated by miniextendr from Rust fn `rng_normal`
+rng_normal <- function(n) {
+    .Call(C_rng_normal, .call = match.call(), n)
+}
+
+#' @title Generate n exponential random numbers
+#' @description Generate n exponential random numbers.
+#' @rdname rpkg_rng
+#' @export
+#' @source Generated by miniextendr from Rust fn `rng_exponential`
+rng_exponential <- function(n) {
+    .Call(C_rng_exponential, .call = match.call(), n)
+}
+
+#' @title Generate n random integers in [0, max)
+#' @description Generate n random integers in [0, max).
+#' @rdname rpkg_rng
+#' @export
+#' @param max Upper bound (exclusive).
+#' @source Generated by miniextendr from Rust fn `rng_int`
+rng_int <- function(n, max) {
+    .Call(C_rng_int, .call = match.call(), n, max)
+}
+
+#' @title Test RNG with check_interrupt (forces main thread)
+#' @description Test RNG with check_interrupt (forces main thread). This verifies RNG works correctly when combined with check_interrupt.
+#' @rdname rpkg_rng
+#' @export
+#' @source Generated by miniextendr from Rust fn `rng_with_interrupt`
+rng_with_interrupt <- function(n) {
+    .Call(C_rng_with_interrupt, .call = match.call(), n)
+}
+
+#' @title Test combining rng with explicit worker thread strategy
+#' @description Test combining rng with explicit worker thread strategy.
+#' @rdname rpkg_rng
+#' @export
+#' @source Generated by miniextendr from Rust fn `rng_worker_uniform`
+rng_worker_uniform <- function(n) {
+    .Call(C_rng_worker_uniform, .call = match.call(), n)
+}
+
+#' @title Test RngGuard for manual RNG state management
+#' @description Test RngGuard for manual RNG state management.
+#' @rdname rpkg_rng
+#' @export
+#' @source Generated by miniextendr from Rust fn `rng_guard_test`
+rng_guard_test <- function(n) {
+    .Call(C_rng_guard_test, .call = match.call(), n)
+}
+
+#' @title Test with_rng helper for scoped RNG access
+#' @description Test with_rng helper for scoped RNG access.
+#' @rdname rpkg_rng
+#' @export
+#' @source Generated by miniextendr from Rust fn `rng_with_rng_test`
+rng_with_rng_test <- function(n) {
+    .Call(C_rng_with_rng_test, .call = match.call(), n)
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_describe_color`
+#' @export
+factor_describe_color <- function(color) {
+    .Call(C_factor_describe_color, .call = match.call(), color)
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_get_color`
+#' @export
+factor_get_color <- function(name) {
+    .Call(C_factor_get_color, .call = match.call(), name)
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_get_all_colors`
+#' @export
+factor_get_all_colors <- function() {
+    .Call(C_factor_get_all_colors, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_describe_status`
+#' @export
+factor_describe_status <- function(status) {
+    .Call(C_factor_describe_status, .call = match.call(), status)
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_describe_priority`
+#' @export
+factor_describe_priority <- function(priority) {
+    .Call(C_factor_describe_priority, .call = match.call(), priority)
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_color_levels`
+#' @export
+factor_color_levels <- function() {
+    .Call(C_factor_color_levels, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_status_levels`
+#' @export
+factor_status_levels <- function() {
+    .Call(C_factor_status_levels, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_priority_levels`
+#' @export
+factor_priority_levels <- function() {
+    .Call(C_factor_priority_levels, .call = match.call())
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_count_colors`
+#' @export
+factor_count_colors <- function(colors) {
+    .Call(C_factor_count_colors, .call = match.call(), colors)
+}
+
+#' @source Generated by miniextendr from Rust fn `factor_colors_with_na`
+#' @export
+factor_colors_with_na <- function(colors) {
+    .Call(C_factor_colors_with_na, .call = match.call(), colors)
+}
+
+#' @rdname Point
+#' @name Point
+#' @title Point struct for testing adapter traits
+#' @description A 2D point that demonstrates adapter trait functionality.
+#' @return An ExternalPtr to a Point.
+#' @examples
+#' p <- Point$new(3L, 4L)
+#' p$debug_str()
+#' p$as_r_string()
+#' p$hash()
+#' @source Generated by miniextendr from Rust type `Point`
+#' @export
+Point <- new.env(parent = emptyenv())
+
+#' @name Point$new
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::new`
+Point$new <- function(x, y) {
+    self <- .Call(C_Point__new, .call = match.call(), x, y)
+    class(self) <- "Point"
+    self
+}
+
+#' @name Point$x
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::x`
+Point$x <- function() {
+    .Call(C_Point__x, .call = match.call(), self)
+}
+
+#' @name Point$y
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::y`
+Point$y <- function() {
+    .Call(C_Point__y, .call = match.call(), self)
+}
+
+#' @name Point$debug_str
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::debug_str`
+Point$debug_str <- function() {
+    .Call(C_Point__debug_str, .call = match.call(), self)
+}
+
+#' @name Point$debug_str_pretty
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::debug_str_pretty`
+Point$debug_str_pretty <- function() {
+    .Call(C_Point__debug_str_pretty, .call = match.call(), self)
+}
+
+#' @name Point$as_r_string
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::as_r_string`
+Point$as_r_string <- function() {
+    .Call(C_Point__as_r_string, .call = match.call(), self)
+}
+
+#' @name Point$hash
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::hash`
+Point$hash <- function() {
+    .Call(C_Point__hash, .call = match.call(), self)
+}
+
+#' @name Point$cmp_to
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::cmp_to`
+Point$cmp_to <- function(other) {
+    .Call(C_Point__cmp_to, .call = match.call(), self, other)
+}
+
+#' @name Point$is_less_than
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::is_less_than`
+Point$is_less_than <- function(other) {
+    .Call(C_Point__is_less_than, .call = match.call(), self, other)
+}
+
+#' @name Point$is_equal_to
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::is_equal_to`
+Point$is_equal_to <- function(other) {
+    .Call(C_Point__is_equal_to, .call = match.call(), self, other)
+}
+
+#' @name Point$is_greater_than
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::is_greater_than`
+Point$is_greater_than <- function(other) {
+    .Call(C_Point__is_greater_than, .call = match.call(), self, other)
+}
+
+#' @name Point$clone_point
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::clone_point`
+Point$clone_point <- function() {
+    .Call(C_Point__clone_point, .call = match.call(), self)
+}
+
+#' @name Point$default_point
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::default_point`
+Point$default_point <- function() {
+    .Call(C_Point__default_point, .call = match.call())
+}
+
+#' @name Point$from_str
+#' @rdname Point
+#' @source Generated by miniextendr from `Point::from_str`
+Point$from_str <- function(s) {
+    .Call(C_Point__from_str, .call = match.call(), s)
+}
+
+#' @rdname Point
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.Point` <- function(self, name) {
+    obj <- Point[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname Point
+#' @export
+`[[.Point` <- `$.Point`
+
+#' @title ReceiverCounter  Class
+#' @name ReceiverCounter
+#' @rdname ReceiverCounter
+#' @description Receiver-style counter with `$new()`, `$value()`, `$inc()`, and `$add()` methods.
+#' @aliases ReceiverCounter
+#' @examples
+#' rc <- ReceiverCounter$new(1L)
+#' rc$value()
+#' rc$inc()
+#' rc$add(5L)
+#' ReceiverCounter$default_counter()$value()
+#' @source Generated by miniextendr from Rust type `ReceiverCounter`
 #' @export
 ReceiverCounter <- new.env(parent = emptyenv())
 
+#' @description Creates a new counter with the given initial value.
+#' @name ReceiverCounter$new
+#' @rdname ReceiverCounter
+#' @source Generated by miniextendr from `ReceiverCounter::new`
 ReceiverCounter$new <- function(initial) {
-    self <- .Call(C_ReceiverCounter__new, initial)
+    self <- .Call(C_ReceiverCounter__new, .call = match.call(), initial)
     class(self) <- "ReceiverCounter"
     self
 }
 
+#' @description Returns the current value.
+#' @name ReceiverCounter$value
+#' @rdname ReceiverCounter
+#' @source Generated by miniextendr from `ReceiverCounter::value`
 ReceiverCounter$value <- function() {
-    .Call(C_ReceiverCounter__value, self)
+    .Call(C_ReceiverCounter__value, .call = match.call(), self)
 }
 
+#' @description Increments the counter by 1 and returns the new value.
+#' @name ReceiverCounter$inc
+#' @rdname ReceiverCounter
+#' @source Generated by miniextendr from `ReceiverCounter::inc`
 ReceiverCounter$inc <- function() {
-    .Call(C_ReceiverCounter__inc, self)
+    .Call(C_ReceiverCounter__inc, .call = match.call(), self)
 }
 
+#' @description Adds the given amount to the counter and returns the new value.
+#' @name ReceiverCounter$add
+#' @rdname ReceiverCounter
+#' @source Generated by miniextendr from `ReceiverCounter::add`
 ReceiverCounter$add <- function(amount) {
-    .Call(C_ReceiverCounter__add, self, amount)
+    .Call(C_ReceiverCounter__add, .call = match.call(), self, amount)
 }
 
+#' @description A static method that returns a default counter (value = 0).
+#' @name ReceiverCounter$default_counter
+#' @rdname ReceiverCounter
+#' @source Generated by miniextendr from `ReceiverCounter::default_counter`
 ReceiverCounter$default_counter <- function() {
-    .Call(C_ReceiverCounter__default_counter)
+    result <- .Call(C_ReceiverCounter__default_counter, .call = match.call())
+    class(result) <- "ReceiverCounter"
+    result
 }
 
+#' @rdname ReceiverCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
 `$.ReceiverCounter` <- function(self, name) {
-    func <- ReceiverCounter[[name]]
-    environment(func) <- environment()
-    func
+    obj <- ReceiverCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
 }
+#' @rdname ReceiverCounter
+#' @export
 `[[.ReceiverCounter` <- `$.ReceiverCounter`
 
+#' @title R6 Counter Class
+#' @name R6Counter
+#' @rdname R6Counter
+#' @description R6 counter class that stores a single integer value.
+#' @aliases R6Counter
+#' @param initial The initial counter value (integer).
+#' @param amount The amount to add to the counter (integer).
+#' @details
+#' **Methods:**
+#' - `$new(initial)`: Creates a new counter with the given initial value.
+#' - `$value()`: Returns the current value.
+#' - `$inc()`: Increments the counter by 1 and returns the new value.
+#' - `$add(amount)`: Adds the given amount to the counter and returns the new value.
+#' @examples
+#' c <- R6Counter$new(1L)
+#' c$value()
+#' c$inc()
+#' c$add(10L)
+#' R6Counter$default_counter()$value()
+#' @source Generated by miniextendr from Rust type `R6Counter`
+#' @importFrom R6 R6Class
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @export
+R6Counter <- R6::R6Class("R6Counter",
+    public = list(
+        #' @description Creates a new counter with the given initial value.
+        initialize = function(initial, .ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_R6Counter__new, .call = match.call(), initial)
+            }
+        },
+        #' @description Returns the current value.
+        value = function() {
+            .Call(C_R6Counter__value, .call = match.call(), private$.ptr)
+        },
+        #' @description Increments the counter by 1 and returns the new value.
+        inc = function() {
+            .Call(C_R6Counter__inc, .call = match.call(), private$.ptr)
+        },
+        #' @description Adds the given amount to the counter and returns the new value.
+        add = function(amount) {
+            .Call(C_R6Counter__add, .call = match.call(), private$.ptr, amount)
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = FALSE,
+    cloneable = FALSE
+)
+
+#' @description A static method that returns a default counter (value = 0).
+#' @name R6Counter$default_counter
+#' @rdname R6Counter
+#' @source Generated by miniextendr from `R6Counter::default_counter`
+R6Counter$default_counter <- function() {
+    R6Counter$new(.ptr = .Call(C_R6Counter__default_counter, .call = match.call()))
+}
+
+#' @title R6 Accumulator Class
+#' @name R6Accumulator
+#' @rdname R6Accumulator
+#' @description R6 accumulator with running total and count.
+#' @aliases R6Accumulator
+#' @param value The value to accumulate (numeric).
+#' @details
+#' **Methods:**
+#' - `$new()`: Creates a new accumulator starting at zero.
+#' - `$accumulate(value)`: Adds a value and returns the new total.
+#' - `$total()`: Returns the current total.
+#' - `$count()`: Returns the count of accumulated values.
+#' - `$average()`: Returns the average, or NA if no values accumulated.
+#' @examples
+#' acc <- R6Accumulator$new()
+#' acc$accumulate(1.5)
+#' acc$total()
+#' acc$count()
+#' acc$average()
+#' @source Generated by miniextendr from Rust type `R6Accumulator`
+#' @importFrom R6 R6Class
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @export
+R6Accumulator <- R6::R6Class("R6Accumulator",
+    public = list(
+        #' @description Creates a new accumulator starting at zero.
+        initialize = function(.ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_R6Accumulator__new, .call = match.call())
+            }
+        },
+        #' @description Adds a value and returns the new total.
+        accumulate = function(value) {
+            .Call(C_R6Accumulator__accumulate, .call = match.call(), private$.ptr, value)
+        },
+        #' @description Returns the current total.
+        total = function() {
+            .Call(C_R6Accumulator__total, .call = match.call(), private$.ptr)
+        },
+        #' @description Returns the count of accumulated values.
+        count = function() {
+            .Call(C_R6Accumulator__count, .call = match.call(), private$.ptr)
+        },
+        #' @description Returns the average, or NA if no values accumulated.
+        average = function() {
+            .Call(C_R6Accumulator__average, .call = match.call(), private$.ptr)
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = FALSE,
+    cloneable = FALSE
+)
+
+#' @name Calculator
+#' @rdname Calculator
+#' @title Calculator R6 Class with Default Parameters
+#' @description Calculator that demonstrates default parameter values in R6 methods.
+#' @examples
+#' calc <- Calculator$new()      # Uses default initial = 0.0
+#' calc$add()                     # Uses default amount = 1.0
+#' calc$get()
+#' @source Generated by miniextendr from Rust type `Calculator`
+#' @importFrom R6 R6Class
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @export
+Calculator <- R6::R6Class("Calculator",
+    public = list(
+        #' @title Creates a new calculator
+        #' @param initial Starting value (defaults to 0.0).
+        initialize = function(initial = 0.0, .ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_Calculator__new, .call = match.call(), initial)
+            }
+        },
+        #' @description Returns the current value.
+        get = function() {
+            .Call(C_Calculator__get, .call = match.call(), private$.ptr)
+        },
+        #' @title Adds to the current value
+        #' @param amount Amount to add (defaults to 1.0).
+        add = function(amount = 1.0) {
+            .Call(C_Calculator__add, .call = match.call(), private$.ptr, amount)
+        },
+        #' @title Sets a new value
+        #' @param new_value New value to set (defaults to 0.0).
+        set = function(new_value = 0.0) {
+            .Call(C_Calculator__set, .call = match.call(), private$.ptr, new_value)
+            invisible(self)
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = FALSE,
+    cloneable = FALSE
+)
+
+#' @name S3Counter
+#' @rdname S3Counter
+#' @description S3 counter with `s3_value()`, `s3_inc()`, and `s3_add()` methods.
+#' @aliases new_s3counter s3_value s3_inc s3_add s3counter_default_counter
+#' @examples
+#' x <- new_s3counter(1L)
+#' s3_value(x)
+#' s3_inc(x)
+#' s3_add(x, 5L)
+#' s3_value(s3counter_default_counter())
+#' @title Creates a new counter with the given initial value
+#' @param initial Initial value for the counter.
+#' @source Generated by miniextendr from Rust type `S3Counter`
+#' @export
+new_s3counter <- function(initial) {
+    structure(.Call(C_S3Counter__new, .call = match.call(), initial), class = "S3Counter")
+}
+
+#' @title S3 generic for `s3_value`
+#' S3 generic for `s3_value`
+#' @rdname S3Counter
+#' @name s3_value
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @source Generated by miniextendr from `S3Counter::s3_value`
+#' @export
+if (!exists("s3_value", mode = "function")) {
+    s3_value <- function(x, ...) UseMethod("s3_value")
+}
+
+#' @description Returns the current value (S3-specific method name to avoid conflicts).
+#' @name s3_value
+#' @rdname S3Counter
+#' @source Generated by miniextendr from `S3Counter::s3_value`
+#' @method s3_value S3Counter
+#' @export
+s3_value.S3Counter <- function(x, ...) {
+    .Call(C_S3Counter__s3_value, .call = match.call(), x)
+}
+
+#' @title S3 generic for `s3_inc`
+#' S3 generic for `s3_inc`
+#' @rdname S3Counter
+#' @name s3_inc
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @source Generated by miniextendr from `S3Counter::s3_inc`
+#' @export
+if (!exists("s3_inc", mode = "function")) {
+    s3_inc <- function(x, ...) UseMethod("s3_inc")
+}
+
+#' @description Increments the counter by 1 and returns the new value.
+#' @name s3_inc
+#' @rdname S3Counter
+#' @source Generated by miniextendr from `S3Counter::s3_inc`
+#' @method s3_inc S3Counter
+#' @export
+s3_inc.S3Counter <- function(x, ...) {
+    .Call(C_S3Counter__s3_inc, .call = match.call(), x)
+}
+
+#' @title S3 generic for `s3_add`
+#' S3 generic for `s3_add`
+#' @rdname S3Counter
+#' @name s3_add
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @source Generated by miniextendr from `S3Counter::s3_add`
+#' @export
+if (!exists("s3_add", mode = "function")) {
+    s3_add <- function(x, ...) UseMethod("s3_add")
+}
+
+#' @title Adds the given amount to the counter and returns the new value
+#' @param amount The amount to add to the counter.
+#' @name s3_add
+#' @rdname S3Counter
+#' @source Generated by miniextendr from `S3Counter::s3_add`
+#' @method s3_add S3Counter
+#' @export
+s3_add.S3Counter <- function(x, amount, ...) {
+    .Call(C_S3Counter__s3_add, .call = match.call(), x, amount)
+}
+
+#' @description A static method that returns a default counter (value = 0).
+#' @name default_counter
+#' @rdname S3Counter
+#' @source Generated by miniextendr from `S3Counter::default_counter`
+s3counter_default_counter <- function() {
+    structure(.Call(C_S3Counter__default_counter, .call = match.call()), class = "S3Counter")
+}
+
+#' @rdname S3Counter
+S3Counter <- new.env(parent = emptyenv())
+
+#' @title S7Counter S7 Class
+#' @name S7Counter
+#' @rdname S7Counter
+#' @description S7 counter with `s7_value()`, `s7_inc()`, and `s7_add()` methods.
+#' @aliases S7Counter s7_value s7_inc s7_add S7Counter_default_counter
+#' @examples
+#' x <- S7Counter(1L)
+#' s7_value(x)
+#' s7_inc(x)
+#' s7_add(x, 2L)
+#' s7_value(S7Counter_default_counter())
+#' @param initial Initial value for the counter.
+#' @param .ptr External pointer (used internally by S7).
+#' @source Generated by miniextendr from Rust type `S7Counter`
+#' @importFrom S7 new_class class_any new_object S7_object new_generic method
+#' @export
+S7Counter <- S7::new_class("S7Counter",
+    properties = list(
+        .ptr = S7::class_any
+    ),
+    constructor = function(initial, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Counter__new, .call = match.call(), initial))
+        }
+    }
+)
+
+#' @description Returns the current value (S7-specific method name to avoid conflicts).
+#' @name s7_value
+#' @rdname S7Counter
+#' @source Generated by miniextendr from `S7Counter::s7_value`
+#' @export
+if (!exists("s7_value", mode = "function")) s7_value <- S7::new_generic("s7_value", "x", function(x, ...) S7::S7_dispatch())
+S7::method(s7_value, S7Counter) <- function(x, ...) .Call(C_S7Counter__s7_value, .call = match.call(), x@.ptr)
+
+#' @description Increments the counter by 1 and returns the new value.
+#' @name s7_inc
+#' @rdname S7Counter
+#' @source Generated by miniextendr from `S7Counter::s7_inc`
+#' @export
+if (!exists("s7_inc", mode = "function")) s7_inc <- S7::new_generic("s7_inc", "x", function(x, ...) S7::S7_dispatch())
+S7::method(s7_inc, S7Counter) <- function(x, ...) .Call(C_S7Counter__s7_inc, .call = match.call(), x@.ptr)
+
+#' @description Adds the given amount to the counter and returns the new value.
+#' @name s7_add
+#' @rdname S7Counter
+#' @source Generated by miniextendr from `S7Counter::s7_add`
+#' @export
+if (!exists("s7_add", mode = "function")) s7_add <- S7::new_generic("s7_add", "x", function(x, ...) S7::S7_dispatch())
+S7::method(s7_add, S7Counter) <- function(x, amount, ...) .Call(C_S7Counter__s7_add, .call = match.call(), x@.ptr, amount)
+
+#' @description A static method that returns a default counter (value = 0).
+#' @name default_counter
+#' @rdname S7Counter
+#' @source Generated by miniextendr from `S7Counter::default_counter`
+S7Counter_default_counter <- function() {
+    S7Counter(.ptr = .Call(C_S7Counter__default_counter, .call = match.call()))
+}
+
+#' @title S4Counter S4 Class
+#' @name S4Counter
+#' @rdname S4Counter
+#' @description S4 counter with `s4_value()`, `s4_inc()`, and `s4_add()` methods.
+#' @aliases S4Counter s4_value s4_inc s4_add S4Counter_default_counter s4_value,S4Counter-method s4_inc,S4Counter-method s4_add,S4Counter-method
+#' @examples
+#' x <- S4Counter(1L)
+#' s4_value(x)
+#' s4_inc(x)
+#' s4_add(x, 3L)
+#' s4_value(S4Counter_default_counter())
+#' @source Generated by miniextendr from Rust type `S4Counter`
+#' @importFrom methods setClass setGeneric setMethod new isGeneric
+#' @slot ptr External pointer to Rust `S4Counter` struct
+methods::setClass("S4Counter", slots = c(ptr = "externalptr"))
+
+#' @title Creates a new counter with the given initial value
+#' @param initial Initial value for the counter.
+#' @name new
+#' @rdname S4Counter
+#' @source Generated by miniextendr from `S4Counter::new`
+#' @export
+S4Counter <- function(initial) {
+    methods::new("S4Counter", ptr = .Call(C_S4Counter__new, .call = match.call(), initial))
+}
+
+#' @description Returns the current value.
+#' @name s4_value
+#' @rdname S4Counter
+#' @source Generated by miniextendr from `S4Counter::s4_value`
+if (!methods::isGeneric("s4_value")) methods::setGeneric("s4_value", function(x, ...) standardGeneric("s4_value"))
+#' @exportMethod s4_value
+methods::setMethod("s4_value", "S4Counter", function(x, ...) .Call(C_S4Counter__value, .call = match.call(), x@ptr))
+
+#' @description Increments the counter by 1 and returns the new value.
+#' @name s4_inc
+#' @rdname S4Counter
+#' @source Generated by miniextendr from `S4Counter::s4_inc`
+if (!methods::isGeneric("s4_inc")) methods::setGeneric("s4_inc", function(x, ...) standardGeneric("s4_inc"))
+#' @exportMethod s4_inc
+methods::setMethod("s4_inc", "S4Counter", function(x, ...) .Call(C_S4Counter__inc, .call = match.call(), x@ptr))
+
+#' @description Adds the given amount to the counter and returns the new value.
+#' @name s4_add
+#' @rdname S4Counter
+#' @source Generated by miniextendr from `S4Counter::s4_add`
+if (!methods::isGeneric("s4_add")) methods::setGeneric("s4_add", function(x, ...) standardGeneric("s4_add"))
+#' @exportMethod s4_add
+methods::setMethod("s4_add", "S4Counter", function(x, amount, ...) .Call(C_S4Counter__add, .call = match.call(), x@ptr, amount))
+
+#' @description A static method that returns a default counter (value = 0).
+#' @name default_counter
+#' @rdname S4Counter
+#' @source Generated by miniextendr from `S4Counter::default_counter`
+S4Counter_default_counter <- function() {
+    methods::new("S4Counter", ptr = .Call(C_S4Counter__default_counter, .call = match.call()))
+}
+
+#' @title SimpleCounter  Class
+#' @name SimpleCounter
+#' @rdname SimpleCounter
+#' @source Generated by miniextendr from Rust type `SimpleCounter`
+#' @export
+SimpleCounter <- new.env(parent = emptyenv())
+
+#' @description Get the counter's value.
+#' @name SimpleCounter$get_value
+#' @rdname SimpleCounter
+#' @source Generated by miniextendr from `SimpleCounter::get_value`
+SimpleCounter$get_value <- function() {
+    .Call(C_SimpleCounter__get_value, .call = match.call(), self)
+}
+
+#' @description Add to the counter using the trait method.
+#' @name SimpleCounter$trait_add
+#' @rdname SimpleCounter
+#' @source Generated by miniextendr from `SimpleCounter::trait_add`
+SimpleCounter$trait_add <- function(n) {
+    .Call(C_SimpleCounter__trait_add, .call = match.call(), self, n)
+    self
+}
+
+#' @description Create a new counter with given initial value.
+#' @name SimpleCounter$new_counter
+#' @rdname SimpleCounter
+#' @source Generated by miniextendr from `SimpleCounter::new_counter`
+SimpleCounter$new_counter <- function(initial) {
+    result <- .Call(C_SimpleCounter__new_counter, .call = match.call(), initial)
+    class(result) <- "SimpleCounter"
+    result
+}
+
+#' @rdname SimpleCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.SimpleCounter` <- function(self, name) {
+    obj <- SimpleCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname SimpleCounter
+#' @export
+`[[.SimpleCounter` <- `$.SimpleCounter`
+
+#' @title PanickyCounter  Class
+#' @name PanickyCounter
+#' @rdname PanickyCounter
+#' @source Generated by miniextendr from Rust type `PanickyCounter`
+#' @export
+PanickyCounter <- new.env(parent = emptyenv())
+
+#' @description Get value.
+#' @name PanickyCounter$get_value
+#' @rdname PanickyCounter
+#' @source Generated by miniextendr from `PanickyCounter::get_value`
+PanickyCounter$get_value <- function() {
+    .Call(C_PanickyCounter__get_value, .call = match.call(), self)
+}
+
+#' @description Add (may panic).
+#' @name PanickyCounter$try_add
+#' @rdname PanickyCounter
+#' @source Generated by miniextendr from `PanickyCounter::try_add`
+PanickyCounter$try_add <- function(n) {
+    .Call(C_PanickyCounter__try_add, .call = match.call(), self, n)
+    self
+}
+
+#' @description Create a new panicky counter.
+#' @name PanickyCounter$new_panicky
+#' @rdname PanickyCounter
+#' @source Generated by miniextendr from `PanickyCounter::new_panicky`
+PanickyCounter$new_panicky <- function(initial) {
+    result <- .Call(C_PanickyCounter__new_panicky, .call = match.call(), initial)
+    class(result) <- "PanickyCounter"
+    result
+}
+
+#' @rdname PanickyCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.PanickyCounter` <- function(self, name) {
+    obj <- PanickyCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname PanickyCounter
+#' @export
+`[[.PanickyCounter` <- `$.PanickyCounter`
+
+#' @title S3TraitCounter  Class
+#' @name S3TraitCounter
+#' @rdname S3TraitCounter
+#' @source Generated by miniextendr from Rust type `S3TraitCounter`
+#' @export
+S3TraitCounter <- new.env(parent = emptyenv())
+
+#' @description Get value via inherent method.
+#' @name S3TraitCounter$get_value
+#' @rdname S3TraitCounter
+#' @source Generated by miniextendr from `S3TraitCounter::get_value`
+S3TraitCounter$get_value <- function() {
+    .Call(C_S3TraitCounter__get_value, .call = match.call(), self)
+}
+
+#' @description Create a new S3 trait counter.
+#' @name S3TraitCounter$new_s3trait
+#' @rdname S3TraitCounter
+#' @source Generated by miniextendr from `S3TraitCounter::new_s3trait`
+S3TraitCounter$new_s3trait <- function(initial) {
+    result <- .Call(C_S3TraitCounter__new_s3trait, .call = match.call(), initial)
+    class(result) <- "S3TraitCounter"
+    result
+}
+
+#' @rdname S3TraitCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.S3TraitCounter` <- function(self, name) {
+    obj <- S3TraitCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname S3TraitCounter
+#' @export
+`[[.S3TraitCounter` <- `$.S3TraitCounter`
+
+#' @title S4TraitCounter  Class
+#' @name S4TraitCounter
+#' @rdname S4TraitCounter
+#' @source Generated by miniextendr from Rust type `S4TraitCounter`
+#' @export
+S4TraitCounter <- new.env(parent = emptyenv())
+
+#' @description Get value via inherent method.
+#' @name S4TraitCounter$get_value
+#' @rdname S4TraitCounter
+#' @source Generated by miniextendr from `S4TraitCounter::get_value`
+S4TraitCounter$get_value <- function() {
+    .Call(C_S4TraitCounter__get_value, .call = match.call(), self)
+}
+
+#' @description Create a new S4 trait counter.
+#' @name S4TraitCounter$new_s4trait
+#' @rdname S4TraitCounter
+#' @source Generated by miniextendr from `S4TraitCounter::new_s4trait`
+S4TraitCounter$new_s4trait <- function(initial) {
+    result <- .Call(C_S4TraitCounter__new_s4trait, .call = match.call(), initial)
+    class(result) <- "S4TraitCounter"
+    result
+}
+
+#' @rdname S4TraitCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.S4TraitCounter` <- function(self, name) {
+    obj <- S4TraitCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname S4TraitCounter
+#' @export
+`[[.S4TraitCounter` <- `$.S4TraitCounter`
+
+#' @title S7TraitCounter  Class
+#' @name S7TraitCounter
+#' @rdname S7TraitCounter
+#' @source Generated by miniextendr from Rust type `S7TraitCounter`
+#' @export
+S7TraitCounter <- new.env(parent = emptyenv())
+
+#' @description Get value via inherent method.
+#' @name S7TraitCounter$get_value
+#' @rdname S7TraitCounter
+#' @source Generated by miniextendr from `S7TraitCounter::get_value`
+S7TraitCounter$get_value <- function() {
+    .Call(C_S7TraitCounter__get_value, .call = match.call(), self)
+}
+
+#' @description Create a new S7 trait counter.
+#' @name S7TraitCounter$new_s7trait
+#' @rdname S7TraitCounter
+#' @source Generated by miniextendr from `S7TraitCounter::new_s7trait`
+S7TraitCounter$new_s7trait <- function(initial) {
+    result <- .Call(C_S7TraitCounter__new_s7trait, .call = match.call(), initial)
+    class(result) <- "S7TraitCounter"
+    result
+}
+
+#' @rdname S7TraitCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.S7TraitCounter` <- function(self, name) {
+    obj <- S7TraitCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname S7TraitCounter
+#' @export
+`[[.S7TraitCounter` <- `$.S7TraitCounter`
+
+#' @title R6TraitCounter  Class
+#' @name R6TraitCounter
+#' @rdname R6TraitCounter
+#' @source Generated by miniextendr from Rust type `R6TraitCounter`
+#' @export
+R6TraitCounter <- new.env(parent = emptyenv())
+
+#' @description Get value via inherent method.
+#' @name R6TraitCounter$get_value
+#' @rdname R6TraitCounter
+#' @source Generated by miniextendr from `R6TraitCounter::get_value`
+R6TraitCounter$get_value <- function() {
+    .Call(C_R6TraitCounter__get_value, .call = match.call(), self)
+}
+
+#' @description Create a new R6 trait counter.
+#' @name R6TraitCounter$new_r6trait
+#' @rdname R6TraitCounter
+#' @source Generated by miniextendr from `R6TraitCounter::new_r6trait`
+R6TraitCounter$new_r6trait <- function(initial) {
+    result <- .Call(C_R6TraitCounter__new_r6trait, .call = match.call(), initial)
+    class(result) <- "R6TraitCounter"
+    result
+}
+
+#' @rdname R6TraitCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.R6TraitCounter` <- function(self, name) {
+    obj <- R6TraitCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname R6TraitCounter
+#' @export
+`[[.R6TraitCounter` <- `$.R6TraitCounter`
+
+# Trait methods and consts for SimpleCounter implementing Counter
+# Generated by #[miniextendr] impl Counter for SimpleCounter
+
+SimpleCounter$Counter <- new.env(parent = emptyenv())
+
+#' @name SimpleCounter$Counter$value
+#' @rdname SimpleCounter
+SimpleCounter$Counter$value <- function(x) {
+    .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @name SimpleCounter$Counter$increment
+#' @rdname SimpleCounter
+SimpleCounter$Counter$increment <- function(x) {
+    .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @name SimpleCounter$Counter$checked_add
+#' @rdname SimpleCounter
+SimpleCounter$Counter$checked_add <- function(x, n) {
+    .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
+}
+
+#' @name SimpleCounter$Counter$default_initial
+#' @rdname SimpleCounter
+SimpleCounter$Counter$default_initial <- function() {
+    .Call(C_SimpleCounter__Counter__default_initial, .call = match.call())
+}
+
+#' @name SimpleCounter$Counter$MAX_VALUE
+#' @rdname SimpleCounter
+SimpleCounter$Counter$MAX_VALUE <- function() {
+    .Call(C_SimpleCounter__Counter__MAX_VALUE, .call = match.call())
+}
+
+# Trait methods and consts for PanickyCounter implementing Counter
+# Generated by #[miniextendr] impl Counter for PanickyCounter
+
+PanickyCounter$Counter <- new.env(parent = emptyenv())
+
+#' @name PanickyCounter$Counter$value
+#' @rdname PanickyCounter
+PanickyCounter$Counter$value <- function(x) {
+    .Call(C_PanickyCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @name PanickyCounter$Counter$increment
+#' @rdname PanickyCounter
+PanickyCounter$Counter$increment <- function(x) {
+    .Call(C_PanickyCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @name PanickyCounter$Counter$checked_add
+#' @rdname PanickyCounter
+PanickyCounter$Counter$checked_add <- function(x, n) {
+    .Call(C_PanickyCounter__Counter__checked_add, .call = match.call(), x, n)
+}
+
+#' @name PanickyCounter$Counter$default_initial
+#' @rdname PanickyCounter
+PanickyCounter$Counter$default_initial <- function() {
+    .Call(C_PanickyCounter__Counter__default_initial, .call = match.call())
+}
+
+#' @name PanickyCounter$Counter$MAX_VALUE
+#' @rdname PanickyCounter
+PanickyCounter$Counter$MAX_VALUE <- function() {
+    .Call(C_PanickyCounter__Counter__MAX_VALUE, .call = match.call())
+}
+
+# S3 trait methods for S3TraitCounter implementing Counter
+# Generated by #[miniextendr(s3)] impl Counter for S3TraitCounter
+
+#' @title S3 generic for `value`
+#' @name value
+#' @rdname S3TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S3TraitCounter`
+#' S3 generic for `value`
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!exists("value", mode = "function")) {
+    value <- function(x, ...) UseMethod("value")
+}
+
+#' @rdname S3TraitCounter
+#' @method value S3TraitCounter
+#' @export
+value.S3TraitCounter <- function(x, ...) {
+    .Call(C_S3TraitCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @title S3 generic for `increment`
+#' @name increment
+#' @rdname S3TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S3TraitCounter`
+#' S3 generic for `increment`
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!exists("increment", mode = "function")) {
+    increment <- function(x, ...) UseMethod("increment")
+}
+
+#' @rdname S3TraitCounter
+#' @method increment S3TraitCounter
+#' @export
+increment.S3TraitCounter <- function(x, ...) {
+    .Call(C_S3TraitCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @title S3 generic for `checked_add`
+#' @name checked_add
+#' @rdname S3TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S3TraitCounter`
+#' S3 generic for `checked_add`
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!exists("checked_add", mode = "function")) {
+    checked_add <- function(x, ...) UseMethod("checked_add")
+}
+
+#' @rdname S3TraitCounter
+#' @method checked_add S3TraitCounter
+#' @param n Amount to add.
+#' @export
+checked_add.S3TraitCounter <- function(x, n, ...) {
+    .Call(C_S3TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+}
+
+S3TraitCounter$Counter <- new.env(parent = emptyenv())
+
+#' Static trait method Counter::default_initial()
+#' @name S3TraitCounter$Counter$default_initial
+#' @rdname S3TraitCounter
+S3TraitCounter$Counter$default_initial <- function() {
+    .Call(C_S3TraitCounter__Counter__default_initial, .call = match.call())
+}
+
+#' @name S3TraitCounter$Counter$MAX_VALUE
+#' @rdname S3TraitCounter
+S3TraitCounter$Counter$MAX_VALUE <- function() {
+    .Call(C_S3TraitCounter__Counter__MAX_VALUE, .call = match.call())
+}
+
+# S4 trait methods for S4TraitCounter implementing Counter
+# Generated by #[miniextendr(s4)] impl Counter for S4TraitCounter
+
+#' @importFrom methods setOldClass setGeneric setMethod isGeneric
+methods::setOldClass("S4TraitCounter")
+
+#' @name s4_trait_Counter_value
+#' @rdname S4TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S4TraitCounter`
+#' S4 generic for trait method `Counter::value`
+#' @param x A `S4TraitCounter` object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!methods::isGeneric("s4_trait_Counter_value")) methods::setGeneric("s4_trait_Counter_value", function(x, ...) standardGeneric("s4_trait_Counter_value"))
+
+#' @rdname S4TraitCounter
+#' @exportMethod s4_trait_Counter_value
+methods::setMethod("s4_trait_Counter_value", "S4TraitCounter", function(x, ...) {
+    .Call(C_S4TraitCounter__Counter__value, .call = match.call(), x)
+})
+
+#' @name s4_trait_Counter_increment
+#' @rdname S4TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S4TraitCounter`
+#' S4 generic for trait method `Counter::increment`
+#' @param x A `S4TraitCounter` object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!methods::isGeneric("s4_trait_Counter_increment")) methods::setGeneric("s4_trait_Counter_increment", function(x, ...) standardGeneric("s4_trait_Counter_increment"))
+
+#' @rdname S4TraitCounter
+#' @exportMethod s4_trait_Counter_increment
+methods::setMethod("s4_trait_Counter_increment", "S4TraitCounter", function(x, ...) {
+    .Call(C_S4TraitCounter__Counter__increment, .call = match.call(), x)
+})
+
+#' @name s4_trait_Counter_checked_add
+#' @rdname S4TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S4TraitCounter`
+#' S4 generic for trait method `Counter::checked_add`
+#' @param x A `S4TraitCounter` object
+#' @param ... Additional arguments passed to methods
+#' @param n Amount to add.
+#' @export
+if (!methods::isGeneric("s4_trait_Counter_checked_add")) methods::setGeneric("s4_trait_Counter_checked_add", function(x, ...) standardGeneric("s4_trait_Counter_checked_add"))
+
+#' @rdname S4TraitCounter
+#' @param n Amount to add.
+#' @exportMethod s4_trait_Counter_checked_add
+methods::setMethod("s4_trait_Counter_checked_add", "S4TraitCounter", function(x, n, ...) {
+    .Call(C_S4TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+})
+
+#' Static trait method Counter::default_initial() for S4TraitCounter
+#' @name S4TraitCounter_Counter_default_initial
+#' @rdname S4TraitCounter
+#' @export
+S4TraitCounter_Counter_default_initial <- function() {
+    .Call(C_S4TraitCounter__Counter__default_initial, .call = match.call())
+}
+
+#' @name S4TraitCounter_Counter_MAX_VALUE
+#' @rdname S4TraitCounter
+#' @export
+S4TraitCounter_Counter_MAX_VALUE <- function() {
+    .Call(C_S4TraitCounter__Counter__MAX_VALUE, .call = match.call())
+}
+
+# S7 trait methods for S7TraitCounter implementing Counter
+# Generated by #[miniextendr(s7)] impl Counter for S7TraitCounter
+
+#' @importFrom S7 new_generic method S7_dispatch new_S3_class
+.s7_class_S7TraitCounter <- S7::new_S3_class("S7TraitCounter")
+
+#' @name s7_trait_Counter_value
+#' @rdname S7TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S7TraitCounter`
+#' S7 generic for trait method `Counter::value`
+#' @export
+if (!exists("s7_trait_Counter_value", mode = "function")) s7_trait_Counter_value <- S7::new_generic("s7_trait_Counter_value", "x", function(x, ...) S7::S7_dispatch())
+
+S7::method(s7_trait_Counter_value, .s7_class_S7TraitCounter) <- function(x, ...) {
+    .Call(C_S7TraitCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @name s7_trait_Counter_increment
+#' @rdname S7TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S7TraitCounter`
+#' S7 generic for trait method `Counter::increment`
+#' @export
+if (!exists("s7_trait_Counter_increment", mode = "function")) s7_trait_Counter_increment <- S7::new_generic("s7_trait_Counter_increment", "x", function(x, ...) S7::S7_dispatch())
+
+S7::method(s7_trait_Counter_increment, .s7_class_S7TraitCounter) <- function(x, ...) {
+    .Call(C_S7TraitCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @name s7_trait_Counter_checked_add
+#' @rdname S7TraitCounter
+#' @source Generated by miniextendr from `impl Counter for S7TraitCounter`
+#' S7 generic for trait method `Counter::checked_add`
+#' @export
+if (!exists("s7_trait_Counter_checked_add", mode = "function")) s7_trait_Counter_checked_add <- S7::new_generic("s7_trait_Counter_checked_add", "x", function(x, ...) S7::S7_dispatch())
+
+S7::method(s7_trait_Counter_checked_add, .s7_class_S7TraitCounter) <- function(x, n, ...) {
+    .Call(C_S7TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+}
+
+S7TraitCounter$Counter <- new.env(parent = emptyenv())
+
+#' Static trait method Counter::default_initial()
+#' @name S7TraitCounter$Counter$default_initial
+#' @rdname S7TraitCounter
+S7TraitCounter$Counter$default_initial <- function() {
+    .Call(C_S7TraitCounter__Counter__default_initial, .call = match.call())
+}
+
+#' @name S7TraitCounter$Counter$MAX_VALUE
+#' @rdname S7TraitCounter
+S7TraitCounter$Counter$MAX_VALUE <- function() {
+    .Call(C_S7TraitCounter__Counter__MAX_VALUE, .call = match.call())
+}
+
+# R6 trait methods for R6TraitCounter implementing Counter
+# Generated by #[miniextendr(r6)] impl Counter for R6TraitCounter
+# Note: R6 trait methods are standalone functions
+
+#' @name r6_trait_Counter_value
+#' @rdname R6TraitCounter
+#' @source Generated by miniextendr from `impl Counter for R6TraitCounter`
+#' R6 trait method `Counter::value` for R6TraitCounter
+#' @param x A `R6TraitCounter` object
+#' @export
+r6_trait_Counter_value <- function(x) {
+    .Call(C_R6TraitCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @name r6_trait_Counter_increment
+#' @rdname R6TraitCounter
+#' @source Generated by miniextendr from `impl Counter for R6TraitCounter`
+#' R6 trait method `Counter::increment` for R6TraitCounter
+#' @param x A `R6TraitCounter` object
+#' @export
+r6_trait_Counter_increment <- function(x) {
+    .Call(C_R6TraitCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @name r6_trait_Counter_checked_add
+#' @rdname R6TraitCounter
+#' @source Generated by miniextendr from `impl Counter for R6TraitCounter`
+#' R6 trait method `Counter::checked_add` for R6TraitCounter
+#' @param x A `R6TraitCounter` object
+#' @param n Amount to add.
+#' @export
+r6_trait_Counter_checked_add <- function(x, n) {
+    .Call(C_R6TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+}
+
+R6TraitCounter$Counter <- new.env(parent = emptyenv())
+
+#' Static trait method Counter::default_initial()
+#' @name R6TraitCounter$Counter$default_initial
+#' @rdname R6TraitCounter
+R6TraitCounter$Counter$default_initial <- function() {
+    .Call(C_R6TraitCounter__Counter__default_initial, .call = match.call())
+}
+
+#' @name R6TraitCounter$Counter$MAX_VALUE
+#' @rdname R6TraitCounter
+R6TraitCounter$Counter$MAX_VALUE <- function() {
+    .Call(C_R6TraitCounter__Counter__MAX_VALUE, .call = match.call())
+}
+
+#' @title CounterTraitEnv  Class
+#' @name CounterTraitEnv
+#' @rdname CounterTraitEnv
+#' @source Generated by miniextendr from Rust type `CounterTraitEnv`
+#' @export
+CounterTraitEnv <- new.env(parent = emptyenv())
+
+#' @name CounterTraitEnv$new
+#' @rdname CounterTraitEnv
+#' @source Generated by miniextendr from `CounterTraitEnv::new`
+CounterTraitEnv$new <- function(v) {
+    self <- .Call(C_CounterTraitEnv__new, .call = match.call(), v)
+    class(self) <- "CounterTraitEnv"
+    self
+}
+
+#' @name CounterTraitEnv$get_value
+#' @rdname CounterTraitEnv
+#' @source Generated by miniextendr from `CounterTraitEnv::get_value`
+CounterTraitEnv$get_value <- function() {
+    .Call(C_CounterTraitEnv__get_value, .call = match.call(), self)
+}
+
+#' @rdname CounterTraitEnv
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.CounterTraitEnv` <- function(self, name) {
+    obj <- CounterTraitEnv[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname CounterTraitEnv
+#' @export
+`[[.CounterTraitEnv` <- `$.CounterTraitEnv`
+
+#' @title CounterTraitS3  Class
+#' @name CounterTraitS3
+#' @rdname CounterTraitS3
+#' @source Generated by miniextendr from Rust type `CounterTraitS3`
+#' @export
+CounterTraitS3 <- new.env(parent = emptyenv())
+
+#' @name CounterTraitS3$new
+#' @rdname CounterTraitS3
+#' @source Generated by miniextendr from `CounterTraitS3::new`
+CounterTraitS3$new <- function(v) {
+    self <- .Call(C_CounterTraitS3__new, .call = match.call(), v)
+    class(self) <- "CounterTraitS3"
+    self
+}
+
+#' @name CounterTraitS3$get_value
+#' @rdname CounterTraitS3
+#' @source Generated by miniextendr from `CounterTraitS3::get_value`
+CounterTraitS3$get_value <- function() {
+    .Call(C_CounterTraitS3__get_value, .call = match.call(), self)
+}
+
+#' @rdname CounterTraitS3
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.CounterTraitS3` <- function(self, name) {
+    obj <- CounterTraitS3[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname CounterTraitS3
+#' @export
+`[[.CounterTraitS3` <- `$.CounterTraitS3`
+
+#' @title CounterTraitS4  Class
+#' @name CounterTraitS4
+#' @rdname CounterTraitS4
+#' @source Generated by miniextendr from Rust type `CounterTraitS4`
+#' @export
+CounterTraitS4 <- new.env(parent = emptyenv())
+
+#' @name CounterTraitS4$new
+#' @rdname CounterTraitS4
+#' @source Generated by miniextendr from `CounterTraitS4::new`
+CounterTraitS4$new <- function(v) {
+    self <- .Call(C_CounterTraitS4__new, .call = match.call(), v)
+    class(self) <- "CounterTraitS4"
+    self
+}
+
+#' @name CounterTraitS4$get_value
+#' @rdname CounterTraitS4
+#' @source Generated by miniextendr from `CounterTraitS4::get_value`
+CounterTraitS4$get_value <- function() {
+    .Call(C_CounterTraitS4__get_value, .call = match.call(), self)
+}
+
+#' @rdname CounterTraitS4
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.CounterTraitS4` <- function(self, name) {
+    obj <- CounterTraitS4[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname CounterTraitS4
+#' @export
+`[[.CounterTraitS4` <- `$.CounterTraitS4`
+
+#' @title CounterTraitS7  Class
+#' @name CounterTraitS7
+#' @rdname CounterTraitS7
+#' @source Generated by miniextendr from Rust type `CounterTraitS7`
+#' @export
+CounterTraitS7 <- new.env(parent = emptyenv())
+
+#' @name CounterTraitS7$new
+#' @rdname CounterTraitS7
+#' @source Generated by miniextendr from `CounterTraitS7::new`
+CounterTraitS7$new <- function(v) {
+    self <- .Call(C_CounterTraitS7__new, .call = match.call(), v)
+    class(self) <- "CounterTraitS7"
+    self
+}
+
+#' @name CounterTraitS7$get_value
+#' @rdname CounterTraitS7
+#' @source Generated by miniextendr from `CounterTraitS7::get_value`
+CounterTraitS7$get_value <- function() {
+    .Call(C_CounterTraitS7__get_value, .call = match.call(), self)
+}
+
+#' @rdname CounterTraitS7
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.CounterTraitS7` <- function(self, name) {
+    obj <- CounterTraitS7[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname CounterTraitS7
+#' @export
+`[[.CounterTraitS7` <- `$.CounterTraitS7`
+
+#' @title CounterTraitR6  Class
+#' @name CounterTraitR6
+#' @rdname CounterTraitR6
+#' @source Generated by miniextendr from Rust type `CounterTraitR6`
+#' @export
+CounterTraitR6 <- new.env(parent = emptyenv())
+
+#' @name CounterTraitR6$new
+#' @rdname CounterTraitR6
+#' @source Generated by miniextendr from `CounterTraitR6::new`
+CounterTraitR6$new <- function(v) {
+    self <- .Call(C_CounterTraitR6__new, .call = match.call(), v)
+    class(self) <- "CounterTraitR6"
+    self
+}
+
+#' @name CounterTraitR6$get_value
+#' @rdname CounterTraitR6
+#' @source Generated by miniextendr from `CounterTraitR6::get_value`
+CounterTraitR6$get_value <- function() {
+    .Call(C_CounterTraitR6__get_value, .call = match.call(), self)
+}
+
+#' @rdname CounterTraitR6
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.CounterTraitR6` <- function(self, name) {
+    obj <- CounterTraitR6[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname CounterTraitR6
+#' @export
+`[[.CounterTraitR6` <- `$.CounterTraitR6`
+
+# Trait methods and consts for CounterTraitEnv implementing MatrixCounter
+# Generated by #[miniextendr] impl MatrixCounter for CounterTraitEnv
+
+CounterTraitEnv$MatrixCounter <- new.env(parent = emptyenv())
+
+#' @name CounterTraitEnv$MatrixCounter$custom_get
+#' @rdname CounterTraitEnv
+CounterTraitEnv$MatrixCounter$custom_get <- function(x) {
+    .Call(C_CounterTraitEnv__MatrixCounter__custom_get, .call = match.call(), x)
+}
+
+#' @name CounterTraitEnv$MatrixCounter$custom_add
+#' @rdname CounterTraitEnv
+CounterTraitEnv$MatrixCounter$custom_add <- function(x, n) {
+    .Call(C_CounterTraitEnv__MatrixCounter__custom_add, .call = match.call(), x, n)
+}
+
+#' @name CounterTraitEnv$MatrixCounter$default_value
+#' @rdname CounterTraitEnv
+CounterTraitEnv$MatrixCounter$default_value <- function() {
+    .Call(C_CounterTraitEnv__MatrixCounter__default_value, .call = match.call())
+}
+
+# S3 trait methods for CounterTraitS3 implementing MatrixCounter
+# Generated by #[miniextendr(s3)] impl MatrixCounter for CounterTraitS3
+
+#' @title S3 generic for `custom_get`
+#' @name custom_get
+#' @rdname CounterTraitS3
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitS3`
+#' S3 generic for `custom_get`
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!exists("custom_get", mode = "function")) {
+    custom_get <- function(x, ...) UseMethod("custom_get")
+}
+
+#' @rdname CounterTraitS3
+#' @method custom_get CounterTraitS3
+#' @export
+custom_get.CounterTraitS3 <- function(x, ...) {
+    .Call(C_CounterTraitS3__MatrixCounter__custom_get, .call = match.call(), x)
+}
+
+#' @title S3 generic for `custom_add`
+#' @name custom_add
+#' @rdname CounterTraitS3
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitS3`
+#' S3 generic for `custom_add`
+#' @param x An object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!exists("custom_add", mode = "function")) {
+    custom_add <- function(x, ...) UseMethod("custom_add")
+}
+
+#' @rdname CounterTraitS3
+#' @method custom_add CounterTraitS3
+#' @param n Amount to add.
+#' @export
+custom_add.CounterTraitS3 <- function(x, n, ...) {
+    .Call(C_CounterTraitS3__MatrixCounter__custom_add, .call = match.call(), x, n)
+}
+
+CounterTraitS3$MatrixCounter <- new.env(parent = emptyenv())
+
+#' Static trait method MatrixCounter::default_value()
+#' @name CounterTraitS3$MatrixCounter$default_value
+#' @rdname CounterTraitS3
+CounterTraitS3$MatrixCounter$default_value <- function() {
+    .Call(C_CounterTraitS3__MatrixCounter__default_value, .call = match.call())
+}
+
+# S4 trait methods for CounterTraitS4 implementing MatrixCounter
+# Generated by #[miniextendr(s4)] impl MatrixCounter for CounterTraitS4
+
+#' @importFrom methods setOldClass setGeneric setMethod isGeneric
+methods::setOldClass("CounterTraitS4")
+
+#' @name s4_trait_MatrixCounter_custom_get
+#' @rdname CounterTraitS4
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitS4`
+#' S4 generic for trait method `MatrixCounter::custom_get`
+#' @param x A `CounterTraitS4` object
+#' @param ... Additional arguments passed to methods
+#' @export
+if (!methods::isGeneric("s4_trait_MatrixCounter_custom_get")) methods::setGeneric("s4_trait_MatrixCounter_custom_get", function(x, ...) standardGeneric("s4_trait_MatrixCounter_custom_get"))
+
+#' @rdname CounterTraitS4
+#' @exportMethod s4_trait_MatrixCounter_custom_get
+methods::setMethod("s4_trait_MatrixCounter_custom_get", "CounterTraitS4", function(x, ...) {
+    .Call(C_CounterTraitS4__MatrixCounter__custom_get, .call = match.call(), x)
+})
+
+#' @name s4_trait_MatrixCounter_custom_add
+#' @rdname CounterTraitS4
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitS4`
+#' S4 generic for trait method `MatrixCounter::custom_add`
+#' @param x A `CounterTraitS4` object
+#' @param ... Additional arguments passed to methods
+#' @param n Amount to add.
+#' @export
+if (!methods::isGeneric("s4_trait_MatrixCounter_custom_add")) methods::setGeneric("s4_trait_MatrixCounter_custom_add", function(x, ...) standardGeneric("s4_trait_MatrixCounter_custom_add"))
+
+#' @rdname CounterTraitS4
+#' @param n Amount to add.
+#' @exportMethod s4_trait_MatrixCounter_custom_add
+methods::setMethod("s4_trait_MatrixCounter_custom_add", "CounterTraitS4", function(x, n, ...) {
+    .Call(C_CounterTraitS4__MatrixCounter__custom_add, .call = match.call(), x, n)
+})
+
+#' Static trait method MatrixCounter::default_value() for CounterTraitS4
+#' @name CounterTraitS4_MatrixCounter_default_value
+#' @rdname CounterTraitS4
+#' @export
+CounterTraitS4_MatrixCounter_default_value <- function() {
+    .Call(C_CounterTraitS4__MatrixCounter__default_value, .call = match.call())
+}
+
+# S7 trait methods for CounterTraitS7 implementing MatrixCounter
+# Generated by #[miniextendr(s7)] impl MatrixCounter for CounterTraitS7
+
+#' @importFrom S7 new_generic method S7_dispatch new_S3_class
+.s7_class_CounterTraitS7 <- S7::new_S3_class("CounterTraitS7")
+
+#' @name s7_trait_MatrixCounter_custom_get
+#' @rdname CounterTraitS7
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitS7`
+#' S7 generic for trait method `MatrixCounter::custom_get`
+#' @export
+if (!exists("s7_trait_MatrixCounter_custom_get", mode = "function")) s7_trait_MatrixCounter_custom_get <- S7::new_generic("s7_trait_MatrixCounter_custom_get", "x", function(x, ...) S7::S7_dispatch())
+
+S7::method(s7_trait_MatrixCounter_custom_get, .s7_class_CounterTraitS7) <- function(x, ...) {
+    .Call(C_CounterTraitS7__MatrixCounter__custom_get, .call = match.call(), x)
+}
+
+#' @name s7_trait_MatrixCounter_custom_add
+#' @rdname CounterTraitS7
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitS7`
+#' S7 generic for trait method `MatrixCounter::custom_add`
+#' @export
+if (!exists("s7_trait_MatrixCounter_custom_add", mode = "function")) s7_trait_MatrixCounter_custom_add <- S7::new_generic("s7_trait_MatrixCounter_custom_add", "x", function(x, ...) S7::S7_dispatch())
+
+S7::method(s7_trait_MatrixCounter_custom_add, .s7_class_CounterTraitS7) <- function(x, n, ...) {
+    .Call(C_CounterTraitS7__MatrixCounter__custom_add, .call = match.call(), x, n)
+}
+
+CounterTraitS7$MatrixCounter <- new.env(parent = emptyenv())
+
+#' Static trait method MatrixCounter::default_value()
+#' @name CounterTraitS7$MatrixCounter$default_value
+#' @rdname CounterTraitS7
+CounterTraitS7$MatrixCounter$default_value <- function() {
+    .Call(C_CounterTraitS7__MatrixCounter__default_value, .call = match.call())
+}
+
+# R6 trait methods for CounterTraitR6 implementing MatrixCounter
+# Generated by #[miniextendr(r6)] impl MatrixCounter for CounterTraitR6
+# Note: R6 trait methods are standalone functions
+
+#' @name r6_trait_MatrixCounter_custom_get
+#' @rdname CounterTraitR6
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitR6`
+#' R6 trait method `MatrixCounter::custom_get` for CounterTraitR6
+#' @param x A `CounterTraitR6` object
+#' @export
+r6_trait_MatrixCounter_custom_get <- function(x) {
+    .Call(C_CounterTraitR6__MatrixCounter__custom_get, .call = match.call(), x)
+}
+
+#' @name r6_trait_MatrixCounter_custom_add
+#' @rdname CounterTraitR6
+#' @source Generated by miniextendr from `impl MatrixCounter for CounterTraitR6`
+#' R6 trait method `MatrixCounter::custom_add` for CounterTraitR6
+#' @param x A `CounterTraitR6` object
+#' @param n Amount to add.
+#' @export
+r6_trait_MatrixCounter_custom_add <- function(x, n) {
+    .Call(C_CounterTraitR6__MatrixCounter__custom_add, .call = match.call(), x, n)
+}
+
+CounterTraitR6$MatrixCounter <- new.env(parent = emptyenv())
+
+#' Static trait method MatrixCounter::default_value()
+#' @name CounterTraitR6$MatrixCounter$default_value
+#' @rdname CounterTraitR6
+CounterTraitR6$MatrixCounter$default_value <- function() {
+    .Call(C_CounterTraitR6__MatrixCounter__default_value, .call = match.call())
+}
+
+#' @title SharedSimpleCounter  Class
+#' @name SharedSimpleCounter
+#' @rdname SharedSimpleCounter
+#' @source Generated by miniextendr from Rust type `SharedSimpleCounter`
+#' @export
+SharedSimpleCounter <- new.env(parent = emptyenv())
+
+#' @name SharedSimpleCounter$new
+#' @rdname SharedSimpleCounter
+#' @source Generated by miniextendr from `SharedSimpleCounter::new`
+SharedSimpleCounter$new <- function(initial) {
+    self <- .Call(C_SharedSimpleCounter__new, .call = match.call(), initial)
+    class(self) <- "SharedSimpleCounter"
+    self
+}
+
+#' @name SharedSimpleCounter$get_value
+#' @rdname SharedSimpleCounter
+#' @source Generated by miniextendr from `SharedSimpleCounter::get_value`
+SharedSimpleCounter$get_value <- function() {
+    .Call(C_SharedSimpleCounter__get_value, .call = match.call(), self)
+}
+
+#' @rdname SharedSimpleCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.SharedSimpleCounter` <- function(self, name) {
+    obj <- SharedSimpleCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname SharedSimpleCounter
+#' @export
+`[[.SharedSimpleCounter` <- `$.SharedSimpleCounter`
+
+#' @title AtomicCounter  Class
+#' @name AtomicCounter
+#' @rdname AtomicCounter
+#' @source Generated by miniextendr from Rust type `AtomicCounter`
+#' @export
+AtomicCounter <- new.env(parent = emptyenv())
+
+#' @name AtomicCounter$new_atomic
+#' @rdname AtomicCounter
+#' @source Generated by miniextendr from `AtomicCounter::new_atomic`
+AtomicCounter$new_atomic <- function(initial) {
+    result <- .Call(C_AtomicCounter__new_atomic, .call = match.call(), initial)
+    class(result) <- "AtomicCounter"
+    result
+}
+
+#' @rdname AtomicCounter
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.AtomicCounter` <- function(self, name) {
+    obj <- AtomicCounter[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname AtomicCounter
+#' @export
+`[[.AtomicCounter` <- `$.AtomicCounter`
+
+# Trait methods and consts for SharedSimpleCounter implementing Counter
+# Generated by #[miniextendr] impl Counter for SharedSimpleCounter
+
+SharedSimpleCounter$Counter <- new.env(parent = emptyenv())
+
+#' @name SharedSimpleCounter$Counter$value
+#' @rdname SharedSimpleCounter
+SharedSimpleCounter$Counter$value <- function(x) {
+    .Call(C_SharedSimpleCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @name SharedSimpleCounter$Counter$increment
+#' @rdname SharedSimpleCounter
+SharedSimpleCounter$Counter$increment <- function(x) {
+    .Call(C_SharedSimpleCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @name SharedSimpleCounter$Counter$add
+#' @rdname SharedSimpleCounter
+SharedSimpleCounter$Counter$add <- function(x, n) {
+    .Call(C_SharedSimpleCounter__Counter__add, .call = match.call(), x, n)
+}
+
+#' @name SharedSimpleCounter$Counter$reset
+#' @rdname SharedSimpleCounter
+SharedSimpleCounter$Counter$reset <- function(x) {
+    .Call(C_SharedSimpleCounter__Counter__reset, .call = match.call(), x)
+}
+
+# Trait methods and consts for AtomicCounter implementing Counter
+# Generated by #[miniextendr] impl Counter for AtomicCounter
+
+AtomicCounter$Counter <- new.env(parent = emptyenv())
+
+#' @name AtomicCounter$Counter$value
+#' @rdname AtomicCounter
+AtomicCounter$Counter$value <- function(x) {
+    .Call(C_AtomicCounter__Counter__value, .call = match.call(), x)
+}
+
+#' @name AtomicCounter$Counter$increment
+#' @rdname AtomicCounter
+AtomicCounter$Counter$increment <- function(x) {
+    .Call(C_AtomicCounter__Counter__increment, .call = match.call(), x)
+}
+
+#' @name AtomicCounter$Counter$add
+#' @rdname AtomicCounter
+AtomicCounter$Counter$add <- function(x, n) {
+    .Call(C_AtomicCounter__Counter__add, .call = match.call(), x, n)
+}
+
+#' @name AtomicCounter$Counter$reset
+#' @rdname AtomicCounter
+AtomicCounter$Counter$reset <- function(x) {
+    .Call(C_AtomicCounter__Counter__reset, .call = match.call(), x)
+}
+
+#' @title RngSampler  Class
+#' @name RngSampler
+#' @rdname RngSampler
+#' @source Generated by miniextendr from Rust type `RngSampler`
+#' @export
+RngSampler <- new.env(parent = emptyenv())
+
+#' @description Create a new RngSampler.
+#' @name RngSampler$new
+#' @rdname RngSampler
+#' @source Generated by miniextendr from `RngSampler::new`
+RngSampler$new <- function(seed_hint) {
+    self <- .Call(C_RngSampler__new, .call = match.call(), seed_hint)
+    class(self) <- "RngSampler"
+    self
+}
+
+#' @description Get the seed hint (for testing).
+#' @name RngSampler$seed_hint
+#' @rdname RngSampler
+#' @source Generated by miniextendr from `RngSampler::seed_hint`
+RngSampler$seed_hint <- function() {
+    .Call(C_RngSampler__seed_hint, .call = match.call(), self)
+}
+
+#' @description Sample n uniform values using the rng attribute on a method.
+#' @name RngSampler$sample_uniform
+#' @rdname RngSampler
+#' @source Generated by miniextendr from `RngSampler::sample_uniform`
+RngSampler$sample_uniform <- function(n) {
+    .Call(C_RngSampler__sample_uniform, .call = match.call(), self, n)
+}
+
+#' @description Sample n normal values.
+#' @name RngSampler$sample_normal
+#' @rdname RngSampler
+#' @source Generated by miniextendr from `RngSampler::sample_normal`
+RngSampler$sample_normal <- function(n) {
+    .Call(C_RngSampler__sample_normal, .call = match.call(), self, n)
+}
+
+#' @description Static method with rng.
+#' @name RngSampler$static_sample
+#' @rdname RngSampler
+#' @source Generated by miniextendr from `RngSampler::static_sample`
+RngSampler$static_sample <- function(n) {
+    .Call(C_RngSampler__static_sample, .call = match.call(), n)
+}
+
+#' @rdname RngSampler
+#' @param self The object instance.
+#' @param name Method name for dispatch.
+#' @export
+`$.RngSampler` <- function(self, name) {
+    obj <- RngSampler[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @rdname RngSampler
+#' @export
+`[[.RngSampler` <- `$.RngSampler`
+
+# nocov end
+# nolint end

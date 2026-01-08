@@ -176,6 +176,9 @@ impl S3TraitCounter {
     }
 }
 
+/// @rdname S3TraitCounter
+/// @param n Amount to add (for checked_add).
+///
 /// S3 trait implementation - generates S3 generics + methods.
 ///
 /// This generates:
@@ -194,6 +197,7 @@ impl Counter for S3TraitCounter {
         self.value += 1;
     }
 
+    /// @param n Amount to add.
     fn checked_add(&mut self, n: i32) {
         self.value += n;
     }
@@ -232,6 +236,11 @@ impl S4TraitCounter {
     }
 }
 
+/// @rdname S4TraitCounter
+/// @aliases s4_trait_Counter_value,S4TraitCounter-method s4_trait_Counter_increment,S4TraitCounter-method s4_trait_Counter_checked_add,S4TraitCounter-method
+/// @param x An S4TraitCounter object.
+/// @param n Amount to add (for checked_add).
+///
 /// S4 trait implementation - generates S4 generics + setMethod.
 #[miniextendr(s4)]
 impl Counter for S4TraitCounter {
@@ -245,6 +254,7 @@ impl Counter for S4TraitCounter {
         self.value += 1;
     }
 
+    /// @param n Amount to add.
     fn checked_add(&mut self, n: i32) {
         self.value += n;
     }
@@ -297,6 +307,7 @@ impl Counter for S7TraitCounter {
         self.value += 1;
     }
 
+    /// @param n Amount to add.
     fn checked_add(&mut self, n: i32) {
         self.value += n;
     }
@@ -336,6 +347,9 @@ impl R6TraitCounter {
     }
 }
 
+/// @rdname R6TraitCounter
+/// @param n Amount to add (for checked_add).
+///
 /// R6 trait implementation - generates standalone functions for trait methods.
 #[miniextendr(r6)]
 impl Counter for R6TraitCounter {
@@ -349,6 +363,7 @@ impl Counter for R6TraitCounter {
         self.value += 1;
     }
 
+    /// @param n Amount to add.
     fn checked_add(&mut self, n: i32) {
         self.value += n;
     }

@@ -26,10 +26,39 @@
 
 use std::collections::HashSet;
 
+/// Tags that allow multi-line content (continuation lines appended).
+/// All other tags are treated as single-line.
+const MULTILINE_TAGS: &[&str] = &[
+    "examples",
+    "description",
+    "details",
+    "return",
+    "returns",
+    "param",
+    "note",
+    "seealso",
+    "section",
+    "format",
+    "references",
+    "slot",
+    "field",
+    "value", // synonym for return
+];
+
+/// Check if a tag name supports multi-line content.
+fn is_multiline_tag(tag: &str) -> bool {
+    // Extract the tag name from "@tagname ..." or "@tagname"
+    let tag_name = tag
+        .strip_prefix('@')
+        .and_then(|rest| rest.split_whitespace().next())
+        .unwrap_or("");
+    MULTILINE_TAGS.contains(&tag_name)
+}
+
 /// Extract roxygen tag lines (starting with '@') from Rust doc attributes.
 ///
-/// Handles multiline tags: continuation lines (not starting with '@') are
-/// appended to the previous tag with a newline separator.
+/// Most tags capture only a single line. Multi-line tags like `@examples`,
+/// `@description`, `@param`, and `@return` append continuation lines.
 ///
 /// For R6 methods, if no explicit tags are found, the first doc comment paragraph
 /// is auto-converted to `@description`.
@@ -74,18 +103,52 @@ fn roxygen_tags_from_attrs_impl(attrs: &[syn::Attribute], auto_description: bool
                 if tags.is_empty() {
                     // Before any @tags - collect as regular docs
                     regular_docs.push(trimmed.to_string());
-                } else {
-                    // Continuation line - append to last tag
-                    if let Some(last) = tags.last_mut() {
-                        last.push('\n');
-                        last.push_str(trimmed);
-                    }
+                } else if let Some(last) = tags.last_mut()
+                    && is_multiline_tag(last)
+                {
+                    // Continuation line for multi-line tags only
+                    last.push('\n');
+                    last.push_str(trimmed);
                 }
+                // Single-line tags: ignore continuation lines
             }
         }
     }
 
-    // Auto-generate @description from regular docs if requested and no tags found
+    // Check which tags are present
+    let tag_names_set = tag_names(&tags);
+    let has_name = tag_names_set.contains("name") || tag_names_set.contains("rdname");
+    let has_title = tag_names_set.contains("title");
+    let has_description = tag_names_set.contains("description");
+    let has_any_tags = !tags.is_empty();
+
+    // Auto-generate @title from implicit title if:
+    // - We have @name but no @title, OR
+    // - We have any tags (like @param/@return) but no @title (user is writing roxygen docs)
+    // Use implicit_title_from_attrs which respects paragraph breaks
+    if (has_name || has_any_tags)
+        && !has_title
+        && let Some(title) = implicit_title_from_attrs(attrs)
+    {
+        tags.insert(0, format!("@title {}", title));
+    }
+
+    // Auto-generate @description from implicit description if we have @name but no @description
+    // Use implicit_description_from_attrs which respects paragraph breaks
+    if has_name
+        && !has_description
+        && let Some(desc) = implicit_description_from_attrs(attrs)
+    {
+        // Insert after @title if present, otherwise at start
+        let insert_pos = if tags.first().is_some_and(|t| t.starts_with("@title")) {
+            1
+        } else {
+            0
+        };
+        tags.insert(insert_pos, format!("@description {}", desc));
+    }
+
+    // Original auto_description behavior for methods without any tags
     if auto_description && tags.is_empty() && !regular_docs.is_empty() {
         let description = regular_docs.join(" ");
         tags.push(format!("@description {}", description));
@@ -278,26 +341,41 @@ pub(crate) fn implicit_description_from_attrs(attrs: &[syn::Attribute]) -> Optio
 
 /// Check for conflicts between explicit `@title`/`@description` tags and implicit values.
 ///
-/// When the `doc-lint` feature is enabled, emits compile-time warnings if explicit
-/// roxygen tags differ from the implicit values derived from the doc comment structure.
+/// When the `doc-lint` feature is enabled, returns tokens that generate compile-time
+/// deprecation warnings if explicit roxygen tags differ from the implicit values
+/// derived from the doc comment structure.
+///
+/// The returned tokens should be appended to the macro expansion output.
 #[cfg(feature = "doc-lint")]
-pub(crate) fn warn_on_doc_conflicts(attrs: &[syn::Attribute], span: proc_macro2::Span) {
-    use proc_macro_error::emit_warning;
+pub(crate) fn doc_conflict_warnings(
+    attrs: &[syn::Attribute],
+    _span: proc_macro2::Span,
+) -> proc_macro2::TokenStream {
+    use quote::quote;
 
     let tags = roxygen_tags_from_attrs(attrs);
+    let mut warnings = proc_macro2::TokenStream::new();
 
     // Check @title conflict
     if let Some(explicit) = find_tag_value(&tags, "title")
         && let Some(implicit) = implicit_title_from_attrs(attrs)
         && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
     {
-        emit_warning!(
-            span,
-            "explicit @title differs from first doc line";
-            note = "R's roxygen2 uses the first line as the title";
-            help = "implicit title: \"{}\"", implicit;
-            help = "explicit @title: \"{}\"", explicit
+        let msg = format!(
+            "miniextendr doc-lint: explicit @title differs from first doc line. \
+             R's roxygen2 uses the first line as the title. \
+             implicit: \"{}\", explicit @title: \"{}\"",
+            implicit, explicit
         );
+        warnings.extend(quote! {
+            const _: () = {
+                #[deprecated(note = #msg)]
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const MINIEXTENDR_DOC_LINT_TITLE: () = ();
+                let _ = MINIEXTENDR_DOC_LINT_TITLE;
+            };
+        });
     }
 
     // Check @description conflict
@@ -305,19 +383,34 @@ pub(crate) fn warn_on_doc_conflicts(attrs: &[syn::Attribute], span: proc_macro2:
         && let Some(implicit) = implicit_description_from_attrs(attrs)
         && normalize_for_comparison(explicit) != normalize_for_comparison(&implicit)
     {
-        emit_warning!(
-            span,
-            "explicit @description differs from first paragraph";
-            note = "R's roxygen2 uses the first paragraph as the description";
-            help = "implicit description: \"{}\"", implicit;
-            help = "explicit @description: \"{}\"", explicit
+        let msg = format!(
+            "miniextendr doc-lint: explicit @description differs from first paragraph. \
+             R's roxygen2 uses the first paragraph as the description. \
+             implicit: \"{}\", explicit @description: \"{}\"",
+            implicit, explicit
         );
+        warnings.extend(quote! {
+            const _: () = {
+                #[deprecated(note = #msg)]
+                #[doc(hidden)]
+                #[allow(dead_code)]
+                const MINIEXTENDR_DOC_LINT_DESC: () = ();
+                let _ = MINIEXTENDR_DOC_LINT_DESC;
+            };
+        });
     }
+
+    warnings
 }
 
 /// No-op when doc-lint feature is disabled.
 #[cfg(not(feature = "doc-lint"))]
-pub(crate) fn warn_on_doc_conflicts(_attrs: &[syn::Attribute], _span: proc_macro2::Span) {}
+pub(crate) fn doc_conflict_warnings(
+    _attrs: &[syn::Attribute],
+    _span: proc_macro2::Span,
+) -> proc_macro2::TokenStream {
+    proc_macro2::TokenStream::new()
+}
 
 /// Strip roxygen tag lines from doc attributes, keeping only regular documentation.
 ///
@@ -391,75 +484,4 @@ pub(crate) fn strip_roxygen_from_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Att
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_format_single_line_tags() {
-        let tags = vec![
-            "@param x An input".to_string(),
-            "@return Output".to_string(),
-        ];
-        let formatted = format_roxygen_tags(&tags);
-        assert_eq!(formatted, "#' @param x An input\n#' @return Output\n");
-    }
-
-    #[test]
-    fn test_format_multiline_tag() {
-        // Simulates: @description First line\nSecond line
-        let tags = vec!["@description First line\nSecond line".to_string()];
-        let formatted = format_roxygen_tags(&tags);
-        assert_eq!(formatted, "#' @description First line\n#' Second line\n");
-    }
-
-    #[test]
-    fn test_push_multiline_tag() {
-        let tags = vec!["@description Line one\nLine two\nLine three".to_string()];
-        let mut lines = Vec::new();
-        push_roxygen_tags(&mut lines, &tags);
-        assert_eq!(
-            lines,
-            vec!["#' @description Line one", "#' Line two", "#' Line three"]
-        );
-    }
-
-    #[test]
-    fn test_has_roxygen_tag_multiline() {
-        // Tag name detection should work even with multiline content
-        let tags = vec!["@description First\nSecond".to_string()];
-        assert!(has_roxygen_tag(&tags, "description"));
-        assert!(!has_roxygen_tag(&tags, "param"));
-    }
-
-    #[test]
-    fn test_find_tag_value() {
-        let tags = vec![
-            "@title My Title".to_string(),
-            "@description A longer description".to_string(),
-            "@param x An input".to_string(),
-        ];
-        assert_eq!(find_tag_value(&tags, "title"), Some("My Title"));
-        assert_eq!(
-            find_tag_value(&tags, "description"),
-            Some("A longer description")
-        );
-        assert_eq!(find_tag_value(&tags, "param"), Some("x An input"));
-        assert_eq!(find_tag_value(&tags, "return"), None);
-    }
-
-    #[test]
-    fn test_normalize_for_comparison() {
-        // Basic normalization
-        assert_eq!(normalize_for_comparison("Hello World"), "hello world");
-        // Collapse whitespace
-        assert_eq!(normalize_for_comparison("Hello    World"), "hello world");
-        // Strip trailing punctuation
-        assert_eq!(normalize_for_comparison("Hello World."), "hello world");
-        assert_eq!(normalize_for_comparison("Hello World!"), "hello world");
-        // Combined
-        assert_eq!(
-            normalize_for_comparison("  Hello    World.  "),
-            "hello world"
-        );
-    }
-}
+mod tests;
