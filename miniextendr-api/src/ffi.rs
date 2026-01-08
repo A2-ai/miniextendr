@@ -5,7 +5,7 @@ pub type R_xlen_t = isize;
 pub type Rbyte = ::std::os::raw::c_uchar;
 
 #[repr(C)]
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rcomplex {
     pub r: f64,
     pub i: f64,
@@ -681,6 +681,19 @@ unsafe extern "C-unwind" {
     pub fn R_curErrorBuf() -> *const ::std::os::raw::c_char;
 }
 
+// Console hooks (non-API; declared in Rinterface.h)
+#[cfg(feature = "nonapi")]
+#[allow(non_snake_case)]
+unsafe extern "C-unwind" {
+    pub static ptr_R_WriteConsoleEx: Option<
+        unsafe extern "C-unwind" fn(
+            *const ::std::os::raw::c_char,
+            ::std::os::raw::c_int,
+            ::std::os::raw::c_int,
+        ),
+    >;
+}
+
 /// Checked wrapper for `Rf_error` - panics if called from non-main thread.
 /// Common usage: `Rf_error(c"%s".as_ptr(), message.as_ptr())`
 ///
@@ -750,6 +763,21 @@ pub unsafe fn Rprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os
     unsafe { Rprintf_unchecked(fmt, arg1) }
 }
 
+/// Print to R's stderr (via R_ShowMessage or error console).
+///
+/// # Safety
+///
+/// - Must be called from the R main thread
+/// - `fmt` and `arg1` must be valid null-terminated C strings
+#[inline(always)]
+#[allow(non_snake_case)]
+pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::os::raw::c_char) {
+    if !crate::worker::is_r_main_thread() {
+        panic!("REprintf called from non-main thread");
+    }
+    unsafe { REprintf_unchecked(fmt, arg1) }
+}
+
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
@@ -771,6 +799,9 @@ unsafe extern "C-unwind" {
     pub static R_GlobalEnv: SEXP;
     pub static R_BaseEnv: SEXP;
     pub static R_EmptyEnv: SEXP;
+
+    // Rinterface.h
+    pub fn R_FlushConsole();
 
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.

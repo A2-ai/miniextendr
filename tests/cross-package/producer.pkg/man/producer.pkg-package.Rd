@@ -9,11 +9,11 @@
 Demonstrates miniextendr's cross-package trait dispatch capabilities. Defines the Counter trait and implements it for SimpleCounter. Objects created here can be passed to consumer.pkg functions that operate on the Counter trait interface, proving ABI compatibility via type tag matching.
 }
 \author{
-\strong{Maintainer}: Mossa Merhi Reimert \email{mossa@struchstrup.com}
+\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
 
 Other contributors:
 \itemize{
-  \item Eleanor Andersson [contributor]
+  \item A2-AI [copyright holder, funder]
 }
 
 }

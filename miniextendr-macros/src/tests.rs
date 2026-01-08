@@ -149,6 +149,13 @@ fn miniextendr_attr_accepts_multiple_flags() {
 }
 
 #[test]
+fn miniextendr_attr_accepts_unwrap_in_r() {
+    let attrs = syn::parse2::<MiniextendrFnAttrs>(quote::quote!(unwrap_in_r))
+        .expect("should parse unwrap_in_r");
+    assert!(attrs.unwrap_in_r);
+}
+
+#[test]
 fn parsed_fn_adds_inline_never_for_rust_abi() {
     let mut parsed: MiniextendrFunctionParsed = syn::parse2(quote::quote! { fn f() {} }).unwrap();
     parsed.add_inline_never_if_needed();
@@ -201,7 +208,10 @@ fn parsed_fn_no_inline_for_extern_c() {
 }
 
 fn normalize_tokens(ts: proc_macro2::TokenStream) -> String {
-    ts.to_string().chars().filter(|c| !c.is_whitespace()).collect()
+    ts.to_string()
+        .chars()
+        .filter(|c| !c.is_whitespace())
+        .collect()
 }
 
 #[test]
@@ -350,4 +360,64 @@ fn test_derive_altrep_integer_with_options() {
     // Should pass options to macro
     assert!(output_str.contains("dataptr"));
     assert!(output_str.contains("serialize"));
+}
+
+#[test]
+fn test_derive_altrep_logical_basic() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        pub struct TestLogical {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_logical(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should generate AltrepLen impl
+    assert!(output_str.contains("AltrepLen"));
+    assert!(output_str.contains("fn len"));
+
+    // Should generate AltLogicalData impl with default NA
+    assert!(output_str.contains("AltLogicalData"));
+    assert!(output_str.contains("Logical :: Na"));
+
+    // Should call impl_altlogical_from_data!
+    assert!(output_str.contains("impl_altlogical_from_data"));
+}
+
+#[test]
+fn test_derive_altrep_logical_with_elt_field() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(elt = "value")]
+        pub struct LogicalValue {
+            value: miniextendr_api::altrep_data::Logical,
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_logical(input).unwrap();
+    let output_str = normalize_tokens(output);
+
+    // Should use field conversion via Into<Logical>
+    assert!(output_str.contains("self.value.into()"));
+}
+
+#[test]
+fn test_derive_altrep_logical_with_options() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(dataptr)]
+        pub struct LogicalVecData {
+            value: bool,
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_logical(input).unwrap();
+    let output_str = output.to_string();
+
+    // Should pass options to macro
+    assert!(output_str.contains("dataptr"));
 }

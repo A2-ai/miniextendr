@@ -9,14 +9,21 @@ test_that("unsafe_C_r_error variants signal errors", {
 
 # Dangerous threads / longjmp cases are marked skip to avoid crash while documenting coverage
 
-test_that("unsafe_C_r_error_in_thread is currently unsafe", {
-  skip("crashes when run; exported for demonstration")
-  miniextendr:::unsafe_C_r_error_in_thread()
+test_that("unsafe_C_r_error_in_thread panics cleanly on wrong thread", {
+  # Note: The checked Rf_error detects wrong thread and panics with clear message.
+  # However, propagating a thread panic through extern "C-unwind" causes
+  # "failed to initiate panic" runtime errors. Skip until panic propagation
+  # from spawned threads is better understood.
+  skip("thread panic propagation causes runtime errors in extern C-unwind")
+  expect_error(miniextendr:::unsafe_C_r_error_in_thread(), "non-main thread")
 })
 
-test_that("unsafe_C_r_print_in_thread is currently unsafe", {
-  skip("interacts with stdout from worker thread; skip to avoid flakiness")
-  miniextendr:::unsafe_C_r_print_in_thread()
+test_that("unsafe_C_r_print_in_thread panics cleanly on wrong thread", {
+  # Same issue as above - the checked Rprintf correctly detects wrong thread,
+
+  # but propagating the panic from the spawned thread causes runtime errors.
+  skip("thread panic propagation causes runtime errors in extern C-unwind")
+  expect_error(miniextendr:::unsafe_C_r_print_in_thread(), "non-main thread")
 })
 
 test_that("unsafe_C_check_interupt_* return", {

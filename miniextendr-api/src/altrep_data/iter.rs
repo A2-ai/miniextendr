@@ -1119,11 +1119,21 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltInteger
 ///
 /// Wraps an iterator producing `String` values and exposes it as an ALTREP character vector.
 ///
-/// # Note
+/// # Performance Warning
 ///
-/// String elements must be materialized and stored to satisfy the `&str` borrow
-/// requirement of `AltStringData::elt()`. This means strings are allocated eagerly
-/// as they're accessed and kept in memory.
+/// Unlike other `Iter*Data` types, **accessing ANY element forces full materialization
+/// of the entire iterator**. This is because R's `AltStringData::elt()` returns a borrowed
+/// `&str`, which requires stable storage. The internal `RefCell` cannot provide the required
+/// lifetime, so all strings must be materialized upfront.
+///
+/// This means:
+/// - `elt(0)` on a million-element iterator will generate ALL million strings
+/// - There is no lazy evaluation benefit for string iterators
+/// - Memory usage equals the full vector regardless of access patterns
+///
+/// For truly lazy string ALTREP, consider implementing a custom type that stores
+/// strings in a way that allows borrowing without full materialization (e.g., arena
+/// allocation or caching generated strings incrementally).
 ///
 /// # Example
 ///
@@ -1132,6 +1142,7 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltInteger
 ///
 /// let iter = (0..5).map(|x| format!("item_{}", x));
 /// let data = IterStringData::from_iter(iter, 5);
+/// // First access to ANY element will materialize all 5 strings
 /// ```
 pub struct IterStringData<I>
 where

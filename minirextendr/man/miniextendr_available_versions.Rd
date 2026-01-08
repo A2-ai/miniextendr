@@ -11,4 +11,5 @@ Character vector of available version tags
 }
 \description{
 Queries GitHub to find available releases/tags of miniextendr.
+Uses the gh package for proper auth token handling and rate limit awareness.
 }

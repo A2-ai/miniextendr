@@ -27,6 +27,12 @@ This package embeds a Rust crate under `src/rust/` and builds it during
    - Generates R wrappers with `cargo run --bin document`.
    - Links the shared library.
 
+## Templates
+
+The `minirextendr` templates are kept in sync with this package. See
+`../minirextendr/inst/templates/README.md` and run `just templates-check` from
+the repo root to verify template drift.
+
 ## Files that must be committed
 
 The following generated files **must** be committed to version control:

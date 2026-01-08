@@ -1,5 +1,9 @@
 AC_INIT([miniextendr], [1.0])
 
+dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
+dnl This avoids the CRAN NOTE about non-standard top-level files
+AC_CONFIG_AUX_DIR([tools])
+
 dnl Verify we're running from the R package directory (not the monorepo root)
 dnl This prevents accidental creation of src/, config.log, etc. in the wrong place
 if test ! -f "DESCRIPTION" || test ! -f "NAMESPACE"; then
@@ -54,15 +58,26 @@ AC_SUBST([NOT_CRAN])
 dnl Set cargo features flag
 dnl
 dnl By default, use no extra features (safe, passes R CMD check).
-dnl Advanced users can enable features via environment variables:
-dnl - MINIEXTENDR_FEATURES="nonapi" for non-API R functions (advanced threading, stack control)
-dnl - MINIEXTENDR_FEATURES="rayon" for parallel computation support
-dnl - MINIEXTENDR_FEATURES="nonapi,rayon" for both
+dnl In dev mode (NOT_CRAN=true), enable all optional features for testing.
+dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
 AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
-: ${MINIEXTENDR_FEATURES=""}
+
+dnl In dev mode, enable all features by default for comprehensive testing
+dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
+if test -z "${MINIEXTENDR_FEATURES+x}"; then
+  dnl MINIEXTENDR_FEATURES not set at all - apply defaults based on mode
+  if test "$NOT_CRAN" = "true"; then
+    dnl Dev mode: enable all optional features for testing
+    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+    echo "configure: dev mode - enabling all optional features for testing"
+  else
+    dnl CRAN mode: no extra features
+    MINIEXTENDR_FEATURES=""
+  fi
+fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
@@ -199,14 +214,19 @@ AC_SUBST([CARGO_LIBDIR])
 
 dnl ---- user feedback ----
 AC_MSG_NOTICE([R_HOME                = $R_HOME])
+AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
 AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
 AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
 AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
 AC_MSG_NOTICE([CARGO_LIBDIR          = $CARGO_LIBDIR])
 AS_IF([test -n "$RUST_TOOLCHAIN"],
-      [AC_MSG_NOTICE([RUST_TOOLCHAIN       = $RUST_TOOLCHAIN])])
+      [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
+AS_IF([test -n "$CARGO_BUILD_TARGET"],
+      [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
+AS_IF([test -n "$MINIEXTENDR_FEATURES"],
+      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
 pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
@@ -260,6 +280,8 @@ AS_IF([test "$NOT_CRAN" = "true"], [
 miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-api" }
 miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-macros" }
 miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-lint" }
+miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-engine" }
+miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench" }
 EOF
 )"
 ], [
@@ -580,6 +602,10 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
       echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
     done
 
+    dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
+    dnl These are vendored crate build files not used by the R package
+    rm -f "$VENDOR_OUT/r-efi/Makefile"
+
     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
   else
     echo "configure: miniextendr source crates not found; switching to vendored sources" >&2
@@ -620,6 +646,9 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
       fi
     done
     echo "configure: cleared vendor checksum files" >&2
+
+    dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
+    rm -f "$VENDOR_OUT/r-efi/Makefile"
 
     dnl Also strip checksums from Cargo.lock to avoid verification mismatch
     if test -f "src/rust/Cargo.lock"; then
@@ -707,10 +736,11 @@ AC_CONFIG_COMMANDS([compress-vendor],
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
-      dnl Exclude unnecessary files: tests, examples, benchmarks, CI files
+      dnl Exclude unnecessary files: tests, benchmarks, CI files
+      dnl TODO: currently, winnow uses the examples folder in its compilation process.
+      dnl this is unexpected, and should be solved upstream
       tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
         --exclude='vendor/*/tests' \
-        --exclude='vendor/*/examples' \
         --exclude='vendor/*/benches' \
         --exclude='vendor/*/.github' \
         --exclude='vendor/*/.travis.yml' \

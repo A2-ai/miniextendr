@@ -32,22 +32,28 @@
 
 /// Normalizes Rust argument identifiers for R.
 ///
-/// - Leading `_` → prepends "unused"
-/// - Leading `__` → prepends "private"
+/// - Leading `_` → stripped (Rust convention for unused params)
+/// - Leading `__` → stripped
 /// - Otherwise → unchanged
 ///
 /// # Examples
-/// - `_x` → `unused_x`
-/// - `__field` → `private__field`
+/// - `_x` → `x`
+/// - `_to` → `to`
+/// - `__field` → `field`
 /// - `value` → `value`
+///
+/// Note: We strip underscores rather than prefixing "unused" because R callers
+/// (like vctrs) may use named arguments that must match the original name.
 pub fn normalize_r_arg_ident(rust_ident: &syn::Ident) -> syn::Ident {
-    let mut arg_name = rust_ident.to_string();
-    if arg_name.starts_with("__") {
-        arg_name.insert_str(0, "private");
-    } else if arg_name.starts_with('_') {
-        arg_name.insert_str(0, "unused");
-    }
-    syn::Ident::new(&arg_name, rust_ident.span())
+    let arg_name = rust_ident.to_string();
+    let normalized = arg_name.trim_start_matches('_');
+    // Handle edge case of just underscores
+    let normalized = if normalized.is_empty() {
+        "arg"
+    } else {
+        normalized
+    };
+    syn::Ident::new(normalized, rust_ident.span())
 }
 
 /// Builder for R function formal parameters and call arguments.
@@ -125,12 +131,10 @@ impl<'a> RArgumentBuilder<'a> {
             };
 
             // Handle dots (must be last)
+            // Note: In R, `...` cannot have a name/default in formals - it must be just `...`
+            // The named_dots is only used on the Rust side. R formals always use plain `...`
             if self.has_dots && idx == last_idx {
-                if let Some(ref named) = self.named_dots {
-                    formals.push(format!("{} = ...", named));
-                } else {
-                    formals.push("...".to_string());
-                }
+                formals.push("...".to_string());
                 continue;
             }
 
@@ -186,12 +190,9 @@ impl<'a> RArgumentBuilder<'a> {
             };
 
             // Handle dots special case
+            // Always use list(...) since R formals always have plain `...`
             if self.has_dots && idx == last_idx {
-                if let Some(ref named) = self.named_dots {
-                    call_args.push(format!("list({})", named));
-                } else {
-                    call_args.push("list(...)".to_string());
-                }
+                call_args.push("list(...)".to_string());
                 continue;
             }
 

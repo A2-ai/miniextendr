@@ -15,4 +15,3 @@
 //! - Keep list fixtures protected for the entire benchmark process.
 //! - For `TryFromList`, avoid including list allocation cost unless explicitly measuring it
 //!   (use protected fixture `SEXP`s or `divan::Bencher::with_inputs`).
-

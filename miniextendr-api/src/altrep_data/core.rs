@@ -97,6 +97,20 @@ impl From<bool> for Logical {
     }
 }
 
+/// Convert from RLogical (FFI type) to Logical (semantic type).
+impl From<crate::ffi::RLogical> for Logical {
+    fn from(r: crate::ffi::RLogical) -> Self {
+        Logical::from_r_int(r.to_i32())
+    }
+}
+
+/// Convert from Logical (semantic type) to RLogical (FFI type).
+impl From<Logical> for crate::ffi::RLogical {
+    fn from(l: Logical) -> Self {
+        crate::ffi::RLogical::from_i32(l.to_r_int())
+    }
+}
+
 // =============================================================================
 // Sortedness hint
 // =============================================================================

@@ -8,7 +8,7 @@ use miniextendr_api::ffi::{
     INTEGER, LOGICAL, R_NaString, R_xlen_t, RAW, Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal,
     Rf_allocVector, Rf_mkChar, Rf_protect, Rf_unprotect, SET_STRING_ELT, SEXP, SEXPTYPE,
 };
-use miniextendr_api::from_r::{CoercedSexpError, TryFromSexp};
+use miniextendr_api::from_r::{SexpError, TryFromSexp};
 use std::collections::{BTreeSet, HashSet};
 use std::ffi::CString;
 
@@ -238,13 +238,371 @@ fn test_error_cases() {
         let err = <bool as TryFromSexp>::try_from_sexp(na_log).unwrap_err();
         assert!(matches!(err, miniextendr_api::from_r::SexpError::Na(_)));
 
-        let coerced_err: Result<Coerced<i8, i32>, CoercedSexpError> =
+        let coerced_err: Result<Coerced<i8, i32>, SexpError> =
             TryFromSexp::try_from_sexp(int_scalar);
         assert!(coerced_err.is_ok());
 
         let big_int = guard.protect(Rf_ScalarInteger(1000));
-        let coerced_err: Result<Coerced<u8, i32>, CoercedSexpError> =
-            TryFromSexp::try_from_sexp(big_int);
-        assert!(matches!(coerced_err, Err(CoercedSexpError::Coerce(_))));
+        let coerced_err: Result<Coerced<u8, i32>, SexpError> = TryFromSexp::try_from_sexp(big_int);
+        assert!(matches!(coerced_err, Err(SexpError::InvalidValue(_))));
     }
+}
+
+// =============================================================================
+// Feature-gated tests for macro-based conversions
+// =============================================================================
+
+/// Helper to create a VECSXP (R list) from SEXPs
+#[cfg(any(feature = "serde", feature = "aho-corasick"))]
+unsafe fn make_list(elements: &[SEXP], guard: &mut ProtectCount) -> SEXP {
+    use miniextendr_api::ffi::SET_VECTOR_ELT;
+    let len = elements.len() as R_xlen_t;
+    let sexp = unsafe { guard.protect(Rf_allocVector(SEXPTYPE::VECSXP, len)) };
+    for (i, &elem) in elements.iter().enumerate() {
+        unsafe { SET_VECTOR_ELT(sexp, i as R_xlen_t, elem) };
+    }
+    sexp
+}
+
+// -----------------------------------------------------------------------------
+// aho-corasick feature tests
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "aho-corasick")]
+#[test]
+fn aho_corasick_option_from_nil() {
+    use miniextendr_api::aho_corasick_impl::AhoCorasick;
+
+    r_test_utils::with_r_thread(|| {
+        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let opt: Option<AhoCorasick> = TryFromSexp::try_from_sexp(nil).unwrap();
+        assert!(opt.is_none());
+    });
+}
+
+#[cfg(feature = "aho-corasick")]
+#[test]
+fn aho_corasick_option_from_patterns() {
+    use miniextendr_api::aho_corasick_impl::AhoCorasick;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let patterns = make_str_vec(&[Some("foo"), Some("bar")], &mut guard);
+            let opt: Option<AhoCorasick> = TryFromSexp::try_from_sexp(patterns).unwrap();
+            assert!(opt.is_some());
+            let ac = opt.unwrap();
+            assert_eq!(ac.patterns_len(), 2);
+        }
+    });
+}
+
+#[cfg(feature = "aho-corasick")]
+#[test]
+fn aho_corasick_vec_from_list() {
+    use miniextendr_api::aho_corasick_impl::AhoCorasick;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let patterns1 = make_str_vec(&[Some("a"), Some("b")], &mut guard);
+            let patterns2 = make_str_vec(&[Some("x"), Some("y"), Some("z")], &mut guard);
+            let list = make_list(&[patterns1, patterns2], &mut guard);
+
+            let vec: Vec<AhoCorasick> = TryFromSexp::try_from_sexp(list).unwrap();
+            assert_eq!(vec.len(), 2);
+            assert_eq!(vec[0].patterns_len(), 2);
+            assert_eq!(vec[1].patterns_len(), 3);
+        }
+    });
+}
+
+#[cfg(feature = "aho-corasick")]
+#[test]
+fn aho_corasick_vec_option_from_list() {
+    use miniextendr_api::aho_corasick_impl::AhoCorasick;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let patterns1 = make_str_vec(&[Some("hello")], &mut guard);
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let patterns2 = make_str_vec(&[Some("world")], &mut guard);
+            let list = make_list(&[patterns1, nil, patterns2], &mut guard);
+
+            let vec: Vec<Option<AhoCorasick>> = TryFromSexp::try_from_sexp(list).unwrap();
+            assert_eq!(vec.len(), 3);
+            assert!(vec[0].is_some());
+            assert!(vec[1].is_none());
+            assert!(vec[2].is_some());
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// serde (JSON) feature tests
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "serde")]
+#[test]
+fn json_value_option_from_nil() {
+    use miniextendr_api::serde_impl::JsonValue;
+
+    r_test_utils::with_r_thread(|| {
+        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let opt: Option<JsonValue> = TryFromSexp::try_from_sexp(nil).unwrap();
+        assert!(opt.is_none());
+    });
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn json_value_option_from_sexp() {
+    use miniextendr_api::serde_impl::JsonValue;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            // Test with an integer scalar - converts to JSON number
+            let int_sexp = guard.protect(Rf_ScalarInteger(42));
+            let opt: Option<JsonValue> = TryFromSexp::try_from_sexp(int_sexp).unwrap();
+            assert!(opt.is_some());
+            let val = opt.unwrap();
+            assert!(val.is_number());
+            assert_eq!(val.as_i64(), Some(42));
+        }
+    });
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn json_value_vec_from_list() {
+    use miniextendr_api::serde_impl::JsonValue;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            // Create R objects that convert to different JSON types
+            let int_sexp = guard.protect(Rf_ScalarInteger(42)); // -> JSON number
+            let str_vec = make_str_vec(&[Some("hello"), Some("world")], &mut guard); // -> JSON array
+            let list = make_list(&[int_sexp, str_vec], &mut guard);
+
+            let vec: Vec<JsonValue> = TryFromSexp::try_from_sexp(list).unwrap();
+            assert_eq!(vec.len(), 2);
+            assert!(vec[0].is_number());
+            assert!(vec[1].is_array());
+        }
+    });
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn json_value_vec_option_from_list() {
+    use miniextendr_api::serde_impl::JsonValue;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            // Create R objects: logical -> JSON bool, NULL -> None, integer -> JSON number
+            let bool_sexp = guard.protect(Rf_ScalarLogical(1)); // -> JSON true
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let int_sexp = guard.protect(Rf_ScalarInteger(42)); // -> JSON 42
+            let list = make_list(&[bool_sexp, nil, int_sexp], &mut guard);
+
+            let vec: Vec<Option<JsonValue>> = TryFromSexp::try_from_sexp(list).unwrap();
+            assert_eq!(vec.len(), 3);
+            assert!(vec[0].as_ref().unwrap().is_boolean());
+            assert!(vec[1].is_none());
+            assert!(vec[2].as_ref().unwrap().is_number());
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// toml feature tests
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "toml")]
+#[test]
+fn toml_value_option_from_nil() {
+    use miniextendr_api::toml_impl::TomlValue;
+
+    r_test_utils::with_r_thread(|| {
+        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let opt: Option<TomlValue> = TryFromSexp::try_from_sexp(nil).unwrap();
+        assert!(opt.is_none());
+    });
+}
+
+#[cfg(feature = "toml")]
+#[test]
+fn toml_value_option_from_string() {
+    use miniextendr_api::toml_impl::TomlValue;
+    use miniextendr_api::into_r::IntoR;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let toml_str = r#"key = "value""#.to_string();
+            let sexp = guard.protect(toml_str.into_sexp());
+            let opt: Option<TomlValue> = TryFromSexp::try_from_sexp(sexp).unwrap();
+            assert!(opt.is_some());
+            let val = opt.unwrap();
+            assert!(val.is_table());
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// bitvec feature tests
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "bitvec")]
+#[test]
+fn bitvec_option_from_nil() {
+    use miniextendr_api::bitvec_impl::RBitVec;
+
+    r_test_utils::with_r_thread(|| {
+        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let opt: Option<RBitVec> = TryFromSexp::try_from_sexp(nil).unwrap();
+        assert!(opt.is_none());
+    });
+}
+
+#[cfg(feature = "bitvec")]
+#[test]
+fn bitvec_option_from_logical() {
+    use miniextendr_api::bitvec_impl::RBitVec;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let log_vec = make_logical_vec(&[1, 0, 1, 1, 0], &mut guard);
+            let opt: Option<RBitVec> = TryFromSexp::try_from_sexp(log_vec).unwrap();
+            assert!(opt.is_some());
+            let bits = opt.unwrap();
+            assert_eq!(bits.len(), 5);
+            assert!(bits[0]);
+            assert!(!bits[1]);
+            assert!(bits[2]);
+            assert!(bits[3]);
+            assert!(!bits[4]);
+        }
+    });
+}
+
+#[cfg(feature = "bitvec")]
+#[test]
+fn bitvec_msb0_option_from_nil() {
+    use miniextendr_api::bitvec_impl::{BitVec, Msb0};
+
+    r_test_utils::with_r_thread(|| {
+        let nil = unsafe { miniextendr_api::ffi::R_NilValue };
+        let opt: Option<BitVec<u8, Msb0>> = TryFromSexp::try_from_sexp(nil).unwrap();
+        assert!(opt.is_none());
+    });
+}
+
+#[cfg(feature = "bitvec")]
+#[test]
+fn bitvec_msb0_option_from_logical() {
+    use miniextendr_api::bitvec_impl::{BitVec, Msb0};
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let log_vec = make_logical_vec(&[0, 1, 0], &mut guard);
+            let opt: Option<BitVec<u8, Msb0>> = TryFromSexp::try_from_sexp(log_vec).unwrap();
+            assert!(opt.is_some());
+            let bits = opt.unwrap();
+            assert_eq!(bits.len(), 3);
+            assert!(!bits[0]);
+            assert!(bits[1]);
+            assert!(!bits[2]);
+        }
+    });
+}
+
+// -----------------------------------------------------------------------------
+// Test try_from_sexp_unchecked propagation
+// -----------------------------------------------------------------------------
+
+#[cfg(feature = "aho-corasick")]
+#[test]
+fn aho_corasick_unchecked_option() {
+    use miniextendr_api::aho_corasick_impl::AhoCorasick;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            // Test with patterns
+            let patterns = make_str_vec(&[Some("test")], &mut guard);
+            let opt: Option<AhoCorasick> = TryFromSexp::try_from_sexp_unchecked(patterns).unwrap();
+            assert!(opt.is_some());
+
+            // Test with nil
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let opt_nil: Option<AhoCorasick> = TryFromSexp::try_from_sexp_unchecked(nil).unwrap();
+            assert!(opt_nil.is_none());
+        }
+    });
+}
+
+#[cfg(feature = "aho-corasick")]
+#[test]
+fn aho_corasick_unchecked_vec() {
+    use miniextendr_api::aho_corasick_impl::AhoCorasick;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let patterns1 = make_str_vec(&[Some("a")], &mut guard);
+            let patterns2 = make_str_vec(&[Some("b")], &mut guard);
+            let list = make_list(&[patterns1, patterns2], &mut guard);
+
+            let vec: Vec<AhoCorasick> = TryFromSexp::try_from_sexp_unchecked(list).unwrap();
+            assert_eq!(vec.len(), 2);
+        }
+    });
+}
+
+#[cfg(feature = "serde")]
+#[test]
+fn json_value_unchecked_vec_option() {
+    use miniextendr_api::serde_impl::JsonValue;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let int_sexp = guard.protect(Rf_ScalarInteger(100));
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let list = make_list(&[int_sexp, nil], &mut guard);
+
+            let vec: Vec<Option<JsonValue>> =
+                TryFromSexp::try_from_sexp_unchecked(list).unwrap();
+            assert_eq!(vec.len(), 2);
+            assert!(vec[0].is_some());
+            assert!(vec[1].is_none());
+        }
+    });
+}
+
+#[cfg(feature = "bitvec")]
+#[test]
+fn bitvec_unchecked_option() {
+    use miniextendr_api::bitvec_impl::RBitVec;
+
+    r_test_utils::with_r_thread(|| {
+        let mut guard = ProtectCount::default();
+        unsafe {
+            let log_vec = make_logical_vec(&[1, 0], &mut guard);
+            let opt: Option<RBitVec> = TryFromSexp::try_from_sexp_unchecked(log_vec).unwrap();
+            assert!(opt.is_some());
+            assert_eq!(opt.unwrap().len(), 2);
+
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let opt_nil: Option<RBitVec> = TryFromSexp::try_from_sexp_unchecked(nil).unwrap();
+            assert!(opt_nil.is_none());
+        }
+    });
 }

@@ -250,7 +250,7 @@ AS_IF([test "$NOT_CRAN" = "true"], [
       AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
       AS_MKDIR_P(["$VENDOR_OUT"])
       $CARGO_CMD vendor \
-        --sync "$MANIFEST" \
+        --manifest-path "$MANIFEST" \
         "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
       echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
     ], [
@@ -291,6 +291,16 @@ dnl Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 dnl This runs after AC_CONFIG_FILES generates the files
 AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
+  dnl Ensure Cargo.lock exists (required for cargo pkgid)
+  if test ! -f "src/rust/Cargo.lock"; then
+    echo "configure: generating Cargo.lock"
+    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
+    if test $? -ne 0; then
+      echo "configure: error: cargo generate-lockfile failed" >&2
+      exit 1
+    fi
+  fi
+
   dnl cargo pkgid outputs: path+file:///path/to/project#name@version
   dnl Extract package name between # and @, convert hyphens to underscores for Rust
   dnl Use --offline only for CRAN builds (NOT_CRAN != true) to avoid network access

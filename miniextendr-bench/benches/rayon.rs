@@ -30,9 +30,9 @@ fn rayon_with_r_vec(len: usize) {
 
 #[cfg(feature = "rayon")]
 #[divan::bench(args = miniextendr_bench::SIZES)]
-fn rayon_collect_rvec(len: usize) {
-    let rvec: rayon_bridge::RVec<i32> = (0..len as i32).into_par_iter().collect();
-    divan::black_box(rvec.len());
+fn rayon_collect_vec(len: usize) {
+    let vec: Vec<i32> = (0..len as i32).into_par_iter().collect();
+    divan::black_box(vec.len());
 }
 
 #[cfg(feature = "rayon")]

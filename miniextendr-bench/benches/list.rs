@@ -68,7 +68,13 @@ struct Named4 {
 }
 
 #[derive(miniextendr_api::IntoList, miniextendr_api::TryFromList)]
-struct Tuple3(i32, #[into_list(ignore)] #[allow(dead_code)] i32, i32);
+struct Tuple3(
+    i32,
+    #[into_list(ignore)]
+    #[allow(dead_code)]
+    i32,
+    i32,
+);
 
 #[divan::bench]
 fn derive_into_list_named() {
@@ -136,4 +142,3 @@ fn derive_try_from_list_tuple(bencher: divan::Bencher) {
             divan::black_box(out.0);
         });
 }
-

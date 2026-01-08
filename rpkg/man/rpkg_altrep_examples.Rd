@@ -22,7 +22,7 @@ unit_circle(n)
 An ALTREP vector.
 }
 \description{
-ALTREP example constructors
+ALTREP Example Constructors
 }
 \examples{
 unit_circle(8L)

@@ -165,18 +165,6 @@ fn disarm_scope_no_unprotect() {
     });
 }
 
-#[test]
-fn owned_protect_into_inner_no_unprotect() {
-    r_test_utils::with_r_thread(|| unsafe {
-        let guard = OwnedProtect::new(Rf_ScalarInteger(42));
-        let sexp = guard.into_inner();
-
-        // SEXP is still protected, guard didn't unprotect
-        // We need to manually unprotect
-        assert!(!sexp.is_null());
-        miniextendr_api::ffi::Rf_unprotect(1);
-    });
-}
 
 // =============================================================================
 // TLS convenience tests

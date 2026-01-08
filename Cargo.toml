@@ -8,7 +8,6 @@ members = [
     "miniextendr-lint",
 ]
 exclude = [
-    "vendor",
     "rpkg/src/rust",
     "rpkg/src/vendor",
     "tests/cross-package/consumer.pkg/src/rust/",

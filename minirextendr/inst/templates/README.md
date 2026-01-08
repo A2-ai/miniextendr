@@ -1,6 +1,8 @@
 # miniextendr Templates
 
 This directory contains two template types for creating projects with miniextendr.
+These templates are consumed by the `minirextendr` package; see
+`../../README.md` for usage.
 
 ## Template Types
 
@@ -125,3 +127,11 @@ just templates-approve  # Accept current diffs as approved
 ```
 
 The `patches/templates.patch` file captures approved differences between templates and rpkg sources (like placeholder markers).
+
+## Vendor Tarball for CRAN
+
+When submitting to CRAN, vendored crates are compressed into `inst/vendor.tar.xz`.
+This file is typically 5-10MB and does NOT require Git LFS (which is for files >50MB).
+
+The tarball is created during `./configure` when `NOT_CRAN` is not set, and
+extracted during package installation. See the `minirextendr` README for details.

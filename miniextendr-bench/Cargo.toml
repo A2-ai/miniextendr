@@ -107,5 +107,6 @@ harness = false
 name = "rarray"
 harness = false
 
-[profile.release]
-debug-assertions = true
+[[bench]]
+name = "factor"
+harness = false

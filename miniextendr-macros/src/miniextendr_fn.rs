@@ -515,6 +515,7 @@ impl MiniextendrFunctionParsed {
 /// - `worker`: explicitly request worker thread execution (default for most functions)
 /// - `coerce`: enable automatic coercion for supported parameter types
 /// - `rng`: enable RNG state management (GetRNGstate/PutRNGstate)
+/// - `unwrap_in_r`: return `Result<T, E>` to R without unwrapping
 /// - `return = "auto" | "list" | "externalptr" | "vector"`: prefer a specific `IntoR` path
 ///
 /// # Note
@@ -534,8 +535,22 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) coerce_all: bool,
     /// Enable RNG state management (GetRNGstate/PutRNGstate).
     pub(crate) rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping.
+    pub(crate) unwrap_in_r: bool,
     /// Preferred return conversion.
     pub(crate) return_pref: ReturnPref,
+    /// S3 generic name (if this function is an S3 method).
+    ///
+    /// Use `#[miniextendr(s3(generic = "vec_proxy", class = "my_vctr"))]` to mark a function
+    /// as an S3 method for an existing generic.
+    pub(crate) s3_generic: Option<String>,
+    /// S3 class suffix for the method (e.g., "my_vctr" or "my_vctr.my_vctr" for double-dispatch).
+    pub(crate) s3_class: Option<String>,
+    /// Typed list validation spec for dots parameter.
+    ///
+    /// Use `#[miniextendr(dots = typed_list!(...))]` to automatically validate dots
+    /// at the start of the function and bind the result to `dots_typed`.
+    pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -577,12 +592,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.coerce_all = true;
                         } else if ident == "rng" {
                             out.rng = true;
+                        } else if ident == "unwrap_in_r" {
+                            out.unwrap_in_r = true;
                         } else if ident == "worker" {
                             out.force_worker = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r",
                             ));
                         }
                     }
@@ -619,10 +636,28 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 ));
                             }
                         }
+                    } else if nv.path.is_ident("dots") {
+                        // dots = typed_list!(...) - capture the macro invocation
+                        if let syn::Expr::Macro(expr_macro) = &nv.value {
+                            if expr_macro.mac.path.is_ident("typed_list") {
+                                // Capture the entire macro invocation as TokenStream
+                                out.dots_spec = Some(quote::quote!(#expr_macro));
+                            } else {
+                                return Err(syn::Error::new_spanned(
+                                    &expr_macro.mac.path,
+                                    "dots expects `typed_list!(...)` macro",
+                                ));
+                            }
+                        } else {
+                            return Err(syn::Error::new_spanned(
+                                &nv.value,
+                                "dots expects `typed_list!(...)` macro",
+                            ));
+                        }
                     } else {
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "this option does not take any arguments",
+                            "unknown option; expected `return` or `dots`",
                         ));
                     }
                 }
@@ -651,6 +686,31 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     } else if list.path.is_ident("defaults") {
                         // Ignore defaults(...) - it's handled by impl method parsing
                         // This allows #[miniextendr(defaults(...))] on impl methods
+                    } else if list.path.is_ident("s3") {
+                        // Parse s3(generic = "...", class = "...")
+                        list.parse_nested_meta(|meta| {
+                            if meta.path.is_ident("generic") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                out.s3_generic = Some(value.value());
+                            } else if meta.path.is_ident("class") {
+                                let _: syn::Token![=] = meta.input.parse()?;
+                                let value: syn::LitStr = meta.input.parse()?;
+                                out.s3_class = Some(value.value());
+                            } else {
+                                return Err(
+                                    meta.error("unknown s3 option; expected `generic` or `class`")
+                                );
+                            }
+                            Ok(())
+                        })?;
+                        // Validate: s3 requires at least generic or class
+                        if out.s3_generic.is_none() && out.s3_class.is_none() {
+                            return Err(syn::Error::new_spanned(
+                                list,
+                                "s3(...) requires at least `generic = \"...\"` or `class = \"...\"`",
+                            ));
+                        }
                     } else {
                         // invisible(something) etc
                         return Err(syn::Error::new_spanned(

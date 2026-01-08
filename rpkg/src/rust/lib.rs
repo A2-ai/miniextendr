@@ -1,44 +1,178 @@
 //! rpkg: Example R package demonstrating miniextendr features.
 //!
-//! This crate is organized into focused modules for different test categories:
-//! - `panic_tests`: Panic, drop, and R error handling tests
-//! - `unwind_protect_tests`: `with_r_unwind_protect` mechanism tests
-//! - `dots_tests`: R dots (`...`) handling tests
-//! - `interrupt_tests`: R interrupt checking tests
-//! - `conversion_tests`: Scalar and slice conversion tests
-//! - `externalptr_tests`: ExternalPtr functionality tests
-//! - `receiver_tests`: Receiver-style impl block tests
-//! - `worker_tests`: Worker thread and `with_r_thread` tests
-//! - `coerce_tests`: Coerce, TryCoerce, RNativeType trait tests
-//! - `visibility_tests`: R return value visibility tests
-//! - `thread_tests`: RThreadBuilder and thread safety tests
-//! - `misc_tests`: Miscellaneous test functions
-//! - `nonapi`: Feature-gated tests requiring nonapi feature
+//! This crate is organized into focused modules for different test categories.
+//!
+//! # Core Functionality
+//!
+//! - [`panic_tests`]: Panic, drop, and R error handling tests
+//! - [`unwind_protect_tests`]: `with_r_unwind_protect` mechanism tests
+//! - [`worker_tests`]: Worker thread and `with_r_thread` tests
+//! - [`thread_tests`]: RThreadBuilder and thread safety tests
+//! - [`interrupt_tests`]: R interrupt checking tests
+//!
+//! # Type Conversions
+//!
+//! - [`conversion_tests`]: Scalar and slice conversion tests
+//! - [`conversions`]: Additional conversion utilities
+//! - [`coerce_tests`]: Coerce, TryCoerce, RNativeType trait tests
+//! - [`convert_pref_tests`]: Conversion preference tests
+//! - [`adapter_traits_tests`]: Adapter trait implementations
+//!
+//! # Class Systems
+//!
+//! - [`r6_tests`]: R6 class system tests (including active bindings)
+//! - [`r6_default_tests`]: R6 default parameter tests
+//! - [`s3_tests`]: S3 class system tests
+//! - [`s4_tests`]: S4 class system tests
+//! - [`s7_tests`]: S7 class system tests
+//! - [`class_system_matrix`]: Cross-class-system compatibility matrix
+//! - [`receiver_tests`]: Receiver-style impl block tests
+//!
+//! # R Interface
+//!
+//! - [`dots_tests`]: R dots (`...`) handling tests
+//! - [`default_tests`]: Default parameter value tests
+//! - [`externalptr_tests`]: ExternalPtr functionality tests
+//! - [`visibility_tests`]: R return value visibility tests
+//! - [`identical_tests`]: R identical() comparison tests
+//! - [`factor_tests`]: R factor handling tests
+//! - [`rng_tests`]: R random number generator tests
+//!
+//! # Trait ABI
+//!
+//! - [`trait_abi_tests`]: Cross-package trait dispatch tests
+//! - [`shared_trait_test`]: Shared trait implementation tests
+//!
+//! # Feature-Gated Modules
+//!
+//! These modules require specific Cargo features to be enabled:
+//!
+//! - [`rayon_tests`]: Parallel iteration tests (feature: `rayon`)
+//! - [`serde_r_tests`]: Serde R serialization tests (feature: `serde_r`)
+//! - [`ndarray_tests`]: N-dimensional array tests (feature: `ndarray`)
+//! - [`vctrs_tests`]: vctrs compatibility tests (feature: `vctrs`)
+//! - [`vctrs_class_example`]: vctrs class implementation example (feature: `vctrs`)
+//! - [`nonapi`]: Non-API R internals tests (feature: `nonapi`)
+//! - [`connection_tests`]: R connection handling tests (feature: `connections`)
+//!
+//! # Adapter Tests (Feature-Gated)
+//!
+//! Each adapter has its own feature flag:
+//!
+//! - [`uuid_adapter_tests`]: UUID type adapter (feature: `uuid`)
+//! - [`regex_adapter_tests`]: Regex type adapter (feature: `regex`)
+//! - [`time_adapter_tests`]: Time/date type adapter (feature: `time`)
+//! - [`ordered_float_adapter_tests`]: OrderedFloat adapter (feature: `ordered-float`)
+//! - [`bigint_adapter_tests`]: BigInt type adapter (feature: `num-bigint`)
+//! - [`decimal_adapter_tests`]: Decimal type adapter (feature: `rust_decimal`)
+//! - [`indexmap_adapter_tests`]: IndexMap type adapter (feature: `indexmap`)
+//!
+//! # Miscellaneous
+//!
+//! - [`misc_tests`]: Miscellaneous test functions
 
+use miniextendr_api::Altrep;
 use miniextendr_api::IntoR;
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
+mod adapter_traits_tests;
 mod class_system_matrix;
 mod coerce_tests;
 mod conversion_tests;
+mod conversions;
 mod convert_pref_tests;
 mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
+mod factor_tests;
 mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
 mod panic_tests;
 mod r6_default_tests;
 mod r6_tests;
+#[cfg(feature = "rayon")]
+#[path = "rayon_tests.rs"]
+mod rayon_tests;
+#[cfg(not(feature = "rayon"))]
+#[path = "rayon_tests_disabled.rs"]
+mod rayon_tests;
 mod receiver_tests;
 mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
+#[cfg(feature = "serde_r")]
+#[path = "serde_r_tests.rs"]
+mod serde_r_tests;
+#[cfg(not(feature = "serde_r"))]
+#[path = "serde_r_tests_disabled.rs"]
+mod serde_r_tests;
+#[cfg(feature = "ndarray")]
+#[path = "ndarray_tests.rs"]
+mod ndarray_tests;
+#[cfg(not(feature = "ndarray"))]
+#[path = "ndarray_tests_disabled.rs"]
+mod ndarray_tests;
+// Feature adapter tests - each feature has its own enabled/disabled module
+#[cfg(feature = "uuid")]
+#[path = "uuid_adapter_tests.rs"]
+mod uuid_adapter_tests;
+#[cfg(not(feature = "uuid"))]
+#[path = "uuid_adapter_tests_disabled.rs"]
+mod uuid_adapter_tests;
+
+#[cfg(feature = "regex")]
+#[path = "regex_adapter_tests.rs"]
+mod regex_adapter_tests;
+#[cfg(not(feature = "regex"))]
+#[path = "regex_adapter_tests_disabled.rs"]
+mod regex_adapter_tests;
+
+#[cfg(feature = "time")]
+#[path = "time_adapter_tests.rs"]
+mod time_adapter_tests;
+#[cfg(not(feature = "time"))]
+#[path = "time_adapter_tests_disabled.rs"]
+mod time_adapter_tests;
+
+#[cfg(feature = "ordered-float")]
+#[path = "ordered_float_adapter_tests.rs"]
+mod ordered_float_adapter_tests;
+#[cfg(not(feature = "ordered-float"))]
+#[path = "ordered_float_adapter_tests_disabled.rs"]
+mod ordered_float_adapter_tests;
+
+#[cfg(feature = "num-bigint")]
+#[path = "bigint_adapter_tests.rs"]
+mod bigint_adapter_tests;
+#[cfg(not(feature = "num-bigint"))]
+#[path = "bigint_adapter_tests_disabled.rs"]
+mod bigint_adapter_tests;
+
+#[cfg(feature = "rust_decimal")]
+#[path = "decimal_adapter_tests.rs"]
+mod decimal_adapter_tests;
+#[cfg(not(feature = "rust_decimal"))]
+#[path = "decimal_adapter_tests_disabled.rs"]
+mod decimal_adapter_tests;
+
+#[cfg(feature = "indexmap")]
+#[path = "indexmap_adapter_tests.rs"]
+mod indexmap_adapter_tests;
+#[cfg(not(feature = "indexmap"))]
+#[path = "indexmap_adapter_tests_disabled.rs"]
+mod indexmap_adapter_tests;
+
+// Connection tests - requires connections feature
+#[cfg(feature = "connections")]
+#[path = "connection_tests.rs"]
+mod connection_tests;
+#[cfg(not(feature = "connections"))]
+#[path = "connection_tests_disabled.rs"]
+mod connection_tests;
 mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
@@ -101,20 +235,15 @@ impl AltIntegerData for ConstantIntData {
 miniextendr_api::impl_altinteger_from_data!(ConstantIntData);
 
 /// ALTREP wrapper for ConstantIntData
-#[miniextendr(class = "ConstantInt", pkg = "rpkg")]
+#[miniextendr(class = "ConstantInt")]
 pub struct ConstantIntClass(pub ConstantIntData);
 
 /// Create a ConstantInt ALTREP instance (all elements are 42, length 10).
 ///
-/// # Safety
-///
-/// Must be called from R main thread with R properly initialized.
+/// Test fixture for ALTREP integer vectors where all elements have the same value.
 #[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_constant_int() -> SEXP {
-    let data = ConstantIntData { value: 42, len: 10 };
-    ConstantIntClass(data).into_sexp()
+pub fn constant_int() -> ConstantIntClass {
+    ConstantIntClass(ConstantIntData { value: 42, len: 10 })
 }
 
 // endregion
@@ -160,20 +289,18 @@ impl AltRealData for ConstantRealData {
 
 miniextendr_api::impl_altreal_from_data!(ConstantRealData);
 
-#[miniextendr(class = "ConstantReal", pkg = "rpkg")]
+#[miniextendr(class = "ConstantReal")]
 pub struct ConstantRealClass(pub ConstantRealData);
 
-/// # Safety
-/// Caller must ensure this is called from R's main thread.
+/// Create a ConstantReal ALTREP instance (all elements are PI, length 10).
+///
+/// Test fixture for ALTREP real vectors where all elements have the same value.
 #[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_constant_real() -> SEXP {
-    let data = ConstantRealData {
+pub fn constant_real() -> ConstantRealClass {
+    ConstantRealClass(ConstantRealData {
         value: std::f64::consts::PI,
         len: 10,
-    };
-    ConstantRealClass(data).into_sexp()
+    })
 }
 
 // -----------------------------------------------------------------------------
@@ -204,7 +331,7 @@ impl AltRealData for ArithSeqData {
 
 miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 
-#[miniextendr(class = "ArithSeq", pkg = "rpkg")]
+#[miniextendr(class = "ArithSeq")]
 pub struct ArithSeqClass(pub ArithSeqData);
 
 #[miniextendr]
@@ -360,7 +487,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LazyIntSeqData {
 miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
 
 /// ALTREP wrapper for LazyIntSeqData - base type auto-inferred!
-#[miniextendr(class = "LazyIntSeq", pkg = "rpkg")]
+#[miniextendr(class = "LazyIntSeq")]
 pub struct LazyIntSeqClass(pub LazyIntSeqData);
 
 /// Create a lazy integer sequence (similar to R's seq())
@@ -381,172 +508,149 @@ pub fn lazy_int_seq(from: i32, to: i32, by: i32) -> SEXP {
     LazyIntSeqClass(data).into_sexp()
 }
 
-/// Check if a LazyIntSeq has been materialized
+/// Check if a LazyIntSeq has been materialized.
 ///
-/// # Safety
-/// Caller must ensure `x` is a valid SEXP and this is called from R's main thread.
+/// Returns TRUE if the lazy sequence has been materialized (full buffer allocated),
+/// FALSE if still lazy or not a LazyIntSeq ALTREP object.
 #[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
+pub fn lazy_int_seq_is_materialized(x: SEXP) -> bool {
     use miniextendr_api::altrep_data1_as;
-    use miniextendr_api::ffi::{ALTREP, Rf_ScalarLogical};
+    use miniextendr_api::ffi::ALTREP;
 
     // Check if it's an ALTREP object
     if unsafe { ALTREP(x) } == 0 {
-        return unsafe { Rf_ScalarLogical(0) }; // Not ALTREP
+        return false;
     }
 
     // Try to extract the data
     match unsafe { altrep_data1_as::<LazyIntSeqData>(x) } {
-        Some(data) => {
-            let is_mat = data.materialized.is_some();
-            unsafe { Rf_ScalarLogical(if is_mat { 1 } else { 0 }) }
-        }
-        None => unsafe { Rf_ScalarLogical(0) },
+        Some(data) => data.materialized.is_some(),
+        None => false,
     }
-}
-
-/// ALTREP Unsafe Entry Points
-///
-/// ALTREP low-level entry points (unsafe).
-///
-/// Create a compact integer sequence with explicit length.
-///
-/// This is the entrypoint used by R/altrep.R for integer ALTREP tests.
-///
-/// # Safety
-/// Caller must ensure this is called from R's main thread.
-/// @name rpkg_altrep_unsafe
-/// @keywords internal
-/// @examples \dontrun{
-/// x <- unsafe_rpkg_altrep_from_doubles(c(1, 2, 3))
-/// unsafe_rpkg_lazy_int_seq_is_materialized(x)
-/// }
-/// @aliases unsafe_rpkg_altrep_compact_int unsafe_rpkg_altrep_from_doubles
-///   unsafe_rpkg_altrep_from_strings unsafe_rpkg_altrep_from_logicals
-///   unsafe_rpkg_altrep_from_raw unsafe_rpkg_altrep_from_list
-///   unsafe_rpkg_constant_int unsafe_rpkg_constant_real
-///   unsafe_rpkg_simple_vec_int unsafe_rpkg_inferred_vec_real
-///   unsafe_rpkg_lazy_int_seq_is_materialized
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
-    let n: i32 = TryFromSexp::try_from_sexp(n)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_compact_int: n: {err}"));
-    let start: i32 = TryFromSexp::try_from_sexp(start)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_compact_int: start: {err}"));
-    let step: i32 = TryFromSexp::try_from_sexp(step)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_compact_int: step: {err}"));
-
-    if n == i32::MIN || start == i32::MIN || step == i32::MIN {
-        miniextendr_api::r_error!("altrep_compact_int: n/start/step cannot be NA");
-    }
-    if n < 0 {
-        miniextendr_api::r_error!("altrep_compact_int: n must be >= 0");
-    }
-
-    let len = if n == 0 { 0 } else { n as usize };
-    let data = LazyIntSeqData {
-        start,
-        step,
-        len,
-        materialized: None,
-    };
-    LazyIntSeqClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
-// ALTREP helpers (internal R-facing wrappers)
+// ALTREP helper functions
 // -----------------------------------------------------------------------------
 
 /// @title ALTREP Helpers
 /// @name rpkg_altrep_helpers
 /// @keywords internal
-/// @description ALTREP convenience wrappers (internal)
+/// @description ALTREP convenience functions for testing and examples.
 /// @examples
 /// \dontrun{
 /// x <- altrep_compact_int(5L, 1L, 2L)
 /// y <- altrep_from_doubles(c(1, 2, 3))
 /// z <- altrep_from_strings(c("a", "b"))
-/// altrep_lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
+/// lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
 /// }
-#[miniextendr(unsafe(main_thread))]
-fn altrep_compact_int(n: SEXP, start: SEXP, step: SEXP) -> SEXP {
-    unsafe { rpkg_altrep_compact_int(n, start, step) }
+
+/// Create a compact integer sequence with explicit length, start, and step.
+///
+/// @rdname rpkg_altrep_helpers
+#[miniextendr]
+fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
+    if n < 0 {
+        miniextendr_api::r_error!("altrep_compact_int: n must be >= 0");
+    }
+    let len = if n == 0 { 0 } else { n as usize };
+    LazyIntSeqClass(LazyIntSeqData {
+        start,
+        step,
+        len,
+        materialized: None,
+    })
 }
 
+/// Convert a numeric vector to an ALTREP-backed real vector.
+///
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_from_doubles(x: SEXP) -> SEXP {
-    unsafe { rpkg_altrep_from_doubles(x) }
+#[miniextendr]
+fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealClass {
+    InferredVecRealClass(x)
 }
 
+/// Convert a character vector to an ALTREP-backed string vector.
+///
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_from_strings(x: SEXP) -> SEXP {
-    unsafe { rpkg_altrep_from_strings(x) }
+#[miniextendr]
+fn altrep_from_strings(x: Vec<Option<String>>) -> SimpleVecStringClass {
+    SimpleVecStringClass(StringVecData { data: x })
 }
 
+/// Convert a logical vector to an ALTREP-backed logical vector.
+///
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_from_logicals(x: SEXP) -> SEXP {
-    unsafe { rpkg_altrep_from_logicals(x) }
+#[miniextendr]
+fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecClass {
+    LogicalVecClass(LogicalVecData { data: x })
 }
 
+/// Convert a raw vector to an ALTREP-backed raw vector.
+///
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_from_raw(x: SEXP) -> SEXP {
-    unsafe { rpkg_altrep_from_raw(x) }
+#[miniextendr]
+fn altrep_from_raw(x: &[u8]) -> SimpleVecRawClass {
+    SimpleVecRawClass(x.to_vec())
 }
 
+/// Convert an integer vector to an ALTREP-backed integer vector.
+///
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_from_list(x: SEXP) -> SEXP {
-    unsafe { rpkg_altrep_from_list(x) }
+#[miniextendr]
+fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
+    SimpleVecIntClass(x)
 }
 
+/// Convert a list to an ALTREP-backed list.
+///
+/// Note: The input list is preserved by R's GC for the lifetime of the ALTREP object.
+///
 /// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_constant_int() -> SEXP {
-    unsafe { rpkg_constant_int() }
-}
+#[miniextendr]
+fn altrep_from_list(x: SEXP) -> ListDataClass {
+    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
 
-/// @rdname rpkg_altrep_helpers
-#[miniextendr(unsafe(main_thread))]
-fn altrep_lazy_int_seq_is_materialized(x: SEXP) -> SEXP {
-    unsafe { rpkg_lazy_int_seq_is_materialized(x) }
+    if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
+        miniextendr_api::r_error!("altrep_from_list: expected a list (VECSXP)");
+    }
+
+    if x != unsafe { R_NilValue } {
+        unsafe { R_PreserveObject(x) };
+    }
+
+    let len = unsafe { Rf_xlength(x) } as usize;
+    ListDataClass(ListData { list: x, len })
 }
 
 // -----------------------------------------------------------------------------
 // ConstantLogical: All TRUE or all FALSE
 // -----------------------------------------------------------------------------
 
-#[derive(miniextendr_api::ExternalPtr)]
+#[derive(miniextendr_api::ExternalPtr, miniextendr_api::AltrepLogical)]
+#[altrep(len = "len", elt = "value", dataptr)]
 pub struct ConstantLogicalData {
     value: Logical,
     len: usize,
+    materialized: Option<Vec<i32>>,
 }
 
-impl AltrepLen for ConstantLogicalData {
-    fn len(&self) -> usize {
-        self.len
+impl miniextendr_api::altrep_data::AltrepDataptr<i32> for ConstantLogicalData {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        if self.materialized.is_none() {
+            let value = self.value.to_r_int();
+            let data = vec![value; self.len];
+            self.materialized = Some(data);
+        }
+        self.materialized.as_mut().map(|v| v.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        self.materialized.as_ref().map(|v| v.as_ptr())
     }
 }
 
-impl AltLogicalData for ConstantLogicalData {
-    fn elt(&self, _i: usize) -> Logical {
-        self.value
-    }
-    fn no_na(&self) -> Option<bool> {
-        Some(!matches!(self.value, Logical::Na))
-    }
-}
-
-miniextendr_api::impl_altlogical_from_data!(ConstantLogicalData);
-
-#[miniextendr(class = "ConstantLogical", pkg = "rpkg")]
+#[miniextendr(class = "ConstantLogical")]
 pub struct ConstantLogicalClass(pub ConstantLogicalData);
 
 #[miniextendr]
@@ -559,6 +663,7 @@ fn constant_logical(value: i32, n: i32) -> SEXP {
     let data = ConstantLogicalData {
         value: logical_value,
         len: n as usize,
+        materialized: None,
     };
     ConstantLogicalClass(data).into_sexp()
 }
@@ -606,26 +711,8 @@ impl AltLogicalData for LogicalVecData {
 
 miniextendr_api::impl_altlogical_from_data!(LogicalVecData);
 
-#[miniextendr(class = "LogicalVec", pkg = "rpkg")]
+#[miniextendr(class = "LogicalVec")]
 pub struct LogicalVecClass(pub LogicalVecData);
-
-/// # Safety
-/// Caller must ensure `x` is a valid logical SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_logicals(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{LOGICAL, Rf_xlength};
-
-    let n = unsafe { Rf_xlength(x) } as usize;
-    let src = unsafe { LOGICAL(x) };
-    let mut data = Vec::with_capacity(n);
-    for i in 0..n {
-        data.push(Logical::from_r_int(unsafe { *src.add(i) }));
-    }
-
-    LogicalVecClass(LogicalVecData { data }).into_sexp()
-}
 
 // -----------------------------------------------------------------------------
 // LazyString: Lazily-generated strings
@@ -657,7 +744,7 @@ impl AltStringData for LazyStringData {
 
 miniextendr_api::impl_altstring_from_data!(LazyStringData);
 
-#[miniextendr(class = "LazyString", pkg = "rpkg")]
+#[miniextendr(class = "LazyString")]
 pub struct LazyStringClass(pub LazyStringData);
 
 #[miniextendr]
@@ -697,7 +784,7 @@ impl AltRawData for RepeatingRawData {
 
 miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 
-#[miniextendr(class = "RepeatingRaw", pkg = "rpkg")]
+#[miniextendr(class = "RepeatingRaw")]
 pub struct RepeatingRawClass(pub RepeatingRawData);
 
 #[miniextendr]
@@ -751,7 +838,7 @@ impl AltComplexData for UnitCircleData {
 miniextendr_api::impl_altcomplex_from_data!(UnitCircleData);
 
 /// ALTREP wrapper for UnitCircleData - generates complex numbers on unit circle
-#[miniextendr(class = "UnitCircle", pkg = "rpkg")]
+#[miniextendr(class = "UnitCircle")]
 pub struct UnitCircleClass(pub UnitCircleData);
 
 /// ALTREP Example Constructors
@@ -780,24 +867,8 @@ pub fn unit_circle(n: i32) -> SEXP {
 // SimpleVecInt: Vec<i32> wrapper (simplest example)
 // -----------------------------------------------------------------------------
 
-#[miniextendr(class = "SimpleVecInt", pkg = "rpkg")]
+#[miniextendr(class = "SimpleVecInt")]
 pub struct SimpleVecIntClass(pub Vec<i32>);
-
-/// # Safety
-/// Caller must ensure `x` is a valid integer SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_simple_vec_int(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{INTEGER, Rf_xlength};
-    let n = unsafe { Rf_xlength(x) } as usize;
-    let src = unsafe { INTEGER(x) };
-    let mut data = Vec::with_capacity(n);
-    for i in 0..n {
-        data.push(unsafe { *src.add(i) });
-    }
-    SimpleVecIntClass(data).into_sexp()
-}
 
 // -----------------------------------------------------------------------------
 // SimpleVecString: Vec<Option<String>> wrapper (preserves NA)
@@ -826,87 +897,30 @@ impl AltStringData for StringVecData {
 
 miniextendr_api::impl_altstring_from_data!(StringVecData);
 
-#[miniextendr(class = "SimpleVecString", pkg = "rpkg")]
+#[miniextendr(class = "SimpleVecString")]
 pub struct SimpleVecStringClass(pub StringVecData);
-
-/// # Safety
-/// Caller must ensure `x` is a valid character SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_strings(x: SEXP) -> SEXP {
-    let data: Vec<Option<String>> = TryFromSexp::try_from_sexp(x)
-        .unwrap_or_else(|err| miniextendr_api::r_error!("altrep_from_strings: {err}"));
-    SimpleVecStringClass(StringVecData { data }).into_sexp()
-}
 
 // -----------------------------------------------------------------------------
 // SimpleVecRaw: Vec<u8> wrapper
 // -----------------------------------------------------------------------------
 
-#[miniextendr(class = "SimpleVecRaw", pkg = "rpkg")]
+#[miniextendr(class = "SimpleVecRaw")]
 pub struct SimpleVecRawClass(pub Vec<u8>);
-
-/// # Safety
-/// Caller must ensure `x` is a valid raw SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_raw(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{RAW, Rf_xlength};
-
-    let n = unsafe { Rf_xlength(x) } as usize;
-    let src = unsafe { RAW(x) };
-    let mut data = Vec::with_capacity(n);
-    for i in 0..n {
-        data.push(unsafe { *src.add(i) });
-    }
-    SimpleVecRawClass(data).into_sexp()
-}
 
 // -----------------------------------------------------------------------------
 // InferredVecReal: Vec<f64> wrapper with base type inferred from inner type
 // -----------------------------------------------------------------------------
 
 /// Test case for auto-inferred base type (no explicit `base = "..."` attribute)
-#[miniextendr(class = "InferredVecReal", pkg = "rpkg")]
+#[miniextendr(class = "InferredVecReal")]
 pub struct InferredVecRealClass(pub Vec<f64>);
-
-/// .
-///
-/// # Safety
-///
-/// .
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_inferred_vec_real(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{REAL, Rf_xlength};
-    let n = unsafe { Rf_xlength(x) } as usize;
-    let src = unsafe { REAL(x) };
-    let mut data = Vec::with_capacity(n);
-    for i in 0..n {
-        data.push(unsafe { *src.add(i) });
-    }
-    InferredVecRealClass(data).into_sexp()
-}
-
-/// # Safety
-/// Caller must ensure `x` is a valid real SEXP and this is called from R's main thread.
-#[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_doubles(x: SEXP) -> SEXP {
-    // Reuse the existing Vec<f64> ALTREP constructor.
-    unsafe { rpkg_inferred_vec_real(x) }
-}
 
 // -----------------------------------------------------------------------------
 // BoxedInts: Box<[i32]> wrapper (owned slice example)
 // -----------------------------------------------------------------------------
 
 /// ALTREP class wrapping a Box<[i32]> - fixed-size heap allocation
-#[miniextendr(class = "BoxedInts", pkg = "rpkg")]
+#[miniextendr(class = "BoxedInts")]
 pub struct BoxedIntsClass(pub Box<[i32]>);
 
 /// Create an ALTREP backed by a boxed slice.
@@ -925,7 +939,7 @@ pub fn boxed_ints(n: i32) -> SEXP {
 static STATIC_INTS: [i32; 5] = [10, 20, 30, 40, 50];
 
 /// ALTREP class wrapping a static slice - demonstrates `&'static [T]` support
-#[miniextendr(class = "StaticInts", pkg = "rpkg")]
+#[miniextendr(class = "StaticInts")]
 pub struct StaticIntsClass(pub &'static [i32]);
 
 /// Create an ALTREP backed by static data.
@@ -957,7 +971,7 @@ pub fn leaked_ints(n: i32) -> SEXP {
 static STATIC_STRINGS: [&str; 4] = ["alpha", "beta", "gamma", "delta"];
 
 /// ALTREP class wrapping static string slices
-#[miniextendr(class = "StaticStrings", pkg = "rpkg")]
+#[miniextendr(class = "StaticStrings")]
 pub struct StaticStringsClass(pub &'static [&'static str]);
 
 /// Create a string ALTREP backed by static data.
@@ -1002,29 +1016,182 @@ impl AltListData for ListData {
 
 miniextendr_api::impl_altlist_from_data!(ListData);
 
-#[miniextendr(class = "ListData", pkg = "rpkg")]
+#[miniextendr(class = "ListData")]
 pub struct ListDataClass(pub ListData);
 
-/// # Safety
-/// Caller must ensure `x` is a valid list SEXP and this is called from R's main thread.
+// region: Builtin ALTREP test fixtures
+//
+// These demonstrate ALTREP support using the `Altrep<T>` marker type.
+// The marker type opts into ALTREP representation for standard types
+// that would otherwise be eagerly copied to R.
+//
+// Without `Altrep<T>`:
+//   fn foo() -> Vec<i32>  // Copies all data to R immediately
+//
+// With `Altrep<T>`:
+//   fn foo() -> Altrep<Vec<i32>>  // Data stays in Rust, accessed on-demand
+
+/// Create a Vec-backed integer ALTREP from a range-like sequence.
+/// Uses `Altrep<Vec<i32>>` marker type for ALTREP opt-in.
 #[miniextendr]
-#[unsafe(no_mangle)]
-#[allow(non_snake_case)]
-pub unsafe extern "C-unwind" fn rpkg_altrep_from_list(x: SEXP) -> SEXP {
-    use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
-
-    if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
-        miniextendr_api::r_error!("altrep_from_list: expected a list (VECSXP)");
-    }
-
-    if x != unsafe { R_NilValue } {
-        unsafe { R_PreserveObject(x) };
-    }
-
-    let len = unsafe { Rf_xlength(x) } as usize;
-    let data = ListData { list: x, len };
-    ListDataClass(data).into_sexp()
+pub fn iter_int_range(from: i32, to: i32) -> Altrep<Vec<i32>> {
+    Altrep((from..to).collect())
 }
+
+/// Create a Vec-backed real ALTREP from squared values.
+/// Uses `Altrep<Vec<f64>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_real_squares(n: i32) -> Altrep<Vec<f64>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| (i * i) as f64).collect())
+}
+
+/// Create a Vec-backed logical ALTREP (alternating TRUE/FALSE).
+/// Uses `Altrep<Vec<bool>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_logical_alternating(n: i32) -> Altrep<Vec<bool>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| i % 2 == 0).collect())
+}
+
+/// Create a Vec-backed raw ALTREP (bytes 0-255 cycling).
+/// Uses `Altrep<Vec<u8>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_raw_bytes(n: i32) -> Altrep<Vec<u8>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| (i % 256) as u8).collect())
+}
+
+/// Create a Vec-backed string ALTREP.
+/// Uses `Altrep<Vec<String>>` marker type for ALTREP opt-in.
+#[miniextendr]
+pub fn iter_string_items(n: i32) -> Altrep<Vec<String>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| format!("item_{}", i)).collect())
+}
+
+// Note: iter_complex_spiral removed - Vec<Rcomplex> doesn't have builtin ALTREP support
+// Use unit_circle() for complex ALTREP testing instead
+
+/// Create a Vec-backed integer ALTREP with values from u16 coercion.
+#[miniextendr]
+pub fn iter_int_from_u16(n: i32) -> Altrep<Vec<i32>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| (i * 100) as i32).collect())
+}
+
+/// Create a Vec-backed real ALTREP with values from f32 coercion.
+#[miniextendr]
+pub fn iter_real_from_f32(n: i32) -> Altrep<Vec<f64>> {
+    let len = n.max(0) as usize;
+    Altrep((0..len).map(|i| i as f64 * 1.5).collect())
+}
+
+/// Create a Vec-backed integer ALTREP (has dataptr support).
+#[miniextendr]
+pub fn vec_int_altrep(n: i32) -> Altrep<Vec<i32>> {
+    let len = n.max(0) as usize;
+    Altrep((1..=len as i32).collect())
+}
+
+/// Create a Vec-backed real ALTREP (has dataptr support).
+#[miniextendr]
+pub fn vec_real_altrep(n: i32) -> Altrep<Vec<f64>> {
+    let len = n.max(0) as usize;
+    Altrep((1..=len).map(|i| i as f64 * 0.5).collect())
+}
+
+/// Create a Vec-backed complex ALTREP (has dataptr support).
+#[miniextendr]
+pub fn vec_complex_altrep(n: i32) -> Altrep<Vec<Rcomplex>> {
+    let len = n.max(0) as usize;
+    Altrep(
+        (0..len)
+            .map(|i| Rcomplex {
+                r: i as f64,
+                i: -(i as f64),
+            })
+            .collect(),
+    )
+}
+
+/// Create a Box<[f64]>-backed real ALTREP (has dataptr support).
+#[miniextendr]
+pub fn boxed_reals(n: i32) -> Altrep<Box<[f64]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[f64]> = (1..=len)
+        .map(|i| i as f64 * 1.5)
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[bool]>-backed logical ALTREP.
+#[miniextendr]
+pub fn boxed_logicals(n: i32) -> Altrep<Box<[bool]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[bool]> = (0..len)
+        .map(|i| i % 2 == 0)
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[u8]>-backed raw ALTREP (bytes 0-255 cycling).
+#[miniextendr]
+pub fn boxed_raw(n: i32) -> Altrep<Box<[u8]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[u8]> = (0..len)
+        .map(|i| (i % 256) as u8)
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[String]>-backed string ALTREP.
+#[miniextendr]
+pub fn boxed_strings(n: i32) -> Altrep<Box<[String]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[String]> = (0..len)
+        .map(|i| format!("boxed_{}", i))
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Box<[Rcomplex]>-backed complex ALTREP (has dataptr support).
+#[miniextendr]
+pub fn boxed_complex(n: i32) -> Altrep<Box<[Rcomplex]>> {
+    let len = n.max(0) as usize;
+    let data: Box<[Rcomplex]> = (0..len)
+        .map(|i| Rcomplex {
+            r: i as f64 + 0.25,
+            i: i as f64 + 0.75,
+        })
+        .collect::<Vec<_>>()
+        .into_boxed_slice();
+    Altrep(data)
+}
+
+/// Create a Range-backed integer ALTREP (O(1) sum/min/max).
+#[miniextendr]
+pub fn range_int_altrep(from: i32, to: i32) -> Altrep<std::ops::Range<i32>> {
+    Altrep(from..to)
+}
+
+/// Create a Range-backed i64 ALTREP (O(1) sum/min/max).
+#[miniextendr]
+pub fn range_i64_altrep(from: i64, to: i64) -> Altrep<std::ops::Range<i64>> {
+    Altrep(from..to)
+}
+
+/// Create a Range-backed real ALTREP (O(1) sum/min/max).
+#[miniextendr]
+pub fn range_real_altrep(from: f64, to: f64) -> Altrep<std::ops::Range<f64>> {
+    Altrep(from..to)
+}
+
+// endregion
 
 // region: Nonapi module for lean-stack thread tests
 
@@ -1038,15 +1205,144 @@ mod nonapi;
 
 // endregion
 
+// region: vctrs module (optional vctrs C API support)
+
+#[cfg(feature = "vctrs")]
+#[path = "vctrs_tests_enabled.rs"]
+mod vctrs_tests;
+
+#[cfg(not(feature = "vctrs"))]
+#[path = "vctrs_tests_disabled.rs"]
+mod vctrs_tests;
+
+// vctrs class example: demonstrates implementing a vctrs-compatible S3 class in Rust
+#[cfg(feature = "vctrs")]
+mod vctrs_class_example;
+
+#[cfg(not(feature = "vctrs"))]
+#[path = "vctrs_class_example_disabled.rs"]
+mod vctrs_class_example;
+
+// endregion
+
+// region: Feature detection
+
+/// Returns a vector of enabled feature names for this build.
+///
+/// This function is useful for R tests to skip tests when features are not enabled.
+///
+/// @name rpkg_enabled_features
+/// @return A character vector of enabled feature names.
+/// @examples
+/// rpkg_enabled_features()
+#[miniextendr]
+pub fn rpkg_enabled_features() -> Vec<&'static str> {
+    let mut features = Vec::new();
+
+    // Core features
+    if cfg!(feature = "nonapi") {
+        features.push("nonapi");
+    }
+
+    // Optional crate features
+    if cfg!(feature = "uuid") {
+        features.push("uuid");
+    }
+    if cfg!(feature = "time") {
+        features.push("time");
+    }
+    if cfg!(feature = "regex") {
+        features.push("regex");
+    }
+    if cfg!(feature = "indexmap") {
+        features.push("indexmap");
+    }
+    if cfg!(feature = "serde") {
+        features.push("serde");
+    }
+    if cfg!(feature = "serde_r") {
+        features.push("serde_r");
+    }
+    if cfg!(feature = "num-bigint") {
+        features.push("num-bigint");
+    }
+    if cfg!(feature = "rust_decimal") {
+        features.push("rust_decimal");
+    }
+    if cfg!(feature = "ordered-float") {
+        features.push("ordered-float");
+    }
+    if cfg!(feature = "num-traits") {
+        features.push("num-traits");
+    }
+    if cfg!(feature = "rand") {
+        features.push("rand");
+    }
+    if cfg!(feature = "rand_distr") {
+        features.push("rand_distr");
+    }
+    if cfg!(feature = "rayon") {
+        features.push("rayon");
+    }
+    if cfg!(feature = "ndarray") {
+        features.push("ndarray");
+    }
+    if cfg!(feature = "nalgebra") {
+        features.push("nalgebra");
+    }
+    if cfg!(feature = "either") {
+        features.push("either");
+    }
+    if cfg!(feature = "bytes") {
+        features.push("bytes");
+    }
+    if cfg!(feature = "bitvec") {
+        features.push("bitvec");
+    }
+    if cfg!(feature = "bitflags") {
+        features.push("bitflags");
+    }
+    if cfg!(feature = "num-complex") {
+        features.push("num-complex");
+    }
+    if cfg!(feature = "sha2") {
+        features.push("sha2");
+    }
+    if cfg!(feature = "tabled") {
+        features.push("tabled");
+    }
+    if cfg!(feature = "toml") {
+        features.push("toml");
+    }
+    if cfg!(feature = "url") {
+        features.push("url");
+    }
+    if cfg!(feature = "aho-corasick") {
+        features.push("aho-corasick");
+    }
+    if cfg!(feature = "raw_conversions") {
+        features.push("raw_conversions");
+    }
+    if cfg!(feature = "vctrs") {
+        features.push("vctrs");
+    }
+
+    features
+}
+
+// endregion
+
 miniextendr_module! {
     mod miniextendr;
 
     // Aggregate all test modules
+    use adapter_traits_tests;
     use panic_tests;
     use unwind_protect_tests;
     use dots_tests;
     use interrupt_tests;
     use conversion_tests;
+    use conversions;
     use default_tests;
     use externalptr_tests;
     use identical_tests;
@@ -1066,41 +1362,45 @@ miniextendr_module! {
     use shared_trait_test;
     use convert_pref_tests;
     use rng_tests;
+    use rayon_tests;
+    use serde_r_tests;
+    use ndarray_tests;
+    use uuid_adapter_tests;
+    use regex_adapter_tests;
+    use time_adapter_tests;
+    use ordered_float_adapter_tests;
+    use bigint_adapter_tests;
+    use decimal_adapter_tests;
+    use indexmap_adapter_tests;
+    use connection_tests;
     use nonapi;
+    use factor_tests;
+    use vctrs_tests;
+    use vctrs_class_example;
 
-    // ALTREP entrypoints are called directly from R via R/altrep.R
-    extern "C-unwind" fn rpkg_altrep_compact_int;
-    extern "C-unwind" fn rpkg_altrep_from_doubles;
-    extern "C-unwind" fn rpkg_altrep_from_strings;
-    extern "C-unwind" fn rpkg_altrep_from_logicals;
-    extern "C-unwind" fn rpkg_altrep_from_raw;
-    extern "C-unwind" fn rpkg_altrep_from_list;
-
-    // ALTREP helper wrappers (internal)
+    // ALTREP helper functions
     fn altrep_compact_int;
     fn altrep_from_doubles;
     fn altrep_from_strings;
     fn altrep_from_logicals;
     fn altrep_from_raw;
+    fn altrep_from_integers;
     fn altrep_from_list;
-    fn altrep_constant_int;
-    fn altrep_lazy_int_seq_is_materialized;
 
-    // Proc-macro ALTREP test: struct registers the class, fn creates instances
+    // ALTREP test fixtures
     struct ConstantIntClass;
-    extern "C-unwind" fn rpkg_constant_int;
-
-    // Additional ALTREP examples
-    // Real ALTREP
+    fn constant_int;
     struct ConstantRealClass;
-    extern "C-unwind" fn rpkg_constant_real;
+    fn constant_real;
+
+    // Arithmetic sequence ALTREP
     struct ArithSeqClass;
     fn arith_seq;
 
     // Lazy materialization ALTREP example
     struct LazyIntSeqClass;
     fn lazy_int_seq;
-    extern "C-unwind" fn rpkg_lazy_int_seq_is_materialized;
+    fn lazy_int_seq_is_materialized;
 
     // Logical ALTREP
     struct ConstantLogicalClass;
@@ -1121,13 +1421,11 @@ miniextendr_module! {
     struct UnitCircleClass;
     fn unit_circle;
 
-    // ALTREP with Vec<i32> backend - simplified API
+    // Integer ALTREP
     struct SimpleVecIntClass;
-    extern "C-unwind" fn rpkg_simple_vec_int;
 
-    // ALTREP with Vec<f64> backend - base type auto-inferred
+    // Real ALTREP with base type auto-inferred
     struct InferredVecRealClass;
-    extern "C-unwind" fn rpkg_inferred_vec_real;
 
     // List ALTREP
     struct ListDataClass;
@@ -1142,4 +1440,27 @@ miniextendr_module! {
     fn leaked_ints;
     struct StaticStringsClass;
     fn static_strings;
+
+    // ALTREP test functions (return Altrep<T> marker type)
+    fn iter_int_range;
+    fn iter_real_squares;
+    fn iter_logical_alternating;
+    fn iter_raw_bytes;
+    fn iter_string_items;
+    fn iter_int_from_u16;
+    fn iter_real_from_f32;
+    fn vec_int_altrep;
+    fn vec_real_altrep;
+    fn vec_complex_altrep;
+    fn boxed_reals;
+    fn boxed_logicals;
+    fn boxed_raw;
+    fn boxed_strings;
+    fn boxed_complex;
+    fn range_int_altrep;
+    fn range_i64_altrep;
+    fn range_real_altrep;
+
+    // Feature detection
+    fn rpkg_enabled_features;
 }

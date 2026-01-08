@@ -11,9 +11,11 @@ RoxygenNote: 7.3.3
 Imports:
     methods,
     R6,
-    S7
+    S7,
+    vctrs
 Suggests:
-    testthat (>= 3.0.0)
+    testthat (>= 3.0.0),
+    tibble
 Config/testthat/edition: 3
 Config/build/bootstrap: TRUE
 Config/build/never-clean: true

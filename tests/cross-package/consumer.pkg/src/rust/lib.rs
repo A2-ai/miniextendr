@@ -61,12 +61,12 @@ fn has_class(x: SEXP, class_name: String) -> bool {
         }
         let len = Rf_xlength(class_attr);
         for i in 0..len {
-            let s = STRING_ELT(class_attr, i as isize);
+            let s = STRING_ELT(class_attr, i);
             let cstr = std::ffi::CStr::from_ptr(R_CHAR(s));
-            if let Ok(name) = cstr.to_str() {
-                if name == class_name {
-                    return true;
-                }
+            if let Ok(name) = cstr.to_str()
+                && name == class_name
+            {
+                return true;
             }
         }
         false

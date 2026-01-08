@@ -9,6 +9,7 @@ fn parse_impl(class_system: ClassSystem, code: syn::ItemImpl) -> ParsedImpl {
         class_system,
         class_name: None,
         label: None,
+        vctrs_attrs: VctrsAttrs::default(),
     };
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
@@ -22,6 +23,7 @@ fn parse_impl_with_class_name(
         class_system,
         class_name: Some(class_name.to_string()),
         label: None,
+        vctrs_attrs: VctrsAttrs::default(),
     };
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
@@ -35,6 +37,7 @@ fn parse_impl_with_label(
         class_system,
         class_name: None,
         label: Some(label.to_string()),
+        vctrs_attrs: VctrsAttrs::default(),
     };
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
@@ -556,4 +559,167 @@ fn returns_unit_method_in_r6() {
 
     // reset returns unit, should have invisible(self) for chaining
     assert!(wrapper.contains("reset = function()"));
+}
+
+// =============================================================================
+// vctrs class system tests
+// =============================================================================
+
+fn parse_impl_vctrs(vctrs_attrs: VctrsAttrs, code: syn::ItemImpl) -> ParsedImpl {
+    let attrs = ImplAttrs {
+        class_system: ClassSystem::Vctrs,
+        class_name: None,
+        label: None,
+        vctrs_attrs,
+    };
+    ParsedImpl::parse(attrs, code).expect("failed to parse impl")
+}
+
+#[test]
+fn vctrs_wrapper_vctr_full_snapshot() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Percent {
+            pub fn new(x: f64) -> Self { unimplemented!() }
+            pub fn value(&self) -> f64 { unimplemented!() }
+            pub fn scale(&mut self, factor: f64) { unimplemented!() }
+        }
+    };
+
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: Some(false),
+        ptype: None,
+        abbr: Some("pct".to_string()),
+    };
+
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    // Verify constructor (vctrs convention: new_<class>)
+    assert!(wrapper.contains("new_percent <- function(x)"));
+    assert!(wrapper.contains("data <- .Call(C_Percent__new"));
+    assert!(
+        wrapper.contains("vctrs::new_vctr(data, class = \"Percent\", inherit_base_type = FALSE)")
+    );
+
+    // Verify vec_ptype_abbr
+    assert!(wrapper.contains("vec_ptype_abbr.Percent <- function(x, ...) \"pct\""));
+
+    // Verify vec_ptype2 self-coercion
+    assert!(wrapper.contains("#' @method vec_ptype2 Percent.Percent"));
+    assert!(wrapper.contains("vec_ptype2.Percent.Percent <- function(x, y, ...) vctrs::new_vctr(double(), class = \"Percent\", inherit_base_type = FALSE)"));
+
+    // Verify vec_cast self-coercion
+    assert!(wrapper.contains("#' @method vec_cast Percent.Percent"));
+    assert!(wrapper.contains("vec_cast.Percent.Percent <- function(x, to, ...) x"));
+
+    // Verify S3 generics
+    assert!(wrapper.contains("value <- function(x, ...) UseMethod(\"value\")"));
+    assert!(wrapper.contains("scale <- function(x, ...) UseMethod(\"scale\")"));
+
+    // Verify S3 methods
+    assert!(wrapper.contains("#' @method value Percent"));
+    assert!(wrapper.contains("value.Percent <- function(x, ...)"));
+    assert!(wrapper.contains("#' @method scale Percent"));
+    assert!(wrapper.contains("scale.Percent <- function(x, factor, ...)"));
+
+    // Verify imports
+    assert!(wrapper.contains("@importFrom vctrs"));
+}
+
+#[test]
+fn vctrs_wrapper_rcrd_full_snapshot() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Rational {
+            pub fn new(n: i32, d: i32) -> Self { unimplemented!() }
+            pub fn numerator(&self) -> i32 { unimplemented!() }
+            pub fn denominator(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Rcrd,
+        base: None,
+        inherit_base_type: None,
+        ptype: None,
+        abbr: Some("rat".to_string()),
+    };
+
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    // Verify constructor uses new_rcrd
+    assert!(wrapper.contains("new_rational <- function(n, d)"));
+    assert!(wrapper.contains("vctrs::new_rcrd(data, class = \"Rational\")"));
+
+    // Verify vec_ptype_abbr
+    assert!(wrapper.contains("vec_ptype_abbr.Rational <- function(x, ...) \"rat\""));
+
+    // Verify vec_ptype2 for record uses x[0] pattern
+    assert!(wrapper.contains("vec_ptype2.Rational.Rational <- function(x, y, ...) x[0]"));
+
+    // Verify vec_cast self-coercion
+    assert!(wrapper.contains("vec_cast.Rational.Rational <- function(x, to, ...) x"));
+}
+
+#[test]
+fn vctrs_wrapper_list_of_full_snapshot() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl IntList {
+            pub fn new(data: Vec<Vec<i32>>) -> Self { unimplemented!() }
+            pub fn len(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::ListOf,
+        base: None,
+        inherit_base_type: None,
+        ptype: Some("integer()".to_string()),
+        abbr: Some("int[]".to_string()),
+    };
+
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    // Verify constructor uses new_list_of with ptype
+    assert!(wrapper.contains("new_intlist <- function(data)"));
+    assert!(wrapper.contains("vctrs::new_list_of(data, class = \"IntList\", ptype = integer())"));
+
+    // Verify vec_ptype_abbr
+    assert!(wrapper.contains("vec_ptype_abbr.IntList <- function(x, ...) \"int[]\""));
+
+    // Verify vec_ptype2 for list_of
+    assert!(wrapper.contains("vec_ptype2.IntList.IntList <- function(x, y, ...) vctrs::new_list_of(list(), class = \"IntList\", ptype = integer())"));
+
+    // Verify vec_cast self-coercion
+    assert!(wrapper.contains("vec_cast.IntList.IntList <- function(x, to, ...) x"));
+}
+
+#[test]
+fn vctrs_wrapper_no_abbr() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Simple {
+            pub fn new(x: f64) -> Self { unimplemented!() }
+        }
+    };
+
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: None,
+        inherit_base_type: None,
+        ptype: None,
+        abbr: None, // No abbreviation
+    };
+
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    // Should NOT have vec_ptype_abbr
+    assert!(!wrapper.contains("vec_ptype_abbr.Simple"));
+
+    // But should still have ptype2 and cast
+    assert!(wrapper.contains("vec_ptype2.Simple.Simple"));
+    assert!(wrapper.contains("vec_cast.Simple.Simple"));
 }

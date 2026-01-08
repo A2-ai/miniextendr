@@ -9,11 +9,11 @@
 Demonstrates miniextendr's cross-package trait dispatch capabilities. Provides generic functions that operate on the Counter trait interface. Works with Counter implementations from any package (like producer.pkg), proving ABI compatibility via type tag matching and vtable dispatch.
 }
 \author{
-\strong{Maintainer}: Mossa Merhi Reimert \email{mossa@struchstrup.com}
+\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
 
 Other contributors:
 \itemize{
-  \item Eleanor Andersson [contributor]
+  \item A2-AI [copyright holder, funder]
 }
 
 }

@@ -50,7 +50,7 @@
 //! │                                                                 │
 //! │  Return to R → R now owns the EXTPTRSXP                         │
 //! │  ├── SEXP is live as long as R has references                   │
-//! │  └── Rust value is accessible via ExternalPtr::try_from_sexp()  │
+//! │  └── Rust value is accessible via ExternalPtr::wrap_sexp()      │
 //! │                                                                 │
 //! │  R GC runs → finalizer called → Rust Drop executes              │
 //! └─────────────────────────────────────────────────────────────────┘
@@ -93,7 +93,6 @@ use std::mem::{self, ManuallyDrop, MaybeUninit};
 use std::ops::{Deref, DerefMut};
 use std::pin::Pin;
 use std::ptr::{self, NonNull};
-use std::rc::Rc;
 
 use crate::ffi::{
     R_ClearExternalPtr, R_ExternalPtrAddr, R_ExternalPtrProtected, R_ExternalPtrTag,
@@ -212,12 +211,16 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
 ///
 /// # Type ID vs Type Name
 ///
-/// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in prot[0]).
-///   Should be unique across packages to prevent cross-package type collisions.
-///   Format: `"crate_name::module::TypeName\0"`
+    /// - `TYPE_ID_CSTR`: Namespaced identifier used for type checking (stored in `prot[0]`).
+///   Format: `"<crate_name>@<crate_version>::<module_path>::<type_name>\0"`
+///
+///   The crate name and version ensure:
+///   - Same type from same crate+version → compatible (can share ExternalPtr)
+///   - Same type name from different crates → incompatible
+///   - Same type from different crate versions → incompatible
 ///
 /// - `TYPE_NAME_CSTR`: Short display name for the R tag (shown when printing).
-///   Can be just the type identifier for readability.
+///   Just the type identifier for readability.
 pub trait TypedExternal: 'static {
     /// The type name as a static string (for debugging and display)
     const TYPE_NAME: &'static str;
@@ -256,15 +259,26 @@ pub trait IntoExternalPtr: TypedExternal {}
 /// This macro generates:
 /// - `TYPE_NAME`: Short display name (just the type identifier)
 /// - `TYPE_NAME_CSTR`: Null-terminated display name for R tag
-/// - `TYPE_ID_CSTR`: Namespaced ID using `module_path!()` for type checking
+/// - `TYPE_ID_CSTR`: Namespaced ID using crate name, version, and module path
+///
+/// Format: `<crate_name>@<crate_version>::<module_path>::<type_name>`
 #[macro_export]
 macro_rules! impl_typed_external {
     ($ty:ty) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = stringify!($ty);
             const TYPE_NAME_CSTR: &'static [u8] = concat!(stringify!($ty), "\0").as_bytes();
-            const TYPE_ID_CSTR: &'static [u8] =
-                concat!(module_path!(), "::", stringify!($ty), "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!(
+                env!("CARGO_PKG_NAME"),
+                "@",
+                env!("CARGO_PKG_VERSION"),
+                "::",
+                module_path!(),
+                "::",
+                stringify!($ty),
+                "\0"
+            )
+            .as_bytes();
         }
     };
 }
@@ -274,15 +288,24 @@ macro_rules! impl_typed_external {
 /// Use this when you want the R tag to display a specific name
 /// (e.g., without module path).
 ///
-/// Note: The type ID is still namespaced using the tag + module_path!().
+/// Format: `<crate_name>@<crate_version>::<module_path>::<tag>`
 #[macro_export]
 macro_rules! impl_typed_external_with_tag {
     ($ty:ty, $tag:expr) => {
         impl $crate::externalptr::TypedExternal for $ty {
             const TYPE_NAME: &'static str = $tag;
             const TYPE_NAME_CSTR: &'static [u8] = concat!($tag, "\0").as_bytes();
-            const TYPE_ID_CSTR: &'static [u8] =
-                concat!(module_path!(), "::", $tag, "\0").as_bytes();
+            const TYPE_ID_CSTR: &'static [u8] = concat!(
+                env!("CARGO_PKG_NAME"),
+                "@",
+                env!("CARGO_PKG_VERSION"),
+                "::",
+                module_path!(),
+                "::",
+                $tag,
+                "\0"
+            )
+            .as_bytes();
         }
     };
 }
@@ -298,11 +321,6 @@ impl TypedExternal for () {
 // ExternalPtr<T>
 // =============================================================================
 
-/// Marker type to make ExternalPtr !Send and !Sync without nightly features.
-/// Uses Rc<()> because Rc has explicit negative impls for Send and Sync,
-/// making this more robust than relying on raw pointer auto-trait inference.
-type PhantomUnsend = PhantomData<Rc<()>>;
-
 /// An owned pointer stored in R's external pointer SEXP.
 ///
 /// This is conceptually similar to `Box<T>`, but with the following differences:
@@ -312,9 +330,9 @@ type PhantomUnsend = PhantomData<Rc<()>>;
 ///
 /// # Thread Safety
 ///
-/// `ExternalPtr` is `!Send` and `!Sync` because it wraps an R SEXP, and R's
-/// runtime is single-threaded. Attempting to use an `ExternalPtr` from multiple
-/// threads would be undefined behavior.
+/// `ExternalPtr` is `Send` to allow returning from worker thread functions.
+/// However, **concurrent access is not allowed** - R's runtime is single-threaded.
+/// All R API calls are serialized through the main thread via `with_r_thread`.
 ///
 /// # Safety
 ///
@@ -324,9 +342,13 @@ type PhantomUnsend = PhantomData<Rc<()>>;
 pub struct ExternalPtr<T: TypedExternal> {
     sexp: SEXP,
     _marker: PhantomData<T>,
-    /// Makes this type !Send and !Sync
-    _unsend: PhantomUnsend,
 }
+
+// SAFETY: ExternalPtr can be sent between threads because:
+// 1. All R API operations are serialized through the main thread via with_r_thread
+// 2. The worker thread is blocked while the main thread processes R calls
+// 3. There is no concurrent access - only sequential hand-off between threads
+unsafe impl<T: TypedExternal + Send> Send for ExternalPtr<T> {}
 
 impl<T: TypedExternal> ExternalPtr<T> {
     /// Allocates memory on the heap and places `x` into it.
@@ -362,7 +384,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -386,7 +407,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -499,7 +519,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -517,7 +536,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -800,18 +818,23 @@ impl<T: TypedExternal> ExternalPtr<T> {
     // Type checking
     // =========================================================================
 
-    /// Attempt to create an ExternalPtr from an SEXP with type checking.
+    /// Attempt to wrap a SEXP as an ExternalPtr with type checking.
     ///
     /// Returns `None` if:
     /// - The internal pointer is null
     /// - The `prot` slot doesn't contain a valid VECSXP with type symbol
     /// - The type symbol doesn't match T's type
     ///
+    /// This is a low-level method. For automatic conversions in `#[miniextendr]`
+    /// functions, use the [`TryFromSexp`] trait which requires `T: Send`.
+    ///
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP
     /// - The caller must ensure no other ExternalPtr owns this SEXP
-    pub unsafe fn try_from_sexp(sexp: SEXP) -> Option<Self> {
+    ///
+    /// [`TryFromSexp`]: crate::TryFromSexp
+    pub unsafe fn wrap_sexp(sexp: SEXP) -> Option<Self> {
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
@@ -842,20 +865,19 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Some(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
-    /// Attempt to create an ExternalPtr from an SEXP (unchecked version).
+    /// Attempt to wrap a SEXP as an ExternalPtr (unchecked version).
     ///
-    /// Skips thread safety checks for performance-critical paths.
+    /// Skips thread safety checks for performance-critical paths like ALTREP callbacks.
     ///
     /// # Safety
     ///
     /// - `sexp` must be a valid EXTPTRSXP
     /// - The caller must ensure exclusive ownership
     /// - Must be called from the R main thread (guaranteed in ALTREP callbacks)
-    pub unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Option<Self> {
+    pub unsafe fn wrap_sexp_unchecked(sexp: SEXP) -> Option<Self> {
         use crate::ffi::{
             R_ExternalPtrAddr_unchecked, R_ExternalPtrProtected_unchecked, VECTOR_ELT_unchecked,
         };
@@ -890,16 +912,19 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Some(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
-    /// Attempt to create an ExternalPtr, returning an error with type info on mismatch.
+    /// Attempt to wrap a SEXP as an ExternalPtr, returning an error with type info on mismatch.
+    ///
+    /// This is used by the [`TryFromSexp`] trait implementation.
     ///
     /// # Safety
     ///
-    /// Same as `try_from_sexp`.
-    pub unsafe fn try_from_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
+    /// Same as [`wrap_sexp`](Self::wrap_sexp).
+    ///
+    /// [`TryFromSexp`]: crate::TryFromSexp
+    pub unsafe fn wrap_sexp_with_error(sexp: SEXP) -> Result<Self, TypeMismatchError> {
         // Check if pointer is null
         let ptr = unsafe { R_ExternalPtrAddr(sexp) };
         if ptr.is_null() {
@@ -933,7 +958,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Ok(Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         })
     }
 
@@ -948,7 +972,6 @@ impl<T: TypedExternal> ExternalPtr<T> {
         Self {
             sexp,
             _marker: PhantomData,
-            _unsend: PhantomData,
         }
     }
 
@@ -1454,7 +1477,7 @@ impl<T: 'static> Drop for ExternalSlice<T> {
 /// ```
 #[inline]
 pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data1(x)) }
+    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data1(x)) }
 }
 
 /// Extract the ALTREP data1 slot (unchecked version).
@@ -1468,7 +1491,7 @@ pub unsafe fn altrep_data1_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     use crate::ffi::R_altrep_data1_unchecked;
-    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data1_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data1_unchecked(x)) }
 }
 
 /// Extract the ALTREP data2 slot as a typed `ExternalPtr<T>`.
@@ -1481,7 +1504,7 @@ pub unsafe fn altrep_data1_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<Ext
 /// - Must be called from the R main thread
 #[inline]
 pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
-    unsafe { ExternalPtr::try_from_sexp(crate::ffi::R_altrep_data2(x)) }
+    unsafe { ExternalPtr::wrap_sexp(crate::ffi::R_altrep_data2(x)) }
 }
 
 /// Extract the ALTREP data2 slot (unchecked version).
@@ -1495,7 +1518,7 @@ pub unsafe fn altrep_data2_as<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T
 #[inline]
 pub unsafe fn altrep_data2_as_unchecked<T: TypedExternal>(x: SEXP) -> Option<ExternalPtr<T>> {
     use crate::ffi::R_altrep_data2_unchecked;
-    unsafe { ExternalPtr::try_from_sexp_unchecked(R_altrep_data2_unchecked(x)) }
+    unsafe { ExternalPtr::wrap_sexp_unchecked(R_altrep_data2_unchecked(x)) }
 }
 
 /// Get a mutable reference to data in ALTREP data1 slot via `ErasedExternalPtr`.

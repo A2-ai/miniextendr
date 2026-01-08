@@ -114,6 +114,19 @@ impl<'a> MethodContext<'a> {
     pub fn has_generic_override(&self) -> bool {
         self.method.method_attrs.generic.is_some()
     }
+
+    /// Get custom class suffix if specified.
+    ///
+    /// This allows double-dispatch patterns like `vec_ptype2.my_class.my_class`
+    /// by specifying `#[miniextendr(s3(generic = "vec_ptype2", class = "my_class.my_class"))]`.
+    pub fn class_suffix(&self) -> Option<&str> {
+        self.method.method_attrs.class.as_deref()
+    }
+
+    /// Check if this method uses a custom class suffix.
+    pub fn has_class_override(&self) -> bool {
+        self.method.method_attrs.class.is_some()
+    }
 }
 
 /// Builder for class-level roxygen documentation header.
@@ -207,11 +220,15 @@ pub struct MethodDocBuilder<'a> {
     type_ident: &'a syn::Ident,
     doc_tags: &'a [String],
     name_prefix: Option<&'a str>,
+    r_name_override: Option<String>,
     always_export: bool,
 }
 
 impl<'a> MethodDocBuilder<'a> {
     /// Create a new MethodDocBuilder.
+    ///
+    /// Note: `always_export` defaults to `false` because methods accessed via `Class$method`
+    /// should not be exported directly - only the class env and S3 methods should be exported.
     pub fn new(
         class_name: &'a str,
         method_name: &'a str,
@@ -224,13 +241,23 @@ impl<'a> MethodDocBuilder<'a> {
             type_ident,
             doc_tags,
             name_prefix: None,
-            always_export: true,
+            r_name_override: None,
+            always_export: false,
         }
     }
 
     /// Set a prefix for the @name tag (e.g., "$" for "Class$method").
     pub fn with_name_prefix(mut self, prefix: &'a str) -> Self {
         self.name_prefix = Some(prefix);
+        self
+    }
+
+    /// Override the @name tag with a custom R function name.
+    ///
+    /// Use this when the R function name differs from the Rust method name
+    /// (e.g., for standalone S3/S4/S7 static methods like `s3counter_default_counter`).
+    pub fn with_r_name(mut self, r_name: String) -> Self {
+        self.r_name_override = Some(r_name);
         self
     }
 
@@ -250,7 +277,9 @@ impl<'a> MethodDocBuilder<'a> {
         }
 
         if !crate::roxygen::has_roxygen_tag(self.doc_tags, "name") {
-            let name = if let Some(prefix) = self.name_prefix {
+            let name = if let Some(ref r_name) = self.r_name_override {
+                r_name.clone()
+            } else if let Some(prefix) = self.name_prefix {
                 format!("{}{}{}", self.class_name, prefix, self.method_name)
             } else {
                 self.method_name.to_string()
@@ -291,6 +320,9 @@ pub trait ParsedImplExt {
 
     /// Iterate over private instance methods as MethodContext (for R6).
     fn private_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>>;
+
+    /// Iterate over active binding methods as MethodContext (for R6).
+    fn active_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>>;
 }
 
 impl ParsedImplExt for ParsedImpl {
@@ -324,6 +356,13 @@ impl ParsedImplExt for ParsedImpl {
         let type_ident = &self.type_ident;
         let label = self.label();
         self.private_instance_methods()
+            .map(move |m| MethodContext::new(m, type_ident, label))
+    }
+
+    fn active_instance_method_contexts(&self) -> impl Iterator<Item = MethodContext<'_>> {
+        let type_ident = &self.type_ident;
+        let label = self.label();
+        self.active_instance_methods()
             .map(move |m| MethodContext::new(m, type_ident, label))
     }
 }

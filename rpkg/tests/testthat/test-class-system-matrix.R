@@ -41,6 +41,13 @@ test_that("CounterTraitS3 works with S3 trait impl", {
   expect_equal(CounterTraitS3$MatrixCounter$default_value(), 2L)
 })
 
+test_that("CounterTraitS3 direct trait helpers exist", {
+  counter <- CounterTraitS3$new(3L)
+  expect_equal(custom_get.CounterTraitS3(counter), 3L)
+  custom_add.CounterTraitS3(counter, 4L)
+  expect_equal(custom_get.CounterTraitS3(counter), 7L)
+})
+
 # =============================================================================
 # S4 trait impl (CounterTraitS4)
 # =============================================================================

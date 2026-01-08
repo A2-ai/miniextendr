@@ -7,14 +7,12 @@ fn parse_inputs(s: &str) -> syn::punctuated::Punctuated<syn::FnArg, syn::token::
 
 #[test]
 fn test_normalize_arg_ident() {
+    // Leading underscores are stripped
     let ident = syn::Ident::new("_x", proc_macro2::Span::call_site());
-    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "unused_x");
+    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "x");
 
     let ident = syn::Ident::new("__private", proc_macro2::Span::call_site());
-    assert_eq!(
-        normalize_r_arg_ident(&ident).to_string(),
-        "private__private"
-    );
+    assert_eq!(normalize_r_arg_ident(&ident).to_string(), "private");
 
     let ident = syn::Ident::new("value", proc_macro2::Span::call_site());
     assert_eq!(normalize_r_arg_ident(&ident).to_string(), "value");
@@ -29,9 +27,10 @@ fn test_basic_formals() {
 
 #[test]
 fn test_unit_type_default() {
+    // `_unused` becomes `unused` (underscore stripped), unit type gets NULL default
     let inputs = parse_inputs("x: i32, _unused: ()");
     let builder = RArgumentBuilder::new(&inputs);
-    assert_eq!(builder.build_formals(), "x, unused_unused = NULL");
+    assert_eq!(builder.build_formals(), "x, unused = NULL");
 }
 
 #[test]
@@ -44,10 +43,12 @@ fn test_dots() {
 
 #[test]
 fn test_named_dots() {
+    // Note: In R, `...` cannot have a name/default in formals.
+    // The named_dots is only used on Rust side. R always uses plain `...`
     let inputs = parse_inputs("x: i32, _dots: &Dots");
     let builder = RArgumentBuilder::new(&inputs).with_dots(Some("args".to_string()));
-    assert_eq!(builder.build_formals(), "x, args = ...");
-    assert_eq!(builder.build_call_args(), "x, list(args)");
+    assert_eq!(builder.build_formals(), "x, ...");
+    assert_eq!(builder.build_call_args(), "x, list(...)");
 }
 
 #[test]
@@ -60,9 +61,10 @@ fn test_skip_first() {
 
 #[test]
 fn test_underscore_normalization() {
+    // Leading underscores are stripped in R (Rust convention for unused params)
     let inputs = parse_inputs("_x: i32, __private: String");
     let builder = RArgumentBuilder::new(&inputs);
-    assert_eq!(builder.build_formals(), "unused_x, private__private");
+    assert_eq!(builder.build_formals(), "x, private");
 }
 
 // DotCallBuilder tests

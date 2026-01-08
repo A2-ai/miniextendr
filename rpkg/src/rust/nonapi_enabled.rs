@@ -47,4 +47,3 @@ miniextendr_module! {
     extern "C-unwind" fn C_test_spawn_with_r_lean_stack;
     extern "C-unwind" fn C_test_stack_check_guard_lean;
 }
-

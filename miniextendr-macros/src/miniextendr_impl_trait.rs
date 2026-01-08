@@ -135,6 +135,8 @@ struct TraitMethod {
     check_interrupt: bool,
     /// Enable RNG state management (GetRNGstate/PutRNGstate)
     rng: bool,
+    /// Return `Result<T, E>` to R without unwrapping.
+    unwrap_in_r: bool,
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`
     param_defaults: std::collections::HashMap<String, String>,
     /// Roxygen @param tags extracted from method doc comments
@@ -441,6 +443,7 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     coerce: attrs.coerce,
                     check_interrupt: attrs.check_interrupt,
                     rng: attrs.rng,
+                    unwrap_in_r: attrs.unwrap_in_r,
                     param_defaults: attrs.defaults,
                     param_tags,
                 })
@@ -458,6 +461,7 @@ struct TraitMethodAttrs {
     coerce: bool,
     check_interrupt: bool,
     rng: bool,
+    unwrap_in_r: bool,
     defaults: std::collections::HashMap<String, String>,
 }
 
@@ -471,6 +475,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut coerce = false;
     let mut check_interrupt = false;
     let mut rng = false;
+    let mut unwrap_in_r = false;
     let mut defaults = std::collections::HashMap::new();
 
     for attr in attrs {
@@ -495,6 +500,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                         coerce = true;
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
+                    } else if inner.path.is_ident("unwrap_in_r") {
+                        unwrap_in_r = true;
                     }
                     // Note: rng is NOT supported nested (env(rng)) - use #[miniextendr(rng)] instead
                     Ok(())
@@ -509,6 +516,8 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                 check_interrupt = true;
             } else if meta.path.is_ident("rng") {
                 rng = true;
+            } else if meta.path.is_ident("unwrap_in_r") {
+                unwrap_in_r = true;
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
                 meta.parse_nested_meta(|inner| {
@@ -532,6 +541,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         coerce,
         check_interrupt,
         rng,
+        unwrap_in_r,
         defaults,
     }
 }
@@ -561,7 +571,7 @@ fn generate_trait_method_c_wrapper(
     trait_name: &syn::Ident,
     trait_path: &syn::Path,
 ) -> TokenStream {
-    use crate::c_wrapper_builder::{CWrapperContext, ThreadStrategy};
+    use crate::c_wrapper_builder::{CWrapperContext, ReturnHandling, ThreadStrategy};
 
     let method_ident = &method.ident;
     let c_ident = method.c_wrapper_ident(type_ident, trait_name);
@@ -605,7 +615,11 @@ fn generate_trait_method_c_wrapper(
         .collect();
 
     // Determine return handling
-    let return_handling = crate::c_wrapper_builder::detect_return_handling(&method.sig.output);
+    let return_handling = if method.unwrap_in_r && output_is_result(&method.sig.output) {
+        ReturnHandling::IntoR
+    } else {
+        crate::c_wrapper_builder::detect_return_handling(&method.sig.output)
+    };
 
     // Generate R wrapper const name (not actually used but needed by builder)
     let r_wrappers_const = format_ident!(
@@ -693,6 +707,21 @@ fn generate_trait_method_c_wrapper(
     builder.build().generate()
 }
 
+fn output_is_result(output: &syn::ReturnType) -> bool {
+    match output {
+        syn::ReturnType::Type(_, ty) => matches!(
+            ty.as_ref(),
+            syn::Type::Path(p)
+                if p.path
+                    .segments
+                    .last()
+                    .map(|s| s.ident == "Result")
+                    .unwrap_or(false)
+        ),
+        syn::ReturnType::Default => false,
+    }
+}
+
 /// Generate a C wrapper for a trait const.
 fn generate_trait_const_c_wrapper(
     trait_const: &TraitConst,
@@ -752,6 +781,8 @@ fn generate_trait_r_wrapper(
         ClassSystem::S4 => generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::S7 => generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts),
         ClassSystem::R6 => generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts),
+        // vctrs uses S3 under the hood, so use the S3 trait wrapper
+        ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
     }
 }
 

@@ -11,7 +11,7 @@ mod r_test_utils;
 
 use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
 use miniextendr_api::rayon_bridge::{
-    RVec, new_r_array, new_r_matrix, with_r_array, with_r_array_slabs, with_r_matrix,
+    new_r_array, new_r_matrix, with_r_array, with_r_array_slabs, with_r_matrix,
     with_r_matrix_cols, with_r_vec,
 };
 use rayon::prelude::*;
@@ -36,8 +36,7 @@ fn rayon_suite() {
         test_with_r_vec_i32();
         test_with_r_vec_empty();
         test_with_r_vec_large();
-        test_rvec_parallel_collect();
-        test_rvec_into_sexp();
+        test_vec_parallel_collect();
         test_with_r_matrix_basic();
         test_with_r_matrix_parallel();
         test_with_r_array_basic();
@@ -94,23 +93,12 @@ fn test_with_r_vec_i32() {
     }
 }
 
-fn test_rvec_parallel_collect() {
-    let result: RVec<f64> = (0..1000).into_par_iter().map(|i| i as f64 * 0.5).collect();
+fn test_vec_parallel_collect() {
+    let result: Vec<f64> = (0..1000).into_par_iter().map(|i| i as f64 * 0.5).collect();
 
     assert_eq!(result.len(), 1000);
-    for (i, &v) in result.as_slice().iter().enumerate() {
-        assert_eq!(v, i as f64 * 0.5, "mismatch at index {}", i);
-    }
-}
-
-fn test_rvec_into_sexp() {
-    let rvec: RVec<f64> = (0..100).into_par_iter().map(|i| i as f64).collect();
-    let sexp = miniextendr_api::into_r::IntoR::into_sexp(rvec);
-
-    let result = unsafe { read_real_vec(sexp) };
-    assert_eq!(result.len(), 100);
     for (i, &v) in result.iter().enumerate() {
-        assert_eq!(v, i as f64);
+        assert_eq!(v, i as f64 * 0.5, "mismatch at index {}", i);
     }
 }
 
@@ -167,7 +155,8 @@ fn test_with_r_matrix_basic() {
     assert_eq!(len, 12);
 
     // Verify the dim attribute
-    let dim = unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+    let dim =
+        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 2) };
     assert_eq!(dim_slice[0], 3); // nrow
@@ -235,7 +224,8 @@ fn test_with_r_array_basic() {
     assert_eq!(len, 24);
 
     // Verify the dim attribute
-    let dim = unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
+    let dim =
+        unsafe { miniextendr_api::ffi::Rf_getAttrib(sexp, miniextendr_api::ffi::R_DimSymbol) };
     let dim_ptr = unsafe { miniextendr_api::ffi::INTEGER(dim) };
     let dim_slice = unsafe { std::slice::from_raw_parts(dim_ptr, 3) };
     assert_eq!(dim_slice[0], 2);
@@ -387,15 +377,15 @@ fn test_with_r_array_slabs() {
     let ptr = unsafe { REAL(sexp) };
     let slice = unsafe { std::slice::from_raw_parts(ptr, 24) };
     // Slab 0: elements 0-5 -> values 0,1,2,3,4,5
-    for i in 0..6 {
-        assert_eq!(slice[i], i as f64, "slab 0, element {}", i);
+    for (i, val) in slice.iter().take(6).enumerate() {
+        assert_eq!(*val, i as f64, "slab 0, element {}", i);
     }
     // Slab 1: elements 6-11 -> values 100,101,102,103,104,105
-    for i in 0..6 {
-        assert_eq!(slice[6 + i], (100 + i) as f64, "slab 1, element {}", i);
+    for (i, val) in slice[6..12].iter().enumerate() {
+        assert_eq!(*val, (100 + i) as f64, "slab 1, element {}", i);
     }
     // Slab 3: elements 18-23 -> values 300,301,302,303,304,305
-    for i in 0..6 {
-        assert_eq!(slice[18 + i], (300 + i) as f64, "slab 3, element {}", i);
+    for (i, val) in slice[18..24].iter().enumerate() {
+        assert_eq!(*val, (300 + i) as f64, "slab 3, element {}", i);
     }
 }

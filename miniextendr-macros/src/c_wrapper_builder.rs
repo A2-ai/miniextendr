@@ -208,6 +208,37 @@ impl CWrapperContext {
         builder.build_conversions(&self.inputs, sexp_idents)
     }
 
+    /// Build conversion statements split for worker thread execution.
+    ///
+    /// Returns (pre_closure, in_closure) statements:
+    /// - pre_closure: Run on main thread, produce owned values to move
+    /// - in_closure: Run inside worker closure, create borrows
+    fn build_conversion_stmts_split(
+        &self,
+        sexp_idents: &[syn::Ident],
+    ) -> (Vec<TokenStream>, Vec<TokenStream>) {
+        let mut builder = crate::RustConversionBuilder::new();
+        if self.coerce_all {
+            builder = builder.with_coerce_all();
+        }
+        for param in &self.coerce_params {
+            builder = builder.with_coerce_param(param.clone());
+        }
+
+        let mut all_pre = Vec::new();
+        let mut all_in = Vec::new();
+
+        for (arg, sexp_ident) in self.inputs.iter().zip(sexp_idents.iter()) {
+            if let syn::FnArg::Typed(pat_type) = arg {
+                let (owned, borrowed) = builder.build_conversion_split(pat_type, sexp_ident);
+                all_pre.extend(owned);
+                all_in.extend(borrowed);
+            }
+        }
+
+        (all_pre, all_in)
+    }
+
     /// Generate the main thread wrapper body.
     fn generate_main_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
@@ -278,7 +309,7 @@ impl CWrapperContext {
     fn generate_worker_thread_wrapper(&self) -> TokenStream {
         let c_ident = &self.c_ident;
         let (c_params, _, sexp_idents) = self.build_c_params();
-        let conversion_stmts = self.build_conversion_stmts(&sexp_idents);
+        let (pre_closure_stmts, in_closure_stmts) = self.build_conversion_stmts_split(&sexp_idents);
         let pre_call = &self.pre_call;
         let call_expr = &self.call_expr;
 
@@ -312,9 +343,12 @@ impl CWrapperContext {
                 let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
                     #pre_call_checks
                     #(#pre_call)*
-                    #(#conversion_stmts)*
+                    // Pre-closure: conversions on main thread (owned values to move)
+                    #(#pre_closure_stmts)*
 
                     let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
+                        // In-closure: borrows from moved storage
+                        #(#in_closure_stmts)*
                         #worker_body
                     });
 
@@ -324,8 +358,9 @@ impl CWrapperContext {
                 #rng_put
                 match __miniextendr_panic_result {
                     Ok(sexp) => sexp,
-                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
-                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_errorcall(
+                        ::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        __miniextendr_call,
                     ),
                 }
             }

@@ -11,13 +11,18 @@ Utility functions for creating and maintaining R packages that use miniextendr f
 \seealso{
 Useful links:
 \itemize{
-  \item \url{https://github.com/miniextendr/miniextendr}
-  \item Report bugs at \url{https://github.com/miniextendr/miniextendr/issues}
+  \item \url{https://github.com/CGMossa/miniextendr}
+  \item Report bugs at \url{https://github.com/CGMossa/miniextendr/issues}
 }
 
 }
 \author{
-\strong{Maintainer}: Mossa Merhi Reimert (\href{https://orcid.org/YOUR-ORCID-ID}{ORCID})
+\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
+
+Other contributors:
+\itemize{
+  \item A2-AI [copyright holder, funder]
+}
 
 }
 \keyword{internal}

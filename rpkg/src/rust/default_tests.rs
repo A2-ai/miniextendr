@@ -13,6 +13,10 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// with_flag()
 /// @aliases greet greet_hidden add_with_defaults with_flag
 /// @param name Name to greet (default: "World").
+/// @param x First integer to add.
+/// @param y Second integer to add (default: 0).
+/// @param z Third integer to add (default: 1).
+/// @param flag Boolean flag (default: FALSE).
 /// @return A greeting string or computed value.
 ///
 /// Greets a person by name.

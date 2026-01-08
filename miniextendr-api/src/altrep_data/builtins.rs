@@ -1,19 +1,219 @@
 use std::ops::Range;
 
+use crate::ffi::Rcomplex;
+use crate::ffi::SEXP;
+
 use super::{
-    AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData, AltrepDataptr,
-    AltrepLen, Logical, Sortedness,
+    AltComplexData, AltIntegerData, AltLogicalData, AltRawData, AltRealData, AltStringData,
+    AltrepDataptr, AltrepLen, AltrepSerialize, Logical, Sortedness,
 };
+
+// =============================================================================
+// Helper macros to reduce repetition
+// =============================================================================
+
+/// Implement AltrepLen for Vec<$elem>
+macro_rules! impl_len_vec {
+    ($elem:ty) => {
+        impl AltrepLen for Vec<$elem> {
+            fn len(&self) -> usize {
+                Vec::len(self)
+            }
+        }
+    };
+}
+
+/// Implement AltrepLen for Box<[$elem]>
+macro_rules! impl_len_boxed {
+    ($elem:ty) => {
+        impl AltrepLen for Box<[$elem]> {
+            fn len(&self) -> usize {
+                <[$elem]>::len(self)
+            }
+        }
+    };
+}
+
+/// Implement AltrepLen for [$elem; N]
+macro_rules! impl_len_array {
+    ($elem:ty) => {
+        impl<const N: usize> AltrepLen for [$elem; N] {
+            fn len(&self) -> usize {
+                N
+            }
+        }
+    };
+}
+
+/// Implement AltrepLen for &[$elem]
+macro_rules! impl_len_slice {
+    ($elem:ty) => {
+        impl AltrepLen for &[$elem] {
+            fn len(&self) -> usize {
+                <[$elem]>::len(self)
+            }
+        }
+    };
+}
+
+/// Implement AltrepDataptr for Vec<$elem> (types with direct memory access)
+macro_rules! impl_dataptr_vec {
+    ($elem:ty) => {
+        impl AltrepDataptr<$elem> for Vec<$elem> {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
+                Some(self.as_mut_ptr())
+            }
+
+            fn dataptr_or_null(&self) -> Option<*const $elem> {
+                Some(self.as_ptr())
+            }
+        }
+    };
+}
+
+/// Implement AltrepDataptr for Box<[$elem]> (types with direct memory access)
+macro_rules! impl_dataptr_boxed {
+    ($elem:ty) => {
+        impl AltrepDataptr<$elem> for Box<[$elem]> {
+            fn dataptr(&mut self, _writable: bool) -> Option<*mut $elem> {
+                Some(self.as_mut_ptr())
+            }
+
+            fn dataptr_or_null(&self) -> Option<*const $elem> {
+                Some(self.as_ptr())
+            }
+        }
+    };
+}
+
+/// Implement AltrepSerialize for types that can be cloned and converted to/from R.
+///
+/// This serializes by converting to a native R vector, ensuring the data survives
+/// even if the Rust package isn't loaded when unserializing.
+macro_rules! impl_serialize {
+    ($ty:ty) => {
+        impl AltrepSerialize for $ty {
+            fn serialized_state(&self) -> SEXP {
+                use crate::into_r::IntoR;
+                self.clone().into_sexp()
+            }
+
+            fn unserialize(state: SEXP) -> Option<Self> {
+                use crate::from_r::TryFromSexp;
+                <$ty>::try_from_sexp(state).ok()
+            }
+        }
+    };
+}
+
+// =============================================================================
+// AltrepSerialize implementations for Vec<T>
+// =============================================================================
+
+impl_serialize!(Vec<i32>);
+impl_serialize!(Vec<f64>);
+impl_serialize!(Vec<u8>);
+impl_serialize!(Vec<bool>);
+impl_serialize!(Vec<String>);
+impl_serialize!(Vec<Option<String>>);
+impl_serialize!(Vec<Rcomplex>);
+
+// =============================================================================
+// AltrepSerialize implementations for Box<[T]>
+// =============================================================================
+
+// Box<[T]> types don't have direct TryFromSexp implementations, so we manually
+// implement serialization by converting to Vec and back.
+
+impl AltrepSerialize for Box<[i32]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<i32>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[f64]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<f64>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[u8]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<u8>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[bool]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<bool>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[String]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<String>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
+
+impl AltrepSerialize for Box<[Rcomplex]> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        self.to_vec().into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        Vec::<Rcomplex>::try_from_sexp(state)
+            .ok()
+            .map(|v| v.into_boxed_slice())
+    }
+}
 
 // =============================================================================
 // Built-in implementations for Vec<T>
 // =============================================================================
 
-impl AltrepLen for Vec<i32> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-}
+impl_len_vec!(i32);
 
 impl AltIntegerData for Vec<i32> {
     fn elt(&self, i: usize) -> i32 {
@@ -84,21 +284,9 @@ impl AltIntegerData for Vec<i32> {
     }
 }
 
-impl AltrepDataptr<i32> for Vec<i32> {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
-        Some(self.as_mut_ptr())
-    }
+impl_dataptr_vec!(i32);
 
-    fn dataptr_or_null(&self) -> Option<*const i32> {
-        Some(self.as_ptr())
-    }
-}
-
-impl AltrepLen for Vec<f64> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-}
+impl_len_vec!(f64);
 
 impl AltRealData for Vec<f64> {
     fn elt(&self, i: usize) -> f64 {
@@ -169,21 +357,9 @@ impl AltRealData for Vec<f64> {
     }
 }
 
-impl AltrepDataptr<f64> for Vec<f64> {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
-        Some(self.as_mut_ptr())
-    }
+impl_dataptr_vec!(f64);
 
-    fn dataptr_or_null(&self) -> Option<*const f64> {
-        Some(self.as_ptr())
-    }
-}
-
-impl AltrepLen for Vec<u8> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-}
+impl_len_vec!(u8);
 
 impl AltRawData for Vec<u8> {
     fn elt(&self, i: usize) -> u8 {
@@ -204,21 +380,9 @@ impl AltRawData for Vec<u8> {
     }
 }
 
-impl AltrepDataptr<u8> for Vec<u8> {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
-        Some(self.as_mut_ptr())
-    }
+impl_dataptr_vec!(u8);
 
-    fn dataptr_or_null(&self) -> Option<*const u8> {
-        Some(self.as_ptr())
-    }
-}
-
-impl AltrepLen for Vec<String> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-}
+impl_len_vec!(String);
 
 impl AltStringData for Vec<String> {
     fn elt(&self, i: usize) -> Option<&str> {
@@ -230,11 +394,7 @@ impl AltStringData for Vec<String> {
     }
 }
 
-impl AltrepLen for Vec<Option<String>> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-}
+impl_len_vec!(Option<String>);
 
 impl AltStringData for Vec<Option<String>> {
     fn elt(&self, i: usize) -> Option<&str> {
@@ -246,11 +406,7 @@ impl AltStringData for Vec<Option<String>> {
     }
 }
 
-impl AltrepLen for Vec<bool> {
-    fn len(&self) -> usize {
-        Vec::len(self)
-    }
-}
+impl_len_vec!(bool);
 
 impl AltLogicalData for Vec<bool> {
     fn elt(&self, i: usize) -> Logical {
@@ -285,11 +441,7 @@ impl AltLogicalData for Vec<bool> {
 //
 // Or use these trait implementations in custom wrapper structs.
 
-impl AltrepLen for Box<[i32]> {
-    fn len(&self) -> usize {
-        <[i32]>::len(self)
-    }
-}
+impl_len_boxed!(i32);
 
 impl AltIntegerData for Box<[i32]> {
     fn elt(&self, i: usize) -> i32 {
@@ -360,21 +512,9 @@ impl AltIntegerData for Box<[i32]> {
     }
 }
 
-impl AltrepDataptr<i32> for Box<[i32]> {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
-        Some(self.as_mut_ptr())
-    }
+impl_dataptr_boxed!(i32);
 
-    fn dataptr_or_null(&self) -> Option<*const i32> {
-        Some(self.as_ptr())
-    }
-}
-
-impl AltrepLen for Box<[f64]> {
-    fn len(&self) -> usize {
-        <[f64]>::len(self)
-    }
-}
+impl_len_boxed!(f64);
 
 impl AltRealData for Box<[f64]> {
     fn elt(&self, i: usize) -> f64 {
@@ -445,21 +585,9 @@ impl AltRealData for Box<[f64]> {
     }
 }
 
-impl AltrepDataptr<f64> for Box<[f64]> {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut f64> {
-        Some(self.as_mut_ptr())
-    }
+impl_dataptr_boxed!(f64);
 
-    fn dataptr_or_null(&self) -> Option<*const f64> {
-        Some(self.as_ptr())
-    }
-}
-
-impl AltrepLen for Box<[u8]> {
-    fn len(&self) -> usize {
-        <[u8]>::len(self)
-    }
-}
+impl_len_boxed!(u8);
 
 impl AltRawData for Box<[u8]> {
     fn elt(&self, i: usize) -> u8 {
@@ -480,21 +608,9 @@ impl AltRawData for Box<[u8]> {
     }
 }
 
-impl AltrepDataptr<u8> for Box<[u8]> {
-    fn dataptr(&mut self, _writable: bool) -> Option<*mut u8> {
-        Some(self.as_mut_ptr())
-    }
+impl_dataptr_boxed!(u8);
 
-    fn dataptr_or_null(&self) -> Option<*const u8> {
-        Some(self.as_ptr())
-    }
-}
-
-impl AltrepLen for Box<[bool]> {
-    fn len(&self) -> usize {
-        <[bool]>::len(self)
-    }
-}
+impl_len_boxed!(bool);
 
 impl AltLogicalData for Box<[bool]> {
     fn elt(&self, i: usize) -> Logical {
@@ -514,11 +630,7 @@ impl AltLogicalData for Box<[bool]> {
     }
 }
 
-impl AltrepLen for Box<[String]> {
-    fn len(&self) -> usize {
-        <[String]>::len(self)
-    }
-}
+impl_len_boxed!(String);
 
 impl AltStringData for Box<[String]> {
     fn elt(&self, i: usize) -> Option<&str> {
@@ -714,11 +826,7 @@ impl AltRealData for Range<f64> {
 // Built-in implementations for slices (read-only)
 // =============================================================================
 
-impl AltrepLen for &[i32] {
-    fn len(&self) -> usize {
-        <[i32]>::len(self)
-    }
-}
+impl_len_slice!(i32);
 
 impl AltIntegerData for &[i32] {
     fn elt(&self, i: usize) -> i32 {
@@ -788,11 +896,7 @@ impl AltIntegerData for &[i32] {
     }
 }
 
-impl AltrepLen for &[f64] {
-    fn len(&self) -> usize {
-        <[f64]>::len(self)
-    }
-}
+impl_len_slice!(f64);
 
 impl AltRealData for &[f64] {
     fn elt(&self, i: usize) -> f64 {
@@ -854,11 +958,7 @@ impl AltRealData for &[f64] {
     }
 }
 
-impl AltrepLen for &[u8] {
-    fn len(&self) -> usize {
-        <[u8]>::len(self)
-    }
-}
+impl_len_slice!(u8);
 
 impl AltRawData for &[u8] {
     fn elt(&self, i: usize) -> u8 {
@@ -870,11 +970,7 @@ impl AltRawData for &[u8] {
     }
 }
 
-impl AltrepLen for &[bool] {
-    fn len(&self) -> usize {
-        <[bool]>::len(self)
-    }
-}
+impl_len_slice!(bool);
 
 impl AltLogicalData for &[bool] {
     fn elt(&self, i: usize) -> Logical {
@@ -890,11 +986,7 @@ impl AltLogicalData for &[bool] {
     }
 }
 
-impl AltrepLen for &[String] {
-    fn len(&self) -> usize {
-        <[String]>::len(self)
-    }
-}
+impl_len_slice!(String);
 
 impl AltStringData for &[String] {
     fn elt(&self, i: usize) -> Option<&str> {
@@ -902,11 +994,7 @@ impl AltStringData for &[String] {
     }
 }
 
-impl AltrepLen for &[&str] {
-    fn len(&self) -> usize {
-        <[&str]>::len(self)
-    }
-}
+impl_len_slice!(&str);
 
 impl AltStringData for &[&str] {
     fn elt(&self, i: usize) -> Option<&str> {
@@ -934,11 +1022,7 @@ impl AltStringData for &[&str] {
 // Built-in implementations for arrays (owned, fixed-size)
 // =============================================================================
 
-impl<const N: usize> AltrepLen for [i32; N] {
-    fn len(&self) -> usize {
-        N
-    }
-}
+impl_len_array!(i32);
 
 impl<const N: usize> AltIntegerData for [i32; N] {
     fn elt(&self, i: usize) -> i32 {
@@ -963,11 +1047,7 @@ impl<const N: usize> AltIntegerData for [i32; N] {
     }
 }
 
-impl<const N: usize> AltrepLen for [f64; N] {
-    fn len(&self) -> usize {
-        N
-    }
-}
+impl_len_array!(f64);
 
 impl<const N: usize> AltRealData for [f64; N] {
     fn elt(&self, i: usize) -> f64 {
@@ -992,11 +1072,7 @@ impl<const N: usize> AltRealData for [f64; N] {
     }
 }
 
-impl<const N: usize> AltrepLen for [bool; N] {
-    fn len(&self) -> usize {
-        N
-    }
-}
+impl_len_array!(bool);
 
 impl<const N: usize> AltLogicalData for [bool; N] {
     fn elt(&self, i: usize) -> Logical {
@@ -1008,11 +1084,7 @@ impl<const N: usize> AltLogicalData for [bool; N] {
     }
 }
 
-impl<const N: usize> AltrepLen for [u8; N] {
-    fn len(&self) -> usize {
-        N
-    }
-}
+impl_len_array!(u8);
 
 impl<const N: usize> AltRawData for [u8; N] {
     fn elt(&self, i: usize) -> u8 {
@@ -1033,14 +1105,102 @@ impl<const N: usize> AltRawData for [u8; N] {
     }
 }
 
-impl<const N: usize> AltrepLen for [String; N] {
-    fn len(&self) -> usize {
-        N
-    }
-}
+impl_len_array!(String);
 
 impl<const N: usize> AltStringData for [String; N] {
     fn elt(&self, i: usize) -> Option<&str> {
         Some(self[i].as_str())
     }
 }
+
+// =============================================================================
+// Built-in implementations for Vec<Rcomplex> (complex numbers)
+// =============================================================================
+
+impl_len_vec!(Rcomplex);
+
+impl AltComplexData for Vec<Rcomplex> {
+    fn elt(&self, i: usize) -> Rcomplex {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[Rcomplex]> {
+        Some(self.as_slice())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
+        let end = (start + len).min(self.len());
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+impl_dataptr_vec!(Rcomplex);
+
+// =============================================================================
+// Built-in implementations for Box<[Rcomplex]>
+// =============================================================================
+
+impl_len_boxed!(Rcomplex);
+
+impl AltComplexData for Box<[Rcomplex]> {
+    fn elt(&self, i: usize) -> Rcomplex {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[Rcomplex]> {
+        Some(self.as_ref())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
+        let end = (start + len).min(self.len());
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+impl_dataptr_boxed!(Rcomplex);
+
+// =============================================================================
+// Built-in implementations for [Rcomplex; N] (complex arrays)
+// =============================================================================
+
+impl_len_array!(Rcomplex);
+
+impl<const N: usize> AltComplexData for [Rcomplex; N] {
+    fn elt(&self, i: usize) -> Rcomplex {
+        self[i]
+    }
+
+    fn as_slice(&self) -> Option<&[Rcomplex]> {
+        Some(self.as_slice())
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [Rcomplex]) -> usize {
+        let end = (start + len).min(N);
+        let actual_len = end.saturating_sub(start);
+        if actual_len > 0 {
+            buf[..actual_len].copy_from_slice(&self[start..end]);
+        }
+        actual_len
+    }
+}
+
+// =============================================================================
+// Low-level ALTREP trait implementations
+// =============================================================================
+//
+// The low-level trait impls (Altrep, AltVec, Alt*, InferBase) for builtin types
+// are located in altrep_impl.rs. This is because the impl_alt*_from_data! macros
+// are defined there and need to be in the same module.
+//
+// See altrep_impl.rs for:
+// - Vec<i32>, Vec<f64>, Vec<bool>, Vec<u8>, Vec<String>, Vec<Rcomplex>
+// - Box<[i32]>, Box<[f64]>, Box<[bool]>, Box<[u8]>, Box<[String]>, Box<[Rcomplex]>
+// - Range<i32>, Range<i64>, Range<f64>

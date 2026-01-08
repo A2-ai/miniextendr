@@ -6,19 +6,34 @@
 \usage{
 vendor_miniextendr(
   version = "main",
-  dest = usethis::proj_path("src", "vendor")
+  dest = usethis::proj_path("src", "vendor"),
+  refresh = FALSE,
+  local_path = NULL
 )
 }
 \arguments{
-\item{version}{Version tag to download (default: "main" for latest)}
+\item{version}{Version tag to download (default: "main" for latest).
+Ignored if \code{local_path} is provided.}
 
 \item{dest}{Destination directory for vendored crates}
+
+\item{refresh}{Force re-download even if cached (default: FALSE)}
+
+\item{local_path}{Path to local miniextendr repository. If provided,
+copies crates from local path instead of downloading from GitHub.}
 }
 \value{
 Invisibly returns TRUE on success
 }
 \description{
-Downloads miniextendr-api, miniextendr-macros, and miniextendr-lint
-from GitHub and vendors them into src/vendor/. Also patches
-Cargo.toml files to remove workspace inheritance.
+Downloads miniextendr-api, miniextendr-macros, miniextendr-lint, and
+miniextendr-engine from GitHub and vendors them into src/vendor/. Also
+patches Cargo.toml files to remove workspace inheritance.
+}
+\details{
+Downloaded archives are cached in \code{rappdirs::user_cache_dir("minirextendr")}
+to avoid repeated downloads of the same version.
+
+For local development (when GitHub repo is not available), set
+\code{local_path} to the path of the miniextendr repository.
 }

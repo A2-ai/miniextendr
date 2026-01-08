@@ -6,7 +6,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 /// @param b Second integer
 /// @return Sum of a and b
 #[miniextendr]
-fn add(a: i32, b: i32) -> i32 {
+pub fn add(a: i32, b: i32) -> i32 {
     a + b
 }
 
@@ -15,7 +15,7 @@ fn add(a: i32, b: i32) -> i32 {
 /// @param name Name to greet
 /// @return Greeting string
 #[miniextendr]
-fn hello(name: &str) -> String {
+pub fn hello(name: &str) -> String {
     format!("Hello, {}!", name)
 }
 

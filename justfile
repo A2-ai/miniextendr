@@ -6,6 +6,7 @@
 #     just test               - Run cargo tests
 #     just clippy             - Run lints
 #     just fmt                - Format Rust code
+#     just lint               - Run miniextendr-lint on rpkg
 #
 #   rpkg (example R package):
 #     just configure          - Configure R package build
@@ -40,7 +41,7 @@
 
 default:
     @just --list
-# TODO: add the vendor checksum file to this recipe!
+
 clean:
     -just configure
     -just cargo-clean
@@ -48,72 +49,109 @@ clean:
     -cd tests/cross-package && just clean
 
 # Clean build artifacts
+#
+# NOTE: The `tmp="$(mktemp -d)" && (cd "$tmp" && cargo ...)` pattern is used
+# throughout this file to run cargo from a neutral directory, preventing it
+# from picking up the wrong .cargo/config.toml. These temp dirs are empty
+# (just used as cwd) and cleaned by the OS periodically - not a significant leak.
 cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
     cargo clean -p miniextendr-bench {{cargo_flags}}
     cargo clean -p miniextendr-lint {{cargo_flags}}
     cargo clean -p miniextendr-engine {{cargo_flags}}
-    cargo clean --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo clean --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo clean --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo clean --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo clean --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clean --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Check all crates
 alias cargo-check := check
 check *cargo_flags:
     cargo check --benches --tests --examples --workspace {{cargo_flags}}
-    cargo check --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo check --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo check --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Build all crates
 alias cargo-build := build
 build *cargo_flags:
     cargo build --benches --tests --examples --workspace {{cargo_flags}}
     cargo build --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
-    cargo build --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo build --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo build --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
 clippy *cargo_flags:
     cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
-    cargo clippy --benches --tests --examples --workspace --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo clippy --benches --tests --examples --workspace --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo clippy --benches --tests --examples --workspace --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+
+# Run miniextendr-lint on rpkg (checks #[miniextendr] ↔ miniextendr_module! consistency)
+# The lint runs as a build script; this command triggers it via cargo check.
+# Lint output appears as cargo warnings. Errors indicate:
+# - #[miniextendr] items missing from miniextendr_module!
+# - miniextendr_module! items without #[miniextendr] attribute
+# - Multiple unlabeled impl blocks for the same type
+# - Class system incompatibilities between inherent and trait impls
+lint:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    cd rpkg
+    output=$(NOT_CRAN=true cargo check --manifest-path=src/rust/Cargo.toml 2>&1) || {
+        echo "$output"
+        echo ""
+        echo "::error::cargo check failed (see output above)"
+        exit 1
+    }
+    lint_issues=$(echo "$output" | grep -E "warning.*miniextendr-lint" || true)
+    if [[ -n "$lint_issues" ]]; then
+        echo "$lint_issues"
+        echo ""
+        echo "miniextendr-lint found issues (see above)"
+    else
+        echo "miniextendr-lint: no issues found"
+    fi
 
 # Check documentation builds
 alias cargo-doc-check := doc-check
 doc-check *cargo_flags: configure-all
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
-    cargo doc --no-deps --document-private-items --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo doc --no-deps --document-private-items --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo doc --no-deps --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Build and open documentation
 alias cargo-doc := doc
 doc *cargo_flags: configure-all
     cargo doc --document-private-items --workspace {{cargo_flags}}
-    cargo doc --document-private-items --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo doc --document-private-items --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo doc --document-private-items --manifest-path=rpkg/src/rust/Cargo.toml --open {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    if command -v open >/dev/null 2>&1; then \
+      open rpkg/src/rust/target/doc/rpkg/index.html >/dev/null 2>&1 || \
+        echo "doc: unable to open generated docs (skipping)"; \
+    else \
+      echo "doc: open not found; docs at rpkg/src/rust/target/doc/rpkg/index.html"; \
+    fi
 
 # Check formatting
 alias cargo-fmt-check := fmt-check
 fmt-check *cargo_flags:
     cargo fmt --all {{cargo_flags}} -- --check
-    cargo fmt --all --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
-    cargo fmt --all --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
-    cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}} -- --check
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}} -- --check)
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}} -- --check)
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="$root/rpkg/src/rust/Cargo.toml" {{cargo_flags}} -- --check)
 
 # Format all code
 alias cargo-fmt := fmt
 fmt *cargo_flags:
     cargo fmt --all {{cargo_flags}}
-    cargo fmt --all --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo fmt --all --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo fmt --all --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="$root/rpkg/src/rust/Cargo.toml" {{cargo_flags}})
 
 # Run tests
 alias cargo-test := test
@@ -126,9 +164,9 @@ test *args:
       if [ "$sep" = "0" ]; then cargo_flags="$cargo_flags $arg"; else test_args="$test_args $arg"; fi; \
     done \
     && cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
-    && cargo test --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
-    && cargo test --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
-    && cargo test --manifest-path=rpkg/src/rust/Cargo.toml --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args
+    && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo test --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
+    && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo test --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
+    && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --manifest-path="$root/rpkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
 
 # Run benchmarks (miniextendr-bench)
 alias cargo-bench := bench
@@ -144,18 +182,18 @@ alias cargo-tree := tree
 tree *cargo_flags:
     cargo tree --workspace {{cargo_flags}}
     cargo tree --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
-    cargo tree --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo tree --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo tree --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Expand macros for rpkg (requires cargo-expand)
 alias cargo-expand := expand
 expand *cargo_flags:
     cargo expand --lib -p miniextendr-api {{cargo_flags}}
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
-    cargo expand --lib --manifest-path=tests/cross-package/consumer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo expand --lib --manifest-path=tests/cross-package/producer.pkg/src/rust/Cargo.toml {{cargo_flags}}
-    cargo expand --lib --manifest-path=rpkg/src/rust/Cargo.toml {{cargo_flags}}
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run ./configure and vendor rpkg dependencies
 #
@@ -457,7 +495,8 @@ templates-approve:
     rsync -a "{{local_root}}/" "$tmp/b/"
 
     # diff exits 1 when differences exist; that's expected here.
-    (cd "$tmp" && diff -ruN a b) > "{{patch_file}}" || true
+    # -U2 = 2 context lines (default is 3)
+    (cd "$tmp" && diff -ruN -U2 a b) > "{{patch_file}}" || true
     echo "Wrote {{patch_file}}"
 
 # Verify: upstream snapshot + approved patch == inst/templates

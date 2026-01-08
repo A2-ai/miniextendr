@@ -54,7 +54,21 @@ rng_with_rng_test(n)
 A numeric vector.
 }
 \description{
-RNG state management tests
+RNG Tests
+
+Generate n normal random numbers.
+
+Generate n exponential random numbers.
+
+Generate n random integers in [0, max).
+
+Test RNG with check_interrupt (forces main thread). This verifies RNG works correctly when combined with check_interrupt.
+
+Test combining rng with explicit worker thread strategy.
+
+Test RngGuard for manual RNG state management.
+
+Test with_rng helper for scoped RNG access.
 }
 \examples{
 set.seed(42)
