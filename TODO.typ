@@ -1261,3 +1261,9 @@ Standalone adapter traits not needed - use connection framework instead.
   - Template: `inst/templates/rpkg/src/rust/feature_detection.rs`
   - R wrapper: `minirextendr::update_feature_detection()`
   - Should generate both Rust code and R helper (`has_feature()`, `skip_if_missing_feature()`)
+
+
+== minirextendr
+
+- [ ] Add a `cargo_new` command. The manifest-path argument isn't defined for `cargo new `. Instead, you'll have to navigate to the `src/rust` directory to execute a `cargo new` that is workspace aware, and so on.
+
