@@ -23,3 +23,6 @@
 
 # R CMD check output
 \.Rcheck$
+
+# Vendor compression stamp file (dev-only)
+^inst/\.vendor\.tar\.xz\.cksum$

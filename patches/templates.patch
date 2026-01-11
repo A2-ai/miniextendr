@@ -1,6 +1,6 @@
 diff -ruN -U2 a/README.md b/README.md
 --- a/README.md	1970-01-01 01:00:00
-+++ b/README.md	2026-01-06 22:03:26
++++ b/README.md	2026-01-08 13:01:40
 @@ -0,0 +1,137 @@
 +# miniextendr Templates
 +
@@ -141,7 +141,7 @@ diff -ruN -U2 a/README.md b/README.md
 +extracted during package installation. See the `minirextendr` README for details.
 diff -ruN -U2 a/monorepo/Cargo.toml b/monorepo/Cargo.toml
 --- a/monorepo/Cargo.toml	1970-01-01 01:00:00
-+++ b/monorepo/Cargo.toml	2026-01-05 23:53:44
++++ b/monorepo/Cargo.toml	2026-01-08 13:01:40
 @@ -0,0 +1,20 @@
 +[workspace]
 +resolver = "3"
@@ -165,7 +165,7 @@ diff -ruN -U2 a/monorepo/Cargo.toml b/monorepo/Cargo.toml
 +panic = "abort"
 diff -ruN -U2 a/monorepo/gitignore b/monorepo/gitignore
 --- a/monorepo/gitignore	1970-01-01 01:00:00
-+++ b/monorepo/gitignore	2026-01-05 23:53:44
++++ b/monorepo/gitignore	2026-01-08 13:01:40
 @@ -0,0 +1,22 @@
 +# Rust build artifacts
 +/target/
@@ -191,7 +191,7 @@ diff -ruN -U2 a/monorepo/gitignore b/monorepo/gitignore
 +.DS_Store
 diff -ruN -U2 a/monorepo/justfile b/monorepo/justfile
 --- a/monorepo/justfile	1970-01-01 01:00:00
-+++ b/monorepo/justfile	2026-01-07 21:59:31
++++ b/monorepo/justfile	2026-01-08 13:01:40
 @@ -0,0 +1,144 @@
 +# {{{package}}} - Rust workspace with R package
 +#
@@ -339,7 +339,7 @@ diff -ruN -U2 a/monorepo/justfile b/monorepo/justfile
 +    Rscript tools/bump-version.R {{rpkg}} --set={{ver}}
 diff -ruN -U2 a/monorepo/my-crate/Cargo.toml b/monorepo/my-crate/Cargo.toml
 --- a/monorepo/my-crate/Cargo.toml	1970-01-01 01:00:00
-+++ b/monorepo/my-crate/Cargo.toml	2026-01-05 23:53:44
++++ b/monorepo/my-crate/Cargo.toml	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +[package]
 +name = "{{crate_name}}"
@@ -350,7 +350,7 @@ diff -ruN -U2 a/monorepo/my-crate/Cargo.toml b/monorepo/my-crate/Cargo.toml
 +miniextendr-api.workspace = true
 diff -ruN -U2 a/monorepo/my-crate/src/lib.rs b/monorepo/my-crate/src/lib.rs
 --- a/monorepo/my-crate/src/lib.rs	1970-01-01 01:00:00
-+++ b/monorepo/my-crate/src/lib.rs	2026-01-07 15:06:11
++++ b/monorepo/my-crate/src/lib.rs	2026-01-08 13:01:40
 @@ -0,0 +1,19 @@
 +//! {{crate_name}}: core Rust library for {{rpkg_name}}.
 +//!
@@ -373,7 +373,7 @@ diff -ruN -U2 a/monorepo/my-crate/src/lib.rs b/monorepo/my-crate/src/lib.rs
 +}
 diff -ruN -U2 a/monorepo/rpkg/Cargo.toml.in b/monorepo/rpkg/Cargo.toml.in
 --- a/monorepo/rpkg/Cargo.toml.in	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/Cargo.toml.in	2026-01-05 23:53:44
++++ b/monorepo/rpkg/Cargo.toml.in	2026-01-08 13:01:40
 @@ -0,0 +1,28 @@
 +[package]
 +name = "{{package_rs}}"
@@ -404,8 +404,8 @@ diff -ruN -U2 a/monorepo/rpkg/Cargo.toml.in b/monorepo/rpkg/Cargo.toml.in
 +[build-dependencies]
 +miniextendr-lint = { path = "../vendor/miniextendr-lint" }
 diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
---- a/monorepo/rpkg/Makevars.in	2026-01-05 23:53:44
-+++ b/monorepo/rpkg/Makevars.in	2026-01-07 21:48:10
+--- a/monorepo/rpkg/Makevars.in	2026-01-08 13:01:40
++++ b/monorepo/rpkg/Makevars.in	2026-01-08 13:01:40
 @@ -2,5 +2,4 @@
  ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
  ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
@@ -421,8 +421,8 @@ diff -ruN -U2 a/monorepo/rpkg/Makevars.in b/monorepo/rpkg/Makevars.in
  # CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
 diff -ruN -U2 a/monorepo/rpkg/Rbuildignore b/monorepo/rpkg/Rbuildignore
 --- a/monorepo/rpkg/Rbuildignore	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/Rbuildignore	2026-01-05 23:53:44
-@@ -0,0 +1,25 @@
++++ b/monorepo/rpkg/Rbuildignore	2026-01-11 20:59:58
+@@ -0,0 +1,28 @@
 +^LICENSE\.md$
 +^dev$
 +
@@ -448,9 +448,12 @@ diff -ruN -U2 a/monorepo/rpkg/Rbuildignore b/monorepo/rpkg/Rbuildignore
 +
 +# R CMD check output
 +\.Rcheck$
++
++# Vendor compression stamp file (dev-only)
++^inst/\.vendor\.tar\.xz\.cksum$
 diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 --- a/monorepo/rpkg/bootstrap.R	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/bootstrap.R	2026-01-05 23:53:44
++++ b/monorepo/rpkg/bootstrap.R	2026-01-08 13:01:40
 @@ -0,0 +1,110 @@
 +# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
 +# Mimics R's internal configure handling from src/library/tools/R/install.R
@@ -564,7 +567,7 @@ diff -ruN -U2 a/monorepo/rpkg/bootstrap.R b/monorepo/rpkg/bootstrap.R
 +message("bootstrap.R completed successfully")
 diff -ruN -U2 a/monorepo/rpkg/cargo-config.toml.in b/monorepo/rpkg/cargo-config.toml.in
 --- a/monorepo/rpkg/cargo-config.toml.in	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/cargo-config.toml.in	2026-01-05 23:53:44
++++ b/monorepo/rpkg/cargo-config.toml.in	2026-01-08 13:01:40
 @@ -0,0 +1,4 @@
 +@CARGO_SOURCE_REPLACE@
 +
@@ -572,7 +575,7 @@ diff -ruN -U2 a/monorepo/rpkg/cargo-config.toml.in b/monorepo/rpkg/cargo-config.
 +target-dir = "@CARGO_TARGET_DIR@"
 diff -ruN -U2 a/monorepo/rpkg/cleanup b/monorepo/rpkg/cleanup
 --- a/monorepo/rpkg/cleanup	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/cleanup	2026-01-05 23:53:44
++++ b/monorepo/rpkg/cleanup	2026-01-08 13:01:40
 @@ -0,0 +1,17 @@
 +#!/bin/sh
 +# Variables that are present from R build process
@@ -593,7 +596,7 @@ diff -ruN -U2 a/monorepo/rpkg/cleanup b/monorepo/rpkg/cleanup
 +fi
 diff -ruN -U2 a/monorepo/rpkg/cleanup.ucrt b/monorepo/rpkg/cleanup.ucrt
 --- a/monorepo/rpkg/cleanup.ucrt	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/cleanup.ucrt	2026-01-05 23:53:44
++++ b/monorepo/rpkg/cleanup.ucrt	2026-01-08 13:01:40
 @@ -0,0 +1,5 @@
 +#!/bin/sh
 +# UCRT cleanup wrapper: delegate to POSIX cleanup script.
@@ -602,7 +605,7 @@ diff -ruN -U2 a/monorepo/rpkg/cleanup.ucrt b/monorepo/rpkg/cleanup.ucrt
 +fi
 diff -ruN -U2 a/monorepo/rpkg/cleanup.win b/monorepo/rpkg/cleanup.win
 --- a/monorepo/rpkg/cleanup.win	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/cleanup.win	2026-01-05 23:53:44
++++ b/monorepo/rpkg/cleanup.win	2026-01-08 13:01:40
 @@ -0,0 +1,5 @@
 +#!/bin/sh
 +# Windows cleanup wrapper: delegate to POSIX cleanup script.
@@ -610,8 +613,8 @@ diff -ruN -U2 a/monorepo/rpkg/cleanup.win b/monorepo/rpkg/cleanup.win
 +  exec sh ./cleanup "$@"
 +fi
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-01-07 21:10:39
-+++ b/monorepo/rpkg/configure.ac	2026-01-07 21:11:48
+--- a/monorepo/rpkg/configure.ac	2026-01-11 20:55:21
++++ b/monorepo/rpkg/configure.ac	2026-01-11 20:59:24
 @@ -1,11 +1,7 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -828,33 +831,19 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +[MONOREPO_ROOT="$monorepo_root" NOT_CRAN="$NOT_CRAN" IN_WORKSPACE="$IN_WORKSPACE"])
  
  dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-@@ -377,21 +356,10 @@
+@@ -377,9 +356,9 @@
  [
    dnl Only vendor in dev mode (NOT_CRAN=true).
 -  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by R CMD build).
-+  dnl In CRAN/offline mode we MUST already have a populated vendor dir (from the tarball).
++  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by dev build).
    if test "$NOT_CRAN" != "true"; then
--    dnl Check if vendor directory exists and is populated
+     dnl Check if vendor directory exists and is populated
      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -      dnl Vendor missing - check for compressed vendor.tar.xz in inst/ (created by configure)
--      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
--        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
--        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
--        if test $? -ne 0; then
--          echo "configure: error: failed to unpack vendor.tar.xz" >&2
--          exit 1
--        fi
--      else
--        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
--        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
--        exit 1
--      fi
-+      echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-+      echo "configure:        Either build from a release tarball that includes src/vendor, or rerun configure with NOT_CRAN=true (and optionally FORCE_VENDOR=1)." >&2
-+      exit 1
-     fi
-     echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
-@@ -426,39 +394,19 @@
++      dnl Vendor missing - check for compressed vendor.tar.xz in inst/
+       if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+         echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
+@@ -426,39 +405,19 @@
      fi
  
 -	    if test $_need -eq 1; then
@@ -908,11 +897,11 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
      else
        echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
-@@ -466,299 +414,24 @@
+@@ -466,229 +425,25 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
-+[CARGO_CMD="$CARGO_CMD" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR"])
++[CARGO_CMD="$CARGO_CMD" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
  
 -dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
 -
@@ -1148,94 +1137,51 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
 -dnl compressed archive includes all vendored dependencies including miniextendr crates.
 -dnl Only recompress if vendor contents have changed (based on Cargo.lock + miniextendr sources).
--AC_CONFIG_COMMANDS([compress-vendor],
--[
--  dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
--  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
--    VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
--    VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
--
--    dnl Calculate fingerprint based on inputs that affect vendor contents:
--    dnl - Cargo.lock checksum (third-party deps)
--    dnl - miniextendr crate Cargo.toml checksums (local deps)
--    _lock_ck=""
--    if test -f "src/rust/Cargo.lock"; then
--      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
--    fi
--    _api_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
--      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print [$]1":"[$]2}')"
--    fi
--    _macros_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
--      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print [$]1":"[$]2}')"
--    fi
--    _lint_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
--      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print [$]1":"[$]2}')"
--    fi
++dnl 4) Compress vendor directory for CRAN tarballs (after sync-workspace-crates)
++dnl Only recompress if vendor contents have changed (based on Cargo.lock + workspace crate checksums).
+ AC_CONFIG_COMMANDS([compress-vendor],
+ [
+@@ -718,10 +473,6 @@
+       _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
+     fi
 -    _engine_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
--      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+-    if test -d "$VENDOR_OUT/miniextendr-engine"; then
+-      _engine_ck="$(find "$VENDOR_OUT/miniextendr-engine" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
 -    fi
--
+ 
 -    _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"
--    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
--
--    _need_compress=0
--    if test ! -f "$VENDOR_TARBALL"; then
--      _need_compress=1
--      echo "configure: vendor.tar.xz does not exist"
--    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
--      _need_compress=1
--      echo "configure: vendor contents changed (fingerprint mismatch)"
--    fi
--
--    if test $_need_compress -eq 1; then
--      echo "configure: compressing vendor directory to inst/vendor.tar.xz"
--      mkdir -p "$abs_rpkg_dir/inst"
--      dnl Exclude unnecessary files: tests, benchmarks, CI files
++    _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck"
+     _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
+ 
+@@ -739,6 +490,4 @@
+       mkdir -p "$abs_rpkg_dir/inst"
+       dnl Exclude unnecessary files: tests, benchmarks, CI files
 -      dnl TODO: currently, winnow uses the examples folder in its compilation process.
 -      dnl this is unexpected, and should be solved upstream
--      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
--        --exclude='vendor/*/tests' \
--        --exclude='vendor/*/benches' \
--        --exclude='vendor/*/.github' \
--        --exclude='vendor/*/.travis.yml' \
--        --exclude='vendor/*/.gitlab-ci.yml' \
--        --exclude='vendor/*/.vim' \
--        vendor
--      if test $? -ne 0; then
--        echo "configure: warning: failed to compress vendor directory" >&2
--      else
--        echo "$_new_fingerprint" > "$VENDOR_STAMP"
--      fi
--    else
--      echo "configure: skipping vendor compression (unchanged)"
--    fi
--  fi
--],
--[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
--
+       tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+         --exclude='vendor/*/tests' \
+@@ -761,5 +510,5 @@
+ [NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+ 
 -dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
-+dnl 4) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
++dnl 5) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
  AC_CONFIG_COMMANDS([patch-staticlib-name],
  [
-@@ -772,5 +445,5 @@
+@@ -773,5 +522,5 @@
      _pkgid_flags="--offline --color=never"
    fi
 -  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
 +  _pkgid_output=`$CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
    _pkgid_status=$?
    if test $_pkgid_status -ne 0; then
-@@ -779,5 +452,5 @@
+@@ -780,5 +529,5 @@
      exit 1
    fi
 -  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
 +  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_'`
    if test -z "$REAL_STATICLIB_NAME"; then
      echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
-@@ -786,8 +459,9 @@
+@@ -787,8 +536,9 @@
    echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
  
 -  dnl Patch generated files to replace placeholder (portable: temp file + mv)
@@ -1249,7 +1195,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
    done
 diff -ruN -U2 a/monorepo/rpkg/configure.ucrt b/monorepo/rpkg/configure.ucrt
 --- a/monorepo/rpkg/configure.ucrt	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/configure.ucrt	2026-01-05 23:53:44
++++ b/monorepo/rpkg/configure.ucrt	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +#!/bin/sh
 +# UCRT wrapper: delegate to POSIX configure script.
@@ -1260,7 +1206,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ucrt b/monorepo/rpkg/configure.ucrt
 +exit 1
 diff -ruN -U2 a/monorepo/rpkg/configure.win b/monorepo/rpkg/configure.win
 --- a/monorepo/rpkg/configure.win	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/configure.win	2026-01-05 23:53:44
++++ b/monorepo/rpkg/configure.win	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +#!/bin/sh
 +# Windows wrapper: delegate to POSIX configure script.
@@ -1271,7 +1217,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.win b/monorepo/rpkg/configure.win
 +exit 1
 diff -ruN -U2 a/monorepo/rpkg/document.rs.in b/monorepo/rpkg/document.rs.in
 --- a/monorepo/rpkg/document.rs.in	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/document.rs.in	2026-01-05 23:53:44
++++ b/monorepo/rpkg/document.rs.in	2026-01-08 13:01:40
 @@ -0,0 +1,34 @@
 +use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
 +use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
@@ -1309,7 +1255,7 @@ diff -ruN -U2 a/monorepo/rpkg/document.rs.in b/monorepo/rpkg/document.rs.in
 +}
 diff -ruN -U2 a/monorepo/rpkg/entrypoint.c.in b/monorepo/rpkg/entrypoint.c.in
 --- a/monorepo/rpkg/entrypoint.c.in	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/entrypoint.c.in	2026-01-06 00:48:20
++++ b/monorepo/rpkg/entrypoint.c.in	2026-01-08 13:01:40
 @@ -0,0 +1,39 @@
 +#include <R.h>
 +#include <Rinternals.h>
@@ -1352,7 +1298,7 @@ diff -ruN -U2 a/monorepo/rpkg/entrypoint.c.in b/monorepo/rpkg/entrypoint.c.in
 +}
 diff -ruN -U2 a/monorepo/rpkg/gitignore b/monorepo/rpkg/gitignore
 --- a/monorepo/rpkg/gitignore	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/gitignore	2026-01-05 23:53:44
++++ b/monorepo/rpkg/gitignore	2026-01-08 13:01:40
 @@ -0,0 +1,24 @@
 +configure~
 +autom4te.cache
@@ -1380,7 +1326,7 @@ diff -ruN -U2 a/monorepo/rpkg/gitignore b/monorepo/rpkg/gitignore
 +src/vendor/
 diff -ruN -U2 a/monorepo/rpkg/inst_include/mx_abi.h b/monorepo/rpkg/inst_include/mx_abi.h
 --- a/monorepo/rpkg/inst_include/mx_abi.h	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/inst_include/mx_abi.h	2026-01-05 23:53:44
++++ b/monorepo/rpkg/inst_include/mx_abi.h	2026-01-08 13:01:40
 @@ -0,0 +1,255 @@
 +/*
 + * mx_abi.h - miniextendr Trait ABI C Interface
@@ -1639,7 +1585,7 @@ diff -ruN -U2 a/monorepo/rpkg/inst_include/mx_abi.h b/monorepo/rpkg/inst_include
 +#endif /* MINIEXTENDR_MX_ABI_H */
 diff -ruN -U2 a/monorepo/rpkg/lib.rs b/monorepo/rpkg/lib.rs
 --- a/monorepo/rpkg/lib.rs	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/lib.rs	2026-01-07 20:44:29
++++ b/monorepo/rpkg/lib.rs	2026-01-08 13:01:40
 @@ -0,0 +1,27 @@
 +use miniextendr_api::{miniextendr, miniextendr_module};
 +
@@ -1670,7 +1616,7 @@ diff -ruN -U2 a/monorepo/rpkg/lib.rs b/monorepo/rpkg/lib.rs
 +}
 diff -ruN -U2 a/monorepo/rpkg/mx_abi.c.in b/monorepo/rpkg/mx_abi.c.in
 --- a/monorepo/rpkg/mx_abi.c.in	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/mx_abi.c.in	2026-01-05 23:53:44
++++ b/monorepo/rpkg/mx_abi.c.in	2026-01-08 13:01:40
 @@ -0,0 +1,125 @@
 +/*
 + * mx_abi.c - miniextendr Trait ABI C Implementation
@@ -1799,7 +1745,7 @@ diff -ruN -U2 a/monorepo/rpkg/mx_abi.c.in b/monorepo/rpkg/mx_abi.c.in
 +}
 diff -ruN -U2 a/monorepo/rpkg/package.R b/monorepo/rpkg/package.R
 --- a/monorepo/rpkg/package.R	1970-01-01 01:00:00
-+++ b/monorepo/rpkg/package.R	2026-01-05 23:53:44
++++ b/monorepo/rpkg/package.R	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +#' @keywords internal
 +"_PACKAGE"
@@ -1810,7 +1756,7 @@ diff -ruN -U2 a/monorepo/rpkg/package.R b/monorepo/rpkg/package.R
 +NULL
 diff -ruN -U2 a/monorepo/tools/bump-version.R b/monorepo/tools/bump-version.R
 --- a/monorepo/tools/bump-version.R	1970-01-01 01:00:00
-+++ b/monorepo/tools/bump-version.R	2026-01-07 21:56:11
++++ b/monorepo/tools/bump-version.R	2026-01-08 13:01:40
 @@ -0,0 +1,323 @@
 +#!/usr/bin/env Rscript
 +# Sync or bump version between DESCRIPTION and Cargo.toml files.
@@ -2137,7 +2083,7 @@ diff -ruN -U2 a/monorepo/tools/bump-version.R b/monorepo/tools/bump-version.R
 +update_configure_ac_version(configure_ac_path, version)
 diff -ruN -U2 a/rpkg/Cargo.toml.in b/rpkg/Cargo.toml.in
 --- a/rpkg/Cargo.toml.in	1970-01-01 01:00:00
-+++ b/rpkg/Cargo.toml.in	2026-01-05 23:53:44
++++ b/rpkg/Cargo.toml.in	2026-01-08 13:01:40
 @@ -0,0 +1,28 @@
 +[package]
 +name = "{{package_rs}}"
@@ -2168,8 +2114,8 @@ diff -ruN -U2 a/rpkg/Cargo.toml.in b/rpkg/Cargo.toml.in
 +[build-dependencies]
 +miniextendr-lint = { path = "../vendor/miniextendr-lint" }
 diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
---- a/rpkg/Makevars.in	2026-01-05 23:53:44
-+++ b/rpkg/Makevars.in	2026-01-07 21:47:56
+--- a/rpkg/Makevars.in	2026-01-08 13:01:40
++++ b/rpkg/Makevars.in	2026-01-08 13:01:40
 @@ -2,5 +2,4 @@
  ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
  ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
@@ -2185,8 +2131,8 @@ diff -ruN -U2 a/rpkg/Makevars.in b/rpkg/Makevars.in
  # CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
 diff -ruN -U2 a/rpkg/Rbuildignore b/rpkg/Rbuildignore
 --- a/rpkg/Rbuildignore	1970-01-01 01:00:00
-+++ b/rpkg/Rbuildignore	2026-01-05 23:53:44
-@@ -0,0 +1,25 @@
++++ b/rpkg/Rbuildignore	2026-01-11 20:59:49
+@@ -0,0 +1,28 @@
 +^LICENSE\.md$
 +^dev$
 +
@@ -2212,9 +2158,12 @@ diff -ruN -U2 a/rpkg/Rbuildignore b/rpkg/Rbuildignore
 +
 +# R CMD check output
 +\.Rcheck$
++
++# Vendor compression stamp file (dev-only)
++^inst/\.vendor\.tar\.xz\.cksum$
 diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
 --- a/rpkg/bootstrap.R	1970-01-01 01:00:00
-+++ b/rpkg/bootstrap.R	2026-01-05 23:53:44
++++ b/rpkg/bootstrap.R	2026-01-08 13:01:40
 @@ -0,0 +1,110 @@
 +# bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
 +# Mimics R's internal configure handling from src/library/tools/R/install.R
@@ -2328,7 +2277,7 @@ diff -ruN -U2 a/rpkg/bootstrap.R b/rpkg/bootstrap.R
 +message("bootstrap.R completed successfully")
 diff -ruN -U2 a/rpkg/cargo-config.toml.in b/rpkg/cargo-config.toml.in
 --- a/rpkg/cargo-config.toml.in	1970-01-01 01:00:00
-+++ b/rpkg/cargo-config.toml.in	2026-01-05 23:53:44
++++ b/rpkg/cargo-config.toml.in	2026-01-08 13:01:40
 @@ -0,0 +1,4 @@
 +@CARGO_SOURCE_REPLACE@
 +
@@ -2336,7 +2285,7 @@ diff -ruN -U2 a/rpkg/cargo-config.toml.in b/rpkg/cargo-config.toml.in
 +target-dir = "@CARGO_TARGET_DIR@"
 diff -ruN -U2 a/rpkg/cleanup b/rpkg/cleanup
 --- a/rpkg/cleanup	1970-01-01 01:00:00
-+++ b/rpkg/cleanup	2026-01-05 23:53:44
++++ b/rpkg/cleanup	2026-01-08 13:01:40
 @@ -0,0 +1,17 @@
 +#!/bin/sh
 +# Variables that are present from R build process
@@ -2357,7 +2306,7 @@ diff -ruN -U2 a/rpkg/cleanup b/rpkg/cleanup
 +fi
 diff -ruN -U2 a/rpkg/cleanup.ucrt b/rpkg/cleanup.ucrt
 --- a/rpkg/cleanup.ucrt	1970-01-01 01:00:00
-+++ b/rpkg/cleanup.ucrt	2026-01-05 23:53:44
++++ b/rpkg/cleanup.ucrt	2026-01-08 13:01:40
 @@ -0,0 +1,5 @@
 +#!/bin/sh
 +# UCRT cleanup wrapper: delegate to POSIX cleanup script.
@@ -2366,7 +2315,7 @@ diff -ruN -U2 a/rpkg/cleanup.ucrt b/rpkg/cleanup.ucrt
 +fi
 diff -ruN -U2 a/rpkg/cleanup.win b/rpkg/cleanup.win
 --- a/rpkg/cleanup.win	1970-01-01 01:00:00
-+++ b/rpkg/cleanup.win	2026-01-05 23:53:44
++++ b/rpkg/cleanup.win	2026-01-08 13:01:40
 @@ -0,0 +1,5 @@
 +#!/bin/sh
 +# Windows cleanup wrapper: delegate to POSIX cleanup script.
@@ -2374,8 +2323,8 @@ diff -ruN -U2 a/rpkg/cleanup.win b/rpkg/cleanup.win
 +  exec sh ./cleanup "$@"
 +fi
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-01-07 21:10:39
-+++ b/rpkg/configure.ac	2026-01-07 21:00:06
+--- a/rpkg/configure.ac	2026-01-11 20:55:21
++++ b/rpkg/configure.ac	2026-01-11 21:33:47
 @@ -1,19 +1,4 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -2568,7 +2517,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +AC_SUBST([RUST_SOURCES])
  
  dnl ---- optional cargo deps: include if present ----
-@@ -263,58 +201,84 @@
+@@ -263,58 +201,42 @@
  AC_SUBST([FORCE_VENDOR])
  
 -dnl Include extra manifests in `cargo vendor` (pulls in bench/tooling deps).
@@ -2592,50 +2541,8 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +STAMP="$VENDOR_OUT/.vendor.lock.cksum"
 +MANIFEST="$abs_rpkg_src/rust/Cargo.toml"
  
-+dnl Run `cargo vendor` only in dev mode (NOT_CRAN=true) and only if needed.
-+dnl CRAN/offline mode expects the vendor dir to already be present in the tarball.
-+AS_IF([test "$NOT_CRAN" = "true"], [
-+  dnl Generate Cargo.lock if missing (required for fingerprinting)
-+  AS_IF([test ! -f "$LOCKFILE"], [
-+    AS_IF([test -f "$MANIFEST"], [
-+      AC_MSG_NOTICE([generating Cargo.lock])
-+      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
-+        AC_MSG_ERROR([cargo generate-lockfile failed])
-+    ], [
-+      AC_MSG_NOTICE([no Cargo.toml yet; skipping cargo vendor])
-+    ])
-+  ])
-+
-+  dnl Now vendor if needed (lockfile should exist after above step)
-+  AS_IF([test -f "$LOCKFILE"], [
-+    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-+    _new=`cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}'`
-+    _old=`cat "$STAMP" 2>/dev/null || true`
-+
-+    _need=0
-+    if test "$FORCE_VENDOR" = "1"; then
-+      _need=1
-+    elif test ! -d "$VENDOR_OUT"; then
-+      _need=1
-+    elif test ! -f "$STAMP"; then
-+      dnl Stamp missing (vendor dir exists but wasn't tracked)
-+      _need=1
-+    elif test "x$_new" != "x$_old"; then
-+      _need=1
-+    fi
-+
-+    AS_IF([test $_need -eq 1], [
-+      AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
-+      AS_MKDIR_P(["$VENDOR_OUT"])
-+      $CARGO_CMD vendor \
-+        --manifest-path "$MANIFEST" \
-+        "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
-+      echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
-+    ], [
-+      AC_MSG_NOTICE([skipping cargo vendor (Cargo.lock unchanged)])
-+    ])
-+  ])
-+])
++dnl Vendoring is handled by AC_CONFIG_COMMANDS after file generation.
++dnl See cargo-vendor and compress-vendor commands below.
 +
  dnl Source replacement config: only use vendored sources on CRAN (offline builds)
 -dnl Dev mode uses local path overrides for miniextendr-*
@@ -2691,15 +2598,12 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -  .cargo/config.toml:src/rust/cargo-config.toml.in
    src/rust/Cargo.toml
    src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-@@ -324,443 +288,18 @@
+@@ -324,21 +246,6 @@
  ])
  
 -dnl 2a) Ensure the monorepo root has a cargo config (needed for workspace resolution)
 -AC_CONFIG_COMMANDS([sync-root-cargo-config],
-+dnl Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
-+dnl This runs after AC_CONFIG_FILES generates the files
-+AC_CONFIG_COMMANDS([patch-staticlib-name],
- [
+-[
 -  ROOT_CFG_SRC=".cargo/config.toml"
 -  ROOT_CFG_DIR="$ROOT_MINIEXTENDR_REPO/.cargo"
 -  ROOT_CFG_DST="$ROOT_CFG_DIR/config.toml"
@@ -2712,93 +2616,46 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -],
 -[ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"])
 -
--dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
+ dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 -dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
--
--dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
--dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
--AC_CONFIG_COMMANDS([cargo-lockfile-compat],
--[
--  LOCKFILE_PATH="src/rust/Cargo.lock"
--  if test -f "$LOCKFILE_PATH"; then
++dnl Order matters: cargo-lockfile-compat, cargo-vendor, compress-vendor, patch-staticlib-name
+ 
+ dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
+@@ -348,10 +255,10 @@
+   LOCKFILE_PATH="src/rust/Cargo.lock"
+   if test -f "$LOCKFILE_PATH"; then
 -    LOCKFILE_VERSION="$("$SED" -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1)"
--  else
--    LOCKFILE_VERSION=""
--  fi
--
++    LOCKFILE_VERSION=`sed -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
+   else
+     LOCKFILE_VERSION=""
+   fi
+ 
 -  CARGO_VERSION="$( $CARGO_CMD --version | "$SED" 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/' )"
--  CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
--  CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
--
--  if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
--    if test "$CARGO_MAJOR" -lt 1 || \
--       (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
--      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
--      rm -f "$LOCKFILE_PATH"
--      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
--      _gen_status=$?
--      if test $_gen_status -ne 0; then
--        echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
--        exit 1
--      fi
--    fi
--  fi
--],
++  CARGO_VERSION=`$CARGO_CMD --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+   CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
+   CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
+@@ -371,5 +278,5 @@
+   fi
+ ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"])
--
--dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
--AC_CONFIG_COMMANDS([cargo-vendor],
--[
--  dnl Only vendor in dev mode (NOT_CRAN=true).
++[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
+ 
+ dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
+@@ -377,9 +284,9 @@
+ [
+   dnl Only vendor in dev mode (NOT_CRAN=true).
 -  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by R CMD build).
--  if test "$NOT_CRAN" != "true"; then
--    dnl Check if vendor directory exists and is populated
--    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by dev build).
+   if test "$NOT_CRAN" != "true"; then
+     dnl Check if vendor directory exists and is populated
+     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 -      dnl Vendor missing - check for compressed vendor.tar.xz in inst/ (created by configure)
--      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
--        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
--        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
--        if test $? -ne 0; then
--          echo "configure: error: failed to unpack vendor.tar.xz" >&2
--          exit 1
--        fi
--      else
--        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
--        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
--        exit 1
--      fi
--    fi
--    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
--  else
--    MANIFEST="src/rust/Cargo.toml"
--    LOCKFILE="src/rust/Cargo.lock"
--    STAMP="$VENDOR_OUT/.vendor.lock.cksum"
--
--    dnl Generate Cargo.lock if missing (required for fingerprinting)
--    if test ! -f "$LOCKFILE"; then
--      echo "configure: generating Cargo.lock"
--      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST"
--      if test $? -ne 0; then
--        echo "configure: error: cargo generate-lockfile failed" >&2
--        exit 1
--      fi
--    fi
--
--    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
--    _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
--    _old="$(cat "$STAMP" 2>/dev/null || true)"
--
--    _need=0
--    if test "$FORCE_VENDOR" = "1"; then
--      _need=1
--    elif test ! -f "$STAMP"; then
--      _need=1
--    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
--      _need=1
--    elif test "x$_new" != "x$_old"; then
--      _need=1
--    fi
--
++      dnl Vendor missing - check for compressed vendor.tar.xz in inst/
+       if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+         echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
+@@ -426,39 +333,19 @@
+     fi
+ 
 -	    if test $_need -eq 1; then
 -	      dnl Check if monorepo Cargo.toml exists (won't exist during R CMD check)
 -	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
@@ -2833,14 +2690,29 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
 -          exit 1
 -        fi
--      fi
--    else
--      echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
--    fi
--  fi
--],
++    if test $_need -eq 1; then
++      echo "configure: cargo vendor (Cargo.lock changed or vendor missing)"
++      mkdir -p "$VENDOR_OUT"
++      $CARGO_CMD vendor \
++        --manifest-path "$MANIFEST" \
++        "$VENDOR_OUT"
++      if test $? -ne 0; then
++        echo "configure: error: cargo vendor failed" >&2
++        exit 1
+       fi
++      echo "$_new" > "$STAMP"
++      if test $? -ne 0; then
++        echo "configure: error: failed to write vendor stamp" >&2
++        exit 1
++      fi
+     else
+       echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
+@@ -466,229 +353,8 @@
+   fi
+ ],
 -[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
--
++[CARGO_CMD="$CARGO_CMD" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+ 
 -dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
 -
 -dnl This must run after Cargo.toml generation (AC_CONFIG_FILES) and after the
@@ -2856,14 +2728,8 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -    dnl rsync is required when syncing from monorepo
 -    if test "x$RSYNC" = "xno"; then
 -      echo "configure: error: rsync not found (required for syncing miniextendr crates from monorepo)" >&2
-+  dnl Ensure Cargo.lock exists (required for cargo pkgid)
-+  if test ! -f "src/rust/Cargo.lock"; then
-+    echo "configure: generating Cargo.lock"
-+    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
-+    if test $? -ne 0; then
-+      echo "configure: error: cargo generate-lockfile failed" >&2
-       exit 1
-     fi
+-      exit 1
+-    fi
 -
 -    echo "configure: found miniextendr crates; syncing to $VENDOR_OUT" >&2
 -
@@ -3053,8 +2919,8 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -VENDORED_CONFIG_EOF
 -      echo "configure: rewrote $_cfg for vendored sources" >&2
 -    done
-   fi
- 
+-  fi
+-
 -  dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
 -  dnl This is necessary because CARGO_TARGET_DIR may point to a shared location
 -  dnl where the staticlib already exists (e.g., during R CMD check).
@@ -3070,95 +2936,84 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
 -dnl compressed archive includes all vendored dependencies including miniextendr crates.
 -dnl Only recompress if vendor contents have changed (based on Cargo.lock + miniextendr sources).
--AC_CONFIG_COMMANDS([compress-vendor],
--[
--  dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
--  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
--    VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
--    VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
--
++dnl 3) Compress vendor directory for CRAN tarballs
++dnl Only recompress if vendor contents have changed (based on Cargo.lock checksum).
+ AC_CONFIG_COMMANDS([compress-vendor],
+ [
+@@ -698,30 +364,11 @@
+     VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
+ 
 -    dnl Calculate fingerprint based on inputs that affect vendor contents:
 -    dnl - Cargo.lock checksum (third-party deps)
--    dnl - miniextendr crate Cargo.toml checksums (local deps)
--    _lock_ck=""
--    if test -f "src/rust/Cargo.lock"; then
--      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
--    fi
+-    dnl - miniextendr crate directory checksums (ALL files, not just Cargo.toml)
++    dnl Calculate fingerprint based on Cargo.lock (determines all vendor contents)
+     _lock_ck=""
+     if test -f "src/rust/Cargo.lock"; then
+       _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
+     fi
+-    dnl Checksum all source files in each miniextendr crate (excluding target dirs)
 -    _api_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
--      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+-    if test -d "$VENDOR_OUT/miniextendr-api"; then
+-      _api_ck="$(find "$VENDOR_OUT/miniextendr-api" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
 -    fi
 -    _macros_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
--      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+-    if test -d "$VENDOR_OUT/miniextendr-macros"; then
+-      _macros_ck="$(find "$VENDOR_OUT/miniextendr-macros" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
 -    fi
 -    _lint_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
--      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+-    if test -d "$VENDOR_OUT/miniextendr-lint"; then
+-      _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
 -    fi
 -    _engine_ck=""
--    if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
--      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+-    if test -d "$VENDOR_OUT/miniextendr-engine"; then
+-      _engine_ck="$(find "$VENDOR_OUT/miniextendr-engine" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
 -    fi
--
+ 
 -    _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"
--    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
--
--    _need_compress=0
--    if test ! -f "$VENDOR_TARBALL"; then
--      _need_compress=1
--      echo "configure: vendor.tar.xz does not exist"
--    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
--      _need_compress=1
--      echo "configure: vendor contents changed (fingerprint mismatch)"
--    fi
--
--    if test $_need_compress -eq 1; then
--      echo "configure: compressing vendor directory to inst/vendor.tar.xz"
--      mkdir -p "$abs_rpkg_dir/inst"
--      dnl Exclude unnecessary files: tests, benchmarks, CI files
++    _new_fingerprint="lock:$_lock_ck"
+     _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
+ 
+@@ -739,6 +386,4 @@
+       mkdir -p "$abs_rpkg_dir/inst"
+       dnl Exclude unnecessary files: tests, benchmarks, CI files
 -      dnl TODO: currently, winnow uses the examples folder in its compilation process.
 -      dnl this is unexpected, and should be solved upstream
--      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
--        --exclude='vendor/*/tests' \
--        --exclude='vendor/*/benches' \
--        --exclude='vendor/*/.github' \
--        --exclude='vendor/*/.travis.yml' \
--        --exclude='vendor/*/.gitlab-ci.yml' \
--        --exclude='vendor/*/.vim' \
--        vendor
--      if test $? -ne 0; then
--        echo "configure: warning: failed to compress vendor directory" >&2
--      else
--        echo "$_new_fingerprint" > "$VENDOR_STAMP"
--      fi
--    else
--      echo "configure: skipping vendor compression (unchanged)"
--    fi
--  fi
--],
--[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
--
+       tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+         --exclude='vendor/*/tests' \
+@@ -761,7 +406,17 @@
+ [NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+ 
 -dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
--AC_CONFIG_COMMANDS([patch-staticlib-name],
--[
++dnl 4) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
+ AC_CONFIG_COMMANDS([patch-staticlib-name],
+ [
++  dnl Ensure Cargo.lock exists (required for cargo pkgid)
++  if test ! -f "src/rust/Cargo.lock"; then
++    echo "configure: generating Cargo.lock"
++    $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
++    if test $? -ne 0; then
++      echo "configure: error: cargo generate-lockfile failed" >&2
++      exit 1
++    fi
++  fi
++
    dnl cargo pkgid outputs: path+file:///path/to/project#name@version
    dnl Extract package name between # and @, convert hyphens to underscores for Rust
-@@ -772,5 +311,5 @@
+@@ -773,5 +428,5 @@
      _pkgid_flags="--offline --color=never"
    fi
 -  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
 +  _pkgid_output=`$CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
    _pkgid_status=$?
    if test $_pkgid_status -ne 0; then
-@@ -779,5 +318,5 @@
+@@ -780,5 +435,5 @@
      exit 1
    fi
 -  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
 +  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | sed 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_'`
    if test -z "$REAL_STATICLIB_NAME"; then
      echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
-@@ -786,12 +325,44 @@
+@@ -787,12 +442,13 @@
    echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
  
 -  dnl Patch generated files to replace placeholder (portable: temp file + mv)
@@ -3173,42 +3028,11 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
  ],
 -[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"])
 +[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN"])
-+
-+dnl Ensure Cargo.lock is compatible with the installed cargo version.
-+dnl Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
-+AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-+[
-+  LOCKFILE_PATH="src/rust/Cargo.lock"
-+  if test -f "$LOCKFILE_PATH"; then
-+    LOCKFILE_VERSION=`sed -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
-+  else
-+    LOCKFILE_VERSION=""
-+  fi
-+
-+  CARGO_VERSION=`$CARGO_CMD --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
-+  CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
-+  CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
-+
-+  if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
-+    if test "$CARGO_MAJOR" -lt 1 || \
-+       (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
-+      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
-+      rm -f "$LOCKFILE_PATH"
-+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-+      _gen_status=$?
-+      if test $_gen_status -ne 0; then
-+        echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
-+        exit 1
-+      fi
-+    fi
-+  fi
-+],
-+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ucrt b/rpkg/configure.ucrt
 --- a/rpkg/configure.ucrt	1970-01-01 01:00:00
-+++ b/rpkg/configure.ucrt	2026-01-05 23:53:44
++++ b/rpkg/configure.ucrt	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +#!/bin/sh
 +# UCRT wrapper: delegate to POSIX configure script.
@@ -3219,7 +3043,7 @@ diff -ruN -U2 a/rpkg/configure.ucrt b/rpkg/configure.ucrt
 +exit 1
 diff -ruN -U2 a/rpkg/configure.win b/rpkg/configure.win
 --- a/rpkg/configure.win	1970-01-01 01:00:00
-+++ b/rpkg/configure.win	2026-01-05 23:53:44
++++ b/rpkg/configure.win	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +#!/bin/sh
 +# Windows wrapper: delegate to POSIX configure script.
@@ -3230,7 +3054,7 @@ diff -ruN -U2 a/rpkg/configure.win b/rpkg/configure.win
 +exit 1
 diff -ruN -U2 a/rpkg/document.rs.in b/rpkg/document.rs.in
 --- a/rpkg/document.rs.in	1970-01-01 01:00:00
-+++ b/rpkg/document.rs.in	2026-01-05 23:53:44
++++ b/rpkg/document.rs.in	2026-01-08 13:01:40
 @@ -0,0 +1,34 @@
 +use @CARGO_STATICLIB_NAME@::R_WRAPPERS_DEPS_@PACKAGE_TARNAME_RS_UPPERCASE@ as DEPS;
 +use @CARGO_STATICLIB_NAME@::R_WRAPPERS_PARTS_@PACKAGE_TARNAME_RS_UPPERCASE@ as PARTS;
@@ -3268,7 +3092,7 @@ diff -ruN -U2 a/rpkg/document.rs.in b/rpkg/document.rs.in
 +}
 diff -ruN -U2 a/rpkg/entrypoint.c.in b/rpkg/entrypoint.c.in
 --- a/rpkg/entrypoint.c.in	1970-01-01 01:00:00
-+++ b/rpkg/entrypoint.c.in	2026-01-06 00:48:11
++++ b/rpkg/entrypoint.c.in	2026-01-08 13:01:40
 @@ -0,0 +1,39 @@
 +#include <R.h>
 +#include <Rinternals.h>
@@ -3311,7 +3135,7 @@ diff -ruN -U2 a/rpkg/entrypoint.c.in b/rpkg/entrypoint.c.in
 +}
 diff -ruN -U2 a/rpkg/gitignore b/rpkg/gitignore
 --- a/rpkg/gitignore	1970-01-01 01:00:00
-+++ b/rpkg/gitignore	2026-01-05 23:53:44
++++ b/rpkg/gitignore	2026-01-08 13:01:40
 @@ -0,0 +1,24 @@
 +configure~
 +autom4te.cache
@@ -3339,7 +3163,7 @@ diff -ruN -U2 a/rpkg/gitignore b/rpkg/gitignore
 +src/vendor/
 diff -ruN -U2 a/rpkg/inst_include/mx_abi.h b/rpkg/inst_include/mx_abi.h
 --- a/rpkg/inst_include/mx_abi.h	1970-01-01 01:00:00
-+++ b/rpkg/inst_include/mx_abi.h	2026-01-05 23:53:44
++++ b/rpkg/inst_include/mx_abi.h	2026-01-08 13:01:40
 @@ -0,0 +1,255 @@
 +/*
 + * mx_abi.h - miniextendr Trait ABI C Interface
@@ -3598,7 +3422,7 @@ diff -ruN -U2 a/rpkg/inst_include/mx_abi.h b/rpkg/inst_include/mx_abi.h
 +#endif /* MINIEXTENDR_MX_ABI_H */
 diff -ruN -U2 a/rpkg/justfile b/rpkg/justfile
 --- a/rpkg/justfile	1970-01-01 01:00:00
-+++ b/rpkg/justfile	2026-01-07 21:59:40
++++ b/rpkg/justfile	2026-01-08 13:01:40
 @@ -0,0 +1,139 @@
 +# {{{package}}} - R package with Rust backend
 +#
@@ -3741,7 +3565,7 @@ diff -ruN -U2 a/rpkg/justfile b/rpkg/justfile
 +    Rscript tools/bump-version.R --set={{ver}}
 diff -ruN -U2 a/rpkg/lib.rs b/rpkg/lib.rs
 --- a/rpkg/lib.rs	1970-01-01 01:00:00
-+++ b/rpkg/lib.rs	2026-01-07 20:44:29
++++ b/rpkg/lib.rs	2026-01-08 13:01:40
 @@ -0,0 +1,27 @@
 +use miniextendr_api::{miniextendr, miniextendr_module};
 +
@@ -3772,7 +3596,7 @@ diff -ruN -U2 a/rpkg/lib.rs b/rpkg/lib.rs
 +}
 diff -ruN -U2 a/rpkg/mx_abi.c.in b/rpkg/mx_abi.c.in
 --- a/rpkg/mx_abi.c.in	1970-01-01 01:00:00
-+++ b/rpkg/mx_abi.c.in	2026-01-05 23:53:44
++++ b/rpkg/mx_abi.c.in	2026-01-08 13:01:40
 @@ -0,0 +1,125 @@
 +/*
 + * mx_abi.c - miniextendr Trait ABI C Implementation
@@ -3901,7 +3725,7 @@ diff -ruN -U2 a/rpkg/mx_abi.c.in b/rpkg/mx_abi.c.in
 +}
 diff -ruN -U2 a/rpkg/package.R b/rpkg/package.R
 --- a/rpkg/package.R	1970-01-01 01:00:00
-+++ b/rpkg/package.R	2026-01-05 23:53:44
++++ b/rpkg/package.R	2026-01-08 13:01:40
 @@ -0,0 +1,7 @@
 +#' @keywords internal
 +"_PACKAGE"
@@ -3912,7 +3736,7 @@ diff -ruN -U2 a/rpkg/package.R b/rpkg/package.R
 +NULL
 diff -ruN -U2 a/rpkg/tools/bump-version.R b/rpkg/tools/bump-version.R
 --- a/rpkg/tools/bump-version.R	1970-01-01 01:00:00
-+++ b/rpkg/tools/bump-version.R	2026-01-07 21:55:08
++++ b/rpkg/tools/bump-version.R	2026-01-08 13:01:40
 @@ -0,0 +1,311 @@
 +#!/usr/bin/env Rscript
 +# Sync or bump version between DESCRIPTION and Cargo.toml files.

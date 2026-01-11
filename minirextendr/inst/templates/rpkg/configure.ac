@@ -214,50 +214,8 @@ LOCKFILE="$abs_rpkg_src/rust/Cargo.lock"
 STAMP="$VENDOR_OUT/.vendor.lock.cksum"
 MANIFEST="$abs_rpkg_src/rust/Cargo.toml"
 
-dnl Run `cargo vendor` only in dev mode (NOT_CRAN=true) and only if needed.
-dnl CRAN/offline mode expects the vendor dir to already be present in the tarball.
-AS_IF([test "$NOT_CRAN" = "true"], [
-  dnl Generate Cargo.lock if missing (required for fingerprinting)
-  AS_IF([test ! -f "$LOCKFILE"], [
-    AS_IF([test -f "$MANIFEST"], [
-      AC_MSG_NOTICE([generating Cargo.lock])
-      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
-        AC_MSG_ERROR([cargo generate-lockfile failed])
-    ], [
-      AC_MSG_NOTICE([no Cargo.toml yet; skipping cargo vendor])
-    ])
-  ])
-
-  dnl Now vendor if needed (lockfile should exist after above step)
-  AS_IF([test -f "$LOCKFILE"], [
-    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-    _new=`cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}'`
-    _old=`cat "$STAMP" 2>/dev/null || true`
-
-    _need=0
-    if test "$FORCE_VENDOR" = "1"; then
-      _need=1
-    elif test ! -d "$VENDOR_OUT"; then
-      _need=1
-    elif test ! -f "$STAMP"; then
-      dnl Stamp missing (vendor dir exists but wasn't tracked)
-      _need=1
-    elif test "x$_new" != "x$_old"; then
-      _need=1
-    fi
-
-    AS_IF([test $_need -eq 1], [
-      AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
-      AS_MKDIR_P(["$VENDOR_OUT"])
-      $CARGO_CMD vendor \
-        --manifest-path "$MANIFEST" \
-        "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
-      echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
-    ], [
-      AC_MSG_NOTICE([skipping cargo vendor (Cargo.lock unchanged)])
-    ])
-  ])
-])
+dnl Vendoring is handled by AC_CONFIG_COMMANDS after file generation.
+dnl See cargo-vendor and compress-vendor commands below.
 
 dnl Source replacement config: only use vendored sources on CRAN (offline builds)
 dnl Dev mode uses network for crates.io, path deps for miniextendr-*
@@ -287,8 +245,167 @@ AC_CONFIG_FILES([
   src/mx_abi.c
 ])
 
-dnl Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
-dnl This runs after AC_CONFIG_FILES generates the files
+dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
+dnl Order matters: cargo-lockfile-compat, cargo-vendor, compress-vendor, patch-staticlib-name
+
+dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
+dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
+AC_CONFIG_COMMANDS([cargo-lockfile-compat],
+[
+  LOCKFILE_PATH="src/rust/Cargo.lock"
+  if test -f "$LOCKFILE_PATH"; then
+    LOCKFILE_VERSION=`sed -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
+  else
+    LOCKFILE_VERSION=""
+  fi
+
+  CARGO_VERSION=`$CARGO_CMD --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
+  CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
+  CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
+
+  if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
+    if test "$CARGO_MAJOR" -lt 1 || \
+       (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+      rm -f "$LOCKFILE_PATH"
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+      _gen_status=$?
+      if test $_gen_status -ne 0; then
+        echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
+        exit 1
+      fi
+    fi
+  fi
+],
+[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
+
+dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
+AC_CONFIG_COMMANDS([cargo-vendor],
+[
+  dnl Only vendor in dev mode (NOT_CRAN=true).
+  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by dev build).
+  if test "$NOT_CRAN" != "true"; then
+    dnl Check if vendor directory exists and is populated
+    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      dnl Vendor missing - check for compressed vendor.tar.xz in inst/
+      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
+        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+        if test $? -ne 0; then
+          echo "configure: error: failed to unpack vendor.tar.xz" >&2
+          exit 1
+        fi
+      else
+        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
+        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
+        exit 1
+      fi
+    fi
+    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+  else
+    MANIFEST="src/rust/Cargo.toml"
+    LOCKFILE="src/rust/Cargo.lock"
+    STAMP="$VENDOR_OUT/.vendor.lock.cksum"
+
+    dnl Generate Cargo.lock if missing (required for fingerprinting)
+    if test ! -f "$LOCKFILE"; then
+      echo "configure: generating Cargo.lock"
+      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST"
+      if test $? -ne 0; then
+        echo "configure: error: cargo generate-lockfile failed" >&2
+        exit 1
+      fi
+    fi
+
+    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
+    _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
+    _old="$(cat "$STAMP" 2>/dev/null || true)"
+
+    _need=0
+    if test "$FORCE_VENDOR" = "1"; then
+      _need=1
+    elif test ! -f "$STAMP"; then
+      _need=1
+    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      _need=1
+    elif test "x$_new" != "x$_old"; then
+      _need=1
+    fi
+
+    if test $_need -eq 1; then
+      echo "configure: cargo vendor (Cargo.lock changed or vendor missing)"
+      mkdir -p "$VENDOR_OUT"
+      $CARGO_CMD vendor \
+        --manifest-path "$MANIFEST" \
+        "$VENDOR_OUT"
+      if test $? -ne 0; then
+        echo "configure: error: cargo vendor failed" >&2
+        exit 1
+      fi
+      echo "$_new" > "$STAMP"
+      if test $? -ne 0; then
+        echo "configure: error: failed to write vendor stamp" >&2
+        exit 1
+      fi
+    else
+      echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
+    fi
+  fi
+],
+[CARGO_CMD="$CARGO_CMD" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+
+dnl 3) Compress vendor directory for CRAN tarballs
+dnl Only recompress if vendor contents have changed (based on Cargo.lock checksum).
+AC_CONFIG_COMMANDS([compress-vendor],
+[
+  dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
+  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
+    VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
+
+    dnl Calculate fingerprint based on Cargo.lock (determines all vendor contents)
+    _lock_ck=""
+    if test -f "src/rust/Cargo.lock"; then
+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
+    fi
+
+    _new_fingerprint="lock:$_lock_ck"
+    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
+
+    _need_compress=0
+    if test ! -f "$VENDOR_TARBALL"; then
+      _need_compress=1
+      echo "configure: vendor.tar.xz does not exist"
+    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
+      _need_compress=1
+      echo "configure: vendor contents changed (fingerprint mismatch)"
+    fi
+
+    if test $_need_compress -eq 1; then
+      echo "configure: compressing vendor directory to inst/vendor.tar.xz"
+      mkdir -p "$abs_rpkg_dir/inst"
+      dnl Exclude unnecessary files: tests, benchmarks, CI files
+      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+        --exclude='vendor/*/tests' \
+        --exclude='vendor/*/benches' \
+        --exclude='vendor/*/.github' \
+        --exclude='vendor/*/.travis.yml' \
+        --exclude='vendor/*/.gitlab-ci.yml' \
+        --exclude='vendor/*/.vim' \
+        vendor
+      if test $? -ne 0; then
+        echo "configure: warning: failed to compress vendor directory" >&2
+      else
+        echo "$_new_fingerprint" > "$VENDOR_STAMP"
+      fi
+    else
+      echo "configure: skipping vendor compression (unchanged)"
+    fi
+  fi
+],
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+
+dnl 4) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
   dnl Ensure Cargo.lock exists (required for cargo pkgid)
@@ -333,36 +450,5 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
   done
 ],
 [CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN"])
-
-dnl Ensure Cargo.lock is compatible with the installed cargo version.
-dnl Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
-AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-[
-  LOCKFILE_PATH="src/rust/Cargo.lock"
-  if test -f "$LOCKFILE_PATH"; then
-    LOCKFILE_VERSION=`sed -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
-  else
-    LOCKFILE_VERSION=""
-  fi
-
-  CARGO_VERSION=`$CARGO_CMD --version | sed 's/cargo \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
-  CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
-  CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
-
-  if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
-    if test "$CARGO_MAJOR" -lt 1 || \
-       (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
-      echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
-      rm -f "$LOCKFILE_PATH"
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-      _gen_status=$?
-      if test $_gen_status -ne 0; then
-        echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
-        exit 1
-      fi
-    fi
-  fi
-],
-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"])
 
 AC_OUTPUT

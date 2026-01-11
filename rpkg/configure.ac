@@ -699,26 +699,27 @@ AC_CONFIG_COMMANDS([compress-vendor],
 
     dnl Calculate fingerprint based on inputs that affect vendor contents:
     dnl - Cargo.lock checksum (third-party deps)
-    dnl - miniextendr crate Cargo.toml checksums (local deps)
+    dnl - miniextendr crate directory checksums (ALL files, not just Cargo.toml)
     _lock_ck=""
     if test -f "src/rust/Cargo.lock"; then
       _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
     fi
+    dnl Checksum all source files in each miniextendr crate (excluding target dirs)
     _api_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
-      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-api"; then
+      _api_ck="$(find "$VENDOR_OUT/miniextendr-api" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
     _macros_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
-      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-macros"; then
+      _macros_ck="$(find "$VENDOR_OUT/miniextendr-macros" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
     _lint_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
-      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-lint"; then
+      _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
     _engine_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
-      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-engine"; then
+      _engine_ck="$(find "$VENDOR_OUT/miniextendr-engine" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
 
     _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"

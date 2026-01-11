@@ -355,12 +355,23 @@ dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
   dnl Only vendor in dev mode (NOT_CRAN=true).
-  dnl In CRAN/offline mode we MUST already have a populated vendor dir (from the tarball).
+  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by dev build).
   if test "$NOT_CRAN" != "true"; then
+    dnl Check if vendor directory exists and is populated
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-      echo "configure:        Either build from a release tarball that includes src/vendor, or rerun configure with NOT_CRAN=true (and optionally FORCE_VENDOR=1)." >&2
-      exit 1
+      dnl Vendor missing - check for compressed vendor.tar.xz in inst/
+      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
+        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+        if test $? -ne 0; then
+          echo "configure: error: failed to unpack vendor.tar.xz" >&2
+          exit 1
+        fi
+      else
+        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
+        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
+        exit 1
+      fi
     fi
     echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
   else
@@ -413,7 +424,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR"])
+[CARGO_CMD="$CARGO_CMD" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
 
 dnl 3) Sync miniextendr crates from workspace (dev mode in workspace only)
 AC_CONFIG_COMMANDS([sync-workspace-crates],
@@ -432,7 +443,73 @@ AC_CONFIG_COMMANDS([sync-workspace-crates],
 ],
 [RSYNC="$RSYNC" MONOREPO_ROOT="$monorepo_root" VENDOR_OUT="$VENDOR_OUT" NOT_CRAN="$NOT_CRAN" IN_WORKSPACE="$IN_WORKSPACE"])
 
-dnl 4) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
+dnl 4) Compress vendor directory for CRAN tarballs (after sync-workspace-crates)
+dnl Only recompress if vendor contents have changed (based on Cargo.lock + workspace crate checksums).
+AC_CONFIG_COMMANDS([compress-vendor],
+[
+  dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
+  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
+    VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
+
+    dnl Calculate fingerprint based on inputs that affect vendor contents:
+    dnl - Cargo.lock checksum (third-party deps)
+    dnl - miniextendr crate directory checksums (ALL files, not just Cargo.toml)
+    _lock_ck=""
+    if test -f "src/rust/Cargo.lock"; then
+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
+    fi
+    dnl Checksum all source files in each miniextendr crate (excluding target dirs)
+    _api_ck=""
+    if test -d "$VENDOR_OUT/miniextendr-api"; then
+      _api_ck="$(find "$VENDOR_OUT/miniextendr-api" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
+    fi
+    _macros_ck=""
+    if test -d "$VENDOR_OUT/miniextendr-macros"; then
+      _macros_ck="$(find "$VENDOR_OUT/miniextendr-macros" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
+    fi
+    _lint_ck=""
+    if test -d "$VENDOR_OUT/miniextendr-lint"; then
+      _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
+    fi
+
+    _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck"
+    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
+
+    _need_compress=0
+    if test ! -f "$VENDOR_TARBALL"; then
+      _need_compress=1
+      echo "configure: vendor.tar.xz does not exist"
+    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
+      _need_compress=1
+      echo "configure: vendor contents changed (fingerprint mismatch)"
+    fi
+
+    if test $_need_compress -eq 1; then
+      echo "configure: compressing vendor directory to inst/vendor.tar.xz"
+      mkdir -p "$abs_rpkg_dir/inst"
+      dnl Exclude unnecessary files: tests, benchmarks, CI files
+      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+        --exclude='vendor/*/tests' \
+        --exclude='vendor/*/benches' \
+        --exclude='vendor/*/.github' \
+        --exclude='vendor/*/.travis.yml' \
+        --exclude='vendor/*/.gitlab-ci.yml' \
+        --exclude='vendor/*/.vim' \
+        vendor
+      if test $? -ne 0; then
+        echo "configure: warning: failed to compress vendor directory" >&2
+      else
+        echo "$_new_fingerprint" > "$VENDOR_STAMP"
+      fi
+    else
+      echo "configure: skipping vendor compression (unchanged)"
+    fi
+  fi
+],
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+
+dnl 5) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
   dnl cargo pkgid outputs: path+file:///path/to/project#name@version
