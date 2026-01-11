@@ -48,16 +48,44 @@ test_that("Vec<String> ALTREP survives serialization round-trip", {
   expect_equal(restored[3], "test")
 })
 
-# Note: Vec<bool> and Vec<u8> use iterator-backed ALTREP which doesn't
-# have dataptr support. These types serialize by materializing to native
-# R vectors through DATAPTR access. Tests are skipped for now pending
-# serialization bridge implementation.
+# Vec<bool> and Vec<u8> use iterator-backed ALTREP which doesn't have DATAPTR.
+# They serialize via the Serialized_state ALTREP method.
+# NOTE: Can't use expect_equal() with vector comparisons because testthat's
+# waldo::compare → identical() triggers DATAPTR access. Use element-by-element only.
 test_that("Vec<bool> ALTREP survives serialization round-trip", {
-  skip("Vec<bool> serialization requires dataptr or Serialized_state bridge")
+  original <- altrep_from_logicals(c(TRUE, FALSE, TRUE, FALSE, TRUE))
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 5L)
+  expect_equal(sum(restored), 3L)
+  # Element-by-element checks only (no vector comparisons)
+  expect_equal(restored[1], TRUE)
+  expect_equal(restored[2], FALSE)
+  expect_equal(restored[3], TRUE)
+  expect_equal(restored[4], FALSE)
+  expect_equal(restored[5], TRUE)
 })
 
 test_that("Vec<u8> (raw) ALTREP survives serialization round-trip", {
-  skip("Vec<u8> serialization requires dataptr or Serialized_state bridge")
+  original <- altrep_from_raw(as.raw(c(0x01, 0x02, 0x03, 0xFF)))
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 4L)
+  # Element-by-element checks only (no vector comparisons)
+  expect_equal(restored[1], as.raw(0x01))
+  expect_equal(restored[2], as.raw(0x02))
+  expect_equal(restored[3], as.raw(0x03))
+  expect_equal(restored[4], as.raw(0xFF))
 })
 
 test_that("Vec<Rcomplex> ALTREP survives serialization round-trip", {
@@ -102,12 +130,44 @@ test_that("Box<[f64]> ALTREP survives serialization round-trip", {
   expect_equal(restored[5], 7.5)
 })
 
+# NOTE: Box<[bool]> and Box<[u8]> also don't have DATAPTR support.
+# Use element-by-element checks only (no vector comparisons).
 test_that("Box<[bool]> ALTREP survives serialization round-trip", {
-  skip("Box<[bool]> serialization requires dataptr or Serialized_state bridge")
+  original <- boxed_logicals(5L)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 5L)
+  # boxed_logicals generates alternating TRUE/FALSE pattern
+  # Element-by-element checks only
+  expect_equal(restored[1], TRUE)
+  expect_equal(restored[2], FALSE)
+  expect_equal(restored[3], TRUE)
+  expect_equal(restored[4], FALSE)
+  expect_equal(restored[5], TRUE)
 })
 
 test_that("Box<[u8]> ALTREP survives serialization round-trip", {
-  skip("Box<[u8]> serialization requires dataptr or Serialized_state bridge")
+  original <- boxed_raw(5L)
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 5L)
+  # boxed_raw generates sequential bytes starting at 0
+  # Element-by-element checks only
+  expect_equal(restored[1], as.raw(0x00))
+  expect_equal(restored[2], as.raw(0x01))
+  expect_equal(restored[3], as.raw(0x02))
+  expect_equal(restored[4], as.raw(0x03))
+  expect_equal(restored[5], as.raw(0x04))
 })
 
 test_that("Box<[String]> ALTREP survives serialization round-trip", {
@@ -137,18 +197,57 @@ test_that("Box<[Rcomplex]> ALTREP survives serialization round-trip", {
   expect_equal(Im(restored[1]), 0.75)
 })
 
-# Range types don't have dataptr support by design (they're lazy).
-# Serialization support pending Serialized_state bridge.
+# Range types don't have DATAPTR support by design (they're lazy).
+# They serialize via the Serialized_state ALTREP method.
+# NOTE: c() also triggers DATAPTR, so use element-by-element checks only.
 test_that("Range<i32> ALTREP survives serialization round-trip", {
-  skip("Range serialization requires Serialized_state bridge")
+  original <- range_int_altrep(1L, 11L)  # 1..11 = [1,2,3,4,5,6,7,8,9,10]
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 10L)
+  expect_equal(sum(restored), 55L)
+  # Element-by-element checks
+  expect_equal(restored[1], 1L)
+  expect_equal(restored[5], 5L)
+  expect_equal(restored[10], 10L)
 })
 
 test_that("Range<i64> ALTREP survives serialization round-trip", {
-  skip("Range serialization requires Serialized_state bridge")
+  original <- range_i64_altrep(1, 6)  # 1..6 = [1,2,3,4,5]
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 5L)
+  # Element-by-element checks
+  expect_equal(restored[1], 1L)
+  expect_equal(restored[3], 3L)
+  expect_equal(restored[5], 5L)
 })
 
 test_that("Range<f64> ALTREP survives serialization round-trip", {
-  skip("Range serialization requires Serialized_state bridge")
+  original <- range_real_altrep(0, 5)  # 0..5 = [0.0, 1.0, 2.0, 3.0, 4.0]
+
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(length(restored), 5L)
+  expect_equal(sum(restored), 10.0)
+  # Element-by-element checks
+  expect_equal(restored[1], 0.0)
+  expect_equal(restored[3], 2.0)
+  expect_equal(restored[5], 4.0)
 })
 
 test_that("Empty ALTREP vectors survive serialization", {

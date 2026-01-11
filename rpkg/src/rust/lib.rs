@@ -582,7 +582,7 @@ fn altrep_from_strings(x: Vec<Option<String>>) -> SimpleVecStringClass {
 ///
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
-fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecClass {
+pub fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecClass {
     LogicalVecClass(LogicalVecData { data: x })
 }
 
@@ -590,7 +590,7 @@ fn altrep_from_logicals(x: Vec<Logical>) -> LogicalVecClass {
 ///
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
-fn altrep_from_raw(x: &[u8]) -> SimpleVecRawClass {
+pub fn altrep_from_raw(x: &[u8]) -> SimpleVecRawClass {
     SimpleVecRawClass(x.to_vec())
 }
 
@@ -709,7 +709,51 @@ impl AltLogicalData for LogicalVecData {
     }
 }
 
-miniextendr_api::impl_altlogical_from_data!(LogicalVecData);
+// Implement serialization support for LogicalVecData
+impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
+    fn serialized_state(&self) -> SEXP {
+        // Serialize as a regular logical vector
+        // NA_LOGICAL in R is the same as NA_INTEGER = i32::MIN
+        const NA_LOGICAL: i32 = i32::MIN;
+        unsafe {
+            use miniextendr_api::ffi::{Rf_allocVector, SET_LOGICAL_ELT, SEXPTYPE};
+            let n = self.data.len();
+            let state = Rf_allocVector(SEXPTYPE::LGLSXP, n as isize);
+            for (i, v) in self.data.iter().enumerate() {
+                let raw = match v {
+                    Logical::True => 1,
+                    Logical::False => 0,
+                    Logical::Na => NA_LOGICAL,
+                };
+                SET_LOGICAL_ELT(state, i as isize, raw);
+            }
+            state
+        }
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        const NA_LOGICAL: i32 = i32::MIN;
+        unsafe {
+            use miniextendr_api::ffi::{Rf_xlength, LOGICAL_ELT};
+            let n = Rf_xlength(state) as usize;
+            let mut data = Vec::with_capacity(n);
+            for i in 0..n {
+                let raw = LOGICAL_ELT(state, i as isize);
+                let v = if raw == NA_LOGICAL {
+                    Logical::Na
+                } else if raw != 0 {
+                    Logical::True
+                } else {
+                    Logical::False
+                };
+                data.push(v);
+            }
+            Some(LogicalVecData { data })
+        }
+    }
+}
+
+miniextendr_api::impl_altlogical_from_data!(LogicalVecData, serialize);
 
 #[miniextendr(class = "LogicalVec")]
 pub struct LogicalVecClass(pub LogicalVecData);

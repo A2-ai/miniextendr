@@ -643,6 +643,63 @@ impl AltStringData for Box<[String]> {
 }
 
 // =============================================================================
+// AltrepSerialize implementations for Range types
+// =============================================================================
+// Ranges serialize to a 2-element integer/real vector [start, end].
+
+impl AltrepSerialize for Range<i32> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        vec![self.start, self.end].into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        let v = Vec::<i32>::try_from_sexp(state).ok()?;
+        if v.len() == 2 {
+            Some(v[0]..v[1])
+        } else {
+            None
+        }
+    }
+}
+
+impl AltrepSerialize for Range<i64> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        // Serialize as f64 to preserve i64 range (R's doubles have 53-bit mantissa)
+        vec![self.start as f64, self.end as f64].into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        let v = Vec::<f64>::try_from_sexp(state).ok()?;
+        if v.len() == 2 {
+            Some((v[0] as i64)..(v[1] as i64))
+        } else {
+            None
+        }
+    }
+}
+
+impl AltrepSerialize for Range<f64> {
+    fn serialized_state(&self) -> SEXP {
+        use crate::into_r::IntoR;
+        vec![self.start, self.end].into_sexp()
+    }
+
+    fn unserialize(state: SEXP) -> Option<Self> {
+        use crate::from_r::TryFromSexp;
+        let v = Vec::<f64>::try_from_sexp(state).ok()?;
+        if v.len() == 2 {
+            Some(v[0]..v[1])
+        } else {
+            None
+        }
+    }
+}
+
+// =============================================================================
 // Built-in implementations for Range types
 // =============================================================================
 
