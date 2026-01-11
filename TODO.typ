@@ -1267,3 +1267,38 @@ Standalone adapter traits not needed - use connection framework instead.
 
 - [ ] Add a `cargo_new` command. The manifest-path argument isn't defined for `cargo new `. Instead, you'll have to navigate to the `src/rust` directory to execute a `cargo new` that is workspace aware, and so on.
 
+== ALTREP Serialization Gaps
+
+=== Problem: `AltrepSerialize` not connected to `Altrep::serialized_state`
+
+The `AltrepSerialize` trait is implemented on data types (Vec, Box, Range) but the bridge to R's `Serialized_state` ALTREP method is not connected:
+
+- `miniextendr-api/src/altrep_traits.rs:37`: `const HAS_SERIALIZED_STATE: bool = false;` (default)
+- `miniextendr-api/src/altrep_bridge.rs:389-396`: `install_base` only registers `Serialized_state` method if `HAS_SERIALIZED_STATE = true`
+
+Types with DATAPTR support serialize correctly via R's fallback (R calls DATAPTR, gets native data, serializes that):
+- [x] Vec<i32>, Vec<f64>, Vec<String>, Vec<Rcomplex> - work via DATAPTR fallback
+- [x] Box<[i32]>, Box<[f64]>, Box<[String]>, Box<[Rcomplex]> - work via DATAPTR fallback
+
+Types WITHOUT DATAPTR support fail with "cannot access data pointer for this ALTVEC object":
+- [ ] Vec<bool> (LogicalVec iterator class, no DATAPTR)
+- [ ] Vec<u8> (SimpleVecRaw iterator class, no DATAPTR)
+- [ ] Box<[bool]> (no DATAPTR)
+- [ ] Box<[u8]> (no DATAPTR)
+- [ ] Range<i32>, Range<i64>, Range<f64> (lazy ranges, no DATAPTR by design)
+
+=== Fix Required
+
+1. Set `HAS_SERIALIZED_STATE = true` for ALTREP types that implement `AltrepSerialize`
+2. Implement `Altrep::serialized_state` to call the existing `AltrepSerialize::serialized_state` method
+3. Options:
+   - Per-type: Each ALTREP class overrides `HAS_SERIALIZED_STATE` const
+   - Blanket: Detect `AltrepSerialize` bound and auto-enable (may require trait refactor)
+
+=== Test Coverage
+
+Tests exist in `rpkg/tests/testthat/test-altrep-serialization.R`:
+- 48 tests pass (types with DATAPTR support)
+- 7 tests skipped with `skip("... requires dataptr or Serialized_state bridge")`
+- Remove skips once bridge is implemented
+
