@@ -1571,3 +1571,53 @@ pub unsafe fn altrep_data1_mut_unchecked<T: TypedExternal>(x: SEXP) -> Option<&'
 }
 
 // Tests for ExternalPtr require R runtime, so they are in rpkg/src/rust/lib.rs
+
+// =============================================================================
+// Sidecar Marker Type for #[r_data] Fields
+// =============================================================================
+
+/// Marker type for enabling R sidecar accessors in an `ExternalPtr` struct.
+///
+/// When used with `#[derive(ExternalPtr)]` and `#[r_data]`, this field acts as
+/// a selector that enables R-facing accessors for sibling `#[r_data]` fields.
+///
+/// # Supported Field Types
+///
+/// - **`SEXP`** - Raw SEXP access, no conversion
+/// - **`i32`, `f64`, `bool`, `u8`** - Zero-overhead scalars (stored directly in R)
+/// - **Any `IntoR` type** - Automatic conversion (e.g., `String`, `Vec<T>`)
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::ffi::SEXP;
+///
+/// #[derive(ExternalPtr)]
+/// pub struct MyType {
+///     pub x: i32,
+///
+///     /// Selector field - enables R wrapper generation
+///     #[r_data]
+///     r: RSidecar,
+///
+///     /// Raw SEXP slot - MyType_get_raw() / MyType_set_raw()
+///     #[r_data]
+///     pub raw: SEXP,
+///
+///     /// Zero-overhead scalar - MyType_get_count() / MyType_set_count()
+///     #[r_data]
+///     pub count: i32,
+///
+///     /// Conversion type - MyType_get_name() / MyType_set_name()
+///     #[r_data]
+///     pub name: String,
+/// }
+/// ```
+///
+/// # Design Notes
+///
+/// - `RSidecar` is a ZST (zero-sized type) - no runtime cost
+/// - Only `pub` `#[r_data]` fields get R wrapper functions generated
+/// - Multiple `RSidecar` fields in one struct is a compile error
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Hash)]
+pub struct RSidecar;

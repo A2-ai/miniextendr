@@ -18,6 +18,37 @@
 //! // Generates: impl TypedExternal for MyData { ... }
 //! ```
 //!
+//! ### With R Sidecar Slots
+//!
+//! The `#[r_data]` attribute marks fields for R-side storage. Three tiers are supported:
+//!
+//! 1. **Raw SEXP** (`SEXP`) - Direct SEXP access, no conversion
+//! 2. **Zero-overhead scalars** (`i32`, `f64`, `bool`, `u8`) - Direct R memory access
+//! 3. **Conversion types** (anything else) - Uses `IntoR`/`TryFromSexp` traits
+//!
+//! ```ignore
+//! #[derive(ExternalPtr)]
+//! pub struct MyType {
+//!     pub x: i32,
+//!
+//!     #[r_data]
+//!     r: RSidecar,  // Selector - enables R accessors for this type
+//!
+//!     #[r_data]
+//!     pub raw_slot: SEXP,  // Raw SEXP, no conversion
+//!
+//!     #[r_data]
+//!     pub count: i32,  // Zero-overhead: stored as R INTEGER(1)
+//!
+//!     #[r_data]
+//!     pub score: f64,  // Zero-overhead: stored as R REAL(1)
+//!
+//!     #[r_data]
+//!     pub name: String,  // Conversion: uses IntoR/TryFromSexp
+//! }
+//! // Generates: MyType_get_count(), MyType_set_count(), etc.
+//! ```
+//!
 //! ### Trait ABI wiring
 //!
 //! ```ignore
@@ -73,8 +104,8 @@
 //! }
 //! ```
 
-use proc_macro2::TokenStream;
-use syn::DeriveInput;
+use proc_macro2::{Span, TokenStream};
+use syn::{DeriveInput, Field, Ident, Visibility};
 
 fn ensure_no_externalptr_attrs(input: &DeriveInput) -> syn::Result<()> {
     for attr in &input.attrs {
@@ -86,6 +117,542 @@ fn ensure_no_externalptr_attrs(input: &DeriveInput) -> syn::Result<()> {
         }
     }
     Ok(())
+}
+
+/// Check if a field has the `#[r_data]` attribute.
+fn has_r_data_attr(field: &Field) -> bool {
+    field.attrs.iter().any(|a| a.path().is_ident("r_data"))
+}
+
+/// Check if a field type is `RSidecar`.
+fn is_rsidecar_type(field: &Field) -> bool {
+    if let syn::Type::Path(type_path) = &field.ty {
+        type_path
+            .path
+            .segments
+            .last()
+            .map(|seg| seg.ident == "RSidecar")
+            .unwrap_or(false)
+    } else {
+        false
+    }
+}
+
+/// Check if a field is public.
+fn is_pub(field: &Field) -> bool {
+    matches!(field.vis, Visibility::Public(_))
+}
+
+/// The kind of sidecar slot, determining how getters/setters are generated.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum SlotKind {
+    /// SEXP type - raw SEXP access (getter returns SEXP, setter takes SEXP)
+    RawSexp,
+    /// Zero-overhead scalar: i32 stored as INTEGER(1)
+    ScalarInt,
+    /// Zero-overhead scalar: f64 stored as REAL(1)
+    ScalarReal,
+    /// Zero-overhead scalar: bool stored as LOGICAL(1)
+    ScalarLogical,
+    /// Zero-overhead scalar: u8 stored as RAW(1)
+    ScalarRaw,
+    /// Conversion type - uses IntoR/TryFromR
+    Conversion,
+}
+
+/// Information about a sidecar slot field.
+struct SidecarSlot {
+    /// Field name
+    name: Ident,
+    /// Field type (for conversion slots)
+    ty: syn::Type,
+    /// Index in the prot VECSXP (after base slots)
+    index: usize,
+    /// Whether the field is public (determines if R accessors are generated)
+    is_public: bool,
+    /// What kind of slot this is
+    kind: SlotKind,
+}
+
+/// Parsed sidecar information from struct fields.
+struct SidecarInfo {
+    /// Has an RSidecar selector field
+    has_selector: bool,
+    /// RData slot fields (with their indices)
+    slots: Vec<SidecarSlot>,
+}
+
+/// Determine the SlotKind for a field type.
+fn slot_kind_for_type(ty: &syn::Type) -> SlotKind {
+    if let syn::Type::Path(type_path) = ty {
+        if let Some(seg) = type_path.path.segments.last() {
+            let ident = &seg.ident;
+            // Check for raw SEXP access
+            if ident == "SEXP" {
+                return SlotKind::RawSexp;
+            }
+            // Check for zero-overhead scalar types
+            if ident == "i32" || ident == "i16" || ident == "i8" {
+                return SlotKind::ScalarInt;
+            }
+            if ident == "f64" || ident == "f32" {
+                return SlotKind::ScalarReal;
+            }
+            if ident == "bool" || ident == "Rbool" {
+                return SlotKind::ScalarLogical;
+            }
+            if ident == "u8" {
+                return SlotKind::ScalarRaw;
+            }
+        }
+    }
+    // Everything else uses conversion
+    SlotKind::Conversion
+}
+
+/// Parse struct fields for sidecar information.
+fn parse_sidecar_info(input: &DeriveInput) -> syn::Result<SidecarInfo> {
+    let fields = match &input.data {
+        syn::Data::Struct(data) => &data.fields,
+        _ => {
+            return Ok(SidecarInfo {
+                has_selector: false,
+                slots: vec![],
+            })
+        }
+    };
+
+    let mut selector_fields: Vec<&Field> = vec![];
+    let mut slots = vec![];
+    let mut slot_index = 0usize;
+
+    for field in fields.iter() {
+        if !has_r_data_attr(field) {
+            continue;
+        }
+
+        if is_rsidecar_type(field) {
+            // RSidecar is the selector marker, not a slot
+            selector_fields.push(field);
+        } else if let Some(ref ident) = field.ident {
+            // Any other type with #[r_data] becomes a slot
+            let kind = slot_kind_for_type(&field.ty);
+            slots.push(SidecarSlot {
+                name: ident.clone(),
+                ty: field.ty.clone(),
+                index: slot_index,
+                is_public: is_pub(field),
+                kind,
+            });
+            slot_index += 1;
+        }
+    }
+
+    // Check for multiple selectors
+    if selector_fields.len() > 1 {
+        return Err(syn::Error::new_spanned(
+            selector_fields[1],
+            "only one RSidecar field is allowed per struct",
+        ));
+    }
+
+    Ok(SidecarInfo {
+        has_selector: !selector_fields.is_empty(),
+        slots,
+    })
+}
+
+/// Generate getter body based on slot kind.
+fn generate_getter_body(slot: &SidecarSlot, prot_index_lit: &syn::LitInt) -> TokenStream {
+    match slot.kind {
+        SlotKind::RawSexp => {
+            // Return raw SEXP from slot
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    VECTOR_ELT(prot, #prot_index_lit)
+                }
+            }
+        }
+        SlotKind::ScalarInt => {
+            // Direct integer access - zero overhead
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarInteger, INTEGER};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    if slot.is_null() || slot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    // Return a scalar copy (R semantics: copy-on-read for atomics)
+                    Rf_ScalarInteger(*INTEGER(slot))
+                }
+            }
+        }
+        SlotKind::ScalarReal => {
+            // Direct real access - zero overhead
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarReal, REAL};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    if slot.is_null() || slot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    Rf_ScalarReal(*REAL(slot))
+                }
+            }
+        }
+        SlotKind::ScalarLogical => {
+            // Direct logical access - zero overhead
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarLogical, LOGICAL};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    if slot.is_null() || slot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    Rf_ScalarLogical(*LOGICAL(slot))
+                }
+            }
+        }
+        SlotKind::ScalarRaw => {
+            // Direct raw access - zero overhead
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarRaw, RAW};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    if slot.is_null() || slot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    Rf_ScalarRaw(*RAW(slot))
+                }
+            }
+        }
+        SlotKind::Conversion => {
+            // Use IntoR trait for conversion
+            let ty = &slot.ty;
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue};
+                use ::miniextendr_api::coerce::TryFromSexp;
+                use ::miniextendr_api::into_r::IntoR;
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    if slot.is_null() || slot == R_NilValue {
+                        return R_NilValue;
+                    }
+                    // Convert from R to Rust and back to R
+                    // This ensures we return a fresh R object
+                    match <#ty as TryFromSexp>::try_from_sexp(slot) {
+                        Ok(val) => val.into_r(),
+                        Err(_) => R_NilValue,
+                    }
+                }
+            }
+        }
+    }
+}
+
+/// Generate setter body based on slot kind.
+fn generate_setter_body(slot: &SidecarSlot, prot_index_lit: &syn::LitInt) -> TokenStream {
+    match slot.kind {
+        SlotKind::RawSexp => {
+            // Store raw SEXP in slot
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, SET_VECTOR_ELT, R_NilValue};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if !prot.is_null() && prot != R_NilValue {
+                        SET_VECTOR_ELT(prot, #prot_index_lit, value);
+                    }
+                    x
+                }
+            }
+        }
+        SlotKind::ScalarInt => {
+            // Direct integer storage
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, Rf_asInteger, Rf_ScalarInteger, INTEGER};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return x;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    let int_val = Rf_asInteger(value);
+                    if slot.is_null() || slot == R_NilValue {
+                        // Initialize slot with new scalar
+                        SET_VECTOR_ELT(prot, #prot_index_lit, Rf_ScalarInteger(int_val));
+                    } else {
+                        // Update existing scalar in place
+                        *INTEGER(slot) = int_val;
+                    }
+                    x
+                }
+            }
+        }
+        SlotKind::ScalarReal => {
+            // Direct real storage
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, Rf_asReal, Rf_ScalarReal, REAL};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return x;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    let real_val = Rf_asReal(value);
+                    if slot.is_null() || slot == R_NilValue {
+                        SET_VECTOR_ELT(prot, #prot_index_lit, Rf_ScalarReal(real_val));
+                    } else {
+                        *REAL(slot) = real_val;
+                    }
+                    x
+                }
+            }
+        }
+        SlotKind::ScalarLogical => {
+            // Direct logical storage
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, Rf_asLogical, Rf_ScalarLogical, LOGICAL};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return x;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    let log_val = Rf_asLogical(value);
+                    if slot.is_null() || slot == R_NilValue {
+                        SET_VECTOR_ELT(prot, #prot_index_lit, Rf_ScalarLogical(log_val));
+                    } else {
+                        *LOGICAL(slot) = log_val;
+                    }
+                    x
+                }
+            }
+        }
+        SlotKind::ScalarRaw => {
+            // Direct raw storage
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, RAW, Rf_coerceVector, SEXPTYPE};
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return x;
+                    }
+                    let slot = VECTOR_ELT(prot, #prot_index_lit);
+                    // Coerce to raw and get first byte
+                    let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
+                    let raw_val = *RAW(raw_vec);
+                    if slot.is_null() || slot == R_NilValue {
+                        SET_VECTOR_ELT(prot, #prot_index_lit, ::miniextendr_api::ffi::Rf_ScalarRaw(raw_val));
+                    } else {
+                        *RAW(slot) = raw_val;
+                    }
+                    x
+                }
+            }
+        }
+        SlotKind::Conversion => {
+            // Use IntoR trait for conversion
+            let ty = &slot.ty;
+            quote::quote! {
+                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, SET_VECTOR_ELT, R_NilValue};
+                use ::miniextendr_api::coerce::TryFromSexp;
+                use ::miniextendr_api::into_r::IntoR;
+                unsafe {
+                    let prot = R_ExternalPtrProtected(x);
+                    if prot.is_null() || prot == R_NilValue {
+                        return x;
+                    }
+                    // Convert from R, then back to R for storage
+                    if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
+                        SET_VECTOR_ELT(prot, #prot_index_lit, val.into_r());
+                    }
+                    x
+                }
+            }
+        }
+    }
+}
+
+/// Generate sidecar accessor constants and functions.
+///
+/// Generates code for pub #[r_data] fields based on their SlotKind.
+fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::Result<TokenStream> {
+    // Check for generics with pub sidecar slots
+    if !input.generics.params.is_empty() {
+        let has_pub_slots = info.slots.iter().any(|s| s.is_public);
+        if has_pub_slots {
+            return Err(syn::Error::new_spanned(
+                &input.generics,
+                "generic types with pub #[r_data] fields are not supported; \
+                 .Call entrypoints cannot be generic",
+            ));
+        }
+    }
+
+    // If no selector or no public slots, generate empty constants
+    let pub_slots: Vec<_> = info.slots.iter().filter(|s| s.is_public).collect();
+    if !info.has_selector || pub_slots.is_empty() {
+        let name = &input.ident;
+        let const_name_defs = Ident::new(
+            &format!("RDATA_CALL_DEFS_{}", name.to_string().to_uppercase()),
+            Span::call_site(),
+        );
+        let const_name_wrappers = Ident::new(
+            &format!("R_WRAPPERS_RDATA_{}", name.to_string().to_uppercase()),
+            Span::call_site(),
+        );
+
+        return Ok(quote::quote! {
+            /// Empty sidecar call definitions (no pub #[r_data] fields).
+            #[doc(hidden)]
+            pub const #const_name_defs: &[::miniextendr_api::ffi::R_CallMethodDef] = &[];
+
+            /// Empty sidecar R wrappers (no pub #[r_data] fields).
+            #[doc(hidden)]
+            pub const #const_name_wrappers: &str = "";
+        });
+    }
+
+    let name = &input.ident;
+    let name_str = name.to_string();
+    let name_upper = name_str.to_uppercase();
+
+    // Base prot slot indices (type ID at 0, user at 1)
+    const PROT_BASE_LEN: usize = 2;
+
+    // Generate getter/setter functions and R wrappers for each pub slot
+    let mut c_functions = vec![];
+    let mut call_defs = vec![];
+    let mut r_wrappers = String::new();
+
+    for slot in &pub_slots {
+        let field_name = &slot.name;
+        let field_name_str = field_name.to_string();
+        let prot_index = PROT_BASE_LEN + slot.index;
+
+        // C function names
+        let getter_c_name = format!("C__mx_rdata_get_{}_{}", name_str, field_name_str);
+        let setter_c_name = format!("C__mx_rdata_set_{}_{}", name_str, field_name_str);
+        let getter_fn_name = Ident::new(&getter_c_name, Span::call_site());
+        let setter_fn_name = Ident::new(&setter_c_name, Span::call_site());
+
+        // R function names
+        let r_getter_name = format!("{}_get_{}", name_str, field_name_str);
+        let r_setter_name = format!("{}_set_{}", name_str, field_name_str);
+
+        let prot_index_lit = syn::LitInt::new(&prot_index.to_string(), Span::call_site());
+
+        // Generate getter/setter bodies based on slot kind
+        let getter_body = generate_getter_body(slot, &prot_index_lit);
+        let setter_body = generate_setter_body(slot, &prot_index_lit);
+
+        // Generate C getter function
+        c_functions.push(quote::quote! {
+            #[doc(hidden)]
+            #[no_mangle]
+            pub unsafe extern "C-unwind" fn #getter_fn_name(
+                x: ::miniextendr_api::ffi::SEXP
+            ) -> ::miniextendr_api::ffi::SEXP {
+                #getter_body
+            }
+        });
+
+        // Generate C setter function
+        c_functions.push(quote::quote! {
+            #[doc(hidden)]
+            #[no_mangle]
+            pub unsafe extern "C-unwind" fn #setter_fn_name(
+                x: ::miniextendr_api::ffi::SEXP,
+                value: ::miniextendr_api::ffi::SEXP,
+            ) -> ::miniextendr_api::ffi::SEXP {
+                #setter_body
+            }
+        });
+
+        // Generate R_CallMethodDef entries
+        let getter_c_name_cstr = format!("{}\0", getter_c_name);
+        let setter_c_name_cstr = format!("{}\0", setter_c_name);
+        let getter_cstr_lit =
+            syn::LitByteStr::new(getter_c_name_cstr.as_bytes(), Span::call_site());
+        let setter_cstr_lit =
+            syn::LitByteStr::new(setter_c_name_cstr.as_bytes(), Span::call_site());
+
+        call_defs.push(quote::quote! {
+            ::miniextendr_api::ffi::R_CallMethodDef {
+                name: #getter_cstr_lit.as_ptr().cast(),
+                fun: Some(::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_) -> _)),
+                numArgs: 1,
+            }
+        });
+        call_defs.push(quote::quote! {
+            ::miniextendr_api::ffi::R_CallMethodDef {
+                name: #setter_cstr_lit.as_ptr().cast(),
+                fun: Some(::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _)),
+                numArgs: 2,
+            }
+        });
+
+        // Generate R wrapper code
+        r_wrappers.push_str(&format!(
+            r#"
+#' @export
+{r_getter} <- function(x) .Call({getter_c})
+
+#' @export
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
+}}
+"#,
+            r_getter = r_getter_name,
+            r_setter = r_setter_name,
+            getter_c = getter_c_name,
+            setter_c = setter_c_name,
+        ));
+    }
+
+    let const_name_defs = Ident::new(&format!("RDATA_CALL_DEFS_{}", name_upper), Span::call_site());
+    let const_name_wrappers =
+        Ident::new(&format!("R_WRAPPERS_RDATA_{}", name_upper), Span::call_site());
+
+    Ok(quote::quote! {
+        #(#c_functions)*
+
+        /// Sidecar accessor call definitions for registration.
+        #[doc(hidden)]
+        pub const #const_name_defs: &[::miniextendr_api::ffi::R_CallMethodDef] = &[
+            #(#call_defs),*
+        ];
+
+        /// Sidecar accessor R wrapper code.
+        #[doc(hidden)]
+        pub const #const_name_wrappers: &str = #r_wrappers;
+    })
 }
 
 /// Generate the basic `TypedExternal` implementation.
@@ -135,11 +702,16 @@ fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
 pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
     ensure_no_externalptr_attrs(&input)?;
 
+    // Parse sidecar information from struct fields
+    let sidecar_info = parse_sidecar_info(&input)?;
+
     let typed_external = generate_typed_external(&input);
     let into_external_ptr = generate_into_external_ptr(&input);
+    let sidecar_accessors = generate_sidecar_accessors(&input, &sidecar_info)?;
 
     Ok(quote::quote! {
         #typed_external
         #into_external_ptr
+        #sidecar_accessors
     })
 }

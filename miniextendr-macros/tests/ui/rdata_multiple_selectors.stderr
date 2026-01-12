@@ -1,0 +1,18 @@
+error: only one RSidecar field is allowed per struct
+  --> tests/ui/rdata_multiple_selectors.rs:13:5
+   |
+13 | /     #[r_data]
+14 | |     r2: RSidecar, // Error: only one RSidecar allowed
+   | |________________^
+
+error: cannot find attribute `r_data` in this scope
+  --> tests/ui/rdata_multiple_selectors.rs:11:7
+   |
+11 |     #[r_data]
+   |       ^^^^^^
+
+error: cannot find attribute `r_data` in this scope
+  --> tests/ui/rdata_multiple_selectors.rs:13:7
+   |
+13 |     #[r_data]
+   |       ^^^^^^

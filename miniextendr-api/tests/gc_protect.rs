@@ -137,7 +137,7 @@ fn reprotect_slot_value_updates() {
         let root = slot.set(updated);
 
         assert!(std::ptr::eq(slot.get().0, updated.0));
-        assert!(std::ptr::eq(root.get().0, updated.0));
+        assert!(std::ptr::eq(root.0, updated.0));
     });
 }
 

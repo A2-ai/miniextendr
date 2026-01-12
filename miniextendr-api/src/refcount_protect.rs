@@ -807,39 +807,4 @@ define_thread_local_arena!(
     THREAD_LOCAL_HASH_STATE
 );
 
-// =============================================================================
-// Tests
-// =============================================================================
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn arena_starts_empty() {
-        let arena = RefCountedArena::default();
-        assert!(arena.is_empty());
-        assert_eq!(arena.len(), 0);
-    }
-
-    #[test]
-    fn arena_has_initial_capacity() {
-        let arena = RefCountedArena::default();
-        assert_eq!(arena.capacity(), ArenaState::<BTreeMap<usize, Entry>>::INITIAL_CAPACITY);
-    }
-
-    #[test]
-    fn nil_is_not_protected() {
-        let arena = RefCountedArena::default();
-        let nil = unsafe { R_NilValue };
-        assert!(!arena.is_protected(nil));
-        assert_eq!(arena.ref_count(nil), 0);
-    }
-
-    #[test]
-    fn hashmap_arena_starts_empty() {
-        let arena = HashMapArena::default();
-        assert!(arena.is_empty());
-        assert_eq!(arena.len(), 0);
-    }
-}
+// Tests are in tests/refcount_protect.rs (requires R runtime via miniextendr-engine)

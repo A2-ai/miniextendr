@@ -631,46 +631,27 @@ impl<'a> ReprotectSlot<'a> {
     /// The new value `x` becomes protected in this slot, and the old value
     /// is no longer protected (but may still be rooted elsewhere).
     ///
-    /// Returns a [`Root`] for convenience (same lifetime as the slot).
+    /// Returns the raw SEXP for convenience. Note that this SEXP is only
+    /// protected until the next call to `set()` on this slot - if you need
+    /// to hold multiple protected values simultaneously, use separate
+    /// protection slots or `OwnedProtect`.
     ///
     /// # Safety
     ///
     /// - Must be called from the R main thread
     /// - `x` must be a valid SEXP
     #[inline]
-    pub unsafe fn set(&self, x: SEXP) -> Root<'a> {
-        unsafe { R_Reprotect(x, self.idx) };
-        self.cur.set(x);
-        Root {
-            sexp: x,
-            _scope: PhantomData,
-        }
-    }
-
-    /// Replace the protected value, returning the raw SEXP.
-    ///
-    /// # Safety
-    ///
-    /// Same as [`set`][Self::set].
-    #[inline]
-    pub unsafe fn set_raw(&self, x: SEXP) -> SEXP {
+    pub unsafe fn set(&self, x: SEXP) -> SEXP {
         unsafe { R_Reprotect(x, self.idx) };
         self.cur.set(x);
         x
     }
 }
 
-impl<'a> std::ops::Deref for ReprotectSlot<'a> {
-    type Target = SEXP;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        // This is a bit awkward since we return &SEXP but SEXP is Copy.
-        // The Cell prevents us from returning a reference to the inner SEXP.
-        // This deref is mostly for ergonomics.
-        unsafe { &*(&self.cur as *const Cell<SEXP> as *const SEXP) }
-    }
-}
+// NOTE: Deref was intentionally removed to avoid UB.
+// The previous impl fabricated `&SEXP` from `Cell<SEXP>` via pointer cast,
+// which violates Cell's aliasing rules if `set()` is called while a
+// reference is live. Use `get()` instead, which returns SEXP by value.
 
 // =============================================================================
 // TLS-backed convenience API (optional)
@@ -737,6 +718,23 @@ pub mod tls {
     ///     })
     /// }
     /// ```
+    /// Guard that pops the TLS scope stack on drop (panic-safe cleanup).
+    struct TlsScopeGuard {
+        scope_ptr: NonNull<ProtectScope>,
+    }
+
+    impl Drop for TlsScopeGuard {
+        fn drop(&mut self) {
+            SCOPE_STACK.with(|stack| {
+                let popped = stack.borrow_mut().pop();
+                debug_assert!(
+                    popped == Some(self.scope_ptr),
+                    "TLS scope stack corrupted: expected to pop same scope"
+                );
+            });
+        }
+    }
+
     #[inline]
     pub unsafe fn with_protect_scope<F, R>(f: F) -> R
     where
@@ -752,20 +750,14 @@ pub mod tls {
             stack.borrow_mut().push(scope_ptr);
         });
 
-        // Run the user's closure
-        let result = f();
+        // Guard ensures TLS stack is popped even on panic.
+        // The guard must be dropped BEFORE scope (declared after scope),
+        // so the TLS stack is popped before UNPROTECT runs.
+        let _guard = TlsScopeGuard { scope_ptr };
 
-        // Pop the scope from TLS stack
-        SCOPE_STACK.with(|stack| {
-            let popped = stack.borrow_mut().pop();
-            debug_assert!(
-                popped == Some(scope_ptr),
-                "TLS scope stack corrupted: expected to pop same scope"
-            );
-        });
-
-        // scope drops here, calling UNPROTECT(n)
-        result
+        // Run the user's closure - if it panics, _guard drops and pops TLS,
+        // then scope drops and calls UNPROTECT(n)
+        f()
     }
 
     /// Protect a value using the current TLS scope.

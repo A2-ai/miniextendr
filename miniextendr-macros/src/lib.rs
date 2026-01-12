@@ -1325,6 +1325,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|(_, expr)| expr.clone())
         .collect();
 
+    // Generate sidecar call defs for registration (from #[derive(ExternalPtr)] with #[r_data])
+    // These are generated even if empty - the constants exist but may be zero-length arrays
+    let rdata_call_defs: Vec<syn::Expr> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let call_defs_static = i.rdata_call_defs_const_ident();
+            syn::parse_quote!(#call_defs_static)
+        })
+        .collect();
+
     // Generate impl R wrapper refs with cfg attributes
     let impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .impls
@@ -1333,6 +1344,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             let r_wrapper_const = i.r_wrappers_const_ident();
             let cfg_attrs = extract_cfg_attrs(&i.attrs);
             (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
+        })
+        .collect();
+
+    // Generate sidecar R wrapper refs (from #[derive(ExternalPtr)] with #[r_data])
+    let rdata_r_wrappers: Vec<syn::Expr> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let r_wrapper_const = i.rdata_r_wrappers_const_ident();
+            syn::parse_quote!(#r_wrapper_const)
         })
         .collect();
 
@@ -1550,6 +1571,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Sidecar call defs length (from #[derive(ExternalPtr)] with #[r_data])
+    let rdata_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let call_defs_static = i.rdata_call_defs_const_ident();
+            quote::quote!(<[_]>::len(&#call_defs_static))
+        })
+        .collect();
+
     // Calculate total length expression, including conditional cfg lengths
     let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
         .iter()
@@ -1560,12 +1591,14 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .chain(cfg_len_exprs.iter().cloned())
             .chain(impl_call_defs_len_exprs.iter().cloned())
             .chain(trait_impl_call_defs_len_exprs.iter().cloned())
+            .chain(rdata_call_defs_len_exprs.iter().cloned())
             .collect();
     let total_len_expr = if all_len_exprs.is_empty()
         || (call_entries_len == 0
             && cfg_len_idents.is_empty()
             && impl_call_defs_len_exprs.is_empty()
-            && trait_impl_call_defs_len_exprs.is_empty())
+            && trait_impl_call_defs_len_exprs.is_empty()
+            && rdata_call_defs_len_exprs.is_empty())
     {
         quote::quote!(0usize)
     } else {
@@ -1610,6 +1643,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#trait_impl_call_defs;
+                while j < <[_]>::len(slice) {
+                    entries[idx] = slice[j];
+                    idx += 1;
+                    j += 1;
+                }
+            )*
+            #(
+                let mut j: usize = 0;
+                let slice = &#rdata_call_defs;
                 while j < <[_]>::len(slice) {
                     entries[idx] = slice[j];
                     idx += 1;
@@ -1684,11 +1726,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Check if we have trait impl blocks to register
     let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
-    // Generate R wrapper impls constant - includes both impl and trait impl wrappers
-    // Combine both with cfg info and generate conditional array elements
+    // Generate R wrapper impls constant - includes impl, trait impl, and sidecar wrappers
+    // Combine all with cfg info and generate conditional array elements
     let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
     all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
     all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
+    // Add sidecar R wrappers (from #[derive(ExternalPtr)] with #[r_data])
+    all_impl_r_wrappers_with_cfg.extend(
+        rdata_r_wrappers
+            .iter()
+            .map(|expr| (Vec::new(), expr.clone())),
+    );
 
     // Generate array elements with cfg attributes where needed
     let all_impl_r_wrapper_elements: Vec<proc_macro2::TokenStream> = all_impl_r_wrappers_with_cfg

@@ -210,6 +210,15 @@ fn strvec_builder_construction(size_idx: usize) {
 }
 
 /// Manual string vector construction
+///
+/// # Safety Warning
+///
+/// This benchmark is **intentionally unsafe** to measure the cost difference
+/// vs. properly protected approaches. The CHARSXP from `Rf_mkCharLenCE` is
+/// NOT protected before `SET_STRING_ELT`, creating a GC window. In real code,
+/// use `StrVecBuilder::set_str` or protect the CHARSXP.
+///
+/// **DO NOT copy this pattern into production code.**
 #[divan::bench(args = [0usize, 1, 2])]
 fn strvec_manual_construction(size_idx: usize) {
     let n = LIST_SIZES[size_idx];
@@ -218,6 +227,7 @@ fn strvec_manual_construction(size_idx: usize) {
         let vec = scope.protect_raw(Rf_allocVector(SEXPTYPE::STRSXP, n));
 
         for i in 0..n {
+            // UNSAFE: charsxp unprotected - GC risk! See doc comment above.
             let charsxp = ffi::Rf_mkCharLenCE("hello".as_ptr().cast(), 5, ffi::CE_UTF8);
             ffi::SET_STRING_ELT(vec, i, charsxp);
         }
@@ -259,8 +269,8 @@ fn build_named_list_realistic() {
         builder.set(1, scope.protect_raw(ffi::Rf_ScalarReal(3.14)));
         // Logical
         builder.set(2, scope.protect_raw(ffi::Rf_ScalarLogical(1)));
-        // String
-        let s = ffi::Rf_mkCharLenCE("test".as_ptr().cast(), 4, ffi::CE_UTF8);
+        // String - protect CHARSXP before passing to Rf_ScalarString
+        let s = scope.protect_raw(ffi::Rf_mkCharLenCE("test".as_ptr().cast(), 4, ffi::CE_UTF8));
         builder.set(3, scope.protect_raw(ffi::Rf_ScalarString(s)));
         // Nested list
         let inner = ListBuilder::new(&scope, 2);

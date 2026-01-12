@@ -261,6 +261,62 @@
   - Content: Initialization order, function explanations, API timing table,
     minimal example, embedding R section, troubleshooting
 
+== GC Protect Review Findings (2026-01-12)
+See `reviews/gc_protect_review.md` for full context.
+
+=== HIGH: Soundness Issues
+- [x] `ReprotectSlot::set` returns stale `Root<'a>` - use-after-unprotect risk
+  - `miniextendr-api/src/gc_protect.rs:629`
+  - Fix: Changed `set()` to return raw `SEXP` instead of `Root<'a>`
+  - Added doc comment warning that SEXP is only protected until next `set()` call
+- [x] `ReprotectSlot::Deref` violates `Cell` aliasing rules - potential UB
+  - `miniextendr-api/src/gc_protect.rs:663`
+  - Fix: Removed `Deref` impl entirely, added comment explaining why
+  - Users should use `get()` which returns SEXP by value
+
+=== MEDIUM: Panic Safety
+- [x] `tls::with_protect_scope` not panic-safe - dangling TLS pointer
+  - `miniextendr-api/src/gc_protect.rs:741`
+  - Fix: Added `TlsScopeGuard` struct that pops TLS stack in `Drop` impl
+  - Guard ensures cleanup even during panic unwinding
+
+=== MEDIUM: Benchmark Issues
+- [x] Unprotected CHARSXP in manual string benchmarks
+  - `strvec_manual_construction`: Added explicit "intentionally unsafe" warning
+  - `build_named_list_realistic`: Fixed by protecting CHARSXP before use
+
+=== Testing Gaps
+- [ ] Add tests for TLS panic cleanup behavior
+- [ ] Add tests for `ReprotectSlot::set` invalidation semantics
+
+== ExternalPtr Sidecar R Wrappers (Planned Feature)
+See `plans/externalptr_sidecar_r_wrappers.md` for full design.
+
+=== Overview
+Expose `#[r_data]` sidecar fields from `ExternalPtr` structs to R as getter/setter functions.
+
+=== Implementation Tasks
+- [x] Add `RSidecar` and `RData` marker types (ZST) to miniextendr-api
+  - Added to `miniextendr-api/src/externalptr.rs` with full documentation
+- [x] Update `#[derive(ExternalPtr)]` to emit:
+  - `RDATA_CALL_DEFS_<TYPE>`: `&[R_CallMethodDef]` for sidecar accessors
+  - `R_WRAPPERS_RDATA_<TYPE>`: `&str` R wrapper code
+  - Parses `#[r_data]` attributes on struct fields
+  - Generates getter/setter C functions for pub RData fields
+- [x] Update `miniextendr_module!` to auto-include sidecar accessors when type registered
+  - Added `rdata_call_defs_const_ident()` and `rdata_r_wrappers_const_ident()` to MiniextendrModuleImpl
+  - Sidecar call defs included in CALL_ENTRIES array
+  - Sidecar R wrappers included in R_WRAPPERS_IMPLS array
+- [x] Generate R functions: `<type>_get_<field>(x)` and `<type>_set_<field>(x, value)`
+  - Getter returns SEXP from prot slot
+  - Setter updates prot slot and returns invisible(x)
+- [x] Add compile error for generic types with `pub` `#[r_data]` fields
+  - Error: "generic types with pub #[r_data] fields are not supported; .Call entrypoints cannot be generic"
+
+=== Tests
+- [ ] UI tests: multiple selector fields error, non-marker type error, generic type error
+- [ ] Runtime tests: getter returns stored SEXP, setter updates and returns invisible(x)
+
 === Reference Study Tasks (from background/)
 
 ==== R Internals & Extensions
@@ -309,7 +365,7 @@
     - miniextendr's `gc_protect.rs` correctly models these patterns
   - [x] Location: `src/main/altclasses.c` - ALTREP dispatch studied
     - Concrete implementations: compact_intseq, compact_realseq, deferred_string, mmap, wrapper
-    - Pattern: define methods (Length, Elt, Get_region, etc.) then register with R_set_alt*_method
+    - Pattern: define methods (Length, Elt, Get_region, etc.) then register with `R_set_alt*_method()`
     - Coerce method returns NULL to signal "use default coercion" (matches miniextendr)
     - Duplicate method creates materialized copy
     - Is_sorted returns: SORTED_DECR_NA_1ST, SORTED_INCR, UNKNOWN_SORTEDNESS, etc.
