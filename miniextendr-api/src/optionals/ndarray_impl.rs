@@ -108,7 +108,7 @@ pub use ndarray::{
 };
 
 use crate::coerce::TryCoerce;
-use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{RLogical, RNativeType, SexpExt, SEXP, SEXPTYPE};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;
@@ -219,13 +219,13 @@ fn array4_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array4<T>, Sexp
     }
 
     let slice: &[T] = unsafe { sexp.as_slice() };
-    Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec()).map_err(
-        |_| SexpLengthError {
+    Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec()).map_err(|_| {
+        SexpLengthError {
             expected: dims.iter().product(),
             actual: slice.len(),
         }
-        .into(),
-    )
+        .into()
+    })
 }
 
 fn array5_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array5<T>, SexpError> {
@@ -255,11 +255,13 @@ fn array5_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array5<T>, Sexp
         (dims[0], dims[1], dims[2], dims[3], dims[4]).f(),
         slice.to_vec(),
     )
-    .map_err(|_| SexpLengthError {
-        expected: dims.iter().product(),
-        actual: slice.len(),
-    }
-    .into())
+    .map_err(|_| {
+        SexpLengthError {
+            expected: dims.iter().product(),
+            actual: slice.len(),
+        }
+        .into()
+    })
 }
 
 fn array6_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array6<T>, SexpError> {
@@ -289,11 +291,13 @@ fn array6_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<Array6<T>, Sexp
         (dims[0], dims[1], dims[2], dims[3], dims[4], dims[5]).f(),
         slice.to_vec(),
     )
-    .map_err(|_| SexpLengthError {
-        expected: dims.iter().product(),
-        actual: slice.len(),
-    }
-    .into())
+    .map_err(|_| {
+        SexpLengthError {
+            expected: dims.iter().product(),
+            actual: slice.len(),
+        }
+        .into()
+    })
 }
 
 fn arrayd_from_sexp<T: RNativeType + Copy>(sexp: SEXP) -> Result<ArrayD<T>, SexpError> {
@@ -2069,10 +2073,7 @@ impl RNdArrayOps for Array1<i32> {
             return f64::NAN;
         }
         let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
-        self.iter()
-            .map(|&x| (x as f64 - mean).powi(2))
-            .sum::<f64>()
-            / n
+        self.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n
     }
 
     fn std(&self) -> f64 {
@@ -2129,10 +2130,7 @@ impl RNdArrayOps for Array2<i32> {
             return f64::NAN;
         }
         let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
-        self.iter()
-            .map(|&x| (x as f64 - mean).powi(2))
-            .sum::<f64>()
-            / n
+        self.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n
     }
 
     fn std(&self) -> f64 {
@@ -2189,10 +2187,7 @@ impl RNdArrayOps for ArrayD<i32> {
             return f64::NAN;
         }
         let mean = self.iter().map(|&x| x as f64).sum::<f64>() / n;
-        self.iter()
-            .map(|&x| (x as f64 - mean).powi(2))
-            .sum::<f64>()
-            / n
+        self.iter().map(|&x| (x as f64 - mean).powi(2)).sum::<f64>() / n
     }
 
     fn std(&self) -> f64 {

@@ -113,10 +113,7 @@ impl TryFromSexp for Vec<Regex> {
             .enumerate()
             .map(|(i, pattern)| {
                 Regex::new(&pattern).map_err(|e| {
-                    SexpError::InvalidValue(format!(
-                        "invalid regex pattern at index {}: {}",
-                        i, e
-                    ))
+                    SexpError::InvalidValue(format!("invalid regex pattern at index {}: {}", i, e))
                 })
             })
             .collect()
@@ -133,14 +130,9 @@ impl TryFromSexp for Vec<Option<Regex>> {
             .enumerate()
             .map(|(i, opt)| match opt {
                 None => Ok(None),
-                Some(pattern) => Regex::new(&pattern)
-                    .map(Some)
-                    .map_err(|e| {
-                        SexpError::InvalidValue(format!(
-                            "invalid regex pattern at index {}: {}",
-                            i, e
-                        ))
-                    }),
+                Some(pattern) => Regex::new(&pattern).map(Some).map_err(|e| {
+                    SexpError::InvalidValue(format!("invalid regex pattern at index {}: {}", i, e))
+                }),
             })
             .collect()
     }

@@ -182,6 +182,7 @@ pub fn add_left_right_mut(left: i32, right: i32) -> i32 {
 
 // region: panic printing
 
+/// @rdname rpkg_panic_tests
 #[unsafe(no_mangle)]
 #[miniextendr]
 pub extern "C-unwind" fn C_just_panic() -> SEXP {
@@ -190,6 +191,7 @@ pub extern "C-unwind" fn C_just_panic() -> SEXP {
 
 /// If you call a miniextendr function that panics, and then `C_panic_catch`,
 /// you'll see that the panic hook was not reset.
+/// @rdname rpkg_panic_tests
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -199,6 +201,7 @@ pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
     unsafe { ::miniextendr_api::ffi::R_NilValue }
 }
 
+/// @rdname rpkg_panic_tests
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -207,6 +210,7 @@ pub extern "C-unwind" fn C_r_error() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr()) }
 }
 
+/// @rdname rpkg_panic_tests
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
@@ -235,6 +239,7 @@ fn extract_panic_message(e: Box<dyn std::any::Any + Send>) -> String {
 
 /// This panics cleanly because checked Rf_error detects wrong thread.
 /// The panic message is "Rf_error called from non-main thread".
+/// @rdname rpkg_panic_tests
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
@@ -252,6 +257,7 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
 }
 
 /// This panics cleanly because checked Rprintf detects wrong thread.
+/// @rdname rpkg_panic_tests
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]

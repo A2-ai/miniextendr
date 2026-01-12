@@ -455,7 +455,7 @@ enum MiniextendrModuleItem {
     Struct(MiniextendrModuleStruct),
     Func(MiniextendrModuleFunction),
     Impl(MiniextendrModuleImpl),
-    TraitImpl(MiniextendrModuleTraitImpl),
+    TraitImpl(Box<MiniextendrModuleTraitImpl>),
 }
 
 impl syn::parse::Parse for MiniextendrModuleItem {
@@ -480,7 +480,7 @@ impl syn::parse::Parse for MiniextendrModuleItem {
             let _: syn::Path = fork2.parse()?;
             if fork2.peek(syn::Token![for]) {
                 // This is `impl Trait for Type;`
-                Ok(Self::TraitImpl(input.parse()?))
+                Ok(Self::TraitImpl(Box::new(input.parse()?)))
             } else {
                 // This is `impl Type;`
                 Ok(Self::Impl(input.parse()?))
@@ -520,7 +520,7 @@ impl syn::parse::Parse for MiniextendrModule {
                 MiniextendrModuleItem::Struct(s) => structs.push(s),
                 MiniextendrModuleItem::Func(f) => funs.push(f),
                 MiniextendrModuleItem::Impl(i) => impls.push(i),
-                MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(ti),
+                MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(*ti),
             }
         }
 

@@ -624,8 +624,7 @@ pub fn lazy_int_seq_is_materialized(x: SEXP) -> bool {
 /// lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
 /// }
 
-/// Create a compact integer sequence with explicit length, start, and step.
-///
+/// @description Create a compact integer sequence with explicit length, start, and step.
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
 fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
