@@ -10,8 +10,8 @@
 
 use miniextendr_api::ffi::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
-use miniextendr_api::preserve;
 use miniextendr_api::list::{List, ListBuilder};
+use miniextendr_api::preserve;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 
 fn main() {
@@ -320,7 +320,7 @@ fn build_named_list_realistic() {
         // Integer
         builder.set(0, scope.protect_raw(ffi::Rf_ScalarInteger(42)));
         // Real
-        builder.set(1, scope.protect_raw(ffi::Rf_ScalarReal(3.14)));
+        builder.set(1, scope.protect_raw(ffi::Rf_ScalarReal(1.5)));
         // Logical
         builder.set(2, scope.protect_raw(ffi::Rf_ScalarLogical(1)));
         // String - protect CHARSXP before passing to Rf_ScalarString
@@ -462,7 +462,8 @@ fn list_constant_vs_growing(n: usize) {
     unsafe {
         // Constant stack pattern (set_elt)
         let scope1 = ProtectScope::new();
-        let list1 = List::from_raw(scope1.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)));
+        let list1 =
+            List::from_raw(scope1.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)));
         for i in 0..n {
             list1.set_elt(i as isize, ffi::Rf_ScalarInteger(i as i32));
         }
@@ -471,7 +472,8 @@ fn list_constant_vs_growing(n: usize) {
 
         // Growing stack pattern (protect_raw + unchecked)
         let scope2 = ProtectScope::new();
-        let list2 = List::from_raw(scope2.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)));
+        let list2 =
+            List::from_raw(scope2.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, n as isize)));
         for i in 0..n {
             let child = scope2.protect_raw(ffi::Rf_ScalarInteger(i as i32));
             list2.set_elt_unchecked(i as isize, child);

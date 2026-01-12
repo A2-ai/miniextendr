@@ -1,7 +1,7 @@
 //! Comprehensive conversions matrix for [`#[miniextendr]`](miniextendr_api::miniextendr) arguments and returns.
 
-use miniextendr_api::{miniextendr, miniextendr_module, IntoR, ListMut};
 use miniextendr_api::ffi::{RLogical, Rboolean, SEXP};
+use miniextendr_api::{IntoR, ListMut, miniextendr, miniextendr_module};
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 // -----------------------------------------------------------------------------
@@ -677,7 +677,9 @@ pub fn conv_hashmap_i32_len(x: HashMap<String, i32>) -> i32 {
 
 #[miniextendr]
 pub fn conv_hashmap_i32_ret() -> HashMap<String, i32> {
-    vec![("a".to_string(), 1), ("b".to_string(), 2)].into_iter().collect()
+    vec![("a".to_string(), 1), ("b".to_string(), 2)]
+        .into_iter()
+        .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -688,7 +690,9 @@ pub fn conv_hashmap_f64_len(x: HashMap<String, f64>) -> i32 {
 
 #[miniextendr]
 pub fn conv_hashmap_f64_ret() -> HashMap<String, f64> {
-    vec![("a".to_string(), 1.5), ("b".to_string(), 2.5)].into_iter().collect()
+    vec![("a".to_string(), 1.5), ("b".to_string(), 2.5)]
+        .into_iter()
+        .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -699,7 +703,12 @@ pub fn conv_hashmap_string_len(x: HashMap<String, String>) -> i32 {
 
 #[miniextendr]
 pub fn conv_hashmap_string_ret() -> HashMap<String, String> {
-    vec![("a".to_string(), "x".to_string()), ("b".to_string(), "y".to_string())].into_iter().collect()
+    vec![
+        ("a".to_string(), "x".to_string()),
+        ("b".to_string(), "y".to_string()),
+    ]
+    .into_iter()
+    .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -710,7 +719,12 @@ pub fn conv_hashmap_rlog_len(x: HashMap<String, RLogical>) -> i32 {
 
 #[miniextendr]
 pub fn conv_hashmap_rlog_ret() -> HashMap<String, RLogical> {
-    vec![("a".to_string(), RLogical::TRUE), ("b".to_string(), RLogical::FALSE)].into_iter().collect()
+    vec![
+        ("a".to_string(), RLogical::TRUE),
+        ("b".to_string(), RLogical::FALSE),
+    ]
+    .into_iter()
+    .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -721,7 +735,9 @@ pub fn conv_btreemap_i32_len(x: BTreeMap<String, i32>) -> i32 {
 
 #[miniextendr]
 pub fn conv_btreemap_i32_ret() -> BTreeMap<String, i32> {
-    vec![("a".to_string(), 1), ("b".to_string(), 2)].into_iter().collect()
+    vec![("a".to_string(), 1), ("b".to_string(), 2)]
+        .into_iter()
+        .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -732,7 +748,9 @@ pub fn conv_btreemap_f64_len(x: BTreeMap<String, f64>) -> i32 {
 
 #[miniextendr]
 pub fn conv_btreemap_f64_ret() -> BTreeMap<String, f64> {
-    vec![("a".to_string(), 1.5), ("b".to_string(), 2.5)].into_iter().collect()
+    vec![("a".to_string(), 1.5), ("b".to_string(), 2.5)]
+        .into_iter()
+        .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -743,7 +761,12 @@ pub fn conv_btreemap_string_len(x: BTreeMap<String, String>) -> i32 {
 
 #[miniextendr]
 pub fn conv_btreemap_string_ret() -> BTreeMap<String, String> {
-    vec![("a".to_string(), "x".to_string()), ("b".to_string(), "y".to_string())].into_iter().collect()
+    vec![
+        ("a".to_string(), "x".to_string()),
+        ("b".to_string(), "y".to_string()),
+    ]
+    .into_iter()
+    .collect()
 }
 
 // -----------------------------------------------------------------------------
@@ -754,7 +777,12 @@ pub fn conv_btreemap_rlog_len(x: BTreeMap<String, RLogical>) -> i32 {
 
 #[miniextendr]
 pub fn conv_btreemap_rlog_ret() -> BTreeMap<String, RLogical> {
-    vec![("a".to_string(), RLogical::TRUE), ("b".to_string(), RLogical::FALSE)].into_iter().collect()
+    vec![
+        ("a".to_string(), RLogical::TRUE),
+        ("b".to_string(), RLogical::FALSE),
+    ]
+    .into_iter()
+    .collect()
 }
 
 // -----------------------------------------------------------------------------

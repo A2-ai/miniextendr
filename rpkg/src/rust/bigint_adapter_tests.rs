@@ -5,7 +5,9 @@ use std::str::FromStr;
 
 #[miniextendr]
 pub fn bigint_roundtrip(s: &str) -> String {
-    BigInt::from_str(s).map(|bi| bi.to_string()).unwrap_or_else(|_| "PARSE_ERROR".into())
+    BigInt::from_str(s)
+        .map(|bi| bi.to_string())
+        .unwrap_or_else(|_| "PARSE_ERROR".into())
 }
 
 #[miniextendr]
@@ -33,7 +35,9 @@ pub fn bigint_factorial(n: i32) -> String {
 
 #[miniextendr]
 pub fn bigint_is_positive(s: &str) -> bool {
-    BigInt::from_str(s).map(|bi| bi > BigInt::from(0)).unwrap_or(false)
+    BigInt::from_str(s)
+        .map(|bi| bi > BigInt::from(0))
+        .unwrap_or(false)
 }
 
 miniextendr_module! {

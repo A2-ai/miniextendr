@@ -171,7 +171,10 @@ impl TryCoerce<f64> for BigInt {
         }
 
         // For larger values, convert and check round-trip
-        let f = self.to_string().parse::<f64>().map_err(|_| CoerceError::Overflow)?;
+        let f = self
+            .to_string()
+            .parse::<f64>()
+            .map_err(|_| CoerceError::Overflow)?;
         let roundtrip = BigInt::from_str(&format!("{:.0}", f));
         if let Ok(rt) = roundtrip {
             if rt == self {

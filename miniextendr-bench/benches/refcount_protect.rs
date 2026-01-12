@@ -531,7 +531,9 @@ fn thread_local_hash_protect_unprotect(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(
+                i as i32,
+            )));
         }
 
         for x in values.into_iter().rev() {
@@ -668,7 +670,9 @@ fn thread_local_fast_cycle(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalArena::protect_fast(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(ThreadLocalArena::protect_fast(ffi::Rf_ScalarInteger(
+                i as i32,
+            )));
         }
 
         for x in values.into_iter().rev() {
@@ -687,7 +691,9 @@ fn thread_local_hash_fast_cycle(n: usize) {
         let mut values = Vec::with_capacity(n);
 
         for i in 0..n {
-            values.push(ThreadLocalHashArena::protect_fast(ffi::Rf_ScalarInteger(i as i32)));
+            values.push(ThreadLocalHashArena::protect_fast(ffi::Rf_ScalarInteger(
+                i as i32,
+            )));
         }
 
         for x in values.into_iter().rev() {

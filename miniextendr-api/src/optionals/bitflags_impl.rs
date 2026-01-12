@@ -301,14 +301,9 @@ where
                     ))
                 })?;
 
-                T::from_bits(bits)
-                    .map(RFlags)
-                    .ok_or_else(|| {
-                        SexpError::InvalidValue(format!(
-                            "invalid bits 0x{:x} at index {}",
-                            int_val, i
-                        ))
-                    })
+                T::from_bits(bits).map(RFlags).ok_or_else(|| {
+                    SexpError::InvalidValue(format!("invalid bits 0x{:x} at index {}", int_val, i))
+                })
             })
             .collect()
     }
@@ -413,9 +408,7 @@ where
     fn into_sexp(self) -> SEXP {
         let ints: Vec<Option<i32>> = self
             .into_iter()
-            .map(|opt| {
-                opt.and_then(|flags| flags.0.bits().try_into().ok())
-            })
+            .map(|opt| opt.and_then(|flags| flags.0.bits().try_into().ok()))
             .collect();
         ints.into_sexp()
     }

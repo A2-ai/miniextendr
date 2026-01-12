@@ -4,7 +4,7 @@
 //! backed by Rust types. Requires the `connections` feature.
 
 #[cfg(feature = "connections")]
-use miniextendr_api::connection::{RConnectionImpl, RCustomConnection, RConnectionIo};
+use miniextendr_api::connection::{RConnectionImpl, RConnectionIo, RCustomConnection};
 #[cfg(feature = "connections")]
 use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "connections")]
@@ -202,8 +202,7 @@ impl RConnectionImpl for CounterConnection {
         }
 
         let to_read = buf.len().min(available);
-        buf[..to_read]
-            .copy_from_slice(&self.buffer[self.buffer_pos..self.buffer_pos + to_read]);
+        buf[..to_read].copy_from_slice(&self.buffer[self.buffer_pos..self.buffer_pos + to_read]);
         self.buffer_pos += to_read;
         to_read
     }

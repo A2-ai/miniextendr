@@ -598,10 +598,13 @@ pub fn miniextendr(
                         pat_ident.mutability = None;
                         pat_ident.by_ref = None;
                         let ident = pat_ident;
-                        c_wrapper_inputs.push(syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP));
+                        c_wrapper_inputs
+                            .push(syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP));
                     }
                     syn::Pat::Wild(_) => {
-                        unreachable!("wildcard patterns should have been transformed to synthetic identifiers")
+                        unreachable!(
+                            "wildcard patterns should have been transformed to synthetic identifiers"
+                        )
                     }
                     _ => {
                         let err = syn::Error::new_spanned(
@@ -1017,9 +1020,7 @@ pub fn miniextendr(
         let generic = s3_generic.clone().unwrap_or_else(|| rust_ident.to_string());
         // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
         // validates that s3(...) always has class specified
-        let class = s3_class
-            .as_ref()
-            .expect("s3_class validated at parse time");
+        let class = s3_class.as_ref().expect("s3_class validated at parse time");
         r_wrapper_ident_str = format!("{}.{}", generic, class);
         // Add @importFrom for vctrs generics so roxygen registers the dependency
         let import_comment = if is_vctrs_generic(&generic) {
@@ -1277,11 +1278,14 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|(i, (cfg_attrs, _))| {
             let const_name = quote::format_ident!("__CFG_FN_LEN_{}", i);
             // Generate both cfg and not(cfg) variants
-            let negated_attrs: Vec<proc_macro2::TokenStream> = cfg_attrs.iter().map(|attr| {
-                // Extract the meta from the cfg attribute and negate it
-                let meta = &attr.meta;
-                quote::quote!(#[cfg(not #meta)])
-            }).collect();
+            let negated_attrs: Vec<proc_macro2::TokenStream> = cfg_attrs
+                .iter()
+                .map(|attr| {
+                    // Extract the meta from the cfg attribute and negate it
+                    let meta = &attr.meta;
+                    quote::quote!(#[cfg(not #meta)])
+                })
+                .collect();
             quote::quote! {
                 #(#cfg_attrs)*
                 const #const_name: usize = 1;
@@ -1368,14 +1372,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     // Generate trait impl call defs for registration with cfg attributes
     // (only for regular trait impls, not ALTREP)
-    let trait_impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = regular_trait_impls
-        .iter()
-        .map(|ti| {
-            let call_defs_static = ti.call_defs_const_ident();
-            let cfg_attrs = extract_cfg_attrs(&ti.attrs);
-            (cfg_attrs, syn::parse_quote!(#call_defs_static))
-        })
-        .collect();
+    let trait_impl_call_defs_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> =
+        regular_trait_impls
+            .iter()
+            .map(|ti| {
+                let call_defs_static = ti.call_defs_const_ident();
+                let cfg_attrs = extract_cfg_attrs(&ti.attrs);
+                (cfg_attrs, syn::parse_quote!(#call_defs_static))
+            })
+            .collect();
     let trait_impl_call_defs: Vec<syn::Expr> = trait_impl_call_defs_with_attrs
         .iter()
         .map(|(_, expr)| expr.clone())

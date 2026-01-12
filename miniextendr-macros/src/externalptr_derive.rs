@@ -268,7 +268,7 @@ fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Re
                 has_selector: false,
                 slots: vec![],
                 class_system,
-            })
+            });
         }
     };
 
@@ -841,9 +841,14 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         ));
     }
 
-    let const_name_defs = Ident::new(&format!("RDATA_CALL_DEFS_{}", name_upper), Span::call_site());
-    let const_name_wrappers =
-        Ident::new(&format!("R_WRAPPERS_RDATA_{}", name_upper), Span::call_site());
+    let const_name_defs = Ident::new(
+        &format!("RDATA_CALL_DEFS_{}", name_upper),
+        Span::call_site(),
+    );
+    let const_name_wrappers = Ident::new(
+        &format!("R_WRAPPERS_RDATA_{}", name_upper),
+        Span::call_site(),
+    );
 
     Ok(quote::quote! {
         #(#c_functions)*

@@ -419,7 +419,10 @@ impl<'a> ListBuilder<'a> {
     pub unsafe fn new(scope: &'a ProtectScope, len: isize) -> Self {
         // SAFETY: caller guarantees R main thread
         let list = unsafe { scope.protect_raw(ffi::Rf_allocVector(VECSXP, len)) };
-        Self { list, _scope: scope }
+        Self {
+            list,
+            _scope: scope,
+        }
     }
 
     /// Create a builder wrapping an existing protected list.
@@ -430,7 +433,10 @@ impl<'a> ListBuilder<'a> {
     /// - `list` must be a valid, protected VECSXP
     #[inline]
     pub unsafe fn from_protected(scope: &'a ProtectScope, list: SEXP) -> Self {
-        Self { list, _scope: scope }
+        Self {
+            list,
+            _scope: scope,
+        }
     }
 
     /// Set an element at the given index.

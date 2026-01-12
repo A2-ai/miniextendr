@@ -266,11 +266,8 @@ fn generate_vtable_static(
 ) -> TokenStream {
     // Extract trait name for naming
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
-        return syn::Error::new_spanned(
-            trait_path,
-            "trait path must have at least one segment",
-        )
-        .into_compile_error();
+        return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
+            .into_compile_error();
     };
 
     // Extract type identifier (for simple types)

@@ -265,9 +265,10 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn C_r_print_in_thread() -> SEXP {
     // Use checked Rprintf - will panic with clear message about wrong thread.
-    let result =
-        std::thread::spawn(|| unsafe { miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"arg1".as_ptr()) })
-            .join();
+    let result = std::thread::spawn(|| unsafe {
+        miniextendr_api::ffi::Rprintf(c"%s".as_ptr(), c"arg1".as_ptr())
+    })
+    .join();
 
     match result {
         Ok(()) => unsafe { miniextendr_api::ffi::R_NilValue },

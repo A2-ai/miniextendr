@@ -108,7 +108,7 @@ pub use ndarray::{
 };
 
 use crate::coerce::TryCoerce;
-use crate::ffi::{RLogical, RNativeType, SexpExt, SEXP, SEXPTYPE};
+use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
 use crate::gc_protect::{OwnedProtect, ProtectScope};
 use crate::into_r::IntoR;

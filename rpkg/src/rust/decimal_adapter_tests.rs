@@ -5,7 +5,9 @@ use std::str::FromStr;
 
 #[miniextendr]
 pub fn decimal_roundtrip(s: &str) -> String {
-    Decimal::from_str(s).map(|d| d.to_string()).unwrap_or_else(|_| "PARSE_ERROR".into())
+    Decimal::from_str(s)
+        .map(|d| d.to_string())
+        .unwrap_or_else(|_| "PARSE_ERROR".into())
 }
 
 #[miniextendr]
@@ -24,7 +26,9 @@ pub fn decimal_mul(a: &str, b: &str) -> String {
 
 #[miniextendr]
 pub fn decimal_round(s: &str, dp: i32) -> String {
-    Decimal::from_str(s).map(|d| d.round_dp(dp as u32).to_string()).unwrap_or_else(|_| "PARSE_ERROR".into())
+    Decimal::from_str(s)
+        .map(|d| d.round_dp(dp as u32).to_string())
+        .unwrap_or_else(|_| "PARSE_ERROR".into())
 }
 
 #[miniextendr]

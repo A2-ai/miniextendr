@@ -437,8 +437,8 @@ fn toml_value_option_from_nil() {
 #[cfg(feature = "toml")]
 #[test]
 fn toml_value_option_from_string() {
-    use miniextendr_api::toml_impl::TomlValue;
     use miniextendr_api::into_r::IntoR;
+    use miniextendr_api::toml_impl::TomlValue;
 
     r_test_utils::with_r_thread(|| {
         let mut guard = ProtectCount::default();
@@ -578,8 +578,7 @@ fn json_value_unchecked_vec_option() {
             let nil = miniextendr_api::ffi::R_NilValue;
             let list = make_list(&[int_sexp, nil], &mut guard);
 
-            let vec: Vec<Option<JsonValue>> =
-                TryFromSexp::try_from_sexp_unchecked(list).unwrap();
+            let vec: Vec<Option<JsonValue>> = TryFromSexp::try_from_sexp_unchecked(list).unwrap();
             assert_eq!(vec.len(), 2);
             assert!(vec[0].is_some());
             assert!(vec[1].is_none());

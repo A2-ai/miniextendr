@@ -11,8 +11,8 @@ mod r_test_utils;
 
 use miniextendr_api::ffi::{REAL, Rf_xlength, SEXP};
 use miniextendr_api::rayon_bridge::{
-    new_r_array, new_r_matrix, with_r_array, with_r_array_slabs, with_r_matrix,
-    with_r_matrix_cols, with_r_vec,
+    new_r_array, new_r_matrix, with_r_array, with_r_array_slabs, with_r_matrix, with_r_matrix_cols,
+    with_r_vec,
 };
 use rayon::prelude::*;
 

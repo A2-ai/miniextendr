@@ -193,11 +193,9 @@ impl TryFromSexp for Vec<Option<TomlValue>> {
             .enumerate()
             .map(|(i, opt)| match opt {
                 None => Ok(None),
-                Some(s) => toml_from_str(&s)
-                    .map(Some)
-                    .map_err(|e| {
-                        SexpError::InvalidValue(format!("invalid TOML at index {}: {}", i, e))
-                    }),
+                Some(s) => toml_from_str(&s).map(Some).map_err(|e| {
+                    SexpError::InvalidValue(format!("invalid TOML at index {}: {}", i, e))
+                }),
             })
             .collect()
     }

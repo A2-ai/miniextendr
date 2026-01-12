@@ -141,10 +141,7 @@ impl SidecarS3 {}
 /// Create a new SidecarS3.
 #[miniextendr]
 pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
-    ExternalPtr::new(SidecarS3 {
-        _r: RSidecar,
-        data,
-    })
+    ExternalPtr::new(SidecarS3 { _r: RSidecar, data })
 }
 
 // =============================================================================
@@ -175,7 +172,11 @@ impl SidecarS4 {}
 
 /// Create a new SidecarS4.
 #[miniextendr]
-pub fn rdata_sidecar_s4_new(slot_int: i32, slot_real: f64, slot_str: String) -> ExternalPtr<SidecarS4> {
+pub fn rdata_sidecar_s4_new(
+    slot_int: i32,
+    slot_real: f64,
+    slot_str: String,
+) -> ExternalPtr<SidecarS4> {
     ExternalPtr::new(SidecarS4 {
         _r: RSidecar,
         slot_int,
@@ -212,7 +213,11 @@ impl SidecarS7 {}
 
 /// Create a new SidecarS7.
 #[miniextendr]
-pub fn rdata_sidecar_s7_new(prop_int: i32, prop_flag: bool, prop_name: String) -> ExternalPtr<SidecarS7> {
+pub fn rdata_sidecar_s7_new(
+    prop_int: i32,
+    prop_flag: bool,
+    prop_name: String,
+) -> ExternalPtr<SidecarS7> {
     ExternalPtr::new(SidecarS7 {
         _r: RSidecar,
         prop_int,

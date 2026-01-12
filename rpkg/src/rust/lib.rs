@@ -87,11 +87,16 @@ mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
 mod factor_tests;
-mod rdata_sidecar_tests;
 mod gc_protect_tests;
 mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
+#[cfg(feature = "ndarray")]
+#[path = "ndarray_tests.rs"]
+mod ndarray_tests;
+#[cfg(not(feature = "ndarray"))]
+#[path = "ndarray_tests_disabled.rs"]
+mod ndarray_tests;
 mod panic_tests;
 mod r6_default_tests;
 mod r6_tests;
@@ -101,6 +106,7 @@ mod rayon_tests;
 #[cfg(not(feature = "rayon"))]
 #[path = "rayon_tests_disabled.rs"]
 mod rayon_tests;
+mod rdata_sidecar_tests;
 mod receiver_tests;
 mod rng_tests;
 mod s3_tests;
@@ -112,12 +118,6 @@ mod serde_r_tests;
 #[cfg(not(feature = "serde_r"))]
 #[path = "serde_r_tests_disabled.rs"]
 mod serde_r_tests;
-#[cfg(feature = "ndarray")]
-#[path = "ndarray_tests.rs"]
-mod ndarray_tests;
-#[cfg(not(feature = "ndarray"))]
-#[path = "ndarray_tests_disabled.rs"]
-mod ndarray_tests;
 // Feature adapter tests - each feature has its own enabled/disabled module
 #[cfg(feature = "uuid")]
 #[path = "uuid_adapter_tests.rs"]
@@ -813,7 +813,7 @@ impl miniextendr_api::altrep_data::AltrepSerialize for LogicalVecData {
     fn unserialize(state: SEXP) -> Option<Self> {
         const NA_LOGICAL: i32 = i32::MIN;
         unsafe {
-            use miniextendr_api::ffi::{Rf_xlength, LOGICAL_ELT};
+            use miniextendr_api::ffi::{LOGICAL_ELT, Rf_xlength};
             let n = Rf_xlength(state) as usize;
             let mut data = Vec::with_capacity(n);
             for i in 0..n {

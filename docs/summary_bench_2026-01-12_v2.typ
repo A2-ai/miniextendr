@@ -242,6 +242,26 @@ initialization, leaving \~49,960 available in the default configuration.
   , kind: table
   )
 
+==== GC Protection Update (2026-01-12)
+<gc-protection-update-2026-01-12>
+#figure(
+  align(center)[#table(
+    columns: 2,
+    align: (auto,auto,),
+    table.header([Operation], [Median Time],),
+    table.hline(),
+    [Raw protect/unprotect], [14.2 ns],
+    [ProtectScope single], [14.86 ns],
+    [OwnedProtect], [15.02 ns],
+    [Preserve insert/release], [56.36 ns],
+    [Preserve insert/release (unchecked)], [29.51 ns],
+    [Raw expensive reference], [46.6 ns],
+  )]
+  , kind: table
+  )
+
+These medians come from `cargo bench --bench gc_protect` on 2026-01-12.
+
 ==== Reference Counting (same value)
 <reference-counting-same-value>
 #figure(

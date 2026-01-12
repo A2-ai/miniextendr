@@ -81,7 +81,7 @@ static P_MX_QUERY: OnceLock<MxQueryFn> = OnceLock::new();
 /// # Panics
 ///
 /// Panics if:
-/// 
+///
 /// - Called from a non-main thread
 /// - Any C-callable is not found (miniextendr package not loaded)
 /// - Called multiple times (function pointers are already set)
@@ -89,7 +89,7 @@ static P_MX_QUERY: OnceLock<MxQueryFn> = OnceLock::new();
 /// # Safety
 ///
 /// This function is safe to call but has requirements:
-/// 
+///
 /// - Must be called from R's main thread
 /// - Must be called during `R_init_<pkg>` or after R is initialized
 /// - The miniextendr R package must be loaded first

@@ -7,7 +7,7 @@ use miniextendr_api::ndarray_impl::{
     Array1, Array2, ArrayD, ArrayView1, ArrayView2, IxDyn, RNdArrayOps, RNdIndex, RNdSlice,
     RNdSlice2D,
 };
-use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 
 // =============================================================================
 // NdVec - Wrapper for Array1<f64>

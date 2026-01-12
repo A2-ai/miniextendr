@@ -301,7 +301,7 @@ fn many_protections() {
 
         // Some still protected
         assert!(arena.len() < 1000);
-        assert!(arena.len() > 0);
+        assert!(!arena.is_empty());
 
         // Clear the rest
         arena.clear();

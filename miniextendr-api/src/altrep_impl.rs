@@ -1183,8 +1183,7 @@ impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex;
         unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
             .map(|d| {
                 <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::elt(
-                    &*d,
-                    i as usize,
+                    &*d, i as usize,
                 )
             })
             .unwrap_or(crate::ffi::Rcomplex {

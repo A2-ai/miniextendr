@@ -535,12 +535,12 @@ pub use optionals::rayon_bridge;
 #[cfg(feature = "rayon")]
 pub use optionals::{RParallelExtend, RParallelIterator};
 
+#[cfg(feature = "rand_distr")]
+pub use optionals::rand_distr;
 #[cfg(feature = "rand")]
 pub use optionals::rand_impl;
 #[cfg(feature = "rand")]
 pub use optionals::{RDistributionOps, RDistributions, RRng, RRngOps};
-#[cfg(feature = "rand_distr")]
-pub use optionals::rand_distr;
 
 #[cfg(feature = "either")]
 pub use optionals::either_impl;

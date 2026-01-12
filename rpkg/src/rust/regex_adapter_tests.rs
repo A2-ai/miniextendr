@@ -4,12 +4,17 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 #[miniextendr]
 pub fn regex_is_match(pattern: &str, text: &str) -> bool {
-    Regex::new(pattern).map(|re| re.is_match(text)).unwrap_or(false)
+    Regex::new(pattern)
+        .map(|re| re.is_match(text))
+        .unwrap_or(false)
 }
 
 #[miniextendr]
 pub fn regex_find(pattern: &str, text: &str) -> Option<String> {
-    Regex::new(pattern).ok()?.find(text).map(|m| m.as_str().to_string())
+    Regex::new(pattern)
+        .ok()?
+        .find(text)
+        .map(|m| m.as_str().to_string())
 }
 
 #[miniextendr]

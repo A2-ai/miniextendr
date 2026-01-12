@@ -95,7 +95,11 @@ impl fmt::Display for StorageCoerceError {
             }
             StorageCoerceError::NonFinite { to, index } => {
                 if let Some(i) = index {
-                    write!(f, "non-finite value at index {} cannot convert to {}", i, to)
+                    write!(
+                        f,
+                        "non-finite value at index {} cannot convert to {}",
+                        i, to
+                    )
                 } else {
                     write!(f, "non-finite value cannot convert to {}", to)
                 }
@@ -147,37 +151,27 @@ impl StorageCoerceError {
     #[inline]
     pub fn at_index(self, idx: usize) -> Self {
         match self {
-            StorageCoerceError::OutOfRange { from, to, .. } => {
-                StorageCoerceError::OutOfRange {
-                    from,
-                    to,
-                    index: Some(idx),
-                }
-            }
-            StorageCoerceError::NonFinite { to, .. } => {
-                StorageCoerceError::NonFinite {
-                    to,
-                    index: Some(idx),
-                }
-            }
-            StorageCoerceError::PrecisionLoss { to, .. } => {
-                StorageCoerceError::PrecisionLoss {
-                    to,
-                    index: Some(idx),
-                }
-            }
-            StorageCoerceError::NotIntegral { to, .. } => {
-                StorageCoerceError::NotIntegral {
-                    to,
-                    index: Some(idx),
-                }
-            }
-            StorageCoerceError::MissingValue { to, .. } => {
-                StorageCoerceError::MissingValue {
-                    to,
-                    index: Some(idx),
-                }
-            }
+            StorageCoerceError::OutOfRange { from, to, .. } => StorageCoerceError::OutOfRange {
+                from,
+                to,
+                index: Some(idx),
+            },
+            StorageCoerceError::NonFinite { to, .. } => StorageCoerceError::NonFinite {
+                to,
+                index: Some(idx),
+            },
+            StorageCoerceError::PrecisionLoss { to, .. } => StorageCoerceError::PrecisionLoss {
+                to,
+                index: Some(idx),
+            },
+            StorageCoerceError::NotIntegral { to, .. } => StorageCoerceError::NotIntegral {
+                to,
+                index: Some(idx),
+            },
+            StorageCoerceError::MissingValue { to, .. } => StorageCoerceError::MissingValue {
+                to,
+                index: Some(idx),
+            },
             StorageCoerceError::InvalidUtf8 { .. } => {
                 StorageCoerceError::InvalidUtf8 { index: Some(idx) }
             }
@@ -228,12 +222,18 @@ pub trait IntoRAs<Target> {
 
 /// Try to coerce a scalar value, mapping CoerceError to StorageCoerceError.
 #[inline]
-fn try_coerce_scalar<T, R>(value: T, from: &'static str, to: &'static str) -> Result<R, StorageCoerceError>
+fn try_coerce_scalar<T, R>(
+    value: T,
+    from: &'static str,
+    to: &'static str,
+) -> Result<R, StorageCoerceError>
 where
     T: TryCoerce<R>,
     T::Error: Into<CoerceErrorKind>,
 {
-    value.try_coerce().map_err(|e| map_coerce_error(e.into(), from, to))
+    value
+        .try_coerce()
+        .map_err(|e| map_coerce_error(e.into(), from, to))
 }
 
 /// Internal enum to unify different coerce error types.
@@ -262,21 +262,19 @@ impl From<std::convert::Infallible> for CoerceErrorKind {
     }
 }
 
-fn map_coerce_error(kind: CoerceErrorKind, from: &'static str, to: &'static str) -> StorageCoerceError {
+fn map_coerce_error(
+    kind: CoerceErrorKind,
+    from: &'static str,
+    to: &'static str,
+) -> StorageCoerceError {
     match kind {
         CoerceErrorKind::Overflow => StorageCoerceError::OutOfRange {
             from,
             to,
             index: None,
         },
-        CoerceErrorKind::PrecisionLoss => StorageCoerceError::PrecisionLoss {
-            to,
-            index: None,
-        },
-        CoerceErrorKind::NaN => StorageCoerceError::NonFinite {
-            to,
-            index: None,
-        },
+        CoerceErrorKind::PrecisionLoss => StorageCoerceError::PrecisionLoss { to, index: None },
+        CoerceErrorKind::NaN => StorageCoerceError::NonFinite { to, index: None },
         CoerceErrorKind::Infallible => unreachable!(),
     }
 }
@@ -590,8 +588,8 @@ macro_rules! impl_vec_into_r_as_i32 {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, val) in self.into_iter().enumerate() {
-                    let v: i32 = try_coerce_scalar(val, $from_name, "i32")
-                        .map_err(|e| e.at_index(i))?;
+                    let v: i32 =
+                        try_coerce_scalar(val, $from_name, "i32").map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
@@ -602,8 +600,8 @@ macro_rules! impl_vec_into_r_as_i32 {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, &val) in self.iter().enumerate() {
-                    let v: i32 = try_coerce_scalar(val, $from_name, "i32")
-                        .map_err(|e| e.at_index(i))?;
+                    let v: i32 =
+                        try_coerce_scalar(val, $from_name, "i32").map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
@@ -664,8 +662,8 @@ macro_rules! impl_vec_into_r_as_f64 {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, val) in self.into_iter().enumerate() {
-                    let v: f64 = try_coerce_scalar(val, $from_name, "f64")
-                        .map_err(|e| e.at_index(i))?;
+                    let v: f64 =
+                        try_coerce_scalar(val, $from_name, "f64").map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
@@ -676,8 +674,8 @@ macro_rules! impl_vec_into_r_as_f64 {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, &val) in self.iter().enumerate() {
-                    let v: f64 = try_coerce_scalar(val, $from_name, "f64")
-                        .map_err(|e| e.at_index(i))?;
+                    let v: f64 =
+                        try_coerce_scalar(val, $from_name, "f64").map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
@@ -783,7 +781,10 @@ impl_vec_into_r_as_f64!(usize, "usize");
 // Vec<bool> -> f64
 impl IntoRAs<f64> for Vec<bool> {
     fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
-        let result: Vec<f64> = self.into_iter().map(|b| if b { 1.0 } else { 0.0 }).collect();
+        let result: Vec<f64> = self
+            .into_iter()
+            .map(|b| if b { 1.0 } else { 0.0 })
+            .collect();
         Ok(result.into_sexp())
     }
 }
@@ -805,8 +806,8 @@ macro_rules! impl_vec_into_r_as_u8 {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, val) in self.into_iter().enumerate() {
-                    let v: u8 = try_coerce_scalar(val, $from_name, "u8")
-                        .map_err(|e| e.at_index(i))?;
+                    let v: u8 =
+                        try_coerce_scalar(val, $from_name, "u8").map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())
@@ -817,8 +818,8 @@ macro_rules! impl_vec_into_r_as_u8 {
             fn into_r_as(self) -> Result<SEXP, StorageCoerceError> {
                 let mut result = Vec::with_capacity(self.len());
                 for (i, &val) in self.iter().enumerate() {
-                    let v: u8 = try_coerce_scalar(val, $from_name, "u8")
-                        .map_err(|e| e.at_index(i))?;
+                    let v: u8 =
+                        try_coerce_scalar(val, $from_name, "u8").map_err(|e| e.at_index(i))?;
                     result.push(v);
                 }
                 Ok(result.into_sexp())

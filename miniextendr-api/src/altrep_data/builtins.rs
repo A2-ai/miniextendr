@@ -656,11 +656,7 @@ impl AltrepSerialize for Range<i32> {
     fn unserialize(state: SEXP) -> Option<Self> {
         use crate::from_r::TryFromSexp;
         let v = Vec::<i32>::try_from_sexp(state).ok()?;
-        if v.len() == 2 {
-            Some(v[0]..v[1])
-        } else {
-            None
-        }
+        if v.len() == 2 { Some(v[0]..v[1]) } else { None }
     }
 }
 
@@ -691,11 +687,7 @@ impl AltrepSerialize for Range<f64> {
     fn unserialize(state: SEXP) -> Option<Self> {
         use crate::from_r::TryFromSexp;
         let v = Vec::<f64>::try_from_sexp(state).ok()?;
-        if v.len() == 2 {
-            Some(v[0]..v[1])
-        } else {
-            None
-        }
+        if v.len() == 2 { Some(v[0]..v[1]) } else { None }
     }
 }
 

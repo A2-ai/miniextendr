@@ -196,7 +196,11 @@ pub(crate) fn extract_altrep_impls<'a>(
             altrep_impls.push(AltrepTypeInfo {
                 impl_type: &ti.impl_type,
                 base,
-                cfg_attrs: ti.attrs.iter().filter(|a| a.path().is_ident("cfg")).collect(),
+                cfg_attrs: ti
+                    .attrs
+                    .iter()
+                    .filter(|a| a.path().is_ident("cfg"))
+                    .collect(),
             });
         } else {
             other_impls.push(ti);

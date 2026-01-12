@@ -173,9 +173,9 @@ pub fn test_reprotect_slot_count() -> i32 {
 
         // Verify: slot=1, other=1, total=2
         if count_after_slot == 1 && count_after_other == 2 {
-            1  // success
+            1 // success
         } else {
-            0  // failure
+            0 // failure
         }
     }
 }
@@ -199,9 +199,9 @@ pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
 
         // Count should not have grown
         if initial_count == final_count {
-            1  // success
+            1 // success
         } else {
-            0  // failure
+            0 // failure
         }
     }
 }
