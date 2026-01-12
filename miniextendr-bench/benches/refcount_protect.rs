@@ -9,7 +9,7 @@
 
 use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
-use miniextendr_api::refcount_protect::{HashMapArena, RefCountedArena};
+use miniextendr_api::refcount_protect::{HashMapArena, RefCountedArena, ThreadLocalArena};
 
 fn main() {
     miniextendr_bench::init();
@@ -411,5 +411,74 @@ fn hashmap_many(n: usize) {
             arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
         }
         divan::black_box(arena.len());
+    }
+}
+
+// =============================================================================
+// ThreadLocalArena benchmarks
+// =============================================================================
+
+/// ThreadLocalArena: single protect
+#[divan::bench]
+fn thread_local_single() {
+    unsafe {
+        let x = ThreadLocalArena::protect(ffi::Rf_ScalarInteger(42));
+        divan::black_box(x);
+        ThreadLocalArena::unprotect(x);
+    }
+}
+
+/// ThreadLocalArena: protect N distinct values
+#[divan::bench(args = [10, 100, 1000])]
+fn thread_local_multiple(n: usize) {
+    unsafe {
+        for i in 0..n {
+            ThreadLocalArena::protect(ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(ThreadLocalArena::len());
+        ThreadLocalArena::clear();
+    }
+}
+
+/// ThreadLocalArena: protect same value N times (ref count)
+#[divan::bench(args = [10, 100, 1000])]
+fn thread_local_same_value(n: usize) {
+    unsafe {
+        let x = ffi::Rf_ScalarInteger(42);
+        for _ in 0..n {
+            ThreadLocalArena::protect(x);
+        }
+        divan::black_box(ThreadLocalArena::ref_count(x));
+        ThreadLocalArena::clear();
+    }
+}
+
+/// ThreadLocalArena: protect then unprotect N values
+#[divan::bench(args = [10, 100, 1000])]
+fn thread_local_protect_unprotect(n: usize) {
+    unsafe {
+        let mut values = Vec::with_capacity(n);
+
+        for i in 0..n {
+            values.push(ThreadLocalArena::protect(ffi::Rf_ScalarInteger(i as i32)));
+        }
+
+        for x in values.into_iter().rev() {
+            ThreadLocalArena::unprotect(x);
+        }
+
+        divan::black_box(ThreadLocalArena::is_empty());
+    }
+}
+
+/// ThreadLocalArena: many values stress test
+#[divan::bench(args = [1000, 5000, 10000])]
+fn thread_local_many(n: usize) {
+    unsafe {
+        for i in 0..n {
+            ThreadLocalArena::protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+        }
+        divan::black_box(ThreadLocalArena::len());
+        ThreadLocalArena::clear();
     }
 }

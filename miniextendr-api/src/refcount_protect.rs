@@ -78,7 +78,7 @@ use crate::ffi::{
     R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
     Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
 };
-use std::cell::{Cell, RefCell};
+use std::cell::{Cell, RefCell, UnsafeCell};
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -694,6 +694,343 @@ impl Drop for HashMapArena {
 impl Default for HashMapArena {
     fn default() -> Self {
         unsafe { Self::new() }
+    }
+}
+
+// =============================================================================
+// Thread-local arena (no RefCell/Cell overhead)
+// =============================================================================
+
+/// Internal state for the thread-local arena.
+struct ThreadLocalState {
+    /// Map from SEXP pointer to entry (count + index)
+    map: BTreeMap<usize, Entry>,
+    /// Backing VECSXP (preserved via R_PreserveObject)
+    backing: SEXP,
+    /// Current capacity of the backing VECSXP
+    capacity: usize,
+    /// Number of active entries
+    len: usize,
+    /// Free list: indices that can be reused
+    free_list: Vec<usize>,
+    /// Whether the state has been initialized
+    initialized: bool,
+}
+
+impl ThreadLocalState {
+    const fn uninit() -> Self {
+        Self {
+            map: BTreeMap::new(),
+            backing: SEXP(std::ptr::null_mut()),
+            capacity: 0,
+            len: 0,
+            free_list: Vec::new(),
+            initialized: false,
+        }
+    }
+}
+
+thread_local! {
+    static THREAD_LOCAL_STATE: UnsafeCell<ThreadLocalState> = const { UnsafeCell::new(ThreadLocalState::uninit()) };
+}
+
+/// A thread-local reference-counted arena for GC protection.
+///
+/// This is a zero-sized type that provides access to thread-local state.
+/// Unlike [`RefCountedArena`], this uses thread-local storage to eliminate
+/// the overhead of `RefCell`/`Cell` interior mutability.
+///
+/// # Usage
+///
+/// ```ignore
+/// use miniextendr_api::refcount_protect::ThreadLocalArena;
+///
+/// unsafe {
+///     // Initialize once at the start (optional - auto-initializes on first use)
+///     ThreadLocalArena::init();
+///
+///     let x = ThreadLocalArena::protect(some_sexp);
+///     let y = ThreadLocalArena::protect(another_sexp);
+///
+///     // Release in any order
+///     ThreadLocalArena::unprotect(x);
+///     ThreadLocalArena::unprotect(y);
+///
+///     // Or clear all at once
+///     ThreadLocalArena::clear();
+/// }
+/// ```
+///
+/// # Performance
+///
+/// This implementation eliminates `RefCell` borrow checking overhead by using
+/// thread-local storage directly. Since R is single-threaded, we can safely
+/// access the state without interior mutability checks.
+pub struct ThreadLocalArena;
+
+impl ThreadLocalArena {
+    const INITIAL_CAPACITY: usize = 16;
+
+    /// Initialize the thread-local arena.
+    ///
+    /// This is called automatically on first use, but can be called explicitly
+    /// for deterministic initialization.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn init() {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &mut *cell.get() };
+            if !state.initialized {
+                unsafe { Self::init_state(state) };
+            }
+        });
+    }
+
+    /// Initialize the state (internal).
+    unsafe fn init_state(state: &mut ThreadLocalState) {
+        let capacity = Self::INITIAL_CAPACITY;
+        unsafe {
+            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
+            R_PreserveObject(backing);
+            Rf_unprotect(1);
+
+            state.backing = backing;
+            state.capacity = capacity;
+            state.len = 0;
+            state.map.clear();
+            state.free_list.clear();
+            state.initialized = true;
+        }
+    }
+
+    /// Protect a SEXP, incrementing its reference count.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn protect(x: SEXP) -> SEXP {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &mut *cell.get() };
+            if !state.initialized {
+                unsafe { Self::init_state(state) };
+            }
+            unsafe { Self::protect_impl(state, x) }
+        })
+    }
+
+    #[inline]
+    unsafe fn protect_impl(state: &mut ThreadLocalState, x: SEXP) -> SEXP {
+        unsafe {
+            if std::ptr::eq(x.0, R_NilValue.0) {
+                return x;
+            }
+
+            let key = x.0 as usize;
+
+            if let Some(entry) = state.map.get_mut(&key) {
+                entry.count += 1;
+            } else {
+                let index = Self::allocate_slot_impl(state);
+                SET_VECTOR_ELT(state.backing, index as R_xlen_t, x);
+                state.map.insert(key, Entry { count: 1, index });
+                state.len += 1;
+            }
+
+            x
+        }
+    }
+
+    /// Unprotect a SEXP, decrementing its reference count.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn unprotect(x: SEXP) {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &mut *cell.get() };
+            unsafe { Self::unprotect_impl(state, x) };
+        });
+    }
+
+    #[inline]
+    unsafe fn unprotect_impl(state: &mut ThreadLocalState, x: SEXP) {
+        unsafe {
+            if std::ptr::eq(x.0, R_NilValue.0) {
+                return;
+            }
+
+            let key = x.0 as usize;
+
+            let entry = state
+                .map
+                .get_mut(&key)
+                .expect("unprotect called on SEXP not protected by this arena");
+
+            entry.count -= 1;
+
+            if entry.count == 0 {
+                let index = entry.index;
+                SET_VECTOR_ELT(state.backing, index as R_xlen_t, R_NilValue);
+                state.free_list.push(index);
+                state.map.remove(&key);
+                state.len -= 1;
+            }
+        }
+    }
+
+    /// Try to unprotect a SEXP, returning `true` if it was protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn try_unprotect(x: SEXP) -> bool {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &mut *cell.get() };
+            unsafe { Self::try_unprotect_impl(state, x) }
+        })
+    }
+
+    #[inline]
+    unsafe fn try_unprotect_impl(state: &mut ThreadLocalState, x: SEXP) -> bool {
+        unsafe {
+            if std::ptr::eq(x.0, R_NilValue.0) {
+                return false;
+            }
+
+            let key = x.0 as usize;
+
+            if let Some(entry) = state.map.get_mut(&key) {
+                entry.count -= 1;
+
+                if entry.count == 0 {
+                    let index = entry.index;
+                    SET_VECTOR_ELT(state.backing, index as R_xlen_t, R_NilValue);
+                    state.free_list.push(index);
+                    state.map.remove(&key);
+                    state.len -= 1;
+                }
+
+                true
+            } else {
+                false
+            }
+        }
+    }
+
+    /// Check if a SEXP is currently protected.
+    #[inline]
+    pub fn is_protected(x: SEXP) -> bool {
+        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+            return false;
+        }
+
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &*cell.get() };
+            let key = x.0 as usize;
+            state.map.contains_key(&key)
+        })
+    }
+
+    /// Get the reference count for a SEXP (0 if not protected).
+    #[inline]
+    pub fn ref_count(x: SEXP) -> usize {
+        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+            return 0;
+        }
+
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &*cell.get() };
+            let key = x.0 as usize;
+            state.map.get(&key).map(|e| e.count).unwrap_or(0)
+        })
+    }
+
+    /// Get the number of distinct SEXPs currently protected.
+    #[inline]
+    pub fn len() -> usize {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &*cell.get() };
+            state.len
+        })
+    }
+
+    /// Check if the arena is empty.
+    #[inline]
+    pub fn is_empty() -> bool {
+        Self::len() == 0
+    }
+
+    /// Get the current capacity.
+    #[inline]
+    pub fn capacity() -> usize {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &*cell.get() };
+            state.capacity
+        })
+    }
+
+    fn allocate_slot_impl(state: &mut ThreadLocalState) -> usize {
+        if let Some(index) = state.free_list.pop() {
+            return index;
+        }
+
+        if state.len >= state.capacity {
+            unsafe { Self::grow_impl(state) };
+        }
+
+        state.len
+    }
+
+    unsafe fn grow_impl(state: &mut ThreadLocalState) {
+        let old_capacity = state.capacity;
+        let new_capacity = old_capacity * 2;
+        let old_backing = state.backing;
+
+        unsafe {
+            let new_backing =
+                Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_capacity as R_xlen_t));
+            R_PreserveObject(new_backing);
+
+            for i in 0..old_capacity {
+                let elt = VECTOR_ELT(old_backing, i as R_xlen_t);
+                SET_VECTOR_ELT(new_backing, i as R_xlen_t, elt);
+            }
+
+            R_ReleaseObject(old_backing);
+            Rf_unprotect(1);
+
+            state.backing = new_backing;
+            state.capacity = new_capacity;
+        }
+    }
+
+    /// Clear all protections.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn clear() {
+        THREAD_LOCAL_STATE.with(|cell| {
+            let state = unsafe { &mut *cell.get() };
+            if !state.initialized {
+                return;
+            }
+
+            unsafe {
+                for entry in state.map.values() {
+                    SET_VECTOR_ELT(state.backing, entry.index as R_xlen_t, R_NilValue);
+                }
+            }
+
+            state.map.clear();
+            state.free_list.clear();
+            state.len = 0;
+        });
     }
 }
 
