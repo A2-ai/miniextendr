@@ -9,7 +9,9 @@
 
 use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
-use miniextendr_api::refcount_protect::{HashMapArena, RefCountedArena, ThreadLocalArena};
+use miniextendr_api::refcount_protect::{
+    HashMapArena, RefCountedArena, ThreadLocalArena, ThreadLocalHashArena,
+};
 
 fn main() {
     miniextendr_bench::init();
@@ -480,5 +482,74 @@ fn thread_local_many(n: usize) {
         }
         divan::black_box(ThreadLocalArena::len());
         ThreadLocalArena::clear();
+    }
+}
+
+// =============================================================================
+// ThreadLocalHashArena benchmarks
+// =============================================================================
+
+/// ThreadLocalHashArena: single protect
+#[divan::bench]
+fn thread_local_hash_single() {
+    unsafe {
+        let x = ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(42));
+        divan::black_box(x);
+        ThreadLocalHashArena::unprotect(x);
+    }
+}
+
+/// ThreadLocalHashArena: protect N distinct values
+#[divan::bench(args = [10, 100, 1000])]
+fn thread_local_hash_multiple(n: usize) {
+    unsafe {
+        for i in 0..n {
+            ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(ThreadLocalHashArena::len());
+        ThreadLocalHashArena::clear();
+    }
+}
+
+/// ThreadLocalHashArena: protect same value N times (ref count)
+#[divan::bench(args = [10, 100, 1000])]
+fn thread_local_hash_same_value(n: usize) {
+    unsafe {
+        let x = ffi::Rf_ScalarInteger(42);
+        for _ in 0..n {
+            ThreadLocalHashArena::protect(x);
+        }
+        divan::black_box(ThreadLocalHashArena::ref_count(x));
+        ThreadLocalHashArena::clear();
+    }
+}
+
+/// ThreadLocalHashArena: protect then unprotect N values
+#[divan::bench(args = [10, 100, 1000])]
+fn thread_local_hash_protect_unprotect(n: usize) {
+    unsafe {
+        let mut values = Vec::with_capacity(n);
+
+        for i in 0..n {
+            values.push(ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger(i as i32)));
+        }
+
+        for x in values.into_iter().rev() {
+            ThreadLocalHashArena::unprotect(x);
+        }
+
+        divan::black_box(ThreadLocalHashArena::is_empty());
+    }
+}
+
+/// ThreadLocalHashArena: many values stress test
+#[divan::bench(args = [1000, 5000, 10000])]
+fn thread_local_hash_many(n: usize) {
+    unsafe {
+        for i in 0..n {
+            ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+        }
+        divan::black_box(ThreadLocalHashArena::len());
+        ThreadLocalHashArena::clear();
     }
 }

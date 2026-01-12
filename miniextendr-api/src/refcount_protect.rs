@@ -1,227 +1,308 @@
-//! Reference-counted GC protection using a BTreeMap + VECSXP backing.
+//! Reference-counted GC protection using a map + VECSXP backing.
 //!
 //! This module provides an alternative to [`gc_protect`](crate::gc_protect) that uses
 //! reference counting instead of R's LIFO protect stack. This allows releasing
 //! protections in any order and avoids the `--max-ppsize` limit.
 //!
+//! # Architecture
+//!
+//! The module is built around two key abstractions:
+//!
+//! 1. **[`MapStorage`]** - Trait abstracting over map implementations (BTreeMap, HashMap)
+//! 2. **[`Arena`]** - Generic arena using RefCell for interior mutability
+//!
+//! For thread-local storage without RefCell overhead, use the [`define_thread_local_arena!`] macro.
+//!
 //! # How It Works
 //!
 //! ```text
 //! ┌─────────────────────────────────────────────────────────────────────┐
-//! │  RefCountedArena                                                     │
+//! │  Arena<M: MapStorage>                                               │
 //! │  ┌─────────────────────────┐   ┌───────────────────────────────────┐│
-//! │  │  BTreeMap<SEXP, Entry>  │   │  VECSXP (R_PreserveObject'd)      ││
+//! │  │  Map<usize, Entry>      │   │  VECSXP (R_PreserveObject'd)      ││
 //! │  │  ────────────────────── │   │  ─────────────────────────────    ││
 //! │  │  sexp_a → {count:2, i:0}│◄──┤  [0]: sexp_a                      ││
 //! │  │  sexp_b → {count:1, i:1}│◄──┤  [1]: sexp_b                      ││
 //! │  │  sexp_c → {count:1, i:2}│◄──┤  [2]: sexp_c                      ││
 //! │  └─────────────────────────┘   │  [3]: <free>                      ││
-//! │                                │  [4]: <free>                      ││
 //! │                                └───────────────────────────────────┘│
 //! └─────────────────────────────────────────────────────────────────────┘
 //! ```
 //!
-//! - The `BTreeMap` tracks each SEXP's reference count and index in the VECSXP
-//! - The `VECSXP` is preserved via `R_PreserveObject` so it's never GC'd
-//! - When ref count drops to 0, the entry is removed and the slot freed
-//! - Free slots are reused (swap-with-last for O(1) removal)
+//! # Available Types
 //!
-//! # When to Use This
-//!
-//! Use `RefCountedArena` when:
-//! - You need to protect many objects without worrying about stack limits
-//! - You want to release protections in arbitrary order
-//! - You're building data structures where the same SEXP may be referenced multiple times
-//!
-//! Use [`ProtectScope`](crate::gc_protect::ProtectScope) instead when:
-//! - Protection is short-lived (within a single function)
-//! - You want minimal overhead (direct R API calls)
-//! - You're okay with LIFO release order
-//!
-//! # Example
-//!
-//! ```ignore
-//! use miniextendr_api::refcount_protect::RefCountedArena;
-//!
-//! unsafe fn complex_operation() -> SEXP {
-//!     let arena = RefCountedArena::new();
-//!
-//!     // Protect objects - can be released in any order
-//!     let a = arena.protect(allocate_a());
-//!     let b = arena.protect(allocate_b());
-//!     let c = arena.protect(allocate_c());
-//!
-//!     // Same SEXP can be protected multiple times (ref count increases)
-//!     arena.protect(a);  // a now has ref count 2
-//!
-//!     // Release in any order
-//!     arena.unprotect(b);  // b removed (count was 1)
-//!     arena.unprotect(a);  // a count now 1
-//!     arena.unprotect(a);  // a removed (count was 1)
-//!
-//!     c  // c still protected until arena drops
-//! }
-//! ```
-//!
-//! # Performance Characteristics
-//!
-//! | Operation | Time Complexity | Notes |
-//! |-----------|-----------------|-------|
-//! | `protect` | O(log n) | BTreeMap insert/update |
-//! | `unprotect` | O(log n) | BTreeMap lookup + possible removal |
-//! | Memory | O(n) | BTreeMap entries + VECSXP slots |
-//!
-//! The overhead per operation is higher than raw `Rf_protect`/`Rf_unprotect`,
-//! but the system is more flexible and doesn't have stack size limits.
+//! | Type | Map | Storage | Use Case |
+//! |------|-----|---------|----------|
+//! | [`RefCountedArena`] | BTreeMap | RefCell | General purpose, ordered |
+//! | [`HashMapArena`] | HashMap | RefCell | Large collections |
+//! | [`ThreadLocalArena`] | BTreeMap | thread_local | Lowest overhead |
+//! | [`ThreadLocalHashArena`] | HashMap | thread_local | Large + low overhead |
 
 use crate::ffi::{
     R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
     Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
 };
-use std::cell::{Cell, RefCell, UnsafeCell};
+use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
+use std::mem::MaybeUninit;
 use std::rc::Rc;
 
+// =============================================================================
+// Entry type
+// =============================================================================
+
 /// Entry in the reference count map.
+///
+/// This is an implementation detail exposed for generic type bounds.
 #[derive(Debug, Clone, Copy)]
-struct Entry {
+#[doc(hidden)]
+pub struct Entry {
     /// Reference count (how many times this SEXP has been protected)
     count: usize,
     /// Index in the backing VECSXP
     index: usize,
 }
 
-/// Enforces `!Send + !Sync` (R API is not thread-safe).
-type NoSendSync = PhantomData<Rc<()>>;
+// =============================================================================
+// MapStorage trait
+// =============================================================================
 
-/// A reference-counted arena for GC protection.
+/// Trait abstracting over map implementations for arena storage.
 ///
-/// This provides an alternative to R's PROTECT stack that:
-/// - Uses reference counting for each SEXP
-/// - Allows releasing protections in any order
-/// - Has no stack size limit (uses heap allocation)
-///
-/// The arena owns a preserved VECSXP that holds all protected SEXPs.
-/// When the arena is dropped, all protections are released.
-pub struct RefCountedArena {
-    /// Map from SEXP pointer to entry (count + index)
-    map: RefCell<BTreeMap<usize, Entry>>,
-    /// Backing VECSXP (preserved via R_PreserveObject)
-    backing: Cell<SEXP>,
-    /// Current capacity of the backing VECSXP
-    capacity: Cell<usize>,
-    /// Number of active entries
-    len: Cell<usize>,
-    /// Free list: indices that can be reused
-    free_list: RefCell<Vec<usize>>,
-    /// Marker for !Send + !Sync
-    _nosend: NoSendSync,
+/// This allows [`Arena`] to be generic over the underlying map type,
+/// supporting both `BTreeMap` and `HashMap`.
+pub trait MapStorage: Default {
+    /// Get an entry by key.
+    fn get(&self, key: &usize) -> Option<&Entry>;
+
+    /// Get a mutable entry by key.
+    fn get_mut(&mut self, key: &usize) -> Option<&mut Entry>;
+
+    /// Insert an entry, returning the old value if present.
+    fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry>;
+
+    /// Remove an entry by key.
+    fn remove(&mut self, key: &usize) -> Option<Entry>;
+
+    /// Check if a key exists.
+    fn contains_key(&self, key: &usize) -> bool;
+
+    /// Iterate over all entries.
+    fn for_each_entry<F: FnMut(&Entry)>(&self, f: F);
+
+    /// Clear all entries.
+    fn clear(&mut self);
 }
 
-impl RefCountedArena {
-    /// Initial capacity for the backing VECSXP.
-    const INITIAL_CAPACITY: usize = 16;
-
-    /// Create a new reference-counted arena.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    pub unsafe fn new() -> Self {
-        unsafe { Self::with_capacity(Self::INITIAL_CAPACITY) }
+impl MapStorage for BTreeMap<usize, Entry> {
+    #[inline]
+    fn get(&self, key: &usize) -> Option<&Entry> {
+        BTreeMap::get(self, key)
     }
 
-    /// Create a new arena with a specific initial capacity.
+    #[inline]
+    fn get_mut(&mut self, key: &usize) -> Option<&mut Entry> {
+        BTreeMap::get_mut(self, key)
+    }
+
+    #[inline]
+    fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry> {
+        BTreeMap::insert(self, key, entry)
+    }
+
+    #[inline]
+    fn remove(&mut self, key: &usize) -> Option<Entry> {
+        BTreeMap::remove(self, key)
+    }
+
+    #[inline]
+    fn contains_key(&self, key: &usize) -> bool {
+        BTreeMap::contains_key(self, key)
+    }
+
+    #[inline]
+    fn for_each_entry<F: FnMut(&Entry)>(&self, mut f: F) {
+        for entry in self.values() {
+            f(entry);
+        }
+    }
+
+    #[inline]
+    fn clear(&mut self) {
+        BTreeMap::clear(self);
+    }
+}
+
+impl MapStorage for HashMap<usize, Entry> {
+    #[inline]
+    fn get(&self, key: &usize) -> Option<&Entry> {
+        HashMap::get(self, key)
+    }
+
+    #[inline]
+    fn get_mut(&mut self, key: &usize) -> Option<&mut Entry> {
+        HashMap::get_mut(self, key)
+    }
+
+    #[inline]
+    fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry> {
+        HashMap::insert(self, key, entry)
+    }
+
+    #[inline]
+    fn remove(&mut self, key: &usize) -> Option<Entry> {
+        HashMap::remove(self, key)
+    }
+
+    #[inline]
+    fn contains_key(&self, key: &usize) -> bool {
+        HashMap::contains_key(self, key)
+    }
+
+    #[inline]
+    fn for_each_entry<F: FnMut(&Entry)>(&self, mut f: F) {
+        for entry in self.values() {
+            f(entry);
+        }
+    }
+
+    #[inline]
+    fn clear(&mut self) {
+        HashMap::clear(self);
+    }
+}
+
+// =============================================================================
+// Core arena state (shared between RefCell and thread_local variants)
+// =============================================================================
+
+/// Core arena state without interior mutability.
+///
+/// This is used internally by both [`Arena`] (with RefCell) and
+/// thread-local arenas (with UnsafeCell).
+#[doc(hidden)]
+pub struct ArenaState<M> {
+    /// Map from SEXP pointer to entry
+    pub map: MaybeUninit<M>,
+    /// Backing VECSXP (preserved via R_PreserveObject)
+    pub backing: SEXP,
+    /// Current capacity
+    pub capacity: usize,
+    /// Number of active entries
+    pub len: usize,
+    /// Free list for slot reuse
+    pub free_list: Vec<usize>,
+}
+
+impl<M: MapStorage> ArenaState<M> {
+    /// Initial capacity for the backing VECSXP.
+    pub const INITIAL_CAPACITY: usize = 16;
+
+    /// Create uninitialized state (for thread_local).
+    pub const fn uninit() -> Self {
+        Self {
+            map: MaybeUninit::uninit(),
+            backing: SEXP(std::ptr::null_mut()),
+            capacity: 0,
+            len: 0,
+            free_list: Vec::new(),
+        }
+    }
+
+    /// Initialize the state.
     ///
     /// # Safety
     ///
-    /// Must be called from the R main thread.
-    pub unsafe fn with_capacity(capacity: usize) -> Self {
+    /// Must be called exactly once before using the state.
+    pub unsafe fn init(&mut self, capacity: usize) {
         let capacity = capacity.max(1);
-
         unsafe {
-            // Allocate and preserve the backing VECSXP
             let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
             R_PreserveObject(backing);
             Rf_unprotect(1);
 
-            Self {
-                map: RefCell::new(BTreeMap::new()),
-                backing: Cell::new(backing),
-                capacity: Cell::new(capacity),
-                len: Cell::new(0),
-                free_list: RefCell::new(Vec::new()),
-                _nosend: PhantomData,
-            }
+            self.map.write(M::default());
+            self.backing = backing;
+            self.capacity = capacity;
+            self.len = 0;
+            self.free_list.clear();
         }
     }
 
-    /// Protect a SEXP, incrementing its reference count.
-    ///
-    /// If the SEXP is already protected, its reference count is incremented.
-    /// Otherwise, it's added to the arena with count 1.
-    ///
-    /// Returns the SEXP unchanged (for chaining convenience).
-    ///
-    /// # Safety
-    ///
-    /// - Must be called from the R main thread
-    /// - `x` must be a valid SEXP
-    #[inline]
-    pub unsafe fn protect(&self, x: SEXP) -> SEXP {
+    /// Create initialized state.
+    unsafe fn new(capacity: usize) -> Self {
+        let mut state = Self {
+            map: MaybeUninit::new(M::default()),
+            backing: SEXP(std::ptr::null_mut()),
+            capacity: 0,
+            len: 0,
+            free_list: Vec::new(),
+        };
+        unsafe { state.init_backing(capacity) };
+        state
+    }
+
+    /// Initialize just the backing (map already initialized).
+    unsafe fn init_backing(&mut self, capacity: usize) {
+        let capacity = capacity.max(1);
         unsafe {
-            // R_NilValue doesn't need protection
+            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
+            R_PreserveObject(backing);
+            Rf_unprotect(1);
+
+            self.backing = backing;
+            self.capacity = capacity;
+        }
+    }
+
+    /// Get a reference to the map.
+    #[inline]
+    fn map(&self) -> &M {
+        // SAFETY: Map is initialized before any access
+        unsafe { self.map.assume_init_ref() }
+    }
+
+    /// Get a mutable reference to the map.
+    #[inline]
+    fn map_mut(&mut self) -> &mut M {
+        // SAFETY: Map is initialized before any access
+        unsafe { self.map.assume_init_mut() }
+    }
+
+    #[inline]
+    pub unsafe fn protect(&mut self, x: SEXP) -> SEXP {
+        unsafe {
             if std::ptr::eq(x.0, R_NilValue.0) {
                 return x;
             }
 
             let key = x.0 as usize;
-            let mut map = self.map.borrow_mut();
 
-            if let Some(entry) = map.get_mut(&key) {
-                // Already protected - increment count
+            if let Some(entry) = self.map_mut().get_mut(&key) {
                 entry.count += 1;
             } else {
-                // New entry - find a slot
                 let index = self.allocate_slot();
-
-                // Store in backing VECSXP
-                SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, x);
-
-                // Add to map
-                map.insert(key, Entry { count: 1, index });
-                self.len.set(self.len.get() + 1);
+                SET_VECTOR_ELT(self.backing, index as R_xlen_t, x);
+                self.map_mut().insert(key, Entry { count: 1, index });
+                self.len += 1;
             }
 
             x
         }
     }
 
-    /// Unprotect a SEXP, decrementing its reference count.
-    ///
-    /// If the reference count reaches 0, the SEXP is removed from the arena.
-    ///
-    /// # Safety
-    ///
-    /// - Must be called from the R main thread
-    /// - `x` must have been previously protected by this arena
-    ///
-    /// # Panics
-    ///
-    /// Panics if `x` was not protected by this arena.
     #[inline]
-    pub unsafe fn unprotect(&self, x: SEXP) {
+    pub unsafe fn unprotect(&mut self, x: SEXP) {
         unsafe {
-            // R_NilValue doesn't need unprotection
             if std::ptr::eq(x.0, R_NilValue.0) {
                 return;
             }
 
             let key = x.0 as usize;
-            let mut map = self.map.borrow_mut();
 
-            let entry = map
+            let entry = self
+                .map_mut()
                 .get_mut(&key)
                 .expect("unprotect called on SEXP not protected by this arena");
 
@@ -229,49 +310,32 @@ impl RefCountedArena {
 
             if entry.count == 0 {
                 let index = entry.index;
-
-                // Clear the slot in backing VECSXP
-                SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, R_NilValue);
-
-                // Add index to free list
-                self.free_list.borrow_mut().push(index);
-
-                // Remove from map
-                map.remove(&key);
-                self.len.set(self.len.get() - 1);
+                SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
+                self.free_list.push(index);
+                self.map_mut().remove(&key);
+                self.len -= 1;
             }
         }
     }
 
-    /// Try to unprotect a SEXP, returning `true` if it was protected.
-    ///
-    /// Unlike [`unprotect`](Self::unprotect), this does not panic if the SEXP
-    /// was not protected.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
     #[inline]
-    pub unsafe fn try_unprotect(&self, x: SEXP) -> bool {
+    pub unsafe fn try_unprotect(&mut self, x: SEXP) -> bool {
         unsafe {
             if std::ptr::eq(x.0, R_NilValue.0) {
                 return false;
             }
 
             let key = x.0 as usize;
-            let mut map = self.map.borrow_mut();
 
-            if let Some(entry) = map.get_mut(&key) {
+            if let Some(entry) = self.map_mut().get_mut(&key) {
                 entry.count -= 1;
 
                 if entry.count == 0 {
                     let index = entry.index;
-
-                    SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, R_NilValue);
-
-                    self.free_list.borrow_mut().push(index);
-                    map.remove(&key);
-                    self.len.set(self.len.get() - 1);
+                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
+                    self.free_list.push(index);
+                    self.map_mut().remove(&key);
+                    self.len -= 1;
                 }
 
                 true
@@ -281,106 +345,185 @@ impl RefCountedArena {
         }
     }
 
-    /// Check if a SEXP is currently protected by this arena.
     #[inline]
     pub fn is_protected(&self, x: SEXP) -> bool {
-        // SAFETY: R_NilValue is always valid
         if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
             return false;
         }
-
         let key = x.0 as usize;
-        self.map.borrow().contains_key(&key)
+        self.map().contains_key(&key)
     }
 
-    /// Get the reference count for a SEXP (0 if not protected).
     #[inline]
     pub fn ref_count(&self, x: SEXP) -> usize {
-        // SAFETY: R_NilValue is always valid
         if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
             return 0;
         }
-
         let key = x.0 as usize;
-        self.map
-            .borrow()
-            .get(&key)
-            .map(|e| e.count)
-            .unwrap_or(0)
+        self.map().get(&key).map(|e| e.count).unwrap_or(0)
     }
 
-    /// Get the number of distinct SEXPs currently protected.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len.get()
-    }
-
-    /// Check if the arena is empty.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.len.get() == 0
-    }
-
-    /// Get the current capacity of the backing storage.
-    #[inline]
-    pub fn capacity(&self) -> usize {
-        self.capacity.get()
-    }
-
-    /// Allocate a slot in the backing VECSXP.
-    ///
-    /// Reuses free slots if available, otherwise grows the backing if needed.
-    fn allocate_slot(&self) -> usize {
-        // Try to reuse a free slot
-        if let Some(index) = self.free_list.borrow_mut().pop() {
+    fn allocate_slot(&mut self) -> usize {
+        if let Some(index) = self.free_list.pop() {
             return index;
         }
 
-        // Need a new slot - check if we need to grow
-        let len = self.len.get();
-        let capacity = self.capacity.get();
-
-        if len >= capacity {
-            unsafe {
-                self.grow();
-            }
+        if self.len >= self.capacity {
+            unsafe { self.grow() };
         }
 
-        // Return the next slot
-        len
+        self.len
     }
 
-    /// Grow the backing VECSXP (doubles capacity).
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    unsafe fn grow(&self) {
-        let old_capacity = self.capacity.get();
+    unsafe fn grow(&mut self) {
+        let old_capacity = self.capacity;
         let new_capacity = old_capacity * 2;
-        let old_backing = self.backing.get();
+        let old_backing = self.backing;
 
         unsafe {
-            // Allocate new backing
             let new_backing =
                 Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_capacity as R_xlen_t));
             R_PreserveObject(new_backing);
 
-            // Copy entries from old to new
             for i in 0..old_capacity {
                 let elt = VECTOR_ELT(old_backing, i as R_xlen_t);
                 SET_VECTOR_ELT(new_backing, i as R_xlen_t, elt);
             }
 
-            // Release old backing
             R_ReleaseObject(old_backing);
-
             Rf_unprotect(1);
 
-            // Update state
-            self.backing.set(new_backing);
-            self.capacity.set(new_capacity);
+            self.backing = new_backing;
+            self.capacity = new_capacity;
         }
+    }
+
+    pub unsafe fn clear(&mut self) {
+        unsafe {
+            self.map().for_each_entry(|entry| {
+                SET_VECTOR_ELT(self.backing, entry.index as R_xlen_t, R_NilValue);
+            });
+        }
+        self.map_mut().clear();
+        self.free_list.clear();
+        self.len = 0;
+    }
+
+    unsafe fn release_backing(&mut self) {
+        if !self.backing.0.is_null() {
+            unsafe { R_ReleaseObject(self.backing) };
+            self.backing = SEXP(std::ptr::null_mut());
+        }
+    }
+}
+
+// =============================================================================
+// Arena<M> - RefCell-based generic arena
+// =============================================================================
+
+/// Enforces `!Send + !Sync` (R API is not thread-safe).
+type NoSendSync = PhantomData<Rc<()>>;
+
+/// A reference-counted arena for GC protection, generic over map type.
+///
+/// This provides an alternative to R's PROTECT stack that:
+/// - Uses reference counting for each SEXP
+/// - Allows releasing protections in any order
+/// - Has no stack size limit (uses heap allocation)
+///
+/// # Type Aliases
+///
+/// - [`RefCountedArena`] = `Arena<BTreeMap<...>>` (ordered, good for ref counting)
+/// - [`HashMapArena`] = `Arena<HashMap<...>>` (faster for large collections)
+pub struct Arena<M: MapStorage> {
+    state: RefCell<ArenaState<M>>,
+    _nosend: NoSendSync,
+}
+
+impl<M: MapStorage> Arena<M> {
+    /// Create a new arena with default capacity.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn new() -> Self {
+        unsafe { Self::with_capacity(ArenaState::<M>::INITIAL_CAPACITY) }
+    }
+
+    /// Create a new arena with specific initial capacity.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn with_capacity(capacity: usize) -> Self {
+        Self {
+            state: RefCell::new(unsafe { ArenaState::new(capacity) }),
+            _nosend: PhantomData,
+        }
+    }
+
+    /// Protect a SEXP, incrementing its reference count.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn protect(&self, x: SEXP) -> SEXP {
+        unsafe { self.state.borrow_mut().protect(x) }
+    }
+
+    /// Unprotect a SEXP, decrementing its reference count.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    ///
+    /// # Panics
+    ///
+    /// Panics if `x` was not protected by this arena.
+    #[inline]
+    pub unsafe fn unprotect(&self, x: SEXP) {
+        unsafe { self.state.borrow_mut().unprotect(x) };
+    }
+
+    /// Try to unprotect a SEXP, returning `true` if it was protected.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn try_unprotect(&self, x: SEXP) -> bool {
+        unsafe { self.state.borrow_mut().try_unprotect(x) }
+    }
+
+    /// Check if a SEXP is currently protected by this arena.
+    #[inline]
+    pub fn is_protected(&self, x: SEXP) -> bool {
+        self.state.borrow().is_protected(x)
+    }
+
+    /// Get the reference count for a SEXP (0 if not protected).
+    #[inline]
+    pub fn ref_count(&self, x: SEXP) -> usize {
+        self.state.borrow().ref_count(x)
+    }
+
+    /// Get the number of distinct SEXPs currently protected.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.state.borrow().len
+    }
+
+    /// Check if the arena is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.state.borrow().len == 0
+    }
+
+    /// Get the current capacity.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.state.borrow().capacity
     }
 
     /// Clear all protections.
@@ -389,90 +532,72 @@ impl RefCountedArena {
     ///
     /// Must be called from the R main thread.
     pub unsafe fn clear(&self) {
-        let mut map = self.map.borrow_mut();
-        let backing = self.backing.get();
+        unsafe { self.state.borrow_mut().clear() };
+    }
 
-        // Clear all slots
-        for entry in map.values() {
-            unsafe {
-                SET_VECTOR_ELT(backing, entry.index as R_xlen_t, R_NilValue);
-            }
-        }
-
-        map.clear();
-        self.free_list.borrow_mut().clear();
-        self.len.set(0);
+    /// Protect a SEXP and return an RAII guard.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn guard(&self, x: SEXP) -> ArenaGuard<'_, M> {
+        unsafe { ArenaGuard::new(self, x) }
     }
 }
 
-impl Drop for RefCountedArena {
+impl<M: MapStorage> Drop for Arena<M> {
     fn drop(&mut self) {
-        // Release the preserved backing VECSXP
-        unsafe {
-            R_ReleaseObject(self.backing.get());
-        }
+        unsafe { self.state.borrow_mut().release_backing() };
     }
 }
 
-impl Default for RefCountedArena {
+impl<M: MapStorage> Default for Arena<M> {
     fn default() -> Self {
-        // SAFETY: This is a foot-gun but matches the pattern of other R interop code.
         unsafe { Self::new() }
     }
 }
+
+// =============================================================================
+// Type aliases for common arena types
+// =============================================================================
+
+/// BTreeMap-based arena (default, good for reference counting).
+pub type RefCountedArena = Arena<BTreeMap<usize, Entry>>;
+
+/// HashMap-based arena (faster for large collections).
+pub type HashMapArena = Arena<HashMap<usize, Entry>>;
 
 // =============================================================================
 // RAII Guard
 // =============================================================================
 
 /// An RAII guard that unprotects a SEXP when dropped.
-///
-/// This provides automatic cleanup for arena-protected SEXPs.
-///
-/// # Example
-///
-/// ```ignore
-/// unsafe {
-///     let arena = RefCountedArena::new();
-///     let guard = arena.guard(some_sexp);
-///     // use guard.get()...
-/// } // automatically unprotected when guard drops
-/// ```
-pub struct RefCountedGuard<'a> {
-    arena: &'a RefCountedArena,
+pub struct ArenaGuard<'a, M: MapStorage> {
+    arena: &'a Arena<M>,
     sexp: SEXP,
 }
 
-impl<'a> RefCountedGuard<'a> {
-    /// Create a new guard that will unprotect the SEXP when dropped.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
+impl<'a, M: MapStorage> ArenaGuard<'a, M> {
     #[inline]
-    pub unsafe fn new(arena: &'a RefCountedArena, sexp: SEXP) -> Self {
-        unsafe {
-            arena.protect(sexp);
-        }
+    pub unsafe fn new(arena: &'a Arena<M>, sexp: SEXP) -> Self {
+        unsafe { arena.protect(sexp) };
         Self { arena, sexp }
     }
 
-    /// Get the protected SEXP.
     #[inline]
     pub fn get(&self) -> SEXP {
         self.sexp
     }
 }
 
-impl Drop for RefCountedGuard<'_> {
+impl<M: MapStorage> Drop for ArenaGuard<'_, M> {
     fn drop(&mut self) {
-        unsafe {
-            self.arena.unprotect(self.sexp);
-        }
+        unsafe { self.arena.unprotect(self.sexp) };
     }
 }
 
-impl std::ops::Deref for RefCountedGuard<'_> {
+impl<M: MapStorage> std::ops::Deref for ArenaGuard<'_, M> {
     type Target = SEXP;
 
     #[inline]
@@ -481,558 +606,206 @@ impl std::ops::Deref for RefCountedGuard<'_> {
     }
 }
 
-// =============================================================================
-// Arena extension methods
-// =============================================================================
-
-impl RefCountedArena {
-    /// Protect a SEXP and return an RAII guard.
-    ///
-    /// The SEXP is automatically unprotected when the guard is dropped.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn guard(&self, x: SEXP) -> RefCountedGuard<'_> {
-        unsafe { RefCountedGuard::new(self, x) }
-    }
-}
+/// Legacy type alias for backwards compatibility.
+pub type RefCountedGuard<'a> = ArenaGuard<'a, BTreeMap<usize, Entry>>;
 
 // =============================================================================
-// HashMap-based variant (for benchmarking comparison)
+// Thread-local arena macro
 // =============================================================================
 
-/// A HashMap-based variant of [`RefCountedArena`] for benchmarking.
+/// Macro to define a thread-local arena with a specific map type.
 ///
-/// This is identical to `RefCountedArena` except it uses `HashMap` instead of
-/// `BTreeMap` for the internal map. Use this to compare performance
-/// characteristics of the two data structures.
-pub struct HashMapArena {
-    map: RefCell<HashMap<usize, Entry>>,
-    backing: Cell<SEXP>,
-    capacity: Cell<usize>,
-    len: Cell<usize>,
-    free_list: RefCell<Vec<usize>>,
-    _nosend: NoSendSync,
+/// This creates a zero-sized struct with static methods that access
+/// thread-local storage, eliminating RefCell overhead.
+///
+/// # Example
+///
+/// ```ignore
+/// define_thread_local_arena!(
+///     /// My custom thread-local arena.
+///     pub MyArena,
+///     BTreeMap<usize, Entry>,
+///     MY_ARENA_STATE
+/// );
+/// ```
+#[macro_export]
+macro_rules! define_thread_local_arena {
+    (
+        $(#[$meta:meta])*
+        $vis:vis $name:ident,
+        $map:ty,
+        $state_name:ident
+    ) => {
+        thread_local! {
+            static $state_name: std::cell::UnsafeCell<$crate::refcount_protect::ThreadLocalState<$map>> =
+                const { std::cell::UnsafeCell::new($crate::refcount_protect::ThreadLocalState::uninit()) };
+        }
+
+        $(#[$meta])*
+        $vis struct $name;
+
+        impl $name {
+            /// Initialize the arena (called automatically on first use).
+            ///
+            /// # Safety
+            ///
+            /// Must be called from the R main thread.
+            pub unsafe fn init() {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    if !state.initialized {
+                        unsafe { state.init() };
+                    }
+                });
+            }
+
+            /// Protect a SEXP, incrementing its reference count.
+            ///
+            /// # Safety
+            ///
+            /// Must be called from the R main thread.
+            #[inline]
+            pub unsafe fn protect(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    if !state.initialized {
+                        unsafe { state.init() };
+                    }
+                    unsafe { state.inner.protect(x) }
+                })
+            }
+
+            /// Unprotect a SEXP.
+            ///
+            /// # Safety
+            ///
+            /// Must be called from the R main thread.
+            #[inline]
+            pub unsafe fn unprotect(x: $crate::ffi::SEXP) {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    unsafe { state.inner.unprotect(x) };
+                });
+            }
+
+            /// Try to unprotect a SEXP.
+            ///
+            /// # Safety
+            ///
+            /// Must be called from the R main thread.
+            #[inline]
+            pub unsafe fn try_unprotect(x: $crate::ffi::SEXP) -> bool {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    unsafe { state.inner.try_unprotect(x) }
+                })
+            }
+
+            /// Check if a SEXP is protected.
+            #[inline]
+            pub fn is_protected(x: $crate::ffi::SEXP) -> bool {
+                $state_name.with(|cell| {
+                    let state = unsafe { &*cell.get() };
+                    if !state.initialized { return false; }
+                    state.inner.is_protected(x)
+                })
+            }
+
+            /// Get reference count.
+            #[inline]
+            pub fn ref_count(x: $crate::ffi::SEXP) -> usize {
+                $state_name.with(|cell| {
+                    let state = unsafe { &*cell.get() };
+                    if !state.initialized { return 0; }
+                    state.inner.ref_count(x)
+                })
+            }
+
+            /// Number of protected SEXPs.
+            #[inline]
+            pub fn len() -> usize {
+                $state_name.with(|cell| {
+                    let state = unsafe { &*cell.get() };
+                    state.inner.len
+                })
+            }
+
+            /// Check if empty.
+            #[inline]
+            pub fn is_empty() -> bool {
+                Self::len() == 0
+            }
+
+            /// Get capacity.
+            #[inline]
+            pub fn capacity() -> usize {
+                $state_name.with(|cell| {
+                    let state = unsafe { &*cell.get() };
+                    state.inner.capacity
+                })
+            }
+
+            /// Clear all protections.
+            ///
+            /// # Safety
+            ///
+            /// Must be called from the R main thread.
+            pub unsafe fn clear() {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    if state.initialized {
+                        unsafe { state.inner.clear() };
+                    }
+                });
+            }
+        }
+    };
 }
 
-impl HashMapArena {
-    const INITIAL_CAPACITY: usize = 16;
-
-    /// Create a new HashMap-based arena.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    pub unsafe fn new() -> Self {
-        unsafe { Self::with_capacity(Self::INITIAL_CAPACITY) }
-    }
-
-    /// Create a new arena with a specific initial capacity.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    pub unsafe fn with_capacity(capacity: usize) -> Self {
-        let capacity = capacity.max(1);
-
-        unsafe {
-            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
-            R_PreserveObject(backing);
-            Rf_unprotect(1);
-
-            Self {
-                map: RefCell::new(HashMap::new()),
-                backing: Cell::new(backing),
-                capacity: Cell::new(capacity),
-                len: Cell::new(0),
-                free_list: RefCell::new(Vec::new()),
-                _nosend: PhantomData,
-            }
-        }
-    }
-
-    /// Protect a SEXP, incrementing its reference count.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn protect(&self, x: SEXP) -> SEXP {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return x;
-            }
-
-            let key = x.0 as usize;
-            let mut map = self.map.borrow_mut();
-
-            if let Some(entry) = map.get_mut(&key) {
-                entry.count += 1;
-            } else {
-                let index = self.allocate_slot();
-                SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, x);
-                map.insert(key, Entry { count: 1, index });
-                self.len.set(self.len.get() + 1);
-            }
-
-            x
-        }
-    }
-
-    /// Unprotect a SEXP, decrementing its reference count.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn unprotect(&self, x: SEXP) {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return;
-            }
-
-            let key = x.0 as usize;
-            let mut map = self.map.borrow_mut();
-
-            let entry = map
-                .get_mut(&key)
-                .expect("unprotect called on SEXP not protected by this arena");
-
-            entry.count -= 1;
-
-            if entry.count == 0 {
-                let index = entry.index;
-                SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, R_NilValue);
-                self.free_list.borrow_mut().push(index);
-                map.remove(&key);
-                self.len.set(self.len.get() - 1);
-            }
-        }
-    }
-
-    /// Check if a SEXP is currently protected.
-    #[inline]
-    pub fn is_protected(&self, x: SEXP) -> bool {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
-            return false;
-        }
-        let key = x.0 as usize;
-        self.map.borrow().contains_key(&key)
-    }
-
-    /// Get the reference count for a SEXP.
-    #[inline]
-    pub fn ref_count(&self, x: SEXP) -> usize {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
-            return 0;
-        }
-        let key = x.0 as usize;
-        self.map.borrow().get(&key).map(|e| e.count).unwrap_or(0)
-    }
-
-    /// Get the number of distinct SEXPs currently protected.
-    #[inline]
-    pub fn len(&self) -> usize {
-        self.len.get()
-    }
-
-    /// Check if the arena is empty.
-    #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.len.get() == 0
-    }
-
-    fn allocate_slot(&self) -> usize {
-        if let Some(index) = self.free_list.borrow_mut().pop() {
-            return index;
-        }
-
-        let len = self.len.get();
-        let capacity = self.capacity.get();
-
-        if len >= capacity {
-            unsafe { self.grow(); }
-        }
-
-        len
-    }
-
-    unsafe fn grow(&self) {
-        let old_capacity = self.capacity.get();
-        let new_capacity = old_capacity * 2;
-        let old_backing = self.backing.get();
-
-        unsafe {
-            let new_backing =
-                Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_capacity as R_xlen_t));
-            R_PreserveObject(new_backing);
-
-            for i in 0..old_capacity {
-                let elt = VECTOR_ELT(old_backing, i as R_xlen_t);
-                SET_VECTOR_ELT(new_backing, i as R_xlen_t, elt);
-            }
-
-            R_ReleaseObject(old_backing);
-            Rf_unprotect(1);
-
-            self.backing.set(new_backing);
-            self.capacity.set(new_capacity);
-        }
-    }
+/// State wrapper for thread-local arenas (used by macro).
+#[doc(hidden)]
+pub struct ThreadLocalState<M: MapStorage> {
+    pub inner: ArenaState<M>,
+    pub initialized: bool,
 }
 
-impl Drop for HashMapArena {
-    fn drop(&mut self) {
-        unsafe {
-            R_ReleaseObject(self.backing.get());
-        }
-    }
-}
-
-impl Default for HashMapArena {
-    fn default() -> Self {
-        unsafe { Self::new() }
-    }
-}
-
-// =============================================================================
-// Thread-local arena (no RefCell/Cell overhead)
-// =============================================================================
-
-/// Internal state for the thread-local arena.
-struct ThreadLocalState {
-    /// Map from SEXP pointer to entry (count + index)
-    map: BTreeMap<usize, Entry>,
-    /// Backing VECSXP (preserved via R_PreserveObject)
-    backing: SEXP,
-    /// Current capacity of the backing VECSXP
-    capacity: usize,
-    /// Number of active entries
-    len: usize,
-    /// Free list: indices that can be reused
-    free_list: Vec<usize>,
-    /// Whether the state has been initialized
-    initialized: bool,
-}
-
-impl ThreadLocalState {
-    const fn uninit() -> Self {
+impl<M: MapStorage> ThreadLocalState<M> {
+    pub const fn uninit() -> Self {
         Self {
-            map: BTreeMap::new(),
-            backing: SEXP(std::ptr::null_mut()),
-            capacity: 0,
-            len: 0,
-            free_list: Vec::new(),
+            inner: ArenaState::uninit(),
             initialized: false,
         }
     }
-}
 
-thread_local! {
-    static THREAD_LOCAL_STATE: UnsafeCell<ThreadLocalState> = const { UnsafeCell::new(ThreadLocalState::uninit()) };
-}
-
-/// A thread-local reference-counted arena for GC protection.
-///
-/// This is a zero-sized type that provides access to thread-local state.
-/// Unlike [`RefCountedArena`], this uses thread-local storage to eliminate
-/// the overhead of `RefCell`/`Cell` interior mutability.
-///
-/// # Usage
-///
-/// ```ignore
-/// use miniextendr_api::refcount_protect::ThreadLocalArena;
-///
-/// unsafe {
-///     // Initialize once at the start (optional - auto-initializes on first use)
-///     ThreadLocalArena::init();
-///
-///     let x = ThreadLocalArena::protect(some_sexp);
-///     let y = ThreadLocalArena::protect(another_sexp);
-///
-///     // Release in any order
-///     ThreadLocalArena::unprotect(x);
-///     ThreadLocalArena::unprotect(y);
-///
-///     // Or clear all at once
-///     ThreadLocalArena::clear();
-/// }
-/// ```
-///
-/// # Performance
-///
-/// This implementation eliminates `RefCell` borrow checking overhead by using
-/// thread-local storage directly. Since R is single-threaded, we can safely
-/// access the state without interior mutability checks.
-pub struct ThreadLocalArena;
-
-impl ThreadLocalArena {
-    const INITIAL_CAPACITY: usize = 16;
-
-    /// Initialize the thread-local arena.
-    ///
-    /// This is called automatically on first use, but can be called explicitly
-    /// for deterministic initialization.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    pub unsafe fn init() {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &mut *cell.get() };
-            if !state.initialized {
-                unsafe { Self::init_state(state) };
-            }
-        });
-    }
-
-    /// Initialize the state (internal).
-    unsafe fn init_state(state: &mut ThreadLocalState) {
-        let capacity = Self::INITIAL_CAPACITY;
-        unsafe {
-            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
-            R_PreserveObject(backing);
-            Rf_unprotect(1);
-
-            state.backing = backing;
-            state.capacity = capacity;
-            state.len = 0;
-            state.map.clear();
-            state.free_list.clear();
-            state.initialized = true;
-        }
-    }
-
-    /// Protect a SEXP, incrementing its reference count.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn protect(x: SEXP) -> SEXP {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &mut *cell.get() };
-            if !state.initialized {
-                unsafe { Self::init_state(state) };
-            }
-            unsafe { Self::protect_impl(state, x) }
-        })
-    }
-
-    #[inline]
-    unsafe fn protect_impl(state: &mut ThreadLocalState, x: SEXP) -> SEXP {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return x;
-            }
-
-            let key = x.0 as usize;
-
-            if let Some(entry) = state.map.get_mut(&key) {
-                entry.count += 1;
-            } else {
-                let index = Self::allocate_slot_impl(state);
-                SET_VECTOR_ELT(state.backing, index as R_xlen_t, x);
-                state.map.insert(key, Entry { count: 1, index });
-                state.len += 1;
-            }
-
-            x
-        }
-    }
-
-    /// Unprotect a SEXP, decrementing its reference count.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn unprotect(x: SEXP) {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &mut *cell.get() };
-            unsafe { Self::unprotect_impl(state, x) };
-        });
-    }
-
-    #[inline]
-    unsafe fn unprotect_impl(state: &mut ThreadLocalState, x: SEXP) {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return;
-            }
-
-            let key = x.0 as usize;
-
-            let entry = state
-                .map
-                .get_mut(&key)
-                .expect("unprotect called on SEXP not protected by this arena");
-
-            entry.count -= 1;
-
-            if entry.count == 0 {
-                let index = entry.index;
-                SET_VECTOR_ELT(state.backing, index as R_xlen_t, R_NilValue);
-                state.free_list.push(index);
-                state.map.remove(&key);
-                state.len -= 1;
-            }
-        }
-    }
-
-    /// Try to unprotect a SEXP, returning `true` if it was protected.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    #[inline]
-    pub unsafe fn try_unprotect(x: SEXP) -> bool {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &mut *cell.get() };
-            unsafe { Self::try_unprotect_impl(state, x) }
-        })
-    }
-
-    #[inline]
-    unsafe fn try_unprotect_impl(state: &mut ThreadLocalState, x: SEXP) -> bool {
-        unsafe {
-            if std::ptr::eq(x.0, R_NilValue.0) {
-                return false;
-            }
-
-            let key = x.0 as usize;
-
-            if let Some(entry) = state.map.get_mut(&key) {
-                entry.count -= 1;
-
-                if entry.count == 0 {
-                    let index = entry.index;
-                    SET_VECTOR_ELT(state.backing, index as R_xlen_t, R_NilValue);
-                    state.free_list.push(index);
-                    state.map.remove(&key);
-                    state.len -= 1;
-                }
-
-                true
-            } else {
-                false
-            }
-        }
-    }
-
-    /// Check if a SEXP is currently protected.
-    #[inline]
-    pub fn is_protected(x: SEXP) -> bool {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
-            return false;
-        }
-
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &*cell.get() };
-            let key = x.0 as usize;
-            state.map.contains_key(&key)
-        })
-    }
-
-    /// Get the reference count for a SEXP (0 if not protected).
-    #[inline]
-    pub fn ref_count(x: SEXP) -> usize {
-        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
-            return 0;
-        }
-
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &*cell.get() };
-            let key = x.0 as usize;
-            state.map.get(&key).map(|e| e.count).unwrap_or(0)
-        })
-    }
-
-    /// Get the number of distinct SEXPs currently protected.
-    #[inline]
-    pub fn len() -> usize {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &*cell.get() };
-            state.len
-        })
-    }
-
-    /// Check if the arena is empty.
-    #[inline]
-    pub fn is_empty() -> bool {
-        Self::len() == 0
-    }
-
-    /// Get the current capacity.
-    #[inline]
-    pub fn capacity() -> usize {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &*cell.get() };
-            state.capacity
-        })
-    }
-
-    fn allocate_slot_impl(state: &mut ThreadLocalState) -> usize {
-        if let Some(index) = state.free_list.pop() {
-            return index;
-        }
-
-        if state.len >= state.capacity {
-            unsafe { Self::grow_impl(state) };
-        }
-
-        state.len
-    }
-
-    unsafe fn grow_impl(state: &mut ThreadLocalState) {
-        let old_capacity = state.capacity;
-        let new_capacity = old_capacity * 2;
-        let old_backing = state.backing;
-
-        unsafe {
-            let new_backing =
-                Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_capacity as R_xlen_t));
-            R_PreserveObject(new_backing);
-
-            for i in 0..old_capacity {
-                let elt = VECTOR_ELT(old_backing, i as R_xlen_t);
-                SET_VECTOR_ELT(new_backing, i as R_xlen_t, elt);
-            }
-
-            R_ReleaseObject(old_backing);
-            Rf_unprotect(1);
-
-            state.backing = new_backing;
-            state.capacity = new_capacity;
-        }
-    }
-
-    /// Clear all protections.
-    ///
-    /// # Safety
-    ///
-    /// Must be called from the R main thread.
-    pub unsafe fn clear() {
-        THREAD_LOCAL_STATE.with(|cell| {
-            let state = unsafe { &mut *cell.get() };
-            if !state.initialized {
-                return;
-            }
-
-            unsafe {
-                for entry in state.map.values() {
-                    SET_VECTOR_ELT(state.backing, entry.index as R_xlen_t, R_NilValue);
-                }
-            }
-
-            state.map.clear();
-            state.free_list.clear();
-            state.len = 0;
-        });
+    pub unsafe fn init(&mut self) {
+        unsafe { self.inner.init(ArenaState::<M>::INITIAL_CAPACITY) };
+        self.initialized = true;
     }
 }
+
+// =============================================================================
+// Built-in thread-local arenas
+// =============================================================================
+
+define_thread_local_arena!(
+    /// Thread-local BTreeMap-based arena.
+    ///
+    /// This provides the lowest overhead for protection operations by
+    /// eliminating RefCell borrow checking.
+    pub ThreadLocalArena,
+    BTreeMap<usize, Entry>,
+    THREAD_LOCAL_BTREE_STATE
+);
+
+define_thread_local_arena!(
+    /// Thread-local HashMap-based arena.
+    ///
+    /// Combines HashMap's performance for large collections with
+    /// thread-local storage's low overhead.
+    pub ThreadLocalHashArena,
+    HashMap<usize, Entry>,
+    THREAD_LOCAL_HASH_STATE
+);
 
 // =============================================================================
 // Tests
@@ -1052,18 +825,21 @@ mod tests {
     #[test]
     fn arena_has_initial_capacity() {
         let arena = RefCountedArena::default();
-        assert_eq!(arena.capacity(), RefCountedArena::INITIAL_CAPACITY);
+        assert_eq!(arena.capacity(), ArenaState::<BTreeMap<usize, Entry>>::INITIAL_CAPACITY);
     }
 
     #[test]
     fn nil_is_not_protected() {
         let arena = RefCountedArena::default();
-        // SAFETY: R_NilValue is always valid
         let nil = unsafe { R_NilValue };
         assert!(!arena.is_protected(nil));
         assert_eq!(arena.ref_count(nil), 0);
     }
 
-    // Integration tests with actual SEXPs require R to be initialized
-    // and should be in miniextendr-api/tests/refcount_protect.rs
+    #[test]
+    fn hashmap_arena_starts_empty() {
+        let arena = HashMapArena::default();
+        assert!(arena.is_empty());
+        assert_eq!(arena.len(), 0);
+    }
 }
