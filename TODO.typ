@@ -297,11 +297,24 @@
   - `HAS_*` const gating correctly prevents unused methods from being installed
 
 ==== R Source Reference
-- [ ] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings
-  - [x] Location: `src/include/Rinternals.h` - SEXP types verified complete (2026-01-12)
-  - [x] Location: `src/include/R_ext/Altrep.h` - ALTREP bindings verified complete (2026-01-12)
-  - Location: `src/main/memory.c` - study GC behavior for protect patterns
-  - Location: `src/main/altclasses.c` - study ALTREP dispatch for reference
+- [x] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings (2026-01-12)
+  - [x] Location: `src/include/Rinternals.h` - SEXP types verified complete
+  - [x] Location: `src/include/R_ext/Altrep.h` - ALTREP bindings verified complete
+  - [x] Location: `src/main/memory.c` - GC behavior studied
+    - PROTECT stack: `R_PPStack` array with `R_PPStackTop` index
+    - PROTECT() pushes to `R_PPStack[R_PPStackTop++]`, UNPROTECT(n) decrements by n
+    - R_PreserveObject/R_ReleaseObject use `R_PreciousList` (linked list or hash table)
+    - R_PreserveObject: adds via `CONS(object, R_PreciousList)` (O(1))
+    - R_ReleaseObject: removes via `DeleteFromList` (O(n) traversal)
+    - miniextendr's `gc_protect.rs` correctly models these patterns
+  - [x] Location: `src/main/altclasses.c` - ALTREP dispatch studied
+    - Concrete implementations: compact_intseq, compact_realseq, deferred_string, mmap, wrapper
+    - Pattern: define methods (Length, Elt, Get_region, etc.) then register with R_set_alt*_method
+    - Coerce method returns NULL to signal "use default coercion" (matches miniextendr)
+    - Duplicate method creates materialized copy
+    - Is_sorted returns: SORTED_DECR_NA_1ST, SORTED_INCR, UNKNOWN_SORTEDNESS, etc.
+    - No_NA returns TRUE/FALSE for guaranteed NA-free status
+    - miniextendr's altrep_traits.rs matches these patterns correctly
 
 ==== Class System References
 - [ ] Study S7 patterns (`background/S7-main/`) for class generation
