@@ -264,14 +264,25 @@
 === Reference Study Tasks (from background/)
 
 ==== R Internals & Extensions
-- [ ] Study `background/R Internals.html` for SEXP type system
-  - Document missing SEXP types not yet exposed in miniextendr-api/src/ffi.rs
-  - Verify PROTECT/UNPROTECT patterns match R's expectations
-  - Check for undocumented API behaviors
-- [ ] Study `background/Writing R Extensions.html` for .Call interface
-  - Verify R wrapper generation matches documented conventions
-  - Check registration patterns against recommended practices
-  - Verify NA handling matches R's documented behavior
+- [x] Study `background/R Internals.html` for SEXP type system (2026-01-12)
+  - Compared against R 4.5.2 `src/include/Rinternals.h`
+  - **FINDING: SEXPTYPE enum is complete** - all 22 types match exactly:
+    - NILSXP(0) through LGLSXP(10), skip 11-12, INTSXP(13) through S4SXP(25)
+    - Plus NEWSXP(30), FREESXP(31), FUNSXP(99)
+    - OBJSXP/S4SXP aliasing (both value 25) correctly handled
+  - **PROTECT patterns verified**:
+    - `gc_protect` module: RAII wrappers for Rf_protect/Rf_unprotect
+    - `preserve` module: R_PreserveObject/R_ReleaseObject for cross-.Call objects
+    - `ExternalPtr`: R-owned Rust data with finalizers
+    - ProtectScope, OwnedProtect, ReprotectSlot follow R's LIFO stack semantics
+- [x] Study `background/Writing R Extensions.html` for .Call interface (2026-01-12)
+  - **Registration patterns verified correct**:
+    - NAMESPACE: `useDynLib(miniextendr, .registration = TRUE)` ✓
+    - entrypoint.c: `R_useDynamicSymbols(dll, FALSE)` ✓
+    - entrypoint.c: `R_forceSymbols(dll, TRUE)` ✓
+    - `R_init_*_miniextendr(dll)` calls `R_registerRoutines()` internally ✓
+  - R wrapper generation: roxygen2 generates exports from `@export` tags
+  - NA handling: documented in `altrep_traits.rs` (NA_INTEGER, NA_REAL, NA_LOGICAL)
 - [x] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
   - Compared miniextendr ALTREP impl against R 4.5.2 `src/include/R_ext/Altrep.h`
   - **FINDING: All R ALTREP methods are implemented** in miniextendr:
@@ -287,7 +298,7 @@
 
 ==== R Source Reference
 - [ ] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings
-  - Location: `src/include/Rinternals.h` - verify SEXP type definitions match
+  - [x] Location: `src/include/Rinternals.h` - SEXP types verified complete (2026-01-12)
   - [x] Location: `src/include/R_ext/Altrep.h` - ALTREP bindings verified complete (2026-01-12)
   - Location: `src/main/memory.c` - study GC behavior for protect patterns
   - Location: `src/main/altclasses.c` - study ALTREP dispatch for reference
