@@ -2,18 +2,16 @@
 
 use miniextendr_api::externalptr::ErasedExternalPtr;
 use miniextendr_api::ffi::SEXP;
-// Note: ExternalPtr type is accessed via full path to avoid conflict with derive macro
-use miniextendr_api::ExternalPtr as DeriveExternalPtr;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// A simple test struct for ExternalPtr
-#[derive(DeriveExternalPtr, Debug)]
+#[derive(miniextendr_api::ExternalPtr, Debug)]
 pub struct Counter {
     pub value: i32,
 }
 
 /// Another test struct to verify type safety
-#[derive(DeriveExternalPtr, Debug)]
+#[derive(miniextendr_api::ExternalPtr, Debug)]
 pub struct Point {
     pub x: f64,
     pub y: f64,

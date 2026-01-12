@@ -18,9 +18,20 @@
 //! // Generates: impl TypedExternal for MyData { ... }
 //! ```
 //!
-//! ### With R Sidecar Slots
+//! ### With R Sidecar Slots and Class System
 //!
-//! The `#[r_data]` attribute marks fields for R-side storage. Three tiers are supported:
+//! The `#[r_data]` attribute marks fields for R-side storage. Use `#[externalptr(...)]`
+//! to specify a class system for appropriate R wrapper generation:
+//!
+//! | Class System | Attribute | R Accessors |
+//! |--------------|-----------|-------------|
+//! | Environment | `#[externalptr(env)]` (default) | `Type_get_field()`, `Type_set_field()` |
+//! | R6 | `#[externalptr(r6)]` | Active bindings in R6Class |
+//! | S3 | `#[externalptr(s3)]` | `$.class`, `$<-.class` methods |
+//! | S4 | `#[externalptr(s4)]` | Slot accessors |
+//! | S7 | `#[externalptr(s7)]` | Properties via `new_property()` |
+//!
+//! Three field tiers are supported:
 //!
 //! 1. **Raw SEXP** (`SEXP`) - Direct SEXP access, no conversion
 //! 2. **Zero-overhead scalars** (`i32`, `f64`, `bool`, `u8`) - Direct R memory access
@@ -28,6 +39,7 @@
 //!
 //! ```ignore
 //! #[derive(ExternalPtr)]
+//! #[externalptr(r6)]  // R6 class - generates active bindings
 //! pub struct MyType {
 //!     pub x: i32,
 //!
@@ -46,7 +58,7 @@
 //!     #[r_data]
 //!     pub name: String,  // Conversion: uses IntoR/TryFromSexp
 //! }
-//! // Generates: MyType_get_count(), MyType_set_count(), etc.
+//! // Generates: active bindings `count`, `score`, `name` in R6Class
 //! ```
 //!
 //! ### Trait ABI wiring
@@ -107,16 +119,51 @@
 use proc_macro2::{Span, TokenStream};
 use syn::{DeriveInput, Field, Ident, Visibility};
 
-fn ensure_no_externalptr_attrs(input: &DeriveInput) -> syn::Result<()> {
+use crate::miniextendr_impl::ClassSystem;
+
+/// Parse `#[externalptr(...)]` attributes to extract class system.
+///
+/// Supported forms:
+/// - `#[externalptr(env)]` - Environment style (default)
+/// - `#[externalptr(r6)]` - R6 class
+/// - `#[externalptr(s3)]` - S3 class
+/// - `#[externalptr(s4)]` - S4 class
+/// - `#[externalptr(s7)]` - S7 class
+fn parse_externalptr_attrs(input: &DeriveInput) -> syn::Result<ClassSystem> {
+    let mut class_system = ClassSystem::Env; // Default
+
     for attr in &input.attrs {
         if attr.path().is_ident("externalptr") {
-            return Err(syn::Error::new_spanned(
-                attr,
-                "#[externalptr(...)] is no longer supported; list `impl Trait for Type;` in miniextendr_module! instead",
-            ));
+            attr.parse_nested_meta(|meta| {
+                let ident_str = meta
+                    .path
+                    .get_ident()
+                    .map(|i| i.to_string())
+                    .unwrap_or_default();
+
+                match ident_str.as_str() {
+                    "env" => class_system = ClassSystem::Env,
+                    "r6" => class_system = ClassSystem::R6,
+                    "s3" => class_system = ClassSystem::S3,
+                    "s4" => class_system = ClassSystem::S4,
+                    "s7" => class_system = ClassSystem::S7,
+                    "vctrs" => class_system = ClassSystem::Vctrs,
+                    _ => {
+                        return Err(syn::Error::new_spanned(
+                            &meta.path,
+                            format!(
+                                "unknown class system '{}'; expected one of: env, r6, s3, s4, s7, vctrs",
+                                ident_str
+                            ),
+                        ));
+                    }
+                }
+                Ok(())
+            })?;
         }
     }
-    Ok(())
+
+    Ok(class_system)
 }
 
 /// Check if a field has the `#[r_data]` attribute.
@@ -180,6 +227,8 @@ struct SidecarInfo {
     has_selector: bool,
     /// RData slot fields (with their indices)
     slots: Vec<SidecarSlot>,
+    /// Class system for R wrapper generation
+    class_system: ClassSystem,
 }
 
 /// Determine the SlotKind for a field type.
@@ -211,13 +260,14 @@ fn slot_kind_for_type(ty: &syn::Type) -> SlotKind {
 }
 
 /// Parse struct fields for sidecar information.
-fn parse_sidecar_info(input: &DeriveInput) -> syn::Result<SidecarInfo> {
+fn parse_sidecar_info(input: &DeriveInput, class_system: ClassSystem) -> syn::Result<SidecarInfo> {
     let fields = match &input.data {
         syn::Data::Struct(data) => &data.fields,
         _ => {
             return Ok(SidecarInfo {
                 has_selector: false,
                 slots: vec![],
+                class_system,
             })
         }
     };
@@ -259,116 +309,100 @@ fn parse_sidecar_info(input: &DeriveInput) -> syn::Result<SidecarInfo> {
     Ok(SidecarInfo {
         has_selector: !selector_fields.is_empty(),
         slots,
+        class_system,
     })
 }
 
 /// Generate getter body based on slot kind.
-fn generate_getter_body(slot: &SidecarSlot, prot_index_lit: &syn::LitInt) -> TokenStream {
+/// Reads from the Rust struct field and converts to R SEXP.
+fn generate_getter_body(
+    struct_name: &syn::Ident,
+    slot: &SidecarSlot,
+    _prot_index_lit: &syn::LitInt,
+) -> TokenStream {
+    let field_name = &slot.name;
+
     match slot.kind {
         SlotKind::RawSexp => {
-            // Return raw SEXP from slot
+            // Raw SEXP field - return directly (already an R value)
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
+                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    if ptr.is_null() {
                         return R_NilValue;
                     }
-                    VECTOR_ELT(prot, #prot_index_lit)
+                    (*ptr).#field_name
                 }
             }
         }
         SlotKind::ScalarInt => {
-            // Direct integer access - zero overhead
+            // i32 field - convert to R integer
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarInteger, INTEGER};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarInteger};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
+                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    if ptr.is_null() {
                         return R_NilValue;
                     }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    if slot.is_null() || slot == R_NilValue {
-                        return R_NilValue;
-                    }
-                    // Return a scalar copy (R semantics: copy-on-read for atomics)
-                    Rf_ScalarInteger(*INTEGER(slot))
+                    Rf_ScalarInteger((*ptr).#field_name)
                 }
             }
         }
         SlotKind::ScalarReal => {
-            // Direct real access - zero overhead
+            // f64 field - convert to R real
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarReal, REAL};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarReal};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
+                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    if ptr.is_null() {
                         return R_NilValue;
                     }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    if slot.is_null() || slot == R_NilValue {
-                        return R_NilValue;
-                    }
-                    Rf_ScalarReal(*REAL(slot))
+                    Rf_ScalarReal((*ptr).#field_name)
                 }
             }
         }
         SlotKind::ScalarLogical => {
-            // Direct logical access - zero overhead
+            // bool field - convert to R logical
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarLogical, LOGICAL};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarLogical, Rboolean};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
+                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    if ptr.is_null() {
                         return R_NilValue;
                     }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    if slot.is_null() || slot == R_NilValue {
-                        return R_NilValue;
-                    }
-                    Rf_ScalarLogical(*LOGICAL(slot))
+                    let val = if (*ptr).#field_name { Rboolean::TRUE } else { Rboolean::FALSE };
+                    Rf_ScalarLogical(val as i32)
                 }
             }
         }
         SlotKind::ScalarRaw => {
-            // Direct raw access - zero overhead
+            // u8 field - convert to R raw
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue, Rf_ScalarRaw, RAW};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue, Rf_ScalarRaw};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
+                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    if ptr.is_null() {
                         return R_NilValue;
                     }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    if slot.is_null() || slot == R_NilValue {
-                        return R_NilValue;
-                    }
-                    Rf_ScalarRaw(*RAW(slot))
+                    Rf_ScalarRaw((*ptr).#field_name)
                 }
             }
         }
         SlotKind::Conversion => {
-            // Use IntoR trait for conversion
+            // Use IntoR trait for conversion (e.g., String -> character)
             let ty = &slot.ty;
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, R_NilValue};
-                use ::miniextendr_api::coerce::TryFromSexp;
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 use ::miniextendr_api::into_r::IntoR;
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
+                    let ptr = R_ExternalPtrAddr(x) as *const #struct_name;
+                    if ptr.is_null() {
                         return R_NilValue;
                     }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    if slot.is_null() || slot == R_NilValue {
-                        return R_NilValue;
-                    }
-                    // Convert from R to Rust and back to R
-                    // This ensures we return a fresh R object
-                    match <#ty as TryFromSexp>::try_from_sexp(slot) {
-                        Ok(val) => val.into_r(),
-                        Err(_) => R_NilValue,
-                    }
+                    // Clone the value and convert to R
+                    let val: #ty = (*ptr).#field_name.clone();
+                    <#ty as IntoR>::into_sexp(val)
                 }
             }
         }
@@ -376,120 +410,93 @@ fn generate_getter_body(slot: &SidecarSlot, prot_index_lit: &syn::LitInt) -> Tok
 }
 
 /// Generate setter body based on slot kind.
-fn generate_setter_body(slot: &SidecarSlot, prot_index_lit: &syn::LitInt) -> TokenStream {
+/// Converts from R SEXP and writes to the Rust struct field.
+fn generate_setter_body(
+    struct_name: &syn::Ident,
+    slot: &SidecarSlot,
+    _prot_index_lit: &syn::LitInt,
+) -> TokenStream {
+    let field_name = &slot.name;
+
     match slot.kind {
         SlotKind::RawSexp => {
-            // Store raw SEXP in slot
+            // Raw SEXP field - store directly
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, SET_VECTOR_ELT, R_NilValue};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, R_NilValue};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if !prot.is_null() && prot != R_NilValue {
-                        SET_VECTOR_ELT(prot, #prot_index_lit, value);
+                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    if !ptr.is_null() {
+                        (*ptr).#field_name = value;
                     }
                     x
                 }
             }
         }
         SlotKind::ScalarInt => {
-            // Direct integer storage
+            // i32 field - convert from R integer
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, Rf_asInteger, Rf_ScalarInteger, INTEGER};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asInteger};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
-                        return x;
-                    }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    let int_val = Rf_asInteger(value);
-                    if slot.is_null() || slot == R_NilValue {
-                        // Initialize slot with new scalar
-                        SET_VECTOR_ELT(prot, #prot_index_lit, Rf_ScalarInteger(int_val));
-                    } else {
-                        // Update existing scalar in place
-                        *INTEGER(slot) = int_val;
+                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    if !ptr.is_null() {
+                        (*ptr).#field_name = Rf_asInteger(value);
                     }
                     x
                 }
             }
         }
         SlotKind::ScalarReal => {
-            // Direct real storage
+            // f64 field - convert from R real
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, Rf_asReal, Rf_ScalarReal, REAL};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asReal};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
-                        return x;
-                    }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    let real_val = Rf_asReal(value);
-                    if slot.is_null() || slot == R_NilValue {
-                        SET_VECTOR_ELT(prot, #prot_index_lit, Rf_ScalarReal(real_val));
-                    } else {
-                        *REAL(slot) = real_val;
+                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    if !ptr.is_null() {
+                        (*ptr).#field_name = Rf_asReal(value);
                     }
                     x
                 }
             }
         }
         SlotKind::ScalarLogical => {
-            // Direct logical storage
+            // bool field - convert from R logical
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, Rf_asLogical, Rf_ScalarLogical, LOGICAL};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, Rf_asLogical, Rboolean};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
-                        return x;
-                    }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    let log_val = Rf_asLogical(value);
-                    if slot.is_null() || slot == R_NilValue {
-                        SET_VECTOR_ELT(prot, #prot_index_lit, Rf_ScalarLogical(log_val));
-                    } else {
-                        *LOGICAL(slot) = log_val;
+                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    if !ptr.is_null() {
+                        (*ptr).#field_name = Rf_asLogical(value) == Rboolean::TRUE as i32;
                     }
                     x
                 }
             }
         }
         SlotKind::ScalarRaw => {
-            // Direct raw storage
+            // u8 field - convert from R raw
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, VECTOR_ELT, SET_VECTOR_ELT, R_NilValue, RAW, Rf_coerceVector, SEXPTYPE};
+                use ::miniextendr_api::ffi::{R_ExternalPtrAddr, RAW, Rf_coerceVector, SEXPTYPE};
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
-                        return x;
-                    }
-                    let slot = VECTOR_ELT(prot, #prot_index_lit);
-                    // Coerce to raw and get first byte
-                    let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
-                    let raw_val = *RAW(raw_vec);
-                    if slot.is_null() || slot == R_NilValue {
-                        SET_VECTOR_ELT(prot, #prot_index_lit, ::miniextendr_api::ffi::Rf_ScalarRaw(raw_val));
-                    } else {
-                        *RAW(slot) = raw_val;
+                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    if !ptr.is_null() {
+                        let raw_vec = Rf_coerceVector(value, SEXPTYPE::RAWSXP);
+                        (*ptr).#field_name = *RAW(raw_vec);
                     }
                     x
                 }
             }
         }
         SlotKind::Conversion => {
-            // Use IntoR trait for conversion
+            // Use TryFromSexp for conversion (e.g., character -> String)
             let ty = &slot.ty;
             quote::quote! {
-                use ::miniextendr_api::ffi::{R_ExternalPtrProtected, SET_VECTOR_ELT, R_NilValue};
-                use ::miniextendr_api::coerce::TryFromSexp;
-                use ::miniextendr_api::into_r::IntoR;
+                use ::miniextendr_api::ffi::R_ExternalPtrAddr;
+                use ::miniextendr_api::TryFromSexp;
                 unsafe {
-                    let prot = R_ExternalPtrProtected(x);
-                    if prot.is_null() || prot == R_NilValue {
-                        return x;
-                    }
-                    // Convert from R, then back to R for storage
-                    if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
-                        SET_VECTOR_ELT(prot, #prot_index_lit, val.into_r());
+                    let ptr = R_ExternalPtrAddr(x) as *mut #struct_name;
+                    if !ptr.is_null() {
+                        if let Ok(val) = <#ty as TryFromSexp>::try_from_sexp(value) {
+                            (*ptr).#field_name = val;
+                        }
                     }
                     x
                 }
@@ -498,9 +505,182 @@ fn generate_setter_body(slot: &SidecarSlot, prot_index_lit: &syn::LitInt) -> Tok
     }
 }
 
+/// Generate R wrapper code for a single slot based on class system.
+fn generate_r_wrapper_for_slot(
+    class_system: ClassSystem,
+    type_name: &str,
+    field_name: &str,
+    getter_c_name: &str,
+    setter_c_name: &str,
+) -> String {
+    match class_system {
+        ClassSystem::Env => {
+            // Standalone functions: Type_get_field(), Type_set_field()
+            let r_getter_name = format!("{}_get_{}", type_name, field_name);
+            let r_setter_name = format!("{}_set_{}", type_name, field_name);
+            format!(
+                r#"
+#' Get `{field}` field from {type}
+#' @param x The {type} external pointer
+#' @return The value of the `{field}` field
+#' @export
+{r_getter} <- function(x) .Call({getter_c}, x)
+
+#' Set `{field}` field on {type}
+#' @param x The {type} external pointer
+#' @param value The new value to set
+#' @return The {type} pointer (invisibly)
+#' @export
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
+}}
+"#,
+                type = type_name,
+                field = field_name,
+                r_getter = r_getter_name,
+                r_setter = r_setter_name,
+                getter_c = getter_c_name,
+                setter_c = setter_c_name,
+            )
+        }
+        ClassSystem::R6 => {
+            // R6: Generate env-style accessors that can be called from R6 active bindings.
+            // Note: The getter takes x (the ExternalPtr), not private$.ptr.
+            let r_getter_name = format!("{}_get_{}", type_name, field_name);
+            let r_setter_name = format!("{}_set_{}", type_name, field_name);
+            format!(
+                r#"
+#' Get `{field}` field from {type} (for R6)
+#' @param x The {type} external pointer
+#' @return The value of the `{field}` field
+#' @export
+{r_getter} <- function(x) .Call({getter_c}, x)
+
+#' Set `{field}` field on {type} (for R6)
+#' @param x The {type} external pointer
+#' @param value The new value to set
+#' @return The {type} pointer (invisibly)
+#' @export
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
+}}
+"#,
+                type = type_name,
+                field = field_name,
+                r_getter = r_getter_name,
+                r_setter = r_setter_name,
+                getter_c = getter_c_name,
+                setter_c = setter_c_name,
+            )
+        }
+        ClassSystem::S3 => {
+            // S3 $ method dispatch
+            format!(
+                r#"
+#' @export
+`$.{type}` <- function(x, name) {{
+  if (name == "{field}") return(.Call({getter_c}, x))
+  NextMethod()
+}}
+
+#' @export
+`$<-.{type}` <- function(x, name, value) {{
+  if (name == "{field}") {{
+    .Call({setter_c}, x, value)
+    return(invisible(x))
+  }}
+  NextMethod()
+}}
+"#,
+                type = type_name,
+                field = field_name,
+                getter_c = getter_c_name,
+                setter_c = setter_c_name,
+            )
+        }
+        ClassSystem::S4 => {
+            // S4 slot accessor methods
+            format!(
+                r#"
+#' @export
+setMethod("{field}", "{type}", function(object) .Call({getter_c}, object@ptr))
+
+#' @export
+setMethod("{field}<-", "{type}", function(object, value) {{
+  .Call({setter_c}, object@ptr, value)
+  object
+}})
+"#,
+                type = type_name,
+                field = field_name,
+                getter_c = getter_c_name,
+                setter_c = setter_c_name,
+            )
+        }
+        ClassSystem::S7 => {
+            // S7: Generate env-style accessors that can be used with S7 properties.
+            // These are standalone functions that the user can wrap in S7::new_property().
+            let r_getter_name = format!("{}_get_{}", type_name, field_name);
+            let r_setter_name = format!("{}_set_{}", type_name, field_name);
+            format!(
+                r#"
+#' Get `{field}` field from {type} (for S7)
+#' @param x The {type} external pointer
+#' @return The value of the `{field}` field
+#' @export
+{r_getter} <- function(x) .Call({getter_c}, x)
+
+#' Set `{field}` field on {type} (for S7)
+#' @param x The {type} external pointer
+#' @param value The new value to set
+#' @return The {type} pointer (invisibly)
+#' @export
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
+}}
+"#,
+                type = type_name,
+                field = field_name,
+                r_getter = r_getter_name,
+                r_setter = r_setter_name,
+                getter_c = getter_c_name,
+                setter_c = setter_c_name,
+            )
+        }
+        ClassSystem::Vctrs => {
+            // Vctrs uses S3-style dispatch
+            format!(
+                r#"
+#' @export
+`$.{type}` <- function(x, name) {{
+  if (name == "{field}") return(.Call({getter_c}, x))
+  NextMethod()
+}}
+
+#' @export
+`$<-.{type}` <- function(x, name, value) {{
+  if (name == "{field}") {{
+    .Call({setter_c}, x, value)
+    return(invisible(x))
+  }}
+  NextMethod()
+}}
+"#,
+                type = type_name,
+                field = field_name,
+                getter_c = getter_c_name,
+                setter_c = setter_c_name,
+            )
+        }
+    }
+}
+
 /// Generate sidecar accessor constants and functions.
 ///
-/// Generates code for pub #[r_data] fields based on their SlotKind.
+/// Generates code for pub #[r_data] fields based on their SlotKind and ClassSystem.
 fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::Result<TokenStream> {
     // Check for generics with pub sidecar slots
     if !input.generics.params.is_empty() {
@@ -561,20 +741,16 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         let getter_fn_name = Ident::new(&getter_c_name, Span::call_site());
         let setter_fn_name = Ident::new(&setter_c_name, Span::call_site());
 
-        // R function names
-        let r_getter_name = format!("{}_get_{}", name_str, field_name_str);
-        let r_setter_name = format!("{}_set_{}", name_str, field_name_str);
-
         let prot_index_lit = syn::LitInt::new(&prot_index.to_string(), Span::call_site());
 
         // Generate getter/setter bodies based on slot kind
-        let getter_body = generate_getter_body(slot, &prot_index_lit);
-        let setter_body = generate_setter_body(slot, &prot_index_lit);
+        let getter_body = generate_getter_body(name, slot, &prot_index_lit);
+        let setter_body = generate_setter_body(name, slot, &prot_index_lit);
 
         // Generate C getter function
         c_functions.push(quote::quote! {
             #[doc(hidden)]
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #getter_fn_name(
                 x: ::miniextendr_api::ffi::SEXP
             ) -> ::miniextendr_api::ffi::SEXP {
@@ -585,7 +761,7 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         // Generate C setter function
         c_functions.push(quote::quote! {
             #[doc(hidden)]
-            #[no_mangle]
+            #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #setter_fn_name(
                 x: ::miniextendr_api::ffi::SEXP,
                 value: ::miniextendr_api::ffi::SEXP,
@@ -605,34 +781,25 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
         call_defs.push(quote::quote! {
             ::miniextendr_api::ffi::R_CallMethodDef {
                 name: #getter_cstr_lit.as_ptr().cast(),
-                fun: Some(::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_) -> _)),
+                fun: Some(unsafe { ::std::mem::transmute(#getter_fn_name as unsafe extern "C-unwind" fn(_) -> _) }),
                 numArgs: 1,
             }
         });
         call_defs.push(quote::quote! {
             ::miniextendr_api::ffi::R_CallMethodDef {
                 name: #setter_cstr_lit.as_ptr().cast(),
-                fun: Some(::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _)),
+                fun: Some(unsafe { ::std::mem::transmute(#setter_fn_name as unsafe extern "C-unwind" fn(_, _) -> _) }),
                 numArgs: 2,
             }
         });
 
-        // Generate R wrapper code
-        r_wrappers.push_str(&format!(
-            r#"
-#' @export
-{r_getter} <- function(x) .Call({getter_c})
-
-#' @export
-{r_setter} <- function(x, value) {{
-  .Call({setter_c}, x, value)
-  invisible(x)
-}}
-"#,
-            r_getter = r_getter_name,
-            r_setter = r_setter_name,
-            getter_c = getter_c_name,
-            setter_c = setter_c_name,
+        // Generate R wrapper code based on class system
+        r_wrappers.push_str(&generate_r_wrapper_for_slot(
+            info.class_system,
+            &name_str,
+            &field_name_str,
+            &getter_c_name,
+            &setter_c_name,
         ));
     }
 
@@ -700,10 +867,11 @@ fn generate_into_external_ptr(input: &DeriveInput) -> TokenStream {
 
 /// Main entry point for `#[derive(ExternalPtr)]`.
 pub fn derive_external_ptr(input: DeriveInput) -> syn::Result<TokenStream> {
-    ensure_no_externalptr_attrs(&input)?;
+    // Parse class system from #[externalptr(...)] attribute
+    let class_system = parse_externalptr_attrs(&input)?;
 
     // Parse sidecar information from struct fields
-    let sidecar_info = parse_sidecar_info(&input)?;
+    let sidecar_info = parse_sidecar_info(&input, class_system)?;
 
     let typed_external = generate_typed_external(&input);
     let into_external_ptr = generate_into_external_ptr(&input);

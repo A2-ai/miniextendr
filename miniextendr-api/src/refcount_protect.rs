@@ -37,6 +37,18 @@
 //! | [`HashMapArena`] | HashMap | RefCell | Large collections |
 //! | [`ThreadLocalArena`] | BTreeMap | thread_local | Lowest overhead |
 //! | [`ThreadLocalHashArena`] | HashMap | thread_local | Large + low overhead |
+//!
+//! ## Fast Hash (feature-gated)
+//!
+//! With the `refcount-fast-hash` feature enabled, additional types become available:
+//!
+//! | Type | Map | Storage | Use Case |
+//! |------|-----|---------|----------|
+//! | [`FastHashMapArena`] | ahash HashMap | RefCell | Faster for large collections |
+//! | [`ThreadLocalFastHashArena`] | ahash HashMap | thread_local | Fastest for large + hot loops |
+//!
+//! These use ahash instead of SipHash for improved throughput. Not DOS-resistant,
+//! but suitable for local, non-hostile environments.
 
 use crate::ffi::{
     R_NilValue, R_PreserveObject, R_ReleaseObject, R_xlen_t, Rf_allocVector, Rf_protect,
@@ -93,6 +105,37 @@ pub trait MapStorage: Default {
 
     /// Clear all entries.
     fn clear(&mut self);
+
+    /// Reserve capacity for additional entries.
+    ///
+    /// This is a no-op for ordered maps (BTreeMap) but can improve performance
+    /// for hash maps by avoiding rehashing during bulk inserts.
+    #[inline]
+    fn reserve(&mut self, _additional: usize) {
+        // Default no-op for maps that don't support reservation
+    }
+
+    /// Decrement the count for a key and remove if zero.
+    ///
+    /// Returns `Some(true)` if entry was found and removed,
+    /// `Some(false)` if entry was found but count > 0 after decrement,
+    /// `None` if entry was not found.
+    ///
+    /// This uses entry API when available for single-lookup performance.
+    fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
+        if let Some(entry) = self.get_mut(key) {
+            entry.count -= 1;
+            if entry.count == 0 {
+                let index = entry.index;
+                self.remove(key);
+                Some((true, index))
+            } else {
+                Some((false, entry.index))
+            }
+        } else {
+            None
+        }
+    }
 }
 
 impl MapStorage for BTreeMap<usize, Entry> {
@@ -171,6 +214,32 @@ impl MapStorage for HashMap<usize, Entry> {
     fn clear(&mut self) {
         HashMap::clear(self);
     }
+
+    #[inline]
+    fn reserve(&mut self, additional: usize) {
+        HashMap::reserve(self, additional);
+    }
+
+    /// Entry-based decrement for single-lookup performance.
+    #[inline]
+    fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
+        use std::collections::hash_map::Entry as HashEntry;
+
+        match self.entry(*key) {
+            HashEntry::Occupied(mut occupied) => {
+                let entry = occupied.get_mut();
+                entry.count -= 1;
+                if entry.count == 0 {
+                    let index = entry.index;
+                    occupied.remove();
+                    Some((true, index))
+                } else {
+                    Some((false, entry.index))
+                }
+            }
+            HashEntry::Vacant(_) => None,
+        }
+    }
 }
 
 // =============================================================================
@@ -222,22 +291,27 @@ impl<M: MapStorage> ArenaState<M> {
             R_PreserveObject(backing);
             Rf_unprotect(1);
 
-            self.map.write(M::default());
+            let mut map = M::default();
+            map.reserve(capacity);
+            self.map.write(map);
             self.backing = backing;
             self.capacity = capacity;
             self.len = 0;
-            self.free_list.clear();
+            self.free_list = Vec::with_capacity(capacity);
         }
     }
 
     /// Create initialized state.
     unsafe fn new(capacity: usize) -> Self {
+        let capacity = capacity.max(1);
+        let mut map = M::default();
+        map.reserve(capacity);
         let mut state = Self {
-            map: MaybeUninit::new(M::default()),
+            map: MaybeUninit::new(map),
             backing: SEXP(std::ptr::null_mut()),
             capacity: 0,
             len: 0,
-            free_list: Vec::new(),
+            free_list: Vec::with_capacity(capacity),
         };
         unsafe { state.init_backing(capacity) };
         state
@@ -301,19 +375,20 @@ impl<M: MapStorage> ArenaState<M> {
 
             let key = x.0 as usize;
 
-            let entry = self
-                .map_mut()
-                .get_mut(&key)
-                .expect("unprotect called on SEXP not protected by this arena");
-
-            entry.count -= 1;
-
-            if entry.count == 0 {
-                let index = entry.index;
-                SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
-                self.free_list.push(index);
-                self.map_mut().remove(&key);
-                self.len -= 1;
+            // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
+            match self.map_mut().decrement_and_maybe_remove(&key) {
+                Some((true, index)) => {
+                    // Entry was removed (count reached 0)
+                    SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
+                    self.free_list.push(index);
+                    self.len -= 1;
+                }
+                Some((false, _)) => {
+                    // Entry still exists (count > 0)
+                }
+                None => {
+                    panic!("unprotect called on SEXP not protected by this arena");
+                }
             }
         }
     }
@@ -327,20 +402,20 @@ impl<M: MapStorage> ArenaState<M> {
 
             let key = x.0 as usize;
 
-            if let Some(entry) = self.map_mut().get_mut(&key) {
-                entry.count -= 1;
-
-                if entry.count == 0 {
-                    let index = entry.index;
+            // Use entry-based single-lookup for HashMap, double-lookup for BTreeMap
+            match self.map_mut().decrement_and_maybe_remove(&key) {
+                Some((true, index)) => {
+                    // Entry was removed (count reached 0)
                     SET_VECTOR_ELT(self.backing, index as R_xlen_t, R_NilValue);
                     self.free_list.push(index);
-                    self.map_mut().remove(&key);
                     self.len -= 1;
+                    true
                 }
-
-                true
-            } else {
-                false
+                Some((false, _)) => {
+                    // Entry still exists (count > 0)
+                    true
+                }
+                None => false,
             }
         }
     }
@@ -569,6 +644,92 @@ pub type RefCountedArena = Arena<BTreeMap<usize, Entry>>;
 pub type HashMapArena = Arena<HashMap<usize, Entry>>;
 
 // =============================================================================
+// Fast hash types (feature-gated)
+// =============================================================================
+
+#[cfg(feature = "refcount-fast-hash")]
+mod fast_hash {
+    use super::{Entry, MapStorage};
+    use std::collections::hash_map::Entry as StdEntry;
+
+    /// HashMap with ahash for faster hashing (not DOS-resistant).
+    pub type FastHashMap = std::collections::HashMap<usize, Entry, ahash::RandomState>;
+
+    impl MapStorage for FastHashMap {
+        #[inline]
+        fn get(&self, key: &usize) -> Option<&Entry> {
+            std::collections::HashMap::get(self, key)
+        }
+
+        #[inline]
+        fn get_mut(&mut self, key: &usize) -> Option<&mut Entry> {
+            std::collections::HashMap::get_mut(self, key)
+        }
+
+        #[inline]
+        fn insert(&mut self, key: usize, entry: Entry) -> Option<Entry> {
+            std::collections::HashMap::insert(self, key, entry)
+        }
+
+        #[inline]
+        fn remove(&mut self, key: &usize) -> Option<Entry> {
+            std::collections::HashMap::remove(self, key)
+        }
+
+        #[inline]
+        fn contains_key(&self, key: &usize) -> bool {
+            std::collections::HashMap::contains_key(self, key)
+        }
+
+        #[inline]
+        fn for_each_entry<F: FnMut(&Entry)>(&self, mut f: F) {
+            for entry in self.values() {
+                f(entry);
+            }
+        }
+
+        #[inline]
+        fn clear(&mut self) {
+            std::collections::HashMap::clear(self);
+        }
+
+        #[inline]
+        fn reserve(&mut self, additional: usize) {
+            std::collections::HashMap::reserve(self, additional);
+        }
+
+        /// Entry-based decrement for single-lookup performance.
+        #[inline]
+        fn decrement_and_maybe_remove(&mut self, key: &usize) -> Option<(bool, usize)> {
+            match self.entry(*key) {
+                StdEntry::Occupied(mut occupied) => {
+                    let entry = occupied.get_mut();
+                    entry.count -= 1;
+                    if entry.count == 0 {
+                        let index = entry.index;
+                        occupied.remove();
+                        Some((true, index))
+                    } else {
+                        Some((false, entry.index))
+                    }
+                }
+                StdEntry::Vacant(_) => None,
+            }
+        }
+    }
+}
+
+#[cfg(feature = "refcount-fast-hash")]
+pub use fast_hash::FastHashMap;
+
+/// Fast hash arena using ahash (requires `refcount-fast-hash` feature).
+///
+/// Uses ahash instead of SipHash for improved throughput on large collections.
+/// Not DOS-resistant, suitable for local, non-hostile environments.
+#[cfg(feature = "refcount-fast-hash")]
+pub type FastHashMapArena = Arena<FastHashMap>;
+
+// =============================================================================
 // RAII Guard
 // =============================================================================
 
@@ -645,7 +806,7 @@ macro_rules! define_thread_local_arena {
         $vis struct $name;
 
         impl $name {
-            /// Initialize the arena (called automatically on first use).
+            /// Initialize the arena with default capacity (called automatically on first use).
             ///
             /// # Safety
             ///
@@ -655,6 +816,25 @@ macro_rules! define_thread_local_arena {
                     let state = unsafe { &mut *cell.get() };
                     if !state.initialized {
                         unsafe { state.init() };
+                    }
+                });
+            }
+
+            /// Initialize the arena with specific capacity.
+            ///
+            /// Use this when you know the expected number of distinct protected values
+            /// to avoid backing VECSXP growth and map rehashing during operation.
+            ///
+            /// If already initialized, this is a no-op.
+            ///
+            /// # Safety
+            ///
+            /// Must be called from the R main thread.
+            pub unsafe fn init_with_capacity(capacity: usize) {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    if !state.initialized {
+                        unsafe { state.init_with_capacity(capacity) };
                     }
                 });
             }
@@ -697,6 +877,61 @@ macro_rules! define_thread_local_arena {
             pub unsafe fn try_unprotect(x: $crate::ffi::SEXP) -> bool {
                 $state_name.with(|cell| {
                     let state = unsafe { &mut *cell.get() };
+                    unsafe { state.inner.try_unprotect(x) }
+                })
+            }
+
+            // =========================================================================
+            // Fast API - skip initialization check for hot loops
+            // =========================================================================
+
+            /// Protect without checking initialization.
+            ///
+            /// For hot loops where `init()` or `init_with_capacity()` has already been called.
+            ///
+            /// # Safety
+            ///
+            /// - Must be called from the R main thread.
+            /// - The arena must have been initialized via `init()` or `init_with_capacity()`.
+            #[inline]
+            pub unsafe fn protect_fast(x: $crate::ffi::SEXP) -> $crate::ffi::SEXP {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    debug_assert!(state.initialized, "protect_fast called before init");
+                    unsafe { state.inner.protect(x) }
+                })
+            }
+
+            /// Unprotect without checking initialization.
+            ///
+            /// For hot loops where `init()` or `init_with_capacity()` has already been called.
+            ///
+            /// # Safety
+            ///
+            /// - Must be called from the R main thread.
+            /// - The arena must have been initialized via `init()` or `init_with_capacity()`.
+            #[inline]
+            pub unsafe fn unprotect_fast(x: $crate::ffi::SEXP) {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    debug_assert!(state.initialized, "unprotect_fast called before init");
+                    unsafe { state.inner.unprotect(x) };
+                });
+            }
+
+            /// Try to unprotect without checking initialization.
+            ///
+            /// For hot loops where `init()` or `init_with_capacity()` has already been called.
+            ///
+            /// # Safety
+            ///
+            /// - Must be called from the R main thread.
+            /// - The arena must have been initialized via `init()` or `init_with_capacity()`.
+            #[inline]
+            pub unsafe fn try_unprotect_fast(x: $crate::ffi::SEXP) -> bool {
+                $state_name.with(|cell| {
+                    let state = unsafe { &mut *cell.get() };
+                    debug_assert!(state.initialized, "try_unprotect_fast called before init");
                     unsafe { state.inner.try_unprotect(x) }
                 })
             }
@@ -777,8 +1012,18 @@ impl<M: MapStorage> ThreadLocalState<M> {
         }
     }
 
+    /// Initialize with default capacity.
     pub unsafe fn init(&mut self) {
         unsafe { self.inner.init(ArenaState::<M>::INITIAL_CAPACITY) };
+        self.initialized = true;
+    }
+
+    /// Initialize with specific capacity.
+    ///
+    /// Use this when you know the expected number of distinct protected values
+    /// to avoid backing VECSXP growth and map rehashing.
+    pub unsafe fn init_with_capacity(&mut self, capacity: usize) {
+        unsafe { self.inner.init(capacity) };
         self.initialized = true;
     }
 }
@@ -805,6 +1050,25 @@ define_thread_local_arena!(
     pub ThreadLocalHashArena,
     HashMap<usize, Entry>,
     THREAD_LOCAL_HASH_STATE
+);
+
+// =============================================================================
+// Fast hash thread-local arena (feature-gated)
+// =============================================================================
+
+#[cfg(feature = "refcount-fast-hash")]
+define_thread_local_arena!(
+    /// Thread-local fast hash arena using ahash.
+    ///
+    /// Combines ahash's faster hashing with thread-local storage's low overhead.
+    /// Ideal for hot loops protecting many distinct values.
+    ///
+    /// Not DOS-resistant, suitable for local, non-hostile environments.
+    ///
+    /// Requires the `refcount-fast-hash` feature.
+    pub ThreadLocalFastHashArena,
+    FastHashMap,
+    THREAD_LOCAL_FAST_HASH_STATE
 );
 
 // Tests are in tests/refcount_protect.rs (requires R runtime via miniextendr-engine)

@@ -2298,7 +2298,7 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///     const TYPE_NAME_CSTR: &'static [u8] = b"MyData\0";
 /// }
 /// ```
-#[proc_macro_derive(ExternalPtr, attributes(externalptr))]
+#[proc_macro_derive(ExternalPtr, attributes(externalptr, r_data))]
 pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 

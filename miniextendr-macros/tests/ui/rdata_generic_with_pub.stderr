@@ -3,15 +3,3 @@ error: generic types with pub #[r_data] fields are not supported; .Call entrypoi
    |
 10 | struct Bad<T> {
    |           ^^^
-
-error: cannot find attribute `r_data` in this scope
-  --> tests/ui/rdata_generic_with_pub.rs:12:7
-   |
-12 |     #[r_data]
-   |       ^^^^^^
-
-error: cannot find attribute `r_data` in this scope
-  --> tests/ui/rdata_generic_with_pub.rs:14:7
-   |
-14 |     #[r_data]
-   |       ^^^^^^

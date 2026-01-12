@@ -87,6 +87,7 @@ mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
 mod factor_tests;
+mod rdata_sidecar_tests;
 mod gc_protect_tests;
 mod identical_tests;
 mod interrupt_tests;
@@ -1467,6 +1468,7 @@ miniextendr_module! {
     use conversions;
     use default_tests;
     use externalptr_tests;
+    use rdata_sidecar_tests;
     use gc_protect_tests;
     use identical_tests;
     use receiver_tests;

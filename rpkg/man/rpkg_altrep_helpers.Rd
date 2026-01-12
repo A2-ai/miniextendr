@@ -43,6 +43,8 @@ altrep_from_list(x)
 \description{
 ALTREP convenience functions for testing and examples.
 
+Create a compact integer sequence with explicit length, start, and step.
+
 Convert a numeric vector to an ALTREP-backed real vector.
 
 Convert a character vector to an ALTREP-backed string vector.
@@ -62,6 +64,5 @@ y <- altrep_from_doubles(c(1, 2, 3))
 z <- altrep_from_strings(c("a", "b"))
 lazy_int_seq_is_materialized(lazy_int_seq(1L, 5L, 1L))
 }
-Create a compact integer sequence with explicit length, start, and step.
 }
 \keyword{internal}

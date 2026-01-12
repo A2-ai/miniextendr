@@ -634,14 +634,29 @@ impl ParsedMethod {
     }
 
     /// Detect env kind from function signature.
+    ///
+    /// Handles both standard (`&self`, `&mut self`) and typed (`self: &Self`, `self: &mut Self`) receivers.
     fn detect_env(sig: &syn::Signature) -> ReceiverKind {
         match sig.inputs.first() {
             Some(syn::FnArg::Receiver(r)) => {
+                // Check for standard &self / &mut self
                 if r.reference.is_some() {
                     if r.mutability.is_some() {
                         ReceiverKind::RefMut
                     } else {
                         ReceiverKind::Ref
+                    }
+                } else if r.colon_token.is_some() {
+                    // Check for typed receiver (self: &Self, self: &mut Self)
+                    if let syn::Type::Reference(type_ref) = r.ty.as_ref() {
+                        if type_ref.mutability.is_some() {
+                            ReceiverKind::RefMut
+                        } else {
+                            ReceiverKind::Ref
+                        }
+                    } else {
+                        // self: Box<Self>, self: Rc<Self>, etc. - treat as by value
+                        ReceiverKind::Value
                     }
                 } else {
                     ReceiverKind::Value
