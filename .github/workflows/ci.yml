@@ -168,8 +168,13 @@ jobs:
             r:
               - 'rpkg/**'
               - 'minirextendr/**'
+              - 'tests/cross-package/**'
               - '**/*.R'
               - '**/*.r'
+              - '**/configure.ac'
+              - '**/configure'
+              - '**/*.in'
+              - '**/vendor.tar.xz'
               - 'Cargo.toml'
               - 'Cargo.lock'
               - '**/Cargo.toml'
