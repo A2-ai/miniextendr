@@ -465,30 +465,35 @@ impl NdIntVec {
 // Helper functions for testing conversions
 // =============================================================================
 
+/// @noRd
 /// Round-trip test: R vector -> Array1 -> R vector
 #[miniextendr]
 pub fn ndarray_roundtrip_vec(data: Array1<f64>) -> Array1<f64> {
     data
 }
 
+/// @noRd
 /// Round-trip test: R matrix -> Array2 -> R matrix
 #[miniextendr]
 pub fn ndarray_roundtrip_matrix(data: Array2<f64>) -> Array2<f64> {
     data
 }
 
+/// @noRd
 /// Round-trip test: R array -> ArrayD -> R array
 #[miniextendr]
 pub fn ndarray_roundtrip_array(data: ArrayD<f64>) -> ArrayD<f64> {
     data
 }
 
+/// @noRd
 /// Test integer array round-trip
 #[miniextendr]
 pub fn ndarray_roundtrip_int_vec(data: Array1<i32>) -> Array1<i32> {
     data
 }
 
+/// @noRd
 /// Test integer matrix round-trip
 #[miniextendr]
 pub fn ndarray_roundtrip_int_matrix(data: Array2<i32>) -> Array2<i32> {

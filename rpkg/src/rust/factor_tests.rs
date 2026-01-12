@@ -37,6 +37,7 @@ pub enum Priority {
 // Test functions demonstrating direct RFactor parameter/return usage
 // ============================================================================
 
+/// @noRd
 /// Test: accepts a Color factor directly and returns a description.
 /// This demonstrates that RFactor types work as direct parameters.
 #[miniextendr_api::miniextendr]
@@ -48,6 +49,7 @@ pub fn factor_describe_color(color: Color) -> &'static str {
     }
 }
 
+/// @noRd
 /// Test: returns a Color factor directly (IntoR converts it).
 #[miniextendr_api::miniextendr]
 pub fn factor_get_color(name: &str) -> Color {
@@ -59,12 +61,14 @@ pub fn factor_get_color(name: &str) -> Color {
     }
 }
 
+/// @noRd
 /// Test: returns all colors as a factor vector using FactorVec wrapper.
 #[miniextendr_api::miniextendr]
 pub fn factor_get_all_colors() -> miniextendr_api::FactorVec<Color> {
     miniextendr_api::FactorVec(vec![Color::Red, Color::Green, Color::Blue])
 }
 
+/// @noRd
 /// Test: accepts a Status factor directly (with snake_case levels).
 #[miniextendr_api::miniextendr]
 pub fn factor_describe_status(status: Status) -> &'static str {
@@ -75,6 +79,7 @@ pub fn factor_describe_status(status: Status) -> &'static str {
     }
 }
 
+/// @noRd
 /// Test: accepts a Priority factor directly (with renamed levels).
 #[miniextendr_api::miniextendr]
 pub fn factor_describe_priority(priority: Priority) -> &'static str {
@@ -85,24 +90,28 @@ pub fn factor_describe_priority(priority: Priority) -> &'static str {
     }
 }
 
+/// @noRd
 /// Test: returns the level names for Color.
 #[miniextendr_api::miniextendr]
 pub fn factor_color_levels() -> Vec<&'static str> {
     Color::LEVELS.to_vec()
 }
 
+/// @noRd
 /// Test: returns the level names for Status (snake_case).
 #[miniextendr_api::miniextendr]
 pub fn factor_status_levels() -> Vec<&'static str> {
     Status::LEVELS.to_vec()
 }
 
+/// @noRd
 /// Test: returns the level names for Priority (custom renamed).
 #[miniextendr_api::miniextendr]
 pub fn factor_priority_levels() -> Vec<&'static str> {
     Priority::LEVELS.to_vec()
 }
 
+/// @noRd
 /// Test: accepts a vector of Colors directly using FactorVec wrapper.
 #[miniextendr_api::miniextendr]
 pub fn factor_count_colors(colors: miniextendr_api::FactorVec<Color>) -> Vec<i32> {
@@ -117,6 +126,7 @@ pub fn factor_count_colors(colors: miniextendr_api::FactorVec<Color>) -> Vec<i32
     counts.to_vec()
 }
 
+/// @noRd
 /// Test: accepts Colors with NA values directly using FactorOptionVec wrapper.
 #[miniextendr_api::miniextendr]
 pub fn factor_colors_with_na(colors: miniextendr_api::FactorOptionVec<Color>) -> Vec<&'static str> {

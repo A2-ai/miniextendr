@@ -9,6 +9,7 @@ use miniextendr_api::rayon_bridge::{with_r_matrix, with_r_vec};
 #[cfg(feature = "rayon")]
 use miniextendr_api::{miniextendr, miniextendr_module};
 
+/// @noRd
 /// Test parallel sum using rayon.
 /// Takes a numeric vector and returns the parallel sum.
 #[cfg(feature = "rayon")]
@@ -17,6 +18,7 @@ pub fn rayon_parallel_sum(x: &[f64]) -> f64 {
     x.par_iter().sum()
 }
 
+/// @noRd
 /// Test parallel map: compute sqrt of each element.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -24,6 +26,7 @@ pub fn rayon_parallel_sqrt(x: &[f64]) -> Vec<f64> {
     x.par_iter().map(|v| v.sqrt()).collect()
 }
 
+/// @noRd
 /// Test parallel filter: keep only positive values.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -31,6 +34,7 @@ pub fn rayon_parallel_filter_positive(x: &[f64]) -> Vec<f64> {
     x.par_iter().filter(|&&v| v > 0.0).copied().collect()
 }
 
+/// @noRd
 /// Test Vec collection from parallel iterator.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -38,6 +42,7 @@ pub fn rayon_vec_collect(n: i32) -> Vec<f64> {
     (0..n).into_par_iter().map(|i| (i as f64).sqrt()).collect()
 }
 
+/// @noRd
 /// Test with_r_vec for zero-copy parallel fill.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -50,6 +55,7 @@ pub fn rayon_with_r_vec(n: i32) -> SEXP {
     })
 }
 
+/// @noRd
 /// Test with_r_matrix for parallel matrix fill.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -63,6 +69,7 @@ pub fn rayon_with_r_matrix(nrow: i32, ncol: i32) -> SEXP {
     })
 }
 
+/// @noRd
 /// Test parallel reduce operations.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -84,6 +91,7 @@ pub fn rayon_parallel_stats(x: &[f64]) -> Vec<f64> {
     vec![sum, min, max, mean]
 }
 
+/// @noRd
 /// Test parallel integer operations.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -91,6 +99,7 @@ pub fn rayon_parallel_sum_int(x: &[i32]) -> i32 {
     x.par_iter().sum()
 }
 
+/// @noRd
 /// Get number of rayon threads.
 #[cfg(feature = "rayon")]
 #[miniextendr]
@@ -98,6 +107,7 @@ pub fn rayon_num_threads() -> i32 {
     miniextendr_api::rayon_bridge::perf::num_threads() as i32
 }
 
+/// @noRd
 /// Check if currently in a rayon thread (should be false when called from R).
 #[cfg(feature = "rayon")]
 #[miniextendr]

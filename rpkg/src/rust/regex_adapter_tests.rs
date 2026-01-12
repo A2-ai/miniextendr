@@ -2,6 +2,7 @@
 use miniextendr_api::regex_impl::Regex;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
+/// @noRd
 #[miniextendr]
 pub fn regex_is_match(pattern: &str, text: &str) -> bool {
     Regex::new(pattern)
@@ -9,6 +10,7 @@ pub fn regex_is_match(pattern: &str, text: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// @noRd
 #[miniextendr]
 pub fn regex_find(pattern: &str, text: &str) -> Option<String> {
     Regex::new(pattern)
@@ -17,6 +19,7 @@ pub fn regex_find(pattern: &str, text: &str) -> Option<String> {
         .map(|m| m.as_str().to_string())
 }
 
+/// @noRd
 #[miniextendr]
 pub fn regex_find_all(pattern: &str, text: &str) -> Vec<String> {
     Regex::new(pattern)
@@ -24,6 +27,7 @@ pub fn regex_find_all(pattern: &str, text: &str) -> Vec<String> {
         .unwrap_or_default()
 }
 
+/// @noRd
 #[miniextendr]
 pub fn regex_replace_first(pattern: &str, text: &str, replacement: &str) -> String {
     Regex::new(pattern)
@@ -31,6 +35,7 @@ pub fn regex_replace_first(pattern: &str, text: &str, replacement: &str) -> Stri
         .unwrap_or_else(|_| text.to_string())
 }
 
+/// @noRd
 #[miniextendr]
 pub fn regex_replace_all(pattern: &str, text: &str, replacement: &str) -> String {
     Regex::new(pattern)
@@ -38,6 +43,7 @@ pub fn regex_replace_all(pattern: &str, text: &str, replacement: &str) -> String
         .unwrap_or_else(|_| text.to_string())
 }
 
+/// @noRd
 #[miniextendr]
 pub fn regex_split(pattern: &str, text: &str) -> Vec<String> {
     Regex::new(pattern)

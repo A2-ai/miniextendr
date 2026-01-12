@@ -49,6 +49,7 @@ pub struct SidecarEnv {
 #[miniextendr(env)]
 impl SidecarEnv {}
 
+/// @noRd
 /// Create a new SidecarEnv wrapped in ExternalPtr.
 ///
 /// @name rpkg_rdata_sidecar_env
@@ -105,6 +106,7 @@ pub struct SidecarR6 {
 #[miniextendr(r6)]
 impl SidecarR6 {}
 
+/// @noRd
 /// Create a new SidecarR6 (the R6Class will wrap this).
 #[miniextendr]
 pub fn rdata_sidecar_r6_new(value: i32, label: String) -> ExternalPtr<SidecarR6> {
@@ -135,6 +137,7 @@ pub struct SidecarS3 {
 #[miniextendr(s3)]
 impl SidecarS3 {}
 
+/// @noRd
 /// Create a new SidecarS3.
 #[miniextendr]
 pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
@@ -167,6 +170,7 @@ pub struct SidecarS4 {
 #[miniextendr(s4)]
 impl SidecarS4 {}
 
+/// @noRd
 /// Create a new SidecarS4.
 #[miniextendr]
 pub fn rdata_sidecar_s4_new(
@@ -208,6 +212,7 @@ pub struct SidecarS7 {
 #[miniextendr(s7)]
 impl SidecarS7 {}
 
+/// @noRd
 /// Create a new SidecarS7.
 #[miniextendr]
 pub fn rdata_sidecar_s7_new(
@@ -246,6 +251,7 @@ pub struct SidecarVctrs {
 #[miniextendr(vctrs)]
 impl SidecarVctrs {}
 
+/// @noRd
 /// Create a new SidecarVctrs.
 #[miniextendr]
 pub fn rdata_sidecar_vctrs_new(vec_data: f64, vec_label: String) -> ExternalPtr<SidecarVctrs> {
@@ -296,6 +302,7 @@ pub struct SidecarRawSexp {
 #[miniextendr(env)]
 impl SidecarRawSexp {}
 
+/// @noRd
 /// Create a new SidecarRawSexp with NULL slots.
 #[miniextendr]
 pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
@@ -331,6 +338,7 @@ pub struct SidecarRaw {
 #[miniextendr(env)]
 impl SidecarRaw {}
 
+/// @noRd
 /// Create a new SidecarRaw.
 #[miniextendr]
 pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
