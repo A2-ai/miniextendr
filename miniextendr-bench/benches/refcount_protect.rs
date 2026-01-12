@@ -559,6 +559,11 @@ fn thread_local_hash_many(n: usize) {
 // =============================================================================
 // These test the arena implementations at R's --max-ppsize boundaries.
 // ProtectScope is limited by ppsize, arenas are not.
+//
+// Test ranges:
+// - min*i (i=1..5): 10000, 20000, 30000, 40000, 50000
+// - default+min*i (i=1..5): 60000, 70000, 80000, 90000, 100000
+// - max: 500000
 
 /// ProtectScope at minimum ppsize (10000)
 /// Note: Cannot test higher values - would hit protect stack overflow
@@ -574,8 +579,8 @@ fn ppsize_protect_scope_min() {
     }
 }
 
-/// RefCountedArena at ppsize boundaries (no limit)
-#[divan::bench(args = [10000, 50000, 500000])]
+/// RefCountedArena: fine-grained ppsize testing (BTreeMap + RefCell)
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
 fn ppsize_refcount_arena(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
@@ -586,8 +591,8 @@ fn ppsize_refcount_arena(n: usize) {
     }
 }
 
-/// HashMapArena at ppsize boundaries (no limit)
-#[divan::bench(args = [10000, 50000, 500000])]
+/// HashMapArena: fine-grained ppsize testing (HashMap + RefCell)
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
 fn ppsize_hashmap_arena(n: usize) {
     unsafe {
         let arena = HashMapArena::new();
@@ -598,8 +603,8 @@ fn ppsize_hashmap_arena(n: usize) {
     }
 }
 
-/// ThreadLocalArena at ppsize boundaries (no limit)
-#[divan::bench(args = [10000, 50000, 500000])]
+/// ThreadLocalArena: fine-grained ppsize testing (BTreeMap + thread_local)
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
 fn ppsize_thread_local(n: usize) {
     unsafe {
         for i in 0..n {
@@ -610,8 +615,8 @@ fn ppsize_thread_local(n: usize) {
     }
 }
 
-/// ThreadLocalHashArena at ppsize boundaries (no limit)
-#[divan::bench(args = [10000, 50000, 500000])]
+/// ThreadLocalHashArena: fine-grained ppsize testing (HashMap + thread_local)
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
 fn ppsize_thread_local_hash(n: usize) {
     unsafe {
         for i in 0..n {
