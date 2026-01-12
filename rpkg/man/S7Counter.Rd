@@ -26,7 +26,7 @@ S7Counter_default_counter()
 \arguments{
 \item{initial}{Initial value for the counter.}
 
-\item{.ptr}{External pointer (used internally by S7).}
+\item{.ptr}{Internal pointer (used by static methods, not for direct use).}
 }
 \description{
 S7 counter with \code{s7_value()}, \code{s7_inc()}, and \code{s7_add()} methods.

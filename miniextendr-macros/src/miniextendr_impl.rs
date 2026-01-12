@@ -1658,6 +1658,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
+    // Constructor - check if .ptr param will be added (for static methods returning Self)
+    let has_self_returning_methods = parsed_impl
+        .methods
+        .iter()
+        .filter(|m| m.should_include())
+        .any(|m| m.returns_self());
+
     // Class definition with documentation
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
@@ -1666,6 +1673,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             )
             .build(),
     );
+
+    // Document .ptr param - S7::new_class always creates a constructor that accepts
+    // all properties as parameters, so .ptr is always a valid parameter
+    if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
+        lines.push(
+            "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
+                .to_string(),
+        );
+    }
+
     lines.push(format!(
         "{} <- S7::new_class(\"{}\",",
         class_name, class_name
@@ -1675,13 +1692,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    properties = list(".to_string());
     lines.push("        .ptr = S7::class_any".to_string());
     lines.push("    ),".to_string());
-
-    // Constructor - add .ptr param if ANY method returns Self
-    let has_self_returning_methods = parsed_impl
-        .methods
-        .iter()
-        .filter(|m| m.should_include())
-        .any(|m| m.returns_self());
 
     if let Some(ctx) = parsed_impl.constructor_context() {
         if has_self_returning_methods {
@@ -2025,6 +2035,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         "#' @method vec_ptype2 {}.{}",
         class_name, class_name
     ));
+    lines.push(format!("#' @param x A {} vector.", class_name));
+    lines.push(format!("#' @param y A {} vector.", class_name));
+    lines.push("#' @param ... Additional arguments (unused).".to_string());
     lines.push("#' @export".to_string());
     match vctrs_attrs.kind {
         VctrsKind::Vctr => {
@@ -2070,6 +2083,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // vec_cast.<class>.<class> - identity cast (no-op for same type)
     lines.push(format!("#' @rdname {}", class_name));
     lines.push(format!("#' @method vec_cast {}.{}", class_name, class_name));
+    lines.push(format!("#' @param x A {} vector to cast.", class_name));
+    lines.push(format!("#' @param to A {} prototype.", class_name));
+    lines.push("#' @param ... Additional arguments (unused).".to_string());
     lines.push("#' @export".to_string());
     lines.push(format!(
         "vec_cast.{c}.{c} <- function(x, to, ...) x",

@@ -393,7 +393,6 @@ AC_CONFIG_COMMANDS([compress-vendor],
         --exclude='vendor/*/.gitlab-ci.yml' \
         --exclude='vendor/*/.vim' \
         --exclude='vendor/*/.cargo_vcs_info.json' \
-        --exclude='vendor/*/.cargo-checksum.json' \
         --exclude='vendor/*/*.a' \
         --exclude='vendor/*/*.lib' \
         vendor

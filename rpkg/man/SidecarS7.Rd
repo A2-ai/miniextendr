@@ -28,6 +28,8 @@ SidecarS7_get_prop_name(x)
 SidecarS7_set_prop_name(x, value)
 }
 \arguments{
+\item{.ptr}{Internal pointer (used by static methods, not for direct use).}
+
 \item{x}{The SidecarS7 external pointer}
 
 \item{value}{The new value to set}

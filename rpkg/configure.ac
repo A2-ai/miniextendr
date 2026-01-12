@@ -57,26 +57,19 @@ AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
 dnl
-dnl By default, use no extra features (safe, passes R CMD check).
-dnl In dev mode (NOT_CRAN=true), enable all optional features for testing.
+dnl rpkg is a demo package that demonstrates ALL miniextendr features.
+dnl Enable all optional features by default (both dev and CRAN modes).
 dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
 AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
-dnl In dev mode, enable all features by default for comprehensive testing
+dnl Enable all features by default for this demo package
 dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
-  dnl MINIEXTENDR_FEATURES not set at all - apply defaults based on mode
-  if test "$NOT_CRAN" = "true"; then
-    dnl Dev mode: enable all optional features for testing
-    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
-    echo "configure: dev mode - enabling all optional features for testing"
-  else
-    dnl CRAN mode: no extra features
-    MINIEXTENDR_FEATURES=""
-  fi
+  dnl MINIEXTENDR_FEATURES not set - enable all optional features
+  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
@@ -748,7 +741,6 @@ AC_CONFIG_COMMANDS([compress-vendor],
         --exclude='vendor/*/.gitlab-ci.yml' \
         --exclude='vendor/*/.vim' \
         --exclude='vendor/*/.cargo_vcs_info.json' \
-        --exclude='vendor/*/.cargo-checksum.json' \
         --exclude='vendor/*/*.a' \
         --exclude='vendor/*/*.lib' \
         vendor

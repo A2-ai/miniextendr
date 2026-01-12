@@ -24,6 +24,12 @@ SidecarVctrs_set_vec_label(x, value)
 \arguments{
 \item{x}{The SidecarVctrs external pointer}
 
+\item{y}{A SidecarVctrs vector.}
+
+\item{...}{Additional arguments (unused).}
+
+\item{to}{A SidecarVctrs prototype.}
+
 \item{value}{The new value to set}
 }
 \value{

@@ -141,7 +141,7 @@ pub struct NdMatrix(Array2<f64>);
 /// @description Wraps a 2D ndarray matrix and exposes adapter trait methods.
 /// @return An ExternalPtr to an NdMatrix.
 /// @examples
-/// m <- NdMatrix$new(matrix(1:6, nrow=2, ncol=3))
+/// m <- NdMatrix$new(matrix(c(1, 2, 3, 4, 5, 6), nrow=2, ncol=3))
 /// m$nrows()
 /// m$ncols()
 /// m$row(0L)

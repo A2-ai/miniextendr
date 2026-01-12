@@ -69,7 +69,9 @@ just devtools-document  # Regenerate R wrappers
 # Full R CMD check workflow
 just configure          # 1. Configure (generates vendor/, Makevars, etc.)
 just r-cmd-build        # 2. Build tarball (R CMD build)
-just r-cmd-check        # 3. Check (R CMD check)
+just r-cmd-check        # 3. Check the built tarball (R CMD check)
+# IMPORTANT: Always check the built tarball, not the source directory.
+# R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.
 
 # Cross-package tests
 just cross-install      # Build + install producer.pkg and consumer.pkg

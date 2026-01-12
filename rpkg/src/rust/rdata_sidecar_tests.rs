@@ -57,10 +57,7 @@ impl SidecarEnv {}
 /// SidecarEnv_get_count(ptr)
 /// SidecarEnv_set_count(ptr, 100L)
 /// SidecarEnv_get_count(ptr)
-/// @aliases rdata_sidecar_env_new SidecarEnv_get_count SidecarEnv_set_count
-///   SidecarEnv_get_score SidecarEnv_set_score SidecarEnv_get_flag
-///   SidecarEnv_set_flag SidecarEnv_get_name SidecarEnv_set_name
-///   SidecarEnv_get_raw_slot SidecarEnv_set_raw_slot
+/// @aliases rdata_sidecar_env_new
 /// @param count Initial integer count.
 /// @param score Initial double score.
 /// @param flag Initial boolean flag.
