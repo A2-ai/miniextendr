@@ -337,7 +337,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       mkdir -p "$VENDOR_OUT"
       $CARGO_CMD vendor \
         --manifest-path "$MANIFEST" \
-        "$VENDOR_OUT"
+        "$VENDOR_OUT" > /dev/null
       if test $? -ne 0; then
         echo "configure: error: cargo vendor failed" >&2
         exit 1
