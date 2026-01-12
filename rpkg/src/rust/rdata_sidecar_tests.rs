@@ -15,7 +15,9 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[derive(miniextendr_api::ExternalPtr, Debug)]
 #[externalptr(env)]
 pub struct SidecarEnv {
-    /// Regular Rust field (not exposed to R)
+    /// Regular Rust field (not exposed to R) - intentionally unused to demonstrate
+    /// that non-#[r_data] fields are private to Rust.
+    #[allow(dead_code)]
     internal_value: i32,
 
     /// Selector - enables R accessors

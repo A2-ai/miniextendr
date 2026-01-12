@@ -159,7 +159,6 @@ impl TryCoerce<f64> for BigInt {
 
     #[inline]
     fn try_coerce(self) -> Result<f64, CoerceError> {
-        use num_bigint::ToBigInt;
         // Check if value is within f64's exact integer representation range (2^53)
         const MAX_SAFE: i64 = 1 << 53;
         const MIN_SAFE: i64 = -(1 << 53);

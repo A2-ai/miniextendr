@@ -163,8 +163,6 @@ pub(crate) struct MiniextendrFunctionParsed {
     per_param_coerce: std::collections::HashSet<String>,
     /// Parameter names with `#[miniextendr(default = "...")]` and their default values.
     per_param_defaults: std::collections::HashMap<String, String>,
-    /// Spans of `#[miniextendr(default = "...")]` attributes for error reporting.
-    per_param_default_spans: std::collections::HashMap<String, proc_macro2::Span>,
 }
 
 impl syn::parse::Parse for MiniextendrFunctionParsed {
@@ -342,7 +340,6 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             named_dots,
             per_param_coerce,
             per_param_defaults,
-            per_param_default_spans,
         })
     }
 }

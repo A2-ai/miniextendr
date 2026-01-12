@@ -55,6 +55,8 @@ pub(crate) fn coverage_result_value(left: i32, right: i32) -> Result<i32, ()> {
 }
 
 /// Macro coverage: plain value return.
+/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
+#[allow(unused_mut)]
 #[miniextendr]
 pub(crate) fn coverage_plain_value(mut base: i32, increment: i32) -> i32 {
     base += increment;
@@ -62,6 +64,8 @@ pub(crate) fn coverage_plain_value(mut base: i32, increment: i32) -> i32 {
 }
 
 /// Macro coverage: mutable argument binding.
+/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
+#[allow(unused_mut)]
 #[miniextendr]
 pub(crate) fn coverage_mut_argument(mut counter: i32) -> i32 {
     counter += 1;
@@ -69,6 +73,8 @@ pub(crate) fn coverage_mut_argument(mut counter: i32) -> i32 {
 }
 
 /// Macro coverage: mutable + immutable parameters.
+/// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
+#[allow(unused_mut)]
 #[miniextendr]
 pub(crate) fn coverage_mut_and_const(mut value: i32, delta: i32) -> i32 {
     value += delta;

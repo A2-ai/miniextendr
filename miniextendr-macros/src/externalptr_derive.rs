@@ -233,26 +233,26 @@ struct SidecarInfo {
 
 /// Determine the SlotKind for a field type.
 fn slot_kind_for_type(ty: &syn::Type) -> SlotKind {
-    if let syn::Type::Path(type_path) = ty {
-        if let Some(seg) = type_path.path.segments.last() {
-            let ident = &seg.ident;
-            // Check for raw SEXP access
-            if ident == "SEXP" {
-                return SlotKind::RawSexp;
-            }
-            // Check for zero-overhead scalar types
-            if ident == "i32" || ident == "i16" || ident == "i8" {
-                return SlotKind::ScalarInt;
-            }
-            if ident == "f64" || ident == "f32" {
-                return SlotKind::ScalarReal;
-            }
-            if ident == "bool" || ident == "Rbool" {
-                return SlotKind::ScalarLogical;
-            }
-            if ident == "u8" {
-                return SlotKind::ScalarRaw;
-            }
+    if let syn::Type::Path(type_path) = ty
+        && let Some(seg) = type_path.path.segments.last()
+    {
+        let ident = &seg.ident;
+        // Check for raw SEXP access
+        if ident == "SEXP" {
+            return SlotKind::RawSexp;
+        }
+        // Check for zero-overhead scalar types
+        if ident == "i32" || ident == "i16" || ident == "i8" {
+            return SlotKind::ScalarInt;
+        }
+        if ident == "f64" || ident == "f32" {
+            return SlotKind::ScalarReal;
+        }
+        if ident == "bool" || ident == "Rbool" {
+            return SlotKind::ScalarLogical;
+        }
+        if ident == "u8" {
+            return SlotKind::ScalarRaw;
         }
     }
     // Everything else uses conversion
