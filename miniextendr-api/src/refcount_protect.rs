@@ -79,7 +79,7 @@ use crate::ffi::{
     Rf_unprotect, SET_VECTOR_ELT, SEXP, SEXPTYPE, VECTOR_ELT,
 };
 use std::cell::{Cell, RefCell};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -496,6 +496,204 @@ impl RefCountedArena {
     #[inline]
     pub unsafe fn guard(&self, x: SEXP) -> RefCountedGuard<'_> {
         unsafe { RefCountedGuard::new(self, x) }
+    }
+}
+
+// =============================================================================
+// HashMap-based variant (for benchmarking comparison)
+// =============================================================================
+
+/// A HashMap-based variant of [`RefCountedArena`] for benchmarking.
+///
+/// This is identical to `RefCountedArena` except it uses `HashMap` instead of
+/// `BTreeMap` for the internal map. Use this to compare performance
+/// characteristics of the two data structures.
+pub struct HashMapArena {
+    map: RefCell<HashMap<usize, Entry>>,
+    backing: Cell<SEXP>,
+    capacity: Cell<usize>,
+    len: Cell<usize>,
+    free_list: RefCell<Vec<usize>>,
+    _nosend: NoSendSync,
+}
+
+impl HashMapArena {
+    const INITIAL_CAPACITY: usize = 16;
+
+    /// Create a new HashMap-based arena.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn new() -> Self {
+        unsafe { Self::with_capacity(Self::INITIAL_CAPACITY) }
+    }
+
+    /// Create a new arena with a specific initial capacity.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn with_capacity(capacity: usize) -> Self {
+        let capacity = capacity.max(1);
+
+        unsafe {
+            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
+            R_PreserveObject(backing);
+            Rf_unprotect(1);
+
+            Self {
+                map: RefCell::new(HashMap::new()),
+                backing: Cell::new(backing),
+                capacity: Cell::new(capacity),
+                len: Cell::new(0),
+                free_list: RefCell::new(Vec::new()),
+                _nosend: PhantomData,
+            }
+        }
+    }
+
+    /// Protect a SEXP, incrementing its reference count.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn protect(&self, x: SEXP) -> SEXP {
+        unsafe {
+            if std::ptr::eq(x.0, R_NilValue.0) {
+                return x;
+            }
+
+            let key = x.0 as usize;
+            let mut map = self.map.borrow_mut();
+
+            if let Some(entry) = map.get_mut(&key) {
+                entry.count += 1;
+            } else {
+                let index = self.allocate_slot();
+                SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, x);
+                map.insert(key, Entry { count: 1, index });
+                self.len.set(self.len.get() + 1);
+            }
+
+            x
+        }
+    }
+
+    /// Unprotect a SEXP, decrementing its reference count.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn unprotect(&self, x: SEXP) {
+        unsafe {
+            if std::ptr::eq(x.0, R_NilValue.0) {
+                return;
+            }
+
+            let key = x.0 as usize;
+            let mut map = self.map.borrow_mut();
+
+            let entry = map
+                .get_mut(&key)
+                .expect("unprotect called on SEXP not protected by this arena");
+
+            entry.count -= 1;
+
+            if entry.count == 0 {
+                let index = entry.index;
+                SET_VECTOR_ELT(self.backing.get(), index as R_xlen_t, R_NilValue);
+                self.free_list.borrow_mut().push(index);
+                map.remove(&key);
+                self.len.set(self.len.get() - 1);
+            }
+        }
+    }
+
+    /// Check if a SEXP is currently protected.
+    #[inline]
+    pub fn is_protected(&self, x: SEXP) -> bool {
+        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+            return false;
+        }
+        let key = x.0 as usize;
+        self.map.borrow().contains_key(&key)
+    }
+
+    /// Get the reference count for a SEXP.
+    #[inline]
+    pub fn ref_count(&self, x: SEXP) -> usize {
+        if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
+            return 0;
+        }
+        let key = x.0 as usize;
+        self.map.borrow().get(&key).map(|e| e.count).unwrap_or(0)
+    }
+
+    /// Get the number of distinct SEXPs currently protected.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len.get()
+    }
+
+    /// Check if the arena is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len.get() == 0
+    }
+
+    fn allocate_slot(&self) -> usize {
+        if let Some(index) = self.free_list.borrow_mut().pop() {
+            return index;
+        }
+
+        let len = self.len.get();
+        let capacity = self.capacity.get();
+
+        if len >= capacity {
+            unsafe { self.grow(); }
+        }
+
+        len
+    }
+
+    unsafe fn grow(&self) {
+        let old_capacity = self.capacity.get();
+        let new_capacity = old_capacity * 2;
+        let old_backing = self.backing.get();
+
+        unsafe {
+            let new_backing =
+                Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_capacity as R_xlen_t));
+            R_PreserveObject(new_backing);
+
+            for i in 0..old_capacity {
+                let elt = VECTOR_ELT(old_backing, i as R_xlen_t);
+                SET_VECTOR_ELT(new_backing, i as R_xlen_t, elt);
+            }
+
+            R_ReleaseObject(old_backing);
+            Rf_unprotect(1);
+
+            self.backing.set(new_backing);
+            self.capacity.set(new_capacity);
+        }
+    }
+}
+
+impl Drop for HashMapArena {
+    fn drop(&mut self) {
+        unsafe {
+            R_ReleaseObject(self.backing.get());
+        }
+    }
+}
+
+impl Default for HashMapArena {
+    fn default() -> Self {
+        unsafe { Self::new() }
     }
 }
 

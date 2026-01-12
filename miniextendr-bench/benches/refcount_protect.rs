@@ -9,7 +9,7 @@
 
 use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
 use miniextendr_api::gc_protect::ProtectScope;
-use miniextendr_api::refcount_protect::RefCountedArena;
+use miniextendr_api::refcount_protect::{HashMapArena, RefCountedArena};
 
 fn main() {
     miniextendr_bench::init();
@@ -275,5 +275,141 @@ fn protect_scope_realistic() {
 
         divan::black_box(list);
         // All unprotected on scope drop
+    }
+}
+
+// =============================================================================
+// BTreeMap vs HashMap comparison
+// =============================================================================
+
+/// BTreeMap (RefCountedArena): single protect
+#[divan::bench]
+fn btreemap_single() {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let x = arena.protect(ffi::Rf_ScalarInteger(42));
+        divan::black_box(x);
+    }
+}
+
+/// HashMap (HashMapArena): single protect
+#[divan::bench]
+fn hashmap_single() {
+    unsafe {
+        let arena = HashMapArena::new();
+        let x = arena.protect(ffi::Rf_ScalarInteger(42));
+        divan::black_box(x);
+    }
+}
+
+/// BTreeMap: protect N distinct values
+#[divan::bench(args = [10, 100, 1000])]
+fn btreemap_multiple(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(arena.len());
+    }
+}
+
+/// HashMap: protect N distinct values
+#[divan::bench(args = [10, 100, 1000])]
+fn hashmap_multiple(n: usize) {
+    unsafe {
+        let arena = HashMapArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(arena.len());
+    }
+}
+
+/// BTreeMap: protect same value N times (ref count)
+#[divan::bench(args = [10, 100, 1000])]
+fn btreemap_same_value(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let x = ffi::Rf_ScalarInteger(42);
+        for _ in 0..n {
+            arena.protect(x);
+        }
+        divan::black_box(arena.ref_count(x));
+    }
+}
+
+/// HashMap: protect same value N times (ref count)
+#[divan::bench(args = [10, 100, 1000])]
+fn hashmap_same_value(n: usize) {
+    unsafe {
+        let arena = HashMapArena::new();
+        let x = ffi::Rf_ScalarInteger(42);
+        for _ in 0..n {
+            arena.protect(x);
+        }
+        divan::black_box(arena.ref_count(x));
+    }
+}
+
+/// BTreeMap: protect then unprotect N values
+#[divan::bench(args = [10, 100, 1000])]
+fn btreemap_protect_unprotect(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let mut values = Vec::with_capacity(n);
+
+        for i in 0..n {
+            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+        }
+
+        for x in values.into_iter().rev() {
+            arena.unprotect(x);
+        }
+
+        divan::black_box(arena.is_empty());
+    }
+}
+
+/// HashMap: protect then unprotect N values
+#[divan::bench(args = [10, 100, 1000])]
+fn hashmap_protect_unprotect(n: usize) {
+    unsafe {
+        let arena = HashMapArena::new();
+        let mut values = Vec::with_capacity(n);
+
+        for i in 0..n {
+            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+        }
+
+        for x in values.into_iter().rev() {
+            arena.unprotect(x);
+        }
+
+        divan::black_box(arena.is_empty());
+    }
+}
+
+/// BTreeMap: many values stress test
+#[divan::bench(args = [1000, 5000, 10000])]
+fn btreemap_many(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+        }
+        divan::black_box(arena.len());
+    }
+}
+
+/// HashMap: many values stress test
+#[divan::bench(args = [1000, 5000, 10000])]
+fn hashmap_many(n: usize) {
+    unsafe {
+        let arena = HashMapArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+        }
+        divan::black_box(arena.len());
     }
 }

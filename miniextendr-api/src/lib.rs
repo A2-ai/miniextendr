@@ -368,7 +368,7 @@ pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, ReprotectSlot, Ro
 
 // Reference-counted GC protection (BTreeMap + VECSXP backing)
 pub mod refcount_protect;
-pub use refcount_protect::{RefCountedArena, RefCountedGuard};
+pub use refcount_protect::{HashMapArena, RefCountedArena, RefCountedGuard};
 
 pub mod allocator;
 pub use allocator::RAllocator;
