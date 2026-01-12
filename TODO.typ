@@ -312,6 +312,7 @@ Expose `#[r_data]` sidecar fields from `ExternalPtr` structs to R as getter/sett
   - Setter updates prot slot and returns invisible(x)
 - [x] Add compile error for generic types with `pub` `#[r_data]` fields
   - Error: "generic types with pub #[r_data] fields are not supported; .Call entrypoints cannot be generic"
+- [ ] The `rdname` is not default to file-name for the sidecar impls.
 
 === Tests
 - [ ] UI tests: multiple selector fields error, non-marker type error, generic type error
