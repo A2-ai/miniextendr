@@ -9,7 +9,8 @@
 //! - `StrVecBuilder` vs manual string vector construction
 
 use miniextendr_api::ffi::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
-use miniextendr_api::gc_protect::{OwnedProtect, ProtectScope};
+use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
+use miniextendr_api::preserve;
 use miniextendr_api::list::{List, ListBuilder};
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 
@@ -30,6 +31,28 @@ fn raw_protect_unprotect() {
         Rf_protect(sexp);
         Rf_unprotect(1);
         divan::black_box(sexp);
+    }
+}
+
+/// Preserve list: insert + release
+#[divan::bench]
+fn preserve_insert_release() {
+    unsafe {
+        let sexp = ffi::Rf_ScalarInteger(42);
+        let cell = preserve::insert(sexp);
+        preserve::release(cell);
+        divan::black_box(cell);
+    }
+}
+
+/// Preserve list (unchecked): insert + release
+#[divan::bench]
+fn preserve_insert_release_unchecked() {
+    unsafe {
+        let sexp = ffi::Rf_ScalarInteger(42);
+        let cell = preserve::insert_unchecked(sexp);
+        preserve::release_unchecked(cell);
+        divan::black_box(cell);
     }
 }
 
@@ -72,6 +95,37 @@ fn raw_protect_multiple(n: usize) {
             Rf_protect(ffi::Rf_ScalarInteger(42));
         }
         Rf_unprotect(n as i32);
+    }
+}
+
+// =============================================================================
+// Raw R API reference (expensive variants)
+// =============================================================================
+
+/// Reference: direct R API calls that higher-level helpers stack together.
+#[divan::bench]
+fn raw_expensive_reference() {
+    unsafe {
+        // Preserve / release (precious list)
+        let preserved = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        ffi::R_PreserveObject(preserved);
+        ffi::R_ReleaseObject(preserved);
+
+        // Protect-with-index + reprotect (replace-in-place)
+        let mut idx: ProtectIndex = 0;
+        let slot_value = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        ffi::R_ProtectWithIndex(slot_value, &mut idx as *mut ProtectIndex);
+
+        // Protect new value temporarily to avoid GC gap before reprotect
+        let replaced = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+        Rf_protect(replaced);
+        ffi::R_Reprotect(replaced, idx);
+        Rf_unprotect(1);
+
+        // Unprotect by pointer (linear scan)
+        ffi::Rf_unprotect_ptr(replaced);
+
+        divan::black_box((preserved, replaced));
     }
 }
 

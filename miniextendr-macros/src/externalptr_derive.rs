@@ -521,12 +521,14 @@ fn generate_r_wrapper_for_slot(
             format!(
                 r#"
 #' Get `{field}` field from {type}
+#' @rdname {type}
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
 {r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type}
+#' @rdname {type}
 #' @param x The {type} external pointer
 #' @param value The new value to set
 #' @return The {type} pointer (invisibly)
@@ -552,12 +554,14 @@ fn generate_r_wrapper_for_slot(
             format!(
                 r#"
 #' Get `{field}` field from {type} (for R6)
+#' @rdname {type}
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
 {r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for R6)
+#' @rdname {type}
 #' @param x The {type} external pointer
 #' @param value The new value to set
 #' @return The {type} pointer (invisibly)
@@ -576,45 +580,68 @@ fn generate_r_wrapper_for_slot(
             )
         }
         ClassSystem::S3 => {
-            // S3 $ method dispatch
+            // S3: Generate env-style accessors. Users can combine these into
+            // `$.class` and `$<-.class` methods if desired.
+            // Generating separate `$.class` methods per field would overwrite each other.
+            let r_getter_name = format!("{}_get_{}", type_name, field_name);
+            let r_setter_name = format!("{}_set_{}", type_name, field_name);
             format!(
                 r#"
+#' Get `{field}` field from {type} (for S3)
+#' @rdname {type}
+#' @param x The {type} external pointer
+#' @return The value of the `{field}` field
 #' @export
-`$.{type}` <- function(x, name) {{
-  if (name == "{field}") return(.Call({getter_c}, x))
-  NextMethod()
-}}
+{r_getter} <- function(x) .Call({getter_c}, x)
 
+#' Set `{field}` field on {type} (for S3)
+#' @rdname {type}
+#' @param x The {type} external pointer
+#' @param value The new value to set
+#' @return The {type} pointer (invisibly)
 #' @export
-`$<-.{type}` <- function(x, name, value) {{
-  if (name == "{field}") {{
-    .Call({setter_c}, x, value)
-    return(invisible(x))
-  }}
-  NextMethod()
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
 }}
 "#,
                 type = type_name,
                 field = field_name,
+                r_getter = r_getter_name,
+                r_setter = r_setter_name,
                 getter_c = getter_c_name,
                 setter_c = setter_c_name,
             )
         }
         ClassSystem::S4 => {
-            // S4 slot accessor methods
+            // S4: Generate env-style accessors. Users can wrap these in setMethod()
+            // with appropriate generics if desired.
+            let r_getter_name = format!("{}_get_{}", type_name, field_name);
+            let r_setter_name = format!("{}_set_{}", type_name, field_name);
             format!(
                 r#"
+#' Get `{field}` field from {type} (for S4)
+#' @rdname {type}
+#' @param x The {type} external pointer
+#' @return The value of the `{field}` field
 #' @export
-setMethod("{field}", "{type}", function(object) .Call({getter_c}, object@ptr))
+{r_getter} <- function(x) .Call({getter_c}, x)
 
+#' Set `{field}` field on {type} (for S4)
+#' @rdname {type}
+#' @param x The {type} external pointer
+#' @param value The new value to set
+#' @return The {type} pointer (invisibly)
 #' @export
-setMethod("{field}<-", "{type}", function(object, value) {{
-  .Call({setter_c}, object@ptr, value)
-  object
-}})
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
+}}
 "#,
                 type = type_name,
                 field = field_name,
+                r_getter = r_getter_name,
+                r_setter = r_setter_name,
                 getter_c = getter_c_name,
                 setter_c = setter_c_name,
             )
@@ -627,12 +654,14 @@ setMethod("{field}<-", "{type}", function(object, value) {{
             format!(
                 r#"
 #' Get `{field}` field from {type} (for S7)
+#' @rdname {type}
 #' @param x The {type} external pointer
 #' @return The value of the `{field}` field
 #' @export
 {r_getter} <- function(x) .Call({getter_c}, x)
 
 #' Set `{field}` field on {type} (for S7)
+#' @rdname {type}
 #' @param x The {type} external pointer
 #' @param value The new value to set
 #' @return The {type} pointer (invisibly)
@@ -651,26 +680,35 @@ setMethod("{field}<-", "{type}", function(object, value) {{
             )
         }
         ClassSystem::Vctrs => {
-            // Vctrs uses S3-style dispatch
+            // Vctrs: Generate env-style accessors. Users can combine these into
+            // `$.class` and `$<-.class` methods if desired.
+            // Generating separate `$.class` methods per field would overwrite each other.
+            let r_getter_name = format!("{}_get_{}", type_name, field_name);
+            let r_setter_name = format!("{}_set_{}", type_name, field_name);
             format!(
                 r#"
+#' Get `{field}` field from {type} (for vctrs)
+#' @rdname {type}
+#' @param x The {type} external pointer
+#' @return The value of the `{field}` field
 #' @export
-`$.{type}` <- function(x, name) {{
-  if (name == "{field}") return(.Call({getter_c}, x))
-  NextMethod()
-}}
+{r_getter} <- function(x) .Call({getter_c}, x)
 
+#' Set `{field}` field on {type} (for vctrs)
+#' @rdname {type}
+#' @param x The {type} external pointer
+#' @param value The new value to set
+#' @return The {type} pointer (invisibly)
 #' @export
-`$<-.{type}` <- function(x, name, value) {{
-  if (name == "{field}") {{
-    .Call({setter_c}, x, value)
-    return(invisible(x))
-  }}
-  NextMethod()
+{r_setter} <- function(x, value) {{
+  .Call({setter_c}, x, value)
+  invisible(x)
 }}
 "#,
                 type = type_name,
                 field = field_name,
+                r_getter = r_getter_name,
+                r_setter = r_setter_name,
                 getter_c = getter_c_name,
                 setter_c = setter_c_name,
             )

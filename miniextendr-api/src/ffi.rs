@@ -906,6 +906,8 @@ unsafe extern "C-unwind" {
     #[doc(alias = "UNPROTECT")]
     #[doc(alias = "unprotect")]
     pub fn Rf_unprotect(l: ::std::os::raw::c_int);
+    #[doc(alias = "UNPROTECT_PTR")]
+    pub fn Rf_unprotect_ptr(s: SEXP);
     // Vector allocation functions
     #[doc(alias = "allocVector")]
     pub fn Rf_allocVector(sexptype: SEXPTYPE, length: R_xlen_t) -> SEXP;

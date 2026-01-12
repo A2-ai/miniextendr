@@ -146,6 +146,197 @@ pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
 }
 
 // =============================================================================
+// S4 - slot accessors via setMethod
+// =============================================================================
+
+/// Demonstrates S4 class system.
+/// Generates setMethod() calls for slot accessors.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(s4)]
+pub struct SidecarS4 {
+    #[r_data]
+    _r: RSidecar,
+
+    #[r_data]
+    pub slot_int: i32,
+
+    #[r_data]
+    pub slot_real: f64,
+
+    #[r_data]
+    pub slot_str: String,
+}
+
+/// Empty impl block to trigger r_data call def collection
+#[miniextendr(s4)]
+impl SidecarS4 {}
+
+/// Create a new SidecarS4.
+#[miniextendr]
+pub fn rdata_sidecar_s4_new(slot_int: i32, slot_real: f64, slot_str: String) -> ExternalPtr<SidecarS4> {
+    ExternalPtr::new(SidecarS4 {
+        _r: RSidecar,
+        slot_int,
+        slot_real,
+        slot_str,
+    })
+}
+
+// =============================================================================
+// S7 - properties via new_property()
+// =============================================================================
+
+/// Demonstrates S7 class system.
+/// Generates standalone accessors that can be wrapped with S7::new_property().
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(s7)]
+pub struct SidecarS7 {
+    #[r_data]
+    _r: RSidecar,
+
+    #[r_data]
+    pub prop_int: i32,
+
+    #[r_data]
+    pub prop_flag: bool,
+
+    #[r_data]
+    pub prop_name: String,
+}
+
+/// Empty impl block to trigger r_data call def collection
+#[miniextendr(s7)]
+impl SidecarS7 {}
+
+/// Create a new SidecarS7.
+#[miniextendr]
+pub fn rdata_sidecar_s7_new(prop_int: i32, prop_flag: bool, prop_name: String) -> ExternalPtr<SidecarS7> {
+    ExternalPtr::new(SidecarS7 {
+        _r: RSidecar,
+        prop_int,
+        prop_flag,
+        prop_name,
+    })
+}
+
+// =============================================================================
+// Vctrs - S3-style $ dispatch for vctrs compatibility
+// =============================================================================
+
+/// Demonstrates vctrs class system.
+/// Generates S3-style $.class and $<-.class methods like S3.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(vctrs)]
+pub struct SidecarVctrs {
+    #[r_data]
+    _r: RSidecar,
+
+    #[r_data]
+    pub vec_data: f64,
+
+    #[r_data]
+    pub vec_label: String,
+}
+
+/// Empty impl block to trigger r_data call def collection
+#[miniextendr(vctrs)]
+impl SidecarVctrs {}
+
+/// Create a new SidecarVctrs.
+#[miniextendr]
+pub fn rdata_sidecar_vctrs_new(vec_data: f64, vec_label: String) -> ExternalPtr<SidecarVctrs> {
+    ExternalPtr::new(SidecarVctrs {
+        _r: RSidecar,
+        vec_data,
+        vec_label,
+    })
+}
+
+// =============================================================================
+// Raw SEXP slot comprehensive tests
+// =============================================================================
+
+/// Tests raw SEXP slot functionality with various R types.
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(env)]
+pub struct SidecarRawSexp {
+    #[r_data]
+    _r: RSidecar,
+
+    /// Can store any SEXP - integer vector
+    #[r_data]
+    pub int_vec: SEXP,
+
+    /// Can store any SEXP - real vector
+    #[r_data]
+    pub real_vec: SEXP,
+
+    /// Can store any SEXP - character vector
+    #[r_data]
+    pub char_vec: SEXP,
+
+    /// Can store any SEXP - list
+    #[r_data]
+    pub list_val: SEXP,
+
+    /// Can store any SEXP - function/closure
+    #[r_data]
+    pub func_val: SEXP,
+
+    /// Can store any SEXP - environment
+    #[r_data]
+    pub env_val: SEXP,
+}
+
+/// Empty impl block to trigger r_data call def collection
+#[miniextendr(env)]
+impl SidecarRawSexp {}
+
+/// Create a new SidecarRawSexp with NULL slots.
+#[miniextendr]
+pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
+    use miniextendr_api::ffi::R_NilValue;
+
+    ExternalPtr::new(SidecarRawSexp {
+        _r: RSidecar,
+        int_vec: unsafe { R_NilValue },
+        real_vec: unsafe { R_NilValue },
+        char_vec: unsafe { R_NilValue },
+        list_val: unsafe { R_NilValue },
+        func_val: unsafe { R_NilValue },
+        env_val: unsafe { R_NilValue },
+    })
+}
+
+// =============================================================================
+// u8 (raw) scalar test
+// =============================================================================
+
+/// Tests u8 scalar field (maps to R raw).
+#[derive(miniextendr_api::ExternalPtr, Debug)]
+#[externalptr(env)]
+pub struct SidecarRaw {
+    #[r_data]
+    _r: RSidecar,
+
+    #[r_data]
+    pub byte_val: u8,
+}
+
+/// Empty impl block to trigger r_data call def collection
+#[miniextendr(env)]
+impl SidecarRaw {}
+
+/// Create a new SidecarRaw.
+#[miniextendr]
+pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
+    ExternalPtr::new(SidecarRaw {
+        _r: RSidecar,
+        byte_val,
+    })
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -156,8 +347,18 @@ miniextendr_module! {
     impl SidecarEnv;
     impl SidecarR6;
     impl SidecarS3;
+    impl SidecarS4;
+    impl SidecarS7;
+    impl SidecarVctrs;
+    impl SidecarRawSexp;
+    impl SidecarRaw;
 
     fn rdata_sidecar_env_new;
     fn rdata_sidecar_r6_new;
     fn rdata_sidecar_s3_new;
+    fn rdata_sidecar_s4_new;
+    fn rdata_sidecar_s7_new;
+    fn rdata_sidecar_vctrs_new;
+    fn rdata_sidecar_rawsexp_new;
+    fn rdata_sidecar_raw_new;
 }
