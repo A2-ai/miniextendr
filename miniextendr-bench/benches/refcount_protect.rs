@@ -564,15 +564,18 @@ fn thread_local_hash_many(n: usize) {
 // - min*i (i=1..5): 10000, 20000, 30000, 40000, 50000
 // - default+min*i (i=1..5): 60000, 70000, 80000, 90000, 100000
 // - max: 500000
+//
+// NOTE: Benchmarks run alphabetically. ProtectScope tests are prefixed with
+// "aaa_" to run first before other benchmarks consume protect stack space.
 
-/// ProtectScope at minimum ppsize (10000)
-/// Note: Cannot test higher values - would hit protect stack overflow
-/// This demonstrates why arenas are needed for large-scale protection
-#[divan::bench]
-fn ppsize_protect_scope_min() {
+/// ProtectScope at ppsize boundaries (runs first via "aaa_" prefix)
+/// Tests how much of the default 50000 ppsize is actually available.
+/// R initialization uses ~30-40 protect slots, so max available is ~49960.
+#[divan::bench(args = [10000, 20000, 30000, 40000, 49000, 49500, 49900])]
+fn aaa_ppsize_protect_scope(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
-        for i in 0..10000 {
+        for i in 0..n {
             let _ = scope.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
         }
         divan::black_box(scope.count());
@@ -580,7 +583,7 @@ fn ppsize_protect_scope_min() {
 }
 
 /// RefCountedArena: fine-grained ppsize testing (BTreeMap + RefCell)
-#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
 fn ppsize_refcount_arena(n: usize) {
     unsafe {
         let arena = RefCountedArena::new();
@@ -592,7 +595,7 @@ fn ppsize_refcount_arena(n: usize) {
 }
 
 /// HashMapArena: fine-grained ppsize testing (HashMap + RefCell)
-#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
 fn ppsize_hashmap_arena(n: usize) {
     unsafe {
         let arena = HashMapArena::new();
@@ -604,7 +607,7 @@ fn ppsize_hashmap_arena(n: usize) {
 }
 
 /// ThreadLocalArena: fine-grained ppsize testing (BTreeMap + thread_local)
-#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
 fn ppsize_thread_local(n: usize) {
     unsafe {
         for i in 0..n {
@@ -616,7 +619,7 @@ fn ppsize_thread_local(n: usize) {
 }
 
 /// ThreadLocalHashArena: fine-grained ppsize testing (HashMap + thread_local)
-#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 500000])]
+#[divan::bench(args = [10000, 20000, 30000, 40000, 50000, 60000, 70000, 80000, 90000, 100000, 200000, 300000, 400000, 500000])]
 fn ppsize_thread_local_hash(n: usize) {
     unsafe {
         for i in 0..n {
