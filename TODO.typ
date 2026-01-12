@@ -322,17 +322,17 @@ Expose `#[r_data]` sidecar fields from `ExternalPtr` structs to R as getter/sett
 ==== R Internals & Extensions
 - [x] Study `background/R Internals.html` for SEXP type system (2026-01-12)
   - Compared against R 4.5.2 `src/include/Rinternals.h`
-  - **FINDING: SEXPTYPE enum is complete** - all 22 types match exactly:
+  - *FINDING: SEXPTYPE enum is complete* - all 22 types match exactly:
     - NILSXP(0) through LGLSXP(10), skip 11-12, INTSXP(13) through S4SXP(25)
     - Plus NEWSXP(30), FREESXP(31), FUNSXP(99)
     - OBJSXP/S4SXP aliasing (both value 25) correctly handled
-  - **PROTECT patterns verified**:
+  - *PROTECT patterns verified *:
     - `gc_protect` module: RAII wrappers for Rf_protect/Rf_unprotect
     - `preserve` module: R_PreserveObject/R_ReleaseObject for cross-.Call objects
     - `ExternalPtr`: R-owned Rust data with finalizers
     - ProtectScope, OwnedProtect, ReprotectSlot follow R's LIFO stack semantics
 - [x] Study `background/Writing R Extensions.html` for .Call interface (2026-01-12)
-  - **Registration patterns verified correct**:
+  - *Registration patterns verified correct*:
     - NAMESPACE: `useDynLib(miniextendr, .registration = TRUE)` ✓
     - entrypoint.c: `R_useDynamicSymbols(dll, FALSE)` ✓
     - entrypoint.c: `R_forceSymbols(dll, TRUE)` ✓
@@ -341,7 +341,7 @@ Expose `#[r_data]` sidecar fields from `ExternalPtr` structs to R as getter/sett
   - NA handling: documented in `altrep_traits.rs` (NA_INTEGER, NA_REAL, NA_LOGICAL)
 - [x] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
   - Compared miniextendr ALTREP impl against R 4.5.2 `src/include/R_ext/Altrep.h`
-  - **FINDING: All R ALTREP methods are implemented** in miniextendr:
+  - *FINDING: All R ALTREP methods are implemented* in miniextendr:
     - Base: Length (required), Serialize/Unserialize, Duplicate, Coerce, Inspect
     - Vector: Dataptr, Dataptr_or_null, Extract_subset
     - Integer/Real: Elt, Get_region, Is_sorted, No_NA, Sum, Min, Max
