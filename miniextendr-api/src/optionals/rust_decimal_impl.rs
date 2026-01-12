@@ -46,10 +46,91 @@
 
 pub use rust_decimal::Decimal;
 
+use crate::coerce::{Coerce, CoerceError, TryCoerce};
 use crate::ffi::{SEXP, SEXPTYPE, TYPEOF};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::str::FromStr;
+
+// =============================================================================
+// Coerce/TryCoerce impls for Decimal
+// =============================================================================
+
+/// `i32` → `Decimal`: lossless, i32 fits exactly in Decimal
+impl Coerce<Decimal> for i32 {
+    #[inline(always)]
+    fn coerce(self) -> Decimal {
+        Decimal::from(self)
+    }
+}
+
+/// `i64` → `Decimal`: lossless, i64 fits exactly in Decimal (28-29 digits)
+impl Coerce<Decimal> for i64 {
+    #[inline(always)]
+    fn coerce(self) -> Decimal {
+        Decimal::from(self)
+    }
+}
+
+/// `f64` → `Decimal`: fallible, may have NaN/Inf or representation issues
+impl TryCoerce<Decimal> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<Decimal, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
+        // Decimal::try_from(f64) may fail for values outside its range
+        Decimal::try_from(self).map_err(|_| CoerceError::Overflow)
+    }
+}
+
+/// `Decimal` → `f64`: may lose precision (Decimal has 28-29 digits, f64 ~15-17)
+impl TryCoerce<f64> for Decimal {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<f64, CoerceError> {
+        // Convert to f64 using to_string parsing for best precision
+        // Note: Decimal can represent values that f64 cannot exactly
+        use rust_decimal::prelude::ToPrimitive;
+        self.to_f64().ok_or(CoerceError::Overflow)
+    }
+}
+
+/// `Decimal` → `i64`: fallible, may not fit or may have fractional part
+impl TryCoerce<i64> for Decimal {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i64, CoerceError> {
+        use rust_decimal::prelude::ToPrimitive;
+        // Check for fractional part
+        if self.fract() != Decimal::ZERO {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        self.to_i64().ok_or(CoerceError::Overflow)
+    }
+}
+
+/// `Decimal` → `i32`: fallible, may not fit or may have fractional part
+impl TryCoerce<i32> for Decimal {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i32, CoerceError> {
+        use rust_decimal::prelude::ToPrimitive;
+        // Check for fractional part
+        if self.fract() != Decimal::ZERO {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        self.to_i32().ok_or(CoerceError::Overflow)
+    }
+}
 
 fn parse_decimal(s: &str) -> Result<Decimal, SexpError> {
     Decimal::from_str(s).map_err(|e| SexpError::InvalidValue(e.to_string()))

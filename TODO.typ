@@ -1211,9 +1211,11 @@ Standalone adapter traits not needed - use connection framework instead.
   - IntSet: RFromIter, RToVec
   - IterableVec/IterableVecIter: RMakeIter
 - [x] Add R tests in `rpkg/tests/testthat/test-adapter-traits.R`
-- [ ] Add per-feature adapter demos (cfg-gated):
+- [x] Add per-feature adapter demos (cfg-gated):
   - ordered-float, num-bigint, rust_decimal, uuid, regex, indexmap, time
-- [ ] Add per-feature R tests using `skip_if_missing_feature()`
+  - Rust: `rpkg/src/rust/*_adapter_tests.rs`
+  - R tests: `rpkg/tests/testthat/test-feature-adapters.R`
+- [x] Add per-feature R tests using `skip_if_missing_feature()`
 - Plan: `reviews/rpkg-adapter-tests-plan.md`
 
 == API Cleanup
@@ -1231,13 +1233,14 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== Feature module Coerce/TryCoerce integration
 
-- [ ] Add `Coerce`/`TryCoerce` impls for feature types
+- [x] Add `Coerce`/`TryCoerce` impls for feature types
   - `impl Coerce<OrderedFloat<f64>> for f64`
   - `impl TryCoerce<OrderedFloat<f32>> for f64` (precision-loss check)
   - `impl Coerce<Decimal> for i32`
   - `impl TryCoerce<Decimal> for f64` (precision loss/error)
   - `impl Coerce<BigInt> for i32`
   - `impl TryCoerce<BigInt> for i64` (if needed)
+  - Implemented in: `ordered_float_impl.rs`, `rust_decimal_impl.rs`, `num_bigint_impl.rs`
 - [ ] Use `Coerced<T, R>` in feature `TryFromSexp` impls
   - Standardize error messages and NA handling
   - Replace manual parsing in `ordered_float_impl`, `rust_decimal_impl`, `num_bigint_impl`
@@ -1254,13 +1257,13 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== Feature Detection Generator
 
-- [ ] Add `rust_enabled_features()` generator to minirextendr
+- [x] Add `rust_enabled_features()` generator to minirextendr
   - Create function that generates `rpkg_enabled_features()` equivalent for user packages
   - Function should scan Cargo.toml features and generate matching Rust code
   - Allow re-running to sync with Cargo.toml feature changes
-  - Template: `inst/templates/rpkg/src/rust/feature_detection.rs`
   - R wrapper: `minirextendr::update_feature_detection()`
   - Should generate both Rust code and R helper (`has_feature()`, `skip_if_missing_feature()`)
+  - Implemented in `minirextendr/R/use-feature.R`: `use_feature_detection()`, `update_feature_detection()`
 
 
 == minirextendr

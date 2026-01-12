@@ -230,3 +230,282 @@ use_serde <- function() {
 
   invisible(TRUE)
 }
+
+# =============================================================================
+# Feature Detection Generator
+# =============================================================================
+
+#' Generate feature detection code
+#'
+#' Generates Rust code that exposes enabled Cargo features to R, and R helper
+#' functions to query them. This allows tests to skip when features are missing.
+#'
+#' @details
+#' This function scans your `src/rust/Cargo.toml.in` for features and generates:
+#'
+#' 1. **Rust code** (`<package>_enabled_features()`) - Returns a vector of enabled feature names
+#' 2. **R helpers** (`has_feature()`, `skip_if_missing_feature()`) - For runtime feature checks
+#'
+#' The generated Rust function uses `cfg!(feature = "...")` at compile time to build
+
+#' a list of enabled features. This is useful for:
+#'
+#' - Skipping tests when optional features are not compiled in
+#' - Conditional code paths based on available features
+#' - Documentation of what's included in a build
+#'
+#' @param package_name Package name (default: derived from DESCRIPTION)
+#' @param features Character vector of feature names to include. Default NULL
+#'   scans Cargo.toml.in automatically.
+#' @param rust_file Path for generated Rust code (default: "src/rust/feature_detection.rs")
+#' @param r_file Path for generated R helpers (default: "R/feature_helpers.R")
+#' @param overwrite Logical, whether to overwrite existing files
+#'
+#' @return Invisibly returns list of generated file paths
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # Auto-detect features from Cargo.toml.in
+#' use_feature_detection()
+#'
+#' # Manually specify features
+#' use_feature_detection(features = c("rayon", "serde", "uuid"))
+#' }
+use_feature_detection <- function(package_name = NULL,
+                                   features = NULL,
+                                   rust_file = "src/rust/feature_detection.rs",
+                                   r_file = "R/feature_helpers.R",
+                                   overwrite = FALSE) {
+
+  # Get package name from DESCRIPTION if not provided
+  if (is.null(package_name)) {
+    desc_path <- usethis::proj_path("DESCRIPTION")
+    if (fs::file_exists(desc_path)) {
+      package_name <- desc::desc_get_field("Package", file = desc_path)
+    } else {
+      abort("Could not determine package name. Provide it explicitly or run from package root.")
+    }
+  }
+
+  # Detect features from Cargo.toml.in if not provided
+  if (is.null(features)) {
+    features <- detect_cargo_features()
+    if (length(features) == 0) {
+      cli::cli_alert_warning("No features found in Cargo.toml.in")
+      cli::cli_alert_info("Add features to [features] section or specify manually")
+    }
+  }
+
+  cli::cli_alert_info("Generating feature detection for {length(features)} features")
+
+  # Generate Rust code
+  rust_path <- usethis::proj_path(rust_file)
+  if (fs::file_exists(rust_path) && !overwrite) {
+    cli::cli_alert_warning("{.path {rust_file}} already exists. Use {.code overwrite = TRUE} to replace.")
+  } else {
+    rust_code <- generate_feature_detection_rust(package_name, features)
+    ensure_dir(dirname(rust_path))
+    writeLines(rust_code, rust_path)
+    cli::cli_alert_success("Created {.path {rust_file}}")
+  }
+
+  # Generate R helpers
+  r_path <- usethis::proj_path(r_file)
+  if (fs::file_exists(r_path) && !overwrite) {
+    cli::cli_alert_warning("{.path {r_file}} already exists. Use {.code overwrite = TRUE} to replace.")
+  } else {
+    r_code <- generate_feature_detection_r(package_name)
+    ensure_dir(dirname(r_path))
+    writeLines(r_code, r_path)
+    cli::cli_alert_success("Created {.path {r_file}}")
+  }
+
+  cli::cli_alert_info("Remember to:")
+  cli::cli_bullets(c(
+    " " = "Add {.code mod feature_detection;} to lib.rs",
+    " " = "Add {.code use feature_detection;} to miniextendr_module!",
+    " " = "Run {.code devtools::document()} to update NAMESPACE"
+  ))
+
+  invisible(list(rust = rust_path, r = r_path))
+}
+
+#' Update feature detection to match Cargo.toml.in
+#'
+#' Re-scans Cargo.toml.in and regenerates feature detection code. Use this after
+#' adding new features to keep the detection code in sync.
+#'
+#' @param overwrite Logical, whether to overwrite existing files (default TRUE)
+#' @return Invisibly returns list of generated file paths
+#' @export
+#'
+#' @examples
+#' \dontrun{
+#' # After adding new features via use_rayon(), use_serde(), etc.
+#' update_feature_detection()
+#' }
+update_feature_detection <- function(overwrite = TRUE) {
+  use_feature_detection(overwrite = overwrite)
+}
+
+#' Detect features from Cargo.toml.in
+#'
+#' Parses the [features] section of src/rust/Cargo.toml.in to extract feature names.
+#'
+#' @return Character vector of feature names
+#' @noRd
+detect_cargo_features <- function() {
+  cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml.in")
+
+  if (!fs::file_exists(cargo_in)) {
+    cli::cli_warn("Cargo.toml.in not found at {.path {cargo_in}}")
+    return(character())
+  }
+
+  lines <- readLines(cargo_in, warn = FALSE)
+
+  # Find [features] section
+  features_idx <- grep("^\\[features\\]", lines)
+  if (length(features_idx) == 0) {
+    return(character())
+  }
+
+  # Find next section
+  next_section <- grep("^\\[", lines)
+  next_section <- next_section[next_section > features_idx[1]]
+  if (length(next_section) > 0) {
+    end_idx <- next_section[1] - 1
+  } else {
+    end_idx <- length(lines)
+  }
+
+  # Extract feature names (lines like: feature_name = [...])
+  feature_lines <- lines[(features_idx[1] + 1):end_idx]
+  feature_lines <- feature_lines[grepl("^[a-zA-Z0-9_-]+\\s*=", feature_lines)]
+
+  # Extract just the feature names
+  features <- sub("\\s*=.*", "", feature_lines)
+  features <- trimws(features)
+
+  # Filter out "default" feature
+  features <- features[features != "default"]
+
+  features
+}
+
+#' Generate Rust feature detection code
+#'
+#' @param package_name Package name
+#' @param features Vector of feature names
+#' @return Character string of Rust code
+#' @noRd
+generate_feature_detection_rust <- function(package_name, features) {
+  package_rs <- gsub("[.-]", "_", package_name)
+  fn_name <- paste0(package_rs, "_enabled_features")
+
+  # Build cfg! checks for each feature
+  checks <- vapply(features, function(f) {
+    sprintf('    if cfg!(feature = "%s") {\n        features.push("%s");\n    }', f, f)
+  }, character(1))
+
+  code <- sprintf(
+'//! Feature detection - generated by minirextendr::use_feature_detection()
+//!
+//! This module provides runtime access to compile-time feature flags.
+//! Regenerate with: minirextendr::update_feature_detection()
+
+use miniextendr_api::{miniextendr, miniextendr_module};
+
+/// Returns a vector of enabled Cargo features
+///
+/// This function is auto-generated from Cargo.toml.in features.
+/// Use `%s_has_feature()` in R to check for specific features.
+#[miniextendr]
+pub fn %s() -> Vec<&\'static str> {
+    let mut features = Vec::new();
+
+%s
+
+    features
+}
+
+miniextendr_module! {
+    mod feature_detection;
+    fn %s;
+}
+',
+    package_rs,
+    fn_name,
+    paste(checks, collapse = "\n"),
+    fn_name
+  )
+
+  code
+}
+
+#' Generate R feature helper code
+#'
+#' @param package_name Package name
+#' @return Character string of R code
+#' @noRd
+generate_feature_detection_r <- function(package_name) {
+  package_rs <- gsub("[.-]", "_", package_name)
+  fn_name <- paste0(package_rs, "_enabled_features")
+
+  code <- sprintf(
+'# Feature detection helpers - generated by minirextendr::use_feature_detection()
+#
+# These functions provide access to compile-time feature flags at runtime.
+# Regenerate with: minirextendr::update_feature_detection()
+
+#\' Check if a feature is enabled
+#\'
+#\' Check if a specific optional feature was compiled into the package.
+#\'
+#\' @param name Character string naming the feature to check.
+#\' @return Logical `TRUE` if the feature is enabled, `FALSE` otherwise.
+#\' @examples
+#\' %s_has_feature("rayon")
+#\' %s_has_feature("serde")
+#\' @export
+%s_has_feature <- function(name) {
+  name %%in%% %s()
+}
+
+#\' Skip test if feature is missing
+#\'
+#\' For use in testthat tests to skip tests when an optional feature is not enabled.
+#\'
+#\' @param name Character string naming the required feature.
+#\' @return Invisibly returns `NULL`. Called for its side effect of skipping tests.
+#\' @examples
+#\' \\dontrun{
+#\' test_that("rayon feature works", {
+#\'   skip_if_missing_feature("%s")
+#\'   # ... test code ...
+#\' })
+#\' }
+#\' @export
+skip_if_missing_feature <- function(name) {
+  if (!%s_has_feature(name)) {
+    testthat::skip(paste("feature not enabled:", name))
+  }
+}
+',
+    package_rs, package_rs,
+    package_rs, fn_name,
+    package_name,
+    package_rs
+  )
+
+  code
+}
+
+#' Ensure directory exists
+#' @noRd
+ensure_dir <- function(path) {
+  if (!fs::dir_exists(path)) {
+    fs::dir_create(path, recurse = TRUE)
+  }
+}

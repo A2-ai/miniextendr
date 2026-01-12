@@ -13,10 +13,175 @@
 
 pub use num_bigint::{BigInt, BigUint};
 
+use crate::coerce::{Coerce, CoerceError, TryCoerce};
 use crate::ffi::{SEXP, SEXPTYPE};
 use crate::from_r::{SexpError, SexpNaError, TryFromSexp};
 use crate::into_r::IntoR;
 use std::str::FromStr;
+
+// =============================================================================
+// Coerce/TryCoerce impls for BigInt and BigUint
+// =============================================================================
+
+/// `i32` → `BigInt`: lossless
+impl Coerce<BigInt> for i32 {
+    #[inline(always)]
+    fn coerce(self) -> BigInt {
+        BigInt::from(self)
+    }
+}
+
+/// `i64` → `BigInt`: lossless
+impl Coerce<BigInt> for i64 {
+    #[inline(always)]
+    fn coerce(self) -> BigInt {
+        BigInt::from(self)
+    }
+}
+
+/// `u32` → `BigUint`: lossless
+impl Coerce<BigUint> for u32 {
+    #[inline(always)]
+    fn coerce(self) -> BigUint {
+        BigUint::from(self)
+    }
+}
+
+/// `u64` → `BigUint`: lossless
+impl Coerce<BigUint> for u64 {
+    #[inline(always)]
+    fn coerce(self) -> BigUint {
+        BigUint::from(self)
+    }
+}
+
+/// `f64` → `BigInt`: fallible, must be integer value (no fraction) and not NaN/Inf
+impl TryCoerce<BigInt> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<BigInt, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        // Convert via i64 if in range, otherwise use string for larger values
+        if self >= i64::MIN as f64 && self <= i64::MAX as f64 {
+            Ok(BigInt::from(self as i64))
+        } else {
+            // For very large values, convert via string representation
+            let s = format!("{:.0}", self);
+            BigInt::from_str(&s).map_err(|_| CoerceError::Overflow)
+        }
+    }
+}
+
+/// `f64` → `BigUint`: fallible, must be non-negative integer (no fraction, not NaN/Inf)
+impl TryCoerce<BigUint> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<BigUint, CoerceError> {
+        if self.is_nan() {
+            return Err(CoerceError::NaN);
+        }
+        if self.is_infinite() {
+            return Err(CoerceError::Overflow);
+        }
+        if self < 0.0 {
+            return Err(CoerceError::Overflow);
+        }
+        if self.fract() != 0.0 {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        // Convert via u64 if in range, otherwise use string for larger values
+        if self <= u64::MAX as f64 {
+            Ok(BigUint::from(self as u64))
+        } else {
+            let s = format!("{:.0}", self);
+            BigUint::from_str(&s).map_err(|_| CoerceError::Overflow)
+        }
+    }
+}
+
+/// `BigInt` → `i32`: fallible, may not fit
+impl TryCoerce<i32> for BigInt {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i32, CoerceError> {
+        use num_bigint::TryFromBigIntError;
+        i32::try_from(self).map_err(|_: TryFromBigIntError<BigInt>| CoerceError::Overflow)
+    }
+}
+
+/// `BigInt` → `i64`: fallible, may not fit
+impl TryCoerce<i64> for BigInt {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<i64, CoerceError> {
+        use num_bigint::TryFromBigIntError;
+        i64::try_from(self).map_err(|_: TryFromBigIntError<BigInt>| CoerceError::Overflow)
+    }
+}
+
+/// `BigUint` → `u32`: fallible, may not fit
+impl TryCoerce<u32> for BigUint {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u32, CoerceError> {
+        use num_bigint::TryFromBigIntError;
+        u32::try_from(self).map_err(|_: TryFromBigIntError<BigUint>| CoerceError::Overflow)
+    }
+}
+
+/// `BigUint` → `u64`: fallible, may not fit
+impl TryCoerce<u64> for BigUint {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<u64, CoerceError> {
+        use num_bigint::TryFromBigIntError;
+        u64::try_from(self).map_err(|_: TryFromBigIntError<BigUint>| CoerceError::Overflow)
+    }
+}
+
+/// `BigInt` → `f64`: fallible, may lose precision for large values
+impl TryCoerce<f64> for BigInt {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<f64, CoerceError> {
+        use num_bigint::ToBigInt;
+        // Check if value is within f64's exact integer representation range (2^53)
+        const MAX_SAFE: i64 = 1 << 53;
+        const MIN_SAFE: i64 = -(1 << 53);
+
+        // Try to fit in i64 first for the range check
+        if let Ok(i) = i64::try_from(self.clone()) {
+            if (MIN_SAFE..=MAX_SAFE).contains(&i) {
+                return Ok(i as f64);
+            }
+        }
+
+        // For larger values, convert and check round-trip
+        let f = self.to_string().parse::<f64>().map_err(|_| CoerceError::Overflow)?;
+        let roundtrip = BigInt::from_str(&format!("{:.0}", f));
+        if let Ok(rt) = roundtrip {
+            if rt == self {
+                return Ok(f);
+            }
+        }
+        Err(CoerceError::PrecisionLoss)
+    }
+}
 
 fn parse_bigint(s: &str) -> Result<BigInt, SexpError> {
     BigInt::from_str(s).map_err(|e| SexpError::InvalidValue(e.to_string()))
