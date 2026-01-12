@@ -1,0 +1,279 @@
+//! Benchmarks for RefCountedArena vs ProtectScope.
+//!
+//! Compares:
+//! - Protection overhead (single value)
+//! - Multiple protections
+//! - Reference counting (same value protected multiple times)
+//! - Release order flexibility
+//! - High iteration counts
+
+use miniextendr_api::ffi::{self, Rf_allocVector, SEXPTYPE};
+use miniextendr_api::gc_protect::ProtectScope;
+use miniextendr_api::refcount_protect::RefCountedArena;
+
+fn main() {
+    miniextendr_bench::init();
+    divan::main();
+}
+
+// =============================================================================
+// Single value protection
+// =============================================================================
+
+/// ProtectScope: protect single value
+#[divan::bench]
+fn protect_scope_single() {
+    unsafe {
+        let scope = ProtectScope::new();
+        let x = scope.protect(ffi::Rf_ScalarInteger(42));
+        divan::black_box(x.get());
+    }
+}
+
+/// RefCountedArena: protect single value
+#[divan::bench]
+fn refcount_arena_single() {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let x = arena.protect(ffi::Rf_ScalarInteger(42));
+        divan::black_box(x);
+    }
+}
+
+/// RefCountedArena with guard: protect single value
+#[divan::bench]
+fn refcount_arena_guard_single() {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let guard = arena.guard(ffi::Rf_ScalarInteger(42));
+        divan::black_box(guard.get());
+    }
+}
+
+// =============================================================================
+// Multiple value protection
+// =============================================================================
+
+/// ProtectScope: protect N values
+#[divan::bench(args = [10, 100, 1000])]
+fn protect_scope_multiple(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        for i in 0..n {
+            let _ = scope.protect(ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(scope.count());
+    }
+}
+
+/// RefCountedArena: protect N distinct values
+#[divan::bench(args = [10, 100, 1000])]
+fn refcount_arena_multiple(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(arena.len());
+    }
+}
+
+// =============================================================================
+// Reference counting (same value multiple times)
+// =============================================================================
+
+/// RefCountedArena: protect same value N times
+#[divan::bench(args = [10, 100, 1000])]
+fn refcount_arena_same_value(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let x = ffi::Rf_ScalarInteger(42);
+
+        for _ in 0..n {
+            arena.protect(x);
+        }
+
+        divan::black_box(arena.ref_count(x));
+    }
+}
+
+/// ProtectScope: protect same value N times (for comparison)
+#[divan::bench(args = [10, 100, 1000])]
+fn protect_scope_same_value(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let x = ffi::Rf_ScalarInteger(42);
+
+        for _ in 0..n {
+            let _ = scope.protect(x);
+        }
+
+        divan::black_box(scope.count());
+    }
+}
+
+// =============================================================================
+// Protect + unprotect cycles
+// =============================================================================
+
+/// RefCountedArena: protect then unprotect N values
+#[divan::bench(args = [10, 100, 1000])]
+fn refcount_arena_protect_unprotect(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let mut values = Vec::with_capacity(n);
+
+        // Protect all
+        for i in 0..n {
+            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+        }
+
+        // Unprotect in reverse order
+        for x in values.into_iter().rev() {
+            arena.unprotect(x);
+        }
+
+        divan::black_box(arena.is_empty());
+    }
+}
+
+/// RefCountedArena: protect then unprotect in random order
+#[divan::bench(args = [10, 100, 1000])]
+fn refcount_arena_unprotect_random_order(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        let mut values = Vec::with_capacity(n);
+
+        // Protect all
+        for i in 0..n {
+            values.push(arena.protect(ffi::Rf_ScalarInteger(i as i32)));
+        }
+
+        // Unprotect in "random" order (every 3rd, then every 2nd, then rest)
+        for i in (0..n).step_by(3) {
+            arena.unprotect(values[i]);
+        }
+        for i in (1..n).step_by(3) {
+            arena.unprotect(values[i]);
+        }
+        for i in (2..n).step_by(3) {
+            arena.unprotect(values[i]);
+        }
+
+        divan::black_box(arena.is_empty());
+    }
+}
+
+// =============================================================================
+// Large scale tests
+// =============================================================================
+
+/// RefCountedArena: protect many values (stress test)
+#[divan::bench(args = [1000, 5000, 10000])]
+fn refcount_arena_many_values(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+        }
+
+        divan::black_box(arena.len());
+    }
+}
+
+/// ProtectScope: protect many values (stress test)
+/// Note: This uses ProtectScope's stack, limited by --max-ppsize
+#[divan::bench(args = [1000, 5000])]
+fn protect_scope_many_values(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+
+        for i in 0..n {
+            let _ = scope.protect(ffi::Rf_ScalarInteger((i % 100) as i32));
+        }
+
+        divan::black_box(scope.count());
+    }
+}
+
+// =============================================================================
+// Guard vs manual protect/unprotect
+// =============================================================================
+
+/// RefCountedArena: guard pattern
+#[divan::bench(args = [10, 100])]
+fn refcount_arena_guards(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+
+        for i in 0..n {
+            let _guard = arena.guard(ffi::Rf_ScalarInteger(i as i32));
+            // guard drops at end of loop iteration
+        }
+
+        divan::black_box(arena.is_empty());
+    }
+}
+
+/// RefCountedArena: manual protect/unprotect pattern
+#[divan::bench(args = [10, 100])]
+fn refcount_arena_manual(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+
+        for i in 0..n {
+            let x = arena.protect(ffi::Rf_ScalarInteger(i as i32));
+            arena.unprotect(x);
+        }
+
+        divan::black_box(arena.is_empty());
+    }
+}
+
+// =============================================================================
+// Mixed workload
+// =============================================================================
+
+/// RefCountedArena: realistic workload with vectors
+#[divan::bench]
+fn refcount_arena_realistic() {
+    unsafe {
+        let arena = RefCountedArena::new();
+
+        // Protect a list
+        let list = arena.protect(Rf_allocVector(SEXPTYPE::VECSXP, 10));
+
+        // Protect some children
+        for i in 0..10 {
+            let child = arena.protect(ffi::Rf_ScalarInteger(i));
+            ffi::SET_VECTOR_ELT(list, i as isize, child);
+            // Children remain protected
+        }
+
+        // Unprotect in arbitrary order
+        arena.unprotect(list);
+
+        divan::black_box(arena.len());
+    }
+}
+
+/// ProtectScope: equivalent realistic workload
+#[divan::bench]
+fn protect_scope_realistic() {
+    unsafe {
+        let scope = ProtectScope::new();
+
+        // Protect a list
+        let list = scope.protect_raw(Rf_allocVector(SEXPTYPE::VECSXP, 10));
+
+        // Protect some children
+        for i in 0..10 {
+            let child = scope.protect_raw(ffi::Rf_ScalarInteger(i));
+            ffi::SET_VECTOR_ELT(list, i as isize, child);
+        }
+
+        divan::black_box(list);
+        // All unprotected on scope drop
+    }
+}

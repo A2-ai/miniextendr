@@ -110,3 +110,11 @@ harness = false
 [[bench]]
 name = "factor"
 harness = false
+
+[[bench]]
+name = "gc_protect"
+harness = false
+
+[[bench]]
+name = "refcount_protect"
+harness = false

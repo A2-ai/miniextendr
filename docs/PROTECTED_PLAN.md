@@ -4,6 +4,7 @@ Date: 2026-01-12
 Status: **IMPLEMENTED** (2026-01-12)
 
 ## Summary
+
 We want explicit, safe APIs that:
 
 - allow *reassigning* a protected value without growing the PROTECT stack (using `R_ProtectWithIndex` / `R_Reprotect`), and
@@ -181,6 +182,24 @@ for i in 0..n {
    - `test_list_set_elt*` - List safe insertion methods
    - `test_strvec_*` - StrVec/StrVecBuilder methods
    - `test_reprotect_slot_*` - ReprotectSlot patterns
+
+6. **Protect Stack Limit Tests** (`miniextendr-api/tests/ppsize_limit.rs`):
+   - Integration tests that initialize R with `--max-ppsize=10000`
+   - `reprotect_slot_no_overflow` - 20000 iterations with single stack slot
+   - `protect_scope_grows_stack` - verifies normal protect grows stack
+   - `list_builder_bounded_stack` - bounded stack usage for list construction
+   - `strvec_builder_constant_stack` - constant stack for string vector construction
+   - `list_set_elt_constant_stack` - constant stack with safe insertion
+   - `nested_list_under_constraint` - 500 nested lists with bounded patterns
+   - `exceed_limit_without_reprotect` - stress test near limit
+
+7. **Benchmarks** (`miniextendr-bench/benches/gc_protect.rs`):
+   - `reprotect_slot_high_iterations` - 1K/5K/10K iterations with ReprotectSlot
+   - `list_set_elt_high_count` - constant stack insertion at scale
+   - `strvec_set_str_high_count` - constant stack string insertion
+   - `nested_lists_reprotect` - nested construction with bounded patterns
+   - `list_builder_grows_stack` - contrast: growing stack pattern
+   - `list_constant_vs_growing` - direct comparison of both patterns
 
 ### Design Decisions
 
