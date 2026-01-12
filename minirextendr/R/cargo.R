@@ -1049,3 +1049,236 @@ cargo_deps <- function(depth = 1, duplicates = FALSE, invert = NULL) {
   cli::cli_verbatim(result)
   invisible(result)
 }
+
+#' Create a new Rust crate in a workspace
+#'
+#' Wraps `cargo new` to create a new Rust crate. Unlike `cargo init`, this creates
+#' a new directory for the crate. When in a Cargo workspace, runs from the workspace
+#' root so the new crate is workspace-aware.
+#'
+#' Note: `cargo new` does not accept `--manifest-path`, so this function changes
+#' to the appropriate directory before running the command.
+#'
+#' @param name Name of the crate to create. This will be the directory name.
+#' @param lib Logical. If TRUE, create a library crate (default). If FALSE, create a binary.
+#' @param edition Rust edition to use (default "2024").
+#' @param vcs Version control system to initialize. One of "git", "hg", "pijul", "fossil", or "none".
+#'   Default is "none" to avoid nested git repos.
+#' @param add_to_workspace Logical. If TRUE and in a workspace, add the new crate
+#'   to the workspace members list in Cargo.toml. Default is TRUE.
+#' @param quiet Logical. If TRUE, suppress cargo output.
+#'
+#' @return Invisibly returns the path to the new crate directory
+#' @export
+#'
+#' @examples
+#' \dontrun
+#' # Create a new library crate
+#' cargo_new("my-utils")
+#'
+#' # Create a binary crate
+#' cargo_new("my-cli", lib = FALSE)
+#'
+#' # Create without adding to workspace
+#' cargo_new("standalone-crate", add_to_workspace = FALSE)
+#' }
+cargo_new <- function(name,
+                      lib = TRUE,
+                      edition = "2024",
+                      vcs = "none",
+                      add_to_workspace = TRUE,
+                      quiet = FALSE) {
+  check_rust()
+
+  # Validate inputs
+  validate_non_empty_char(name, "name")
+  if (length(name) != 1) {
+    abort("name must be a single string.")
+  }
+  name <- trimws(name)
+
+  # Validate name is a valid crate name
+  if (!grepl("^[a-zA-Z][a-zA-Z0-9_-]*$", name)) {
+    abort(c(
+      "Invalid crate name: {.val {name}}",
+      "i" = "Crate names must start with a letter and contain only letters, numbers, underscores, or hyphens."
+    ))
+  }
+
+  validate_non_empty_char(edition, "edition")
+  if (length(edition) != 1) {
+    abort("edition must be a single string.")
+  }
+  edition <- trimws(edition)
+
+  vcs <- match.arg(vcs, c("git", "hg", "pijul", "fossil", "none"))
+
+
+  # Determine where to run cargo new from
+  # If in a workspace, run from workspace root
+  # Otherwise, run from current directory
+  proj_path <- usethis::proj_get()
+  workspace_root <- find_workspace_root(proj_path)
+
+  if (!is.null(workspace_root)) {
+    run_dir <- workspace_root
+    cli::cli_alert_info("Detected Cargo workspace at {.path {workspace_root}}")
+  } else {
+    # Not in a workspace - run from project root
+    run_dir <- proj_path
+  }
+
+  # Check if crate already exists
+  new_crate_path <- file.path(run_dir, name)
+  if (fs::dir_exists(new_crate_path)) {
+    abort(c(
+      "Directory already exists: {.path {new_crate_path}}",
+      "i" = "Choose a different name or remove the existing directory."
+    ))
+  }
+
+  # Build cargo new arguments
+  args <- c("new", name)
+
+  if (lib) {
+    args <- c(args, "--lib")
+  } else {
+    args <- c(args, "--bin")
+  }
+
+  args <- c(args, "--edition", edition)
+  args <- c(args, "--vcs", vcs)
+
+  if (quiet) {
+    args <- c(args, "--quiet")
+  }
+
+  # Run cargo new from the appropriate directory
+  cli::cli_alert("Running {.code cargo new {name}} in {.path {run_dir}}...")
+
+  # Save current directory and change to run_dir
+
+  old_wd <- getwd()
+  on.exit(setwd(old_wd), add = TRUE)
+  setwd(run_dir)
+
+  result <- system2("cargo", args, stdout = TRUE, stderr = TRUE)
+
+  status <- attr(result, "status")
+  if (!is.null(status) && status != 0) {
+    abort(c(
+      "cargo new failed",
+      "i" = paste(result, collapse = "\n")
+    ))
+  }
+
+  if (!quiet && length(result) > 0) {
+    cli::cli_verbatim(result)
+  }
+
+  # Add to workspace if requested and in a workspace
+  if (add_to_workspace && !is.null(workspace_root)) {
+    workspace_toml <- file.path(workspace_root, "Cargo.toml")
+    if (add_crate_to_workspace(workspace_toml, name)) {
+      cli::cli_alert_success("Added {.val {name}} to workspace members")
+    }
+  }
+
+  cli::cli_alert_success("Created new crate at {.path {new_crate_path}}")
+  invisible(new_crate_path)
+}
+
+#' Find the root of a Cargo workspace
+#'
+#' Walks up the directory tree to find a Cargo.toml that contains [workspace].
+#'
+#' @param path Path to start searching from
+#' @return Path to workspace root, or NULL if not in a workspace
+#' @noRd
+find_workspace_root <- function(path) {
+  path <- normalizePath(path, mustWork = FALSE)
+
+  while (path != dirname(path)) {  # Stop at filesystem root
+    cargo_toml <- file.path(path, "Cargo.toml")
+    if (file.exists(cargo_toml)) {
+      content <- readLines(cargo_toml, warn = FALSE)
+      if (any(grepl("^\\[workspace\\]", content))) {
+        return(path)
+      }
+    }
+    path <- dirname(path)
+  }
+
+  NULL
+}
+
+#' Add a crate to workspace members
+#'
+#' Modifies the workspace Cargo.toml to add a new member.
+#'
+#' @param workspace_toml Path to workspace Cargo.toml
+#' @param crate_name Name of crate to add
+#' @return TRUE if successfully added, FALSE if already present
+#' @noRd
+add_crate_to_workspace <- function(workspace_toml, crate_name) {
+  content <- readLines(workspace_toml, warn = FALSE)
+
+  # Find the members = [ line
+  members_line <- grep("^members\\s*=\\s*\\[", content)
+  if (length(members_line) == 0) {
+    cli::cli_warn("Could not find {.code members = []} in workspace Cargo.toml")
+    return(FALSE)
+  }
+
+  # Check if crate is already in members
+  members_pattern <- sprintf('"%s"', crate_name)
+  if (any(grepl(members_pattern, content, fixed = TRUE))) {
+    cli::cli_alert_info("{.val {crate_name}} is already in workspace members")
+    return(FALSE)
+  }
+
+  # Find the closing ] of members array
+  in_members <- FALSE
+  bracket_depth <- 0
+  insert_line <- NULL
+
+  for (i in members_line:length(content)) {
+    line <- content[i]
+    # Count brackets
+    bracket_depth <- bracket_depth + lengths(regmatches(line, gregexpr("\\[", line)))
+    bracket_depth <- bracket_depth - lengths(regmatches(line, gregexpr("\\]", line)))
+
+    if (bracket_depth == 0) {
+      # Found the closing bracket
+      insert_line <- i
+      break
+    }
+  }
+
+  if (is.null(insert_line)) {
+    cli::cli_warn("Could not find closing bracket for members array")
+    return(FALSE)
+  }
+
+  # Insert the new member before the closing bracket
+  # Try to match the indentation of existing members
+  indent <- "    "  # Default 4 spaces
+  for (j in (members_line + 1):(insert_line - 1)) {
+    if (grepl('^\\s+".+"', content[j])) {
+      indent <- sub('".*', "", content[j])
+      break
+    }
+  }
+
+  new_member_line <- sprintf('%s"%s",', indent, crate_name)
+
+  # Insert before the closing bracket line
+  content <- c(
+    content[1:(insert_line - 1)],
+    new_member_line,
+    content[insert_line:length(content)]
+  )
+
+  writeLines(content, workspace_toml)
+  TRUE
+}

@@ -1265,7 +1265,8 @@ Standalone adapter traits not needed - use connection framework instead.
 
 == minirextendr
 
-- [ ] Add a `cargo_new` command. The manifest-path argument isn't defined for `cargo new `. Instead, you'll have to navigate to the `src/rust` directory to execute a `cargo new` that is workspace aware, and so on.
+- [x] Add a `cargo_new` command. The manifest-path argument isn't defined for `cargo new `. Instead, you'll have to navigate to the `src/rust` directory to execute a `cargo new` that is workspace aware, and so on.
+  - Implemented in `minirextendr/R/cargo.R`: `cargo_new()`, `find_workspace_root()`, `add_crate_to_workspace()`
 
 == ALTREP Serialization Gaps - FIXED
 
