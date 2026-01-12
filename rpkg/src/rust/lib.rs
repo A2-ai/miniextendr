@@ -566,7 +566,7 @@ fn altrep_compact_int(n: i32, start: i32, step: i32) -> LazyIntSeqClass {
 ///
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
-fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealClass {
+pub fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealClass {
     InferredVecRealClass(x)
 }
 
@@ -574,7 +574,7 @@ fn altrep_from_doubles(x: Vec<f64>) -> InferredVecRealClass {
 ///
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
-fn altrep_from_strings(x: Vec<Option<String>>) -> SimpleVecStringClass {
+pub fn altrep_from_strings(x: Vec<Option<String>>) -> SimpleVecStringClass {
     SimpleVecStringClass(StringVecData { data: x })
 }
 
@@ -598,7 +598,7 @@ pub fn altrep_from_raw(x: &[u8]) -> SimpleVecRawClass {
 ///
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
-fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
+pub fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
     SimpleVecIntClass(x)
 }
 
@@ -608,7 +608,7 @@ fn altrep_from_integers(x: Vec<i32>) -> SimpleVecIntClass {
 ///
 /// @rdname rpkg_altrep_helpers
 #[miniextendr]
-fn altrep_from_list(x: SEXP) -> ListDataClass {
+pub fn altrep_from_list(x: SEXP) -> ListDataClass {
     use miniextendr_api::ffi::{R_NilValue, R_PreserveObject, Rf_xlength, SEXPTYPE, TYPEOF};
 
     if unsafe { TYPEOF(x) } != SEXPTYPE::VECSXP {
