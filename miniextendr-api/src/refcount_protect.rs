@@ -344,6 +344,11 @@ impl<M: MapStorage> ArenaState<M> {
         unsafe { self.map.assume_init_mut() }
     }
 
+    /// Protect a SEXP from garbage collection.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. The SEXP must be valid.
     #[inline]
     pub unsafe fn protect(&mut self, x: SEXP) -> SEXP {
         unsafe {
@@ -366,6 +371,12 @@ impl<M: MapStorage> ArenaState<M> {
         }
     }
 
+    /// Unprotect a SEXP, allowing garbage collection when refcount reaches zero.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. The SEXP must have been
+    /// previously protected by this arena.
     #[inline]
     pub unsafe fn unprotect(&mut self, x: SEXP) {
         unsafe {
@@ -393,6 +404,11 @@ impl<M: MapStorage> ArenaState<M> {
         }
     }
 
+    /// Try to unprotect a SEXP. Returns false if not protected by this arena.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn try_unprotect(&mut self, x: SEXP) -> bool {
         unsafe {
@@ -473,6 +489,11 @@ impl<M: MapStorage> ArenaState<M> {
         }
     }
 
+    /// Clear all protected values from the arena.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
     pub unsafe fn clear(&mut self) {
         unsafe {
             self.map().for_each_entry(|entry| {
@@ -740,6 +761,11 @@ pub struct ArenaGuard<'a, M: MapStorage> {
 }
 
 impl<'a, M: MapStorage> ArenaGuard<'a, M> {
+    /// Create a new guard that protects the SEXP and unprotects on drop.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. The SEXP must be valid.
     #[inline]
     pub unsafe fn new(arena: &'a Arena<M>, sexp: SEXP) -> Self {
         unsafe { arena.protect(sexp) };
@@ -1013,6 +1039,10 @@ impl<M: MapStorage> ThreadLocalState<M> {
     }
 
     /// Initialize with default capacity.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Must only be called once.
     pub unsafe fn init(&mut self) {
         unsafe { self.inner.init(ArenaState::<M>::INITIAL_CAPACITY) };
         self.initialized = true;
@@ -1022,6 +1052,10 @@ impl<M: MapStorage> ThreadLocalState<M> {
     ///
     /// Use this when you know the expected number of distinct protected values
     /// to avoid backing VECSXP growth and map rehashing.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread. Must only be called once.
     pub unsafe fn init_with_capacity(&mut self, capacity: usize) {
         unsafe { self.inner.init(capacity) };
         self.initialized = true;

@@ -735,6 +735,11 @@ pub mod tls {
         }
     }
 
+    /// Execute a closure with a protect scope that is accessible via TLS.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
     #[inline]
     pub unsafe fn with_protect_scope<F, R>(f: F) -> R
     where
