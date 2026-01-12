@@ -107,8 +107,9 @@ pub(crate) fn is_miniextendr_coerce_attr(attr: &syn::Attribute) -> bool {
 
 /// Parse default value from `#[miniextendr(default = "...")]`.
 ///
-/// Returns Some(default_value) if the attribute is present, None otherwise.
-pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<String> {
+/// Returns Some((default_value, attr_span)) if the attribute is present, None otherwise.
+pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<(String, proc_macro2::Span)> {
+    use syn::spanned::Spanned;
     if !attr.path().is_ident("miniextendr") {
         return None;
     }
@@ -133,7 +134,7 @@ pub(crate) fn parse_default_attr(attr: &syn::Attribute) -> Option<String> {
         return None;
     };
 
-    Some(lit_str.value())
+    Some((lit_str.value(), attr.span()))
 }
 
 // =============================================================================
@@ -162,6 +163,8 @@ pub(crate) struct MiniextendrFunctionParsed {
     per_param_coerce: std::collections::HashSet<String>,
     /// Parameter names with `#[miniextendr(default = "...")]` and their default values.
     per_param_defaults: std::collections::HashMap<String, String>,
+    /// Spans of `#[miniextendr(default = "...")]` attributes for error reporting.
+    per_param_default_spans: std::collections::HashMap<String, proc_macro2::Span>,
 }
 
 impl syn::parse::Parse for MiniextendrFunctionParsed {
@@ -212,6 +215,8 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             std::collections::HashSet::new();
         let mut per_param_defaults: std::collections::HashMap<String, String> =
             std::collections::HashMap::new();
+        let mut per_param_default_spans: std::collections::HashMap<String, proc_macro2::Span> =
+            std::collections::HashMap::new();
         let mut unused_counter = 0usize;
         for arg in &mut item.sig.inputs {
             let syn::FnArg::Typed(pat_type) = arg else {
@@ -222,7 +227,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             };
 
             let had_coerce_attr = pat_type.attrs.iter().any(is_miniextendr_coerce_attr);
-            let default_value = pat_type.attrs.iter().find_map(parse_default_attr);
+            let default_with_span = pat_type.attrs.iter().find_map(parse_default_attr);
 
             // Remove miniextendr attributes from parameters (coerce and default)
             pat_type.attrs.retain(|attr| {
@@ -235,8 +240,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     if had_coerce_attr {
                         per_param_coerce.insert(param_name.clone());
                     }
-                    if let Some(default) = default_value {
-                        per_param_defaults.insert(param_name, default);
+                    if let Some((default, span)) = default_with_span {
+                        per_param_defaults.insert(param_name.clone(), default);
+                        per_param_default_spans.insert(param_name, span);
                     }
                 }
                 syn::Pat::Wild(_) => {
@@ -253,8 +259,9 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
                     if had_coerce_attr {
                         per_param_coerce.insert(synthetic_name.clone());
                     }
-                    if let Some(default) = default_value {
-                        per_param_defaults.insert(synthetic_name, default);
+                    if let Some((default, span)) = default_with_span {
+                        per_param_defaults.insert(synthetic_name.clone(), default);
+                        per_param_default_spans.insert(synthetic_name, span);
                     }
                 }
                 _ => {
@@ -315,8 +322,13 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
         invalid_params.sort();
 
         if !invalid_params.is_empty() {
+            // Use the span of the first invalid param's attribute for the error
+            let error_span = invalid_params
+                .first()
+                .and_then(|p| per_param_default_spans.get(p).copied())
+                .unwrap_or_else(|| item.sig.ident.span());
             return Err(syn::Error::new(
-                item.sig.ident.span(),
+                error_span,
                 format!(
                     "default attribute(s) reference non-existent parameter(s): {}",
                     invalid_params.join(", ")
@@ -330,6 +342,7 @@ impl syn::parse::Parse for MiniextendrFunctionParsed {
             named_dots,
             per_param_coerce,
             per_param_defaults,
+            per_param_default_spans,
         })
     }
 }
@@ -551,6 +564,8 @@ pub(crate) struct MiniextendrFnAttrs {
     /// Use `#[miniextendr(dots = typed_list!(...))]` to automatically validate dots
     /// at the start of the function and bind the result to `dots_typed`.
     pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
+    /// Span of the `dots = ...` attribute for error reporting.
+    pub(crate) dots_span: Option<proc_macro2::Span>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -569,6 +584,7 @@ pub(crate) enum ReturnPref {
 
 impl syn::parse::Parse for MiniextendrFnAttrs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        use syn::spanned::Spanned;
         let mut out = Self::default();
         if input.is_empty() {
             return Ok(out);
@@ -638,6 +654,8 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         }
                     } else if nv.path.is_ident("dots") {
                         // dots = typed_list!(...) - capture the macro invocation
+                        // Store span for error reporting
+                        out.dots_span = Some(nv.path.span());
                         if let syn::Expr::Macro(expr_macro) = &nv.value {
                             if expr_macro.mac.path.is_ident("typed_list") {
                                 // Capture the entire macro invocation as TokenStream
@@ -704,11 +722,12 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             }
                             Ok(())
                         })?;
-                        // Validate: s3 requires at least generic or class
-                        if out.s3_generic.is_none() && out.s3_class.is_none() {
+                        // Validate: s3 requires class (generic can default to function name)
+                        if out.s3_class.is_none() {
                             return Err(syn::Error::new_spanned(
-                                list,
-                                "s3(...) requires at least `generic = \"...\"` or `class = \"...\"`",
+                                &list,
+                                "s3(...) requires `class = \"...\"` to specify the S3 class suffix; \
+                                 `generic` is optional and defaults to the function name",
                             ));
                         }
                     } else {

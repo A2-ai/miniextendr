@@ -481,6 +481,21 @@ enum MiniextendrModuleItem {
     TraitImpl(Box<MiniextendrModuleTraitImpl>),
 }
 
+impl MiniextendrModuleItem {
+    /// Get a representative span for this item (for error reporting).
+    fn span(&self) -> proc_macro2::Span {
+        use syn::spanned::Spanned;
+        match self {
+            Self::Module(m) => m.ident.span(),
+            Self::Use(u) => u.use_name.ident.span(),
+            Self::Struct(s) => s.ident.span(),
+            Self::Func(f) => f.ident.span(),
+            Self::Impl(i) => i.ident.span(),
+            Self::TraitImpl(t) => t.impl_type.span(),
+        }
+    }
+}
+
 impl syn::parse::Parse for MiniextendrModuleItem {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Skip past attributes to peek at the actual item keyword
@@ -530,8 +545,13 @@ impl syn::parse::Parse for MiniextendrModule {
         let mut structs = Vec::new();
         let mut impls = Vec::new();
         let mut trait_impls = Vec::new();
+        let mut first_item_span = None::<proc_macro2::Span>;
 
         for it in items {
+            // Capture span of first non-mod item for error reporting
+            if first_item_span.is_none() && !matches!(it, MiniextendrModuleItem::Module(_)) {
+                first_item_span = Some(it.span());
+            }
             match it {
                 MiniextendrModuleItem::Module(m) => {
                     if name.is_some() {
@@ -547,8 +567,12 @@ impl syn::parse::Parse for MiniextendrModule {
             }
         }
 
-        let module_name =
-            name.ok_or_else(|| syn::Error::new(input.span(), "missing `mod <name>`"))?;
+        let module_name = name.ok_or_else(|| {
+            syn::Error::new(
+                first_item_span.unwrap_or_else(|| input.span()),
+                "missing `mod <name>;` declaration (required as first item in miniextendr_module!)",
+            )
+        })?;
 
         Ok(Self {
             module_name,

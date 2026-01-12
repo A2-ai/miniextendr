@@ -5,7 +5,8 @@
 
 use crate::miniextendr_fn::CoercionMapping;
 use proc_macro2::TokenStream;
-use quote::quote;
+use quote::{quote, quote_spanned};
+use syn::spanned::Spanned;
 
 /// Builder for generating Rust conversion statements from R SEXP parameters.
 ///
@@ -120,7 +121,8 @@ impl RustConversionBuilder {
                         "failed to convert parameter '{}' to slice: wrong type or length",
                         ident
                     );
-                    let stmt = quote! {
+                    let span = ty.span();
+                    let stmt = quote_spanned! {span=>
                         let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                             .expect(#error_msg);
                     };
@@ -138,13 +140,14 @@ impl RustConversionBuilder {
                         "failed to convert parameter '{}' to string: expected character vector",
                         ident
                     );
+                    let span = ty.span();
                     // Owned conversion: SEXP -> String
-                    let owned_stmt = quote! {
+                    let owned_stmt = quote_spanned! {span=>
                         let #owned_ident: String = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                             .expect(#error_msg);
                     };
                     // Borrow: String -> &str (using Borrow trait)
-                    let borrow_stmt = quote! {
+                    let borrow_stmt = quote_spanned! {span=>
                         let #mutability #ident: &str = ::std::borrow::Borrow::borrow(&#owned_ident);
                     };
                     (vec![owned_stmt], vec![borrow_stmt])
@@ -155,14 +158,15 @@ impl RustConversionBuilder {
                         ident,
                         quote!(#ty)
                     );
+                    let span = ty.span();
                     if pat_ident.mutability.is_some() {
-                        let stmt = quote! {
+                        let stmt = quote_spanned! {span=>
                             let mut #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                 .expect(#error_msg);
                         };
                         (vec![stmt], vec![])
                     } else {
-                        let stmt = quote! {
+                        let stmt = quote_spanned! {span=>
                             let #ident: #ty = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                 .expect(#error_msg);
                         };
@@ -181,6 +185,7 @@ impl RustConversionBuilder {
                     None
                 };
 
+                let span = ty.span();
                 let stmt = match coercion_mapping {
                     Some(CoercionMapping::Scalar { r_native, target }) => {
                         let mutability = if pat_ident.mutability.is_some() {
@@ -197,7 +202,7 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#target)
                         );
-                        quote! {
+                        quote_spanned! {span=>
                             let #mutability #ident: #target = {
                                 let __r_val: #r_native = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg_convert);
@@ -224,7 +229,7 @@ impl RustConversionBuilder {
                             param_name,
                             quote!(#target_elem)
                         );
-                        quote! {
+                        quote_spanned! {span=>
                             let #mutability #ident: Vec<#target_elem> = {
                                 let __r_slice: &[#r_native_elem] = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg_convert);
@@ -242,12 +247,12 @@ impl RustConversionBuilder {
                             quote!(#ty)
                         );
                         if pat_ident.mutability.is_some() {
-                            quote! {
+                            quote_spanned! {span=>
                                 let mut #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg);
                             }
                         } else {
-                            quote! {
+                            quote_spanned! {span=>
                                 let #ident = ::miniextendr_api::TryFromSexp::try_from_sexp(#sexp_ident)
                                     .expect(#error_msg);
                             }

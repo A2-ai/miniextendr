@@ -342,6 +342,10 @@ pub struct MethodAttrs {
     pub unwrap_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
+    /// Span of `defaults(...)` for error reporting.
+    pub defaults_span: Option<proc_macro2::Span>,
+    /// Span of `active` for error reporting.
+    pub active_span: Option<proc_macro2::Span>,
 }
 
 /// Parsed impl block with all methods.
@@ -518,7 +522,7 @@ impl ParsedMethod {
         // #[...(active)] is only meaningful for R6
         if attrs.active && class_system != ClassSystem::R6 {
             return Err(syn::Error::new(
-                span,
+                attrs.active_span.unwrap_or(span),
                 "#[r6(active)] is only valid for R6 class systems",
             ));
         }
@@ -566,7 +570,9 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("private") {
                             method_attrs.private = true;
                         } else if inner.path.is_ident("active") {
+                            use syn::spanned::Spanned;
                             method_attrs.active = true;
+                            method_attrs.active_span = Some(inner.path.span());
                         } else if inner.path.is_ident("worker") {
                             method_attrs.worker = true;
                         } else if inner.path.is_ident("main_thread") {
@@ -587,10 +593,17 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.class = Some(value.value());
+                        } else {
+                            return Err(inner.error(
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class"
+                            ));
                         }
                         Ok(())
                     })?;
                 } else if meta.path.is_ident("defaults") {
+                    // Capture span for error reporting
+                    use syn::spanned::Spanned;
+                    method_attrs.defaults_span = Some(meta.path.span());
                     // Parse defaults(param = "value", param2 = "value2", ...)
                     meta.parse_nested_meta(|inner| {
                         // Get parameter name
@@ -625,6 +638,10 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else {
+                    return Err(meta.error(
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r"
+                    ));
                 }
                 Ok(())
             })?;
@@ -685,7 +702,9 @@ impl ParsedMethod {
         // Validate: no defaults on self parameter (any kind: &self, &mut self, self)
         if env != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
             return Err(syn::Error::new(
-                item.sig.ident.span(),
+                method_attrs
+                    .defaults_span
+                    .unwrap_or_else(|| item.sig.ident.span()),
                 "cannot specify default for self parameter in defaults(...)",
             ));
         }
@@ -716,7 +735,9 @@ impl ParsedMethod {
 
         if !invalid_params.is_empty() {
             return Err(syn::Error::new(
-                item.sig.ident.span(),
+                method_attrs
+                    .defaults_span
+                    .unwrap_or_else(|| item.sig.ident.span()),
                 format!(
                     "defaults(...) references non-existent parameter(s): {}",
                     invalid_params.join(", ")

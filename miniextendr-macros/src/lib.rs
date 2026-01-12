@@ -490,6 +490,7 @@ pub fn miniextendr(
         s3_generic,
         s3_class,
         dots_spec,
+        dots_span,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -575,45 +576,44 @@ pub fn miniextendr(
     // procedural macro machinery but not create unhygienic references to user code.
     // call_site() = span of the macro invocation (#[miniextendr])
     let call_param_ident = syn::Ident::new("__miniextendr_call", proc_macro2::Span::call_site());
-    let mut c_wrapper_inputs: Vec<_> = Vec::new();
+    let mut c_wrapper_inputs: Vec<syn::FnArg> = Vec::new();
     if uses_internal_c_wrapper {
         c_wrapper_inputs.push(syn::parse_quote!(#call_param_ident: ::miniextendr_api::ffi::SEXP));
     }
-    c_wrapper_inputs.extend(inputs.clone().into_pairs().map(|pair| {
-        let arg = pair.value();
+    for arg in inputs.iter() {
         match arg {
             syn::FnArg::Receiver(receiver) => {
-                syn::Error::new(
-                    receiver.span(),
+                let err = syn::Error::new_spanned(
+                    receiver,
                     "self parameter not allowed in standalone functions; \
-                     use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead"
-                ).to_compile_error()
+                     use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead",
+                );
+                return err.into_compile_error().into();
             }
             syn::FnArg::Typed(pt) => {
-                let syn::PatType {
-                    attrs: _,
-                    pat,
-                    colon_token: _,
-                    ty: _,
-                } = pt;
+                let pat = &pt.pat;
                 match pat.as_ref() {
                     syn::Pat::Ident(pat_ident) => {
                         let mut pat_ident = pat_ident.clone();
                         pat_ident.mutability = None;
                         pat_ident.by_ref = None;
                         let ident = pat_ident;
-                        syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
+                        c_wrapper_inputs.push(syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP));
                     }
                     syn::Pat::Wild(_) => {
                         unreachable!("wildcard patterns should have been transformed to synthetic identifiers")
                     }
                     _ => {
-                        panic!("unsupported pattern in function argument: {:?}", pat)
+                        let err = syn::Error::new_spanned(
+                            pat,
+                            "unsupported pattern in function argument; only simple identifiers are supported",
+                        );
+                        return err.into_compile_error().into();
                     }
                 }
             }
         }
-    }));
+    }
     // dbg!(&wrapper_inputs);
     let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     if check_interrupt {
@@ -625,7 +625,7 @@ pub fn miniextendr(
     // Validate dots_spec usage (actual injection happens later in the function body)
     if dots_spec.is_some() && !has_dots {
         let err = syn::Error::new(
-            proc_macro2::Span::call_site(),
+            dots_span.unwrap_or_else(proc_macro2::Span::call_site),
             "#[miniextendr(dots = typed_list!(...))] requires a `...` parameter in the function signature",
         );
         return err.into_compile_error().into();
@@ -1015,10 +1015,11 @@ pub fn miniextendr(
         // For S3 methods, function name is generic.class
         // generic defaults to Rust function name if not specified
         let generic = s3_generic.clone().unwrap_or_else(|| rust_ident.to_string());
-        let class = s3_class.as_ref().unwrap_or_else(|| {
-            // If no class specified, error
-            panic!("s3(...) requires `class = \"...\"` to specify the S3 class suffix")
-        });
+        // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
+        // validates that s3(...) always has class specified
+        let class = s3_class
+            .as_ref()
+            .expect("s3_class validated at parse time");
         r_wrapper_ident_str = format!("{}.{}", generic, class);
         // Add @importFrom for vctrs generics so roxygen registers the dependency
         let import_comment = if is_vctrs_generic(&generic) {

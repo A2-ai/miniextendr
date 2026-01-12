@@ -232,7 +232,7 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
 
         if !is_ref {
             return Err(syn::Error::new_spanned(
-                &method.sig,
+                r,
                 format!(
                     "#[miniextendr] trait method `{}::{}` receiver must be `&self` or `&mut self`, not `self` by value",
                     trait_name, method_name

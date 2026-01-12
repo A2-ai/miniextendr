@@ -1,4 +1,4 @@
-error: missing `mod <name>`
+error: missing `mod <name>;` declaration (required as first item in miniextendr_module!)
  --> tests/ui/module_empty.rs:5:1
   |
 5 | / miniextendr_module! {

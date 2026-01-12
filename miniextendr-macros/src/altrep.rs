@@ -59,6 +59,7 @@ pub fn expand_altrep_struct(
     };
     let mut class_name = None::<String>;
     let mut base_name = None::<String>;
+    let mut base_lit = None::<syn::LitStr>;
     for nv in args {
         let key = nv
             .path
@@ -72,7 +73,10 @@ pub fn expand_altrep_struct(
         {
             match key.as_str() {
                 "class" => class_name = Some(s.value()),
-                "base" => base_name = Some(s.value()),
+                "base" => {
+                    base_name = Some(s.value());
+                    base_lit = Some(s.clone());
+                }
                 // Silently ignore "pkg" for backwards compatibility, but it's no longer used
                 "pkg" => {}
                 _ => {}
@@ -96,7 +100,7 @@ pub fn expand_altrep_struct(
             "Complex" => syn::parse_quote!(::miniextendr_api::altrep::RBase::Complex),
             _ => {
                 return syn::Error::new_spanned(
-                    syn::LitStr::new(base_name, ident.span()),
+                    base_lit.expect("base_lit set when base_name is Some"),
                     "base must be one of Int|Real|Logical|Raw|String|List|Complex",
                 )
                 .into_compile_error()
