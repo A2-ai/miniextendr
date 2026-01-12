@@ -272,15 +272,23 @@
   - Verify R wrapper generation matches documented conventions
   - Check registration patterns against recommended practices
   - Verify NA handling matches R's documented behavior
-- [ ] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
-  - Compare miniextendr ALTREP impl against documented patterns
-  - Identify any missing ALTREP methods worth implementing
-  - Document which ALTREP classes are supported vs. planned
+- [x] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
+  - Compared miniextendr ALTREP impl against R 4.5.2 `src/include/R_ext/Altrep.h`
+  - **FINDING: All R ALTREP methods are implemented** in miniextendr:
+    - Base: Length (required), Serialize/Unserialize, Duplicate, Coerce, Inspect
+    - Vector: Dataptr, Dataptr_or_null, Extract_subset
+    - Integer/Real: Elt, Get_region, Is_sorted, No_NA, Sum, Min, Max
+    - Logical: Elt, Get_region, Is_sorted, No_NA, Sum (no Min/Max per R spec)
+    - Raw/Complex: Elt, Get_region
+    - String: Elt (required), Set_elt, Is_sorted, No_NA
+    - List: Elt (required), Set_elt
+  - FFI bindings in `ffi/altrep.rs` match R's ALTREP API exactly
+  - `HAS_*` const gating correctly prevents unused methods from being installed
 
 ==== R Source Reference
 - [ ] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings
   - Location: `src/include/Rinternals.h` - verify SEXP type definitions match
-  - Location: `src/include/R_ext/Altrep.h` - verify ALTREP bindings are complete
+  - [x] Location: `src/include/R_ext/Altrep.h` - ALTREP bindings verified complete (2026-01-12)
   - Location: `src/main/memory.c` - study GC behavior for protect patterns
   - Location: `src/main/altclasses.c` - study ALTREP dispatch for reference
 
