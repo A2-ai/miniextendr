@@ -1,0 +1,49 @@
+error[E0308]: arguments to this function are incorrect
+ --> tests/ui/fn_multiple_dots.rs:9:4
+  |
+9 | fn bad_fn(dots1: &Dots, dots2: &Dots) -> i32 {
+  |    ^^^^^^ -----         ----- expected `Dots`, found `miniextendr_api::dots::Dots`
+  |           |
+  |           expected `Dots`, found `miniextendr_api::dots::Dots`
+  |
+  = note: `miniextendr_api::dots::Dots` and `Dots` have similar names, but are actually distinct types
+note: `miniextendr_api::dots::Dots` is defined in crate `miniextendr_api`
+ --> $WORKSPACE/miniextendr-api/src/dots.rs
+  |
+  | pub struct Dots {
+  | ^^^^^^^^^^^^^^^
+note: `Dots` is defined in the current crate
+ --> tests/ui/fn_multiple_dots.rs:6:1
+  |
+6 | struct Dots;
+  | ^^^^^^^^^^^
+  = note: `miniextendr_api::dots::Dots` and `Dots` have similar names, but are actually distinct types
+note: `miniextendr_api::dots::Dots` is defined in crate `miniextendr_api`
+ --> $WORKSPACE/miniextendr-api/src/dots.rs
+  |
+  | pub struct Dots {
+  | ^^^^^^^^^^^^^^^
+note: `Dots` is defined in the current crate
+ --> tests/ui/fn_multiple_dots.rs:6:1
+  |
+6 | struct Dots;
+  | ^^^^^^^^^^^
+note: function defined here
+ --> tests/ui/fn_multiple_dots.rs:9:4
+  |
+9 | fn bad_fn(dots1: &Dots, dots2: &Dots) -> i32 {
+  |    ^^^^^^ ------------  ------------
+
+warning: unused variable: `dots1`
+ --> tests/ui/fn_multiple_dots.rs:9:11
+  |
+9 | fn bad_fn(dots1: &Dots, dots2: &Dots) -> i32 {
+  |           ^^^^^ help: if this is intentional, prefix it with an underscore: `_dots1`
+  |
+  = note: `#[warn(unused_variables)]` (part of `#[warn(unused)]`) on by default
+
+warning: unused variable: `dots2`
+ --> tests/ui/fn_multiple_dots.rs:9:25
+  |
+9 | fn bad_fn(dots1: &Dots, dots2: &Dots) -> i32 {
+  |                         ^^^^^ help: if this is intentional, prefix it with an underscore: `_dots2`

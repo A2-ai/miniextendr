@@ -1,0 +1,5 @@
+error: cannot find attribute `coerce` in this scope
+ --> tests/ui/coerce_invalid_type.rs:6:17
+  |
+6 | fn bad_coerce(#[coerce = "not_a_type"] x: i32) -> i32 {
+  |                 ^^^^^^

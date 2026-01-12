@@ -1,0 +1,21 @@
+error[E0277]: the trait bound `impl Future<Output = i32>: IntoR` is not satisfied
+ --> tests/ui/fn_async.rs:5:1
+  |
+5 | #[miniextendr]
+  | ^^^^^^^^^^^^^^
+  | |
+  | the trait `IntoExternalPtr` is not implemented for `impl Future<Output = i32>`
+  | required by a bound introduced by this call
+  |
+  = help: the following other types implement trait `IntoR`:
+            &[&str]
+            &[T]
+            &[bool]
+            &[f32]
+            &[i16]
+            &[i8]
+            &[std::string::String]
+            &[u16]
+          and $N others
+  = note: required for `impl Future<Output = i32>` to implement `IntoR`
+  = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)
