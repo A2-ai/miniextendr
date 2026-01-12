@@ -48,11 +48,15 @@ where
     /// # Arguments
     ///
     /// - `iter`: The iterator to wrap
-    /// - `len`: The expected number of elements (must match iterator length)
+    /// - `len`: The expected number of elements
     ///
-    /// # Panics
+    /// # Length Mismatch
     ///
-    /// Panics if the iterator produces more or fewer elements than `len`.
+    /// If the iterator produces a different number of elements than `len`:
+    /// - Fewer elements: Missing indices return `None`/NA/default values
+    /// - More elements: Extra elements are ignored (truncated to `len`)
+    ///
+    /// A warning is printed to stderr when a mismatch is detected.
     pub fn new(iter: I, len: usize) -> Self {
         Self {
             len,
@@ -68,12 +72,8 @@ where
     ///
     /// # Returns
     ///
-    /// - `Some(T)` if element exists
-    /// - `None` if index is out of bounds or iterator exhausted early
-    ///
-    /// # Panics
-    ///
-    /// May panic if iterator produces more elements than declared length.
+    /// - `Some(T)` if element exists and has been generated
+    /// - `None` if index is out of bounds or iterator exhausted before reaching index `i`
     pub fn get_element(&self, i: usize) -> Option<T>
     where
         T: Copy,
@@ -134,9 +134,14 @@ where
     /// After this call, all elements are guaranteed to be in memory and
     /// `as_materialized()` will return `Some`.
     ///
-    /// # Panics
+    /// # Length Mismatch Handling
     ///
-    /// Panics if iterator produces more elements than declared length.
+    /// If the iterator produces fewer elements than declared `len`, the missing
+    /// elements are left uninitialized in the cache (callers should handle this
+    /// via bounds checking). If the iterator produces more elements than declared,
+    /// extra elements are silently ignored (truncated to `len`).
+    ///
+    /// A warning is printed to stderr if a length mismatch is detected.
     pub fn materialize_all(&self) -> &[T] {
         // Already materialized?
         if let Some(vec) = self.materialized.get() {
@@ -148,17 +153,27 @@ where
         let mut iter_opt = self.iter.borrow_mut();
 
         if let Some(iter) = iter_opt.take() {
-            // Drain remaining elements
-            cache.extend(iter);
+            // Drain remaining elements (up to self.len to avoid memory issues)
+            for elem in iter {
+                if cache.len() >= self.len {
+                    // Iterator produced more than expected - truncate and warn
+                    eprintln!(
+                        "[miniextendr warning] iterator ALTREP: iterator produced more elements than declared length ({}), truncating",
+                        self.len
+                    );
+                    break;
+                }
+                cache.push(elem);
+            }
 
-            // Verify length matches
-            assert_eq!(
-                cache.len(),
-                self.len,
-                "iterator produced {} elements, expected {}",
-                cache.len(),
-                self.len
-            );
+            // Check if iterator exhausted early
+            if cache.len() < self.len {
+                eprintln!(
+                    "[miniextendr warning] iterator ALTREP: iterator produced {} elements, expected {} - accessing missing indices will return NA/default",
+                    cache.len(),
+                    self.len
+                );
+            }
         }
 
         // Move cache to materialized (take ownership)

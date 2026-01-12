@@ -276,6 +276,8 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
 pub mod from_r;
 pub mod into_r;
 pub use into_r::{Altrep, IntoR};
+pub mod into_r_as;
+pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod unwind_protect;
 pub mod worker;
 

@@ -383,8 +383,47 @@ impl AltIntegerData for LazyIntSeqData {
     }
 
     fn no_na(&self) -> Option<bool> {
-        // Check if any element would be NA (i32::MIN)
-        // This is a conservative check - we know the formula
+        // i32::MIN is NA_INTEGER in R. Check if any element equals it.
+        // Elements are: start + i * step for i in 0..len (using saturating arithmetic)
+        //
+        // NA can occur if:
+        // 1. start == i32::MIN (first element is NA)
+        // 2. Saturating underflow produces i32::MIN
+        //
+        // Check first element
+        if self.start == i32::MIN {
+            return Some(false);
+        }
+
+        if self.len == 0 {
+            return Some(true); // Empty sequence has no NA
+        }
+
+        // Check last element (computed via elt to catch saturation)
+        let last = self.elt(self.len - 1);
+        if last == i32::MIN {
+            return Some(false);
+        }
+
+        // For sequences that don't saturate, check if i32::MIN is in range:
+        // Compute actual bounds without saturation to detect if sequence contains i32::MIN
+        let first = self.start as i64;
+        let step = self.step as i64;
+        let last_idx = (self.len - 1) as i64;
+        let last_exact = first + last_idx * step;
+
+        // Check if NA sentinel is in the range [min_val, max_val]
+        let na_sentinel = i32::MIN as i64;
+        let (min_val, max_val) = if step >= 0 {
+            (first, last_exact)
+        } else {
+            (last_exact, first)
+        };
+
+        if na_sentinel >= min_val && na_sentinel <= max_val {
+            return Some(false); // NA is in range
+        }
+
         Some(true)
     }
 
@@ -398,28 +437,67 @@ impl AltIntegerData for LazyIntSeqData {
         }
     }
 
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
+    fn sum(&self, na_rm: bool) -> Option<i64> {
+        if self.len == 0 {
+            return Some(0);
+        }
+
+        // Check for NA values before computing sum
+        if self.no_na() == Some(false) {
+            if !na_rm {
+                return None; // NA propagates
+            }
+            // When na_rm=true and there are NAs, let R compute
+            return None;
+        }
+
         // Arithmetic sequence sum: n * (first + last) / 2
         let n = self.len as i64;
         let first = self.start as i64;
         let last = first + (self.len.saturating_sub(1) as i64) * (self.step as i64);
-        Some(n * (first + last) / 2)
+
+        // Use checked arithmetic to detect overflow
+        let sum_endpoints = first.checked_add(last)?;
+        let product = n.checked_mul(sum_endpoints)?;
+        Some(product / 2)
     }
 
-    fn min(&self, _na_rm: bool) -> Option<i32> {
+    fn min(&self, na_rm: bool) -> Option<i32> {
         if self.len == 0 {
-            None
-        } else if self.step >= 0 {
+            return None;
+        }
+
+        // Check for NA values
+        if self.no_na() == Some(false) {
+            if !na_rm {
+                return None; // NA propagates
+            }
+            // When na_rm=true and there are NAs, let R compute
+            return None;
+        }
+
+        if self.step >= 0 {
             Some(self.start)
         } else {
             Some(self.elt(self.len - 1))
         }
     }
 
-    fn max(&self, _na_rm: bool) -> Option<i32> {
+    fn max(&self, na_rm: bool) -> Option<i32> {
         if self.len == 0 {
-            None
-        } else if self.step >= 0 {
+            return None;
+        }
+
+        // Check for NA values
+        if self.no_na() == Some(false) {
+            if !na_rm {
+                return None; // NA propagates
+            }
+            // When na_rm=true and there are NAs, let R compute
+            return None;
+        }
+
+        if self.step >= 0 {
             Some(self.elt(self.len - 1))
         } else {
             Some(self.start)

@@ -723,34 +723,80 @@ impl AltIntegerData for Range<i32> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        Some(true)
+        // i32::MIN is NA_INTEGER in R. Check if the range contains it.
+        // Range is [start, end), so i32::MIN is included iff start <= i32::MIN < end
+        // Since start is the smallest value, we just check if start == i32::MIN
+        let contains_na = self.start == i32::MIN && self.end > i32::MIN;
+        Some(!contains_na)
     }
 
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
+    fn sum(&self, na_rm: bool) -> Option<i64> {
         let n = AltrepLen::len(self) as i64;
         if n == 0 {
             return Some(0);
         }
+
+        // Check if range contains NA (i32::MIN)
+        let contains_na = self.start == i32::MIN && self.end > i32::MIN;
+        if contains_na && !na_rm {
+            return None; // NA propagates
+        }
+
         // Sum of arithmetic sequence: n/2 * (first + last)
-        let first = self.start as i64;
-        let last = (self.end - 1) as i64;
-        Some(n * (first + last) / 2)
+        // If na_rm and contains NA, exclude the first element (i32::MIN)
+        if contains_na {
+            // Exclude first element (NA), sum from start+1 to end-1
+            let n_valid = n - 1;
+            if n_valid == 0 {
+                return Some(0);
+            }
+            let first = (self.start + 1) as i64;
+            let last = (self.end - 1) as i64;
+            Some(n_valid * (first + last) / 2)
+        } else {
+            let first = self.start as i64;
+            let last = (self.end - 1) as i64;
+            Some(n * (first + last) / 2)
+        }
     }
 
-    fn min(&self, _na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) > 0 {
+    fn min(&self, na_rm: bool) -> Option<i32> {
+        if AltrepLen::len(self) == 0 {
+            return None;
+        }
+
+        // Check if first element is NA
+        if self.start == i32::MIN {
+            if na_rm {
+                // Skip NA, return second element if it exists
+                if self.end > self.start + 1 {
+                    Some(self.start + 1)
+                } else {
+                    None // Only element was NA
+                }
+            } else {
+                None // NA propagates
+            }
+        } else {
             Some(self.start)
-        } else {
-            None
         }
     }
 
-    fn max(&self, _na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) > 0 {
-            Some(self.end - 1)
-        } else {
-            None
+    fn max(&self, na_rm: bool) -> Option<i32> {
+        if AltrepLen::len(self) == 0 {
+            return None;
         }
+
+        // For increasing range, max is end-1 (last element)
+        // Check if range contains NA (first element)
+        let contains_na = self.start == i32::MIN && self.end > i32::MIN;
+        if contains_na && !na_rm {
+            return None; // NA propagates
+        }
+
+        // Max is always end-1 (last element), which is not NA
+        // (NA would only be first element if start == i32::MIN)
+        Some(self.end - 1)
     }
 }
 
@@ -768,7 +814,8 @@ impl AltIntegerData for Range<i64> {
     fn elt(&self, i: usize) -> i32 {
         let val = self.start.saturating_add(i as i64);
         // Bounds check: return NA_INTEGER for values outside i32 range
-        if val > i32::MAX as i64 || val < i32::MIN as i64 {
+        // Also, i32::MIN is the NA sentinel, so values equal to it are NA
+        if val > i32::MAX as i64 || val <= i32::MIN as i64 {
             crate::altrep_traits::NA_INTEGER
         } else {
             val as i32
@@ -780,17 +827,53 @@ impl AltIntegerData for Range<i64> {
     }
 
     fn no_na(&self) -> Option<bool> {
-        // May contain NA if range exceeds i32 bounds
-        let start_ok = self.start >= i32::MIN as i64 && self.start <= i32::MAX as i64;
-        let end_ok = self.end >= i32::MIN as i64 && self.end <= i32::MAX as i64 + 1;
-        Some(start_ok && end_ok)
+        // An element is NA if:
+        // 1. It's outside valid i32 range (< i32::MIN or > i32::MAX)
+        // 2. It equals i32::MIN (NA sentinel)
+        //
+        // For increasing range [start, end), elements range from start to end-1.
+        // Range contains NA if:
+        // - start <= i32::MIN as i64 (NA sentinel could be in range)
+        // - OR end > i32::MAX as i64 + 1 (values exceed i32::MAX)
+        // - OR start < i32::MIN as i64 (values below i32 range)
+        let na_sentinel = i32::MIN as i64;
+        let i32_max = i32::MAX as i64;
+
+        // Check if NA sentinel is in [start, end)
+        let contains_na_sentinel = self.start <= na_sentinel && self.end > na_sentinel;
+
+        // Check if any values are outside valid i32 range
+        // Valid range for ALTREP integers: (i32::MIN, i32::MAX] (excluding NA sentinel)
+        let has_underflow = self.start < na_sentinel;
+        let has_overflow = (self.end - 1) > i32_max;
+
+        Some(!contains_na_sentinel && !has_underflow && !has_overflow)
     }
 
-    fn sum(&self, _na_rm: bool) -> Option<i64> {
+    fn sum(&self, na_rm: bool) -> Option<i64> {
         let n = AltrepLen::len(self) as i64;
         if n == 0 {
             return Some(0);
         }
+
+        // Check if range contains any NA values
+        let na_sentinel = i32::MIN as i64;
+        let i32_max = i32::MAX as i64;
+        let contains_na_sentinel = self.start <= na_sentinel && self.end > na_sentinel;
+        let has_underflow = self.start < na_sentinel;
+        let has_overflow = (self.end - 1) > i32_max;
+        let has_na = contains_na_sentinel || has_underflow || has_overflow;
+
+        if has_na && !na_rm {
+            return None; // NA propagates
+        }
+
+        if has_na {
+            // When na_rm=true, we need to exclude NA values
+            // This is complex for ranges with out-of-bounds values, so let R compute
+            return None;
+        }
+
         let first = self.start;
         let last = self.end - 1;
 
@@ -801,30 +884,60 @@ impl AltIntegerData for Range<i64> {
         Some(product / 2)
     }
 
-    fn min(&self, _na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) > 0 {
-            let val = self.start;
-            if val > i32::MAX as i64 || val < i32::MIN as i64 {
-                None // Out of range, let R compute
-            } else {
-                Some(val as i32)
-            }
-        } else {
-            None
+    fn min(&self, na_rm: bool) -> Option<i32> {
+        if AltrepLen::len(self) == 0 {
+            return None;
         }
+
+        let na_sentinel = i32::MIN as i64;
+        let i32_max = i32::MAX as i64;
+
+        // Check for NA conditions
+        let contains_na_sentinel = self.start <= na_sentinel && self.end > na_sentinel;
+        let has_underflow = self.start < na_sentinel;
+        let has_overflow = (self.end - 1) > i32_max;
+        let has_na = contains_na_sentinel || has_underflow || has_overflow;
+
+        if has_na && !na_rm {
+            return None; // NA propagates
+        }
+
+        if has_na {
+            // Complex case: need to find first non-NA value
+            // Let R compute this
+            return None;
+        }
+
+        // No NA, return start (which is within valid i32 range)
+        Some(self.start as i32)
     }
 
-    fn max(&self, _na_rm: bool) -> Option<i32> {
-        if AltrepLen::len(self) > 0 {
-            let val = self.end - 1;
-            if val > i32::MAX as i64 || val < i32::MIN as i64 {
-                None // Out of range, let R compute
-            } else {
-                Some(val as i32)
-            }
-        } else {
-            None
+    fn max(&self, na_rm: bool) -> Option<i32> {
+        if AltrepLen::len(self) == 0 {
+            return None;
         }
+
+        let na_sentinel = i32::MIN as i64;
+        let i32_max = i32::MAX as i64;
+
+        // Check for NA conditions
+        let contains_na_sentinel = self.start <= na_sentinel && self.end > na_sentinel;
+        let has_underflow = self.start < na_sentinel;
+        let has_overflow = (self.end - 1) > i32_max;
+        let has_na = contains_na_sentinel || has_underflow || has_overflow;
+
+        if has_na && !na_rm {
+            return None; // NA propagates
+        }
+
+        if has_na {
+            // Complex case: need to find last non-NA value
+            // Let R compute this
+            return None;
+        }
+
+        // No NA, return end-1 (which is within valid i32 range)
+        Some((self.end - 1) as i32)
     }
 }
 

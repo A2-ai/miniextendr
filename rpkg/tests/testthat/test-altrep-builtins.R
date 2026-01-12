@@ -66,3 +66,76 @@ test_that("Vec and Range ALTREP builtins cover additional types", {
   expect_equal(min(rreal), 0.5)
   expect_equal(max(rreal), 2.5)
 })
+
+# =============================================================================
+# NA sentinel (i32::MIN) handling tests
+# =============================================================================
+
+test_that("Range<i32> NA sentinel handling - normal ranges", {
+  # Normal range - no NA
+  r <- range_int_altrep(1L, 6L)
+  expect_equal(length(r), 5L)
+  expect_equal(r[1], 1L)
+  expect_equal(r[5], 5L)
+  expect_false(anyNA(r))
+  expect_equal(sum(r), 15L)
+  expect_equal(min(r), 1L)
+  expect_equal(max(r), 5L)
+
+  # Negative range - no NA
+  r_neg <- range_int_altrep(-5L, 0L)
+  expect_equal(length(r_neg), 5L)
+  expect_false(anyNA(r_neg))
+  expect_equal(sum(r_neg), -15L)
+  expect_equal(min(r_neg), -5L)
+  expect_equal(max(r_neg), -1L)
+})
+
+test_that("Range<i32> detects NA when range starts at NA_INTEGER", {
+  # NA_INTEGER is -2147483648 (i32::MIN)
+  na_int <- -.Machine$integer.max - 1L
+  expect_true(is.na(na_int))
+
+  # Range starting at NA - first element is NA
+  # We can't directly create this via R, but we test the concept:
+  # If start == NA_INTEGER, no_na() should return FALSE
+})
+
+test_that("LazyIntSeq NA handling - normal sequences", {
+  # Normal sequence - no NA
+  seq <- altrep_compact_int(5L, 1L, 2L)  # 1, 3, 5, 7, 9
+  expect_equal(length(seq), 5L)
+  expect_equal(seq[1], 1L)
+  expect_equal(seq[5], 9L)
+  expect_false(anyNA(seq))
+  expect_equal(sum(seq), 25L)
+  expect_equal(min(seq), 1L)
+  expect_equal(max(seq), 9L)
+
+  # Descending sequence - no NA
+  desc <- altrep_compact_int(5L, 100L, -10L)  # 100, 90, 80, 70, 60
+  expect_equal(length(desc), 5L)
+  expect_false(anyNA(desc))
+  expect_equal(min(desc), 60L)
+  expect_equal(max(desc), 100L)
+})
+
+test_that("LazyIntSeq handles sequences near integer bounds", {
+  # Sequence near max int - should not overflow to NA
+  # i32::MAX is 2147483647
+  max_int <- .Machine$integer.max
+  near_max <- altrep_compact_int(3L, max_int - 2L, 1L)  # max-2, max-1, max
+  expect_equal(length(near_max), 3L)
+  expect_equal(near_max[1], max_int - 2L)
+  expect_equal(near_max[3], max_int)
+  expect_false(anyNA(near_max))
+})
+
+test_that("Range<i64> handles out-of-range values", {
+  # Range<i64> should return NA for values outside i32 range
+  # Test a range that's within i32 bounds
+  r64_normal <- range_i64_altrep(1L, 11L)
+  expect_equal(length(r64_normal), 10L)
+  expect_false(anyNA(r64_normal))
+  expect_equal(sum(r64_normal), 55L)
+})

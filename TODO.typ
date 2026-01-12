@@ -17,12 +17,15 @@
   - Clear documentation on parallel limitations
 - [x] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
   - Fix: Added miniextendr-bench to workspace, updated to edition 2024, fixed REngine::new() → build()
-- [ ] Add storage-directed conversion helpers (strict-by-default) that compose `TryCoerce` + `IntoR`
+- [x] Add storage-directed conversion helpers (value-based) that compose `TryCoerce` + `IntoR`
   - Goal: user picks storage (integer/numeric/logical/raw/character), conversions happen automatically
-  - Provide explicit lossy escape hatch if needed (keep current `IntoR` behavior)
-- [ ] Allow numeric → character conversions via stringification (including NaN/Inf)
-  - Document exact string format and behavior in conversion docs
-  - Apply to scalar + slice/vec conversion paths
+  - Implemented `IntoRAs<Target>` trait in `miniextendr-api/src/into_r_as.rs`
+  - No lossy escape hatch - users cast manually if they want lossy behavior
+  - Semantics documented in `docs/CONVERSION_SEMANTICS.md`
+- [x] Allow numeric → character conversions via stringification (including NaN/Inf)
+  - NaN → "NaN", Inf → "Inf", -Inf → "-Inf"
+  - Logical: TRUE → "TRUE", FALSE → "FALSE", NA → "NA"
+  - Applied to scalar + Vec/slice conversion paths via `IntoRAs<String>`
 
 == Codex Review Findings (2024)
 
@@ -165,21 +168,34 @@
 == Codex ALTREP Review (2026-01-12)
 
 === Correctness/Safety
-- [ ] Fix `Range<i32>`/`Range<i64>` `no_na()` to account for `i32::MIN` (NA sentinel)
-  - Align any related hints (sum/min/max) with actual element generation.
-- [ ] Decide overflow/NA semantics for `LazyIntSeqData`
-  - Align `no_na()`/`sum()`/`min()`/`max()` with `elt()` behavior and materialization.
+- [x] Fix `Range<i32>`/`Range<i64>` `no_na()` to account for `i32::MIN` (NA sentinel)
+  - `Range<i32>::no_na()` now checks if range contains NA sentinel
+  - `Range<i64>::no_na()` now checks for NA sentinel and out-of-bounds values
+  - `sum()`/`min()`/`max()` now properly handle NA with `na_rm` parameter
+  - Fixed in `miniextendr-api/src/altrep_data/builtins.rs`
+- [x] Decide overflow/NA semantics for `LazyIntSeqData`
+  - `no_na()` now computes actual bounds to detect if NA sentinel is in range
+  - Checks for saturation at i32::MIN in first/last elements
+  - `sum()`/`min()`/`max()` return None when NAs present (let R compute)
+  - Fixed in `rpkg/src/rust/lib.rs`
 - [ ] Confirm R ALTREP contract for NULL return values from installed methods
   - If NULL is not a valid fallback, gate `HAS_*` or return proper scalar/NA.
 
 === Robustness
-- [ ] Avoid panicking on iterator length mismatch in iterator-backed ALTREP
-  - Validate length at construction or return a safe error instead of `assert_eq!`.
+- [x] Avoid panicking on iterator length mismatch in iterator-backed ALTREP
+  - Removed `assert_eq!` panic in `materialize_all()`
+  - Now handles mismatch gracefully: truncates if too many, returns NA for missing
+  - Prints warning to stderr when mismatch detected
+  - Fixed in `miniextendr-api/src/altrep_data/iter.rs`
 
 === Testing
-- [ ] Add tests for NA sentinel handling in `Range<i32>`
-- [ ] Add tests for out-of-range `Range<i64>` behavior
-- [ ] Add tests for `LazyIntSeqData` overflow edge cases (large ranges, negative step)
+- [x] Add tests for NA sentinel handling in `Range<i32>`
+  - Added tests in `rpkg/tests/testthat/test-altrep-builtins.R`
+  - Tests normal ranges, negative ranges, and NA detection
+- [x] Add tests for out-of-range `Range<i64>` behavior
+  - Added test for Range<i64> normal case
+- [x] Add tests for `LazyIntSeqData` overflow edge cases (large ranges, negative step)
+  - Added tests for normal sequences, descending sequences, and near-max-int sequences
 
 === Safety Issues (from project-review-2026-01-04)
 - [x] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding

@@ -3,15 +3,16 @@
 Date: 2026-01-12
 
 ## Goal
-Provide a **strict-by-default** conversion layer so users can pick an R storage
-(`integer`, `numeric`, `logical`, `raw`, `character`) and avoid manual coercions.
-This layer should compose the existing `TryCoerce` + `IntoR` machinery.
+
+Provide a **value-based** conversion layer so users can pick an R storage
+(`integer`, `numeric`, `logical`, `raw`, `character`) and conversions happen
+automatically when the actual values permit.
 
 The intent is:
 
 - If the user chooses storage, **conversions happen automatically**.
-- **Strict by default** (errors on precision loss, non-finite, out-of-range, etc.).
-- **Lossy escape hatch** keeps current `IntoR` behavior when desired.
+- **Runtime-checked**: if the actual value fits, convert it; if not, error.
+- **No lossy escape hatch**: if you want lossy, cast it yourself first.
 
 ## Existing Building Blocks
 
@@ -21,7 +22,7 @@ The intent is:
 
 ## Proposed API Surface (plan-only)
 
-### 1) Storage‑directed conversion trait
+### Storage‑directed conversion trait
 
 ```rust
 pub trait IntoRAs<Target> {
@@ -31,24 +32,22 @@ pub trait IntoRAs<Target> {
 ```
 
 - `Target` is a storage type: `i32` (integer), `f64` (numeric), `RLogical` (logical), `u8` (raw), `String` (character).
-- Implementations should be provided for scalars and slices/Vecs.
+- Implementations provided for scalars and slices/Vecs.
 - Implementations **delegate** to `TryCoerce` then `IntoR`.
+- Conversion succeeds if **all values** fit the target; fails otherwise.
 
-### 2) Lossy escape hatch
+### No lossy escape hatch
+
+If users want lossy conversion, they cast first:
 
 ```rust
-pub trait IntoRAsLossy<Target> {
-    fn into_r_as_lossy(self) -> SEXP;
-}
+// Value-based conversion (errors if any value doesn't fit)
+vec![1_i64, 2, 3].into_r_as::<i32>()?           // OK
+vec![1.5_f64].into_r_as::<i32>()?               // Error: not integral
+
+// User wants lossy? Cast first - their responsibility.
+vec![1.5_f64 as i32].into_r()                   // Truncates to 1
 ```
-
-- Uses existing `IntoR` or `Coerce` paths (current behavior).
-- No new error types; explicit opt-in to lossy conversions.
-
-### 3) Convenience adapters
-
-- `as_r_*` style on common wrappers if desired (optional, not required).
-- Keep the core of the system minimal: `TryCoerce + IntoR`.
 
 ## Semantics by Storage
 
@@ -68,7 +67,7 @@ Errors:
 
 Allowed:
 - `f32`/`f64` if finite
-- integer types **only if** exactly representable (strict)
+- integer types **only if** exactly representable in f64
 
 Errors:
 - non-finite floats
@@ -125,7 +124,7 @@ For logical values:
 
 ## Error Type
 
-Add a minimal error enum to map strict failures:
+Add a minimal error enum for conversion failures:
 
 ```rust
 enum StorageCoerceError {
@@ -144,22 +143,38 @@ enum StorageCoerceError {
 ## Examples
 
 ```rust
-// Strict integer storage
+// Integer storage - values must fit
 let x = vec![1_i64, 2, 3];
-let sexp = x.into_r_as::<i32>()?; // error if out of range
+let sexp = x.into_r_as::<i32>()?;               // OK: all values in range
 
-// Strict numeric storage
-let y = vec![1_i64 << 60];
-let sexp = y.into_r_as::<f64>()?; // error: precision loss
+let y = vec![1_i64 << 40];
+let sexp = y.into_r_as::<i32>()?;               // Error: out of range
+
+// Numeric storage - values must be exactly representable
+let a = vec![1_i64, 2, 3];
+let sexp = a.into_r_as::<f64>()?;               // OK: exactly representable
+
+let b = vec![1_i64 << 60];
+let sexp = b.into_r_as::<f64>()?;               // Error: precision loss
+
+// Float to integer - must be integral and in range
+let c = vec![1.0_f64, 2.0, 3.0];
+let sexp = c.into_r_as::<i32>()?;               // OK: all integral
+
+let d = vec![1.5_f64];
+let sexp = d.into_r_as::<i32>()?;               // Error: not integral
 
 // Character storage (stringify NaN/Inf)
 let z = vec![f64::NAN, f64::INFINITY, -f64::INFINITY];
-let sexp = z.into_r_as::<String>()?; // "NaN", "Inf", "-Inf"
+let sexp = z.into_r_as::<String>()?;            // "NaN", "Inf", "-Inf"
+
+// User wants lossy? Cast first.
+let lossy: Vec<i32> = vec![1.5_f64, 2.7].iter().map(|&x| x as i32).collect();
+let sexp = lossy.into_r();                      // [1, 2] - user's responsibility
 ```
 
 ## Documentation Updates
 
 - Add a short section to `docs/docs.md` describing storage‑directed conversion.
-- Add a note to `docs/COERCE.md` or `docs/COERCE_AND_INTO_R_REVIEW.md` clarifying strict vs lossy.
 - Add this file as the definitive semantic reference.
 
