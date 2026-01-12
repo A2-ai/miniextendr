@@ -19,6 +19,100 @@ fn main() {
 }
 
 // =============================================================================
+// Raw R_PreserveObject/R_ReleaseObject baseline
+// =============================================================================
+// NOTE: R_ReleaseObject is O(n) - it scans the precious list to find the object.
+// This makes protect+release cycles O(n²) at scale, which is why RefCountedArena
+// (with hash table for O(1) lookup) is much faster for large numbers of objects.
+
+/// Raw R_PreserveObject + R_ReleaseObject (checked)
+#[divan::bench]
+fn raw_preserve_release_single() {
+    unsafe {
+        let x = ffi::Rf_ScalarInteger(42);
+        ffi::R_PreserveObject(x);
+        ffi::R_ReleaseObject(x);
+        divan::black_box(x);
+    }
+}
+
+/// Raw R_PreserveObject + R_ReleaseObject (unchecked)
+#[divan::bench]
+fn raw_preserve_release_unchecked_single() {
+    unsafe {
+        let x = ffi::Rf_ScalarInteger(42);
+        ffi::R_PreserveObject_unchecked(x);
+        ffi::R_ReleaseObject_unchecked(x);
+        divan::black_box(x);
+    }
+}
+
+/// Raw R_PreserveObject + R_ReleaseObject: N values (checked)
+/// WARNING: O(n²) due to R_ReleaseObject scanning
+#[divan::bench(args = [10, 100, 1000])]
+fn raw_preserve_release_multiple(n: usize) {
+    unsafe {
+        let mut values = Vec::with_capacity(n);
+        for i in 0..n {
+            let x = ffi::Rf_ScalarInteger(i as i32);
+            ffi::R_PreserveObject(x);
+            values.push(x);
+        }
+        for x in values {
+            ffi::R_ReleaseObject(x);
+        }
+    }
+}
+
+/// Raw R_PreserveObject + R_ReleaseObject: N values (unchecked)
+/// WARNING: O(n²) due to R_ReleaseObject scanning
+#[divan::bench(args = [10, 100, 1000])]
+fn raw_preserve_release_unchecked_multiple(n: usize) {
+    unsafe {
+        let mut values = Vec::with_capacity(n);
+        for i in 0..n {
+            let x = ffi::Rf_ScalarInteger(i as i32);
+            ffi::R_PreserveObject_unchecked(x);
+            values.push(x);
+        }
+        for x in values {
+            ffi::R_ReleaseObject_unchecked(x);
+        }
+    }
+}
+
+/// Raw R_PreserveObject: scale test (protect only, no release)
+/// This isolates preserve cost from the O(n) release cost
+#[divan::bench(args = [1000, 5000, 10000])]
+fn raw_preserve_only(n: usize) {
+    unsafe {
+        for i in 0..n {
+            let x = ffi::Rf_ScalarInteger((i % 100) as i32);
+            ffi::R_PreserveObject_unchecked(x);
+            divan::black_box(x);
+        }
+        // NOTE: Not releasing - this pollutes the precious list but shows true preserve cost
+    }
+}
+
+/// Raw R_PreserveObject + R_ReleaseObject: scale test
+/// WARNING: Very slow at scale due to O(n²) release cost
+#[divan::bench(args = [100, 500, 1000, 2000])]
+fn raw_preserve_release_scale(n: usize) {
+    unsafe {
+        let mut values = Vec::with_capacity(n);
+        for i in 0..n {
+            let x = ffi::Rf_ScalarInteger((i % 100) as i32);
+            ffi::R_PreserveObject_unchecked(x);
+            values.push(x);
+        }
+        for x in values {
+            ffi::R_ReleaseObject_unchecked(x);
+        }
+    }
+}
+
+// =============================================================================
 // Single value protection
 // =============================================================================
 

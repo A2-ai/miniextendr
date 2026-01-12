@@ -160,6 +160,7 @@ bug fixes.
 <table-of-contents>
 - #link(<gc-protection-mechanisms>)[GC Protection Mechanisms]
 - #link(<ppsize-analysis>)[PPSize Analysis]
+- #link(<refcountedarena-vs-raw-preserve>)[RefCountedArena vs Raw R\_PreserveObject]
 - #link(<ffi-and-r-interop>)[FFI and R Interop]
 - #link(<type-conversions>)[Type Conversions]
 - #link(<memory-and-allocation>)[Memory and Allocation]
@@ -333,6 +334,177 @@ Full comparison at extended scale (median times):
 #strong[Key insight]: HashMap's O(1) operations are faster for small
 counts, but at scale (\>200k), BTreeMap's predictable memory layout and
 better cache locality overcome the theoretical O(log n) disadvantage.
+
+#horizontalrule
+
+== RefCountedArena vs Raw R\_PreserveObject/R\_ReleaseObject
+<refcountedarena-vs-raw-preserve>
+
+This section compares the hash-table based `RefCountedArena` against R's native `R_PreserveObject`/`R_ReleaseObject` API.
+
+=== Critical Finding: R\_ReleaseObject is O(n)
+<critical-finding-release-is-on>
+
+R's `R_ReleaseObject` must #strong[scan the entire precious list] to find and remove an object. This makes:
+- Single preserve+release: O(1) - fast
+- N preserve+release cycles: #strong[O(n²)] total - catastrophically slow at scale
+
+=== Performance Comparison (Protect + Unprotect Cycles)
+<performance-comparison-preserve>
+
+#figure(
+  align(center)[#table(
+    columns: 5,
+    align: (auto,auto,auto,auto,auto,),
+    table.header([Implementation], [10 objects], [100 objects], [1000 objects], [Scaling],),
+    table.hline(),
+    [Raw R\_PreserveObject/R\_ReleaseObject], [250 ns], [8.2 µs], [#strong[644 µs]], [O(n²)],
+    [ThreadLocal (BTree)], [500 ns], [7.2 µs], [#strong[92 µs]], [O(n log n)],
+    [RefCountedArena (BTree)], [552 ns], [8.7 µs], [100 µs], [O(n log n)],
+    [HashMapArena], [635 ns], [9.2 µs], [95 µs], [O(n)],
+    [ThreadLocalHash], [1.1 µs], [10.8 µs], [113 µs], [O(n)],
+  )]
+  , kind: table
+  )
+
+#strong[At 1000 objects, arena implementations are 6-7x faster than raw R\_PreserveObject/R\_ReleaseObject!]
+
+=== Single Operation Performance
+<single-operation-preserve>
+
+#figure(
+  align(center)[#table(
+    columns: 3,
+    align: (auto,auto,auto,),
+    table.header([Operation], [Time], [Notes],),
+    table.hline(),
+    [`protect_scope_single`], [#strong[13.6 ns]], [Fastest - direct stack push],
+    [`raw_preserve_release_unchecked`], [15.7 ns], [Fast for single objects],
+    [`raw_preserve_release_single`], [20.5 ns], [Checked variant],
+    [`thread_local_single` (BTree)], [35.6 ns], [ThreadLocal + BTreeMap],
+    [`btreemap_single`], [100 ns], [RefCell + BTreeMap],
+    [`thread_local_hash_single`], [107 ns], [ThreadLocal + HashMap],
+    [`refcount_arena_single`], [111 ns], [RefCell + BTreeMap (same as btreemap)],
+    [`hashmap_single`], [156 ns], [RefCell + HashMap],
+  )]
+  , kind: table
+  )
+
+=== Why RefCountedArena Wins at Scale
+<why-refcountedarena-wins>
+
++ #strong[Architecture]: RefCountedArena stores SEXPs in a single `VECSXP` that's preserved once via `R_PreserveObject`. Individual SEXPs go into slots.
++ #strong[O(1) Lookup]: A hash table (or BTreeMap) maps SEXP addresses to slot indices. Finding an object to release is O(1) or O(log n), not O(n).
++ #strong[Reference Counting]: Protecting the same SEXP multiple times just increments a counter, no additional storage needed.
++ #strong[Slot Reuse]: When objects are unprotected, their slots are added to a free list for reuse without resizing.
+
+=== R's Precious List Architecture
+<r-precious-list-arch>
+
+R's `R_PreserveObject`/`R_ReleaseObject` uses a simple linked list:
+- `R_PreserveObject`: O(1) - prepend to list
+- `R_ReleaseObject`: #strong[O(n)] - must scan list to find object
+
+This is fine for a handful of long-lived objects, but becomes a bottleneck when protecting many temporary objects.
+
+=== Preserve List (Doubly-Linked List) Performance
+<preserve-list-performance>
+
+The `preserve` module uses a doubly-linked list with O(1) insert and O(1) release:
+
+#figure(
+  align(center)[#table(
+    columns: 3,
+    align: (auto,auto,auto,),
+    table.header([Operation], [Time], [Notes],),
+    table.hline(),
+    [`preserve_count`], [4 ns], [Check current count],
+    [`preserve_insert_release_unchecked`], [39 ns], [Single insert+release],
+    [`preserve_multiple` (1000)], [34 µs], [Insert 1000, release LIFO],
+    [`preserve_release_arbitrary_order` (1000)], [30 µs], [Insert 1000, release any order],
+  )]
+  , kind: table
+  )
+
+#strong[Key insight]: Arbitrary-order release is the same speed as LIFO release - this confirms the O(1) removal of the doubly-linked list.
+
+=== Large Scale Comparison (10k - 500k objects)
+<large-scale-comparison>
+
+Full comparison of all arena implementations at scale (median times from 2026-01-12 run):
+
+#figure(
+  align(center)[#table(
+    columns: 6,
+    align: (auto,auto,auto,auto,auto,auto,),
+    table.header([Objects], [RefCountedArena], [HashMapArena], [ThreadLocalArena], [ThreadLocalHashArena], [Winner],),
+    table.hline(),
+    [10k], [806 µs], [738 µs], [729 µs], [#strong[425 µs]], [TL-Hash],
+    [20k], [1.65 ms], [1.47 ms], [1.52 ms], [#strong[869 µs]], [TL-Hash],
+    [50k], [4.26 ms], [3.67 ms], [3.88 ms], [#strong[2.44 ms]], [TL-Hash],
+    [100k], [8.45 ms], [7.80 ms], [8.37 ms], [#strong[5.36 ms]], [TL-Hash],
+    [200k], [17.6 ms], [16.8 ms], [17.8 ms], [#strong[15.0 ms]], [TL-Hash],
+    [300k], [31.3 ms], [32.6 ms], [#strong[28.3 ms]], [32.0 ms], [TL-BTree],
+    [400k], [38.2 ms], [39.0 ms], [#strong[37.1 ms]], [42.1 ms], [TL-BTree],
+    [500k], [75.2 ms], [83.4 ms], [#strong[49.5 ms]], [70.2 ms], [TL-BTree],
+  )]
+  , kind: table
+  )
+
+#strong[Key observations]:
+
++ #strong[ThreadLocalHashArena wins \< 300k]: HashMap O(1) lookup beats BTreeMap O(log n)
++ #strong[ThreadLocalArena (BTreeMap) wins \> 300k]: Cache locality overcomes theoretical disadvantage
++ #strong[Crossover point \~250-300k]: Where BTreeMap's contiguous memory layout starts winning
++ #strong[At 500k]: ThreadLocalArena is 30% faster than ThreadLocalHashArena (49.5ms vs 70.2ms)
+
+#strong[Why BTreeMap wins at extreme scale]:
+- BTreeMap nodes are contiguous in memory, better cache utilization
+- HashMap has random memory access patterns, more cache misses at scale
+- The O(log n) vs O(1) difference is dwarfed by memory access patterns
+
+=== Reference Counting: Same Value Protected N Times
+<reference-counting-same-value>
+
+When the same SEXP is protected multiple times, reference counting avoids duplicate storage:
+
+#figure(
+  align(center)[#table(
+    columns: 5,
+    align: (auto,auto,auto,auto,auto,),
+    table.header([Implementation], [N=10], [N=100], [N=1000], [Notes],),
+    table.hline(),
+    [ThreadLocal (BTree)], [97 ns], [442 ns], [#strong[3.87 µs]], [Best for repeated protects],
+    [RefCountedArena (BTree)], [143 ns], [308 ns], [1.84 µs], [Slightly faster ref counting],
+    [ProtectScope], [51 ns], [411 ns], [3.92 µs], [No dedup, wastes stack slots],
+    [HashMapArena], [255 ns], [1.05 µs], [9.25 µs], [HashMap lookup overhead],
+    [ThreadLocalHash], [33.7 µs], [34.6 µs], [38.7 µs], [#strong[20x slower than BTree!]],
+  )]
+  , kind: table
+  )
+
+#strong[Key insight]: BTreeMap-based arenas are dramatically faster for reference counting the same value. ThreadLocalHashArena has ~20x overhead due to hash computation on every protect call.
+
+=== Scale Test Results (vs Raw R\_PreserveObject)
+<scale-test-results>
+
+At larger scales, the O(n²) cost of raw preserve/release becomes prohibitive:
+
+#figure(
+  align(center)[#table(
+    columns: 4,
+    align: (auto,auto,auto,auto,),
+    table.header([Objects], [Raw R\_PreserveObject], [BTreeMap Arena], [Speedup],),
+    table.hline(),
+    [100], [8.2 µs], [5.6 µs], [1.5x],
+    [500], [167 µs], [\~30 µs], [#strong[5.6x]],
+    [1000], [644 µs], [60 µs], [#strong[10.7x]],
+    [2000], [3.82 ms], [\~120 µs], [#strong[32x]],
+  )]
+  , kind: table
+  )
+
+#strong[O(n²) confirmed]: Doubling N roughly quadruples time for raw R\_PreserveObject/R\_ReleaseObject.
 
 #horizontalrule
 
@@ -772,10 +944,28 @@ The current benchmark suite is #strong[comprehensive] and covers:
 
 == Summary Recommendations
 <summary-recommendations>
-+ #strong[GC Protection]:
-  - Use `ProtectScope` for \< 50k protections (fastest, but limited)
-  - Use `ThreadLocalHashArena` for 10k-100k protections
-  - Use `ThreadLocalArena` for \> 100k protections
+
+=== GC Protection (choose based on scale and use case)
+<gc-protection-recommendations>
+
+#figure(
+  align(center)[#table(
+    columns: 3,
+    align: (auto,auto,auto,),
+    table.header([Scale], [Best Choice], [Notes],),
+    table.hline(),
+    [\< 50k, LIFO release], [`ProtectScope`], [Fastest (13.6 ns), limited by ppsize],
+    [\< 300k, any release order], [`ThreadLocalHashArena`], [O(1) lookup, wins at medium scale],
+    [\> 300k], [`ThreadLocalArena` (BTreeMap)], [Best cache locality at extreme scale],
+    [Same value repeated], [`ThreadLocalArena` (BTreeMap)], [20x faster ref counting than Hash],
+    [Single long-lived object], [Raw `R_PreserveObject`], [Simple, 16ns overhead],
+  )]
+  , kind: table
+  )
+
+#strong[Never use raw `R_PreserveObject`/`R_ReleaseObject` for many objects] - O(n²) scaling!
+
+#strong[ThreadLocal vs RefCell variants]: ThreadLocal versions avoid RefCell borrow overhead, ~2x faster for single operations.
 + #strong[Type Conversions]:
   - Prefer Rust coercion over R's `Rf_coerceVector` (3-10x faster)
   - Use slice views instead of copying when possible (zero-copy)
