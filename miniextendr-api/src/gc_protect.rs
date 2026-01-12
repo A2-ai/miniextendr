@@ -106,6 +106,50 @@
 //!     result.into_raw()
 //! } // UNPROTECT(3) called automatically
 //! ```
+//!
+//! # Container Insertion Patterns
+//!
+//! When building containers (lists, character vectors), children need protection
+//! between allocation and insertion:
+//!
+//! ```ignore
+//! // WRONG - child unprotected between allocation and SET_VECTOR_ELT
+//! let child = Rf_allocVector(REALSXP, 10);  // unprotected!
+//! SET_VECTOR_ELT(list, 0, child);           // GC could occur before this!
+//!
+//! // CORRECT - use safe insertion methods
+//! let list = List::from_raw(scope.protect_raw(Rf_allocVector(VECSXP, n)));
+//! for i in 0..n {
+//!     let child = Rf_allocVector(REALSXP, 10);
+//!     list.set_elt(i, child);  // protects child during insertion
+//! }
+//!
+//! // EFFICIENT - use ListBuilder with scope
+//! let builder = ListBuilder::new(&scope, n);
+//! for i in 0..n {
+//!     let child = scope.protect_raw(Rf_allocVector(REALSXP, 10));
+//!     builder.set(i, child);  // child already protected by scope
+//! }
+//! ```
+//!
+//! See [`List::set_elt`](crate::list::List::set_elt),
+//! [`ListBuilder`](crate::list::ListBuilder), and
+//! [`StrVec::set_str`](crate::strvec::StrVec::set_str) for safe container APIs.
+//!
+//! # Reassignment with `ReprotectSlot`
+//!
+//! Use [`ReprotectSlot`] when you need to reassign a protected value multiple times
+//! without growing the protection stack:
+//!
+//! ```ignore
+//! let slot = scope.protect_with_index(initial_value);
+//! for item in items {
+//!     let new_value = process(slot.get(), item);
+//!     slot.set(new_value);  // R_Reprotect, stack count unchanged
+//! }
+//! ```
+//!
+//! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
 use crate::ffi::{R_ProtectWithIndex, R_Reprotect, Rf_protect, Rf_unprotect, SEXP};
 use core::cell::Cell;
@@ -481,7 +525,37 @@ impl std::ops::Deref for OwnedProtect {
 ///
 /// The slot is valid only while the creating [`ProtectScope`] is alive.
 ///
-/// # Example
+/// # When to Use `ReprotectSlot`
+///
+/// Use `ReprotectSlot` when you need to **reassign a protected value** multiple times:
+///
+/// | Pattern | Use | Why |
+/// |---------|-----|-----|
+/// | Accumulator loop | `ReprotectSlot` | Repeatedly replace result without stack growth |
+/// | Single allocation | `ProtectScope::protect` | Simpler, no reassignment needed |
+/// | Child insertion | `List::set_elt` | Container handles child protection |
+///
+/// # Warning: RAII Assignment Pitfall
+///
+/// R's PROTECT stack is LIFO. Rust's RAII drop order can cause problems:
+///
+/// ```ignore
+/// // WRONG - can unprotect the new value instead of the old!
+/// let mut guard = OwnedProtect::new(old_value);
+/// guard = OwnedProtect::new(new_value);  // Old guard drops AFTER new is assigned
+/// ```
+///
+/// `ReprotectSlot` avoids this by using `R_Reprotect` which replaces in-place:
+///
+/// ```ignore
+/// // CORRECT - always keeps exactly one slot protected
+/// let slot = scope.protect_with_index(old_value);
+/// slot.set(new_value);  // R_Reprotect, no stack change
+/// ```
+///
+/// # Examples
+///
+/// ## Accumulator Pattern
 ///
 /// ```ignore
 /// unsafe fn sum_allocated_vectors(n: i32) -> SEXP {
@@ -497,6 +571,45 @@ impl std::ops::Deref for OwnedProtect {
 ///     }
 ///
 ///     slot.get()
+/// }
+/// ```
+///
+/// ## Starting with Empty Slot
+///
+/// ```ignore
+/// unsafe fn build_result(items: &[Input]) -> SEXP {
+///     let scope = ProtectScope::new();
+///
+///     // Start with R_NilValue, replace with first real result
+///     let slot = scope.protect_with_index(R_NilValue);
+///
+///     for (i, item) in items.iter().enumerate() {
+///         let result = process_item(item, slot.get());
+///         slot.set(result);
+///     }
+///
+///     slot.get()
+/// }
+/// ```
+///
+/// ## Multiple Slots
+///
+/// ```ignore
+/// unsafe fn merge_sorted(a: SEXP, b: SEXP) -> SEXP {
+///     let scope = ProtectScope::new();
+///
+///     let slot_a = scope.protect_with_index(a);
+///     let slot_b = scope.protect_with_index(b);
+///     let result = scope.protect_with_index(R_NilValue);
+///
+///     // Process both inputs, updating result
+///     while !is_empty(slot_a.get()) && !is_empty(slot_b.get()) {
+///         let merged = merge_next(slot_a.get(), slot_b.get());
+///         result.set(merged);
+///         // ... update slot_a and slot_b as needed
+///     }
+///
+///     result.get()
 /// }
 /// ```
 pub struct ReprotectSlot<'a> {

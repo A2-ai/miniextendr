@@ -324,9 +324,11 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 pub mod convert;
 pub mod dots;
 pub mod list;
+pub mod strvec;
 pub mod typed_list;
 pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
-pub use list::{IntoList, List, ListMut, TryFromList};
+pub use list::{IntoList, List, ListBuilder, ListMut, TryFromList};
+pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
     sexptype_name, validate_list,

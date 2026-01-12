@@ -17,6 +17,12 @@
   - Clear documentation on parallel limitations
 - [x] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
   - Fix: Added miniextendr-bench to workspace, updated to edition 2024, fixed REngine::new() → build()
+- [ ] Add storage-directed conversion helpers (strict-by-default) that compose `TryCoerce` + `IntoR`
+  - Goal: user picks storage (integer/numeric/logical/raw/character), conversions happen automatically
+  - Provide explicit lossy escape hatch if needed (keep current `IntoR` behavior)
+- [ ] Allow numeric → character conversions via stringification (including NaN/Inf)
+  - Document exact string format and behavior in conversion docs
+  - Apply to scalar + slice/vec conversion paths
 
 == Codex Review Findings (2024)
 
@@ -143,7 +149,7 @@
 - [x] Rayon integration tests too narrow (missing `with_r_vec`)
   - Fix: Added comprehensive integration tests in `miniextendr-api/tests/rayon.rs`
     using miniextendr-engine for embedded R. Tests cover `with_r_vec` (basic, parallel
-    write, i32, empty, large), `RVec` parallel collect, and `IntoR` conversion.
+    write, i32, empty, large), `Vec` parallel collect, and `IntoR` conversion.
 - [ ] No automated regression test for registration bug
   - Note: User indicated this is likely a fluke, low priority.
 - [x] Macro compile-fail tests missing (no trybuild/UI tests)
@@ -155,6 +161,25 @@
 - [x] Known TODOs not tracked as GitHub issues
   - Cleaned up: removed stale TODOs from justfile, conversions.rs, test-thread.R
   - Remaining TODOs are informational notes (lint enhancement idea, configure.ac upstream issue)
+
+== Codex ALTREP Review (2026-01-12)
+
+=== Correctness/Safety
+- [ ] Fix `Range<i32>`/`Range<i64>` `no_na()` to account for `i32::MIN` (NA sentinel)
+  - Align any related hints (sum/min/max) with actual element generation.
+- [ ] Decide overflow/NA semantics for `LazyIntSeqData`
+  - Align `no_na()`/`sum()`/`min()`/`max()` with `elt()` behavior and materialization.
+- [ ] Confirm R ALTREP contract for NULL return values from installed methods
+  - If NULL is not a valid fallback, gate `HAS_*` or return proper scalar/NA.
+
+=== Robustness
+- [ ] Avoid panicking on iterator length mismatch in iterator-backed ALTREP
+  - Validate length at construction or return a safe error instead of `assert_eq!`.
+
+=== Testing
+- [ ] Add tests for NA sentinel handling in `Range<i32>`
+- [ ] Add tests for out-of-range `Range<i64>` behavior
+- [ ] Add tests for `LazyIntSeqData` overflow edge cases (large ranges, negative step)
 
 === Safety Issues (from project-review-2026-01-04)
 - [x] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding
@@ -1295,4 +1320,3 @@ Types now correctly serialize via `Serialized_state` method:
 Tests exist in `rpkg/tests/testthat/test-altrep-serialization.R`:
 - All tests should pass now that serialization bridge is implemented
 - Remove any remaining `skip()` calls after verification
-

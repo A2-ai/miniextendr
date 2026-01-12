@@ -25,10 +25,10 @@ miniextendr-api = { path = "../miniextendr-api", features = ["rayon"] }
 
 ```rust
 use miniextendr_api::prelude::*;
-use miniextendr_api::rayon_bridge::{RVec, rayon::prelude::*};
+use miniextendr_api::rayon_bridge::rayon::prelude::*;
 
 #[miniextendr]
-fn parallel_sqrt(x: &[f64]) -> RVec<f64> {
+fn parallel_sqrt(x: &[f64]) -> Vec<f64> {
     x.par_iter().map(|&val| val.sqrt()).collect()
 }
 ```
@@ -122,14 +122,13 @@ let r_vec = with_r_vec::<f64, _>(1000, |output| {
 });
 ```
 
-### Collection Type
+### Parallel Collection (Vec<T>)
 
-#### `RVec<T>` - Parallel Collection
-
-Implements `FromParallelIterator` for use with `.collect()`.
+Rayon implements `FromParallelIterator` for `Vec<T>`, so you can collect in
+parallel and return a `Vec<T>` directly (converted to R via `IntoR`).
 
 ```rust
-let results: RVec<f64> = (0..1000)
+let results: Vec<f64> = (0..1000)
     .into_par_iter()
     .map(|i| (i as f64).sqrt())
     .collect();  // Parallel collection
@@ -178,7 +177,7 @@ fn parallel_sqrt(x: &[f64]) -> SEXP {
 }
 ```
 
-### Pattern 2: Collect to RVec (Flexible)
+### Pattern 2: Collect to Vec (Flexible)
 
 **Use when:** Complex transformations or multiple steps
 
@@ -186,7 +185,7 @@ fn parallel_sqrt(x: &[f64]) -> SEXP {
 
 ```rust
 #[miniextendr]
-fn parallel_pipeline(x: &[f64]) -> RVec<f64> {
+fn parallel_pipeline(x: &[f64]) -> Vec<f64> {
     x.par_iter()
         .filter(|&&v| v > 0.0)      // Filter
         .map(|&v| v.log2())          // Transform
@@ -222,7 +221,7 @@ fn parallel_stats(x: &[f64]) -> Vec<f64> {
 
 ```rust
 #[miniextendr]
-fn parallel_chunked(x: &[f64]) -> RVec<f64> {
+fn parallel_chunked(x: &[f64]) -> Vec<f64> {
     x.par_chunks(1000)
         .flat_map(|chunk| {
             // Pure Rust processing of chunk (no R calls!)
@@ -367,7 +366,7 @@ fn parallel_matrix_multiply(a: &[f64], b: &[f64], n: i32) -> SEXP {
 
 ```rust
 #[miniextendr]
-fn parallel_filter_positive(x: &[f64]) -> RVec<f64> {
+fn parallel_filter_positive(x: &[f64]) -> Vec<f64> {
     x.par_iter()
         .copied()
         .filter(|&v| v > 0.0)
