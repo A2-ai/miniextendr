@@ -178,8 +178,10 @@
   - Checks for saturation at i32::MIN in first/last elements
   - `sum()`/`min()`/`max()` return None when NAs present (let R compute)
   - Fixed in `rpkg/src/rust/lib.rs`
-- [ ] Confirm R ALTREP contract for NULL return values from installed methods
-  - If NULL is not a valid fallback, gate `HAS_*` or return proper scalar/NA.
+- [x] Confirm R ALTREP contract for NULL return values from installed methods
+  - Confirmed: NULL (R_NilValue) is valid return from sum/min/max methods
+  - NULL signals R to fall back to default computation (materialize vector)
+  - This is documented R ALTREP behavior - no changes needed
 
 === Robustness
 - [x] Avoid panicking on iterator length mismatch in iterator-backed ALTREP
@@ -1289,10 +1291,10 @@ Standalone adapter traits not needed - use connection framework instead.
   - Clarify integer inputs for float-centric types
   - Document truncation/rounding behavior
   - Note lossy vs strict conversions
-- [ ] Add TryCoerce tests for feature types
-  - `f64 -> OrderedFloat<f32>` errors on precision loss
-  - `i32 -> Decimal` succeeds; `f64 -> Decimal` errors on NaN/Inf
-  - `i32 -> BigInt` succeeds; `f64 -> BigInt` errors on fractional/NaN
+- [x] Add TryCoerce tests for feature types
+  - `f64 -> OrderedFloat<f32>` errors on precision loss (miniextendr-api/tests/ordered_float.rs)
+  - `i32 -> Decimal` succeeds; `f64 -> Decimal` errors on NaN/Inf (miniextendr-api/tests/rust_decimal.rs)
+  - `i32 -> BigInt` succeeds; `f64 -> BigInt` errors on fractional/NaN (miniextendr-api/tests/num_bigint.rs)
 
 == minirextendr Enhancements
 
