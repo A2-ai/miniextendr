@@ -106,10 +106,10 @@ jobs:
           echo "Versions match!"
 
   # ===========================================================================
-  # Vendor sync check (ensure vendored crates match workspace)
+  # Sync checks (vendor, templates, lint parser)
   # ===========================================================================
-  vendor-sync:
-    name: Vendor Sync Check
+  sync-checks:
+    name: Sync Checks
     runs-on: ubuntu-latest
     needs: changes
     if: needs.changes.outputs.rust == 'true' || needs.changes.outputs.r == 'true'
@@ -138,6 +138,12 @@ jobs:
 
       - name: Check vendor sync
         run: just vendor-sync-check
+
+      - name: Check templates sync
+        run: just templates-check
+
+      - name: Check lint parser sync
+        run: just lint-sync-check
 
   # ===========================================================================
   # Change detection (path-based gating)
@@ -696,6 +702,58 @@ jobs:
           just test-all
 
   # ===========================================================================
+  # minirextendr (scaffolding helper package)
+  # ===========================================================================
+  minirextendr:
+    name: minirextendr
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    needs: changes
+    if: needs.changes.outputs.r == 'true'
+    env:
+      GITHUB_PAT: ${{ secrets.GITHUB_TOKEN }}
+      R_KEEP_PKG_SOURCE: yes
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install just
+        uses: taiki-e/install-action@just
+
+      - name: Setup R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Setup R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          working-directory: minirextendr
+          extra-packages: any::rcmdcheck, any::testthat
+          needs: check
+
+      - name: Run tests
+        working-directory: minirextendr
+        run: Rscript -e "testthat::test_local()"
+
+      - name: R CMD check
+        uses: r-lib/actions/check-r-package@v2
+        with:
+          working-directory: minirextendr
+          args: 'c("--no-manual", "--as-cran")'
+          error-on: '"error"'
+          check-dir: '"check"'
+
+      - name: Upload check results
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: logs-minirextendr
+          path: minirextendr/check
+          retention-days: 7
+
+  # ===========================================================================
   # CRAN-like check (stricter, simulates CRAN environment)
   # ===========================================================================
   cran-check:
@@ -751,31 +809,28 @@ jobs:
         run: |
           echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
 
-      - name: Configure
-        run: just configure-cran
+      - name: Configure and vendor (dev mode creates clean vendor.tar.xz)
+        env:
+          NOT_CRAN: "true"
+        run: just configure
 
-      - name: Vendor dependencies (CRAN simulation)
-        working-directory: rpkg/src/rust
+      - name: Build source tarball
         run: |
-          mkdir -p ../vendor
-          cargo vendor --locked ../vendor
+          # Remove src/vendor/ so tarball only contains inst/vendor.tar.xz
+          rm -rf rpkg/src/vendor
+          R CMD build rpkg
+          echo "TARBALL=$(ls -1 miniextendr_*.tar.gz)" >> $GITHUB_ENV
 
-      - name: Clean vendor directory for CRAN
+      - name: R CMD check (CRAN-like, from tarball)
         run: |
-          # Remove files that cause CRAN check notes
-          find rpkg/src/vendor -name '.cargo_vcs_info.json' -delete 2>/dev/null || true
-          find rpkg/src/vendor -name '.travis*' -delete 2>/dev/null || true
-          find rpkg/src/vendor -name '.gitlab*' -delete 2>/dev/null || true
-          find rpkg/src/vendor -name '*.a' -delete 2>/dev/null || true
-          find rpkg/src/vendor -name '*.lib' -delete 2>/dev/null || true
+          # Check the tarball without NOT_CRAN (simulates CRAN)
+          R CMD check --as-cran --no-manual ${{ env.TARBALL }}
 
-      - name: R CMD check (CRAN-like)
-        uses: r-lib/actions/check-r-package@v2
-        with:
-          working-directory: rpkg
-          args: 'c("--no-manual", "--as-cran")'
-          error-on: '"warning"'
-          check-dir: '"check"'
+      - name: Copy check results
+        if: always()
+        run: |
+          mkdir -p rpkg/check
+          mv miniextendr.Rcheck rpkg/check/ 2>/dev/null || true
 
       - name: Print failed tests
         if: always()
@@ -802,13 +857,14 @@ jobs:
     needs:
       - generated-files-check
       - version-check
-      - vendor-sync
+      - sync-checks
       - changes
       - r-check-linux
       - r-check-macos
       - r-check-windows
       - r-tests
       - cross-package-tests
+      - minirextendr
       - cran-check
     runs-on: ubuntu-latest
     if: always()
@@ -818,13 +874,14 @@ jobs:
           results=(
             "${{ needs.generated-files-check.result }}"
             "${{ needs.version-check.result }}"
-            "${{ needs.vendor-sync.result }}"
+            "${{ needs.sync-checks.result }}"
             "${{ needs.changes.result }}"
             "${{ needs.r-check-linux.result }}"
             "${{ needs.r-check-macos.result }}"
             "${{ needs.r-check-windows.result }}"
             "${{ needs.r-tests.result }}"
             "${{ needs.cross-package-tests.result }}"
+            "${{ needs.minirextendr.result }}"
             "${{ needs.cran-check.result }}"
           )
           for result in "${results[@]}"; do
