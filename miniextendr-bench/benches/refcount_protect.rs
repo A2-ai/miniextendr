@@ -553,3 +553,71 @@ fn thread_local_hash_many(n: usize) {
         ThreadLocalHashArena::clear();
     }
 }
+
+// =============================================================================
+// R ppsize range benchmarks (min=10000, default=50000, max=500000)
+// =============================================================================
+// These test the arena implementations at R's --max-ppsize boundaries.
+// ProtectScope is limited by ppsize, arenas are not.
+
+/// ProtectScope at minimum ppsize (10000)
+/// Note: Cannot test higher values - would hit protect stack overflow
+/// This demonstrates why arenas are needed for large-scale protection
+#[divan::bench]
+fn ppsize_protect_scope_min() {
+    unsafe {
+        let scope = ProtectScope::new();
+        for i in 0..10000 {
+            let _ = scope.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+        }
+        divan::black_box(scope.count());
+    }
+}
+
+/// RefCountedArena at ppsize boundaries (no limit)
+#[divan::bench(args = [10000, 50000, 500000])]
+fn ppsize_refcount_arena(n: usize) {
+    unsafe {
+        let arena = RefCountedArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+        }
+        divan::black_box(arena.len());
+    }
+}
+
+/// HashMapArena at ppsize boundaries (no limit)
+#[divan::bench(args = [10000, 50000, 500000])]
+fn ppsize_hashmap_arena(n: usize) {
+    unsafe {
+        let arena = HashMapArena::new();
+        for i in 0..n {
+            arena.protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+        }
+        divan::black_box(arena.len());
+    }
+}
+
+/// ThreadLocalArena at ppsize boundaries (no limit)
+#[divan::bench(args = [10000, 50000, 500000])]
+fn ppsize_thread_local(n: usize) {
+    unsafe {
+        for i in 0..n {
+            ThreadLocalArena::protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+        }
+        divan::black_box(ThreadLocalArena::len());
+        ThreadLocalArena::clear();
+    }
+}
+
+/// ThreadLocalHashArena at ppsize boundaries (no limit)
+#[divan::bench(args = [10000, 50000, 500000])]
+fn ppsize_thread_local_hash(n: usize) {
+    unsafe {
+        for i in 0..n {
+            ThreadLocalHashArena::protect(ffi::Rf_ScalarInteger((i % 1000) as i32));
+        }
+        divan::black_box(ThreadLocalHashArena::len());
+        ThreadLocalHashArena::clear();
+    }
+}
