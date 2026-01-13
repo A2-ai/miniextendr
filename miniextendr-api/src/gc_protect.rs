@@ -394,12 +394,7 @@ impl ProtectScope {
     ///
     /// Same as [`alloc_vector`][Self::alloc_vector].
     #[inline]
-    pub unsafe fn alloc_matrix<'a>(
-        &'a self,
-        ty: SEXPTYPE,
-        nrow: i32,
-        ncol: i32,
-    ) -> Root<'a> {
+    pub unsafe fn alloc_matrix<'a>(&'a self, ty: SEXPTYPE, nrow: i32, ncol: i32) -> Root<'a> {
         let sexp = unsafe { Rf_allocMatrix(ty, nrow, ncol) };
         unsafe { self.protect(sexp) }
     }

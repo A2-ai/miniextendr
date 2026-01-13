@@ -598,9 +598,7 @@ impl<'a> ListAccumulator<'a> {
         }
 
         // Convert value using temp slot for protection during conversion
-        let sexp = unsafe {
-            self.temp.set_with(|| value.into_sexp())
-        };
+        let sexp = unsafe { self.temp.set_with(|| value.into_sexp()) };
 
         // Insert into list (list and temp are both protected)
         unsafe {
@@ -642,7 +640,8 @@ impl<'a> ListAccumulator<'a> {
         // Allocate new list via temp slot (safe pattern)
         let old_list = self.list.get();
         unsafe {
-            self.temp.set_with(|| ffi::Rf_allocVector(VECSXP, new_cap as isize));
+            self.temp
+                .set_with(|| ffi::Rf_allocVector(VECSXP, new_cap as isize));
         }
         let new_list = self.temp.get();
 

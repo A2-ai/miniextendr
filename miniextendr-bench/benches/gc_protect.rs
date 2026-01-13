@@ -10,7 +10,7 @@
 
 use miniextendr_api::ffi::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
-use miniextendr_api::list::{collect_list, List, ListAccumulator, ListBuilder};
+use miniextendr_api::list::{List, ListAccumulator, ListBuilder, collect_list};
 use miniextendr_api::preserve;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 
@@ -759,7 +759,10 @@ fn vec_then_scope_collect(n: usize) {
     unsafe {
         let scope = ProtectScope::new();
         // Collect to Vec first (non-exact iterator)
-        let items: Vec<i32> = (0..n * 2).filter(|x| x % 2 == 0).map(|i| i as i32).collect();
+        let items: Vec<i32> = (0..n * 2)
+            .filter(|x| x % 2 == 0)
+            .map(|i| i as i32)
+            .collect();
         // Then use scope.collect
         let vec = scope.collect(items);
         divan::black_box(vec.get());
