@@ -92,8 +92,9 @@ test_that("Range<i32> NA sentinel handling - normal ranges", {
 })
 
 test_that("Range<i32> detects NA when range starts at NA_INTEGER", {
-  # NA_INTEGER is -2147483648 (i32::MIN)
-  na_int <- -.Machine$integer.max - 1L
+  # NA_INTEGER is -2147483648 (i32::MIN), which is NA_integer_ in R
+
+  na_int <- NA_integer_
   expect_true(is.na(na_int))
 
   # Range starting at NA - first element is NA
