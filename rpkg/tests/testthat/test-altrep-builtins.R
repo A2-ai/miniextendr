@@ -93,13 +93,17 @@ test_that("Range<i32> NA sentinel handling - normal ranges", {
 
 test_that("Range<i32> detects NA when range starts at NA_INTEGER", {
   # NA_INTEGER is -2147483648 (i32::MIN), which is NA_integer_ in R
+  # This cannot be tested via R API because R coerces NA_integer_ before Rust.
 
-  na_int <- NA_integer_
-  expect_true(is.na(na_int))
-
-  # Range starting at NA - first element is NA
-  # We can't directly create this via R, but we test the concept:
-  # If start == NA_INTEGER, no_na() should return FALSE
+  # However, this IS tested at the Rust level in:
+  #   miniextendr-api/src/altrep_data/tests.rs
+  #   - range_i32_no_na_normal
+  #   - range_i32_no_na_at_min
+  #   - range_i32_sum_with_na
+  #   - range_i32_min_with_na
+  #
+  # Run `cargo test range_i32` to verify.
+  expect_true(TRUE) # Placeholder - real tests are in Rust
 })
 
 test_that("LazyIntSeq NA handling - normal sequences", {
