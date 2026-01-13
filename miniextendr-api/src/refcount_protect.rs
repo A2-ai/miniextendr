@@ -437,6 +437,7 @@ impl<M: MapStorage> ArenaState<M> {
     }
 
     #[inline]
+    /// Returns true if this arena currently protects `x`.
     pub fn is_protected(&self, x: SEXP) -> bool {
         if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
             return false;
@@ -446,6 +447,9 @@ impl<M: MapStorage> ArenaState<M> {
     }
 
     #[inline]
+    /// Returns the current reference count for `x` in this arena.
+    ///
+    /// Returns 0 if `x` is not protected or is `R_NilValue`.
     pub fn ref_count(&self, x: SEXP) -> usize {
         if std::ptr::eq(x.0, unsafe { R_NilValue.0 }) {
             return 0;
@@ -741,6 +745,7 @@ mod fast_hash {
 }
 
 #[cfg(feature = "refcount-fast-hash")]
+/// HashMap implementation used by `FastHashMapArena` when enabled.
 pub use fast_hash::FastHashMap;
 
 /// Fast hash arena using ahash (requires `refcount-fast-hash` feature).
@@ -773,6 +778,7 @@ impl<'a, M: MapStorage> ArenaGuard<'a, M> {
     }
 
     #[inline]
+    /// Returns the protected SEXP.
     pub fn get(&self) -> SEXP {
         self.sexp
     }
@@ -1031,6 +1037,9 @@ pub struct ThreadLocalState<M: MapStorage> {
 }
 
 impl<M: MapStorage> ThreadLocalState<M> {
+    /// Create an uninitialized thread-local arena state.
+    ///
+    /// Call `init` or `init_with_capacity` before use.
     pub const fn uninit() -> Self {
         Self {
             inner: ArenaState::uninit(),

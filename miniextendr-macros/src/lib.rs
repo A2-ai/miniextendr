@@ -2046,6 +2046,7 @@ pub fn r_ffi_checked(
                     let fn_name = &fn_item.sig.ident;
                     let fn_name_str = fn_name.to_string();
                     let unchecked_name = quote::format_ident!("{}_unchecked", fn_name);
+                    let unchecked_name_str = unchecked_name.to_string();
                     let inputs = &fn_item.sig.inputs;
                     let output = &fn_item.sig.output;
                     // Filter out link_name attributes (already checked above, but be safe)
@@ -2054,6 +2055,11 @@ pub fn r_ffi_checked(
                         .iter()
                         .filter(|attr| !attr.path().is_ident("link_name"))
                         .collect();
+                    let checked_doc = format!(
+                        "Checked wrapper for `{}`. Calls `{}` and routes through `with_r_thread`.",
+                        fn_name_str, unchecked_name_str
+                    );
+                    let checked_doc_lit = syn::LitStr::new(&checked_doc, fn_name.span());
 
                     // Generate the unchecked FFI binding with #[link_name]
                     let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
@@ -2088,6 +2094,7 @@ pub fn r_ffi_checked(
                         // Never-returning functions (like Rf_error)
                         quote::quote! {
                             #(#attrs)*
+                            #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2103,6 +2110,7 @@ pub fn r_ffi_checked(
                         // The pointer is valid during the with_r_thread callback.
                         quote::quote! {
                             #(#attrs)*
+                            #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2118,6 +2126,7 @@ pub fn r_ffi_checked(
                         // Normal functions - route via with_r_thread
                         quote::quote! {
                             #(#attrs)*
+                            #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {

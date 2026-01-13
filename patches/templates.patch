@@ -598,12 +598,90 @@ diff -ruN -U2 a/monorepo/rpkg/cleanup.win b/monorepo/rpkg/cleanup.win
 +fi
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-01-12 23:14:53
-+++ b/monorepo/rpkg/configure.ac	2026-01-13 03:18:02
++++ b/monorepo/rpkg/configure.ac	2026-01-13 03:43:51
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
+@@ -58,7 +58,6 @@
+ dnl Set cargo features flag
+ dnl
+-dnl rpkg is a demo package that demonstrates ALL miniextendr features.
+-dnl Enable all optional features by default (both dev and CRAN modes).
+-dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
++dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
++dnl By default, no extra features are enabled.
+ dnl
+ dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
+@@ -66,9 +65,9 @@
+ AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+ 
+-dnl Enable all features by default for this demo package
+-dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
++dnl Default: no extra features enabled
++dnl Users can set MINIEXTENDR_FEATURES to enable specific features
+ if test -z "${MINIEXTENDR_FEATURES+x}"; then
+-  dnl MINIEXTENDR_FEATURES not set - enable all optional features
+-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
++  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
++  MINIEXTENDR_FEATURES=""
+ fi
+ 
+@@ -265,8 +264,10 @@
+ dnl AC_CONFIG_COMMANDS step (after Cargo.toml generation and optional cargo vendor).
+ 
+-dnl Source replacement config: only use vendored sources on CRAN (offline builds)
+-dnl Dev mode uses local path overrides for miniextendr-*
+-AS_IF([test "$NOT_CRAN" = "true"], [
+-  dnl Dev mode: use local path overrides for miniextendr crates
++dnl Source replacement config
++dnl - CRAN/offline mode: use vendored sources only
++dnl - Dev mode with miniextendr repo: use local path overrides
++dnl - Dev mode without miniextendr repo: use vendored sources (like CRAN)
++AS_IF([test "$NOT_CRAN" = "true" && test -d "$root_miniextendr_repo/miniextendr-api"], [
++  dnl Dev mode with miniextendr repo: use local path overrides for miniextendr crates
+   CARGO_SOURCE_REPLACE="$(cat <<EOF
+ @<:@patch.crates-io@:>@
+@@ -279,5 +280,5 @@
+ )"
+ ], [
+-  dnl CRAN/offline mode: use vendored sources only
++  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources
+   CARGO_SOURCE_REPLACE="$(cat <<EOF
+ @<:@source.crates-io@:>@
+@@ -442,14 +443,22 @@
+ 	        echo "$_new" > "$STAMP"
+       else
+-        dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
+-        if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+-          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+-        elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+-          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
+-          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
++        dnl Monorepo not available (standalone scaffolded project or R CMD check from tarball)
++        dnl In dev mode we can still run cargo vendor to fetch transitive dependencies
++        echo "configure: running cargo vendor (standalone project, fetching transitive deps)"
++        mkdir -p "$VENDOR_OUT"
++        $CARGO_CMD vendor \
++          --manifest-path "$MANIFEST" \
++          "$VENDOR_OUT" > /dev/null
++        if test $? -ne 0; then
++          dnl cargo vendor failed - check for fallbacks
++          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
++            echo "configure: cargo vendor failed, unpacking inst/vendor.tar.xz"
++            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
++          else
++            echo "configure: error: cargo vendor failed and no vendor.tar.xz fallback" >&2
++            exit 1
++          fi
+         else
+-          echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
+-          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
+-          exit 1
++          echo "$_new" > "$STAMP"
+         fi
+       fi
 diff -ruN -U2 a/monorepo/rpkg/configure.ucrt b/monorepo/rpkg/configure.ucrt
 --- a/monorepo/rpkg/configure.ucrt	1970-01-01 01:00:00
 +++ b/monorepo/rpkg/configure.ucrt	2026-01-08 13:01:40
@@ -1719,12 +1797,89 @@ diff -ruN -U2 a/rpkg/cleanup.win b/rpkg/cleanup.win
 +fi
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-01-12 23:14:53
-+++ b/rpkg/configure.ac	2026-01-13 03:14:47
++++ b/rpkg/configure.ac	2026-01-13 03:43:39
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
+@@ -58,7 +58,6 @@
+ dnl Set cargo features flag
+ dnl
+-dnl rpkg is a demo package that demonstrates ALL miniextendr features.
+-dnl Enable all optional features by default (both dev and CRAN modes).
+-dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
++dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
++dnl By default, no extra features are enabled.
+ dnl
+ dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
+@@ -66,9 +65,9 @@
+ AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+ 
+-dnl Enable all features by default for this demo package
+-dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
++dnl Default: no extra features enabled
++dnl Users can set MINIEXTENDR_FEATURES to enable specific features
+ if test -z "${MINIEXTENDR_FEATURES+x}"; then
+-  dnl MINIEXTENDR_FEATURES not set - enable all optional features
+-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
++  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
++  MINIEXTENDR_FEATURES=""
+ fi
+ 
+@@ -265,8 +264,9 @@
+ dnl AC_CONFIG_COMMANDS step (after Cargo.toml generation and optional cargo vendor).
+ 
+-dnl Source replacement config: only use vendored sources on CRAN (offline builds)
+-dnl Dev mode uses local path overrides for miniextendr-*
+-AS_IF([test "$NOT_CRAN" = "true"], [
+-  dnl Dev mode: use local path overrides for miniextendr crates
++dnl Source replacement config: controls how cargo resolves miniextendr-* crates
++dnl - If we're in the miniextendr monorepo (miniextendr-api exists at root): use path overrides
++dnl - Otherwise (scaffolded project or CRAN build): use vendored sources
++AS_IF([test "$NOT_CRAN" = "true" && test -d "$root_miniextendr_repo/miniextendr-api"], [
++  dnl Dev mode with miniextendr repo: use local path overrides for miniextendr crates
+   CARGO_SOURCE_REPLACE="$(cat <<EOF
+ @<:@patch.crates-io@:>@
+@@ -279,5 +279,5 @@
+ )"
+ ], [
+-  dnl CRAN/offline mode: use vendored sources only
++  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources only
+   CARGO_SOURCE_REPLACE="$(cat <<EOF
+ @<:@source.crates-io@:>@
+@@ -442,14 +442,22 @@
+ 	        echo "$_new" > "$STAMP"
+       else
+-        dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
+-        if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+-          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+-        elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+-          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
+-          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
++        dnl Monorepo not available (standalone scaffolded project or R CMD check from tarball)
++        dnl In dev mode we can still run cargo vendor to fetch transitive dependencies
++        echo "configure: running cargo vendor (standalone project, fetching transitive deps)"
++        mkdir -p "$VENDOR_OUT"
++        $CARGO_CMD vendor \
++          --manifest-path "$MANIFEST" \
++          "$VENDOR_OUT" > /dev/null
++        if test $? -ne 0; then
++          dnl cargo vendor failed - check for fallbacks
++          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
++            echo "configure: cargo vendor failed, unpacking inst/vendor.tar.xz"
++            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
++          else
++            echo "configure: error: cargo vendor failed and no vendor.tar.xz fallback" >&2
++            exit 1
++          fi
+         else
+-          echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
+-          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
+-          exit 1
++          echo "$_new" > "$STAMP"
+         fi
+       fi
 diff -ruN -U2 a/rpkg/configure.ucrt b/rpkg/configure.ucrt
 --- a/rpkg/configure.ucrt	1970-01-01 01:00:00
 +++ b/rpkg/configure.ucrt	2026-01-08 13:01:40

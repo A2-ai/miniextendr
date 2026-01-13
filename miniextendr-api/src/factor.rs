@@ -425,10 +425,12 @@ pub(crate) fn factor_option_vec_from_sexp<T: RFactor>(
 pub struct FactorVec<T>(pub Vec<T>);
 
 impl<T> FactorVec<T> {
+    /// Wrap a `Vec<T>` so it can be converted to and from R factors.
     pub fn new(vec: Vec<T>) -> Self {
         Self(vec)
     }
 
+    /// Extract the inner vector.
     pub fn into_inner(self) -> Vec<T> {
         self.0
     }
@@ -472,10 +474,12 @@ impl<T: RFactor> TryFromSexp for FactorVec<T> {
 pub struct FactorOptionVec<T>(pub Vec<Option<T>>);
 
 impl<T> FactorOptionVec<T> {
+    /// Wrap a `Vec<Option<T>>` so it can be converted to and from R factors with NA support.
     pub fn new(vec: Vec<Option<T>>) -> Self {
         Self(vec)
     }
 
+    /// Extract the inner vector.
     pub fn into_inner(self) -> Vec<Option<T>> {
         self.0
     }

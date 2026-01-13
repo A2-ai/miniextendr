@@ -1145,6 +1145,7 @@ where
         }
     }
 }
+/// Type-erased `ExternalPtr` for cases where the concrete `T` is not needed.
 pub type ErasedExternalPtr = ExternalPtr<()>;
 
 // =============================================================================
@@ -1399,6 +1400,7 @@ pub struct ExternalSlice<T: 'static> {
 }
 
 impl<T: 'static> ExternalSlice<T> {
+    /// Create an external slice from a `Vec`, preserving its allocation.
     pub fn new(slice: Vec<T>) -> Self {
         let mut vec = ManuallyDrop::new(slice);
         Self {
@@ -1419,22 +1421,27 @@ impl<T: 'static> ExternalSlice<T> {
         }
     }
 
+    /// Borrow the contents as a shared slice.
     pub fn as_slice(&self) -> &[T] {
         unsafe { std::slice::from_raw_parts(self.ptr.as_ptr(), self.len) }
     }
 
+    /// Borrow the contents as a mutable slice.
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         unsafe { std::slice::from_raw_parts_mut(self.ptr.as_ptr(), self.len) }
     }
 
+    /// Number of elements in the slice.
     pub fn len(&self) -> usize {
         self.len
     }
 
+    /// Returns true if the slice is empty.
     pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
+    /// Capacity of the underlying allocation.
     pub fn capacity(&self) -> usize {
         self.capacity
     }
