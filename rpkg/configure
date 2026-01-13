@@ -4028,19 +4028,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
     echo "configure: CARGO_AR would be: $CARGO_LIBDIR/librpkg.a" >&2
     echo "configure: checking if $CARGO_LIBDIR exists: $(test -d "$CARGO_LIBDIR" && echo yes || echo no)" >&2
 
-            for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
-      if test -f "$_cksum"; then
-        echo '{"files":{}}' > "$_cksum"
-      fi
-    done
-    echo "configure: cleared vendor checksum files" >&2
 
         rm -f "$VENDOR_OUT/r-efi/Makefile"
-
-        if test -f "src/rust/Cargo.lock"; then
-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
-      echo "configure: stripped checksums from Cargo.lock" >&2
-    fi
 
         for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
       mkdir -p "$(dirname "$_cfg")"
@@ -4104,14 +4093,26 @@ VENDORED_CONFIG_EOF
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
-                        tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
+
+                              for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
+        if test -f "$_cksum"; then
+          echo '{"files":{}}' > "$_cksum"
+        fi
+      done
+      echo "configure: cleared vendor checksum files for tarball"
+
+                  if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$ABS_RPKG_SRC/rust/Cargo.lock" && rm -f "$ABS_RPKG_SRC/rust/Cargo.lock.bak"
+        echo "configure: stripped checksums from Cargo.lock for tarball"
+      fi
+
+                              tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
         --exclude='vendor/*/tests' \
         --exclude='vendor/*/benches' \
         --exclude='vendor/*/.github' \
         --exclude='vendor/*/.travis.yml' \
         --exclude='vendor/*/.gitlab-ci.yml' \
         --exclude='vendor/*/.vim' \
-        --exclude='vendor/*/.cargo_vcs_info.json' \
         --exclude='vendor/*/*.a' \
         --exclude='vendor/*/*.lib' \
         vendor

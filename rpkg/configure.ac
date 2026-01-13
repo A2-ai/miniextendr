@@ -631,23 +631,16 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     echo "configure: CARGO_AR would be: $CARGO_LIBDIR/librpkg.a" >&2
     echo "configure: checking if $CARGO_LIBDIR exists: $(test -d "$CARGO_LIBDIR" && echo yes || echo no)" >&2
 
-    dnl Clear checksum files to avoid "file not found" errors from R CMD build exclusions
-    dnl R CMD build excludes .gitignore files etc, but cargo-checksum.json references them
-    for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
-      if test -f "$_cksum"; then
-        echo '{"files":{}}' > "$_cksum"
-      fi
-    done
-    echo "configure: cleared vendor checksum files" >&2
+    dnl NOTE: Do NOT clear checksum files here. When building from a tarball,
+    dnl the vendor directory comes from inst/vendor.tar.xz which was created
+    dnl by `cargo vendor` with valid checksums. Clearing them breaks the build.
+    dnl
+    dnl The checksum clearing that used to be here was intended to handle files
+    dnl excluded by R CMD build (.gitignore etc), but this is now handled by
+    dnl the compress-vendor step which clears checksums BEFORE creating the tarball.
 
     dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
     rm -f "$VENDOR_OUT/r-efi/Makefile"
-
-    dnl Also strip checksums from Cargo.lock to avoid verification mismatch
-    if test -f "src/rust/Cargo.lock"; then
-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
-      echo "configure: stripped checksums from Cargo.lock" >&2
-    fi
 
     dnl Rewrite cargo config to use vendored sources (both locations)
     for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
@@ -730,7 +723,27 @@ AC_CONFIG_COMMANDS([compress-vendor],
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
+
+      dnl Clear checksum files before creating tarball. This is necessary because
+      dnl we exclude files like tests/, .github/, etc. that are referenced in checksums.
+      dnl Cargo only verifies checksums when files ARE listed; empty checksums work fine.
+      dnl Note: We keep .cargo_vcs_info.json since vendor/ is deleted after build anyway.
+      for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
+        if test -f "$_cksum"; then
+          echo '{"files":{}}' > "$_cksum"
+        fi
+      done
+      echo "configure: cleared vendor checksum files for tarball"
+
+      dnl Also strip checksums from Cargo.lock to avoid verification mismatch.
+      dnl When vendor checksums are empty, Cargo.lock checksums would cause errors.
+      if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$ABS_RPKG_SRC/rust/Cargo.lock" && rm -f "$ABS_RPKG_SRC/rust/Cargo.lock.bak"
+        echo "configure: stripped checksums from Cargo.lock for tarball"
+      fi
+
       dnl Exclude unnecessary files: tests, benchmarks, CI files
+      dnl Note: .cargo_vcs_info.json is kept - vendor/ is deleted after build in CRAN mode
       dnl TODO: currently, winnow uses the examples folder in its compilation process.
       dnl this is unexpected, and should be solved upstream
       tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
@@ -740,7 +753,6 @@ AC_CONFIG_COMMANDS([compress-vendor],
         --exclude='vendor/*/.travis.yml' \
         --exclude='vendor/*/.gitlab-ci.yml' \
         --exclude='vendor/*/.vim' \
-        --exclude='vendor/*/.cargo_vcs_info.json' \
         --exclude='vendor/*/*.a' \
         --exclude='vendor/*/*.lib' \
         vendor
