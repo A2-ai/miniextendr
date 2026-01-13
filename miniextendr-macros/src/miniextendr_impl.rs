@@ -1251,14 +1251,17 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal");
     let should_export = !class_has_no_rd && !has_internal;
 
-    // Only generate @rdname if class is documented
-    if !class_has_no_rd {
+    // Generate roxygen tags for dispatch methods
+    if class_has_no_rd {
+        // For internal classes, add @noRd to suppress roxygen2 S3 method detection
+        lines.push("#' @noRd".to_string());
+    } else {
         lines.push(format!("#' @rdname {}", class_name));
         lines.push("#' @param self The object instance.".to_string());
         lines.push("#' @param name Method name for dispatch.".to_string());
-    }
-    if should_export {
-        lines.push("#' @export".to_string());
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
     }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("    obj <- {}[[name]]", class_name));
@@ -1278,11 +1281,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("        obj".to_string());
     lines.push("    }".to_string());
     lines.push("}".to_string());
-    if !class_has_no_rd {
+    if class_has_no_rd {
+        lines.push("#' @noRd".to_string());
+    } else {
         lines.push(format!("#' @rdname {}", class_name));
-    }
-    if should_export {
-        lines.push("#' @export".to_string());
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
     }
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
 
@@ -1513,6 +1518,9 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    cloneable = FALSE".to_string());
     lines.push(")".to_string());
 
+    // Check if class has @noRd
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+
     // Static methods as separate functions on the class object
     for ctx in parsed_impl.static_method_contexts() {
         let method_name = ctx.method.ident.to_string();
@@ -1521,7 +1529,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         let method_doc =
             MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_name_prefix("$");
+                .with_name_prefix("$")
+                .with_class_no_rd(class_has_no_rd);
         lines.extend(method_doc.build());
 
         lines.push(format!(
@@ -1678,6 +1687,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
+    // Check if class has @noRd - if so, skip method documentation and exports
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal");
+    let should_export = !class_has_no_rd && !class_has_internal;
 
     let mut lines = Vec::new();
 
@@ -1699,7 +1712,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Document .ptr param - S7::new_class always creates a constructor that accepts
     // all properties as parameters, so .ptr is always a valid parameter
-    if !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
+    // Skip if class has @noRd
+    if !class_has_no_rd && !crate::roxygen::has_roxygen_tag(class_doc_tags, "param .ptr") {
         lines.push(
             "#' @param .ptr Internal pointer (used by static methods, not for direct use)."
                 .to_string(),
@@ -1755,10 +1769,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let full_params = ctx.instance_formals(true); // adds x, ..., params
         let call = ctx.instance_call("x@.ptr");
 
-        // Documentation
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
-        lines.extend(method_doc.build());
+        // Documentation - skip if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
+            lines.extend(method_doc.build());
+        }
 
         if ctx.has_generic_override() {
             // Parse "pkg::name" format for external generics
@@ -1785,8 +1801,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ));
         } else {
             // Create new S7 generic if it doesn't exist
-            // Add @export so roxygen generates export() in NAMESPACE
-            lines.push("#' @export".to_string());
+            // Add @export so roxygen generates export() in NAMESPACE (if class should be exported)
+            if should_export {
+                lines.push("#' @export".to_string());
+            }
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
             ));
@@ -1809,12 +1827,17 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let fn_name = format!("{}_{}", class_name, ctx.method.ident);
         let method_name = ctx.method.ident.to_string();
 
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_r_name(fn_name.clone());
-        lines.extend(method_doc.build());
-        // Export static methods so users can call them
-        lines.push("#' @export".to_string());
+        // Skip documentation if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_r_name(fn_name.clone());
+            lines.extend(method_doc.build());
+        }
+        // Export static methods so users can call them (if class should be exported)
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 
@@ -1844,6 +1867,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
+    // Check if class has @noRd - if so, skip method documentation and exports
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal");
+    let should_export = !class_has_no_rd && !class_has_internal;
 
     let mut lines = Vec::new();
 
@@ -1858,10 +1885,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if !has_export {
         lines.pop();
     }
-    lines.push(format!(
-        "#' @slot ptr External pointer to Rust `{}` struct",
-        type_ident
-    ));
+    if !class_has_no_rd {
+        lines.push(format!(
+            "#' @slot ptr External pointer to Rust `{}` struct",
+            type_ident
+        ));
+    }
     lines.push(format!(
         "methods::setClass(\"{}\", slots = c(ptr = \"externalptr\"))",
         class_name
@@ -1870,11 +1899,16 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor function
     if let Some(ctx) = parsed_impl.constructor_context() {
-        let method_doc =
-            MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags);
-        lines.extend(method_doc.build());
-        // Export the constructor function so users can create instances
-        lines.push("#' @export".to_string());
+        // Skip documentation if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags);
+            lines.extend(method_doc.build());
+        }
+        // Export the constructor function so users can create instances (if class should be exported)
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
 
         lines.push(format!("{} <- function({}) {{", class_name, ctx.params));
         lines.push(format!(
@@ -1912,10 +1946,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             format!("x, {}, ...", params)
         };
 
-        // Documentation for the generic
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags);
-        lines.extend(method_doc.build());
+        // Documentation for the generic - skip if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &method.doc_tags);
+            lines.extend(method_doc.build());
+        }
 
         // Define generic if needed
         lines.push(format!(
@@ -1923,8 +1959,10 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             method_name, method_name, method_name
         ));
 
-        // Define method with @exportMethod for proper S4 dispatch
-        lines.push(format!("#' @exportMethod {}", method_name));
+        // Define method with @exportMethod for proper S4 dispatch (if class should be exported)
+        if should_export {
+            lines.push(format!("#' @exportMethod {}", method_name));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_expr = crate::MethodReturnBuilder::new(call)
@@ -1943,12 +1981,17 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let fn_name = format!("{}_{}", class_name, ctx.method.ident);
         let method_name = ctx.method.ident.to_string();
 
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_r_name(fn_name.clone());
-        lines.extend(method_doc.build());
-        // Export static methods so users can call them
-        lines.push("#' @export".to_string());
+        // Skip documentation if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_r_name(fn_name.clone());
+            lines.extend(method_doc.build());
+        }
+        // Export static methods so users can call them (if class should be exported)
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
 

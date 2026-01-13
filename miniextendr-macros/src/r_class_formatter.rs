@@ -229,6 +229,8 @@ pub struct MethodDocBuilder<'a> {
     name_prefix: Option<&'a str>,
     r_name_override: Option<String>,
     always_export: bool,
+    /// Whether the parent class has @noRd (suppresses method docs too)
+    class_has_no_rd: bool,
 }
 
 impl<'a> MethodDocBuilder<'a> {
@@ -250,6 +252,7 @@ impl<'a> MethodDocBuilder<'a> {
             name_prefix: None,
             r_name_override: None,
             always_export: false,
+            class_has_no_rd: false,
         }
     }
 
@@ -275,9 +278,23 @@ impl<'a> MethodDocBuilder<'a> {
         self
     }
 
+    /// Set whether the parent class has @noRd.
+    ///
+    /// When true, skips @name, @rdname, @source tags and adds @noRd instead.
+    pub fn with_class_no_rd(mut self, class_has_no_rd: bool) -> Self {
+        self.class_has_no_rd = class_has_no_rd;
+        self
+    }
+
     /// Build the roxygen lines for the method.
     pub fn build(&self) -> Vec<String> {
         let mut lines = Vec::new();
+
+        // If parent class has @noRd, skip all documentation and just add @noRd
+        if self.class_has_no_rd {
+            lines.push("#' @noRd".to_string());
+            return lines;
+        }
 
         if !self.doc_tags.is_empty() {
             crate::roxygen::push_roxygen_tags(&mut lines, self.doc_tags);
