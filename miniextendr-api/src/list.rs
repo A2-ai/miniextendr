@@ -505,6 +505,245 @@ impl<'a> ListBuilder<'a> {
     }
 }
 
+// =============================================================================
+// ListAccumulator - unknown-length list construction with bounded stack usage
+// =============================================================================
+
+use crate::gc_protect::{ReprotectSlot, Root};
+
+/// Accumulator for building lists when the length is unknown upfront.
+///
+/// Unlike [`ListBuilder`] which requires knowing the size at construction,
+/// `ListAccumulator` supports dynamic growth via [`push`](Self::push). It uses
+/// [`ReprotectSlot`] internally to maintain **O(1) protect stack usage** regardless
+/// of how many elements are pushed.
+///
+/// # When to Use
+///
+/// | Scenario | Recommended Type |
+/// |----------|-----------------|
+/// | Known size | [`ListBuilder`] - more efficient, no reallocation |
+/// | Unknown size | `ListAccumulator` - bounded stack, dynamic growth |
+/// | Streaming/iterators | `ListAccumulator` or [`collect_list`] |
+///
+/// # Growth Strategy
+///
+/// The internal list grows exponentially (2x) when capacity is exceeded,
+/// achieving amortized O(1) push. Elements are copied during growth.
+///
+/// # Example
+///
+/// ```ignore
+/// unsafe fn collect_filtered(items: &[i32]) -> SEXP {
+///     let scope = ProtectScope::new();
+///     let mut acc = ListAccumulator::new(&scope, 4); // initial capacity hint
+///
+///     for &item in items {
+///         if item > 0 {
+///             acc.push(item);  // auto-converts via IntoR
+///         }
+///     }
+///
+///     acc.into_root().get()
+/// }
+/// ```
+pub struct ListAccumulator<'a> {
+    /// The current list container (protected via ReprotectSlot).
+    list: ReprotectSlot<'a>,
+    /// Temporary slot for element conversion and list growth.
+    temp: ReprotectSlot<'a>,
+    /// Number of elements currently in the list.
+    len: usize,
+    /// Current capacity of the list.
+    cap: usize,
+    /// Reference to the scope for creating the final Root.
+    scope: &'a ProtectScope,
+}
+
+impl<'a> ListAccumulator<'a> {
+    /// Create a new accumulator with the given initial capacity.
+    ///
+    /// A capacity of 0 is valid; the list will grow on first push.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn new(scope: &'a ProtectScope, initial_cap: usize) -> Self {
+        let cap = initial_cap.max(1); // At least 1 to avoid edge cases
+        let list_sexp = unsafe { ffi::Rf_allocVector(VECSXP, cap as isize) };
+        let list = unsafe { scope.protect_with_index(list_sexp) };
+        let temp = unsafe { scope.protect_with_index(ffi::R_NilValue) };
+
+        Self {
+            list,
+            temp,
+            len: 0,
+            cap,
+            scope,
+        }
+    }
+
+    /// Push a value onto the accumulator.
+    ///
+    /// The value is converted to a SEXP via [`IntoR`] and inserted.
+    /// If the internal list is full, it grows automatically.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn push<T: IntoR>(&mut self, value: T) {
+        // Grow if needed
+        if self.len >= self.cap {
+            unsafe { self.grow() };
+        }
+
+        // Convert value using temp slot for protection during conversion
+        let sexp = unsafe {
+            self.temp.set_with(|| value.into_sexp())
+        };
+
+        // Insert into list (list and temp are both protected)
+        unsafe {
+            ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
+        }
+
+        self.len += 1;
+    }
+
+    /// Push a raw SEXP onto the accumulator.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread
+    /// - `sexp` must be a valid SEXP (it will be temporarily protected)
+    pub unsafe fn push_sexp(&mut self, sexp: SEXP) {
+        // Grow if needed
+        if self.len >= self.cap {
+            unsafe { self.grow() };
+        }
+
+        // Protect the sexp during insertion using temp slot
+        unsafe {
+            self.temp.set(sexp);
+            ffi::SET_VECTOR_ELT(self.list.get(), self.len as isize, sexp);
+        }
+
+        self.len += 1;
+    }
+
+    /// Grow the internal list by 2x.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    unsafe fn grow(&mut self) {
+        let new_cap = self.cap.saturating_mul(2).max(4);
+
+        // Allocate new list via temp slot (safe pattern)
+        let old_list = self.list.get();
+        unsafe {
+            self.temp.set_with(|| ffi::Rf_allocVector(VECSXP, new_cap as isize));
+        }
+        let new_list = self.temp.get();
+
+        // Copy existing elements
+        for i in 0..self.len {
+            let elem = unsafe { ffi::VECTOR_ELT(old_list, i as isize) };
+            unsafe { ffi::SET_VECTOR_ELT(new_list, i as isize, elem) };
+        }
+
+        // Replace list slot with new list
+        unsafe { self.list.set(new_list) };
+        self.cap = new_cap;
+    }
+
+    /// Get the current number of elements.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    /// Check if the accumulator is empty.
+    #[inline]
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+
+    /// Get the current capacity.
+    #[inline]
+    pub fn capacity(&self) -> usize {
+        self.cap
+    }
+
+    /// Finalize the accumulator and return a `Root` pointing to the list.
+    ///
+    /// The returned list is truncated to the actual length (if smaller than capacity).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn into_root(self) -> Root<'a> {
+        // If len < cap, we need to shrink the list
+        let final_list = if self.len < self.cap {
+            unsafe {
+                let shrunk = ffi::Rf_xlengthgets(self.list.get(), self.len as isize);
+                // The shrunk list might be the same or a new allocation
+                // Either way, we protect it via the scope
+                self.scope.protect(shrunk)
+            }
+        } else {
+            // List is already the right size, create a Root without extra protection
+            unsafe { self.scope.rooted(self.list.get()) }
+        };
+
+        final_list
+    }
+
+    /// Finalize and return the raw SEXP.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    pub unsafe fn into_sexp(self) -> SEXP {
+        unsafe { self.into_root().get() }
+    }
+}
+
+/// Collect an iterator into an R list with bounded protect stack usage.
+///
+/// This is a convenience wrapper around [`ListAccumulator`] for iterator-based
+/// collection. Each element is converted via [`IntoR`].
+///
+/// # Safety
+///
+/// Must be called from the R main thread.
+///
+/// # Example
+///
+/// ```ignore
+/// unsafe fn squares(n: usize) -> SEXP {
+///     let scope = ProtectScope::new();
+///     collect_list(&scope, (0..n).map(|i| (i * i) as i32)).get()
+/// }
+/// ```
+pub unsafe fn collect_list<'a, I, T>(scope: &'a ProtectScope, iter: I) -> Root<'a>
+where
+    I: IntoIterator<Item = T>,
+    T: IntoR,
+{
+    let iter = iter.into_iter();
+    let (lower, upper) = iter.size_hint();
+    let initial_cap = upper.unwrap_or(lower).max(4);
+
+    let mut acc = unsafe { ListAccumulator::new(scope, initial_cap) };
+
+    for item in iter {
+        unsafe { acc.push(item) };
+    }
+
+    unsafe { acc.into_root() }
+}
+
 impl ListMut {
     /// Wrap an existing `VECSXP` without additional checks.
     ///

@@ -10,7 +10,7 @@
 
 use miniextendr_api::ffi::{self, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 use miniextendr_api::gc_protect::{OwnedProtect, ProtectIndex, ProtectScope};
-use miniextendr_api::list::{List, ListBuilder};
+use miniextendr_api::list::{collect_list, List, ListAccumulator, ListBuilder};
 use miniextendr_api::preserve;
 use miniextendr_api::strvec::{StrVec, StrVecBuilder};
 
@@ -566,5 +566,256 @@ fn list_constant_vs_growing(n: usize) {
         }
         divan::black_box(list2.as_sexp());
         // scope2 drops: unprotect 1 + n
+    }
+}
+
+// =============================================================================
+// New ergonomic features benchmarks
+// =============================================================================
+
+/// ProtectScope::alloc_vector vs manual allocate + protect
+#[divan::bench]
+fn alloc_vector_helper() {
+    unsafe {
+        let scope = ProtectScope::new();
+        let vec = scope.alloc_vector(SEXPTYPE::INTSXP, 100);
+        divan::black_box(vec.get());
+    }
+}
+
+/// Manual: allocate then protect separately
+#[divan::bench]
+fn alloc_then_protect() {
+    unsafe {
+        let scope = ProtectScope::new();
+        let vec = scope.protect(Rf_allocVector(SEXPTYPE::INTSXP, 100));
+        divan::black_box(vec.get());
+    }
+}
+
+/// ReprotectSlot::set_with vs manual protect+set pattern
+#[divan::bench(args = [10, 100, 1000])]
+fn reprotect_set_with(iterations: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let slot = scope.protect_with_index(ffi::Rf_ScalarInteger(0));
+
+        for i in 0..iterations {
+            // Safe pattern: set_with handles temp protection internally
+            slot.set_with(|| ffi::Rf_ScalarInteger(i as i32));
+        }
+
+        divan::black_box(slot.get());
+    }
+}
+
+/// Manual pattern: protect temp, reprotect, unprotect temp
+#[divan::bench(args = [10, 100, 1000])]
+fn reprotect_manual_pattern(iterations: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let slot = scope.protect_with_index(ffi::Rf_ScalarInteger(0));
+
+        for i in 0..iterations {
+            // Manual pattern - more verbose, same result
+            let new_val = ffi::Rf_ScalarInteger(i as i32);
+            Rf_protect(new_val);
+            slot.set(new_val);
+            Rf_unprotect(1);
+        }
+
+        divan::black_box(slot.get());
+    }
+}
+
+// =============================================================================
+// ListAccumulator benchmarks (unknown-length list construction)
+// =============================================================================
+
+/// ListAccumulator: unknown-length list with bounded stack
+#[divan::bench(args = [10, 100, 1000])]
+fn list_accumulator_push(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let mut acc = ListAccumulator::new(&scope, 4);
+
+        for i in 0..n {
+            acc.push(i as i32);
+        }
+
+        divan::black_box(acc.into_sexp());
+    }
+}
+
+/// ListAccumulator with exact initial capacity (no growth)
+#[divan::bench(args = [10, 100, 1000])]
+fn list_accumulator_exact_cap(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let mut acc = ListAccumulator::new(&scope, n);
+
+        for i in 0..n {
+            acc.push(i as i32);
+        }
+
+        divan::black_box(acc.into_sexp());
+    }
+}
+
+/// collect_list from iterator
+#[divan::bench(args = [10, 100, 1000])]
+fn collect_list_iterator(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let list = collect_list(&scope, (0..n).map(|i| i as i32));
+        divan::black_box(list.get());
+    }
+}
+
+/// Naive pattern: Vec<SEXP> then build list (pre-collect for comparison)
+/// Note: This is actually a decent pattern when length is known after iteration
+#[divan::bench(args = [10, 100, 1000])]
+fn collect_into_vec_then_list(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+
+        // First collect into Vec (no R protection yet)
+        let values: Vec<i32> = (0..n).map(|i| i as i32).collect();
+
+        // Then build list with known size
+        let builder = ListBuilder::new(&scope, values.len() as isize);
+        for (i, v) in values.into_iter().enumerate() {
+            builder.set_protected(i as isize, ffi::Rf_ScalarInteger(v));
+        }
+
+        divan::black_box(builder.into_sexp());
+    }
+}
+
+/// Compare ListAccumulator vs ListBuilder (known size)
+/// Shows the overhead of dynamic growth
+#[divan::bench(args = [100, 500, 1000])]
+fn accumulator_vs_builder_known_size(n: usize) {
+    unsafe {
+        // ListBuilder (optimal for known size)
+        let scope1 = ProtectScope::new();
+        let builder = ListBuilder::new(&scope1, n as isize);
+        for i in 0..n {
+            builder.set_protected(i as isize, ffi::Rf_ScalarInteger(i as i32));
+        }
+        divan::black_box(builder.into_sexp());
+
+        // ListAccumulator (for comparison - handles unknown size)
+        let scope2 = ProtectScope::new();
+        let mut acc = ListAccumulator::new(&scope2, n); // same initial cap
+        for i in 0..n {
+            acc.push(i as i32);
+        }
+        divan::black_box(acc.into_sexp());
+    }
+}
+
+/// Stack pressure test: ListAccumulator maintains O(1) stack
+#[divan::bench(args = [1000, 5000, 10000])]
+fn list_accumulator_stack_pressure(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let mut acc = ListAccumulator::new(&scope, 4);
+
+        for i in 0..n {
+            acc.push(i as i32);
+        }
+
+        // Stack usage: always 2 (list slot + temp slot)
+        // regardless of n
+        divan::black_box(acc.into_sexp());
+    }
+}
+
+// =============================================================================
+// Typed vector collection (scope.collect)
+// =============================================================================
+//
+// For typed vectors (INTSXP, REALSXP, etc.), there's no need for complex
+// protection during construction. You allocate once, protect once, then
+// fill by writing to the data pointer - no GC can occur during fills.
+//
+// For unknown-length iterators, just collect to Vec<T> first, then use
+// scope.collect(vec) which accepts any IntoIterator + ExactSizeIterator.
+
+/// scope.collect: exact-size iterator to typed vector
+#[divan::bench(args = [100, 1000, 10000])]
+fn scope_collect_exact(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let vec = scope.collect((0..n).map(|i| i as i32));
+        divan::black_box(vec.get());
+    }
+}
+
+/// For unknown length: collect to Vec first, then scope.collect
+#[divan::bench(args = [100, 1000, 10000])]
+fn vec_then_scope_collect(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        // Collect to Vec first (non-exact iterator)
+        let items: Vec<i32> = (0..n * 2).filter(|x| x % 2 == 0).map(|i| i as i32).collect();
+        // Then use scope.collect
+        let vec = scope.collect(items);
+        divan::black_box(vec.get());
+    }
+}
+
+/// Baseline: manual allocation + fill via dataptr
+#[divan::bench(args = [100, 1000, 10000])]
+fn manual_typed_vector(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let vec = scope.protect(Rf_allocVector(SEXPTYPE::INTSXP, n as isize));
+        let ptr = ffi::INTEGER(vec.get());
+
+        for i in 0..n {
+            *ptr.add(i) = i as i32;
+        }
+
+        divan::black_box(vec.get());
+    }
+}
+
+/// Compare: typed vector vs list for same data
+/// Shows the efficiency gain of direct memory access vs boxing each element
+#[divan::bench(args = [100, 1000])]
+fn typed_vector_vs_list(n: usize) {
+    unsafe {
+        // Typed vector (direct memory via scope.collect)
+        let scope1 = ProtectScope::new();
+        let vec = scope1.collect((0..n).map(|i| i as i32));
+        divan::black_box(vec.get());
+
+        // List (boxed scalars via collect_list)
+        let scope2 = ProtectScope::new();
+        let list = collect_list(&scope2, (0..n).map(|i| i as i32));
+        divan::black_box(list.get());
+    }
+}
+
+/// scope.collect with f64 (REALSXP)
+#[divan::bench(args = [100, 1000, 10000])]
+fn scope_collect_f64(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let vec = scope.collect((0..n).map(|i| i as f64 * 1.5));
+        divan::black_box(vec.get());
+    }
+}
+
+/// scope.collect from Vec (shows Vec -> R vector conversion)
+#[divan::bench(args = [100, 1000, 10000])]
+fn scope_collect_from_vec(n: usize) {
+    unsafe {
+        let scope = ProtectScope::new();
+        let items: Vec<i32> = (0..n).map(|i| i as i32).collect();
+        let vec = scope.collect(items);
+        divan::black_box(vec.get());
     }
 }

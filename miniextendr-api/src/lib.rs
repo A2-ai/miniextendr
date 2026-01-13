@@ -329,7 +329,7 @@ pub mod list;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
-pub use list::{IntoList, List, ListBuilder, ListMut, TryFromList};
+pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,

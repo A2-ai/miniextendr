@@ -494,14 +494,7 @@ jobs:
           cache-on-failure: true
 
       - name: Install just
-        shell: pwsh
-        run: |
-          # Install just using prebuilt binary (faster than cargo install)
-          $version = "1.40.0"
-          $url = "https://github.com/casey/just/releases/download/${version}/just-${version}-x86_64-pc-windows-msvc.zip"
-          Invoke-WebRequest -Uri $url -OutFile just.zip
-          Expand-Archive -Path just.zip -DestinationPath just-bin
-          Move-Item just-bin/just.exe "$env:CARGO_HOME/bin/just.exe"
+        uses: extractions/setup-just@v3
 
       - name: Configure Windows Rust environment
         shell: pwsh

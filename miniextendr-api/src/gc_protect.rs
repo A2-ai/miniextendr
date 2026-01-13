@@ -151,7 +151,10 @@
 //!
 //! This avoids the LIFO drop-order pitfall of reassigning `OwnedProtect` guards.
 
-use crate::ffi::{R_ProtectWithIndex, R_Reprotect, Rf_protect, Rf_unprotect, SEXP};
+use crate::ffi::{
+    R_NilValue, R_ProtectWithIndex, R_Reprotect, R_xlen_t, RNativeType, Rf_allocList,
+    Rf_allocMatrix, Rf_allocVector, Rf_protect, Rf_unprotect, SEXP, SEXPTYPE,
+};
 use core::cell::Cell;
 use core::marker::PhantomData;
 use std::rc::Rc;
@@ -351,6 +354,166 @@ impl ProtectScope {
     #[inline]
     pub unsafe fn rearm(&self) {
         self.armed.set(true);
+    }
+
+    // =========================================================================
+    // Allocation + Protection Helpers
+    // =========================================================================
+
+    /// Allocate a vector of the given type and length, and immediately protect it.
+    ///
+    /// This combines allocation and protection in a single step, eliminating the
+    /// GC gap that exists when you separately allocate and then protect.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread
+    /// - Only protects the newly allocated object; does not protect other live
+    ///   unprotected objects during allocation
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// unsafe fn make_ints(n: R_xlen_t) -> SEXP {
+    ///     let scope = ProtectScope::new();
+    ///     let vec = scope.alloc_vector(SEXPTYPE::INTSXP, n);
+    ///     // fill via INTEGER(vec.get()) ...
+    ///     vec.get()
+    /// }
+    /// ```
+    #[inline]
+    pub unsafe fn alloc_vector<'a>(&'a self, ty: SEXPTYPE, n: R_xlen_t) -> Root<'a> {
+        // SAFETY: caller guarantees R main thread
+        let sexp = unsafe { Rf_allocVector(ty, n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a matrix of the given type and dimensions, and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector`][Self::alloc_vector].
+    #[inline]
+    pub unsafe fn alloc_matrix<'a>(
+        &'a self,
+        ty: SEXPTYPE,
+        nrow: i32,
+        ncol: i32,
+    ) -> Root<'a> {
+        let sexp = unsafe { Rf_allocMatrix(ty, nrow, ncol) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a list (VECSXP) of the given length and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector`][Self::alloc_vector].
+    #[inline]
+    pub unsafe fn alloc_list<'a>(&'a self, n: i32) -> Root<'a> {
+        let sexp = unsafe { Rf_allocList(n) };
+        unsafe { self.protect(sexp) }
+    }
+
+    /// Allocate a STRSXP (character vector) of the given length and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector`][Self::alloc_vector].
+    #[inline]
+    pub unsafe fn alloc_strsxp<'a>(&'a self, n: R_xlen_t) -> Root<'a> {
+        unsafe { self.alloc_vector(SEXPTYPE::STRSXP, n) }
+    }
+
+    /// Allocate a VECSXP (generic list) of the given length and immediately protect it.
+    ///
+    /// # Safety
+    ///
+    /// Same as [`alloc_vector`][Self::alloc_vector].
+    #[inline]
+    pub unsafe fn alloc_vecsxp<'a>(&'a self, n: R_xlen_t) -> Root<'a> {
+        unsafe { self.alloc_vector(SEXPTYPE::VECSXP, n) }
+    }
+
+    /// Create a `Root<'a>` for an already-protected SEXP without adding protection.
+    ///
+    /// This is useful when you have a SEXP that is already protected by some other
+    /// mechanism (e.g., a `ReprotectSlot`) and want to return it as a `Root` tied
+    /// to this scope's lifetime for API consistency.
+    ///
+    /// # Safety
+    ///
+    /// - The caller must ensure `sexp` is already protected and will remain
+    ///   protected for at least the lifetime of this scope
+    /// - Must be called from the R main thread
+    #[inline]
+    pub unsafe fn rooted<'a>(&'a self, sexp: SEXP) -> Root<'a> {
+        Root {
+            sexp,
+            _scope: PhantomData,
+        }
+    }
+
+    // =========================================================================
+    // Iterator Collection
+    // =========================================================================
+
+    /// Collect an iterator into a typed R vector.
+    ///
+    /// This allocates once, protects, and fills directly - the most efficient pattern
+    /// for typed vectors. The element type `T` determines the R vector type via
+    /// the [`RNativeType`] trait.
+    ///
+    /// # Type Mapping
+    ///
+    /// | Rust Type | R Vector Type |
+    /// |-----------|---------------|
+    /// | `i32` | `INTSXP` |
+    /// | `f64` | `REALSXP` |
+    /// | `u8` | `RAWSXP` |
+    /// | [`RLogical`](crate::ffi::RLogical) | `LGLSXP` |
+    /// | [`Rcomplex`](crate::ffi::Rcomplex) | `CPLXSXP` |
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// unsafe fn squares(n: usize) -> SEXP {
+    ///     let scope = ProtectScope::new();
+    ///     // Type inferred from iterator
+    ///     scope.collect((0..n).map(|i| (i * i) as i32)).get()
+    /// }
+    /// ```
+    ///
+    /// # Unknown Length
+    ///
+    /// For iterators without exact size (e.g., `filter`), collect to `Vec` first:
+    ///
+    /// ```ignore
+    /// let evens: Vec<i32> = data.iter().filter(|x| *x % 2 == 0).copied().collect();
+    /// scope.collect(evens)
+    /// ```
+    #[inline]
+    pub unsafe fn collect<'a, T, I>(&'a self, iter: I) -> Root<'a>
+    where
+        T: RNativeType,
+        I: IntoIterator<Item = T>,
+        I::IntoIter: ExactSizeIterator,
+    {
+        let iter = iter.into_iter();
+        let len = iter.len();
+
+        let vec = unsafe { self.alloc_vector(T::SEXP_TYPE, len as R_xlen_t) };
+        let ptr = unsafe { T::dataptr_mut(vec.get()) };
+
+        for (i, value) in iter.enumerate() {
+            unsafe { ptr.add(i).write(value) };
+        }
+
+        vec
     }
 }
 
@@ -646,6 +809,144 @@ impl<'a> ReprotectSlot<'a> {
         self.cur.set(x);
         x
     }
+
+    /// Allocate a new value via the closure and replace this slot's value safely.
+    ///
+    /// This method encodes the safe pattern for replacing a protected slot with
+    /// a newly allocated value. It:
+    ///
+    /// 1. Calls the closure `f()` to allocate a new SEXP
+    /// 2. Temporarily protects the new value (to close the GC gap)
+    /// 3. Calls `R_Reprotect` to replace this slot's value
+    /// 4. Unprotects the temporary protection
+    ///
+    /// This prevents the GC gap that would exist if you called `f()` and then
+    /// `set()` separately - during that window, the newly allocated value would
+    /// be unprotected.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread
+    /// - The closure must return a valid SEXP
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// unsafe fn grow_list(scope: &ProtectScope, old_list: SEXP) -> SEXP {
+    ///     let slot = scope.protect_with_index(old_list);
+    ///
+    ///     // Safely grow the list without GC gap
+    ///     slot.set_with(|| {
+    ///         let new_list = Rf_allocVector(VECSXP, new_size);
+    ///         // copy elements from old_list to new_list...
+    ///         new_list
+    ///     });
+    ///
+    ///     slot.get()
+    /// }
+    /// ```
+    #[inline]
+    pub unsafe fn set_with<F>(&self, f: F) -> SEXP
+    where
+        F: FnOnce() -> SEXP,
+    {
+        // Allocate the new value
+        let new_value = f();
+
+        // Temporarily protect the new value to close the GC gap
+        let temp = unsafe { Rf_protect(new_value) };
+
+        // Replace this slot's value with the new value
+        unsafe { R_Reprotect(temp, self.idx) };
+        self.cur.set(temp);
+
+        // Remove the temporary protection (slot now owns the protection)
+        unsafe { Rf_unprotect(1) };
+
+        temp
+    }
+
+    /// Take the current value and clear the slot to `R_NilValue`.
+    ///
+    /// This provides `Option::take`-like semantics. The slot remains allocated
+    /// (protect stack depth unchanged), but now holds `R_NilValue` (immortal).
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread
+    /// - The returned SEXP is **unprotected**. If it needs to survive further
+    ///   allocations, you must protect it explicitly.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let slot = scope.protect_with_index(some_value);
+    /// // ... work with slot.get() ...
+    /// let old = slot.take();  // slot now holds R_NilValue
+    /// // old is unprotected - protect it if needed
+    /// let guard = OwnedProtect::new(old);
+    /// ```
+    #[inline]
+    pub unsafe fn take(&self) -> SEXP {
+        let old = self.cur.get();
+        let nil = unsafe { R_NilValue };
+        unsafe { R_Reprotect(nil, self.idx) };
+        self.cur.set(nil);
+        old
+    }
+
+    /// Replace the slot's value with `x` and return the old value.
+    ///
+    /// This provides `Option::replace`-like semantics. The slot now protects
+    /// `x`, and the old value is returned **unprotected**.
+    ///
+    /// # Safety
+    ///
+    /// - Must be called from the R main thread
+    /// - `x` must be a valid SEXP
+    /// - The returned SEXP is **unprotected**. If it needs to survive further
+    ///   allocations, you must protect it explicitly.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let slot = scope.protect_with_index(initial);
+    /// let old = slot.replace(new_value);
+    /// // old is unprotected, slot now protects new_value
+    /// ```
+    #[inline]
+    pub unsafe fn replace(&self, x: SEXP) -> SEXP {
+        let old = self.cur.get();
+        unsafe { R_Reprotect(x, self.idx) };
+        self.cur.set(x);
+        old
+    }
+
+    /// Clear the slot by setting it to `R_NilValue`.
+    ///
+    /// The slot remains allocated (protect stack depth unchanged), but releases
+    /// its reference to the previous value. The previous value may still be
+    /// rooted elsewhere.
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread.
+    #[inline]
+    pub unsafe fn clear(&self) {
+        let nil = unsafe { R_NilValue };
+        unsafe { R_Reprotect(nil, self.idx) };
+        self.cur.set(nil);
+    }
+
+    /// Check if the slot is currently cleared (holds `R_NilValue`).
+    ///
+    /// # Safety
+    ///
+    /// Must be called from the R main thread (accesses R's `R_NilValue`).
+    #[inline]
+    pub unsafe fn is_nil(&self) -> bool {
+        self.cur.get() == unsafe { R_NilValue }
+    }
 }
 
 // NOTE: Deref was intentionally removed to avoid UB.
@@ -889,6 +1190,21 @@ pub mod tls {
         }
     }
 }
+
+// =============================================================================
+// Typed Vector Collection
+// =============================================================================
+
+// NOTE: Typed vectors (INTSXP, REALSXP, RAWSXP, LGLSXP, CPLXSXP) do NOT need
+// complex protection patterns during construction. You allocate once, protect
+// once, then fill by writing directly to the data pointer. No GC can occur
+// during the fill because you're just doing pointer writes - no R allocations.
+//
+// Only STRSXP (character vectors) and VECSXP (lists) need the ReprotectSlot
+// pattern because each element insertion might allocate (mkChar, etc.).
+//
+// For typed vectors with unknown length, just collect to Vec<T> first, then
+// allocate the exact size. The brief doubling of memory is fine.
 
 // =============================================================================
 // Tests
