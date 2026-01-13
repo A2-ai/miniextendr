@@ -336,11 +336,21 @@ just configure          # Refresh if drift detected
 
 ### Template Sync
 
-Templates in `minirextendr/inst/templates/` should match rpkg sources:
+Templates in `minirextendr/inst/templates/` are **derived from rpkg** (the master source).
+
+**Workflow for changes:**
+1. First ensure changes work in `rpkg/` (the master)
+2. Apply appropriate changes to templates in `minirextendr/inst/templates/`
+3. Run `just templates-approve` to lock in the delta
+
+**Key points:**
+- **Source direction**: `rpkg/` → templates (not the other way around)
+- **Approved delta**: Templates may have extra logic for standalone projects (e.g., checking if miniextendr-api exists before using path overrides, running cargo vendor for transitive deps)
+- **Patch file**: `patches/templates.patch` records the approved differences between rpkg and templates
 
 ```bash
-just templates-check    # Verify templates haven't drifted
-just templates-approve  # Accept current delta as approved
+just templates-check    # Verify templates haven't drifted unexpectedly
+just templates-approve  # Accept current delta as approved (after intentional changes)
 ```
 
 ### Lint Sync
