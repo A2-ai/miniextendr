@@ -3326,7 +3326,7 @@ RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
  CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"
-NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"
+NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
 
 _ACEOF
@@ -3815,6 +3815,9 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
           echo "configure: error: failed to unpack vendor.tar.xz" >&2
           exit 1
         fi
+                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+        fi
       else
         echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
         echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
@@ -3877,6 +3880,9 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
           echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
           tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+                    if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+          fi
         else
           echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
           echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
@@ -4094,29 +4100,39 @@ VENDORED_CONFIG_EOF
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
 
-                              for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
-        if test -f "$_cksum"; then
-          echo '{"files":{}}' > "$_cksum"
-        fi
+            _staging_tmp="$ABS_RPKG_SRC/.vendor-tarball-staging"
+      rm -rf "$_staging_tmp"
+      mkdir -p "$_staging_tmp"
+      cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
+
+                        find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\[doc = include_str!/d' -e '/^#!\[doc = include_str!/d' {} \;
+      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete
+
+                  for _crate_dir in "$_staging_tmp/vendor"/*/; do
+        test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
       done
-      echo "configure: cleared vendor checksum files for tarball"
 
-                  if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$ABS_RPKG_SRC/rust/Cargo.lock" && rm -f "$ABS_RPKG_SRC/rust/Cargo.lock.bak"
-        echo "configure: stripped checksums from Cargo.lock for tarball"
-      fi
+            find "$_staging_tmp/vendor" -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'benches' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.github' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.vim' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'ci' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'scripts' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'testdata' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'docs' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.travis.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.gitlab-ci.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.a' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.lib' -type f -delete 2>/dev/null || true
+            find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > ""' _ {} \;
 
-                              tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
-        --exclude='vendor/*/tests' \
-        --exclude='vendor/*/benches' \
-        --exclude='vendor/*/.github' \
-        --exclude='vendor/*/.travis.yml' \
-        --exclude='vendor/*/.gitlab-ci.yml' \
-        --exclude='vendor/*/.vim' \
-        --exclude='vendor/*/*.a' \
-        --exclude='vendor/*/*.lib' \
-        vendor
-      if test $? -ne 0; then
+            tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
+      _tar_status=$?
+
+            rm -rf "$_staging_tmp"
+
+      if test $_tar_status -ne 0; then
         echo "configure: warning: failed to compress vendor directory" >&2
       else
         echo "$_new_fingerprint" > "$VENDOR_STAMP"

@@ -335,7 +335,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   dir.create(lib_path)
 
   result <- system2(
-    "R",
+    file.path(R.home("bin"), "R"),
     c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
     env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
     stdout = TRUE,
@@ -354,7 +354,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   # Run devtools::document in separate R process to generate NAMESPACE exports
   # (The document binary runs during install, but roxygen2 needs to run too)
   result <- system2(
-    "Rscript",
+    file.path(R.home("bin"), "Rscript"),
     c("-e", shQuote(sprintf("devtools::document('%s')", pkg_path))),
     env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
     stdout = TRUE,
@@ -366,7 +366,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
 
   # Reinstall with updated NAMESPACE
   result <- system2(
-    "R",
+    file.path(R.home("bin"), "R"),
     c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
     env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
     stdout = TRUE,
@@ -397,7 +397,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   withr::with_dir(tmp, {
     # Build tarball
     result <- system2(
-      "R",
+      file.path(R.home("bin"), "R"),
       c("CMD", "build", "--no-build-vignettes", "--no-manual", "testpkg"),
       env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
       stdout = TRUE,
@@ -414,7 +414,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
 
     # Run R CMD check
     result <- system2(
-      "R",
+      file.path(R.home("bin"), "R"),
       c("CMD", "check", "--no-manual", "--no-vignettes", "--no-build-vignettes", tarball),
       env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true", "_R_CHECK_CRAN_INCOMING_=false"),
       stdout = TRUE,
@@ -503,7 +503,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   dir.create(lib_path)
 
   result <- system2(
-    "R",
+    file.path(R.home("bin"), "R"),
     c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, rpkg_path),
     env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
     stdout = TRUE,
@@ -519,7 +519,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 
   # Run devtools::document in separate R process to generate NAMESPACE exports
   result <- system2(
-    "Rscript",
+    file.path(R.home("bin"), "Rscript"),
     c("-e", shQuote(sprintf("devtools::document('%s')", rpkg_path))),
     env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
     stdout = TRUE,
@@ -531,7 +531,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 
   # Reinstall with updated NAMESPACE
   result <- system2(
-    "R",
+    file.path(R.home("bin"), "R"),
     c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, rpkg_path),
     env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
     stdout = TRUE,

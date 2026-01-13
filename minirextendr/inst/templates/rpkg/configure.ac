@@ -381,6 +381,10 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           echo "configure: error: failed to unpack vendor.tar.xz" >&2
           exit 1
         fi
+        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+        fi
       else
         echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
         echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
@@ -454,6 +458,10 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: cargo vendor failed, unpacking inst/vendor.tar.xz"
             tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+            fi
           else
             echo "configure: error: cargo vendor failed and no vendor.tar.xz fallback" >&2
             exit 1
@@ -614,7 +622,7 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
         echo "configure: error: $_crate/Cargo.toml still contains '.workspace = true' after patching" >&2
         exit 1
       fi
-      dnl Create .cargo-checksum.json for vendored crates (required by cargo)
+      dnl Miniextendr crates are synced from monorepo, not cargo vendor, so they need checksums
       echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
     done
 
@@ -747,39 +755,49 @@ AC_CONFIG_COMMANDS([compress-vendor],
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
 
-      dnl Clear checksum files before creating tarball. This is necessary because
-      dnl we exclude files like tests/, .github/, etc. that are referenced in checksums.
-      dnl Cargo only verifies checksums when files ARE listed; empty checksums work fine.
-      dnl Note: We keep .cargo_vcs_info.json since vendor/ is deleted after build anyway.
-      for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
-        if test -f "$_cksum"; then
-          echo '{"files":{}}' > "$_cksum"
-        fi
+      dnl Create temp staging area with vendor/ subdirectory to preserve correct archive structure
+      _staging_tmp="$ABS_RPKG_SRC/.vendor-tarball-staging"
+      rm -rf "$_staging_tmp"
+      mkdir -p "$_staging_tmp"
+      cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
+
+      dnl Note: We cannot strip /// doc comments because displaydoc crate uses them
+      dnl to generate Display impls. Stripping them would break error types.
+      dnl However, we CAN strip #@<:@doc = include_str! lines since we delete examples/docs dirs
+      find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\@<:@doc = include_str!/d' -e '/^#!\@<:@doc = include_str!/d' {} \;
+      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete
+
+      dnl Clear checksums for ALL crates in temp copy.
+      dnl Required because we exclude tests/, benches/, examples/, .github/ etc. which are in the checksums.
+      for _crate_dir in "$_staging_tmp/vendor"/*/; do
+        test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
       done
-      echo "configure: cleared vendor checksum files for tarball"
 
-      dnl Also strip checksums from Cargo.lock to avoid verification mismatch.
-      dnl When vendor checksums are empty, Cargo.lock checksums would cause errors.
-      if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$ABS_RPKG_SRC/rust/Cargo.lock" && rm -f "$ABS_RPKG_SRC/rust/Cargo.lock.bak"
-        echo "configure: stripped checksums from Cargo.lock for tarball"
-      fi
+      dnl Remove directories we're excluding (faster than tar --exclude for many files)
+      find "$_staging_tmp/vendor" -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'benches' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.github' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.vim' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'ci' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'scripts' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'testdata' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'docs' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.travis.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.gitlab-ci.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.a' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.lib' -type f -delete 2>/dev/null || true
+      dnl Truncate all .md files (keeps file existing for include_str! but removes content)
+      find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > "$1"' _ {} \;
 
-      dnl Exclude unnecessary files: tests, benchmarks, CI files
-      dnl Note: .cargo_vcs_info.json is kept - vendor/ is deleted after build in CRAN mode
-      dnl TODO: currently, winnow uses the examples folder in its compilation process.
-      dnl this is unexpected, and should be solved upstream
-      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
-        --exclude='vendor/*/tests' \
-        --exclude='vendor/*/benches' \
-        --exclude='vendor/*/.github' \
-        --exclude='vendor/*/.travis.yml' \
-        --exclude='vendor/*/.gitlab-ci.yml' \
-        --exclude='vendor/*/.vim' \
-        --exclude='vendor/*/*.a' \
-        --exclude='vendor/*/*.lib' \
-        vendor
-      if test $? -ne 0; then
+      dnl Create tarball from staging area
+      tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
+      _tar_status=$?
+
+      dnl Clean up staging area
+      rm -rf "$_staging_tmp"
+
+      if test $_tar_status -ne 0; then
         echo "configure: warning: failed to compress vendor directory" >&2
       else
         echo "$_new_fingerprint" > "$VENDOR_STAMP"
@@ -789,7 +807,7 @@ AC_CONFIG_COMMANDS([compress-vendor],
     fi
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
 
 dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 AC_CONFIG_COMMANDS([patch-staticlib-name],

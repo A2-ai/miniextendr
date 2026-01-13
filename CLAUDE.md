@@ -73,6 +73,13 @@ just r-cmd-check        # 3. Check the built tarball (R CMD check)
 # IMPORTANT: Always check the built tarball, not the source directory.
 # R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.
 
+# devtools::check (preserves output for debugging)
+just devtools-check     # Runs devtools::check with output saved to rpkg-check-output/
+# When checks fail, explore rpkg-check-output/miniextendr.Rcheck/ for logs:
+#   - 00check.log: Main check log
+#   - 00install.out: Installation/compilation output
+#   - tests/: Test output files
+
 # Cross-package tests
 just cross-install      # Build + install producer.pkg and consumer.pkg
 just cross-test         # Run cross-package tests

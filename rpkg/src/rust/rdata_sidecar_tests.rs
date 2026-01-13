@@ -224,7 +224,7 @@ pub struct SidecarVctrs {
     _r: RSidecar,
 
     #[r_data]
-    pub vec_data: f64,
+    pub vec_data: Vec<f64>,
 
     #[r_data]
     pub vec_label: String,
@@ -236,7 +236,7 @@ impl SidecarVctrs {}
 
 /// @noRd
 #[miniextendr]
-pub fn rdata_sidecar_vctrs_new(vec_data: f64, vec_label: String) -> ExternalPtr<SidecarVctrs> {
+pub fn rdata_sidecar_vctrs_new(vec_data: Vec<f64>, vec_label: String) -> ExternalPtr<SidecarVctrs> {
     ExternalPtr::new(SidecarVctrs {
         _r: RSidecar,
         vec_data,
