@@ -17,11 +17,7 @@ pub struct Point {
     pub y: f64,
 }
 
-/// External Pointer Tests
-///
-/// External pointer helpers.
-///
-/// Create a new Counter wrapped in an ExternalPtr.
+/// @noRd
 #[miniextendr]
 /// @name rpkg_externalptr
 /// @examples
@@ -40,11 +36,7 @@ pub fn extptr_counter_new(initial: i32) -> miniextendr_api::externalptr::Externa
     miniextendr_api::externalptr::ExternalPtr::new(Counter { value: initial })
 }
 
-/// Get the current value from a Counter ExternalPtr
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -59,11 +51,7 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_get(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Increment the counter and return the new value
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP pointing to a Counter ExternalPtr.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -80,17 +68,13 @@ pub unsafe extern "C-unwind" fn C_extptr_counter_increment(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Create a new Point wrapped in an ExternalPtr
+/// @noRd
 #[miniextendr]
 pub fn extptr_point_new(x: f64, y: f64) -> miniextendr_api::externalptr::ExternalPtr<Point> {
     miniextendr_api::externalptr::ExternalPtr::new(Point { x, y })
 }
 
-/// Get the x coordinate from a Point ExternalPtr
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -105,11 +89,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_x(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Get the y coordinate from a Point ExternalPtr
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -124,11 +104,7 @@ pub unsafe extern "C-unwind" fn C_extptr_point_get_y(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test type safety: try to get a Counter from a Point (should fail)
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -144,11 +120,7 @@ pub unsafe extern "C-unwind" fn C_extptr_type_mismatch_test(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test with R's `new("externalptr")` - a null external pointer
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -165,11 +137,7 @@ pub unsafe extern "C-unwind" fn C_extptr_null_test(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Check if an external pointer is a Counter using ErasedExternalPtr
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -185,11 +153,7 @@ pub unsafe extern "C-unwind" fn C_extptr_is_counter(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Check if an external pointer is a Point using ErasedExternalPtr
-///
-/// # Safety
-///
-/// `ptr` must be a valid SEXP.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -205,10 +169,7 @@ pub unsafe extern "C-unwind" fn C_extptr_is_point(ptr: SEXP) -> SEXP {
     }
 }
 
-/// Test ExternalPtr creation on main thread.
-/// This function needs `unsafe(main_thread)` because `ExternalPtr::new` calls R API
-/// internally. Functions that call R API (directly or via types like ExternalPtr)
-/// must run on main thread.
+/// @noRd
 #[miniextendr(unsafe(main_thread))]
 pub fn test_extptr_on_main_thread() -> i32 {
     use miniextendr_api::externalptr::ExternalPtr;

@@ -45,24 +45,11 @@ pub struct SidecarEnv {
     pub raw_slot: SEXP,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(env)]
 impl SidecarEnv {}
 
 /// @noRd
-/// Create a new SidecarEnv wrapped in ExternalPtr.
-///
-/// @name rpkg_rdata_sidecar_env
-/// @examples
-/// ptr <- rdata_sidecar_env_new(42L, 3.14, TRUE, "hello")
-/// SidecarEnv_get_count(ptr)
-/// SidecarEnv_set_count(ptr, 100L)
-/// SidecarEnv_get_count(ptr)
-/// @aliases rdata_sidecar_env_new
-/// @param count Initial integer count.
-/// @param score Initial double score.
-/// @param flag Initial boolean flag.
-/// @param name Initial string name.
 #[miniextendr]
 pub fn rdata_sidecar_env_new(
     count: i32,
@@ -102,12 +89,11 @@ pub struct SidecarR6 {
     pub label: String,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(r6)]
 impl SidecarR6 {}
 
 /// @noRd
-/// Create a new SidecarR6 (the R6Class will wrap this).
 #[miniextendr]
 pub fn rdata_sidecar_r6_new(value: i32, label: String) -> ExternalPtr<SidecarR6> {
     ExternalPtr::new(SidecarR6 {
@@ -133,12 +119,11 @@ pub struct SidecarS3 {
     pub data: f64,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(s3)]
 impl SidecarS3 {}
 
 /// @noRd
-/// Create a new SidecarS3.
 #[miniextendr]
 pub fn rdata_sidecar_s3_new(data: f64) -> ExternalPtr<SidecarS3> {
     ExternalPtr::new(SidecarS3 { _r: RSidecar, data })
@@ -166,12 +151,11 @@ pub struct SidecarS4 {
     pub slot_str: String,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(s4)]
 impl SidecarS4 {}
 
 /// @noRd
-/// Create a new SidecarS4.
 #[miniextendr]
 pub fn rdata_sidecar_s4_new(
     slot_int: i32,
@@ -208,12 +192,11 @@ pub struct SidecarS7 {
     pub prop_name: String,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(s7)]
 impl SidecarS7 {}
 
 /// @noRd
-/// Create a new SidecarS7.
 #[miniextendr]
 pub fn rdata_sidecar_s7_new(
     prop_int: i32,
@@ -247,12 +230,11 @@ pub struct SidecarVctrs {
     pub vec_label: String,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(vctrs)]
 impl SidecarVctrs {}
 
 /// @noRd
-/// Create a new SidecarVctrs.
 #[miniextendr]
 pub fn rdata_sidecar_vctrs_new(vec_data: f64, vec_label: String) -> ExternalPtr<SidecarVctrs> {
     ExternalPtr::new(SidecarVctrs {
@@ -298,12 +280,11 @@ pub struct SidecarRawSexp {
     pub env_val: SEXP,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(env)]
 impl SidecarRawSexp {}
 
 /// @noRd
-/// Create a new SidecarRawSexp with NULL slots.
 #[miniextendr]
 pub fn rdata_sidecar_rawsexp_new() -> ExternalPtr<SidecarRawSexp> {
     use miniextendr_api::ffi::R_NilValue;
@@ -334,12 +315,11 @@ pub struct SidecarRaw {
     pub byte_val: u8,
 }
 
-/// Empty impl block to trigger r_data call def collection
+/// @noRd
 #[miniextendr(env)]
 impl SidecarRaw {}
 
 /// @noRd
-/// Create a new SidecarRaw.
 #[miniextendr]
 pub fn rdata_sidecar_raw_new(byte_val: u8) -> ExternalPtr<SidecarRaw> {
     ExternalPtr::new(SidecarRaw {

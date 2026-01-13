@@ -20,9 +20,11 @@ pub fn greetings_with_named_dots(dots: ...) {
     let _ = dots;
 }
 
+/// @noRd
 #[miniextendr]
 pub fn greetings_with_named_and_unused_dots(_dots: ...) {}
 
+/// @noRd
 #[miniextendr]
 pub fn greetings_with_nameless_dots(...) {}
 
@@ -30,14 +32,17 @@ pub fn greetings_with_nameless_dots(...) {}
 // #[miniextendr]
 // fn greetings_with_dots_then_arg(dots: ..., exclamations: i32) {}
 
+/// @noRd
 #[miniextendr]
 pub fn greetings_last_as_named_and_unused_dots(_exclamations: i32, _dots: ...) {}
 
+/// @noRd
 #[miniextendr]
 pub fn greetings_last_as_named_dots(_exclamations: i32, dots: ...) {
     let _ = dots;
 }
 
+/// @noRd
 #[miniextendr]
 pub fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 
@@ -45,19 +50,7 @@ pub fn greetings_last_as_nameless_dots(_exclamations: i32, ...) {}
 // typed_list! macro examples
 // =============================================================================
 
-/// Validate dots with typed_list! macro.
-///
-/// # Example from R
-/// ```r
-/// validate_numeric_args(alpha = c(1.0, 2.0, 3.0, 4.0), beta = list(1, 2))
-/// # Returns the length of alpha (4)
-///
-/// validate_numeric_args(alpha = c(1.0, 2.0), beta = list(1, 2))
-/// # Error: field "alpha" has wrong length: expected 4, got 2
-///
-/// validate_numeric_args(beta = list(1, 2))
-/// # Error: missing required field: "alpha"
-/// ```
+/// @noRd
 #[miniextendr]
 /// @param ... Named arguments: `alpha` (numeric vector of length 4), `beta` (list), `gamma` (optional character).
 pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
@@ -76,16 +69,7 @@ pub fn validate_numeric_args(dots: ...) -> Result<i32, String> {
     Ok(unsafe { ffi::Rf_xlength(alpha) } as i32)
 }
 
-/// Validate dots in strict mode (no extra fields allowed).
-///
-/// # Example from R
-/// ```r
-/// validate_strict_args(x = 1.0, y = 2.0)
-/// # Returns "x=1.0, y=2.0"
-///
-/// validate_strict_args(x = 1.0, y = 2.0, z = 3.0)
-/// # Error: unexpected extra fields: ["z"]
-/// ```
+/// @noRd
 #[miniextendr]
 /// @param ... Named arguments: `x` (numeric), `y` (numeric). No extra fields allowed.
 pub fn validate_strict_args(dots: ...) -> Result<String, String> {
@@ -99,16 +83,7 @@ pub fn validate_strict_args(dots: ...) -> Result<String, String> {
     Ok(format!("x={}, y={}", x, y))
 }
 
-/// Validate with class checking.
-///
-/// # Example from R
-/// ```r
-/// validate_class_args(data = data.frame(a = 1:3))
-/// # Returns the number of columns (1)
-///
-/// validate_class_args(data = list(a = 1:3))
-/// # Error: field "data" has wrong type: expected data.frame, got list
-/// ```
+/// @noRd
 #[miniextendr]
 /// @param ... Named arguments: `data` (data.frame).
 pub fn validate_class_args(dots: ...) -> Result<i32, String> {
@@ -129,18 +104,7 @@ pub fn validate_class_args(dots: ...) -> Result<i32, String> {
 // Attribute sugar for typed_list validation
 // =============================================================================
 
-/// Test the `#[miniextendr(dots = typed_list!(...))]` attribute syntax.
-///
-/// This automatically validates dots and creates a `dots_typed` variable.
-///
-/// # Example from R
-/// ```r
-/// validate_with_attribute(x = 1.0, y = 2.0)
-/// # Returns "x=1, y=2"
-///
-/// validate_with_attribute(x = 1.0)
-/// # Error: missing required field: "y"
-/// ```
+/// @noRd
 #[miniextendr(dots = typed_list!(x => numeric(), y => numeric()))]
 /// @param ... Named arguments: `x` (numeric), `y` (numeric).
 pub fn validate_with_attribute(...) -> String {
@@ -150,16 +114,7 @@ pub fn validate_with_attribute(...) -> String {
     format!("x={}, y={}", x, y)
 }
 
-/// Test attribute with optional field.
-///
-/// # Example from R
-/// ```r
-/// validate_attr_optional(name = "Alice")
-/// # Returns "Hello, Alice!"
-///
-/// validate_attr_optional(name = "Bob", greeting = "Hi")
-/// # Returns "Hi, Bob!"
-/// ```
+/// @noRd
 #[miniextendr(dots = typed_list!(name => character(), greeting? => character()))]
 /// @param ... Named arguments: `name` (character), `greeting` (optional character).
 pub fn validate_attr_optional(...) -> String {

@@ -8,7 +8,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[miniextendr]
 /// @title Conversion Tests
 /// @name rpkg_conversion_tests
-/// @keywords internal
+/// @noRd
 /// @description Scalar and slice conversion tests
 /// @examples
 /// test_i32_add_one(1L)
@@ -26,49 +26,58 @@ pub fn test_i32_identity(x: i32) -> i32 {
     x
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_i32_add_one(x: i32) -> i32 {
     x + 1
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_i32_sum(a: i32, b: i32, c: i32) -> i32 {
     a + b + c
 }
 
 // f64 tests
+/// @noRd
 #[miniextendr]
 pub fn test_f64_identity(x: f64) -> f64 {
     x
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_f64_add_one(x: f64) -> f64 {
     x + 1.0
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_f64_multiply(a: f64, b: f64) -> f64 {
     a * b
 }
 
 // u8 (raw) tests
+/// @noRd
 #[miniextendr]
 pub fn test_u8_identity(x: u8) -> u8 {
     x
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_u8_add_one(x: u8) -> u8 {
     x.wrapping_add(1)
 }
 
 // Rboolean tests
+/// @noRd
 #[miniextendr]
 pub fn test_logical_identity(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
     x
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::ffi::Rboolean {
     use miniextendr_api::ffi::Rboolean;
@@ -78,6 +87,7 @@ pub fn test_logical_not(x: miniextendr_api::ffi::Rboolean) -> miniextendr_api::f
     }
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_logical_and(
     a: miniextendr_api::ffi::Rboolean,
@@ -91,11 +101,13 @@ pub fn test_logical_and(
 }
 
 // Mixed type tests
+/// @noRd
 #[miniextendr]
 pub fn test_i32_to_f64(x: i32) -> f64 {
     x as f64
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_f64_to_i32(x: f64) -> i32 {
     x as i32
@@ -106,37 +118,44 @@ pub fn test_f64_to_i32(x: f64) -> i32 {
 // region: slice tests
 
 // Slice tests - i32
+/// @noRd
 #[miniextendr]
 pub fn test_i32_slice_len(x: &'static [i32]) -> i32 {
     x.len() as i32
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_i32_slice_sum(x: &'static [i32]) -> i32 {
     x.iter().sum()
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_i32_slice_first(x: &'static [i32]) -> i32 {
     x.first().copied().unwrap_or(0)
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_i32_slice_last(x: &'static [i32]) -> i32 {
     x.last().copied().unwrap_or(0)
 }
 
 // Slice tests - f64
+/// @noRd
 #[miniextendr]
 pub fn test_f64_slice_len(x: &'static [f64]) -> i32 {
     x.len() as i32
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_f64_slice_sum(x: &'static [f64]) -> f64 {
     x.iter().sum()
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
     if x.is_empty() {
@@ -147,22 +166,26 @@ pub fn test_f64_slice_mean(x: &'static [f64]) -> f64 {
 }
 
 // Slice tests - u8 (raw)
+/// @noRd
 #[miniextendr]
 pub fn test_u8_slice_len(x: &'static [u8]) -> i32 {
     x.len() as i32
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_u8_slice_sum(x: &'static [u8]) -> i32 {
     x.iter().map(|&b| b as i32).sum()
 }
 
 // Slice tests - logical
+/// @noRd
 #[miniextendr]
 pub fn test_logical_slice_len(x: &'static [miniextendr_api::ffi::RLogical]) -> i32 {
     x.len() as i32
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_logical_slice_any_true(
     x: &'static [miniextendr_api::ffi::RLogical],
@@ -175,6 +198,7 @@ pub fn test_logical_slice_any_true(
     }
 }
 
+/// @noRd
 #[miniextendr]
 pub fn test_logical_slice_all_true(
     x: &'static [miniextendr_api::ffi::RLogical],

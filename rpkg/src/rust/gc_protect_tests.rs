@@ -12,7 +12,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 // ListBuilder tests
 // =============================================================================
 
-/// Test that ListBuilder creates a list of the correct length.
+/// @noRd
 #[miniextendr]
 pub fn test_list_builder_length(n: i32) -> i32 {
     unsafe {
@@ -22,7 +22,7 @@ pub fn test_list_builder_length(n: i32) -> i32 {
     }
 }
 
-/// Test that ListBuilder can set elements.
+/// @noRd
 #[miniextendr]
 pub fn test_list_builder_set() -> List {
     unsafe {
@@ -42,7 +42,7 @@ pub fn test_list_builder_set() -> List {
     }
 }
 
-/// Test that List::set_elt works correctly.
+/// @noRd
 #[miniextendr]
 pub fn test_list_set_elt() -> List {
     unsafe {
@@ -60,7 +60,7 @@ pub fn test_list_set_elt() -> List {
     }
 }
 
-/// Test that List::set_elt_with works correctly with a callback.
+/// @noRd
 #[miniextendr]
 pub fn test_list_set_elt_with() -> List {
     unsafe {
@@ -78,7 +78,7 @@ pub fn test_list_set_elt_with() -> List {
 // StrVecBuilder tests
 // =============================================================================
 
-/// Test that StrVecBuilder creates a string vector of the correct length.
+/// @noRd
 #[miniextendr]
 pub fn test_strvec_builder_length(n: i32) -> i32 {
     unsafe {
@@ -88,7 +88,7 @@ pub fn test_strvec_builder_length(n: i32) -> i32 {
     }
 }
 
-/// Test that StrVecBuilder can set string elements.
+/// @noRd
 #[miniextendr]
 pub fn test_strvec_builder_set() -> Vec<Option<String>> {
     unsafe {
@@ -110,7 +110,7 @@ pub fn test_strvec_builder_set() -> Vec<Option<String>> {
     }
 }
 
-/// Test that StrVec::set_str works correctly.
+/// @noRd
 #[miniextendr]
 pub fn test_strvec_set_str() -> Vec<Option<String>> {
     unsafe {
@@ -133,7 +133,7 @@ pub fn test_strvec_set_str() -> Vec<Option<String>> {
 // ReprotectSlot tests
 // =============================================================================
 
-/// Test that ReprotectSlot can be used to accumulate values.
+/// @noRd
 #[miniextendr]
 pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
     unsafe {
@@ -153,7 +153,7 @@ pub fn test_reprotect_slot_accumulate(n: i32) -> i32 {
     }
 }
 
-/// Test that ReprotectSlot maintains correct protection count.
+/// @noRd
 #[miniextendr]
 pub fn test_reprotect_slot_count() -> i32 {
     unsafe {
@@ -180,7 +180,7 @@ pub fn test_reprotect_slot_count() -> i32 {
     }
 }
 
-/// Test that multiple set() calls don't grow the protect stack.
+/// @noRd
 #[miniextendr]
 pub fn test_reprotect_slot_no_growth(iterations: i32) -> i32 {
     unsafe {

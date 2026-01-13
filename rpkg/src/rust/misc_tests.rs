@@ -7,7 +7,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[miniextendr]
 /// @title Miscellaneous Tests
 /// @name rpkg_misc
-/// @keywords internal
+/// @noRd
 /// @description Miscellaneous test helpers
 /// @examples
 /// underscore_it_all(1L, 2)
@@ -16,6 +16,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 pub fn underscore_it_all(_: i32, _: f64) {}
 
 // Simple SEXP return
+/// @noRd
 #[miniextendr]
 pub fn do_nothing() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(42) }

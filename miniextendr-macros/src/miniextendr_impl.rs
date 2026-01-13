@@ -1166,6 +1166,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
+    // Check if class has @noRd - if so, skip method documentation
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd");
 
     let mut lines = Vec::new();
 
@@ -1176,10 +1178,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Constructor
     if let Some(ctx) = parsed_impl.constructor_context() {
-        let method_doc =
-            MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
-                .with_name_prefix("$");
-        lines.extend(method_doc.build());
+        // Skip method documentation if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, "new", type_ident, &ctx.method.doc_tags)
+                    .with_name_prefix("$");
+            lines.extend(method_doc.build());
+        }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
         lines.push(format!("    self <- {}", ctx.static_call()));
         lines.push(format!("    class(self) <- \"{}\"", class_name));
@@ -1191,10 +1196,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Instance methods
     for ctx in parsed_impl.instance_method_contexts() {
         let method_name = ctx.method.ident.to_string();
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_name_prefix("$");
-        lines.extend(method_doc.build());
+        // Skip method documentation if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_name_prefix("$");
+            lines.extend(method_doc.build());
+        }
 
         lines.push(format!(
             "{}${} <- function({}) {{",
@@ -1215,10 +1223,13 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Static methods
     for ctx in parsed_impl.static_method_contexts() {
         let method_name = ctx.method.ident.to_string();
-        let method_doc =
-            MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
-                .with_name_prefix("$");
-        lines.extend(method_doc.build());
+        // Skip method documentation if class has @noRd
+        if !class_has_no_rd {
+            let method_doc =
+                MethodDocBuilder::new(&class_name, &method_name, type_ident, &ctx.method.doc_tags)
+                    .with_name_prefix("$");
+            lines.extend(method_doc.build());
+        }
 
         lines.push(format!(
             "{}${} <- function({}) {{",
@@ -1237,10 +1248,18 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
-    lines.push(format!("#' @rdname {}", class_name));
-    lines.push("#' @param self The object instance.".to_string());
-    lines.push("#' @param name Method name for dispatch.".to_string());
-    lines.push("#' @export".to_string());
+    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal");
+    let should_export = !class_has_no_rd && !has_internal;
+
+    // Only generate @rdname if class is documented
+    if !class_has_no_rd {
+        lines.push(format!("#' @rdname {}", class_name));
+        lines.push("#' @param self The object instance.".to_string());
+        lines.push("#' @param name Method name for dispatch.".to_string());
+    }
+    if should_export {
+        lines.push("#' @export".to_string());
+    }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("    obj <- {}[[name]]", class_name));
     lines.push("    if (is.environment(obj)) {".to_string());
@@ -1259,8 +1278,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("        obj".to_string());
     lines.push("    }".to_string());
     lines.push("}".to_string());
-    lines.push(format!("#' @rdname {}", class_name));
-    lines.push("#' @export".to_string());
+    if !class_has_no_rd {
+        lines.push(format!("#' @rdname {}", class_name));
+    }
+    if should_export {
+        lines.push("#' @export".to_string());
+    }
     lines.push(format!("`[[.{}` <- `$.{}`", class_name, class_name));
 
     lines.join("\n")

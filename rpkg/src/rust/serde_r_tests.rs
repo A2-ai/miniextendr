@@ -364,42 +364,36 @@ impl WithOptionals {
 // =============================================================================
 
 /// @noRd
-/// Serialize a primitive i32 to R.
 #[miniextendr]
 pub fn serde_r_serialize_i32(x: i32) -> SEXP {
     to_r(&x).expect("serialize i32")
 }
 
 /// @noRd
-/// Serialize a primitive f64 to R.
 #[miniextendr]
 pub fn serde_r_serialize_f64(x: f64) -> SEXP {
     to_r(&x).expect("serialize f64")
 }
 
 /// @noRd
-/// Serialize a primitive bool to R.
 #[miniextendr]
 pub fn serde_r_serialize_bool(x: bool) -> SEXP {
     to_r(&x).expect("serialize bool")
 }
 
 /// @noRd
-/// Serialize a String to R.
 #[miniextendr]
 pub fn serde_r_serialize_string(x: String) -> SEXP {
     to_r(&x).expect("serialize string")
 }
 
 /// @noRd
-/// Serialize Option<i32> to R (Some -> value, None -> NULL).
 #[miniextendr]
 pub fn serde_r_serialize_option_i32(x: Option<i32>) -> SEXP {
     to_r(&x).expect("serialize option i32")
 }
 
 /// @noRd
-/// Serialize Vec<i32> to R (smart dispatch -> integer vector).
 #[miniextendr]
 pub fn serde_r_serialize_vec_i32(x: SEXP) -> SEXP {
     let v: Vec<i32> = from_r(x).expect("deserialize vec i32");
@@ -407,7 +401,6 @@ pub fn serde_r_serialize_vec_i32(x: SEXP) -> SEXP {
 }
 
 /// @noRd
-/// Serialize Vec<f64> to R (smart dispatch -> numeric vector).
 #[miniextendr]
 pub fn serde_r_serialize_vec_f64(x: SEXP) -> SEXP {
     let v: Vec<f64> = from_r(x).expect("deserialize vec f64");
@@ -415,7 +408,6 @@ pub fn serde_r_serialize_vec_f64(x: SEXP) -> SEXP {
 }
 
 /// @noRd
-/// Serialize Vec<String> to R (smart dispatch -> character vector).
 #[miniextendr]
 pub fn serde_r_serialize_vec_string(x: SEXP) -> SEXP {
     let v: Vec<String> = from_r(x).expect("deserialize vec string");
@@ -423,7 +415,6 @@ pub fn serde_r_serialize_vec_string(x: SEXP) -> SEXP {
 }
 
 /// @noRd
-/// Serialize Vec<bool> to R (smart dispatch -> logical vector).
 #[miniextendr]
 pub fn serde_r_serialize_vec_bool(x: SEXP) -> SEXP {
     let v: Vec<bool> = from_r(x).expect("deserialize vec bool");
@@ -431,7 +422,6 @@ pub fn serde_r_serialize_vec_bool(x: SEXP) -> SEXP {
 }
 
 /// @noRd
-/// Serialize HashMap<String, i32> to R (named list).
 #[miniextendr]
 pub fn serde_r_serialize_hashmap() -> SEXP {
     let mut map = HashMap::new();
@@ -442,28 +432,24 @@ pub fn serde_r_serialize_hashmap() -> SEXP {
 }
 
 /// @noRd
-/// Deserialize i32 from R.
 #[miniextendr]
 pub fn serde_r_deserialize_i32(sexp: SEXP) -> i32 {
     from_r(sexp).expect("deserialize i32")
 }
 
 /// @noRd
-/// Deserialize f64 from R.
 #[miniextendr]
 pub fn serde_r_deserialize_f64(sexp: SEXP) -> f64 {
     from_r(sexp).expect("deserialize f64")
 }
 
 /// @noRd
-/// Deserialize String from R.
 #[miniextendr]
 pub fn serde_r_deserialize_string(sexp: SEXP) -> String {
     from_r(sexp).expect("deserialize string")
 }
 
 /// @noRd
-/// Deserialize Vec<i32> from R.
 #[miniextendr]
 pub fn serde_r_deserialize_vec_i32(sexp: SEXP) -> SEXP {
     let v: Vec<i32> = from_r(sexp).expect("deserialize vec i32");
@@ -471,7 +457,6 @@ pub fn serde_r_deserialize_vec_i32(sexp: SEXP) -> SEXP {
 }
 
 /// @noRd
-/// Deserialize Vec<f64> from R.
 #[miniextendr]
 pub fn serde_r_deserialize_vec_f64(sexp: SEXP) -> SEXP {
     let v: Vec<f64> = from_r(sexp).expect("deserialize vec f64");
@@ -479,7 +464,6 @@ pub fn serde_r_deserialize_vec_f64(sexp: SEXP) -> SEXP {
 }
 
 /// @noRd
-/// Round-trip test: serialize then deserialize a Point.
 #[miniextendr]
 pub fn serde_r_roundtrip_point(x: f64, y: f64) -> bool {
     let original = SerdeRPoint { x, y };
@@ -489,7 +473,6 @@ pub fn serde_r_roundtrip_point(x: f64, y: f64) -> bool {
 }
 
 /// @noRd
-/// Round-trip test: serialize then deserialize nested struct.
 #[miniextendr]
 pub fn serde_r_roundtrip_rectangle(x1: f64, y1: f64, x2: f64, y2: f64) -> bool {
     let original = Rectangle::new(x1, y1, x2, y2);
@@ -499,7 +482,6 @@ pub fn serde_r_roundtrip_rectangle(x1: f64, y1: f64, x2: f64, y2: f64) -> bool {
 }
 
 /// @noRd
-/// Round-trip test: serialize then deserialize deep nest.
 #[miniextendr]
 pub fn serde_r_roundtrip_deep_nest() -> bool {
     let original = DeepNest::new();
@@ -509,7 +491,6 @@ pub fn serde_r_roundtrip_deep_nest() -> bool {
 }
 
 /// @noRd
-/// Round-trip test: serialize then deserialize collections.
 #[miniextendr]
 pub fn serde_r_roundtrip_collections() -> bool {
     let original = Collections::new();
@@ -519,7 +500,6 @@ pub fn serde_r_roundtrip_collections() -> bool {
 }
 
 /// @noRd
-/// Round-trip test: serialize then deserialize WithOptionals with all present.
 #[miniextendr]
 pub fn serde_r_roundtrip_optionals_present() -> bool {
     let original = WithOptionals::all_present();
@@ -529,7 +509,6 @@ pub fn serde_r_roundtrip_optionals_present() -> bool {
 }
 
 /// @noRd
-/// Round-trip test: serialize then deserialize WithOptionals with all None.
 #[miniextendr]
 pub fn serde_r_roundtrip_optionals_none() -> bool {
     let original = WithOptionals::all_none();
@@ -539,14 +518,12 @@ pub fn serde_r_roundtrip_optionals_none() -> bool {
 }
 
 /// @noRd
-/// Test deserialization error handling - wrong type.
 #[miniextendr]
 pub fn serde_r_deserialize_wrong_type(sexp: SEXP) -> Result<i32, String> {
     from_r::<i32>(sexp).map_err(|e| e.to_string())
 }
 
 /// @noRd
-/// Test deserialization error handling - missing field.
 #[miniextendr]
 pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, String> {
     from_r::<SerdeRPoint>(sexp).map_err(|e| e.to_string())
@@ -557,7 +534,6 @@ pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, Stri
 // =============================================================================
 
 /// @noRd
-/// Serialize a tuple to R (becomes unnamed list).
 #[miniextendr]
 pub fn serde_r_serialize_tuple() -> SEXP {
     let tuple = (42i32, 3.14f64, "hello".to_string());
@@ -569,7 +545,6 @@ pub fn serde_r_serialize_tuple() -> SEXP {
 pub struct Pair(pub i32, pub String);
 
 /// @noRd
-/// Serialize a tuple struct to R.
 #[miniextendr]
 pub fn serde_r_serialize_tuple_struct() -> SEXP {
     let pair = Pair(42, "answer".to_string());
@@ -581,7 +556,6 @@ pub fn serde_r_serialize_tuple_struct() -> SEXP {
 // =============================================================================
 
 /// @noRd
-/// Create a complex nested structure and serialize to R.
 #[miniextendr]
 pub fn serde_r_complex_nested() -> SEXP {
     #[derive(Serialize)]
@@ -616,7 +590,6 @@ pub fn serde_r_complex_nested() -> SEXP {
 }
 
 /// @noRd
-/// Deserialize a complex structure from R and validate.
 #[miniextendr]
 pub fn serde_r_deserialize_complex(sexp: SEXP) -> String {
     #[derive(Deserialize, Debug)]

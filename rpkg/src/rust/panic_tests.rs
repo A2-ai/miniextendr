@@ -18,18 +18,21 @@ impl Drop for MsgOnDrop {
     }
 }
 
+/// @noRd
 #[miniextendr]
 pub fn drop_message_on_success() -> i32 {
     let _a = MsgOnDrop;
     42
 }
 
+/// @noRd
 #[miniextendr]
 pub fn drop_on_panic() {
     let _a = MsgOnDrop;
     panic!()
 }
 
+/// @noRd
 #[miniextendr]
 pub fn drop_on_panic_with_move() {
     let _a = MsgOnDrop;
@@ -42,6 +45,7 @@ pub fn drop_on_panic_with_move() {
 
 // region: panics, (), and Result
 
+/// @noRd
 #[miniextendr]
 #[allow(clippy::unused_unit)]
 pub fn take_and_return_nothing() -> () {}
@@ -66,6 +70,7 @@ pub fn add(left: i32, right: i32) -> i32 {
     left + right
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add2(left: i32, right: i32, _dummy: ()) -> i32 {
     left + right
@@ -80,11 +85,13 @@ impl From<()> for RustError {
     }
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add3(left: i32, right: i32, _dummy: ()) -> Result<i32, RustError> {
     left.checked_add(right).ok_or(().into())
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add4(left: i32, right: i32) -> Result<i32, &'static str> {
     left.checked_div(right).ok_or("don't divide by zero dude")
@@ -100,6 +107,7 @@ fn middle_function() {
     inner_panicking_function();
 }
 
+/// @noRd
 #[miniextendr]
 pub fn nested_panic() {
     middle_function();
@@ -108,7 +116,7 @@ pub fn nested_panic() {
 #[miniextendr]
 /// @title Panic and Error Handling Tests
 /// @name rpkg_panic_tests
-/// @keywords internal
+/// @noRd
 /// @description Panic and error handling tests (unsafe)
 /// @examples
 /// try(add_panic(1L, 2L))
@@ -132,6 +140,7 @@ pub fn add_panic(_left: i32, _right: i32) -> i32 {
     }
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     let _a = MsgOnDrop;
@@ -144,12 +153,14 @@ pub fn add_r_error(_left: i32, _right: i32) -> i32 {
     }
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add_panic_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
     panic!("we cannot add right now! ")
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
     let _a = Box::new(MsgOnDrop);
@@ -164,17 +175,20 @@ pub fn add_r_error_heap(_left: i32, _right: i32) -> i32 {
 
 /// Note: `mut` tests macro handling of mutable parameters; becomes unused after expansion.
 #[allow(unused_mut)]
+/// @noRd
 #[miniextendr]
 pub fn add_left_mut(mut left: i32, right: i32) -> i32 {
     let left = &mut left;
     *left + right
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add_right_mut(left: i32, right: i32) -> i32 {
     left + right
 }
 
+/// @noRd
 #[miniextendr]
 pub fn add_left_right_mut(left: i32, right: i32) -> i32 {
     left + right
@@ -191,9 +205,7 @@ pub extern "C-unwind" fn C_just_panic() -> SEXP {
     panic!("just panic, no capture");
 }
 
-/// If you call a miniextendr function that panics, and then `C_panic_catch`,
-/// you'll see that the panic hook was not reset.
-/// @rdname rpkg_panic_tests
+/// @noRd
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -203,7 +215,7 @@ pub extern "C-unwind" fn C_panic_and_catch() -> SEXP {
     unsafe { ::miniextendr_api::ffi::R_NilValue }
 }
 
-/// @rdname rpkg_panic_tests
+/// @noRd
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]
@@ -212,7 +224,7 @@ pub extern "C-unwind" fn C_r_error() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_error_unchecked(c"arg1".as_ptr()) }
 }
 
-/// @rdname rpkg_panic_tests
+/// @noRd
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
@@ -239,9 +251,7 @@ fn extract_panic_message(e: Box<dyn std::any::Any + Send>) -> String {
     }
 }
 
-/// This panics cleanly because checked Rf_error detects wrong thread.
-/// The panic message is "Rf_error called from non-main thread".
-/// @rdname rpkg_panic_tests
+/// @noRd
 #[miniextendr]
 #[allow(non_snake_case)]
 #[allow(clippy::diverging_sub_expression)]
@@ -258,8 +268,7 @@ pub extern "C-unwind" fn C_r_error_in_thread() -> SEXP {
     panic!("{}", extract_panic_message(e));
 }
 
-/// This panics cleanly because checked Rprintf detects wrong thread.
-/// @rdname rpkg_panic_tests
+/// @noRd
 #[miniextendr]
 #[allow(non_snake_case)]
 #[unsafe(no_mangle)]

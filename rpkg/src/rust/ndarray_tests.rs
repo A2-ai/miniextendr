@@ -17,17 +17,7 @@ use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 #[derive(ExternalPtr)]
 pub struct NdVec(Array1<f64>);
 
-/// NdVec: 1D ndarray wrapper
-///
-/// @name NdVec
-/// @title 1D ndarray wrapper for testing
-/// @description Wraps a 1D ndarray and exposes adapter trait methods.
-/// @return An ExternalPtr to an NdVec.
-/// @examples
-/// v <- NdVec$new(c(1, 2, 3, 4, 5))
-/// v$len()
-/// v$sum()
-/// v$get(2L)
+/// @noRd
 #[miniextendr]
 impl NdVec {
     fn new(data: Vec<f64>) -> Self {
@@ -134,17 +124,7 @@ impl NdVec {
 #[derive(ExternalPtr)]
 pub struct NdMatrix(Array2<f64>);
 
-/// NdMatrix: 2D ndarray wrapper
-///
-/// @name NdMatrix
-/// @title 2D ndarray wrapper for testing
-/// @description Wraps a 2D ndarray matrix and exposes adapter trait methods.
-/// @return An ExternalPtr to an NdMatrix.
-/// @examples
-/// m <- NdMatrix$new(matrix(c(1, 2, 3, 4, 5, 6), nrow=2, ncol=3))
-/// m$nrows()
-/// m$ncols()
-/// m$row(0L)
+/// @noRd
 #[miniextendr]
 impl NdMatrix {
     fn new(data: Array2<f64>) -> Self {
@@ -255,17 +235,7 @@ impl NdMatrix {
 #[derive(ExternalPtr)]
 pub struct NdArrayDyn(ArrayD<f64>);
 
-/// NdArrayDyn: N-dimensional ndarray wrapper
-///
-/// @name NdArrayDyn
-/// @title N-dimensional ndarray wrapper for testing
-/// @description Wraps an n-dimensional ndarray and exposes RNdIndex methods.
-/// @return An ExternalPtr to an NdArrayDyn.
-/// @examples
-/// arr <- NdArrayDyn$new(c(2L, 3L, 4L), as.double(1:24))
-/// arr$ndim()
-/// arr$shape_nd()
-/// arr$get_nd(c(0L, 1L, 2L))
+/// @noRd
 #[miniextendr]
 impl NdArrayDyn {
     fn new(shape: Vec<i32>, data: Vec<f64>) -> Self {
@@ -377,16 +347,7 @@ impl NdArrayDyn {
 #[derive(ExternalPtr)]
 pub struct NdIntVec(Array1<i32>);
 
-/// NdIntVec: 1D integer ndarray wrapper
-///
-/// @name NdIntVec
-/// @title 1D integer ndarray wrapper for testing
-/// @description Wraps a 1D integer ndarray and exposes adapter trait methods.
-/// @return An ExternalPtr to an NdIntVec.
-/// @examples
-/// v <- NdIntVec$new(1:10)
-/// v$sum()
-/// v$mean()
+/// @noRd
 #[miniextendr]
 impl NdIntVec {
     fn new(data: Vec<i32>) -> Self {
@@ -466,35 +427,30 @@ impl NdIntVec {
 // =============================================================================
 
 /// @noRd
-/// Round-trip test: R vector -> Array1 -> R vector
 #[miniextendr]
 pub fn ndarray_roundtrip_vec(data: Array1<f64>) -> Array1<f64> {
     data
 }
 
 /// @noRd
-/// Round-trip test: R matrix -> Array2 -> R matrix
 #[miniextendr]
 pub fn ndarray_roundtrip_matrix(data: Array2<f64>) -> Array2<f64> {
     data
 }
 
 /// @noRd
-/// Round-trip test: R array -> ArrayD -> R array
 #[miniextendr]
 pub fn ndarray_roundtrip_array(data: ArrayD<f64>) -> ArrayD<f64> {
     data
 }
 
 /// @noRd
-/// Test integer array round-trip
 #[miniextendr]
 pub fn ndarray_roundtrip_int_vec(data: Array1<i32>) -> Array1<i32> {
     data
 }
 
 /// @noRd
-/// Test integer matrix round-trip
 #[miniextendr]
 pub fn ndarray_roundtrip_int_matrix(data: Array2<i32>) -> Array2<i32> {
     data
