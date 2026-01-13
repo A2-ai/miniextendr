@@ -1270,6 +1270,222 @@ pub fn range_real_altrep(from: f64, to: f64) -> Altrep<std::ops::Range<f64>> {
 
 // endregion
 
+// region: Sparse iterator ALTREP test fixtures
+//
+// These demonstrate the sparse iterator ALTREP types that use Iterator::nth()
+// to skip elements efficiently. Unlike the prefix-caching variants, sparse
+// iterators only cache accessed elements and skip intermediate ones.
+
+use miniextendr_api::altrep_data::{
+    SparseIterIntData, SparseIterLogicalData, SparseIterRawData, SparseIterRealData,
+};
+
+/// Type alias for boxed iterator producing i32
+type BoxedIntIter = Box<dyn Iterator<Item = i32>>;
+
+/// Wrapper for sparse integer iterator ALTREP
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct SparseIntIterData {
+    inner: SparseIterIntData<BoxedIntIter>,
+}
+
+impl AltrepLen for SparseIntIterData {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl miniextendr_api::altrep_data::AltIntegerData for SparseIntIterData {
+    fn elt(&self, i: usize) -> i32 {
+        self.inner.elt(i)
+    }
+
+    fn as_slice(&self) -> Option<&[i32]> {
+        None // Sparse storage cannot provide contiguous slice
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        self.inner.get_region(start, len, buf)
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(SparseIntIterData);
+
+/// @noRd
+#[miniextendr(class = "SparseIntIter")]
+pub struct SparseIntIterClass(pub SparseIntIterData);
+
+/// Create a sparse integer iterator ALTREP that skips elements.
+///
+/// Elements are computed on-demand using Iterator::nth(). Once an element
+/// is skipped (a higher index is accessed first), it cannot be retrieved
+/// and will return NA.
+///
+/// @param from Start value (inclusive)
+/// @param to End value (exclusive)
+/// @noRd
+#[miniextendr]
+pub fn sparse_iter_int(from: i32, to: i32) -> SEXP {
+    let len = (to - from).max(0) as usize;
+    let start = from;
+    let iter: BoxedIntIter = Box::new((0..len as i32).map(move |i| start + i));
+    let data = SparseIntIterData {
+        inner: SparseIterIntData::from_iter(iter, len),
+    };
+    SparseIntIterClass(data).into_sexp()
+}
+
+/// Create a sparse integer iterator that generates squares.
+/// @noRd
+#[miniextendr]
+pub fn sparse_iter_int_squares(n: i32) -> SEXP {
+    let len = n.max(0) as usize;
+    let iter: BoxedIntIter = Box::new((0..len as i32).map(|i| i * i));
+    let data = SparseIntIterData {
+        inner: SparseIterIntData::from_iter(iter, len),
+    };
+    SparseIntIterClass(data).into_sexp()
+}
+
+/// Type alias for boxed iterator producing f64
+type BoxedRealIter = Box<dyn Iterator<Item = f64>>;
+
+/// Wrapper for sparse real iterator ALTREP
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct SparseRealIterData {
+    inner: SparseIterRealData<BoxedRealIter>,
+}
+
+impl AltrepLen for SparseRealIterData {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl miniextendr_api::altrep_data::AltRealData for SparseRealIterData {
+    fn elt(&self, i: usize) -> f64 {
+        self.inner.elt(i)
+    }
+
+    fn as_slice(&self) -> Option<&[f64]> {
+        None
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [f64]) -> usize {
+        self.inner.get_region(start, len, buf)
+    }
+}
+
+miniextendr_api::impl_altreal_from_data!(SparseRealIterData);
+
+/// @noRd
+#[miniextendr(class = "SparseRealIter")]
+pub struct SparseRealIterClass(pub SparseRealIterData);
+
+/// Create a sparse real iterator ALTREP.
+/// @noRd
+#[miniextendr]
+pub fn sparse_iter_real(from: f64, step: f64, n: i32) -> SEXP {
+    let len = n.max(0) as usize;
+    let iter: BoxedRealIter = Box::new((0..len).map(move |i| from + (i as f64) * step));
+    let data = SparseRealIterData {
+        inner: SparseIterRealData::from_iter(iter, len),
+    };
+    SparseRealIterClass(data).into_sexp()
+}
+
+/// Type alias for boxed iterator producing bool
+type BoxedLogicalIter = Box<dyn Iterator<Item = bool>>;
+
+/// Wrapper for sparse logical iterator ALTREP
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct SparseLogicalIterData {
+    inner: SparseIterLogicalData<BoxedLogicalIter>,
+}
+
+impl AltrepLen for SparseLogicalIterData {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl miniextendr_api::altrep_data::AltLogicalData for SparseLogicalIterData {
+    fn elt(&self, i: usize) -> miniextendr_api::altrep_data::Logical {
+        self.inner.elt(i)
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [i32]) -> usize {
+        self.inner.get_region(start, len, buf)
+    }
+}
+
+miniextendr_api::impl_altlogical_from_data!(SparseLogicalIterData);
+
+/// @noRd
+#[miniextendr(class = "SparseLogicalIter")]
+pub struct SparseLogicalIterClass(pub SparseLogicalIterData);
+
+/// Create a sparse logical iterator ALTREP (alternating TRUE/FALSE).
+/// @noRd
+#[miniextendr]
+pub fn sparse_iter_logical(n: i32) -> SEXP {
+    let len = n.max(0) as usize;
+    let iter: BoxedLogicalIter = Box::new((0..len).map(|i| i % 2 == 0));
+    let data = SparseLogicalIterData {
+        inner: SparseIterLogicalData::from_iter(iter, len),
+    };
+    SparseLogicalIterClass(data).into_sexp()
+}
+
+/// Type alias for boxed iterator producing u8
+type BoxedRawIter = Box<dyn Iterator<Item = u8>>;
+
+/// Wrapper for sparse raw iterator ALTREP
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct SparseRawIterData {
+    inner: SparseIterRawData<BoxedRawIter>,
+}
+
+impl AltrepLen for SparseRawIterData {
+    fn len(&self) -> usize {
+        self.inner.len()
+    }
+}
+
+impl miniextendr_api::altrep_data::AltRawData for SparseRawIterData {
+    fn elt(&self, i: usize) -> u8 {
+        self.inner.elt(i)
+    }
+
+    fn as_slice(&self) -> Option<&[u8]> {
+        None
+    }
+
+    fn get_region(&self, start: usize, len: usize, buf: &mut [u8]) -> usize {
+        self.inner.get_region(start, len, buf)
+    }
+}
+
+miniextendr_api::impl_altraw_from_data!(SparseRawIterData);
+
+/// @noRd
+#[miniextendr(class = "SparseRawIter")]
+pub struct SparseRawIterClass(pub SparseRawIterData);
+
+/// Create a sparse raw iterator ALTREP.
+/// @noRd
+#[miniextendr]
+pub fn sparse_iter_raw(n: i32) -> SEXP {
+    let len = n.max(0) as usize;
+    let iter: BoxedRawIter = Box::new((0..len).map(|i| (i % 256) as u8));
+    let data = SparseRawIterData {
+        inner: SparseIterRawData::from_iter(iter, len),
+    };
+    SparseRawIterClass(data).into_sexp()
+}
+
+// endregion
+
 // region: Nonapi module for lean-stack thread tests
 
 #[cfg(feature = "nonapi")]
@@ -1540,6 +1756,17 @@ miniextendr_module! {
     fn range_int_altrep;
     fn range_i64_altrep;
     fn range_real_altrep;
+
+    // Sparse iterator ALTREP (skipping support)
+    struct SparseIntIterClass;
+    fn sparse_iter_int;
+    fn sparse_iter_int_squares;
+    struct SparseRealIterClass;
+    fn sparse_iter_real;
+    struct SparseLogicalIterClass;
+    fn sparse_iter_logical;
+    struct SparseRawIterClass;
+    fn sparse_iter_raw;
 
     // Feature detection
     fn rpkg_enabled_features;
