@@ -466,7 +466,6 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
-      RUSTC_WRAPPER: "sccache"
 
     steps:
       - uses: actions/checkout@v6
@@ -490,7 +489,15 @@ jobs:
         with:
           targets: x86_64-pc-windows-gnu
 
-      - uses: mozilla-actions/sccache-action@v0.0.9
+      - name: Setup sccache
+        id: sccache
+        uses: mozilla-actions/sccache-action@v0.0.9
+        continue-on-error: true
+
+      - name: Set RUSTC_WRAPPER if sccache available
+        if: steps.sccache.outcome == 'success'
+        shell: pwsh
+        run: echo "RUSTC_WRAPPER=sccache" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
