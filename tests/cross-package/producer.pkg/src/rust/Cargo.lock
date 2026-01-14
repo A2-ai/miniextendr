@@ -168,3 +168,23 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[patch.unused]]
+name = "miniextendr-api"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-bench"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-engine"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-lint"
+version = "0.1.0"
+
+[[patch.unused]]
+name = "miniextendr-macros"
+version = "0.1.0"
