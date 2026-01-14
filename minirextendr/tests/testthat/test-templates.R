@@ -285,6 +285,7 @@ find_miniextendr_repo <- function() {
 }
 
 test_that("rpkg scaffolding builds and functions work end-to-end", {
+  skip_on_ci()  # Complex build environment requirements; test locally
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
   skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
   skip_if_not(nzchar(Sys.which("R")), "R not available")
@@ -434,6 +435,7 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
 })
 
 test_that("monorepo scaffolding builds and functions work end-to-end", {
+  skip_on_ci()  # Complex build environment requirements; test locally
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
   skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
   skip_if_not(nzchar(Sys.which("R")), "R not available")
