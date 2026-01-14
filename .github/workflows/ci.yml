@@ -522,13 +522,7 @@ jobs:
           # Write UTF-8 without BOM which can cause parsing issues
           New-Item -Path .cargo -ItemType Directory -Force
           $pwd_slash = (Get-Location).Path -replace '\\','/'
-          $config = @"
-[target.x86_64-pc-windows-gnu]
-linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
-
-[env]
-LIBRARY_PATH = "$pwd_slash/libgcc_mock"
-"@
+          $config = "[target.x86_64-pc-windows-gnu]`nlinker = `"x86_64-w64-mingw32.static.posix-gcc.exe`"`n`n[env]`nLIBRARY_PATH = `"$pwd_slash/libgcc_mock`""
           [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
 
       - name: Configure
