@@ -508,9 +508,9 @@ jobs:
           $rtools_home = "C:\rtools44"
 
           # Add Rtools to PATH
-          echo "${rtools_home}\x86_64-w64-mingw32.static.posix\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "${rtools_home}\usr\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
-          echo "$(Rscript.exe -e 'cat(normalizePath(R.home()))')\bin\x64" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          Add-Content -Path $env:GITHUB_PATH -Value "${rtools_home}\x86_64-w64-mingw32.static.posix\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "${rtools_home}\usr\bin"
+          Add-Content -Path $env:GITHUB_PATH -Value "$(Rscript.exe -e 'cat(normalizePath(R.home()))')\bin\x64"
 
           # Create empty libgcc stubs for Rust linking
           New-Item -Path libgcc_mock -Type Directory -Force
@@ -519,15 +519,17 @@ jobs:
 
           # Configure Cargo target for Windows GNU
           # Note: patch.crates-io is handled by just configure
+          # Write UTF-8 without BOM which can cause parsing issues
           New-Item -Path .cargo -ItemType Directory -Force
           $pwd_slash = (Get-Location).Path -replace '\\','/'
-          @"
-          [target.x86_64-pc-windows-gnu]
-          linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
+          $config = @"
+[target.x86_64-pc-windows-gnu]
+linker = "x86_64-w64-mingw32.static.posix-gcc.exe"
 
-          [env]
-          LIBRARY_PATH = "${pwd_slash}/libgcc_mock"
-          "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8
+[env]
+LIBRARY_PATH = "$pwd_slash/libgcc_mock"
+"@
+          [System.IO.File]::WriteAllText("$PWD\.cargo\config.toml", $config)
 
       - name: Configure
         shell: C:\rtools44\usr\bin\bash.exe -e -o pipefail {0}
@@ -563,6 +565,18 @@ jobs:
             [ -f "$f" ] && echo "=== $f ===" && tail -n100 "$f"
           done || true
 
+      - name: Print 00check.log and 00install.out on failure
+        if: failure()
+        shell: bash
+        run: |
+          echo "=== Check directory contents ==="
+          ls -la rpkg/check/ 2>/dev/null || echo "check dir not found"
+          ls -la rpkg/check/*.Rcheck/ 2>/dev/null || echo "Rcheck dir not found"
+          echo "=== 00check.log ==="
+          cat rpkg/check/*.Rcheck/00check.log 2>/dev/null || echo "00check.log not found"
+          echo "=== 00install.out ==="
+          cat rpkg/check/*.Rcheck/00install.out 2>/dev/null || echo "00install.out not found"
+
       - name: Upload check results
         if: failure()
         uses: actions/upload-artifact@v6
@@ -570,6 +584,7 @@ jobs:
           name: logs-windows
           path: |
             rpkg/check
+            rpkg/config.log
           retention-days: 7
 
   # ===========================================================================
