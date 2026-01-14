@@ -5,7 +5,7 @@ use miniextendr_api::ffi;
 #[cfg(feature = "rayon")]
 use miniextendr_api::rayon_bridge::rayon::prelude::*;
 #[cfg(feature = "rayon")]
-use miniextendr_api::rayon_bridge::{self, reduce, with_r_vec};
+use miniextendr_api::rayon_bridge::{reduce, with_r_vec};
 
 #[cfg(feature = "rayon")]
 fn main() {

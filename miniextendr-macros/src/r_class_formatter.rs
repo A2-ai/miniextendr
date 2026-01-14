@@ -200,10 +200,10 @@ impl<'a> ClassDocBuilder<'a> {
                 self.type_ident
             ));
         }
-        if let Some(imports) = self.imports {
-            if !has_no_rd {
-                lines.push(format!("#' {}", imports));
-            }
+        if let Some(imports) = self.imports
+            && !has_no_rd
+        {
+            lines.push(format!("#' {}", imports));
         }
         // Don't auto-export if @noRd or @keywords internal is present
         if !has_export && !has_no_rd && !has_internal {

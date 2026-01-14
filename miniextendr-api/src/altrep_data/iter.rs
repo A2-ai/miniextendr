@@ -2001,9 +2001,7 @@ impl<I: Iterator<Item = bool> + 'static> InferBase for SparseIterLogicalData<I> 
 }
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
-impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep
-    for SparseIterLogicalData<I>
-{
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep for SparseIterLogicalData<I> {
     fn length(x: crate::ffi::SEXP) -> crate::ffi::R_xlen_t {
         unsafe { crate::altrep_data1_as::<Self>(x) }
             .map(|d| d.len() as crate::ffi::R_xlen_t)
@@ -2011,10 +2009,7 @@ impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::Altrep
     }
 }
 
-impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltVec
-    for SparseIterLogicalData<I>
-{
-}
+impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltVec for SparseIterLogicalData<I> {}
 
 #[allow(clippy::not_unsafe_ptr_arg_deref)]
 impl<I: Iterator<Item = bool> + 'static> crate::altrep_traits::AltLogical

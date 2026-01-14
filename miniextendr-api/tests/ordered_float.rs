@@ -46,8 +46,8 @@ fn ordered_float_vector_and_option() {
 #[test]
 fn coerce_f64_to_ordered_float_f64() {
     // f64 -> OrderedFloat<f64>: infallible wrapping
-    let of: OrderedFloat<f64> = 3.14f64.coerce();
-    assert_eq!(of.0, 3.14);
+    let of: OrderedFloat<f64> = 1.5f64.coerce();
+    assert_eq!(of.0, 1.5);
 
     // NaN is allowed
     let nan: OrderedFloat<f64> = f64::NAN.coerce();
@@ -164,9 +164,9 @@ fn try_coerce_i32_to_ordered_float_f32() {
 #[test]
 fn coerce_ordered_float_to_f64() {
     // OrderedFloat<f64> -> f64: unwrapping
-    let of = OrderedFloat(3.14f64);
+    let of = OrderedFloat(1.5f64);
     let f: f64 = of.coerce();
-    assert_eq!(f, 3.14);
+    assert_eq!(f, 1.5);
 
     // OrderedFloat<f32> -> f64: widening unwrap
     let of32 = OrderedFloat(2.5f32);

@@ -530,19 +530,21 @@ jobs:
           "@ | Out-File -FilePath .cargo/config.toml -Encoding utf8
 
       - name: Configure
-        shell: C:\rtools44\usr\bin\bash.exe --login -e -o pipefail {0}
+        shell: C:\rtools44\usr\bin\bash.exe -e -o pipefail {0}
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
+          # Add rtools and cargo to PATH (--login might reset PATH)
+          export PATH="/c/rtools44/usr/bin:/c/rtools44/x86_64-w64-mingw32.static.posix/bin:$PATH"
           if [ -n "${CARGO_HOME:-}" ]; then
             export PATH="$(cygpath -u "$CARGO_HOME")/bin:$PATH"
           fi
-          # Run configure directly (just may not be in rtools PATH)
-          cd rpkg
-          if command -v autoconf >/dev/null 2>&1; then
-            autoconf
-          else
-            echo "autoconf not found; using existing configure"
-          fi
+          # Debug: show PATH and check for required tools
+          echo "PATH: $PATH"
+          echo "rsync: $(which rsync || echo 'not found')"
+          echo "sed: $(which sed || echo 'not found')"
+          echo "cargo: $(which cargo || echo 'not found')"
+          echo "rustc: $(which rustc || echo 'not found')"
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
+          # autoconf not available on Windows; use existing configure
           NOT_CRAN=true ./configure
 
       - name: R CMD check

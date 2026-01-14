@@ -683,7 +683,7 @@ impl<'a> ListAccumulator<'a> {
     /// Must be called from the R main thread.
     pub unsafe fn into_root(self) -> Root<'a> {
         // If len < cap, we need to shrink the list
-        let final_list = if self.len < self.cap {
+        if self.len < self.cap {
             unsafe {
                 let shrunk = ffi::Rf_xlengthgets(self.list.get(), self.len as isize);
                 // The shrunk list might be the same or a new allocation
@@ -693,9 +693,7 @@ impl<'a> ListAccumulator<'a> {
         } else {
             // List is already the right size, create a Root without extra protection
             unsafe { self.scope.rooted(self.list.get()) }
-        };
-
-        final_list
+        }
     }
 
     /// Finalize and return the raw SEXP.
