@@ -597,8 +597,8 @@ diff -ruN -U2 a/monorepo/rpkg/cleanup.win b/monorepo/rpkg/cleanup.win
 +  exec sh ./cleanup "$@"
 +fi
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-01-13 12:06:04
-+++ b/monorepo/rpkg/configure.ac	2026-01-13 12:06:21
+--- a/monorepo/rpkg/configure.ac	2026-01-13 14:46:32
++++ b/monorepo/rpkg/configure.ac	2026-01-13 14:50:09
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -650,7 +650,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@source.crates-io@:>@
-@@ -394,5 +395,75 @@
+@@ -398,5 +399,79 @@
      STAMP="$VENDOR_OUT/.vendor.lock.cksum"
  
 +    dnl Determine if we need to run cargo vendor first
@@ -714,6 +714,10 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: cargo vendor failed, unpacking inst/vendor.tar.xz"
 +            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
++            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
++            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
++            fi
 +          else
 +            echo "configure: error: cargo vendor failed and no vendor.tar.xz fallback" >&2
 +            exit 1
@@ -726,7 +730,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    dnl Now that vendor is populated, this should succeed
      if test ! -f "$LOCKFILE"; then
        echo "configure: generating Cargo.lock"
-@@ -406,55 +477,8 @@
+@@ -410,59 +485,8 @@
      dnl POSIX fingerprint: checksum+size of Cargo.lock contents
      _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
 -    _old="$(cat "$STAMP" 2>/dev/null || true)"
@@ -771,6 +775,10 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -        elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
 -          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+-          dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-          fi
 -        else
 -          echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
 -          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
@@ -1899,8 +1907,8 @@ diff -ruN -U2 a/rpkg/cleanup.win b/rpkg/cleanup.win
 +  exec sh ./cleanup "$@"
 +fi
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-01-13 12:06:04
-+++ b/rpkg/configure.ac	2026-01-13 12:06:13
+--- a/rpkg/configure.ac	2026-01-13 14:46:32
++++ b/rpkg/configure.ac	2026-01-13 14:49:20
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -1951,7 +1959,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources only
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@source.crates-io@:>@
-@@ -394,5 +394,75 @@
+@@ -398,5 +398,79 @@
      STAMP="$VENDOR_OUT/.vendor.lock.cksum"
  
 +    dnl Determine if we need to run cargo vendor first
@@ -2015,6 +2023,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 +            echo "configure: cargo vendor failed, unpacking inst/vendor.tar.xz"
 +            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
++            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
++            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
++            fi
 +          else
 +            echo "configure: error: cargo vendor failed and no vendor.tar.xz fallback" >&2
 +            exit 1
@@ -2027,7 +2039,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    dnl Now that vendor is populated, this should succeed
      if test ! -f "$LOCKFILE"; then
        echo "configure: generating Cargo.lock"
-@@ -406,55 +476,8 @@
+@@ -410,59 +484,8 @@
      dnl POSIX fingerprint: checksum+size of Cargo.lock contents
      _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
 -    _old="$(cat "$STAMP" 2>/dev/null || true)"
@@ -2072,6 +2084,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -        elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
 -          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+-          dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-          fi
 -        else
 -          echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
 -          echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
