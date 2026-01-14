@@ -302,7 +302,9 @@ jobs:
         id: cargo_tests
         if: matrix.r == 'release'
         continue-on-error: true
-        run: cargo test --workspace --locked
+        # Use --lib to skip integration tests that require R embedding.
+        # R integration is already tested via R CMD check below.
+        run: cargo test --workspace --locked --lib
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -410,6 +412,7 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - uses: mozilla-actions/sccache-action@v0.0.9
+        continue-on-error: true  # sccache download may fail; build will just be slower
 
       - name: Cache Cargo
         uses: Swatinem/rust-cache@v2
@@ -530,7 +533,14 @@ jobs:
           if [ -n "${CARGO_HOME:-}" ]; then
             export PATH="$(cygpath -u "$CARGO_HOME")/bin:$PATH"
           fi
-          just configure
+          # Run configure directly (just may not be in rtools PATH)
+          cd rpkg
+          if command -v autoconf >/dev/null 2>&1; then
+            autoconf
+          else
+            echo "autoconf not found; using existing configure"
+          fi
+          NOT_CRAN=true ./configure
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
@@ -723,11 +733,21 @@ jobs:
         uses: r-lib/actions/setup-r-dependencies@v2
         with:
           working-directory: minirextendr
-          extra-packages: any::rcmdcheck, any::testthat
+          extra-packages: any::rcmdcheck, any::testthat, any::devtools
           needs: check
+
+      - name: Install autoconf
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y autoconf
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Run tests
         working-directory: minirextendr
+        env:
+          MINIEXTENDR_LOCAL_PATH: ${{ github.workspace }}
         run: Rscript -e "testthat::test_local()"
 
       - name: R CMD check
