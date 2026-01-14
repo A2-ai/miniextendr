@@ -108,14 +108,13 @@ test_that("rayon handles large parallel workload", {
 
   # Stress test with moderately large data (reduced for CI speed)
   n <- 100000L
-  withr::local_seed(42)
+  set.seed(42)
   x <- runif(n)
 
   # Parallel reduction order can introduce floating point differences
   # Use relative tolerance based on magnitude of result
   sum_result <- rayon_parallel_sum(x)
   expected_sum <- sum(x)
-  # Allow for 1e-10 relative error
 
   expect_equal(sum_result, expected_sum, tolerance = abs(expected_sum) * 1e-10)
 
