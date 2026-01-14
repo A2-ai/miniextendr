@@ -547,8 +547,8 @@ jobs:
           echo "cargo: $(which cargo || echo 'not found')"
           echo "rustc: $(which rustc || echo 'not found')"
           cd "$(cygpath -u "$GITHUB_WORKSPACE")/rpkg"
-          # autoconf not available on Windows; use existing configure
-          NOT_CRAN=true ./configure
+          # Windows needs explicit target for GNU toolchain (msys != windows-gnu)
+          NOT_CRAN=true CARGO_BUILD_TARGET=x86_64-pc-windows-gnu ./configure
 
       - name: R CMD check
         uses: r-lib/actions/check-r-package@v2
