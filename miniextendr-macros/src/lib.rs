@@ -226,6 +226,9 @@ mod miniextendr_trait;
 // Factor support
 mod factor_derive;
 
+// vctrs support
+mod vctrs_derive;
+
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
@@ -2531,6 +2534,37 @@ pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::Toke
 pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     factor_derive::derive_r_factor(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `Vctrs`: enables creating vctrs-compatible S3 vector classes from Rust structs.
+///
+/// # Usage
+///
+/// ```ignore
+/// #[derive(Vctrs)]
+/// #[vctrs(class = "percent", base = "double")]
+/// pub struct Percent {
+///     data: Vec<f64>,
+/// }
+/// ```
+///
+/// # Attributes
+///
+/// - `#[vctrs(class = "name")]` - R class name (required)
+/// - `#[vctrs(base = "type")]` - Base type: double, integer, logical, character, raw, list, record
+/// - `#[vctrs(abbr = "abbr")]` - Abbreviation for `vec_ptype_abbr`
+/// - `#[vctrs(inherit_base = true|false)]` - Whether to include base type in class vector
+///
+/// # Generated Implementations
+///
+/// - `VctrsClass` - Metadata trait for vctrs class information
+/// - `VctrsRecord` (for `base = "record"`) - Field names for record types
+#[proc_macro_derive(Vctrs, attributes(vctrs))]
+pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    vctrs_derive::derive_vctrs(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

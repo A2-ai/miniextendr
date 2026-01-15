@@ -1427,3 +1427,96 @@ Types now correctly serialize via `Serialized_state` method:
 Tests exist in `rpkg/tests/testthat/test-altrep-serialization.R`:
 - All tests should pass now that serialization bridge is implemented
 - Remove any remaining `skip()` calls after verification
+
+== Windows CI Debugging (In Progress)
+
+=== Current Status
+- Pushed fix to `rpkg/bootstrap.R` that captures configure.win output (commit 06be75c)
+- CI run 21034458320 in progress, Windows job pending
+
+=== What to Check
+- [ ] Look at Windows job logs from run 21034458320 for actual configure.win error
+- [ ] The error was previously hidden due to `stdout = ""` suppressing output
+
+=== Potential Issues to Investigate
+- The `-l` (login) flag in bash might change working directory
+- Path format when passing Windows paths to bash
+- Something in configure script itself failing
+
+=== To Revert Debugging Changes
+
+After finding the issue, revert the verbose debugging in `rpkg/bootstrap.R`:
+
+```bash
+git revert 06be75c
+```
+
+Or manually simplify back to minimal output:
+- In `run_cmd` function: change `stdout = TRUE, stderr = TRUE` back to `stdout = "", stderr = ""`
+- In Windows section: remove the extra `message()` calls and simplify `system2()` call
+
+== Deep Integration Plans (See plans/ directory)
+
+Three comprehensive plans for deeper R class system integration. Each has detailed implementation specs in `plans/`.
+
+=== vctrs Integration (`plans/vctrs-deep-integration-plan.md`)
+*Status: Runtime support complete, proc-macro derive not started*
+
+*Goal:* `#[derive(Vctrs)]` to auto-generate vctrs-compatible S3 classes from Rust types.
+
+*Current state:*
+- Runtime: `new_vctr()`, `new_rcrd()`, `new_list_of()` in `miniextendr-api/src/vctrs.rs`
+- Traits: `VctrsClass`, `IntoVctrs`, `VctrsRecord`, `VctrsListOf`
+
+*To implement:*
+- [ ] `#[derive(Vctrs)]` proc-macro
+- [ ] Auto-generate R methods: `format.<class>`, `vec_ptype_abbr.<class>`
+- [ ] Auto-generate `vec_proxy.<class>`, `vec_restore.<class>`
+- [ ] Auto-generate `vec_ptype2.<class>.<other>`, `vec_cast.<class>.<other>`
+- [ ] Record type support (`base = "record"`)
+- [ ] List-of type support (`base = "list"`)
+- [ ] Proxy equal/compare/order methods
+- [ ] Arithmetic/math method generation
+
+=== R6 Integration (`plans/r6-deep-integration-plan.md`)
+*Status: Basic support exists, advanced features not started*
+
+*Goal:* Generate full R6 classes from Rust with minimal annotations.
+
+*Current state:*
+- Basic R6Class generation from `#[miniextendr(r6)]`
+- Active bindings with `#[miniextendr(r6(active))]`
+- Public/private member support
+
+*To implement:*
+- [ ] Inheritance (`inherit = ParentType`)
+- [ ] `portable` / `non_portable` flags
+- [ ] `lock_objects` / `lock_class` flags
+- [ ] `cloneable` flag with deep clone hook
+- [ ] Finalizer as private member
+- [ ] Active binding getter+setter pairs
+- [ ] Field-level `#[r6(public|private|skip)]` annotations
+
+=== S7 Integration (`plans/s7-computed-properties-plan.md`)
+*Status: Basic support exists, comprehensive features not started*
+
+*Goal:* Full S7 class generation with property inference, generics, and validation.
+
+*Current state:*
+- Basic `new_class()` generation from `#[miniextendr(s7)]`
+- Property support via `#[externalptr(s7)]`
+
+*To implement (5 phases):*
+- [ ] Phase 1: Property inference + accessor wiring
+- [ ] Phase 2: Validation, defaults, required/frozen/deprecated patterns
+- [ ] Phase 3: Generics (multi-dispatch, no-dots, optional/required args)
+- [ ] Phase 4: `convert()` from Rust `From`/`TryFrom`, S3/S4 interop
+- [ ] Phase 5: Docs, tests, stabilization
+
+=== Recommended Starting Point
+
+*vctrs `#[derive(Vctrs)]`* is the best first target because:
+1. Runtime foundation already exists
+2. Self-contained proc-macro addition
+3. Doesn't require modifying existing class system code
+4. Clear test coverage via `rpkg/tests/testthat/test-vctrs-*.R`
