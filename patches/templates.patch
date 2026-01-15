@@ -597,7 +597,7 @@ diff -ruN -U2 a/monorepo/rpkg/cleanup.win b/monorepo/rpkg/cleanup.win
 +  exec sh ./cleanup "$@"
 +fi
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-01-13 14:46:32
+--- a/monorepo/rpkg/configure.ac	2026-01-15 14:01:43
 +++ b/monorepo/rpkg/configure.ac	2026-01-13 14:50:09
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -628,7 +628,44 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  MINIEXTENDR_FEATURES=""
  fi
  
-@@ -265,8 +264,10 @@
+@@ -132,18 +131,13 @@
+ 
+ dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
+-dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+-dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
+ root_miniextendr_repo_cargo="$root_miniextendr_repo"
+-abs_rpkg_src_cargo="$abs_rpkg_src"
+ case "$host_os" in
+   *msys*|*cygwin*|*mingw*)
+     if test "x$CYGPATH" != "xno"; then
+       root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+-      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+     fi
+     ;;
+ esac
+ AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
+-AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
+ 
+ dnl Report rustc version (required by CRAN for Rust packages)
+@@ -177,9 +171,4 @@
+ AC_SUBST([CARGO_TARGET_DIR])
+ 
+-dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
+-dnl These are used in .cargo/config.toml which Cargo reads directly
+-CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+-AC_SUBST([CARGO_TARGET_DIR_CARGO])
+-
+ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
+ : ${CARGO_PROFILE="release"}
+@@ -260,7 +249,4 @@
+ VENDOR_OUT="$abs_rpkg_src/vendor"
+ AC_SUBST([VENDOR_OUT])
+-dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
+-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+-AC_SUBST([VENDOR_OUT_CARGO])
+ 
+ dnl Force refresh if you want
+@@ -278,8 +264,10 @@
  dnl AC_CONFIG_COMMANDS step (after Cargo.toml generation and optional cargo vendor).
  
 -dnl Source replacement config: only use vendored sources on CRAN (offline builds)
@@ -643,14 +680,21 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  dnl Dev mode with miniextendr repo: use local path overrides for miniextendr crates
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@patch.crates-io@:>@
-@@ -279,5 +280,5 @@
+@@ -292,5 +280,5 @@
  )"
  ], [
 -  dnl CRAN/offline mode: use vendored sources only
 +  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@source.crates-io@:>@
-@@ -398,5 +399,79 @@
+@@ -298,5 +286,5 @@
+ 
+ @<:@source.vendored-sources@:>@
+-directory = "$VENDOR_OUT_CARGO"
++directory = "$VENDOR_OUT"
+ EOF
+ )"
+@@ -411,5 +399,79 @@
      STAMP="$VENDOR_OUT/.vendor.lock.cksum"
  
 +    dnl Determine if we need to run cargo vendor first
@@ -730,7 +774,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    dnl Now that vendor is populated, this should succeed
      if test ! -f "$LOCKFILE"; then
        echo "configure: generating Cargo.lock"
-@@ -410,59 +485,8 @@
+@@ -423,59 +485,8 @@
      dnl POSIX fingerprint: checksum+size of Cargo.lock contents
      _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
 -    _old="$(cat "$STAMP" 2>/dev/null || true)"
@@ -793,6 +837,36 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    echo "configure: vendor complete"
    fi
  ],
+@@ -665,5 +676,4 @@
+ 
+     dnl Rewrite cargo config to use vendored sources (both locations)
+-    dnl Use _CARGO paths for Windows-native path format
+     for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
+       mkdir -p "$(dirname "$_cfg")"
+@@ -675,8 +685,8 @@
+ 
+ @<:@source.vendored-sources@:>@
+-directory = "$VENDOR_OUT_CARGO"
++directory = "$VENDOR_OUT"
+ 
+ @<:@build@:>@
+-target-dir = "$CARGO_TARGET_DIR_CARGO"
++target-dir = "$CARGO_TARGET_DIR"
+ VENDORED_CONFIG_EOF
+       echo "configure: rewrote $_cfg for vendored sources" >&2
+@@ -690,10 +700,8 @@
+   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+ ],
+-[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
+- ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
++[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
+  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
+  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
+- CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO" \
+- CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
++ CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
+ 
+ dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
 diff -ruN -U2 a/monorepo/rpkg/configure.ucrt b/monorepo/rpkg/configure.ucrt
 --- a/monorepo/rpkg/configure.ucrt	1970-01-01 01:00:00
 +++ b/monorepo/rpkg/configure.ucrt	2026-01-08 13:01:40
@@ -1907,7 +1981,7 @@ diff -ruN -U2 a/rpkg/cleanup.win b/rpkg/cleanup.win
 +  exec sh ./cleanup "$@"
 +fi
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-01-13 14:46:32
+--- a/rpkg/configure.ac	2026-01-15 14:01:43
 +++ b/rpkg/configure.ac	2026-01-13 14:49:20
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -1938,7 +2012,44 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  MINIEXTENDR_FEATURES=""
  fi
  
-@@ -265,8 +264,9 @@
+@@ -132,18 +131,13 @@
+ 
+ dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
+-dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+-dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
+ root_miniextendr_repo_cargo="$root_miniextendr_repo"
+-abs_rpkg_src_cargo="$abs_rpkg_src"
+ case "$host_os" in
+   *msys*|*cygwin*|*mingw*)
+     if test "x$CYGPATH" != "xno"; then
+       root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+-      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+     fi
+     ;;
+ esac
+ AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
+-AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
+ 
+ dnl Report rustc version (required by CRAN for Rust packages)
+@@ -177,9 +171,4 @@
+ AC_SUBST([CARGO_TARGET_DIR])
+ 
+-dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
+-dnl These are used in .cargo/config.toml which Cargo reads directly
+-CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+-AC_SUBST([CARGO_TARGET_DIR_CARGO])
+-
+ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
+ : ${CARGO_PROFILE="release"}
+@@ -260,7 +249,4 @@
+ VENDOR_OUT="$abs_rpkg_src/vendor"
+ AC_SUBST([VENDOR_OUT])
+-dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
+-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+-AC_SUBST([VENDOR_OUT_CARGO])
+ 
+ dnl Force refresh if you want
+@@ -278,8 +264,9 @@
  dnl AC_CONFIG_COMMANDS step (after Cargo.toml generation and optional cargo vendor).
  
 -dnl Source replacement config: only use vendored sources on CRAN (offline builds)
@@ -1952,14 +2063,21 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  dnl Dev mode with miniextendr repo: use local path overrides for miniextendr crates
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@patch.crates-io@:>@
-@@ -279,5 +279,5 @@
+@@ -292,5 +279,5 @@
  )"
  ], [
 -  dnl CRAN/offline mode: use vendored sources only
 +  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources only
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@source.crates-io@:>@
-@@ -398,5 +398,79 @@
+@@ -298,5 +285,5 @@
+ 
+ @<:@source.vendored-sources@:>@
+-directory = "$VENDOR_OUT_CARGO"
++directory = "$VENDOR_OUT"
+ EOF
+ )"
+@@ -411,5 +398,79 @@
      STAMP="$VENDOR_OUT/.vendor.lock.cksum"
  
 +    dnl Determine if we need to run cargo vendor first
@@ -2039,7 +2157,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    dnl Now that vendor is populated, this should succeed
      if test ! -f "$LOCKFILE"; then
        echo "configure: generating Cargo.lock"
-@@ -410,59 +484,8 @@
+@@ -423,59 +484,8 @@
      dnl POSIX fingerprint: checksum+size of Cargo.lock contents
      _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
 -    _old="$(cat "$STAMP" 2>/dev/null || true)"
@@ -2102,6 +2220,36 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    echo "configure: vendor complete"
    fi
  ],
+@@ -665,5 +675,4 @@
+ 
+     dnl Rewrite cargo config to use vendored sources (both locations)
+-    dnl Use _CARGO paths for Windows-native path format
+     for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
+       mkdir -p "$(dirname "$_cfg")"
+@@ -675,8 +684,8 @@
+ 
+ @<:@source.vendored-sources@:>@
+-directory = "$VENDOR_OUT_CARGO"
++directory = "$VENDOR_OUT"
+ 
+ @<:@build@:>@
+-target-dir = "$CARGO_TARGET_DIR_CARGO"
++target-dir = "$CARGO_TARGET_DIR"
+ VENDORED_CONFIG_EOF
+       echo "configure: rewrote $_cfg for vendored sources" >&2
+@@ -690,10 +699,8 @@
+   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+ ],
+-[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
+- ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
++[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
+  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
+  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
+- CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO" \
+- CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
++ CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
+ 
+ dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
 diff -ruN -U2 a/rpkg/configure.ucrt b/rpkg/configure.ucrt
 --- a/rpkg/configure.ucrt	1970-01-01 01:00:00
 +++ b/rpkg/configure.ucrt	2026-01-08 13:01:40
