@@ -663,3 +663,99 @@ miniextendr_module! {
 - Implement `AltrepDataptr` trait
 - Add `dataptr` option to `impl_alt*_from_data!`
 - Ensure returned pointer is valid for the vector's lifetime
+
+---
+
+## Iterator-Backed ALTREP
+
+miniextendr provides two iterator-backed ALTREP variants:
+
+### `IterState` (Prefix Caching)
+
+The default iterator state caches elements as a contiguous prefix. When you access element `i`, all elements `0..=i` are generated and cached.
+
+```rust
+use miniextendr_api::altrep_data::IterIntData;
+
+// Create from an iterator
+let data = IterIntData::from_iter((0..1000).map(|x| x * 2), 1000);
+
+// Access element 100 - generates and caches elements 0-100
+let elem = data.elt(100);
+
+// Access element 50 - returns from cache (no computation)
+let elem = data.elt(50);
+```
+
+**Characteristics:**
+- Cache is contiguous `Vec<T>`
+- All elements up to max accessed index are cached
+- `as_slice()` available after full materialization
+- Memory usage: O(max_accessed_index)
+
+### `SparseIterState` (Skipping)
+
+For sparse access patterns, use the sparse variants that skip intermediate elements using `Iterator::nth()`:
+
+```rust
+use miniextendr_api::altrep_data::SparseIterIntData;
+
+// Create from an iterator
+let data = SparseIterIntData::from_iter((0..1_000_000).map(|x| x * 2), 1_000_000);
+
+// Access element 999_999 - skips directly there
+let elem = data.elt(999_999);  // Only this element is generated
+
+// Element 0 was skipped and is now inaccessible
+let first = data.elt(0);  // Returns NA_INTEGER
+```
+
+**Characteristics:**
+- Cache is sparse `BTreeMap<usize, T>`
+- Only accessed elements are cached
+- Skipped elements return NA/default forever
+- `as_slice()` always returns `None`
+- Memory usage: O(num_accessed)
+
+### Comparison
+
+| Feature | `IterState` | `SparseIterState` |
+|---------|-------------|-------------------|
+| Cache storage | Contiguous `Vec<T>` | Sparse `BTreeMap<usize, T>` |
+| Access pattern | Prefix (0..=i) cached | Only accessed indices cached |
+| Skipped elements | All cached | Gone forever (return NA) |
+| Memory for sparse access | O(max_index) | O(num_accessed) |
+| `as_slice()` support | Yes (after full materialization) | No |
+
+### Available Types
+
+**Prefix caching (`IterState`):**
+- `IterIntData<I>` - Integer vectors
+- `IterRealData<I>` - Real (f64) vectors
+- `IterLogicalData<I>` - Logical (bool) vectors
+- `IterRawData<I>` - Raw (u8) vectors
+- `IterStringData<I>` - Character vectors (forces full materialization)
+- `IterComplexData<I>` - Complex number vectors
+- `IterListData<I>` - List vectors (SEXP elements)
+- `IterIntCoerceData<I, T>` - Integer with coercion from other types
+- `IterRealCoerceData<I, T>` - Real with coercion from other types
+
+**Sparse/skipping (`SparseIterState`):**
+- `SparseIterIntData<I>` - Integer vectors
+- `SparseIterRealData<I>` - Real (f64) vectors
+- `SparseIterLogicalData<I>` - Logical (bool) vectors
+- `SparseIterRawData<I>` - Raw (u8) vectors
+- `SparseIterComplexData<I>` - Complex number vectors
+
+### When to Use Which
+
+**Use `IterState` (prefix caching) when:**
+- Access is mostly sequential (0, 1, 2, ...)
+- You'll eventually access most/all elements
+- You need `as_slice()` or full materialization later
+
+**Use `SparseIterState` (skipping) when:**
+- Access is truly sparse (e.g., sampling)
+- Vector is very large but you only need a few elements
+- You don't need skipped elements ever again
+- Memory is constrained

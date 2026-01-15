@@ -1,9 +1,15 @@
- - [x] Add a small assert in the macro to emit a clear compile error if the wrong base is used (e.g., using AltReal flags under base = "Int"). Implemented in `miniextendr-macros/src/lib.rs` via a base-specific trait bound check requiring the corresponding `Alt*` family trait for the selected `base`.
+#import "@preview/cheq:0.3.0": checklist
+#show: checklist
+
+#set page(numbering: "1 of 1", paper: "a5", margin: (top: 2em, left: 1em, right: 2em, bottom: 2.2em))
+
+
+- [x] Add a small assert in the macro to emit a clear compile error if the wrong base is used (e.g., using AltReal flags under base = "Int"). Implemented in `miniextendr-macros/src/lib.rs` via a base-specific trait bound check requiring the corresponding `Alt*` family trait for the selected `base`.
 - [x] Only use `static` and not `static mut` for symbols from R.
   - `R_Interactive` is a challenge here.
   - Fix: Changed `static mut` to `static` with raw pointer writes via helper functions.
     - miniextendr-engine: set_r_interactive(), set_r_signal_handlers()
-    - miniextendr-api: set_r_cstack_limit(), get_r_cstack_*() (nonapi feature-gated)
+    - miniextendr-api: set_r_cstack_limit(), `get_r_cstack_*()` (nonapi feature-gated)
 - [x] ensure all ffi'd function have the r_ffi macro that provide safe equivalents
 - [x] implement proper rayon feature...
   - Generic `with_r_vec<T>` with type inference
@@ -11,10 +17,19 @@
   - Clear documentation on parallel limitations
 - [x] make sure that `miniextendr-bench` uses the common `rpkg/src/target` directory...
   - Fix: Added miniextendr-bench to workspace, updated to edition 2024, fixed REngine::new() → build()
+- [x] Add storage-directed conversion helpers (value-based) that compose `TryCoerce` + `IntoR`
+  - Goal: user picks storage (integer/numeric/logical/raw/character), conversions happen automatically
+  - Implemented `IntoRAs<Target>` trait in `miniextendr-api/src/into_r_as.rs`
+  - No lossy escape hatch - users cast manually if they want lossy behavior
+  - Semantics documented in `docs/CONVERSION_SEMANTICS.md`
+- [x] Allow numeric → character conversions via stringification (including NaN/Inf)
+  - NaN → "NaN", Inf → "Inf", -Inf → "-Inf"
+  - Logical: TRUE → "TRUE", FALSE → "FALSE", NA → "NA"
+  - Applied to scalar + Vec/slice conversion paths via `IntoRAs<String>`
 
-== Codex Review Findings (2024) ==
+== Codex Review Findings (2024)
 
-=== CRITICAL: Safety Issues ===
+=== CRITICAL: Safety Issues
 - [x] `SexpExt::as_slice` returns `'static` slices from R memory (unsound)
   - `miniextendr-api/src/ffi.rs:208-220`
   - Fix: Made `as_slice` unsafe with comprehensive safety docs
@@ -27,7 +42,7 @@
   - Fix: Refactored to generic `with_r_vec<T>` using PROTECT/UNPROTECT.
     Added `RNativeType::dataptr_mut()` for type-safe data pointer access.
 
-=== HIGH: Thread Safety ===
+=== HIGH: Thread Safety
 - [x] `is_r_main_thread` defaults to true before init
   - `miniextendr-api/src/worker.rs:69-74`
   - Fix: Now returns false when uninitialized (safe default)
@@ -47,12 +62,12 @@
   - `miniextendr-api/src/worker.rs:332-356`
   - Fix: Added thread consistency check and documentation requirements
 
-=== MEDIUM: Memory/Leaks ===
+=== MEDIUM: Memory/Leaks
 - [x] R continuation tokens are preserved forever (leak)
   - `miniextendr-api/src/worker.rs:44-51`, `unwind_protect.rs:17-24`
   - Fix: Consolidated to single global token in unwind_protect.rs (no per-thread leak)
 
-=== API/Ergonomics ===
+=== API/Ergonomics
 - [x] `REngine::new()` and `shutdown()` shown in docs but not implemented
   - `miniextendr-engine/src/lib.rs:20-33`
   - Fix: Updated example to use `REngine::build()`, documented that shutdown is
@@ -87,7 +102,7 @@
   - `Vec<Option<T>>` for f64, i32, String → NA-aware vectors (done)
   - [x] Tuple-to-list for small tuples (done - 2-8 element tuples → VECSXP)
 
-=== Build/Packaging ===
+=== Build/Packaging
 - [x] `miniextendr-engine` build script doesn't validate `R RHOME` exit status
   - `miniextendr-engine/build.rs:17-25`
   - Fix: Added exit status check, empty output check, and directory existence check
@@ -117,7 +132,7 @@
   - `rpkg/bootstrap.R:8-27`
   - Fix: Added `run_cmd()` helper that checks exit status and stops on failure
 - [x] `rsync` and `sed` required but not validated in configure
-  - Fix: Added AC_PATH_PROG checks with error messages, use $RSYNC/$SED variables
+  - Fix: Added AC_PATH_PROG checks with error messages, use `$RSYNC/$SED` variables
 - [x] `cargo pkgid --offline` can fail on fresh dev machines
   - Fix: Made `--offline` conditional on NOT_CRAN in configure.ac
 - [x] `--all-features` always enabled (CRAN policy risk)
@@ -133,11 +148,11 @@
 - [x] `cleanup` script removes wrong config path
   - Fix: Changed `.cargo/config.toml` to `src/rust/.cargo`
 
-=== Testing ===
+=== Testing
 - [x] Rayon integration tests too narrow (missing `with_r_vec`)
   - Fix: Added comprehensive integration tests in `miniextendr-api/tests/rayon.rs`
     using miniextendr-engine for embedded R. Tests cover `with_r_vec` (basic, parallel
-    write, i32, empty, large), `RVec` parallel collect, and `IntoR` conversion.
+    write, i32, empty, large), `Vec` parallel collect, and `IntoR` conversion.
 - [ ] No automated regression test for registration bug
   - Note: User indicated this is likely a fluke, low priority.
 - [x] Macro compile-fail tests missing (no trybuild/UI tests)
@@ -150,7 +165,41 @@
   - Cleaned up: removed stale TODOs from justfile, conversions.rs, test-thread.R
   - Remaining TODOs are informational notes (lint enhancement idea, configure.ac upstream issue)
 
-=== Safety Issues (from project-review-2026-01-04) ===
+== Codex ALTREP Review (2026-01-12)
+
+=== Correctness/Safety
+- [x] Fix `Range<i32>`/`Range<i64>` `no_na()` to account for `i32::MIN` (NA sentinel)
+  - `Range<i32>::no_na()` now checks if range contains NA sentinel
+  - `Range<i64>::no_na()` now checks for NA sentinel and out-of-bounds values
+  - `sum()`/`min()`/`max()` now properly handle NA with `na_rm` parameter
+  - Fixed in `miniextendr-api/src/altrep_data/builtins.rs`
+- [x] Decide overflow/NA semantics for `LazyIntSeqData`
+  - `no_na()` now computes actual bounds to detect if NA sentinel is in range
+  - Checks for saturation at i32::MIN in first/last elements
+  - `sum()`/`min()`/`max()` return None when NAs present (let R compute)
+  - Fixed in `rpkg/src/rust/lib.rs`
+- [x] Confirm R ALTREP contract for NULL return values from installed methods
+  - Confirmed: NULL (R_NilValue) is valid return from sum/min/max methods
+  - NULL signals R to fall back to default computation (materialize vector)
+  - This is documented R ALTREP behavior - no changes needed
+
+=== Robustness
+- [x] Avoid panicking on iterator length mismatch in iterator-backed ALTREP
+  - Removed `assert_eq!` panic in `materialize_all()`
+  - Now handles mismatch gracefully: truncates if too many, returns NA for missing
+  - Prints warning to stderr when mismatch detected
+  - Fixed in `miniextendr-api/src/altrep_data/iter.rs`
+
+=== Testing
+- [x] Add tests for NA sentinel handling in `Range<i32>`
+  - Added tests in `rpkg/tests/testthat/test-altrep-builtins.R`
+  - Tests normal ranges, negative ranges, and NA detection
+- [x] Add tests for out-of-range `Range<i64>` behavior
+  - Added test for Range<i64> normal case
+- [x] Add tests for `LazyIntSeqData` overflow edge cases (large ranges, negative step)
+  - Added tests for normal sequences, descending sequences, and near-max-int sequences
+
+=== Safety Issues (from project-review-2026-01-04)
 - [x] DOCUMENT: `charsxp_to_str` assumes UTF-8 encoding
   - `miniextendr-api/src/from_r.rs:30`
   - Added "Encoding Assumption" section documenting UTF-8 requirement
@@ -164,9 +213,9 @@
   - Added "NA and Empty Name Handling" warning with example of data loss
   - Recommends `Vec<(String, V)>` for full preservation
 
-== Reviews Findings (December 2024) ==
+== Reviews Findings (December 2024)
 
-=== COMPLETED (this session) ===
+=== COMPLETED (this session)
 - [x] Fix autoconf awk quoting bug - `$1`/`$2` eaten by m4 in configure.ac
   - `minirextendr/inst/templates/rpkg/configure.ac`
   - `minirextendr/inst/templates/monorepo/rpkg/configure.ac`
@@ -197,7 +246,7 @@
 - [x] Align CARGO_LOCKED_FLAG handling across all configure.ac files
   - Templates and cross-package tests now derive from NOT_CRAN consistently
 
-=== Documentation (from reviews 01, 02, 08) ===
+=== Documentation (from reviews 01, 02, 08)
 - [x] Add SAFETY.md documenting FFI/thread safety invariants for Send wrapper types
   - `reviews/01_miniextendr-api.md` section "Invariant documentation"
   - Location: Top-level SAFETY.md
@@ -212,30 +261,119 @@
   - Content: Initialization order, function explanations, API timing table,
     minimal example, embedding R section, troubleshooting
 
-=== Reference Study Tasks (from background/) ===
+== GC Protect Review Findings (2026-01-12)
+See `reviews/gc_protect_review.md` for full context.
 
-==== R Internals & Extensions ====
-- [ ] Study `background/R Internals.html` for SEXP type system
-  - Document missing SEXP types not yet exposed in miniextendr-api/src/ffi.rs
-  - Verify PROTECT/UNPROTECT patterns match R's expectations
-  - Check for undocumented API behaviors
-- [ ] Study `background/Writing R Extensions.html` for .Call interface
-  - Verify R wrapper generation matches documented conventions
-  - Check registration patterns against recommended practices
-  - Verify NA handling matches R's documented behavior
-- [ ] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
-  - Compare miniextendr ALTREP impl against documented patterns
-  - Identify any missing ALTREP methods worth implementing
-  - Document which ALTREP classes are supported vs. planned
+=== HIGH: Soundness Issues
+- [x] `ReprotectSlot::set` returns stale `Root<'a>` - use-after-unprotect risk
+  - `miniextendr-api/src/gc_protect.rs:629`
+  - Fix: Changed `set()` to return raw `SEXP` instead of `Root<'a>`
+  - Added doc comment warning that SEXP is only protected until next `set()` call
+- [x] `ReprotectSlot::Deref` violates `Cell` aliasing rules - potential UB
+  - `miniextendr-api/src/gc_protect.rs:663`
+  - Fix: Removed `Deref` impl entirely, added comment explaining why
+  - Users should use `get()` which returns SEXP by value
 
-==== R Source Reference ====
-- [ ] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings
-  - Location: `src/include/Rinternals.h` - verify SEXP type definitions match
-  - Location: `src/include/R_ext/Altrep.h` - verify ALTREP bindings are complete
-  - Location: `src/main/memory.c` - study GC behavior for protect patterns
-  - Location: `src/main/altclasses.c` - study ALTREP dispatch for reference
+=== MEDIUM: Panic Safety
+- [x] `tls::with_protect_scope` not panic-safe - dangling TLS pointer
+  - `miniextendr-api/src/gc_protect.rs:741`
+  - Fix: Added `TlsScopeGuard` struct that pops TLS stack in `Drop` impl
+  - Guard ensures cleanup even during panic unwinding
 
-==== Class System References ====
+=== MEDIUM: Benchmark Issues
+- [x] Unprotected CHARSXP in manual string benchmarks
+  - `strvec_manual_construction`: Added explicit "intentionally unsafe" warning
+  - `build_named_list_realistic`: Fixed by protecting CHARSXP before use
+
+=== Testing Gaps
+- [ ] Add tests for TLS panic cleanup behavior
+- [ ] Add tests for `ReprotectSlot::set` invalidation semantics
+
+== ExternalPtr Sidecar R Wrappers (Planned Feature)
+See `plans/externalptr_sidecar_r_wrappers.md` for full design.
+
+=== Overview
+Expose `#[r_data]` sidecar fields from `ExternalPtr` structs to R as getter/setter functions.
+
+=== Implementation Tasks
+- [x] Add `RSidecar` and `RData` marker types (ZST) to miniextendr-api
+  - Added to `miniextendr-api/src/externalptr.rs` with full documentation
+- [x] Update `#[derive(ExternalPtr)]` to emit:
+  - `RDATA_CALL_DEFS_<TYPE>`: `&[R_CallMethodDef]` for sidecar accessors
+  - `R_WRAPPERS_RDATA_<TYPE>`: `&str` R wrapper code
+  - Parses `#[r_data]` attributes on struct fields
+  - Generates getter/setter C functions for pub RData fields
+- [x] Update `miniextendr_module!` to auto-include sidecar accessors when type registered
+  - Added `rdata_call_defs_const_ident()` and `rdata_r_wrappers_const_ident()` to MiniextendrModuleImpl
+  - Sidecar call defs included in CALL_ENTRIES array
+  - Sidecar R wrappers included in R_WRAPPERS_IMPLS array
+- [x] Generate R functions: `<type>_get_<field>(x)` and `<type>_set_<field>(x, value)`
+  - Getter returns SEXP from prot slot
+  - Setter updates prot slot and returns invisible(x)
+- [x] Add compile error for generic types with `pub` `#[r_data]` fields
+  - Error: "generic types with pub #[r_data] fields are not supported; .Call entrypoints cannot be generic"
+- [ ] The `rdname` is not default to file-name for the sidecar impls.
+
+=== Tests
+- [ ] UI tests: multiple selector fields error, non-marker type error, generic type error
+- [ ] Runtime tests: getter returns stored SEXP, setter updates and returns invisible(x)
+
+=== Reference Study Tasks (from background/)
+
+==== R Internals & Extensions
+- [x] Study `background/R Internals.html` for SEXP type system (2026-01-12)
+  - Compared against R 4.5.2 `src/include/Rinternals.h`
+  - *FINDING: SEXPTYPE enum is complete* - all 22 types match exactly:
+    - NILSXP(0) through LGLSXP(10), skip 11-12, INTSXP(13) through S4SXP(25)
+    - Plus NEWSXP(30), FREESXP(31), FUNSXP(99)
+    - OBJSXP/S4SXP aliasing (both value 25) correctly handled
+  - *PROTECT patterns verified *:
+    - `gc_protect` module: RAII wrappers for Rf_protect/Rf_unprotect
+    - `preserve` module: R_PreserveObject/R_ReleaseObject for cross-.Call objects
+    - `ExternalPtr`: R-owned Rust data with finalizers
+    - ProtectScope, OwnedProtect, ReprotectSlot follow R's LIFO stack semantics
+- [x] Study `background/Writing R Extensions.html` for .Call interface (2026-01-12)
+  - *Registration patterns verified correct*:
+    - NAMESPACE: `useDynLib(miniextendr, .registration = TRUE)` ✓
+    - entrypoint.c: `R_useDynamicSymbols(dll, FALSE)` ✓
+    - entrypoint.c: `R_forceSymbols(dll, TRUE)` ✓
+    - `R_init_*_miniextendr(dll)` calls `R_registerRoutines()` internally ✓
+  - R wrapper generation: roxygen2 generates exports from `@export` tags
+  - NA handling: documented in `altrep_traits.rs` (NA_INTEGER, NA_REAL, NA_LOGICAL)
+- [x] Study ALTREP documentation (`background/ALTREP_ Alternative Representations...html`)
+  - Compared miniextendr ALTREP impl against R 4.5.2 `src/include/R_ext/Altrep.h`
+  - *FINDING: All R ALTREP methods are implemented* in miniextendr:
+    - Base: Length (required), Serialize/Unserialize, Duplicate, Coerce, Inspect
+    - Vector: Dataptr, Dataptr_or_null, Extract_subset
+    - Integer/Real: Elt, Get_region, Is_sorted, No_NA, Sum, Min, Max
+    - Logical: Elt, Get_region, Is_sorted, No_NA, Sum (no Min/Max per R spec)
+    - Raw/Complex: Elt, Get_region
+    - String: Elt (required), Set_elt, Is_sorted, No_NA
+    - List: Elt (required), Set_elt
+  - FFI bindings in `ffi/altrep.rs` match R's ALTREP API exactly
+  - `HAS_*` const gating correctly prevents unused methods from being installed
+
+==== R Source Reference
+- [x] Use `background/r-source-tags-R-4-5-2/` to verify FFI bindings (2026-01-12)
+  - [x] Location: `src/include/Rinternals.h` - SEXP types verified complete
+  - [x] Location: `src/include/R_ext/Altrep.h` - ALTREP bindings verified complete
+  - [x] Location: `src/main/memory.c` - GC behavior studied
+    - PROTECT stack: `R_PPStack` array with `R_PPStackTop` index
+    - PROTECT() pushes to `R_PPStack[R_PPStackTop++]`, UNPROTECT(n) decrements by n
+    - R_PreserveObject/R_ReleaseObject use `R_PreciousList` (linked list or hash table)
+    - R_PreserveObject: adds via `CONS(object, R_PreciousList)` (O(1))
+    - R_ReleaseObject: removes via `DeleteFromList` (O(n) traversal)
+    - miniextendr's `gc_protect.rs` correctly models these patterns
+  - [x] Location: `src/main/altclasses.c` - ALTREP dispatch studied
+    - Concrete implementations: compact_intseq, compact_realseq, deferred_string, mmap, wrapper
+    - Pattern: define methods (Length, Elt, Get_region, etc.) then register with `R_set_alt*_method()`
+    - Coerce method returns NULL to signal "use default coercion" (matches miniextendr)
+    - Duplicate method creates materialized copy
+    - Is_sorted returns: SORTED_DECR_NA_1ST, SORTED_INCR, UNKNOWN_SORTEDNESS, etc.
+    - No_NA returns TRUE/FALSE for guaranteed NA-free status
+    - miniextendr's altrep_traits.rs matches these patterns correctly
+
+==== Class System References
 - [ ] Study S7 patterns (`background/S7-main/`) for class generation
   - How does S7 handle method dispatch?
   - How does S7 generate constructors?
@@ -250,7 +388,7 @@
   - Recycling rules for binary operations
   - Patterns for Vec<T> / Option<T> conversions in miniextendr-api
 
-==== ALTREP Implementation References ====
+==== ALTREP Implementation References
 - [ ] Study `background/Rpkg-mutable-master/` for mutable ALTREP patterns
   - How does it handle write barriers?
   - How does it handle copy-on-modify semantics?
@@ -261,9 +399,9 @@
   - How does it implement subset views without copying?
   - How does it handle window lifecycle?
 
-==== Documentation & Tooling References ====
+==== Documentation & Tooling References
 - [ ] Study roxygen2 (`background/roxygen2-main/`) for R wrapper generation
-  - How does roxygen2 parse @param, @return, @export tags?
+  - How does roxygen2 parse `@param`, `@return`, `@export` tags?
   - Patterns for improving miniextendr-macros/src/roxygen.rs
   - Reference for R documentation generation
 - [ ] Study mirai (`background/mirai-main/`) for async patterns
@@ -271,7 +409,7 @@
   - Patterns for worker thread communication
   - Reference for potential async miniextendr features
 
-=== Testing (from reviews 02, 06, 08) ===
+=== Testing (from reviews 02, 06, 08)
 - [x] Add snapshot/golden tests for R wrapper generation
   - Location: miniextendr-macros/tests/snapshots.rs
   - Uses: expect-test crate for inline snapshot testing
@@ -286,7 +424,7 @@
   - `.github/workflows/ci.yml` - `cross-package-tests` job
   - Builds/tests producer.pkg and consumer.pkg on Linux
 
-=== Build/Infrastructure (from reviews 03, 04, 07) ===
+=== Build/Infrastructure (from reviews 03, 04, 07)
 - [x] Add REngineBuilder::r_home(PathBuf) to bypass R RHOME shell-out
   - Location: miniextendr-engine/src/lib.rs
   - Already implemented: `r_home()` method on REngineBuilder
@@ -301,7 +439,7 @@
   - Purpose: Better cross-platform command execution with proper quoting/output capture
   - Note: processx is common in R tooling ecosystem
 
-=== Optional Enhancements (lower priority) ===
+=== Optional Enhancements (lower priority)
 - [x] Add more lint rules to miniextendr-lint
   - Already implemented in miniextendr-lint/src/lib.rs:
     - "exported item exists but not listed in miniextendr_module!" (lines 308-316)
@@ -318,7 +456,7 @@
   - Implemented: `minirextendr/tests/testthat/test-status-coverage.R`
   - Tests: `has_miniextendr()`, `miniextendr_status()`, `miniextendr_check()` with temp projects
 
-==== minirextendr Dependency Rationalization ====
+==== minirextendr Dependency Rationalization
 Source: `reviews/dependency-idiomaticity.md`
 
 Strong fit (replace manual code):
@@ -345,7 +483,7 @@ Optional:
 - [ ] Add `clipr` for copying "next steps" commands to clipboard
 - [ ] Add `lifecycle` for deprecation warnings and API evolution
 
-==== minirextendr usethis Replacements ====
+==== minirextendr usethis Replacements
 Source: `reviews/usethis-replacements.md`
 
 - [x] Keep hand-built DESCRIPTION in `create.R:133` (not using usethis::use_description())
@@ -362,7 +500,7 @@ Source: `reviews/usethis-replacements.md`
   - Reason: `usethis::use_directory()` only works for project-relative paths
   - `ensure_dir()` handles arbitrary paths (vendor.R, target_path)
 - [x] Keep custom package doc template in `use-r.R:10` (not using usethis::use_package_doc())
-  - Reason: Template includes @useDynLib directive; using usethis + patching adds complexity
+  - Reason: Template includes `@useDynLib` directive; using usethis + patching adds complexity
   - Current approach: Single template with all miniextendr-specific content
 
 checking available recipes (`just --list`) - ALL EXIST
@@ -371,18 +509,18 @@ checking available recipes (`just --list`) - ALL EXIST
 - [x] doc, doc-check, expand, fmt, fmt-check
 - [x] r-cmd-build, r-cmd-check, r-cmd-install, test, test-r-build, tree
 - [x] vendor-sync-check, lint-sync-check (new recipes added)
-- [x] minirextendr-* recipes (build, check, dev, document, install, load, rcmdcheck, test)
-- [x] cross-* recipes for cross-package tests
-- [x] templates-* recipes for template management
+- [x] `minirextendr-*` recipes (build, check, dev, document, install, load, rcmdcheck, test)
+- [x] `cross-*` recipes for cross-package tests
+- [x] `templates-*` recipes for template management
 
-=== Planned: Optional indicatif progress ===
+=== Planned: Optional indicatif progress
 - [x] Add `indicatif` feature to `miniextendr-api` (opt-in, non-default) with `indicatif -> nonapi` dependency
 - [x] Implement `RTerm` (`indicatif::TermLike`) that writes to R console via `ptr_R_WriteConsoleEx` and no-ops off main thread
 - [x] Provide ANSI cursor/clear defaults in `RTerm` (cursor moves, clear line, write_line)
 - [x] Implemented `term_like_stdout()`, `term_like_stderr()` and `into_draw_target()` helpers
 - [x] Updated NONAPI.md with `ptr_R_WriteConsoleEx` under feature-gated non-API functions
 
-=== Planned: Feature shortlist from Rust ecosystem ===
+=== Planned: Feature shortlist from Rust ecosystem
 Source: `reviews/feature-plans-uuid-time-regex-indexmap.md`, `reviews/feature-shortlist.md`
 
 Common scaffolding for all features:
@@ -392,7 +530,7 @@ Common scaffolding for all features:
 4. Add doc block per feature in `lib.rs` with example snippets
 5. Add feature-gated tests under `miniextendr-api/tests/`
 
-==== uuid feature ====
+==== uuid feature
 - [x] Add `uuid = { version = "1", optional = true, features = ["v4"] }` to Cargo.toml
 - [x] Create `uuid_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `Uuid`: parse from R `character(1)`
@@ -403,7 +541,7 @@ Common scaffolding for all features:
 - [x] Map parse failures to `SexpError::InvalidValue`
 - [x] Add feature-gated tests (miniextendr-api/tests/uuid.rs)
 
-==== time feature ====
+==== time feature
 - [x] Add `time = { version = "0.3", optional = true, features = ["formatting", "parsing", "macros"] }` to Cargo.toml
 - [x] Create `time_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `OffsetDateTime`: R `POSIXct` (numeric + tzone attr) → Rust
@@ -414,7 +552,7 @@ Common scaffolding for all features:
 - [x] Add Vec and Option variants for both OffsetDateTime and Date
 - [x] Add feature-gated tests (10 tests)
 
-==== regex feature ====
+==== regex feature
 - [x] Add `regex = { version = "1", optional = true }` to Cargo.toml
 - [x] Create `regex_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `Regex`: compile from R `character(1)`
@@ -423,7 +561,7 @@ Common scaffolding for all features:
 - [x] Documented `ExternalPtr<Regex>` pattern for loop reuse in module docs
 - [x] Add feature-gated tests (5 tests)
 
-==== indexmap feature ====
+==== indexmap feature
 - [x] Add `indexmap = { version = "2", optional = true }` to Cargo.toml
 - [x] Create `indexmap_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `IndexMap<String, T>`: R named list → Rust
@@ -432,10 +570,10 @@ Common scaffolding for all features:
 - [x] Auto-name unnamed entries: "V1", "V2", ... when converting R list without names
 - [x] Add feature-gated tests (5 tests)
 
-=== Planned: External-trait export strategy ===
+=== Planned: External-trait export strategy
 Source: `reviews/trait-export-and-numeric-crates.md`
 
-**Key constraint:** Cannot directly export external (non-owned) traits to R.
+\*Key constraint:\* Cannot directly export external (non-owned) traits to R.
 
 Solution: Adapter trait pattern
 - [x] Document adapter-trait pattern for exporting non-owned traits to R
@@ -449,7 +587,7 @@ Solution: Adapter trait pattern
 - [x] Document newtype wrapper as alternative for total control and explicit conversions
   - Location: ADAPTER_TRAITS.md - Alternative: Newtype Wrapper section
 
-=== Planned: Numeric crate feature candidates ===
+=== Planned: Numeric crate feature candidates
 Source: `reviews/trait-export-and-numeric-crates.md`
 
 Common scaffolding (same as feature shortlist):
@@ -458,7 +596,7 @@ Common scaffolding (same as feature shortlist):
 3. Gate module with `#[cfg(feature = "...")]`
 4. Add doc block + tests
 
-==== num-bigint feature ====
+==== num-bigint feature
 - [x] Add `num-bigint = { version = "0.4", optional = true }` to Cargo.toml
 - [x] Create `num_bigint_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `BigInt`: parse from R `character`
@@ -467,7 +605,7 @@ Common scaffolding (same as feature shortlist):
 - [x] Implement `IntoR` for `BigUint`: convert to R `character` (lossless)
 - [x] Add feature-gated tests (miniextendr-api/tests/num_bigint.rs)
 
-==== rust_decimal feature ====
+==== rust_decimal feature
 - [x] Add `rust_decimal = { version = "1", optional = true }` to Cargo.toml
 - [x] Create `rust_decimal_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `Decimal`: parse from R `character` (lossless)
@@ -479,7 +617,7 @@ Common scaffolding (same as feature shortlist):
 - [x] Add feature-gated tests (miniextendr-api/tests/rust_decimal.rs)
   - 7 tests including numeric and integer fast paths
 
-==== ordered-float feature ====
+==== ordered-float feature
 - [x] Add `ordered-float = { version = "4", optional = true }` to Cargo.toml
 - [x] Create `ordered_float_impl.rs` in miniextendr-api/src/
 - [x] Implement `TryFromSexp` for `OrderedFloat<f64>`: R `numeric` → Rust
@@ -489,23 +627,23 @@ Common scaffolding (same as feature shortlist):
 - [x] Implement vector conversions: `Vec<OrderedFloat<T>>`, `Vec<Option<OrderedFloat<T>>>`
 - [x] Add feature-gated tests (miniextendr-api/tests/ordered_float.rs)
 
-==== num-traits (internal only) ====
+==== num-traits (internal only)
 - [ ] Optional helper for generic implementations
 - [ ] NOT a public R-facing feature (internal use only)
 - [ ] Consider for implementing generic numeric helpers
 
-==== rug (LGPL + system GMP) ====
+==== rug (LGPL + system GMP)
 - [ ] Keep out of defaults due to LGPL license and system GMP dependency
 - [ ] Document as advanced/opt-in if ever added
 - [ ] Include clear license notes if implemented
 
-=== Planned: Additional Adapter Trait Candidates ===
+=== Planned: Additional Adapter Trait Candidates
 Source: ADAPTER_TRAITS.md pattern - applicable to many external traits
 
 The adapter trait pattern (local trait + blanket impl) enables exporting external traits to R.
 Each candidate below can follow the pattern documented in ADAPTER_TRAITS.md.
 
-==== std library traits ====
+==== std library traits
 
 Iterator adapter:
 - [x] Create `RIterator` adapter trait for `Iterator`
@@ -533,7 +671,7 @@ Debug adapter:
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
 
-==== Comparison trait adapters ====
+==== Comparison trait adapters
 
 - [x] Create `RPartialOrd` adapter trait for `PartialOrd`
   - `r_partial_cmp(&self, other: &Self) -> Option<i32>` returning -1/0/1/None
@@ -545,7 +683,7 @@ Debug adapter:
   - `r_hash(&self) -> i64` using DefaultHasher
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
 
-==== serde trait adapters (with serde feature) ====
+==== serde trait adapters (with serde feature)
 
 - [x] Create `RSerialize` adapter trait for `serde::Serialize`
   - `r_to_json(&self) -> Result<String, String>` - compact JSON
@@ -563,7 +701,7 @@ Debug adapter:
   - Direct SEXP serialization without JSON intermediate
   - Similar to jsonlite's R ↔ JSON model
 
-==== num-traits adapters (with num-traits feature) ====
+==== num-traits adapters (with num-traits feature)
 
 - [x] Create `RNum` adapter trait for common numeric operations
   - Blanket impl for `T: num_traits::Num + Clone`
@@ -588,7 +726,7 @@ Debug adapter:
   - Implemented in `miniextendr-api/src/num_traits_impl.rs`
   - Re-exported from crate root
 
-==== Error trait adapters ====
+==== Error trait adapters
 
 - [x] Create `RError` adapter trait for `std::error::Error`
   - `error_message(&self) -> String` from Error::to_string()
@@ -597,7 +735,7 @@ Debug adapter:
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
 
-==== IO trait adapters (with connections feature) ====
+==== IO trait adapters (with connections feature)
 
 NOTE: IO adapters are provided by the connection module (`miniextendr-api/src/connection.rs`):
 - `IoRead<T>` for `T: std::io::Read`
@@ -608,7 +746,7 @@ NOTE: IO adapters are provided by the connection module (`miniextendr-api/src/co
 
 Standalone adapter traits not needed - use connection framework instead.
 
-==== Collection trait adapters ====
+==== Collection trait adapters
 
 - [x] Create `RExtend` adapter trait for `Extend`
   - `r_extend_from_vec(&self, items: Vec<T>)` - extend with items from vector
@@ -639,7 +777,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Re-exported from crate root
   - Added 2 unit tests
 
-==== rand trait adapters (with rand feature) ====
+==== rand trait adapters (with rand feature)
 
 - [x] Create `RRngOps` adapter trait for exposing custom RNGs to R
   - `r_random_f64()` - Random float in [0, 1)
@@ -667,7 +805,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Re-exported from crate root
   - Added 7 unit tests
 
-==== Documentation tasks ====
+==== Documentation tasks
 
 - [x] Add adapter trait examples to ADAPTER_TRAITS.md for each major category
   - Added: Display/FromStr, Debug, Comparison (Ord/PartialOrd), Hash
@@ -687,7 +825,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Updated: num_bigint_impl.rs (2 traits), ndarray_impl.rs (3 traits), nalgebra_impl.rs (2 traits)
   - Each trait example now shows the required `miniextendr_module! { impl Trait for Type; }` block
 
-==== rayon trait adapters (with rayon feature) ====
+==== rayon trait adapters (with rayon feature)
 
 - [x] Create `RParallelIterator` adapter trait for parallel iteration
   - Associated type `Item: Send + Sync + Copy` for element type
@@ -715,7 +853,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Re-exported from crate root
   - Added 4 unit tests
 
-==== ndarray trait adapters (with ndarray feature) ====
+==== ndarray trait adapters (with ndarray feature)
 
 - [x] Create `RNdArrayOps` adapter trait for common `ndarray` operations
   - `len()`, `is_empty()`, `ndim()`, `shape()` - array metadata
@@ -765,7 +903,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - rpkg test types: NdVec, NdMatrix, NdArrayDyn, NdIntVec - DONE
   - R test suite: rpkg/tests/testthat/test-ndarray.R - DONE
 
-==== nalgebra trait adapters (with nalgebra feature) ====
+==== nalgebra trait adapters (with nalgebra feature)
 
 - [x] Create `RMatrixOps` adapter trait for nalgebra DMatrix operations
   - `nrows()`, `ncols()`, `shape()`, `is_square()`, `is_empty()`
@@ -785,7 +923,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/nalgebra_impl.rs`
   - Re-exported from crate root
 
-==== regex trait adapters (with regex feature) ====
+==== regex trait adapters (with regex feature)
 
 - [x] Create `RRegexOps` adapter trait for `regex::Regex`
   - `replace_first(&self, text, replacement) -> String`
@@ -806,7 +944,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/regex_impl.rs`
   - Re-exported from crate root
 
-==== time trait adapters (with time feature) ====
+==== time trait adapters (with time feature)
 
 - [x] Create `RDuration` adapter trait for `time::Duration`
   - `as_seconds_f64(&self) -> f64` - total seconds as float
@@ -824,7 +962,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Re-exported from crate root
   - Use case: Custom datetime formatting in R
 
-==== bytes crate adapters (with bytes feature) ====
+==== bytes crate adapters (with bytes feature)
 
 - [x] Add `bytes = { version = "1", optional = true }` feature
 - [x] Create `RBuf` adapter trait for `bytes::Buf`
@@ -860,9 +998,9 @@ Standalone adapter traits not needed - use connection framework instead.
 - [x] Re-exports `Bytes`, `BytesMut`, `Buf`, `BufMut` from bytes crate
 - [x] Added 14 unit tests covering read/write operations
 
-==== crossbeam channel adapters (potential new feature) - POSTPONED ====
+==== crossbeam channel adapters (potential new feature) - POSTPONED
 
-**POSTPONED:** Do these last - complex concurrency patterns require careful design.
+*POSTPONED:* Do these last - complex concurrency patterns require careful design.
 
 - [ ] Add `crossbeam-channel = { version = "0.5", optional = true }` feature (if useful)
 - [ ] Create `RSender` adapter trait for channel senders
@@ -876,9 +1014,9 @@ Standalone adapter traits not needed - use connection framework instead.
   - `r_is_empty(&self) -> bool` - check if channel empty
   - Use case: Receive from background threads in R
 
-==== Future/async adapters (long-term, if async support added) - POSTPONED ====
+==== Future/async adapters (long-term, if async support added) - POSTPONED
 
-**POSTPONED:** Do these last - requires async runtime integration and careful design around R's single-threaded nature.
+*POSTPONED:* Do these last - requires async runtime integration and careful design around R's single-threaded nature.
 
 - [ ] Create `RFuture` adapter trait for `std::future::Future`
   - `r_poll(&mut self) -> Option<T>` - check if ready (simplified poll)
@@ -886,7 +1024,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Use case: Basic async/await integration with R
   - Note: Requires careful design around R's single-threaded nature
 
-==== Clone/Copy/Default adapters ====
+==== Clone/Copy/Default adapters
 
 - [x] Create `RClone` adapter trait for `Clone`
   - `r_clone(&self) -> Self` - explicit deep copy for R
@@ -902,7 +1040,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/adapter_traits.rs`
   - Re-exported from crate root
 
-==== num-bigint trait adapters (with num-bigint feature) ====
+==== num-bigint trait adapters (with num-bigint feature)
 
 - [x] Create `RBigIntOps` adapter trait for BigInt arithmetic
   - `as_string()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
@@ -929,7 +1067,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/num_bigint_impl.rs`
   - Re-exported from crate root
 
-==== rust_decimal trait adapters (with rust_decimal feature) ====
+==== rust_decimal trait adapters (with rust_decimal feature)
 
 - [x] Create `RDecimalOps` adapter trait for Decimal operations
   - `as_string()`, `is_zero()`, `is_positive()`, `is_negative()`, `sign()`
@@ -940,7 +1078,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/rust_decimal_impl.rs`
   - Re-exported from crate root
 
-==== uuid trait adapters (with uuid feature) ====
+==== uuid trait adapters (with uuid feature)
 
 - [x] Create `RUuidOps` adapter trait for UUID operations
   - `version(&self) -> i32` - UUID version number
@@ -958,7 +1096,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/uuid_impl.rs`
   - Re-exported from crate root
 
-==== ordered-float trait adapters (with ordered-float feature) ====
+==== ordered-float trait adapters (with ordered-float feature)
 
 - [x] Create `ROrderedFloatOps` adapter trait for NaN-safe operations
   - `into_inner()`, `is_nan()`, `is_infinite()`, `is_finite()`
@@ -969,7 +1107,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/ordered_float_impl.rs`
   - Re-exported from crate root
 
-==== indexmap trait adapters (with indexmap feature) ====
+==== indexmap trait adapters (with indexmap feature)
 
 - [x] Create `RIndexMapOps<T>` adapter trait for IndexMap operations
   - `len()`, `is_empty()`, `keys()`, `contains_key()`
@@ -980,9 +1118,9 @@ Standalone adapter traits not needed - use connection framework instead.
   - Implemented in `miniextendr-api/src/indexmap_impl.rs`
   - Re-exported from crate root
 
-== New Optional Features (from reviews/ plans 2026-01-04) ==
+== New Optional Features (from reviews/ plans 2026-01-04)
 
-==== aho-corasick feature ====
+==== aho-corasick feature
 
 - [x] Add `aho-corasick` optional feature for multi-pattern search
   - `aho-corasick = { version = "1.1", optional = true }`
@@ -994,7 +1132,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Pattern IDs 1-based in R, byte offsets documented
   - Plan: `reviews/aho-corasick-plan.md`
 
-==== bitflags feature ====
+==== bitflags feature
 
 - [x] Add `bitflags` optional feature for flag ↔ integer conversions
   - `bitflags = { version = "2", optional = true }`
@@ -1009,7 +1147,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Bit width policy: require values fit in `i32`
   - Plan: `reviews/bitflags-plan.md`
 
-==== bitvec feature ====
+==== bitvec feature
 
 - [x] Add `bitvec` optional feature for bit vectors ↔ logical vectors
   - `bitvec = { version = "1", optional = true }`
@@ -1021,7 +1159,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Helper functions: `bitvec_from_bools()`, `bitvec_to_bools()`, `bitvec_count_ones/zeros()`
   - Plan: `reviews/bitvec-plan.md`
 
-==== borsh feature ====
+==== borsh feature
 
 - [ ] Add `borsh` optional feature for binary serialization
   - `borsh = { version = "1", optional = true }`
@@ -1034,7 +1172,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Optional `mx_version` attribute for versioning
   - Plan: `reviews/borsh-rkyv-plan.md`
 
-==== rkyv feature ====
+==== rkyv feature
 
 - [ ] Add `rkyv` optional feature for zero-copy serialization
   - `rkyv = { version = "0.7", optional = true }`
@@ -1046,7 +1184,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Always use `rkyv::check_archived_root` to avoid UB
   - Plan: `reviews/borsh-rkyv-plan.md`
 
-==== num-complex feature ====
+==== num-complex feature
 
 - [x] Add `num-complex` optional feature for complex number support
   - `num-complex = { version = "0.4", optional = true }`
@@ -1061,7 +1199,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - `RComplexOps` adapter trait (re, im, norm, norm_sqr, arg, is_finite, is_infinite, is_nan, is_normal, conj, inv)
   - Plan: `reviews/num-complex-plan.md`
 
-==== serde-json Value bridge ====
+==== serde-json Value bridge
 
 - [x] Add `serde-json` feature for direct Value ↔ R list conversion
   - Feature already exists; enhance with Value ↔ SEXP bridge
@@ -1079,7 +1217,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Optional helpers: `json_from_sexp_strict()`, `json_from_sexp_permissive()`
   - Plan: `reviews/serde-json-plan.md`
 
-==== sha2 feature ====
+==== sha2 feature
 
 - [x] Add `sha2` optional feature for hashing helpers
   - `sha2 = { version = "0.10", optional = true }`
@@ -1093,7 +1231,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Re-exports `Sha256`, `Sha512`, `Digest` for advanced usage
   - Plan: `reviews/sha2-plan.md`
 
-==== tabled feature ====
+==== tabled feature
 
 - [x] Add `tabled` optional feature for table formatting
   - `tabled = { version = "0.20", optional = true }`
@@ -1105,7 +1243,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - `impl IntoR for tabled::Table` → STRSXP
   - Plan: `reviews/tabled-plan.md`
 
-==== toml feature ====
+==== toml feature
 
 - [x] Add `toml` optional feature for TOML value conversions
   - `toml = { version = "0.8", optional = true }`
@@ -1117,7 +1255,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - `RTomlOps` adapter trait for value inspection
   - Plan: `reviews/toml-plan.md`
 
-==== url feature ====
+==== url feature
 
 - [x] Add `url` optional feature for URL parsing/validation
   - `url = { version = "2", optional = true }`
@@ -1131,7 +1269,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Strict validation: invalid URLs error
   - Plan: `reviews/url-plan.md`
 
-==== raw_conversions feature (bytemuck-based) ====
+==== raw_conversions feature (bytemuck-based)
 
 - [x] Add `raw_conversions` optional feature for POD ↔ raw vector
   - `bytemuck = { version = "1", optional = true, features = ["derive"] }`
@@ -1147,7 +1285,7 @@ Standalone adapter traits not needed - use connection framework instead.
   - Tagged format: header with magic/version/elem_size/elem_count
   - Plan: `reviews/raw-conversions-plan.md`
 
-==== enum-as-factors (proc-macro) ====
+==== enum-as-factors (proc-macro)
 
 - [x] Add `#[derive(RFactor)]` for Rust enums ↔ R factors
   - Added derive macro in `miniextendr-macros/src/factor_derive.rs`
@@ -1171,7 +1309,7 @@ Standalone adapter traits not needed - use connection framework instead.
     - Lex-order indexing: `outer_idx * n_inner + inner_idx + 1`
     - Compile-time const assertion validates specified levels match inner type's LEVELS
   - Slice access types:
-    - `Factor<'a>` - immutable view into factor integer array (Deref<Target=[i32]>)
+    - `Factor<'a>` - immutable view into factor integer array (`Deref<Target=[i32]>`)
     - `FactorMut<'a>` - mutable view with validation on set
   - Performance: Symbol-based CHARSXP caching with OnceLock (~6-8x speedup)
     - `build_levels_sexp_cached()` caches levels STRSXP in static OnceLock
@@ -1181,9 +1319,9 @@ Standalone adapter traits not needed - use connection framework instead.
   - Tests: `rpkg/src/rust/factor_tests.rs`
   - Plan: `reviews/enum-as-factors-plan.md`
 
-== Test Infrastructure (from reviews/ plans) ==
+== Test Infrastructure (from reviews/ plans)
 
-==== rpkg adapter trait tests ====
+==== rpkg adapter trait tests
 
 - [x] Add feature pass-throughs in `rpkg/src/rust/Cargo.toml.in`
   - Pass-through for all optional features to miniextendr-api
@@ -1205,14 +1343,16 @@ Standalone adapter traits not needed - use connection framework instead.
   - IntSet: RFromIter, RToVec
   - IterableVec/IterableVecIter: RMakeIter
 - [x] Add R tests in `rpkg/tests/testthat/test-adapter-traits.R`
-- [ ] Add per-feature adapter demos (cfg-gated):
+- [x] Add per-feature adapter demos (cfg-gated):
   - ordered-float, num-bigint, rust_decimal, uuid, regex, indexmap, time
-- [ ] Add per-feature R tests using `skip_if_missing_feature()`
+  - Rust: `rpkg/src/rust/*_adapter_tests.rs`
+  - R tests: `rpkg/tests/testthat/test-feature-adapters.R`
+- [x] Add per-feature R tests using `skip_if_missing_feature()`
 - Plan: `reviews/rpkg-adapter-tests-plan.md`
 
-== API Cleanup ==
+== API Cleanup
 
-==== Remove `r_` prefix from adapter trait methods ====
+==== Remove `r_` prefix from adapter trait methods
 
 - [x] Remove `r_` prefix from adapter trait method names
   - Changed: `r_clone()` → `clone()`, `r_to_vec()` → `to_vec()`, `r_next()` → `next()`, etc.
@@ -1221,17 +1361,18 @@ Standalone adapter traits not needed - use connection framework instead.
     ambiguity requires `Clone::clone(&x)` syntax when calling std trait in scope
   - Remaining: Update feature `*_impl.rs` files, rpkg wrappers, and documentation
 
-== Coerce Integration (from coerce-coverage-review-2026-01-04) ==
+== Coerce Integration (from coerce-coverage-review-2026-01-04)
 
-==== Feature module Coerce/TryCoerce integration ====
+==== Feature module Coerce/TryCoerce integration
 
-- [ ] Add `Coerce`/`TryCoerce` impls for feature types
+- [x] Add `Coerce`/`TryCoerce` impls for feature types
   - `impl Coerce<OrderedFloat<f64>> for f64`
   - `impl TryCoerce<OrderedFloat<f32>> for f64` (precision-loss check)
   - `impl Coerce<Decimal> for i32`
   - `impl TryCoerce<Decimal> for f64` (precision loss/error)
   - `impl Coerce<BigInt> for i32`
   - `impl TryCoerce<BigInt> for i64` (if needed)
+  - Implemented in: `ordered_float_impl.rs`, `rust_decimal_impl.rs`, `num_bigint_impl.rs`
 - [ ] Use `Coerced<T, R>` in feature `TryFromSexp` impls
   - Standardize error messages and NA handling
   - Replace manual parsing in `ordered_float_impl`, `rust_decimal_impl`, `num_bigint_impl`
@@ -1239,19 +1380,50 @@ Standalone adapter traits not needed - use connection framework instead.
   - Clarify integer inputs for float-centric types
   - Document truncation/rounding behavior
   - Note lossy vs strict conversions
-- [ ] Add TryCoerce tests for feature types
-  - `f64 -> OrderedFloat<f32>` errors on precision loss
-  - `i32 -> Decimal` succeeds; `f64 -> Decimal` errors on NaN/Inf
-  - `i32 -> BigInt` succeeds; `f64 -> BigInt` errors on fractional/NaN
+- [x] Add TryCoerce tests for feature types
+  - `f64 -> OrderedFloat<f32>` errors on precision loss (miniextendr-api/tests/ordered_float.rs)
+  - `i32 -> Decimal` succeeds; `f64 -> Decimal` errors on NaN/Inf (miniextendr-api/tests/rust_decimal.rs)
+  - `i32 -> BigInt` succeeds; `f64 -> BigInt` errors on fractional/NaN (miniextendr-api/tests/num_bigint.rs)
 
-== minirextendr Enhancements ==
+== minirextendr Enhancements
 
-==== Feature Detection Generator ====
+==== Feature Detection Generator
 
-- [ ] Add `rust_enabled_features()` generator to minirextendr
+- [x] Add `rust_enabled_features()` generator to minirextendr
   - Create function that generates `rpkg_enabled_features()` equivalent for user packages
   - Function should scan Cargo.toml features and generate matching Rust code
   - Allow re-running to sync with Cargo.toml feature changes
-  - Template: `inst/templates/rpkg/src/rust/feature_detection.rs`
   - R wrapper: `minirextendr::update_feature_detection()`
   - Should generate both Rust code and R helper (`has_feature()`, `skip_if_missing_feature()`)
+  - Implemented in `minirextendr/R/use-feature.R`: `use_feature_detection()`, `update_feature_detection()`
+
+
+== minirextendr
+
+- [x] Add a `cargo_new` command. The manifest-path argument isn't defined for `cargo new `. Instead, you'll have to navigate to the `src/rust` directory to execute a `cargo new` that is workspace aware, and so on.
+  - Implemented in `minirextendr/R/cargo.R`: `cargo_new()`, `find_workspace_root()`, `add_crate_to_workspace()`
+
+== ALTREP Serialization Gaps - FIXED
+
+=== Problem (RESOLVED)
+
+The `AltrepSerialize` trait was implemented on data types (Vec, Box, Range) but the bridge to R's `Serialized_state` ALTREP method was not connected.
+
+=== Solution Implemented
+
+1. Added `serialize` option to macros: `impl_altlogical_from_data!`, `impl_altraw_from_data!`, `impl_altstring_from_data!`
+2. Added `AltrepSerialize` implementations for Range<i32>, Range<i64>, Range<f64>
+3. Updated all builtin type macro invocations to use the `serialize` option
+
+Types now correctly serialize via `Serialized_state` method:
+- [x] Vec<i32>, Vec<f64>, Vec<String>, Vec<Rcomplex> - dataptr + serialize
+- [x] Box<[i32]>, Box<[f64]>, Box<[String]>, Box<[Rcomplex]> - dataptr + serialize
+- [x] Vec<bool>, Vec<u8> - serialize (no DATAPTR needed)
+- [x] Box<[bool]>, Box<[u8]> - serialize (no DATAPTR needed)
+- [x] Range<i32>, Range<i64>, Range<f64> - serialize (lazy ranges)
+
+=== Test Coverage
+
+Tests exist in `rpkg/tests/testthat/test-altrep-serialization.R`:
+- All tests should pass now that serialization bridge is implemented
+- Remove any remaining `skip()` calls after verification

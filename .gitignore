@@ -24,3 +24,6 @@ dev_lib/
 
 # Reference documentation (not part of project)
 background/
+
+# devtools::check output directory
+rpkg-check-output/

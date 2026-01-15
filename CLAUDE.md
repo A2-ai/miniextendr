@@ -69,7 +69,16 @@ just devtools-document  # Regenerate R wrappers
 # Full R CMD check workflow
 just configure          # 1. Configure (generates vendor/, Makevars, etc.)
 just r-cmd-build        # 2. Build tarball (R CMD build)
-just r-cmd-check        # 3. Check (R CMD check)
+just r-cmd-check        # 3. Check the built tarball (R CMD check)
+# IMPORTANT: Always check the built tarball, not the source directory.
+# R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.
+
+# devtools::check (preserves output for debugging)
+just devtools-check     # Runs devtools::check with output saved to rpkg-check-output/
+# When checks fail, explore rpkg-check-output/miniextendr.Rcheck/ for logs:
+#   - 00check.log: Main check log
+#   - 00install.out: Installation/compilation output
+#   - tests/: Test output files
 
 # Cross-package tests
 just cross-install      # Build + install producer.pkg and consumer.pkg
@@ -334,11 +343,21 @@ just configure          # Refresh if drift detected
 
 ### Template Sync
 
-Templates in `minirextendr/inst/templates/` should match rpkg sources:
+Templates in `minirextendr/inst/templates/` are **derived from rpkg** (the master source).
+
+**Workflow for changes:**
+1. First ensure changes work in `rpkg/` (the master)
+2. Apply appropriate changes to templates in `minirextendr/inst/templates/`
+3. Run `just templates-approve` to lock in the delta
+
+**Key points:**
+- **Source direction**: `rpkg/` → templates (not the other way around)
+- **Approved delta**: Templates may have extra logic for standalone projects (e.g., checking if miniextendr-api exists before using path overrides, running cargo vendor for transitive deps)
+- **Patch file**: `patches/templates.patch` records the approved differences between rpkg and templates
 
 ```bash
-just templates-check    # Verify templates haven't drifted
-just templates-approve  # Accept current delta as approved
+just templates-check    # Verify templates haven't drifted unexpectedly
+just templates-approve  # Accept current delta as approved (after intentional changes)
 ```
 
 ### Lint Sync

@@ -272,7 +272,7 @@ AS_IF([test "$NOT_CRAN" = "true"], [
         AS_MKDIR_P(["$VENDOR_OUT"])
         $CARGO_CMD vendor \
           --sync "$MANIFEST" \
-          "$VENDOR_OUT" || AC_MSG_ERROR([`cargo vendor` failed])
+          "$VENDOR_OUT" > /dev/null || AC_MSG_ERROR([`cargo vendor` failed])
         echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
       ], [
         AC_MSG_NOTICE([skipping cargo vendor (Cargo.lock unchanged)])

@@ -171,7 +171,7 @@ R is still **not thread‑safe**; you must serialize all R API access.
 Rayon helpers allow parallel Rust computation with R‑safe boundaries:
 
 - `with_r_vec<T>` pre‑allocates and fills R vectors (zero‑copy).
-- `RVec<T>` collects in parallel (`FromParallelIterator`) and converts via `IntoR`.
+- `Vec<T>` collects in parallel (Rayon `FromParallelIterator`) and converts via `IntoR`.
 - `reduce::*` provides parallel sum/min/max/mean helpers that return R scalars.
 - `perf::*` exposes Rayon pool info (thread count, thread index).
 - `rayon_bridge::rayon` re‑exports Rayon to avoid version mismatches.

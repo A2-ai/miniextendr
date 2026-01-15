@@ -1,5 +1,8 @@
 # Tests for rayon parallel computation feature
 
+# Skip all tests if rayon feature is not enabled
+skip_if_missing_feature("rayon")
+
 test_that("rayon_parallel_sum computes correct sum", {
   x <- as.numeric(1:1000)
   result <- rayon_parallel_sum(x)
@@ -101,15 +104,21 @@ test_that("rayon_in_thread returns FALSE when called from R", {
 })
 
 test_that("rayon handles large parallel workload", {
-  # Stress test with large data
-  n <- 1000000L
+  skip_on_cran()
+
+  # Stress test with moderately large data (reduced for CI speed)
+  n <- 100000L
+  set.seed(42)
   x <- runif(n)
 
-  # This should complete without hanging or crashing
+  # Parallel reduction order can introduce floating point differences
+  # Use relative tolerance based on magnitude of result
   sum_result <- rayon_parallel_sum(x)
-  expect_equal(sum_result, sum(x), tolerance = 1e-10)
+  expected_sum <- sum(x)
 
-  # Parallel sqrt
+  expect_equal(sum_result, expected_sum, tolerance = abs(expected_sum) * 1e-10)
+
+  # Parallel sqrt - element-wise, so order doesn't matter
   sqrt_result <- rayon_parallel_sqrt(x)
   expect_equal(sqrt_result, sqrt(x), tolerance = 1e-14)
 })

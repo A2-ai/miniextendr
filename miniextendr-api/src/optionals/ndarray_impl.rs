@@ -1250,7 +1250,7 @@ impl<'a, T: RNativeType + Clone> IntoR for ArrayViewD<'a, T> {
         let data: Vec<T> = {
             let mut v = Vec::with_capacity(total_len);
             fortran_order_iter(&shape, |idx| {
-                v.push(self[IxDyn(&idx)].clone());
+                v.push(self[IxDyn(&idx)]);
             });
             v
         };
