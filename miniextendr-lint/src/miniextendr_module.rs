@@ -1,3 +1,8 @@
+// The lint crate only uses parsing, not codegen helpers. Allow dead code since this
+// file is kept in sync with miniextendr-macros/src/miniextendr_module.rs which uses
+// the additional methods and fields for code generation.
+#![allow(dead_code)]
+
 //! Module declaration parsing for `miniextendr_module!`.
 //!
 //! This module handles parsing the `miniextendr_module! { ... }` macro body,
@@ -129,7 +134,6 @@ impl syn::parse::Parse for MiniextendrModuleFunction {
 /// The struct must implement `miniextendr_api::altrep_registration::RegisterAltrep`.
 pub(crate) struct MiniextendrModuleStruct {
     _struct_token: syn::Token![struct],
-    #[allow(dead_code)]
     /// Name of the ALTREP struct to register.
     pub ident: syn::Ident,
 }
@@ -375,7 +379,6 @@ impl MiniextendrModuleImpl {
     }
 
     /// Returns the label if present.
-    #[allow(dead_code)]
     pub(crate) fn label(&self) -> Option<&str> {
         self.label.as_deref()
     }
@@ -452,7 +455,7 @@ enum MiniextendrModuleItem {
     Struct(MiniextendrModuleStruct),
     Func(MiniextendrModuleFunction),
     Impl(MiniextendrModuleImpl),
-    TraitImpl(MiniextendrModuleTraitImpl),
+    TraitImpl(Box<MiniextendrModuleTraitImpl>),
 }
 
 impl syn::parse::Parse for MiniextendrModuleItem {
@@ -477,7 +480,7 @@ impl syn::parse::Parse for MiniextendrModuleItem {
             let _: syn::Path = fork2.parse()?;
             if fork2.peek(syn::Token![for]) {
                 // This is `impl Trait for Type;`
-                Ok(Self::TraitImpl(input.parse()?))
+                Ok(Self::TraitImpl(Box::new(input.parse()?)))
             } else {
                 // This is `impl Type;`
                 Ok(Self::Impl(input.parse()?))
@@ -517,7 +520,7 @@ impl syn::parse::Parse for MiniextendrModule {
                 MiniextendrModuleItem::Struct(s) => structs.push(s),
                 MiniextendrModuleItem::Func(f) => funs.push(f),
                 MiniextendrModuleItem::Impl(i) => impls.push(i),
-                MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(ti),
+                MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(*ti),
             }
         }
 

@@ -2,42 +2,19 @@
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-/// @title Default Parameter Tests
-/// @name rpkg_default_tests
-/// @description Functions demonstrating default parameter support.
-/// @examples
-/// greet()
-/// greet("Claude")
-/// add_with_defaults(1L)
-/// add_with_defaults(1L, 2L, 3L)
-/// with_flag()
-/// @aliases greet greet_hidden add_with_defaults with_flag
-/// @param name Name to greet (default: "World").
-/// @param x First integer to add.
-/// @param y Second integer to add (default: 0).
-/// @param z Third integer to add (default: 1).
-/// @param flag Boolean flag (default: FALSE).
-/// @return A greeting string or computed value.
-///
-/// Greets a person by name.
+/// @noRd
 #[miniextendr]
 pub fn greet(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }
 
-/// @rdname rpkg_default_tests
-///
-/// Internal greeting function (non-public).
-/// @export
+/// @noRd
 #[miniextendr]
 fn greet_hidden(#[miniextendr(default = "\"World\"")] name: String) -> String {
     format!("Hello, {}!", name)
 }
 
-/// @rdname rpkg_default_tests
-///
-/// Adds three integers with defaults for y and z.
-/// @export
+/// @noRd
 #[miniextendr]
 pub fn add_with_defaults(
     x: i32,
@@ -47,10 +24,7 @@ pub fn add_with_defaults(
     x + y + z
 }
 
-/// @rdname rpkg_default_tests
-///
-/// Returns the flag value.
-/// @export
+/// @noRd
 #[miniextendr]
 pub fn with_flag(#[miniextendr(default = "FALSE")] flag: bool) -> bool {
     flag

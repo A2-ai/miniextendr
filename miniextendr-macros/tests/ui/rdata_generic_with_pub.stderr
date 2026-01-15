@@ -1,0 +1,5 @@
+error: generic types with pub #[r_data] fields are not supported; .Call entrypoints cannot be generic
+  --> tests/ui/rdata_generic_with_pub.rs:10:11
+   |
+10 | struct Bad<T> {
+   |           ^^^

@@ -157,10 +157,9 @@ macro_rules! __impl_altrep_base_with_serialize {
                     let ext_ptr = ExternalPtr::new_unchecked(data);
                     let data1 = ext_ptr.as_sexp();
                     // Protect across the allocation in R_new_altrep.
-                    unsafe { Rf_protect_unchecked(data1) };
-                    let out =
-                        unsafe { R_new_altrep(R_altrep_class_t { ptr: class }, data1, R_NilValue) };
-                    unsafe { Rf_unprotect_unchecked(1) };
+                    Rf_protect_unchecked(data1);
+                    let out = R_new_altrep(R_altrep_class_t { ptr: class }, data1, R_NilValue);
+                    Rf_unprotect_unchecked(1);
                     out
                 }
             }
@@ -460,6 +459,22 @@ macro_rules! __impl_altreal_methods {
 }
 
 /// Generate ALTREP trait implementations for a type that implements AltLogicalData.
+///
+/// ## Variants
+///
+/// ```ignore
+/// // Basic (no dataptr, no serialization):
+/// impl_altlogical_from_data!(MyType);
+///
+/// // With dataptr (type must implement AltrepDataptr<i32>):
+/// impl_altlogical_from_data!(MyType, dataptr);
+///
+/// // With serialization (type must implement AltrepSerialize):
+/// impl_altlogical_from_data!(MyType, serialize);
+///
+/// // With both dataptr and serialization:
+/// impl_altlogical_from_data!(MyType, dataptr, serialize);
+/// ```
 #[macro_export]
 macro_rules! impl_altlogical_from_data {
     ($ty:ty) => {
@@ -473,6 +488,21 @@ macro_rules! impl_altlogical_from_data {
         $crate::__impl_altvec_dataptr!($ty, i32);
         $crate::__impl_altlogical_methods!($ty);
         $crate::impl_inferbase_logical!($ty);
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altlogical_methods!($ty);
+        $crate::impl_inferbase_logical!($ty);
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_dataptr!($ty, i32);
+        $crate::__impl_altlogical_methods!($ty);
+        $crate::impl_inferbase_logical!($ty);
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altlogical_from_data!($ty, dataptr, serialize);
     };
 }
 
@@ -552,22 +582,58 @@ macro_rules! __impl_altlogical_methods {
 }
 
 /// Generate ALTREP trait implementations for a type that implements AltRawData.
+///
+/// ## Variants
+///
+/// ```ignore
+/// // Basic (no dataptr, no serialization):
+/// impl_altraw_from_data!(MyType);
+///
+/// // With dataptr (type must implement AltrepDataptr<u8>):
+/// impl_altraw_from_data!(MyType, dataptr);
+///
+/// // With serialization (type must implement AltrepSerialize):
+/// impl_altraw_from_data!(MyType, serialize);
+///
+/// // With both dataptr and serialization:
+/// impl_altraw_from_data!(MyType, dataptr, serialize);
+/// ```
 #[macro_export]
 macro_rules! impl_altraw_from_data {
     ($ty:ty) => {
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        impl $crate::altrep_traits::Altrep for $ty {
-            fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-        }
-
+        $crate::__impl_altrep_base!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altraw_methods!($ty);
+        $crate::impl_inferbase_raw!($ty);
+    };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_dataptr!($ty, u8);
+        $crate::__impl_altraw_methods!($ty);
+        $crate::impl_inferbase_raw!($ty);
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altraw_methods!($ty);
+        $crate::impl_inferbase_raw!($ty);
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_dataptr!($ty, u8);
+        $crate::__impl_altraw_methods!($ty);
+        $crate::impl_inferbase_raw!($ty);
+    };
+    ($ty:ty, serialize, dataptr) => {
+        $crate::impl_altraw_from_data!($ty, dataptr, serialize);
+    };
+}
 
+/// Internal macro for AltRaw method implementations.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altraw_methods {
+    ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltRaw for $ty {
             const HAS_ELT: bool = true;
@@ -599,28 +665,41 @@ macro_rules! impl_altraw_from_data {
                     .unwrap_or(0)
             }
         }
-
-        $crate::impl_inferbase_raw!($ty);
     };
 }
 
 /// Generate ALTREP trait implementations for a type that implements AltStringData.
+///
+/// ## Variants
+///
+/// ```ignore
+/// // Basic (no serialization):
+/// impl_altstring_from_data!(MyType);
+///
+/// // With serialization (type must implement AltrepSerialize):
+/// impl_altstring_from_data!(MyType, serialize);
+/// ```
 #[macro_export]
 macro_rules! impl_altstring_from_data {
     ($ty:ty) => {
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
-        impl $crate::altrep_traits::Altrep for $ty {
-            fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
-                unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| {
-                        <$ty as $crate::altrep_data::AltrepLen>::len(&*d) as $crate::ffi::R_xlen_t
-                    })
-                    .unwrap_or(0)
-            }
-        }
-
+        $crate::__impl_altrep_base!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altstring_methods!($ty);
+        $crate::impl_inferbase_string!($ty);
+    };
+    ($ty:ty, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altstring_methods!($ty);
+        $crate::impl_inferbase_string!($ty);
+    };
+}
 
+/// Internal macro for AltString method implementations.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altstring_methods {
+    ($ty:ty) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::AltString for $ty {
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::SEXP {
@@ -660,8 +739,6 @@ macro_rules! impl_altstring_from_data {
                     .unwrap_or(0)
             }
         }
-
-        $crate::impl_inferbase_string!($ty);
     };
 }
 
@@ -794,27 +871,30 @@ macro_rules! impl_altcomplex_from_data {
 // =============================================================================
 // These implementations are provided here to satisfy the orphan rules.
 // User crates can use these types directly with delegate_data.
+//
+// All types that implement AltrepSerialize get the `serialize` option enabled,
+// which allows proper saveRDS/readRDS round-trips.
 
 // Integer types - Vec<i32> supports dataptr, ranges don't (computed on demand)
-impl_altinteger_from_data!(Vec<i32>, dataptr);
-impl_altinteger_from_data!(std::ops::Range<i32>);
-impl_altinteger_from_data!(std::ops::Range<i64>);
+impl_altinteger_from_data!(Vec<i32>, dataptr, serialize);
+impl_altinteger_from_data!(std::ops::Range<i32>, serialize);
+impl_altinteger_from_data!(std::ops::Range<i64>, serialize);
 
 // Real types - Vec<f64> supports dataptr, ranges don't
-impl_altreal_from_data!(Vec<f64>, dataptr);
-impl_altreal_from_data!(std::ops::Range<f64>);
+impl_altreal_from_data!(Vec<f64>, dataptr, serialize);
+impl_altreal_from_data!(std::ops::Range<f64>, serialize);
 
 // Logical types
-impl_altlogical_from_data!(Vec<bool>);
+impl_altlogical_from_data!(Vec<bool>, serialize);
 
 // Raw types
-impl_altraw_from_data!(Vec<u8>);
+impl_altraw_from_data!(Vec<u8>, serialize);
 
 // String types
-impl_altstring_from_data!(Vec<String>);
+impl_altstring_from_data!(Vec<String>, serialize);
 
 // Complex types - Vec<Rcomplex> supports dataptr
-impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr);
+impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
 
 // =============================================================================
 // Box<[T]> implementations
@@ -823,12 +903,12 @@ impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr);
 // Unlike Vec<T>, it has no capacity field - just ptr + len (2 words).
 // Useful for fixed-size heap allocations.
 
-impl_altinteger_from_data!(Box<[i32]>, dataptr);
-impl_altreal_from_data!(Box<[f64]>, dataptr);
-impl_altlogical_from_data!(Box<[bool]>);
-impl_altraw_from_data!(Box<[u8]>);
-impl_altstring_from_data!(Box<[String]>);
-impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr);
+impl_altinteger_from_data!(Box<[i32]>, dataptr, serialize);
+impl_altreal_from_data!(Box<[f64]>, dataptr, serialize);
+impl_altlogical_from_data!(Box<[bool]>, serialize);
+impl_altraw_from_data!(Box<[u8]>, serialize);
+impl_altstring_from_data!(Box<[String]>, serialize);
+impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
 
 // =============================================================================
 // Array implementations (const generics - can't use macros)

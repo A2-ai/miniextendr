@@ -30,7 +30,7 @@ configure-producer:
     NOT_CRAN=true ./configure
 
 # Build and install producer.pkg
-build-producer:
+build-producer: configure-producer
     cd producer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
 
 # Configure consumer.pkg
@@ -39,8 +39,8 @@ configure-consumer:
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     NOT_CRAN=true ./configure
 
-# Build and install consumer.pkg
-build-consumer: configure-consumer
+# Build and install consumer.pkg (must be built after producer)
+build-consumer: build-producer configure-consumer
     cd consumer.pkg && NOT_CRAN=true Rscript -e 'devtools::install(".", upgrade="never", quick=TRUE)'
 
 # Test producer.pkg

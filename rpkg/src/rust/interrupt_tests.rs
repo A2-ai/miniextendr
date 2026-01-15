@@ -4,6 +4,7 @@ use miniextendr_api::ffi::{R_NilValue, SEXP};
 use miniextendr_api::unwind_protect::with_r_unwind_protect;
 use miniextendr_api::{miniextendr, miniextendr_module};
 
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -18,6 +19,7 @@ pub extern "C-unwind" fn C_check_interupt_after() -> SEXP {
     }
 }
 
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

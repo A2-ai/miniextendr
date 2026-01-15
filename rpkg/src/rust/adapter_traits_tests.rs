@@ -52,17 +52,7 @@ impl FromStr for Point {
     }
 }
 
-/// Adapter Traits Test - Point
-///
-/// @name Point
-/// @title Point struct for testing adapter traits
-/// @description A 2D point that demonstrates adapter trait functionality.
-/// @return An ExternalPtr to a Point.
-/// @examples
-/// p <- Point$new(3L, 4L)
-/// p$debug_str()
-/// p$as_r_string()
-/// p$hash()
+/// @noRd
 #[miniextendr]
 impl Point {
     fn new(x: i32, y: i32) -> Self {
@@ -150,16 +140,7 @@ impl Point {
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd, ExternalPtr)]
 pub struct MyFloat(f64);
 
-/// Adapter Traits Test - MyFloat
-///
-/// @name MyFloat
-/// @title Float wrapper for testing RPartialOrd
-/// @description A float wrapper that demonstrates partial ordering (NaN handling).
-/// @return An ExternalPtr to a MyFloat.
-/// @examples
-/// f1 <- MyFloat$new(1.0)
-/// f2 <- MyFloat$new(2.0)
-/// f1$partial_cmp_to(f2)
+/// @noRd
 #[miniextendr]
 impl MyFloat {
     fn new(value: f64) -> Self {
@@ -240,16 +221,7 @@ impl std::error::Error for OuterError {
 #[derive(ExternalPtr)]
 pub struct ChainedError(OuterError);
 
-/// Adapter Traits Test - ChainedError
-///
-/// @name ChainedError
-/// @title Error wrapper for testing RError
-/// @description An error type that demonstrates error chain walking.
-/// @return An ExternalPtr to a ChainedError.
-/// @examples
-/// err <- ChainedError$new("outer", "inner")
-/// err$error_message()
-/// err$error_chain()
+/// @noRd
 #[miniextendr]
 impl ChainedError {
     fn new(outer_msg: &str, inner_msg: &str) -> Self {
@@ -303,16 +275,7 @@ impl RIterator for IntVecIter {
     }
 }
 
-/// Adapter Traits Test - IntVecIter
-///
-/// @name IntVecIter
-/// @title Iterator wrapper for testing RIterator
-/// @description An iterator over integers demonstrating RIterator trait.
-/// @return An ExternalPtr to an IntVecIter.
-/// @examples
-/// it <- IntVecIter$new(c(1L, 2L, 3L))
-/// it$next_item()
-/// it$size_hint()
+/// @noRd
 #[miniextendr]
 impl IntVecIter {
     fn new(data: Vec<i32>) -> Self {
@@ -365,16 +328,7 @@ impl RExtend<i32> for GrowableVec {
     }
 }
 
-/// Adapter Traits Test - GrowableVec
-///
-/// @name GrowableVec
-/// @title Growable vector for testing RExtend
-/// @description A vector that can be extended from R, demonstrating RExtend trait.
-/// @return An ExternalPtr to a GrowableVec.
-/// @examples
-/// v <- GrowableVec$new()
-/// v$extend(c(1L, 2L, 3L))
-/// v$len()
+/// @noRd
 #[miniextendr]
 impl GrowableVec {
     fn new() -> Self {
@@ -416,16 +370,7 @@ use std::collections::HashSet;
 #[derive(ExternalPtr)]
 pub struct IntSet(HashSet<i32>);
 
-/// Adapter Traits Test - IntSet
-///
-/// @name IntSet
-/// @title Integer set for testing RFromIter and RToVec
-/// @description A hash set that demonstrates collection construction and extraction.
-/// @return An ExternalPtr to an IntSet.
-/// @examples
-/// s <- IntSet$from_vec(c(1L, 2L, 2L, 3L))
-/// s$len()
-/// s$to_vec()
+/// @noRd
 #[miniextendr]
 impl IntSet {
     // RFromIter via wrapper (HashSet implements FromIterator)
@@ -482,16 +427,7 @@ impl RMakeIter<i32, IterableVecIter> for IterableVec {
     }
 }
 
-/// Adapter Traits Test - IterableVec
-///
-/// @name IterableVec
-/// @title Iterable vector for testing RMakeIter
-/// @description A vector that can create independent iterators.
-/// @return An ExternalPtr to an IterableVec.
-/// @examples
-/// v <- IterableVec$new(c(1L, 2L, 3L))
-/// v$len()
-/// v$to_vec()
+/// @noRd
 #[miniextendr]
 impl IterableVec {
     fn new(data: Vec<i32>) -> Self {

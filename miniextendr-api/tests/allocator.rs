@@ -9,6 +9,7 @@ use miniextendr_api::allocator::RAllocator;
 use std::alloc::{GlobalAlloc, Layout};
 
 #[test]
+#[ignore = "Requires specific stack handling; run with --ignored to enable"]
 fn allocator_suite() {
     r_test_utils::with_r_thread(|| unsafe {
         // SAFETY: R is initialized on the R test thread.

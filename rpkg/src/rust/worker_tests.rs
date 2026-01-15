@@ -8,7 +8,7 @@ use crate::externalptr_tests::{Counter, Point};
 use crate::panic_tests::add;
 use crate::unwind_protect_tests::SimpleDropMsg;
 
-/// Test that drops run on the worker thread during normal completion.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -21,8 +21,7 @@ pub extern "C-unwind" fn C_worker_drop_on_success() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Test that drops run when Rust code panics on the worker thread.
-/// Panic is caught by catch_unwind, converted to R error after unwind.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -49,7 +48,7 @@ pub extern "C-unwind" fn C_worker_drop_on_panic() -> SEXP {
 // Test 1: Simple worker execution - no R API calls
 // -----------------------------------------------------------------------------
 
-/// Worker executes pure Rust code, returns result.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -66,7 +65,7 @@ pub extern "C-unwind" fn C_test_worker_simple() -> SEXP {
 // Test 2: Worker with with_r_thread - call R API from worker
 // -----------------------------------------------------------------------------
 
-/// Worker uses with_r_thread to call R API, returns i32 (Send-able).
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -83,8 +82,7 @@ pub extern "C-unwind" fn C_test_worker_with_r_thread() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Worker makes multiple with_r_thread calls, each returning Send-able values.
-/// Final SEXP creation happens on main thread.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -120,7 +118,7 @@ pub extern "C-unwind" fn C_test_worker_multiple_r_calls() -> SEXP {
 // Test 3: Panic scenarios
 // -----------------------------------------------------------------------------
 
-/// Panic on worker thread (no with_r_thread).
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -134,7 +132,7 @@ pub extern "C-unwind" fn C_test_worker_panic_simple() -> SEXP {
     }
 }
 
-/// Panic on worker with RAII resources - drops must run.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -150,7 +148,7 @@ pub extern "C-unwind" fn C_test_worker_panic_with_drops() -> SEXP {
     }
 }
 
-/// Panic INSIDE a with_r_thread callback.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -166,7 +164,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread() -> SEXP {
     }
 }
 
-/// Panic in with_r_thread with resources - worker resources must still drop.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -189,7 +187,7 @@ pub extern "C-unwind" fn C_test_worker_panic_in_r_thread_with_drops() -> SEXP {
 // Test 4: R error scenarios (via with_r_thread)
 // -----------------------------------------------------------------------------
 
-/// R error inside with_r_thread callback.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -205,7 +203,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_in_r_thread() -> SEXP {
     }
 }
 
-/// R error with RAII resources - both worker and main thread resources must drop.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -230,7 +228,7 @@ pub extern "C-unwind" fn C_test_worker_r_error_with_drops() -> SEXP {
 // Test 5: Mixed scenarios - some R calls succeed, then error/panic
 // -----------------------------------------------------------------------------
 
-/// Multiple R calls, last one errors.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -258,7 +256,7 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_error() -> SEXP {
     }
 }
 
-/// Multiple R calls, then panic in Rust (not in R).
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -283,14 +281,10 @@ pub extern "C-unwind" fn C_test_worker_r_calls_then_panic() -> SEXP {
 // Test 6: Return value propagation
 // -----------------------------------------------------------------------------
 
-/// Worker Thread Tests
-///
-/// Worker-thread and main-thread helpers.
-///
-/// Test that i32 return from worker works.
+/// @noRd
 #[miniextendr]
 /// @name rpkg_worker_tests
-/// @keywords internal
+/// @noRd
 /// @examples
 /// test_worker_return_i32()
 /// test_worker_return_string()
@@ -320,14 +314,14 @@ pub fn test_worker_return_i32() -> i32 {
     x * 2
 }
 
-/// Test that String return from worker works.
+/// @noRd
 #[miniextendr]
 pub fn test_worker_return_string() -> String {
     // Uses worker strategy
     format!("hello from {}", "worker")
 }
 
-/// Test that f64 return from worker works.
+/// @noRd
 #[miniextendr]
 pub fn test_worker_return_f64() -> f64 {
     std::f64::consts::PI * 2.0
@@ -337,9 +331,7 @@ pub fn test_worker_return_f64() -> f64 {
 // Test 7: ExternalPtr creation (must be main thread - ExternalPtr is !Send)
 // -----------------------------------------------------------------------------
 
-/// Test ExternalPtr creation with computation done on worker.
-/// The computation happens on worker, but ExternalPtr creation happens on main thread
-/// since ExternalPtr is !Send. We run_on_worker to get Send-able values, then create SEXP after.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -357,7 +349,7 @@ pub extern "C-unwind" fn C_test_extptr_from_worker() -> SEXP {
     ptr.as_sexp()
 }
 
-/// Test creating multiple ExternalPtrs with values computed on worker.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -401,7 +393,7 @@ pub extern "C-unwind" fn C_test_multiple_extptrs_from_worker() -> SEXP {
 // Test 8: Main thread functions (via attribute)
 // -----------------------------------------------------------------------------
 
-/// Function that must run on main thread (uses R API directly).
+/// @noRd
 #[miniextendr(unsafe(main_thread))]
 pub fn test_main_thread_r_api() -> i32 {
     // This runs on main thread, can call R API directly
@@ -409,7 +401,7 @@ pub fn test_main_thread_r_api() -> i32 {
     unsafe { *miniextendr_api::ffi::INTEGER(sexp) }
 }
 
-/// Main thread function that triggers R error.
+/// @noRd
 #[miniextendr(unsafe(main_thread))]
 pub fn test_main_thread_r_error() -> i32 {
     unsafe {
@@ -417,7 +409,7 @@ pub fn test_main_thread_r_error() -> i32 {
     }
 }
 
-/// Main thread function with RAII drops that triggers R error.
+/// @noRd
 #[miniextendr(unsafe(main_thread))]
 pub fn test_main_thread_r_error_with_drops() -> i32 {
     let _resource = SimpleDropMsg("main_thread_r_error: resource");
@@ -433,9 +425,7 @@ pub fn test_main_thread_r_error_with_drops() -> i32 {
 // Test 9: Calling checked R APIs from wrong thread (should panic clearly)
 // -----------------------------------------------------------------------------
 
-/// This demonstrates what happens if you call a checked R API from worker
-/// without using with_r_thread - it should panic with clear message.
-/// NOTE: This is an intentional misuse for testing error messages.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -464,7 +454,7 @@ fn helper_r_call_value(value: i32) -> i32 {
     })
 }
 
-/// Nested: call helper function from worker.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -473,7 +463,7 @@ pub extern "C-unwind" fn C_test_nested_helper_from_worker() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Nested: multiple helper calls with with_r_thread.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -486,8 +476,7 @@ pub extern "C-unwind" fn C_test_nested_multiple_helpers() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Nested with_r_thread calls - with_r_thread inside with_r_thread.
-/// Since with_r_thread checks if already on main thread, this should work.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -501,8 +490,7 @@ pub extern "C-unwind" fn C_test_nested_with_r_thread() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Test calling a miniextendr function that uses worker strategy from main thread.
-/// The inner function will use run_on_worker, outer is extern "C-unwind".
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -513,9 +501,7 @@ pub extern "C-unwind" fn C_test_call_worker_fn_from_main() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Call a worker-strategy function from inside run_on_worker.
-/// This tests nested run_on_worker - the inner call should detect
-/// we're on worker and use with_r_thread's direct execution path.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -532,7 +518,7 @@ pub extern "C-unwind" fn C_test_nested_worker_calls() -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_ScalarInteger(result) }
 }
 
-/// Complex nested scenario: worker -> multiple with_r_thread -> one errors.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -564,7 +550,7 @@ pub extern "C-unwind" fn C_test_nested_with_error() -> SEXP {
     }
 }
 
-/// Complex nested scenario: worker -> multiple with_r_thread -> one panics.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -591,7 +577,7 @@ pub extern "C-unwind" fn C_test_nested_with_panic() -> SEXP {
     }
 }
 
-/// Deep nesting: with_r_thread called many times in sequence.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

@@ -7,12 +7,7 @@ pub struct Calculator {
     value: f64,
 }
 
-/// @title Calculator R6 Class with Default Parameters
-/// @description Calculator that demonstrates default parameter values in R6 methods.
-/// @examples
-/// calc <- Calculator$new()      # Uses default initial = 0.0
-/// calc$add()                     # Uses default amount = 1.0
-/// calc$get()
+/// @noRd
 #[miniextendr(r6)]
 impl Calculator {
     /// Creates a new calculator.

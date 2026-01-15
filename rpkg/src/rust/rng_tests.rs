@@ -13,44 +13,25 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 // Standalone function tests
 // =============================================================================
 
-/// RNG Tests
-///
-/// RNG state management tests.
-///
-/// Generate n uniform random numbers using the `#[miniextendr(rng)]` attribute.
-/// This tests automatic GetRNGstate/PutRNGstate wrapping.
-/// @name rpkg_rng
-/// @return A numeric vector.
-/// @export
-/// @examples
-/// set.seed(42)
-/// rng_uniform(5L)
-/// @param n Number of values to generate.
+/// @noRd
 #[miniextendr(rng)]
 pub fn rng_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
-/// Generate n normal random numbers.
-/// @rdname rpkg_rng
-/// @export
+/// @noRd
 #[miniextendr(rng)]
 pub fn rng_normal(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { norm_rand() }).collect()
 }
 
-/// Generate n exponential random numbers.
-/// @rdname rpkg_rng
-/// @export
+/// @noRd
 #[miniextendr(rng)]
 pub fn rng_exponential(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { exp_rand() }).collect()
 }
 
-/// Generate n random integers in [0, max).
-/// @rdname rpkg_rng
-/// @export
-/// @param max Upper bound (exclusive).
+/// @noRd
 #[miniextendr(rng)]
 pub fn rng_int(n: i32, max: f64) -> Vec<i32> {
     (0..n)
@@ -58,18 +39,13 @@ pub fn rng_int(n: i32, max: f64) -> Vec<i32> {
         .collect()
 }
 
-/// Test RNG with check_interrupt (forces main thread).
-/// This verifies RNG works correctly when combined with check_interrupt.
-/// @rdname rpkg_rng
-/// @export
+/// @noRd
 #[miniextendr(rng, check_interrupt)]
 pub fn rng_with_interrupt(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
-/// Test combining rng with explicit worker thread strategy.
-/// @rdname rpkg_rng
-/// @export
+/// @noRd
 #[miniextendr(rng, worker)]
 pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
     (0..n).map(|_| unsafe { unif_rand() }).collect()
@@ -79,18 +55,14 @@ pub fn rng_worker_uniform(n: i32) -> Vec<f64> {
 // Manual RNG management tests
 // =============================================================================
 
-/// Test RngGuard for manual RNG state management.
-/// @rdname rpkg_rng
-/// @export
+/// @noRd
 #[miniextendr]
 fn rng_guard_test(n: i32) -> Vec<f64> {
     let _guard = RngGuard::new();
     (0..n).map(|_| unsafe { unif_rand() }).collect()
 }
 
-/// Test with_rng helper for scoped RNG access.
-/// @rdname rpkg_rng
-/// @export
+/// @noRd
 #[miniextendr]
 fn rng_with_rng_test(n: i32) -> Vec<f64> {
     with_rng(|| (0..n).map(|_| unsafe { unif_rand() }).collect())
