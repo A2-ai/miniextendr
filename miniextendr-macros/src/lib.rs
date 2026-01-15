@@ -227,6 +227,7 @@ mod miniextendr_trait;
 mod factor_derive;
 
 // vctrs support
+#[cfg(feature = "vctrs")]
 mod vctrs_derive;
 
 /// Identifier for the generated `const` `R_CallMethodDef` value.
@@ -1373,6 +1374,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .collect();
 
     // Generate vctrs R wrapper refs (from #[derive(Vctrs)])
+    #[cfg(feature = "vctrs")]
     let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .vctrs
         .iter()
@@ -1382,6 +1384,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
         })
         .collect();
+    #[cfg(not(feature = "vctrs"))]
+    let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
 
     // Separate ALTREP trait impls from regular cross-package trait impls
     let (altrep_impls, regular_trait_impls) =
@@ -2574,6 +2578,7 @@ pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStrea
 ///
 /// - `VctrsClass` - Metadata trait for vctrs class information
 /// - `VctrsRecord` (for `base = "record"`) - Field names for record types
+#[cfg(feature = "vctrs")]
 #[proc_macro_derive(Vctrs, attributes(vctrs))]
 pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);

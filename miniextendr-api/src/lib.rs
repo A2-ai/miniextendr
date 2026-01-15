@@ -191,8 +191,11 @@ pub use miniextendr_macros::typed_list;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList, Vctrs,
+    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList,
 };
+#[cfg(feature = "vctrs")]
+#[doc(inline)]
+pub use miniextendr_macros::Vctrs;
 
 pub mod altrep;
 pub mod altrep_bridge;
