@@ -215,6 +215,22 @@ Main thread: convert to SEXP or R error
 
 ---
 
+### Storage-Directed Conversions (strict-by-default)
+
+When callers **choose a target storage**, conversions should be explicit and strict:
+
+- Integer (`i32` / INTSXP): reject non-finite, non-integral, or out-of-range values.
+- Numeric (`f64` / REALSXP): reject precision loss (e.g., `i64` > 2^53) and non-finite values in strict mode.
+- Logical (`RLogical` / LGLSXP): accept only {0,1,NA} for numeric inputs.
+- Raw (`u8` / RAWSXP): reject out-of-range values.
+- Character (`STRSXP`): allow numeric/logical inputs via stringification (including `NaN`, `Inf`, `-Inf`).
+
+Lossy conversions remain available via existing `IntoR` paths.
+
+See `docs/CONVERSION_SEMANTICS.md` for the definitive rules and string formats.
+
+---
+
 ### 3. unwind_protect.rs - R Error Protection
 
 Safe wrapper for `R_UnwindProtect` to run Rust destructors on R errors.

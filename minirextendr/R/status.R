@@ -29,8 +29,8 @@ miniextendr_status <- function() {
       "cleanup.ucrt",
       "configure.win",
       "configure.ucrt",
-      "config.guess",
-      "config.sub"
+      "tools/config.guess",
+      "tools/config.sub"
     ),
     "Rust Project" = c(
       "src/rust/Cargo.toml.in",

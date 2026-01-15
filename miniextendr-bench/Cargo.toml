@@ -15,6 +15,7 @@ miniextendr-engine = { workspace = true }
 [features]
 rayon = ["miniextendr-api/rayon"]
 connections = ["miniextendr-api/connections"]
+refcount-fast-hash = ["miniextendr-api/refcount-fast-hash"]
 
 [dev-dependencies]
 divan = "0.1.21"
@@ -109,4 +110,12 @@ harness = false
 
 [[bench]]
 name = "factor"
+harness = false
+
+[[bench]]
+name = "gc_protect"
+harness = false
+
+[[bench]]
+name = "refcount_protect"
 harness = false

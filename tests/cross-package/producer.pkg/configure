@@ -2539,7 +2539,7 @@ printf "%s\n" "$as_me: cargo vendor (Cargo.lock changed or vendor missing)" >&6;
         as_dir="$VENDOR_OUT"; as_fn_mkdir_p
         $CARGO_CMD vendor \
           --sync "$MANIFEST" \
-          "$VENDOR_OUT" || as_fn_error $? "\`cargo vendor\` failed" "$LINENO" 5
+          "$VENDOR_OUT" > /dev/null || as_fn_error $? "\`cargo vendor\` failed" "$LINENO" 5
         echo "$_new" > "$STAMP" || as_fn_error $? "failed to write vendor stamp" "$LINENO" 5
 
 else case e in #(

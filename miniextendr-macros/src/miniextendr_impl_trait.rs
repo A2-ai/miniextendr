@@ -265,20 +265,23 @@ fn generate_vtable_static(
     class_system: ClassSystem,
 ) -> TokenStream {
     // Extract trait name for naming
-    let trait_name = trait_path
-        .segments
-        .last()
-        .map(|s| &s.ident)
-        .expect("trait path has at least one segment");
+    let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
+        return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
+            .into_compile_error();
+    };
 
     // Extract type identifier (for simple types)
     let type_ident = match concrete_type {
-        syn::Type::Path(type_path) => type_path
-            .path
-            .segments
-            .last()
-            .map(|s| s.ident.clone())
-            .expect("type path has at least one segment"),
+        syn::Type::Path(type_path) => {
+            let Some(last_seg) = type_path.path.segments.last() else {
+                return syn::Error::new_spanned(
+                    concrete_type,
+                    "type path must have at least one segment",
+                )
+                .into_compile_error();
+            };
+            last_seg.ident.clone()
+        }
         _ => format_ident!("Unknown"),
     };
 

@@ -131,7 +131,6 @@ test_that("RngSampler static_sample works", {
 })
 
 test_that("RNG state is properly saved after each call", {
-  # Test that calling RNG functions properly updates .Random.seed
   set.seed(42)
   r1 <- rng_uniform(1L)
   r2 <- rng_uniform(1L)
@@ -149,7 +148,6 @@ test_that("RNG state is properly saved after each call", {
 })
 
 test_that("Rust RNG matches R's RNG with same seed", {
-  # Test that Rust's unif_rand produces the same values as R's runif
   set.seed(42)
   rust_vals <- rng_uniform(5L)
 

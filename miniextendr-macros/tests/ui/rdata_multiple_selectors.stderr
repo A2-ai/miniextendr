@@ -1,0 +1,6 @@
+error: only one RSidecar field is allowed per struct
+  --> tests/ui/rdata_multiple_selectors.rs:13:5
+   |
+13 | /     #[r_data]
+14 | |     r2: RSidecar, // Error: only one RSidecar allowed
+   | |________________^

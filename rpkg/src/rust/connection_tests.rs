@@ -4,7 +4,7 @@
 //! backed by Rust types. Requires the `connections` feature.
 
 #[cfg(feature = "connections")]
-use miniextendr_api::connection::{RConnectionImpl, RCustomConnection, RConnectionIo};
+use miniextendr_api::connection::{RConnectionImpl, RConnectionIo, RCustomConnection};
 #[cfg(feature = "connections")]
 use miniextendr_api::ffi::SEXP;
 #[cfg(feature = "connections")]
@@ -120,6 +120,7 @@ impl RConnectionImpl for MemoryBuffer {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn memory_connection() -> SEXP {
     RCustomConnection::new()
@@ -144,6 +145,7 @@ pub fn memory_connection() -> SEXP {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn string_input_connection(content: &str) -> SEXP {
     RCustomConnection::new()
@@ -202,8 +204,7 @@ impl RConnectionImpl for CounterConnection {
         }
 
         let to_read = buf.len().min(available);
-        buf[..to_read]
-            .copy_from_slice(&self.buffer[self.buffer_pos..self.buffer_pos + to_read]);
+        buf[..to_read].copy_from_slice(&self.buffer[self.buffer_pos..self.buffer_pos + to_read]);
         self.buffer_pos += to_read;
         to_read
     }
@@ -221,6 +222,7 @@ impl RConnectionImpl for CounterConnection {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn counter_connection(start: i32, end: i32) -> SEXP {
     RCustomConnection::new()
@@ -255,6 +257,7 @@ pub fn counter_connection(start: i32, end: i32) -> SEXP {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn cursor_connection(data: Vec<u8>) -> SEXP {
     let cursor = Cursor::new(data);
@@ -277,6 +280,7 @@ pub fn cursor_connection(data: Vec<u8>) -> SEXP {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn empty_cursor_connection() -> SEXP {
     let cursor: Cursor<Vec<u8>> = Cursor::new(Vec::new());
@@ -338,6 +342,7 @@ impl<F: Fn(u8) -> u8 + 'static> RConnectionImpl for TransformConnection<F> {
 /// close(conn)
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn uppercase_connection(text: &str) -> SEXP {
     let data = text.as_bytes().to_vec();
@@ -373,6 +378,7 @@ pub fn uppercase_connection(text: &str) -> SEXP {
 /// readLines(conn2)  # "hello"
 /// }
 #[cfg(feature = "connections")]
+/// @noRd
 #[miniextendr]
 pub fn rot13_connection(text: &str) -> SEXP {
     let data = text.as_bytes().to_vec();

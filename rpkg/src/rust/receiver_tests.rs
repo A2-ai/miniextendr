@@ -9,15 +9,7 @@ pub struct ReceiverCounter {
     value: i32,
 }
 
-/// @rdname ReceiverCounter
-/// @description Receiver-style counter with `$new()`, `$value()`, `$inc()`, and `$add()` methods.
-/// @aliases ReceiverCounter
-/// @examples
-/// rc <- ReceiverCounter$new(1L)
-/// rc$value()
-/// rc$inc()
-/// rc$add(5L)
-/// ReceiverCounter$default_counter()$value()
+/// @noRd
 #[miniextendr(env)]
 impl ReceiverCounter {
     /// Creates a new counter with the given initial value.

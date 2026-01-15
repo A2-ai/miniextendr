@@ -1,0 +1,5 @@
+error: expected one of: `mod`, `use`, `struct`, `impl`, `fn`, `extern`
+ --> tests/ui/module_invalid_item.rs:7:5
+  |
+7 |     let x = 5;  // Invalid: only fn, struct, impl, use allowed
+  |     ^^^

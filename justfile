@@ -39,6 +39,13 @@
 #     just lint-sync-check    - Check lint parser vs macros parser
 #     just lint-sync-diff     - Show diff between parsers
 
+# All optional features for testing (excluding nonapi which causes CRAN warnings).
+# This mirrors the list in rpkg/configure.ac for NOT_CRAN=true mode.
+all_features := "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+
+# Directory for devtools::check output (preserved for investigation)
+check_output_dir := justfile_directory() / "rpkg-check-output"
+
 default:
     @just --list
 
@@ -220,9 +227,9 @@ configure-cran:
 # Load and test rpkg with devtools
 devtools-test FILTER="": configure
     if [ -z "{{FILTER}}" ]; then \
-      Rscript -e 'devtools::test("rpkg")'; \
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'; \
     else \
-      Rscript -e 'devtools::test("rpkg", filter = "{{FILTER}}")'; \
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg", filter = "{{FILTER}}")'; \
     fi
 
 # Load rpkg with devtools::load_all
@@ -245,8 +252,9 @@ devtools-build: configure
 # Check rpkg with devtools::check
 # NOT_CRAN=true ensures vendor directory is preserved during R CMD build
 # error_on = "error" matches CI behavior (ignore warnings/notes)
+# check_dir preserves output for investigation (not auto-cleaned)
 devtools-check: configure
-    NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error")'
+    NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document
 devtools-document: configure
@@ -324,9 +332,9 @@ minirextendr-document:
 minirextendr-test FILTER="":
     #!/usr/bin/env bash
     if [ -z "{{FILTER}}" ]; then
-      Rscript -e 'devtools::test("minirextendr")'
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
     else
-      Rscript -e 'devtools::test("minirextendr", filter = "{{FILTER}}")'
+      Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr", filter = "{{FILTER}}")'
     fi
 
 # Check minirextendr R package with devtools::check
