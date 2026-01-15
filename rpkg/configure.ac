@@ -131,15 +131,20 @@ AC_SUBST([SED])
 AC_SUBST([CYGPATH])
 
 dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
+dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 root_miniextendr_repo_cargo="$root_miniextendr_repo"
+abs_rpkg_src_cargo="$abs_rpkg_src"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     if test "x$CYGPATH" != "xno"; then
       root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
     fi
     ;;
 esac
 AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
+AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
 
 dnl Report rustc version (required by CRAN for Rust packages)
 RUSTC_VERSION="$($RUSTC --version)"
@@ -170,6 +175,11 @@ dnl ---- Cargo configuration ----
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: src/rust/target)])
 : ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
 AC_SUBST([CARGO_TARGET_DIR])
+
+dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
+dnl These are used in .cargo/config.toml which Cargo reads directly
+CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
 : ${CARGO_PROFILE="release"}
@@ -249,6 +259,9 @@ AC_SUBST([OPTIONAL_CARGO_DEPS])
 dnl ---- vendoring (cached, in src/vendor) ----
 VENDOR_OUT="$abs_rpkg_src/vendor"
 AC_SUBST([VENDOR_OUT])
+dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
+VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+AC_SUBST([VENDOR_OUT_CARGO])
 
 dnl Force refresh if you want
 AC_ARG_VAR([FORCE_VENDOR],[Set to 1 to force `cargo vendor` refresh in dev mode])
@@ -284,7 +297,7 @@ EOF
 replace-with = "vendored-sources"
 
 @<:@source.vendored-sources@:>@
-directory = "$VENDOR_OUT"
+directory = "$VENDOR_OUT_CARGO"
 EOF
 )"
 ])
@@ -651,6 +664,7 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     rm -f "$VENDOR_OUT/r-efi/Makefile"
 
     dnl Rewrite cargo config to use vendored sources (both locations)
+    dnl Use _CARGO paths for Windows-native path format
     for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
       mkdir -p "$(dirname "$_cfg")"
       cat > "$_cfg" <<VENDORED_CONFIG_EOF
@@ -660,10 +674,10 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
 replace-with = "vendored-sources"
 
 @<:@source.vendored-sources@:>@
-directory = "$VENDOR_OUT"
+directory = "$VENDOR_OUT_CARGO"
 
 @<:@build@:>@
-target-dir = "$CARGO_TARGET_DIR"
+target-dir = "$CARGO_TARGET_DIR_CARGO"
 VENDORED_CONFIG_EOF
       echo "configure: rewrote $_cfg for vendored sources" >&2
     done
@@ -675,10 +689,12 @@ VENDORED_CONFIG_EOF
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 ],
-[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
+[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
+ ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
- CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
+ CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO" \
+ CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
 
 dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
 dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
