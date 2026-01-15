@@ -274,7 +274,7 @@ jobs:
 
       - name: Configure Linux
         run: |
-          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
       - name: Configure
         run: just configure
@@ -721,7 +721,7 @@ jobs:
 
       - name: Configure Linux
         run: |
-          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
       - name: Configure shared vendor
         run: just configure
@@ -848,7 +848,7 @@ jobs:
 
       - name: Configure Linux
         run: |
-          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(normalizePath(R.home()))')/lib" >> $GITHUB_ENV
+          echo "LD_LIBRARY_PATH=$(R -s -e 'cat(R.home(\"lib\"))')" >> $GITHUB_ENV
 
       - name: Configure and vendor (dev mode creates clean vendor.tar.xz)
         env:
