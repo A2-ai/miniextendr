@@ -1372,6 +1372,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Generate vctrs R wrapper refs (from #[derive(Vctrs)])
+    let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
+        .vctrs
+        .iter()
+        .map(|v| {
+            let r_wrapper_const = v.r_wrappers_const_ident();
+            let cfg_attrs = extract_cfg_attrs(&v.attrs);
+            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
+        })
+        .collect();
+
     // Separate ALTREP trait impls from regular cross-package trait impls
     let (altrep_impls, regular_trait_impls) =
         altrep_module::extract_altrep_impls(&parsed_module.trait_impls);
@@ -1742,7 +1753,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Check if we have trait impl blocks to register
     let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
-    // Generate R wrapper impls constant - includes impl, trait impl, and sidecar wrappers
+    // Generate R wrapper impls constant - includes impl, trait impl, sidecar, and vctrs wrappers
     // Combine all with cfg info and generate conditional array elements
     let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
     all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
@@ -1753,6 +1764,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .iter()
             .map(|expr| (Vec::new(), expr.clone())),
     );
+    // Add vctrs R wrappers (from #[derive(Vctrs)])
+    all_impl_r_wrappers_with_cfg.extend(vctrs_r_wrappers_with_cfg.iter().cloned());
 
     // Generate array elements with cfg attributes where needed
     let all_impl_r_wrapper_elements: Vec<proc_macro2::TokenStream> = all_impl_r_wrappers_with_cfg

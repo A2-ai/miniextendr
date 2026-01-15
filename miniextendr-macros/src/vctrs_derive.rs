@@ -38,10 +38,21 @@
 //! - `#[vctrs(proxy_equal)]` - Custom vec_proxy_equal
 //! - `#[vctrs(proxy_compare)]` - Custom vec_proxy_compare
 //! - `#[vctrs(proxy_order)]` - Custom vec_proxy_order
+//!
+//! ## Module Registration
+//!
+//! Types with `#[derive(Vctrs)]` must be registered in `miniextendr_module!`:
+//!
+//! ```ignore
+//! miniextendr_module! {
+//!     mod mypackage;
+//!     vctrs Percent;  // Register vctrs type
+//! }
+//! ```
 
-use proc_macro2::TokenStream;
+use proc_macro2::{Span, TokenStream};
 use quote::quote;
-use syn::{Data, DeriveInput, Fields};
+use syn::{Data, DeriveInput, Fields, Ident};
 
 /// Parsed vctrs attributes from struct definition.
 #[derive(Default)]
@@ -177,6 +188,76 @@ fn base_to_kind(base: &str) -> TokenStream {
     }
 }
 
+/// Generate R wrapper code for vctrs S3 methods.
+///
+/// This generates the following S3 methods for the vctrs class:
+/// - `format.<class>()` - Format for printing
+/// - `vec_ptype_abbr.<class>()` - Abbreviation (if provided)
+/// - `vec_ptype_full.<class>()` - Full type name
+///
+/// For record types, it additionally generates:
+/// - Field accessor `$` methods via vctrs infrastructure
+fn generate_r_wrappers(
+    class: &str,
+    base: &str,
+    abbr: Option<&str>,
+    record_fields: &[String],
+) -> String {
+    let mut r_code = String::new();
+
+    // Generate format method
+    if base == "record" {
+        // Record format: paste fields together with separator
+        let field_formats: Vec<String> = record_fields
+            .iter()
+            .map(|f| format!("vctrs::field(x, \"{f}\")"))
+            .collect();
+        let fields_str = field_formats.join(", \"/\", ");
+        r_code.push_str(&format!(
+            r#"
+#' @export
+format.{class} <- function(x, ...) {{
+  paste0({fields_str})
+}}
+"#
+        ));
+    } else {
+        // Simple vctr format: use underlying data representation
+        r_code.push_str(&format!(
+            r#"
+#' @export
+format.{class} <- function(x, ...) {{
+  format(vctrs::vec_data(x), ...)
+}}
+"#
+        ));
+    }
+
+    // Generate vec_ptype_abbr if abbreviation provided
+    if let Some(abbr) = abbr {
+        r_code.push_str(&format!(
+            r#"
+#' @export
+vec_ptype_abbr.{class} <- function(x, ...) {{
+  "{abbr}"
+}}
+"#
+        ));
+    }
+
+    // Generate vec_ptype_full
+    r_code.push_str(&format!(
+        r#"
+#' @export
+vec_ptype_full.{class} <- function(x, ...) {{
+  "{class}"
+}}
+"#
+    ));
+
+    r_code
+}
+
 /// Generate the Vctrs derive implementation.
 pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
@@ -263,35 +344,29 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         match base {
             "record" => {
                 // For records, we need to build a List from all non-skipped fields
-                let record_fields: Vec<_> = fields
-                    .iter()
-                    .filter(|f| !f.attrs.skip)
-                    .collect();
-                let field_names: Vec<String> = record_fields
-                    .iter()
-                    .map(|f| f.ident.to_string())
-                    .collect();
-                let field_idents: Vec<_> = record_fields
-                    .iter()
-                    .map(|f| &f.ident)
-                    .collect();
-                let n_fields = field_names.len();
+                let record_fields: Vec<_> = fields.iter().filter(|f| !f.attrs.skip).collect();
+                let field_names: Vec<String> =
+                    record_fields.iter().map(|f| f.ident.to_string()).collect();
+                let field_idents: Vec<_> = record_fields.iter().map(|f| &f.ident).collect();
 
                 quote! {
                     impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
                         fn into_vctrs(self) -> Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
                             use ::miniextendr_api::IntoR;
 
-                            // Build the fields list
-                            let mut fields = ::miniextendr_api::list::List::with_capacity(#n_fields);
-                            #(
-                                fields.push_named(#field_names, self.#field_idents.into_sexp());
-                            )*
+                            // Get attrs before moving fields out of self
+                            let attrs = self.attrs();
+
+                            // Build the fields list from pairs
+                            let pairs: Vec<(&str, ::miniextendr_api::ffi::SEXP)> = vec![
+                                #( (#field_names, self.#field_idents.into_sexp()), )*
+                            ];
+                            let fields = ::miniextendr_api::list::List::from_raw_pairs(pairs);
 
                             ::miniextendr_api::vctrs::new_rcrd(
                                 fields,
                                 &[Self::CLASS_NAME],
-                                &self.attrs(),
+                                &attrs,
                             )
                         }
                     }
@@ -304,11 +379,13 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                         fn into_vctrs(self) -> Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
                             use ::miniextendr_api::IntoR;
 
+                            // Get attrs before moving data out of self
+                            let attrs = self.attrs();
                             let data = self.#data_ident.into_sexp();
                             ::miniextendr_api::vctrs::new_vctr(
                                 data,
                                 &[Self::CLASS_NAME],
-                                &self.attrs(),
+                                &attrs,
                                 Some(Self::INHERIT_BASE_TYPE),
                             )
                         }
@@ -340,10 +417,38 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         TokenStream::new()
     };
 
+    // Generate R wrapper code for vctrs S3 methods
+    let record_field_names: Vec<String> = if base == "record" {
+        fields
+            .iter()
+            .filter(|f| !f.attrs.skip)
+            .map(|f| f.ident.to_string())
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let r_wrappers = generate_r_wrappers(
+        &class_name,
+        base,
+        attrs.abbr.as_deref(),
+        &record_field_names,
+    );
+
+    // Generate the R_WRAPPERS_VCTRS_{TYPE} const
+    let name_upper = name.to_string().to_uppercase();
+    let r_wrappers_const_ident = Ident::new(
+        &format!("R_WRAPPERS_VCTRS_{}", name_upper),
+        Span::call_site(),
+    );
+
     Ok(quote! {
         #vctrs_class_impl
         #record_impl
         #into_vctrs_impl
+
+        /// Generated R wrapper code for vctrs S3 methods.
+        #[doc(hidden)]
+        pub const #r_wrappers_const_ident: &str = #r_wrappers;
     })
 }
 
@@ -482,10 +587,12 @@ mod tests {
 
         let result = derive_vctrs(input);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("requires #[vctrs(class"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("requires #[vctrs(class")
+        );
     }
 
     #[test]
@@ -501,9 +608,77 @@ mod tests {
 
         let result = derive_vctrs(input);
         assert!(result.is_err());
-        assert!(result
-            .unwrap_err()
-            .to_string()
-            .contains("can only be applied to structs"));
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("can only be applied to structs")
+        );
+    }
+
+    #[test]
+    fn test_r_wrappers_const_generated() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "percent", base = "double")]
+            struct Percent {
+                data: Vec<f64>,
+            }
+        };
+
+        let result = derive_vctrs(input).unwrap();
+        let code = result.to_string();
+
+        // Should generate R_WRAPPERS_VCTRS_PERCENT const
+        assert!(code.contains("R_WRAPPERS_VCTRS_PERCENT"));
+        assert!(code.contains("pub const"));
+    }
+
+    #[test]
+    fn test_r_wrappers_content_simple() {
+        let r_code = generate_r_wrappers("percent", "double", Some("pct"), &[]);
+
+        // Should have format method
+        assert!(r_code.contains("format.percent"));
+        assert!(r_code.contains("vctrs::vec_data"));
+
+        // Should have vec_ptype_abbr since abbr provided
+        assert!(r_code.contains("vec_ptype_abbr.percent"));
+        assert!(r_code.contains("\"pct\""));
+
+        // Should have vec_ptype_full
+        assert!(r_code.contains("vec_ptype_full.percent"));
+    }
+
+    #[test]
+    fn test_r_wrappers_content_record() {
+        let r_code = generate_r_wrappers(
+            "rational",
+            "record",
+            None,
+            &["n".to_string(), "d".to_string()],
+        );
+
+        // Should have format method with vctrs::field accessors
+        assert!(r_code.contains("format.rational"));
+        assert!(r_code.contains("vctrs::field(x, \"n\")"));
+        assert!(r_code.contains("vctrs::field(x, \"d\")"));
+
+        // Should NOT have vec_ptype_abbr since no abbr
+        assert!(!r_code.contains("vec_ptype_abbr.rational"));
+
+        // Should have vec_ptype_full
+        assert!(r_code.contains("vec_ptype_full.rational"));
+    }
+
+    #[test]
+    fn test_r_wrappers_no_abbr() {
+        let r_code = generate_r_wrappers("mytype", "integer", None, &[]);
+
+        // Should NOT have vec_ptype_abbr
+        assert!(!r_code.contains("vec_ptype_abbr.mytype"));
+
+        // Should still have format and vec_ptype_full
+        assert!(r_code.contains("format.mytype"));
+        assert!(r_code.contains("vec_ptype_full.mytype"));
     }
 }

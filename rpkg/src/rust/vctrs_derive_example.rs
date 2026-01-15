@@ -135,4 +135,6 @@ miniextendr_module! {
     fn derived_percent_class_info;
     fn new_derived_rational;
     fn derived_rational_class_info;
+    vctrs DerivedPercent;
+    vctrs DerivedRational;
 }

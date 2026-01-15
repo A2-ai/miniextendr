@@ -1,212 +1,339 @@
-# Plan: S7 Computed/Dynamic Properties via Rust Inference
+# Plan: Comprehensive S7 Integration via Rust Inference
 
-Goal: Support S7 computed properties (and other documented S7 property features) by **inferring everything from Rust syntax + features**, with no manual edits to generated R wrappers.
+Goal: cover the full S7 surface area documented in `background/S7-main` while keeping ergonomics Rust-first (no manual R edits; behavior inferred from Rust syntax + features).
 
-## 1) Map S7 features to Rust surface syntax
+Sources covered: README + vignettes (S7, classes-objects, generics-methods, compatibility, packages) + man pages (`new_class`, `new_property`, `new_generic`, `method`, `method<-`, `method_explain`, `new_union`, `convert`, `super`, `S7_data`, `prop`, `props`, `prop_names`, `validate`, `S7_class`, `S7_inherits`, `as_class`, `new_S3_class`, `class_any`, `class_missing`, `methods_register`, `new_external_generic`, `S4_register`, base/base_s3 classes).
 
-S7 property features to cover (from background/S7-main):
+## 0) Coverage matrix (S7 feature -> Rust-driven support)
 
-- Type
-- Validator
-- Default
-- Computed (getter)
-- Dynamic (getter + setter)
-- Required (default = quoted error) / or validator
-- Frozen (custom setter)
-- Deprecated (getter + setter warnings)
-- Union types
-- Class validator, constructor, parent/abstract/package
+Classes and objects:
+- `new_class(name, parent, package, properties, abstract, constructor, validator)`
+- `new_object()`
+- `S7_object`, `S7_class()`, `S7_inherits()` / `check_is_S7()`
+- `as_class()` standardization
 
-Rust-driven inference targets:
+Properties:
+- `new_property(class, getter, setter, validator, default, name)`
+- Computed (getter only) / dynamic (getter + setter)
+- Defaults (including quoted calls)
+- Property validators
+- Common patterns: required, frozen, deprecated
+- `prop()` / `@`, `props()` / `props<-` / `set_props()`, `prop_names()` / `prop_exists()`
+- `validate()`, `valid_eventually()`, `valid_implicitly()`
 
-- Property type → derived from Rust field type
-- Default → from field initializer or attribute
-- Getter/Setter → from explicit Rust methods/traits or annotations
-- Validator → from attribute or Rust method returning Result/Option
-- Union types → from Rust enums / Option / Result / custom union marker
+Types and unions:
+- Base classes `class_*` + unions `class_numeric`, `class_atomic`, `class_vector`, `class_language`
+- Base S3 classes `class_factor`, `class_Date`, `class_POSIXct`, `class_POSIXlt`, `class_POSIXt`, `class_data.frame`, `class_formula`
+- `new_S3_class()` for custom S3 classes
+- `new_union()` / `|`
+- Special dispatch classes `class_any`, `class_missing`
 
-## 2) Concrete Rust syntax (maximal ergonomics, minimal annotations)
+Generics and methods:
+- `new_generic()` + `S7_dispatch()`
+- `method<-`, `method()`, `method_explain()`
+- Generic-method compatibility (dots, required/optional args)
+- Custom generic bodies (pre-dispatch checks)
+- Multiple dispatch
+- `super()`
+- `convert()` (double dispatch; no inheritance on `to`)
 
-Design goal: **no R snippets in user code**, no `pub` leakage, and property behavior derived from Rust items.
+Compatibility and packaging:
+- S3/S4 method registration and inheritance rules
+- S4 union conversion
+- `new_external_generic()` + `methods_register()`
+- `S4_register()` for S4 generics
+- `S7_data()` / `S7_data<-` for base-type parents
+- Package guidance: export constructors, set `package`, R < 4.3 `@` via `prop()` or `@rawNamespace` import
 
-### 2.1 Property fields (struct-level)
+## 1) Rust surface syntax and inference rules (max ergonomics)
 
-For a type with `#[miniextendr(s7)] impl Type { ... }`, properties are inferred from Rust fields with an **impl-level policy**:
+Design principles:
+- No R snippets in user code by default.
+- Infer as much as possible from Rust types, traits, and attributes.
+- Allow explicit opt-in attributes only where inference is ambiguous.
+
+### 1.1 Class definition and inheritance
+
+Impl-level attribute drives class metadata:
+
+```
+#[miniextendr(s7)]
+#[miniextendr(s7(parent = ParentType, abstract, package = "mypkg"))]
+impl MyType { ... }
+```
+
+Inference rules:
+- `parent` defaults to `S7_object` unless specified.
+- `package` inferred from crate if exporting; overrideable for cross-package class names.
+- `abstract` blocks constructor generation and R instantiation.
+- If `parent` is a base class (e.g., `class_double`) or an S3 class wrapper, generate appropriate `new_object()` + `S7_data()` behavior.
+
+### 1.2 Property inference (fields and methods)
+
+Field-level policy:
 
 ```
 #[miniextendr(s7(props = "annotated"))] // default
 // alternatives: "pub", "all"
 ```
 
-Policies:
-- `annotated` (default): only fields with `#[s7(prop)]` become properties.
-- `pub`: all `pub` fields become properties (except `#[s7(skip)]`).
-- `all`: all fields become properties (except `#[s7(skip)]`).
-
-This avoids forcing `pub` for property exposure while allowing opt-in ergonomics.
-
 Field attributes:
-
 ```
-#[s7(prop)]                 // include this field as a property
-#[s7(skip)]                 // exclude field from properties
-#[s7(name = "len")]         // rename property
-#[s7(required)]             // constructor must supply (enforced in Rust)
-#[s7(frozen)]               // read-only after init (setter errors once non-empty)
-#[s7(deprecated = "msg")]   // getter/setter warn with msg
-#[s7(union)]                // use union type inference for enums/Option
-```
-
-Defaults + validators from Rust functions (no R strings):
-
-```
-#[s7(default, prop = "len")]      // uses fn returning T
-#[s7(validate, prop = "len")]     // uses fn(value: T) -> Result<(), String>
+#[s7(prop)]
+#[s7(skip)]
+#[s7(name = "len")]
+#[s7(required)]
+#[s7(frozen)]
+#[s7(deprecated = "msg")]
+#[s7(union)]
 ```
 
-### 2.1.1 Accessors for field-backed properties (required for ergonomics)
-For every inferred property backed by a Rust field, generate getters/setters and wire them into
-`new_property(getter=..., setter=...)`. This makes `@` work without manual R code.
-This applies to both normal S7 classes and `#[externalptr(s7)]` types.
+Type -> S7 class mapping (no R strings):
+- Rust scalars (`i32`, `f64`, `bool`, `u8`) -> `class_integer`, `class_double`, `class_logical`, `class_raw`
+- `String`, `&str` -> `class_character`
+- `Vec<T>` -> `class_list` unless `T` maps to an atomic type -> `class_vector` + class-specific mapping
+- `Option<T>` -> `NULL | class_T`
+- `Robj` / `SEXP` -> `class_any` (unless annotated)
+- `RDate`, `RFactor`, etc. -> `class_Date`, `class_factor`, etc.
+- `#[s7(s3 = "foo")]
+  field: Robj` -> `new_S3_class("foo")`
 
-### 2.2 Computed + dynamic properties (method-level)
+Property behaviors:
+- Getter-only methods -> computed property
+- Getter + setter -> dynamic property
+- Field-backed properties generate getter/setter wrappers automatically
 
-Computed properties are defined by methods; macro emits `.Call` wrappers for getters/setters and wires `new_property(getter = ..., setter = ...)`.
-
-Getter method:
-
-```
-#[s7(getter)]
-fn length(&self) -> f64 { self.end - self.start }
-// property name inferred: "length"
-```
-
-Setter method:
-
-```
-#[s7(setter)]
-fn set_length(&mut self, value: f64) { self.end = self.start + value; }
-// property name inferred by stripping `set_` prefix unless overridden
-```
-
-Override property name:
-
-```
-#[s7(getter, prop = "len")]
-fn length(&self) -> f64 { ... }
-
-#[s7(setter, prop = "len")]
-fn set_length(&mut self, value: f64) { ... }
-```
-
-Validator/default providers (method-level):
-
+Validators and defaults:
 ```
 #[s7(default, prop = "len")]
 fn default_len() -> f64 { 0.0 }
 
 #[s7(validate, prop = "len")]
-fn validate_len(value: f64) -> Result<(), String> {
-  if value < 0.0 { Err("must be >= 0".into()) } else { Ok(()) }
-}
+fn validate_len(value: f64) -> Result<(), String> { ... }
 ```
 
-### 2.3 Union types (inferred from Rust)
+Required/frozen/deprecated patterns:
+- `#[s7(required)]` -> `default = quote(stop("@name is required"))`
+- `#[s7(frozen)]` -> setter errors after non-empty value
+- `#[s7(deprecated = "msg")]` -> getter/setter warn
 
-Rules:
+### 1.3 Validation controls
 
-- `Option<T>` → `NULL | class_T` (S7 union).
-- `enum` with single-field tuple variants → union of each payload class if `#[s7(union)]` is present.
-- `enum` without `#[s7(union)]` or without a clear payload mapping → compile error with a hint.
-- Union inference is **opt-in** for enums to avoid surprising behavior.
+Expose Rust-friendly helpers that map to:
+- `validate()` (full validation)
+- `valid_eventually()` (batch update without intermediate validation)
+- `valid_implicitly()` (unsafe fast path)
 
-### 2.4 Class-level options (Rust-sourced)
+Plan: generate R helpers that call `.Call` into Rust for bulk updates, then use S7 `validate()` once.
 
-Implement via methods/attributes rather than R strings:
+### 1.4 Constructors and `new_object()`
 
-```
-#[miniextendr(s7)]
-impl Range {
-  #[s7(class_validator)]
-  fn validate(&self) -> Result<(), String> { ... }
-
-  #[s7(constructor)]
-  fn new_from(x: Vec<f64>) -> ExternalPtr<Self> { ... }
-}
-```
-
-Optional Rust attributes on the impl block:
+- Default constructor: derived from properties, excluding dynamic properties.
+- Custom constructor via:
 
 ```
-#[miniextendr(s7(parent = ParentType, abstract))]
+#[s7(constructor)]
+fn new_from(x: Vec<f64>) -> ExternalPtr<Self> { ... }
 ```
 
-- `parent` references another Rust type with an S7 class.
-- `abstract` is a boolean flag.
+- Generated R constructor always uses `new_object()` with the chosen parent.
+- For base-parent classes, set `S7_data()` from Rust-returned base value.
 
-Class validator rules:
-- If `#[s7(class_validator)]` returns `Result<(), String>`, map Err to S7 validation errors.
-- If it returns `Option<String>`, treat `Some(msg)` as invalid.
+### 1.5 Introspection hooks
 
-Constructor rules:
-- Must be an inherent `fn` returning `ExternalPtr<Self>` (or `Self` if no externalptr).
-- If not present, default constructor uses generated fields/defaults.
+Ensure R wrappers import/export S7 helpers so users can:
+- `S7_class()`, `S7_inherits()`, `check_is_S7()`
+- `prop_names()`, `prop_exists()`, `method()`, `method_explain()`
 
-### 2.5 Feature gates (Rust features)
+No extra codegen beyond correct `new_class()` + `new_property()` wiring.
 
-Ergonomics-first: `s7` enables the full property surface by default.
-Sub-features are only for opt-out builds:
-- `s7` (full)
-- optional: `s7-minimal` to disable computed/dynamic/validators/unions
-Macro emits compile-time errors only when a feature is explicitly disabled.
+## 2) Generics and methods (full S7 dispatch coverage)
 
-## 3) Extend macro parsing and codegen
+### 2.1 Generic creation from Rust methods
 
-Targets: `miniextendr-macros/src/miniextendr_impl.rs`, `miniextendr-macros/src/externalptr_derive.rs`
+Current behavior: instance methods -> `new_generic()` + `method()`.
+Extend with Rust-inferred dispatch rules:
+- Default: single dispatch on `x` with `...` included
+- `#[s7(no_dots)]` removes `...` (for strict generics like `length()`)
+- `#[s7(dispatch = "x,y")]` enables multiple dispatch
+- `#[s7(required_args = "y,z")]` enforces required non-dispatch args
+- `#[s7(optional_arg(name = "na.rm", default = true))]` adds optional args from Rust literals
 
-- Parse new S7 property metadata from:
+### 2.2 Special dispatch classes
+
+- `#[s7(fallback)]` -> register method for `class_any`
+- `#[s7(dispatch_missing = "y")]` -> method for `class_missing` in multi-dispatch
+
+### 2.3 External generics + S4 support
+
+- `#[miniextendr(s7(generic = "pkg::name"))]` already maps to `new_external_generic()`
+- Auto-insert `methods_register()` guidance in package docs
+- If a generic is S4, auto-call `S4_register(Class)` before `method<-`
+
+### 2.4 `super()` and `convert()` ergonomics
+
+- Provide Rust-friendly sugar for `super()` calls in generated R methods (no manual edits)
+- Auto-generate `convert()` methods from Rust `From`/`TryFrom` impls:
+  - `impl From<Child> for Parent` -> `method(convert, list(Child, Parent))`
+  - `impl TryFrom<Parent> for Child` -> upcast (requires property defaults)
+- Respect S7 rule: no inheritance on `to` dispatch.
+
+## 3) Codegen and macro changes
+
+Targets: `miniextendr-macros/src/miniextendr_impl.rs`, `miniextendr-macros/src/externalptr_derive.rs`.
+
+- Parse new S7 metadata from:
   - impl block attributes (`#[miniextendr(s7(...))]`)
   - struct field attributes (`#[s7(...)]`)
-  - method attributes for getters/setters
-- Build a property graph:
-  - field name, inferred S7 class type, and behavior flags
-  - map Rust getters/setters to S7 properties
-  - generate accessor wrappers for field-backed properties
-- Generate `new_class()` with `properties = list(...)`:
-  - Always include `.ptr` property
-  - Add inferred properties with `new_property(class = ..., default = ..., validator = ..., getter = ..., setter = ...)`
+  - method attributes (`#[s7(getter|setter|default|validate|constructor|no_dots|dispatch|fallback|...)]`)
+
+- Build a unified S7 class model:
+  - properties (name, class spec, default, validator, getter, setter)
+  - class metadata (parent, abstract, package)
+  - generic metadata (dispatch args, dots, required/optional args)
+  - conversions (From/TryFrom mapping)
+
+- Generate `new_class()` with:
+  - `.ptr` plus inferred properties
+  - `properties = list(...)` using `new_property()`
+  - `validator`, `abstract`, `parent`, `package`
+  - constructor using `new_object()` and `S7_data()` where relevant
+
 - For `#[externalptr(s7)]` sidecars:
-  - auto-wrap field accessors as `new_property(getter/setter = ...)`
-  - maintain current standalone accessor functions for direct use
+  - auto-wire field accessors into `new_property(getter/setter)`
+  - keep standalone accessors for direct use
 
-## 4) Rust feature gates → S7 property features
+## 4) Concrete examples (Rust -> generated R)
 
-- Default: `s7` enables the full property surface for best ergonomics.
-- Optional: `s7-minimal` to remove computed/dynamic/validators/unions.
-- Macro errors only when a user opts out explicitly.
+### 4.1 Computed property (getter only)
+
+```rust
+#[derive(miniextendr_api::ExternalPtr)]
+#[externalptr(s7)]
+pub struct Range {
+    #[r_data] _r: RSidecar,
+    #[r_data] start: f64,
+    #[r_data] end: f64,
+}
+
+#[miniextendr(s7(props = "annotated"))]
+impl Range {
+    #[s7(prop)]
+    pub fn start(&self) -> f64 { self.start }
+
+    #[s7(prop)]
+    pub fn end(&self) -> f64 { self.end }
+
+    #[s7(getter)]
+    pub fn length(&self) -> f64 { self.end - self.start }
+}
+```
+
+```r
+Range <- S7::new_class("Range",
+  properties = list(
+    .ptr = S7::class_any,
+    start = new_property(getter = function(self) Range_get_start(self@.ptr),
+                         setter = function(self, value) { Range_set_start(self@.ptr, value); self }),
+    end   = new_property(getter = function(self) Range_get_end(self@.ptr),
+                         setter = function(self, value) { Range_set_end(self@.ptr, value); self }),
+    length = new_property(getter = function(self) Range_length(self@.ptr))
+  )
+)
+```
+
+### 4.2 Dynamic property (getter + setter)
+
+```rust
+#[miniextendr(s7)]
+impl Range {
+    #[s7(getter, prop = "length")]
+    fn length(&self) -> f64 { self.end - self.start }
+
+    #[s7(setter, prop = "length")]
+    fn set_length(&mut self, value: f64) { self.end = self.start + value; }
+}
+```
+
+```r
+length = new_property(
+  getter = function(self) Range_length(self@.ptr),
+  setter = function(self, value) { Range_set_length(self@.ptr, value); self }
+)
+```
+
+### 4.3 Multiple dispatch generic
+
+```rust
+#[miniextendr(s7)]
+impl Dog {
+    #[s7(dispatch = "x,y")]
+    fn speak(&self, lang: Language) -> String { ... }
+}
+```
+
+```r
+speak <- S7::new_generic("speak", c("x", "y"), function(x, y, ...) S7::S7_dispatch())
+S7::method(speak, list(Dog, Language)) <- function(x, y, ...) { ... }
+```
+
+### 4.4 Convert via Rust From/TryFrom
+
+```rust
+impl From<Point2D> for Point3D { ... }
+impl TryFrom<Point3D> for Point2D { ... }
+```
+
+```r
+S7::method(convert, list(Point2D, Point3D)) <- function(from, to, ...) { ... }
+S7::method(convert, list(Point3D, Point2D)) <- function(from, to, ...) { ... }
+```
 
 ## 5) Tests (rpkg/tests/testthat)
 
-Add tests covering **all documented S7 features**:
+Add coverage for all documented S7 features:
 
-- Type enforcement + validator errors
-- Defaults from Rust initializer or attribute
-- Computed property (getter only)
-- Dynamic property (getter + setter)
-- Required property (constructor errors)
-- Frozen property (setter error after init)
-- Deprecated property (warning on get/set)
-- Union property (enum/Option) enforcement
-- Class validator and constructor inference
+Classes/objects:
+- `new_class` args: `parent`, `abstract`, `package`, `constructor`, `validator`
+- `S7_object`, `S7_class`, `S7_inherits` / `check_is_S7`
+- Base classes + base S3 classes mapping
 
-## 6) Docs + Examples
+Properties:
+- Type enforcement, `prop()` / `@` access
+- `props()` / `props<-` / `set_props()` batch updates
+- `prop_names()` / `prop_exists()`
+- Defaults (literal + quoted)
+- Property validators
+- Computed + dynamic properties
+- Required / frozen / deprecated patterns
+- `validate()`, `valid_eventually()`, `valid_implicitly()`
 
-- Update Rust docs and generated R docs to show inferred S7 properties.
-- Add examples in `rpkg/src/rust/s7_tests.rs` demonstrating computed/dynamic properties.
-- Update minirextendr docs to explain Rust syntax and feature flags.
+Generics/methods:
+- `new_generic` + `method<-` generation
+- no-dots generics + required/optional args
+- multiple dispatch
+- `class_any` fallback and `class_missing` dispatch
+- `method()` and `method_explain()` introspection
+- `super()` usage in methods
+
+Compatibility and packaging:
+- `new_S3_class` in property types + S3 generic method registration
+- S4 generic method registration + `S4_register()`
+- `new_external_generic()` + `methods_register()` integration
+- `convert()` upcast/downcast + custom convert
+- `S7_data()` for base-parent classes
+
+## 6) Docs and guidance
+
+- Update miniextendr docs to list Rust attributes and inferred mappings.
+- Add a compatibility note for R < 4.3: use `prop()` or `@rawNamespace` import.
+- Show `methods_register()` in `.onLoad()` in package templates.
+- Document the `From`/`TryFrom` -> `convert()` mapping.
 
 ## 7) Rollout steps
 
-- Implement macro parsing changes behind feature flags.
-- Add tests (guarded by `s7` feature).
-- Validate by regenerating wrappers and running rpkg tests.
+- Phase 1: property inference + accessor wiring (field-backed + computed/dynamic)
+- Phase 2: validation/defaults/required/frozen/deprecated patterns
+- Phase 3: generics upgrades (multi-dispatch, no-dots, optional/required args)
+- Phase 4: convert/from + S3/S4 interoperability helpers
+- Phase 5: docs/tests + stabilization

@@ -191,7 +191,7 @@ pub use miniextendr_macros::typed_list;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList,
+    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList, Vctrs,
 };
 
 pub mod altrep;
