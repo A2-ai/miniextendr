@@ -16,12 +16,19 @@ find_bash <- function() {
 # Helper to run a command and check exit status
 run_cmd <- function(cmd, args = character()) {
   message(sprintf("Running: %s %s", cmd, paste(args, collapse = " ")))
-  result <- system2(cmd, args, stdout = "", stderr = "")
-  if (result != 0) {
+  # Use stdout/stderr = TRUE to inherit from parent (visible in logs)
+  result <- system2(cmd, args, stdout = TRUE, stderr = TRUE)
+  exit_status <- attr(result, "status")
+  if (!is.null(exit_status) && exit_status != 0) {
+    # Print captured output for debugging
+    if (length(result) > 0) {
+      message("Command output:")
+      message(paste(result, collapse = "\n"))
+    }
     stop(sprintf("Command failed with exit code %d: %s %s",
-                 result, cmd, paste(args, collapse = " ")))
+                 exit_status, cmd, paste(args, collapse = " ")))
   }
-  invisible(result)
+  invisible(0)
 }
 
 # Choose configure script based on platform
@@ -38,12 +45,27 @@ if (is_windows) {
   }
 
   message(sprintf("Running %s via bash...", basename(configure_script)))
+  message(sprintf("Package root: %s", pkg_root))
+  message(sprintf("Bash executable: %s", bash_exe))
+
   # Run configure.win through bash with login shell
-  result <- system2(bash_exe,
-                    args = c("-l", "-c", sprintf("cd '%s' && ./configure.win", pkg_root)),
-                    stdout = "", stderr = "")
-  if (result != 0) {
-    stop(sprintf("configure.win failed with exit code %d", result))
+  # Capture output to show in error messages
+  cmd_str <- sprintf("cd '%s' && ./configure.win", pkg_root)
+  message(sprintf("Bash command: %s", cmd_str))
+
+  output <- system2(bash_exe,
+                    args = c("-l", "-c", cmd_str),
+                    stdout = TRUE, stderr = TRUE)
+  exit_status <- attr(output, "status")
+
+  # Always print output for debugging
+  if (length(output) > 0) {
+    message("configure.win output:")
+    message(paste(output, collapse = "\n"))
+  }
+
+  if (!is.null(exit_status) && exit_status != 0) {
+    stop(sprintf("configure.win failed with exit code %d", exit_status))
   }
   message("bootstrap.R completed successfully")
 } else {
