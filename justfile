@@ -500,7 +500,21 @@ templates-approve:
     mkdir -p "$tmp/a" "$tmp/b"
 
     just _templates-upstream-populate "$tmp/a"
-    rsync -a "{{local_root}}/" "$tmp/b/"
+
+    # Populate b/ with template versions of same files (not entire template dir)
+    manifest="$(just --quiet templates-sources)"
+    while IFS=$'\t' read -r rel src; do
+      [[ -z "${rel:-}" ]] && continue
+      rel="$(printf '%s' "$rel" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      [[ -z "$rel" ]] && continue
+      [[ "$rel" == \#* ]] && continue
+
+      template_file="{{local_root}}/$rel"
+      if [[ -e "$template_file" ]]; then
+        mkdir -p "$(dirname "$tmp/b/$rel")"
+        cp -a "$template_file" "$tmp/b/$rel"
+      fi
+    done <<<"$manifest"
 
     # diff exits 1 when differences exist; that's expected here.
     # -U2 = 2 context lines (default is 3)
@@ -526,7 +540,25 @@ templates-check:
       patch -d "$tmp" -p1 --forward --batch < "{{patch_file}}" >/dev/null
     fi
 
-    diff -ruN "$tmp" "{{local_root}}"
+    # Compare only files defined in templates-sources (not entire templates dir)
+    tmp2="$(mktemp -d)"
+    trap 'rm -rf "$tmp" "$tmp2"' EXIT
+
+    manifest="$(just --quiet templates-sources)"
+    while IFS=$'\t' read -r rel src; do
+      [[ -z "${rel:-}" ]] && continue
+      rel="$(printf '%s' "$rel" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      [[ -z "$rel" ]] && continue
+      [[ "$rel" == \#* ]] && continue
+
+      template_file="{{local_root}}/$rel"
+      if [[ -e "$template_file" ]]; then
+        mkdir -p "$(dirname "$tmp2/$rel")"
+        cp -a "$template_file" "$tmp2/$rel"
+      fi
+    done <<<"$manifest"
+
+    diff -ruN "$tmp" "$tmp2"
 
 # CI-friendly: only prints diff when failing
 templates-check-ci:

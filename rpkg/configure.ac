@@ -757,8 +757,8 @@ AC_CONFIG_COMMANDS([compress-vendor],
       dnl Note: We cannot strip /// doc comments because displaydoc crate uses them
       dnl to generate Display impls. Stripping them would break error types.
       dnl However, we CAN strip #@<:@doc = include_str! lines since we delete examples/docs dirs
-      find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\@<:@doc = include_str!/d' -e '/^#!\@<:@doc = include_str!/d' {} \;
-      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete
+      find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\@<:@doc = include_str!/d' -e '/^#!\@<:@doc = include_str!/d' {} \; 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete 2>/dev/null || true
 
       dnl Clear checksums for ALL crates in temp copy.
       dnl Required because we exclude tests/, benches/, examples/, .github/ etc. which are in the checksums.
@@ -781,7 +781,7 @@ AC_CONFIG_COMMANDS([compress-vendor],
       find "$_staging_tmp/vendor" -name '*.a' -type f -delete 2>/dev/null || true
       find "$_staging_tmp/vendor" -name '*.lib' -type f -delete 2>/dev/null || true
       dnl Truncate all .md files (keeps file existing for include_str! but removes content)
-      find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > "$1"' _ {} \;
+      find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > "$1"' sh {} \;
 
       dnl Create tarball from staging area
       tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
