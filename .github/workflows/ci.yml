@@ -471,6 +471,8 @@ jobs:
       R_KEEP_PKG_SOURCE: yes
       NOT_CRAN: true
       SCCACHE_GHA_ENABLED: "true"
+      # Windows GNU toolchain requires explicit target (msys != windows-gnu)
+      CARGO_BUILD_TARGET: x86_64-pc-windows-gnu
 
     steps:
       - uses: actions/checkout@v6
