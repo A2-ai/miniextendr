@@ -9,6 +9,7 @@
 //! #[derive(Vctrs)]
 //! #[vctrs(class = "percent", base = "double")]
 //! pub struct Percent {
+//!     #[vctrs(data)]
 //!     data: Vec<f64>,
 //! }
 //! ```
@@ -21,6 +22,11 @@
 //! - `#[vctrs(base = "double" | "integer" | "list" | "record")]` - Base vector type
 //! - `#[vctrs(abbr = "pct")]` - Abbreviation for `vec_ptype_abbr`
 //! - `#[vctrs(inherit_base = true | false)]` - Whether to include base type in class vector
+//!
+//! ### Field-level
+//!
+//! - `#[vctrs(data)]` - Mark field as the underlying data (required for `IntoVctrs`)
+//! - `#[vctrs(skip)]` - Skip field when generating record fields
 //!
 //! ### Method-level (on impl methods)
 //!
@@ -48,6 +54,21 @@ struct VctrsAttrs {
     abbr: Option<String>,
     /// Whether to inherit base type in class vector
     inherit_base: Option<bool>,
+}
+
+/// Parsed vctrs attributes from a field.
+#[derive(Default)]
+struct VctrsFieldAttrs {
+    /// Mark as the data field for IntoVctrs
+    is_data: bool,
+    /// Skip this field in record generation
+    skip: bool,
+}
+
+/// Information about a struct field.
+struct FieldInfo {
+    ident: syn::Ident,
+    attrs: VctrsFieldAttrs,
 }
 
 /// Parse vctrs attributes from a struct.
@@ -82,6 +103,57 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
     Ok(result)
 }
 
+/// Parse vctrs attributes from a field.
+fn parse_vctrs_field_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsFieldAttrs> {
+    let mut result = VctrsFieldAttrs::default();
+
+    for attr in attrs {
+        if attr.path().is_ident("vctrs") {
+            attr.parse_nested_meta(|meta| {
+                if meta.path.is_ident("data") {
+                    result.is_data = true;
+                } else if meta.path.is_ident("skip") {
+                    result.skip = true;
+                } else {
+                    return Err(meta.error("unknown vctrs field attribute; expected: data, skip"));
+                }
+                Ok(())
+            })?;
+        }
+    }
+
+    Ok(result)
+}
+
+/// Extract field information from a struct.
+fn extract_fields(input: &DeriveInput) -> syn::Result<Vec<FieldInfo>> {
+    let fields = match &input.data {
+        Data::Struct(data) => &data.fields,
+        _ => return Ok(Vec::new()),
+    };
+
+    match fields {
+        Fields::Named(named) => {
+            let mut result = Vec::new();
+            for field in &named.named {
+                if let Some(ident) = &field.ident {
+                    let attrs = parse_vctrs_field_attrs(&field.attrs)?;
+                    result.push(FieldInfo {
+                        ident: ident.clone(),
+                        attrs,
+                    });
+                }
+            }
+            Ok(result)
+        }
+        Fields::Unnamed(_) => Err(syn::Error::new_spanned(
+            fields,
+            "vctrs types require named fields",
+        )),
+        Fields::Unit => Ok(Vec::new()),
+    }
+}
+
 /// Map base type string to SEXPTYPE.
 fn base_to_sexptype(base: &str) -> Option<TokenStream> {
     match base {
@@ -114,8 +186,8 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     let attrs = parse_vctrs_attrs(&input.attrs)?;
 
     // Validate: must be a struct
-    let _fields = match &input.data {
-        Data::Struct(data) => &data.fields,
+    match &input.data {
+        Data::Struct(_) => {}
         Data::Enum(_) => {
             return Err(syn::Error::new_spanned(
                 &input,
@@ -129,6 +201,9 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
             ));
         }
     };
+
+    // Extract field information
+    let fields = extract_fields(&input)?;
 
     // Require class attribute
     let class_name = attrs.class.ok_or_else(|| {
@@ -178,9 +253,80 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
+    // Find data field for IntoVctrs
+    let data_field = fields.iter().find(|f| f.attrs.is_data);
+
+    // Generate IntoVctrs implementation if data field is marked
+    let into_vctrs_impl = if let Some(data_field) = data_field {
+        let data_ident = &data_field.ident;
+
+        match base {
+            "record" => {
+                // For records, we need to build a List from all non-skipped fields
+                let record_fields: Vec<_> = fields
+                    .iter()
+                    .filter(|f| !f.attrs.skip)
+                    .collect();
+                let field_names: Vec<String> = record_fields
+                    .iter()
+                    .map(|f| f.ident.to_string())
+                    .collect();
+                let field_idents: Vec<_> = record_fields
+                    .iter()
+                    .map(|f| &f.ident)
+                    .collect();
+                let n_fields = field_names.len();
+
+                quote! {
+                    impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
+                        fn into_vctrs(self) -> Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
+                            use ::miniextendr_api::IntoR;
+
+                            // Build the fields list
+                            let mut fields = ::miniextendr_api::list::List::with_capacity(#n_fields);
+                            #(
+                                fields.push_named(#field_names, self.#field_idents.into_sexp());
+                            )*
+
+                            ::miniextendr_api::vctrs::new_rcrd(
+                                fields,
+                                &[Self::CLASS_NAME],
+                                &self.attrs(),
+                            )
+                        }
+                    }
+                }
+            }
+            _ => {
+                // For simple vctrs (double, integer, etc.)
+                quote! {
+                    impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
+                        fn into_vctrs(self) -> Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
+                            use ::miniextendr_api::IntoR;
+
+                            let data = self.#data_ident.into_sexp();
+                            ::miniextendr_api::vctrs::new_vctr(
+                                data,
+                                &[Self::CLASS_NAME],
+                                &self.attrs(),
+                                Some(Self::INHERIT_BASE_TYPE),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     // Generate VctrsRecord implementation if base is "record"
     let record_impl = if base == "record" {
-        let field_names = extract_field_names(&input)?;
+        let field_names: Vec<String> = fields
+            .iter()
+            .filter(|f| !f.attrs.skip)
+            .map(|f| f.ident.to_string())
+            .collect();
         let field_name_strs: Vec<&str> = field_names.iter().map(|s| s.as_str()).collect();
 
         quote! {
@@ -197,28 +343,8 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(quote! {
         #vctrs_class_impl
         #record_impl
+        #into_vctrs_impl
     })
-}
-
-/// Extract field names from a struct for record types.
-fn extract_field_names(input: &DeriveInput) -> syn::Result<Vec<String>> {
-    let fields = match &input.data {
-        Data::Struct(data) => &data.fields,
-        _ => return Ok(Vec::new()),
-    };
-
-    match fields {
-        Fields::Named(named) => Ok(named
-            .named
-            .iter()
-            .filter_map(|f| f.ident.as_ref().map(|i| i.to_string()))
-            .collect()),
-        Fields::Unnamed(_) => Err(syn::Error::new_spanned(
-            fields,
-            "vctrs record types require named fields",
-        )),
-        Fields::Unit => Ok(Vec::new()),
-    }
 }
 
 #[cfg(test)]
@@ -244,6 +370,27 @@ mod tests {
     }
 
     #[test]
+    fn test_simple_vctr_with_data_field() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "percent", base = "double")]
+            struct Percent {
+                #[vctrs(data)]
+                data: Vec<f64>,
+            }
+        };
+
+        let result = derive_vctrs(input).unwrap();
+        let code = result.to_string();
+
+        // Should generate VctrsClass
+        assert!(code.contains("VctrsClass"));
+        // Should generate IntoVctrs with data field
+        assert!(code.contains("IntoVctrs"));
+        assert!(code.contains("self . data"));
+        assert!(code.contains("new_vctr"));
+    }
+
+    #[test]
     fn test_record_vctr() {
         let input: DeriveInput = syn::parse_quote! {
             #[vctrs(class = "rational", base = "record")]
@@ -260,6 +407,53 @@ mod tests {
         assert!(code.contains("VctrsRecord"));
         assert!(code.contains("Rcrd"));
         assert!(code.contains("field_names"));
+    }
+
+    #[test]
+    fn test_record_vctr_with_data() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "rational", base = "record")]
+            struct Rational {
+                #[vctrs(data)]
+                n: Vec<i32>,
+                d: Vec<i32>,
+            }
+        };
+
+        let result = derive_vctrs(input).unwrap();
+        let code = result.to_string();
+
+        // Should generate all three traits
+        assert!(code.contains("VctrsClass"));
+        assert!(code.contains("VctrsRecord"));
+        assert!(code.contains("IntoVctrs"));
+        // Record uses new_rcrd
+        assert!(code.contains("new_rcrd"));
+        // Field names should be included
+        assert!(code.contains("\"n\""));
+        assert!(code.contains("\"d\""));
+    }
+
+    #[test]
+    fn test_skip_field() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "rational", base = "record")]
+            struct Rational {
+                #[vctrs(data)]
+                n: Vec<i32>,
+                d: Vec<i32>,
+                #[vctrs(skip)]
+                cached: Option<f64>,
+            }
+        };
+
+        let result = derive_vctrs(input).unwrap();
+        let code = result.to_string();
+
+        // Field names should NOT include cached
+        assert!(code.contains("\"n\""));
+        assert!(code.contains("\"d\""));
+        assert!(!code.contains("\"cached\""));
     }
 
     #[test]
