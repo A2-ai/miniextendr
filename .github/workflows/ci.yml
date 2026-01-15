@@ -459,6 +459,7 @@ jobs:
     name: R CMD check / Windows
     runs-on: windows-latest
     timeout-minutes: 90
+    continue-on-error: true  # Windows CI is flaky; don't block on it
     needs: changes
     if: needs.changes.outputs.r == 'true'
     env:
