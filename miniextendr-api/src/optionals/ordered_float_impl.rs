@@ -13,9 +13,99 @@
 
 pub use ordered_float::OrderedFloat;
 
+use crate::coerce::{Coerce, CoerceError, TryCoerce};
 use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
+
+// =============================================================================
+// Coerce/TryCoerce impls for OrderedFloat
+// =============================================================================
+
+/// `f64` → `OrderedFloat<f64>`: infallible wrapping
+impl Coerce<OrderedFloat<f64>> for f64 {
+    #[inline(always)]
+    fn coerce(self) -> OrderedFloat<f64> {
+        OrderedFloat(self)
+    }
+}
+
+/// `f32` → `OrderedFloat<f32>`: infallible wrapping
+impl Coerce<OrderedFloat<f32>> for f32 {
+    #[inline(always)]
+    fn coerce(self) -> OrderedFloat<f32> {
+        OrderedFloat(self)
+    }
+}
+
+/// `f64` → `OrderedFloat<f32>`: narrowing, may lose precision
+impl TryCoerce<OrderedFloat<f32>> for f64 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<OrderedFloat<f32>, CoerceError> {
+        // Check if value fits in f32 range
+        if self.is_nan() {
+            return Ok(OrderedFloat(f32::NAN));
+        }
+        if self.is_infinite() {
+            return Ok(OrderedFloat(if self > 0.0 {
+                f32::INFINITY
+            } else {
+                f32::NEG_INFINITY
+            }));
+        }
+        // Check for overflow beyond f32 range
+        if self.abs() > f32::MAX as f64 {
+            return Err(CoerceError::Overflow);
+        }
+        let f32_val = self as f32;
+        // Check for precision loss by round-tripping
+        if (f32_val as f64 - self).abs() > f64::EPSILON * self.abs().max(1.0) {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(OrderedFloat(f32_val))
+    }
+}
+
+/// `i32` → `OrderedFloat<f64>`: widening
+impl Coerce<OrderedFloat<f64>> for i32 {
+    #[inline(always)]
+    fn coerce(self) -> OrderedFloat<f64> {
+        OrderedFloat(self as f64)
+    }
+}
+
+/// `i32` → `OrderedFloat<f32>`: may lose precision for large integers
+impl TryCoerce<OrderedFloat<f32>> for i32 {
+    type Error = CoerceError;
+
+    #[inline]
+    fn try_coerce(self) -> Result<OrderedFloat<f32>, CoerceError> {
+        let f32_val = self as f32;
+        // Check for precision loss by round-tripping
+        if f32_val as i32 != self {
+            return Err(CoerceError::PrecisionLoss);
+        }
+        Ok(OrderedFloat(f32_val))
+    }
+}
+
+/// `OrderedFloat<f64>` → `f64`: unwrapping
+impl Coerce<f64> for OrderedFloat<f64> {
+    #[inline(always)]
+    fn coerce(self) -> f64 {
+        self.0
+    }
+}
+
+/// `OrderedFloat<f32>` → `f64`: widening unwrap
+impl Coerce<f64> for OrderedFloat<f32> {
+    #[inline(always)]
+    fn coerce(self) -> f64 {
+        self.0 as f64
+    }
+}
 
 fn parse_f64(sexp: SEXP) -> Result<f64, SexpError> {
     let value: f64 = TryFromSexp::try_from_sexp(sexp)?;

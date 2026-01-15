@@ -57,26 +57,19 @@ AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
 dnl
-dnl By default, use no extra features (safe, passes R CMD check).
-dnl In dev mode (NOT_CRAN=true), enable all optional features for testing.
+dnl rpkg is a demo package that demonstrates ALL miniextendr features.
+dnl Enable all optional features by default (both dev and CRAN modes).
 dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
 AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
-dnl In dev mode, enable all features by default for comprehensive testing
+dnl Enable all features by default for this demo package
 dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
-  dnl MINIEXTENDR_FEATURES not set at all - apply defaults based on mode
-  if test "$NOT_CRAN" = "true"; then
-    dnl Dev mode: enable all optional features for testing
-    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
-    echo "configure: dev mode - enabling all optional features for testing"
-  else
-    dnl CRAN mode: no extra features
-    MINIEXTENDR_FEATURES=""
-  fi
+  dnl MINIEXTENDR_FEATURES not set - enable all optional features
+  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
@@ -138,15 +131,20 @@ AC_SUBST([SED])
 AC_SUBST([CYGPATH])
 
 dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
+dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 root_miniextendr_repo_cargo="$root_miniextendr_repo"
+abs_rpkg_src_cargo="$abs_rpkg_src"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     if test "x$CYGPATH" != "xno"; then
       root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
     fi
     ;;
 esac
 AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
+AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
 
 dnl Report rustc version (required by CRAN for Rust packages)
 RUSTC_VERSION="$($RUSTC --version)"
@@ -177,6 +175,11 @@ dnl ---- Cargo configuration ----
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: src/rust/target)])
 : ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
 AC_SUBST([CARGO_TARGET_DIR])
+
+dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
+dnl These are used in .cargo/config.toml which Cargo reads directly
+CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
 : ${CARGO_PROFILE="release"}
@@ -256,6 +259,9 @@ AC_SUBST([OPTIONAL_CARGO_DEPS])
 dnl ---- vendoring (cached, in src/vendor) ----
 VENDOR_OUT="$abs_rpkg_src/vendor"
 AC_SUBST([VENDOR_OUT])
+dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
+VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+AC_SUBST([VENDOR_OUT_CARGO])
 
 dnl Force refresh if you want
 AC_ARG_VAR([FORCE_VENDOR],[Set to 1 to force `cargo vendor` refresh in dev mode])
@@ -291,7 +297,7 @@ EOF
 replace-with = "vendored-sources"
 
 @<:@source.vendored-sources@:>@
-directory = "$VENDOR_OUT"
+directory = "$VENDOR_OUT_CARGO"
 EOF
 )"
 ])
@@ -388,6 +394,10 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           echo "configure: error: failed to unpack vendor.tar.xz" >&2
           exit 1
         fi
+        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+        fi
       else
         echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
         echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
@@ -436,11 +446,11 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	            --manifest-path "$MANIFEST" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-	            "$VENDOR_OUT"
+	            "$VENDOR_OUT" > /dev/null
 	        else
 	          $CARGO_CMD vendor \
 	            --manifest-path "$MANIFEST" \
-	            "$VENDOR_OUT"
+	            "$VENDOR_OUT" > /dev/null
 	        fi
 	        if test $? -ne 0; then
 	          echo "configure: error: cargo vendor failed" >&2
@@ -454,6 +464,10 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
           echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
           tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+          dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+          fi
         else
           echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
           echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
@@ -598,7 +612,7 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
         echo "configure: error: $_crate/Cargo.toml still contains '.workspace = true' after patching" >&2
         exit 1
       fi
-      dnl Create .cargo-checksum.json for vendored crates (required by cargo)
+      dnl Miniextendr crates are synced from monorepo, not cargo vendor, so they need checksums
       echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
     done
 
@@ -638,25 +652,19 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     echo "configure: CARGO_AR would be: $CARGO_LIBDIR/librpkg.a" >&2
     echo "configure: checking if $CARGO_LIBDIR exists: $(test -d "$CARGO_LIBDIR" && echo yes || echo no)" >&2
 
-    dnl Clear checksum files to avoid "file not found" errors from R CMD build exclusions
-    dnl R CMD build excludes .gitignore files etc, but cargo-checksum.json references them
-    for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
-      if test -f "$_cksum"; then
-        echo '{"files":{}}' > "$_cksum"
-      fi
-    done
-    echo "configure: cleared vendor checksum files" >&2
+    dnl NOTE: Do NOT clear checksum files here. When building from a tarball,
+    dnl the vendor directory comes from inst/vendor.tar.xz which was created
+    dnl by `cargo vendor` with valid checksums. Clearing them breaks the build.
+    dnl
+    dnl The checksum clearing that used to be here was intended to handle files
+    dnl excluded by R CMD build (.gitignore etc), but this is now handled by
+    dnl the compress-vendor step which clears checksums BEFORE creating the tarball.
 
     dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
     rm -f "$VENDOR_OUT/r-efi/Makefile"
 
-    dnl Also strip checksums from Cargo.lock to avoid verification mismatch
-    if test -f "src/rust/Cargo.lock"; then
-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
-      echo "configure: stripped checksums from Cargo.lock" >&2
-    fi
-
     dnl Rewrite cargo config to use vendored sources (both locations)
+    dnl Use _CARGO paths for Windows-native path format
     for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
       mkdir -p "$(dirname "$_cfg")"
       cat > "$_cfg" <<VENDORED_CONFIG_EOF
@@ -666,10 +674,10 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
 replace-with = "vendored-sources"
 
 @<:@source.vendored-sources@:>@
-directory = "$VENDOR_OUT"
+directory = "$VENDOR_OUT_CARGO"
 
 @<:@build@:>@
-target-dir = "$CARGO_TARGET_DIR"
+target-dir = "$CARGO_TARGET_DIR_CARGO"
 VENDORED_CONFIG_EOF
       echo "configure: rewrote $_cfg for vendored sources" >&2
     done
@@ -681,10 +689,12 @@ VENDORED_CONFIG_EOF
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 ],
-[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
+[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
+ ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
- CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
+ CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO" \
+ CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"])
 
 dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
 dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
@@ -699,26 +709,27 @@ AC_CONFIG_COMMANDS([compress-vendor],
 
     dnl Calculate fingerprint based on inputs that affect vendor contents:
     dnl - Cargo.lock checksum (third-party deps)
-    dnl - miniextendr crate Cargo.toml checksums (local deps)
+    dnl - miniextendr crate directory checksums (ALL files, not just Cargo.toml)
     _lock_ck=""
     if test -f "src/rust/Cargo.lock"; then
       _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
     fi
+    dnl Checksum all source files in each miniextendr crate (excluding target dirs)
     _api_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
-      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-api"; then
+      _api_ck="$(find "$VENDOR_OUT/miniextendr-api" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
     _macros_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
-      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-macros"; then
+      _macros_ck="$(find "$VENDOR_OUT/miniextendr-macros" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
     _lint_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
-      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-lint"; then
+      _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
     _engine_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
-      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print [$]1":"[$]2}')"
+    if test -d "$VENDOR_OUT/miniextendr-engine"; then
+      _engine_ck="$(find "$VENDOR_OUT/miniextendr-engine" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
     fi
 
     _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"
@@ -736,18 +747,50 @@ AC_CONFIG_COMMANDS([compress-vendor],
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
-      dnl Exclude unnecessary files: tests, benchmarks, CI files
-      dnl TODO: currently, winnow uses the examples folder in its compilation process.
-      dnl this is unexpected, and should be solved upstream
-      tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
-        --exclude='vendor/*/tests' \
-        --exclude='vendor/*/benches' \
-        --exclude='vendor/*/.github' \
-        --exclude='vendor/*/.travis.yml' \
-        --exclude='vendor/*/.gitlab-ci.yml' \
-        --exclude='vendor/*/.vim' \
-        vendor
-      if test $? -ne 0; then
+
+      dnl Create temp staging area with vendor/ subdirectory to preserve correct archive structure
+      _staging_tmp="$ABS_RPKG_SRC/.vendor-tarball-staging"
+      rm -rf "$_staging_tmp"
+      mkdir -p "$_staging_tmp"
+      cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
+
+      dnl Note: We cannot strip /// doc comments because displaydoc crate uses them
+      dnl to generate Display impls. Stripping them would break error types.
+      dnl However, we CAN strip #@<:@doc = include_str! lines since we delete examples/docs dirs
+      find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\@<:@doc = include_str!/d' -e '/^#!\@<:@doc = include_str!/d' {} \;
+      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete
+
+      dnl Clear checksums for ALL crates in temp copy.
+      dnl Required because we exclude tests/, benches/, examples/, .github/ etc. which are in the checksums.
+      for _crate_dir in "$_staging_tmp/vendor"/*/; do
+        test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
+      done
+
+      dnl Remove directories we're excluding (faster than tar --exclude for many files)
+      find "$_staging_tmp/vendor" -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'benches' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.github' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.vim' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'ci' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'scripts' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'testdata' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'docs' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.travis.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.gitlab-ci.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.a' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.lib' -type f -delete 2>/dev/null || true
+      dnl Truncate all .md files (keeps file existing for include_str! but removes content)
+      find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > "$1"' _ {} \;
+
+      dnl Create tarball from staging area
+      tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
+      _tar_status=$?
+
+      dnl Clean up staging area
+      rm -rf "$_staging_tmp"
+
+      if test $_tar_status -ne 0; then
         echo "configure: warning: failed to compress vendor directory" >&2
       else
         echo "$_new_fingerprint" > "$VENDOR_STAMP"
@@ -757,7 +800,7 @@ AC_CONFIG_COMMANDS([compress-vendor],
     fi
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
 
 dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
 AC_CONFIG_COMMANDS([patch-staticlib-name],

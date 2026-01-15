@@ -1,5 +1,5 @@
 error: cannot specify default for self parameter in defaults(...)
-  --> tests/ui/default_on_self.rs:10:12
-   |
-10 |     pub fn method(&self) {}
-   |            ^^^^^^
+ --> tests/ui/default_on_self.rs:9:19
+  |
+9 |     #[miniextendr(defaults(self = "NULL"))]
+  |                   ^^^^^^^^

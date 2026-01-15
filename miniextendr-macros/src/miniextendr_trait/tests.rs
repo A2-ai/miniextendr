@@ -151,38 +151,39 @@ fn method_rejects_generic_parameters() {
 }
 
 #[test]
-fn method_rejects_explicit_self_type() {
-    // `self: &Self` has no `reference` on Receiver (& comes after colon)
-    // so it fails the by-value check first
+fn method_accepts_explicit_self_ref() {
+    // `self: &Self` is semantically equivalent to `&self` and should be accepted
     let result = validate_trait_str(quote::quote! {
         pub trait ExplicitSelf {
             fn method(self: &Self) -> i32;
         }
     });
-    let err = result.unwrap_err();
-    // Fails on by-value check (reference.is_none()) before reaching colon_token check
-    assert!(
-        err.to_string()
-            .contains("receiver must be `&self` or `&mut self`"),
-        "unexpected error: {}",
-        err
-    );
+    assert!(result.is_ok(), "self: &Self should be accepted");
+}
+
+#[test]
+fn method_accepts_explicit_self_mut_ref() {
+    // `self: &mut Self` is semantically equivalent to `&mut self` and should be accepted
+    let result = validate_trait_str(quote::quote! {
+        pub trait ExplicitSelfMut {
+            fn method(self: &mut Self) -> i32;
+        }
+    });
+    assert!(result.is_ok(), "self: &mut Self should be accepted");
 }
 
 #[test]
 fn method_rejects_box_self() {
-    // `self: Box<Self>` is by-value with explicit type, triggers both checks
+    // `self: Box<Self>` is by-value (consumes self), should be rejected
     let result = validate_trait_str(quote::quote! {
         pub trait BoxSelf {
             fn method(self: Box<Self>) -> i32;
         }
     });
     let err = result.unwrap_err();
-    // Should reject due to self by value (reference.is_none())
     assert!(
         err.to_string()
-            .contains("receiver must be `&self` or `&mut self`")
-            || err.to_string().contains("explicit type annotation"),
+            .contains("receiver must be `&self` or `&mut self`"),
         "unexpected error: {}",
         err
     );

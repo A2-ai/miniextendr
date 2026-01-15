@@ -276,6 +276,8 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
 pub mod from_r;
 pub mod into_r;
 pub use into_r::{Altrep, IntoR};
+pub mod into_r_as;
+pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod unwind_protect;
 pub mod worker;
 
@@ -324,9 +326,11 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 pub mod convert;
 pub mod dots;
 pub mod list;
+pub mod strvec;
 pub mod typed_list;
 pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
-pub use list::{IntoList, List, ListMut, TryFromList};
+pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
+pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
     sexptype_name, validate_list,
@@ -363,6 +367,13 @@ pub mod preserve;
 // GC protection toolkit (PROTECT stack RAII wrappers)
 pub mod gc_protect;
 pub use gc_protect::{OwnedProtect, ProtectIndex, ProtectScope, ReprotectSlot, Root};
+
+// Reference-counted GC protection (BTreeMap + VECSXP backing)
+pub mod refcount_protect;
+pub use refcount_protect::{
+    Arena, ArenaGuard, HashMapArena, MapStorage, RefCountedArena, RefCountedGuard,
+    ThreadLocalArena, ThreadLocalHashArena,
+};
 
 pub mod allocator;
 pub use allocator::RAllocator;

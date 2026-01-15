@@ -14,17 +14,12 @@ impl Drop for SimpleDropMsg {
     }
 }
 
-/// Unwind Protect Tests
-///
-/// Unwind protect tests.
-///
-/// Test that with_r_unwind_protect works for normal (non-error) path.
-/// Destructors should run normally when the closure completes successfully.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
 /// @name rpkg_unwind_protect
-/// @keywords internal
+/// @noRd
 /// @examples
 /// \dontrun{
 /// unsafe_C_unwind_protect_normal()
@@ -44,8 +39,7 @@ pub extern "C-unwind" fn C_unwind_protect_normal() -> SEXP {
     )
 }
 
-/// Test that with_r_unwind_protect cleans up on R error.
-/// Resources captured by the closure ARE dropped when an R error occurs.
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]
@@ -81,7 +75,7 @@ pub extern "C-unwind" fn C_unwind_protect_r_error() -> SEXP {
     )
 }
 
-/// Minimal test using low-level with_unwind_protect
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 #[allow(non_snake_case)]

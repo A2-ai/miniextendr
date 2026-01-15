@@ -213,26 +213,28 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
         ));
     }
 
-    // Check receiver - must be &self, &mut self, or no receiver (static method)
+    // Check receiver - must be &self, &mut self, self: &Self, self: &mut Self, or no receiver
     // Static methods are allowed but won't be included in the vtable
     // (they're resolved at compile time via <Type as Trait>::method())
     let receiver = method.sig.inputs.first();
     if let Some(syn::FnArg::Receiver(r)) = receiver {
-        // If there's a receiver, it must be &self or &mut self (not self by value)
-        if r.reference.is_none() {
+        // Accept either:
+        // - `&self` / `&mut self` (r.reference is Some)
+        // - `self: &Self` / `self: &mut Self` (r.colon_token is Some with reference type)
+        let is_ref = if r.reference.is_some() {
+            true
+        } else if r.colon_token.is_some() {
+            // Check if the type is a reference type (&Self or &mut Self)
+            matches!(r.ty.as_ref(), syn::Type::Reference(_))
+        } else {
+            false
+        };
+
+        if !is_ref {
             return Err(syn::Error::new_spanned(
-                &method.sig,
+                r,
                 format!(
                     "#[miniextendr] trait method `{}::{}` receiver must be `&self` or `&mut self`, not `self` by value",
-                    trait_name, method_name
-                ),
-            ));
-        }
-        if r.colon_token.is_some() {
-            return Err(syn::Error::new_spanned(
-                &method.sig,
-                format!(
-                    "#[miniextendr] trait method `{}::{}` receiver cannot have explicit type annotation",
                     trait_name, method_name
                 ),
             ));

@@ -611,6 +611,7 @@ LIBOBJS
 CARGO_SOURCE_REPLACE
 VENDOR_SYNC_EXTRA
 FORCE_VENDOR
+VENDOR_OUT_CARGO
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
 PACKAGE_TARNAME_RS_UPPERCASE
@@ -620,9 +621,11 @@ CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
 CARGO_PROFILE
+CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
 CARGO_CMD
 RUST_TOOLCHAIN
+ABS_RPKG_SRC_CARGO
 ROOT_MINIEXTENDR_REPO_CARGO
 CYGPATH
 SED
@@ -2002,12 +2005,7 @@ fi
 
 
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
-    if test "$NOT_CRAN" = "true"; then
-        MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
-    echo "configure: dev mode - enabling all optional features for testing"
-  else
-        MINIEXTENDR_FEATURES=""
-  fi
+    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
@@ -2428,14 +2426,18 @@ fi
 
 
 root_miniextendr_repo_cargo="$root_miniextendr_repo"
+abs_rpkg_src_cargo="$abs_rpkg_src"
 case "$host_os" in
   *msys*|*cygwin*|*mingw*)
     if test "x$CYGPATH" != "xno"; then
       root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
     fi
     ;;
 esac
 ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo"
+
+ABS_RPKG_SRC_CARGO="$abs_rpkg_src_cargo"
 
 
 RUSTC_VERSION="$($RUSTC --version)"
@@ -2461,6 +2463,9 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 
 : ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
+
+
+CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
 
 
 
@@ -2549,6 +2554,8 @@ done
 
 VENDOR_OUT="$abs_rpkg_src/vendor"
 
+VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+
 
 
 : ${FORCE_VENDOR="0"}
@@ -2579,7 +2586,7 @@ else case e in #(
 replace-with = "vendored-sources"
 
 [source.vendored-sources]
-directory = "$VENDOR_OUT"
+directory = "$VENDOR_OUT_CARGO"
 EOF
 )"
  ;;
@@ -3327,11 +3334,13 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"
-RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
+RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
+ ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
  MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
- CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"
-NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"
+ CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO" \
+ CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src"
+NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
 
 _ACEOF
@@ -3820,6 +3829,9 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
           echo "configure: error: failed to unpack vendor.tar.xz" >&2
           exit 1
         fi
+                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+        fi
       else
         echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
         echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
@@ -3865,11 +3877,11 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 	            --manifest-path "$MANIFEST" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-	            "$VENDOR_OUT"
+	            "$VENDOR_OUT" > /dev/null
 	        else
 	          $CARGO_CMD vendor \
 	            --manifest-path "$MANIFEST" \
-	            "$VENDOR_OUT"
+	            "$VENDOR_OUT" > /dev/null
 	        fi
 	        if test $? -ne 0; then
 	          echo "configure: error: cargo vendor failed" >&2
@@ -3882,6 +3894,9 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
           echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
           tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+                    if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+          fi
         else
           echo "configure: error: cargo vendor needed but monorepo not found and vendor is empty" >&2
           echo "configure:        Cannot build without either monorepo or pre-vendored dependencies." >&2
@@ -4033,21 +4048,10 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
     echo "configure: CARGO_AR would be: $CARGO_LIBDIR/librpkg.a" >&2
     echo "configure: checking if $CARGO_LIBDIR exists: $(test -d "$CARGO_LIBDIR" && echo yes || echo no)" >&2
 
-            for _cksum in "$VENDOR_OUT"/*/.cargo-checksum.json; do
-      if test -f "$_cksum"; then
-        echo '{"files":{}}' > "$_cksum"
-      fi
-    done
-    echo "configure: cleared vendor checksum files" >&2
 
         rm -f "$VENDOR_OUT/r-efi/Makefile"
 
-        if test -f "src/rust/Cargo.lock"; then
-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
-      echo "configure: stripped checksums from Cargo.lock" >&2
-    fi
-
-        for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
+            for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
       mkdir -p "$(dirname "$_cfg")"
       cat > "$_cfg" <<VENDORED_CONFIG_EOF
 # Autogenerated by configure -- DO NOT EDIT
@@ -4056,10 +4060,10 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 replace-with = "vendored-sources"
 
 [source.vendored-sources]
-directory = "$VENDOR_OUT"
+directory = "$VENDOR_OUT_CARGO"
 
 [build]
-target-dir = "$CARGO_TARGET_DIR"
+target-dir = "$CARGO_TARGET_DIR_CARGO"
 VENDORED_CONFIG_EOF
       echo "configure: rewrote $_cfg for vendored sources" >&2
     done
@@ -4077,21 +4081,21 @@ VENDORED_CONFIG_EOF
     if test -f "src/rust/Cargo.lock"; then
       _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print $1":"$2}')"
     fi
-    _api_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-api/Cargo.toml"; then
-      _api_ck="$(cksum < "$VENDOR_OUT/miniextendr-api/Cargo.toml" | awk '{print $1":"$2}')"
+        _api_ck=""
+    if test -d "$VENDOR_OUT/miniextendr-api"; then
+      _api_ck="$(find "$VENDOR_OUT/miniextendr-api" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print $1":"$2}')"
     fi
     _macros_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-macros/Cargo.toml"; then
-      _macros_ck="$(cksum < "$VENDOR_OUT/miniextendr-macros/Cargo.toml" | awk '{print $1":"$2}')"
+    if test -d "$VENDOR_OUT/miniextendr-macros"; then
+      _macros_ck="$(find "$VENDOR_OUT/miniextendr-macros" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print $1":"$2}')"
     fi
     _lint_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-lint/Cargo.toml"; then
-      _lint_ck="$(cksum < "$VENDOR_OUT/miniextendr-lint/Cargo.toml" | awk '{print $1":"$2}')"
+    if test -d "$VENDOR_OUT/miniextendr-lint"; then
+      _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print $1":"$2}')"
     fi
     _engine_ck=""
-    if test -f "$VENDOR_OUT/miniextendr-engine/Cargo.toml"; then
-      _engine_ck="$(cksum < "$VENDOR_OUT/miniextendr-engine/Cargo.toml" | awk '{print $1":"$2}')"
+    if test -d "$VENDOR_OUT/miniextendr-engine"; then
+      _engine_ck="$(find "$VENDOR_OUT/miniextendr-engine" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print $1":"$2}')"
     fi
 
     _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"
@@ -4109,15 +4113,40 @@ VENDORED_CONFIG_EOF
     if test $_need_compress -eq 1; then
       echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
-                        tar -cJf "$VENDOR_TARBALL" -C "$ABS_RPKG_SRC" \
-        --exclude='vendor/*/tests' \
-        --exclude='vendor/*/benches' \
-        --exclude='vendor/*/.github' \
-        --exclude='vendor/*/.travis.yml' \
-        --exclude='vendor/*/.gitlab-ci.yml' \
-        --exclude='vendor/*/.vim' \
-        vendor
-      if test $? -ne 0; then
+
+            _staging_tmp="$ABS_RPKG_SRC/.vendor-tarball-staging"
+      rm -rf "$_staging_tmp"
+      mkdir -p "$_staging_tmp"
+      cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
+
+                        find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\[doc = include_str!/d' -e '/^#!\[doc = include_str!/d' {} \;
+      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete
+
+                  for _crate_dir in "$_staging_tmp/vendor"/*/; do
+        test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
+      done
+
+            find "$_staging_tmp/vendor" -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'benches' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.github' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name '.vim' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'ci' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'scripts' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'testdata' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -type d -name 'docs' -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.travis.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '.gitlab-ci.yml' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.a' -type f -delete 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.lib' -type f -delete 2>/dev/null || true
+            find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > ""' _ {} \;
+
+            tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
+      _tar_status=$?
+
+            rm -rf "$_staging_tmp"
+
+      if test $_tar_status -ne 0; then
         echo "configure: warning: failed to compress vendor directory" >&2
       else
         echo "$_new_fingerprint" > "$VENDOR_STAMP"

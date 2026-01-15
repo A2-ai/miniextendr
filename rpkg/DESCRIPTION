@@ -1,9 +1,15 @@
 Package: miniextendr
-Title: Rust-R Interoperability Runtime
+Title: Rust-R Interoperability Framework
 Version: 0.1.0
-Author: Package Developer
-Maintainer: Package Developer <package.developer@example.com>
-Description: What the package does (one paragraph).
+Authors@R:
+    c(
+        person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
+        person("A2-AI", role = c("cph", "fnd"))
+    )
+Description: Provides a framework for building R packages with Rust backends.
+    Enables seamless interoperability between R and Rust through procedural
+    macros, automatic type conversion, external pointers with GC protection,
+    ALTREP support, and safe multi-threading via worker threads.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

@@ -54,19 +54,22 @@ use_miniextendr_configure_win <- function() {
 
 #' Copy config.guess and config.sub scripts
 #'
-#' Copies the bundled GNU autoconf helper scripts config.guess and config.sub.
-#' These are required for cross-compilation support.
+#' Copies the bundled GNU autoconf helper scripts config.guess and config.sub
+#' to the tools/ directory. These are required for cross-compilation support
+#' and are referenced by AC_CONFIG_AUX_DIR([tools]) in configure.ac.
 #'
 #' @return Invisibly returns TRUE if files were copied
 #' @export
 use_miniextendr_config_scripts <- function() {
+  # These go in tools/ directory per AC_CONFIG_AUX_DIR([tools]) in configure.ac
+  ensure_dir(usethis::proj_path("tools"))
   for (script in c("config.guess", "config.sub")) {
     fs::file_copy(
       script_path(script),
-      usethis::proj_path(script),
+      usethis::proj_path("tools", script),
       overwrite = TRUE
     )
-    bullet_created(script, "Copied")
+    bullet_created(file.path("tools", script), "Copied")
   }
 
   invisible(TRUE)

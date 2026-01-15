@@ -3,23 +3,7 @@
 use miniextendr_api::ffi::{IDENT_USE_CLOENV, R_compute_identical, SEXP};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-/// @title Test SEXP Equality Semantics
-/// @name unsafe_C_test_sexp_equality
-/// @description Demonstrates SEXP pointer equality vs semantic equality.
-/// @details
-/// This function shows:
-/// - Pointer equality (`==` in Rust) is fast but often wrong
-/// - Semantic equality (`R_compute_identical`) compares contents (correct R semantics)
-/// @param x First R object
-/// @param y Second R object
-/// @return List with `pointer_eq` and `semantic_eq` logical values
-/// @examples
-/// \dontrun{
-/// unsafe_C_test_sexp_equality(c(1, 2), c(1, 2))  # pointer_eq=FALSE, semantic_eq=TRUE
-/// x <- c(1, 2)
-/// unsafe_C_test_sexp_equality(x, x)               # pointer_eq=TRUE, semantic_eq=TRUE
-/// }
-/// @export
+/// @noRd
 #[miniextendr]
 #[unsafe(no_mangle)]
 pub unsafe extern "C-unwind" fn C_test_sexp_equality(x: SEXP, y: SEXP) -> SEXP {

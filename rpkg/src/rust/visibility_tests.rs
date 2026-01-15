@@ -5,7 +5,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 #[miniextendr]
 /// @title Visibility and Interrupt Tests
 /// @name rpkg_visibility_interrupts
-/// @keywords internal
+/// @noRd
 /// @description Visibility and interrupt checks
 /// @examples
 /// invisibly_return_no_arrow()
@@ -20,27 +20,31 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 ///   with_interrupt_check unsafe_C_check_interupt_after unsafe_C_check_interupt_unwind
 pub fn invisibly_return_no_arrow() {}
 
+/// @noRd
 #[miniextendr]
 #[allow(clippy::unused_unit)]
 pub fn invisibly_return_arrow() -> () {}
 
+/// @noRd
 #[miniextendr]
 pub fn invisibly_option_return_none() -> Option<()> {
     None // expectation: error!
 }
 
+/// @noRd
 #[miniextendr]
 pub fn invisibly_option_return_some() -> Option<()> {
     Some(())
 }
 
+/// @noRd
 #[miniextendr]
 #[allow(clippy::result_unit_err)]
 pub fn invisibly_result_return_ok() -> Result<(), ()> {
     Ok(())
 }
 
-/// Test Result<i32, ()> - Err returns NULL instead of erroring
+/// @noRd
 #[miniextendr]
 #[allow(clippy::result_unit_err)]
 pub fn result_null_on_err(x: i32) -> Result<i32, ()> {
@@ -52,23 +56,25 @@ pub fn result_null_on_err(x: i32) -> Result<i32, ()> {
 }
 
 // Test explicit invisible attribute (force i32 return to be invisible)
+/// @noRd
 #[miniextendr(invisible)]
 pub fn force_invisible_i32() -> i32 {
     42
 }
 
 // Test explicit visible attribute (force () return to be visible)
+/// @noRd
 #[miniextendr(visible)]
 pub fn force_visible_unit() {}
 
 // Test check_interrupt attribute - checks for Ctrl+C before executing
+/// @noRd
 #[miniextendr(check_interrupt)]
 pub fn with_interrupt_check(x: i32) -> i32 {
     x * 2
 }
 
-/// Test `#[miniextendr(unwrap_in_r)]` - returns Result to R as value
-/// Ok(x) -> x, Err(e) -> list(error = "...")
+/// @noRd
 #[miniextendr(unwrap_in_r)]
 pub fn result_unwrap_in_r(x: i32) -> Result<i32, String> {
     if x >= 0 {

@@ -1,6 +1,7 @@
 ## --- filled by configure ----------------------------------------------
 ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
 ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
+ROOT_MINIEXTENDR_REPO = @ROOT_MINIEXTENDR_REPO@
 CARGO = @CARGO@
 RUSTC = @RUSTC@
 RUST_TOOLCHAIN = @RUST_TOOLCHAIN@
@@ -61,7 +62,7 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
 # Note: Dependencies are vendored by configure script, not by this Makefile.
-# You must run `./configure` (or minirextendr::miniextendr_configure()) before building.
+# You must run `./configure` (or `just configure`) before building.
 #
 # CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
 # to avoid NOTEs about hidden files and long paths. We unpack it here.

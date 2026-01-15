@@ -1332,7 +1332,7 @@ mod tests {
         assert_eq!(TestPercent::CLASS_NAME, "test_percent");
         assert_eq!(TestPercent::KIND, VctrsKind::Vctr);
         assert_eq!(TestPercent::BASE_TYPE, Some(SEXPTYPE::REALSXP));
-        assert!(!TestPercent::INHERIT_BASE_TYPE);
+        const { assert!(!TestPercent::INHERIT_BASE_TYPE) };
         assert_eq!(TestPercent::ABBR, Some("pct"));
     }
 

@@ -6,15 +6,10 @@
 
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-/// R6 Standalone Function
-///
-/// Standalone helper in the R6 test module.
-///
-/// A standalone function in an impl-block module.
-/// Tests that standalone fns work alongside impl blocks.
+/// @noRd
 #[miniextendr]
 /// @name rpkg_r6_standalone
-/// @keywords internal
+/// @noRd
 /// @examples
 /// r6_standalone_add(1L, 2L)
 /// @aliases r6_standalone_add
@@ -29,25 +24,7 @@ pub struct R6Counter {
     value: i32,
 }
 
-/// @title R6 Counter Class
-/// @name R6Counter
-/// @rdname R6Counter
-/// @description R6 counter class that stores a single integer value.
-/// @aliases R6Counter
-/// @param initial The initial counter value (integer).
-/// @param amount The amount to add to the counter (integer).
-/// @details
-/// **Methods:**
-/// - `$new(initial)`: Creates a new counter with the given initial value.
-/// - `$value()`: Returns the current value.
-/// - `$inc()`: Increments the counter by 1 and returns the new value.
-/// - `$add(amount)`: Adds the given amount to the counter and returns the new value.
-/// @examples
-/// c <- R6Counter$new(1L)
-/// c$value()
-/// c$inc()
-/// c$add(10L)
-/// R6Counter$default_counter()$value()
+/// @noRd
 #[miniextendr(r6)]
 impl R6Counter {
     /// Creates a new counter with the given initial value.
@@ -85,25 +62,7 @@ pub struct R6Accumulator {
     count: usize,
 }
 
-/// @title R6 Accumulator Class
-/// @name R6Accumulator
-/// @rdname R6Accumulator
-/// @description R6 accumulator with running total and count.
-/// @aliases R6Accumulator
-/// @param value The value to accumulate (numeric).
-/// @details
-/// **Methods:**
-/// - `$new()`: Creates a new accumulator starting at zero.
-/// - `$accumulate(value)`: Adds a value and returns the new total.
-/// - `$total()`: Returns the current total.
-/// - `$count()`: Returns the count of accumulated values.
-/// - `$average()`: Returns the average, or NA if no values accumulated.
-/// @examples
-/// acc <- R6Accumulator$new()
-/// acc$accumulate(1.5)
-/// acc$total()
-/// acc$count()
-/// acc$average()
+/// @noRd
 #[miniextendr(r6)]
 impl R6Accumulator {
     /// Creates a new accumulator starting at zero.
@@ -148,28 +107,7 @@ pub struct R6Rectangle {
     height: f64,
 }
 
-/// @title R6 Rectangle Class with Active Bindings
-/// @name R6Rectangle
-/// @rdname R6Rectangle
-/// @description R6 rectangle class demonstrating active bindings.
-/// Active bindings provide property-like access (obj$area instead of obj$area()).
-/// @aliases R6Rectangle
-/// @param width The width of the rectangle (numeric).
-/// @param height The height of the rectangle (numeric).
-/// @details
-/// **Methods:**
-/// - `$new(width, height)`: Creates a new rectangle with given dimensions.
-/// - `$get_width()`: Returns the width (regular method).
-/// - `$get_height()`: Returns the height (regular method).
-///
-/// **Active Bindings (properties):**
-/// - `$area`: Returns the area (width * height).
-/// - `$perimeter`: Returns the perimeter (2 * (width + height)).
-/// @examples
-/// r <- R6Rectangle$new(3, 4)
-/// r$area        # Property access (not r$area())
-/// r$perimeter   # Property access
-/// r$get_width() # Regular method
+/// @noRd
 #[miniextendr(r6)]
 impl R6Rectangle {
     /// Creates a new rectangle with given dimensions.

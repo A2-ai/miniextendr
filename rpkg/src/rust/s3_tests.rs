@@ -9,15 +9,7 @@ pub struct S3Counter {
     value: i32,
 }
 
-/// @rdname S3Counter
-/// @description S3 counter with `s3_value()`, `s3_inc()`, and `s3_add()` methods.
-/// @aliases new_s3counter s3_value s3_inc s3_add s3counter_default_counter
-/// @examples
-/// x <- new_s3counter(1L)
-/// s3_value(x)
-/// s3_inc(x)
-/// s3_add(x, 5L)
-/// s3_value(s3counter_default_counter())
+/// @noRd
 #[miniextendr(s3)]
 impl S3Counter {
     /// Creates a new counter with the given initial value.

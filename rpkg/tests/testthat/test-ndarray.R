@@ -434,3 +434,106 @@ test_that("ndarray_roundtrip_int_matrix preserves data", {
   result <- ndarray_roundtrip_int_matrix(x)
   expect_equal(result, x)
 })
+
+# =============================================================================
+# Additional tests for methods not covered above
+# =============================================================================
+
+test_that("NdVec view_to_r returns R vector view", {
+  skip_if_ndarray_disabled()
+  v <- NdVec$new(c(1, 2, 3, 4, 5))
+
+  r_view <- v$view_to_r()
+  expect_equal(r_view, c(1, 2, 3, 4, 5))
+})
+
+test_that("NdMatrix view_to_r returns R matrix view", {
+  skip_if_ndarray_disabled()
+  m <- NdMatrix$new(matrix(as.double(1:6), nrow = 2, ncol = 3))
+
+  r_view <- m$view_to_r()
+  expect_true(is.matrix(r_view))
+  expect_equal(dim(r_view), c(2, 3))
+})
+
+test_that("NdMatrix variance and std work", {
+  skip_if_ndarray_disabled()
+  # Matrix with known variance
+  m <- NdMatrix$new(matrix(c(2, 4, 4, 4, 5, 5, 7, 9), nrow = 2, ncol = 4))
+  expect_equal(m$mean(), 5)
+  expect_equal(m$var(), 4)
+  expect_equal(m$std(), 2)
+})
+
+test_that("NdMatrix product works", {
+  skip_if_ndarray_disabled()
+  m <- NdMatrix$new(matrix(as.double(1:4), nrow = 2, ncol = 2))
+  expect_equal(m$product(), 24)
+})
+
+test_that("NdArrayDyn aggregations work", {
+  skip_if_ndarray_disabled()
+  arr <- NdArrayDyn$new(c(2L, 3L), as.numeric(1:6))
+
+  expect_equal(arr$len(), 6L)
+  expect_false(arr$is_empty())
+  expect_equal(arr$sum(), 21)
+  expect_equal(arr$mean(), 3.5)
+  expect_equal(arr$min(), 1)
+  expect_equal(arr$max(), 6)
+  expect_equal(arr$product(), 720)
+})
+
+test_that("NdArrayDyn variance and std work", {
+  skip_if_ndarray_disabled()
+  # Array with known variance
+  arr <- NdArrayDyn$new(c(2L, 4L), c(2, 4, 4, 4, 5, 5, 7, 9))
+  expect_equal(arr$mean(), 5)
+  expect_equal(arr$var(), 4)
+  expect_equal(arr$std(), 2)
+})
+
+test_that("NdArrayDyn to_r returns R array", {
+  skip_if_ndarray_disabled()
+  arr <- NdArrayDyn$new(c(2L, 3L), as.numeric(1:6))
+
+  r_arr <- arr$to_r()
+  expect_equal(length(r_arr), 6)
+})
+
+test_that("NdIntVec metadata methods work", {
+  skip_if_ndarray_disabled()
+  v <- NdIntVec$new(1:5)
+
+  expect_equal(v$len(), 5L)
+  expect_false(v$is_empty())
+  expect_equal(v$ndim(), 1L)
+  expect_equal(v$shape(), 5L)
+
+  empty <- NdIntVec$new(integer(0))
+  expect_true(empty$is_empty())
+})
+
+test_that("NdIntVec first and last work", {
+  skip_if_ndarray_disabled()
+  v <- NdIntVec$new(c(10L, 20L, 30L))
+
+  expect_equal(v$first(), 10L)
+  expect_equal(v$last(), 30L)
+})
+
+test_that("NdIntVec slice_1d works", {
+  skip_if_ndarray_disabled()
+  v <- NdIntVec$new(1:5)
+
+  expect_equal(v$slice_1d(1L, 4L), 2:4)
+  expect_equal(v$slice_1d(0L, 5L), 1:5)
+})
+
+test_that("NdIntVec variance and std work", {
+  skip_if_ndarray_disabled()
+  v <- NdIntVec$new(c(2L, 4L, 4L, 4L, 5L, 5L, 7L, 9L))
+  expect_equal(v$mean(), 5)
+  expect_equal(v$var(), 4)
+  expect_equal(v$std(), 2)
+})

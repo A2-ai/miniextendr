@@ -9,14 +9,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 // Define a trait with #[miniextendr]
 // =============================================================================
 
-/// A simple counter trait for testing trait ABI generation.
-///
-/// When `#[miniextendr]` is applied, this generates:
-/// - `TAG_COUNTER`: 128-bit type tag
-/// - `CounterVTable`: Vtable struct with function pointers
-/// - `CounterView`: Runtime view (data + vtable)
-/// - `__counter_build_vtable::<T>()`: Vtable builder
-/// - Method shims for each method
+/// @noRd
 #[miniextendr]
 pub trait Counter {
     /// Associated constant: Maximum value for this counter type.
@@ -51,10 +44,7 @@ impl SimpleCounter {
     }
 }
 
-/// Implement Counter for SimpleCounter.
-///
-/// The `#[miniextendr]` on trait impl generates:
-/// - `__VTABLE_COUNTER_FOR_SIMPLECOUNTER`: Static vtable constant
+/// @noRd
 #[miniextendr]
 impl Counter for SimpleCounter {
     const MAX_VALUE: i32 = i32::MAX;
@@ -176,15 +166,7 @@ impl S3TraitCounter {
     }
 }
 
-/// @rdname S3TraitCounter
-/// @param n Amount to add (for checked_add).
-///
-/// S3 trait implementation - generates S3 generics + methods.
-///
-/// This generates:
-/// - `value(x)` S3 generic (if not exists)
-/// - `value.S3TraitCounter` S3 method
-/// - etc. for each instance method
+/// @noRd
 #[miniextendr(s3)]
 impl Counter for S3TraitCounter {
     const MAX_VALUE: i32 = 500;
@@ -236,12 +218,7 @@ impl S4TraitCounter {
     }
 }
 
-/// @rdname S4TraitCounter
-/// @aliases s4_trait_Counter_value,S4TraitCounter-method s4_trait_Counter_increment,S4TraitCounter-method s4_trait_Counter_checked_add,S4TraitCounter-method
-/// @param x An S4TraitCounter object.
-/// @param n Amount to add (for checked_add).
-///
-/// S4 trait implementation - generates S4 generics + setMethod.
+/// @noRd
 #[miniextendr(s4)]
 impl Counter for S4TraitCounter {
     const MAX_VALUE: i32 = 400;
@@ -264,7 +241,7 @@ impl Counter for S4TraitCounter {
     }
 }
 
-/// Inherent impl uses plain #[miniextendr] (Env style).
+/// @noRd
 #[miniextendr]
 impl S4TraitCounter {
     /// Create a new S4 trait counter.
@@ -294,7 +271,7 @@ impl S7TraitCounter {
     }
 }
 
-/// S7 trait implementation - generates S7 generics + method<-.
+/// @noRd
 #[miniextendr(s7)]
 impl Counter for S7TraitCounter {
     const MAX_VALUE: i32 = 300;
@@ -317,7 +294,7 @@ impl Counter for S7TraitCounter {
     }
 }
 
-/// Inherent impl uses plain #[miniextendr] (Env style).
+/// @noRd
 #[miniextendr]
 impl S7TraitCounter {
     /// Create a new S7 trait counter.
@@ -347,10 +324,7 @@ impl R6TraitCounter {
     }
 }
 
-/// @rdname R6TraitCounter
-/// @param n Amount to add (for checked_add).
-///
-/// R6 trait implementation - generates standalone functions for trait methods.
+/// @noRd
 #[miniextendr(r6)]
 impl Counter for R6TraitCounter {
     const MAX_VALUE: i32 = 200;
@@ -373,7 +347,7 @@ impl Counter for R6TraitCounter {
     }
 }
 
-/// Inherent impl uses plain #[miniextendr] (Env style).
+/// @noRd
 #[miniextendr]
 impl R6TraitCounter {
     /// Create a new R6 trait counter.

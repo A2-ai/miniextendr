@@ -112,7 +112,7 @@ Convenient bounds for generic functions:
 
 - `Vec<T>` → R vector where `T: RNative`
 - `&[T]` → R vector where `T: RNative`
-- `RVec<T>` → R vector where `T: RNative + Send` (Rayon)
+- `Vec<T>` collected in parallel via Rayon → R vector via `IntoR`
 
 ### Both Checked and Unchecked Versions ✅
 
@@ -366,7 +366,7 @@ where
 
 ✅ **Keep as-is** - current implementation is solid
 
-The modules are well-designed and comprehensive. The additions I made (Vec/slice IntoR, RVec IntoR) integrate cleanly.
+The modules are well-designed and comprehensive. The additions I made (Vec/slice IntoR) integrate cleanly.
 
 ### Near-Term Enhancements
 
@@ -414,7 +414,7 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 - All R scalar types covered
 - String handling with UTF-8
 - Vector support via RNative (NEW!)
-- Rayon integration via RVec (NEW!)
+- Rayon integration via Vec<T> + `with_r_vec` (NEW!)
 - Both checked and unchecked variants
 - Clean integration with existing type system
 
@@ -426,7 +426,7 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 - ✅ Strings (String, &str)
 - ✅ ExternalPtr<T>
 - ✅ Vec<T>, &[T] where T: RNative (NEW!)
-- ✅ RVec<T> for Rayon (NEW!)
+- ✅ Vec<T> via Rayon collect (NEW!)
 
 **Missing (would be useful):**
 
@@ -442,14 +442,12 @@ The modules are well-designed and comprehensive. The additions I made (Vec/slice
 The refactoring to use existing infrastructure was excellent:
 
 **Before:** Duplicate type system in rayon_bridge
-**After:** Clean integration via:
+**After:** Clean integration via standard `Vec<T>` collection and `IntoR`:
 
 ```rust
-// in into_r.rs
-impl<T: RNative + Send> IntoR for RVec<T> { ... }
-
-// Now this just works:
-data.par_iter().map(f).collect::<RVec<f64>>().into_sexp()
+// Rayon collects directly into Vec<T>
+let out: Vec<f64> = data.par_iter().map(f).collect();
+out.into_sexp()
 ```
 
 **Impact:**
@@ -555,7 +553,7 @@ impl IntoR for Vec<Option<i32>> {
 
 - Unit tests for `Vec<T> → R` vector conversion
 - Tests for string conversions
-- Tests for `RVec<T>` integration
+- Tests for Vec<T> + Rayon collection in examples
 
 **Recommendation:** Add test module
 
@@ -599,7 +597,7 @@ Both modules are well-designed with:
 
 ### Ready to Commit ✅
 
-The current state is production-ready. The additions I made (Vec/slice support, RVec integration) are solid and well-integrated.
+The current state is production-ready. The additions I made (Vec/slice support) are solid and well-integrated.
 
 ### Future Work (Not Blocking)
 

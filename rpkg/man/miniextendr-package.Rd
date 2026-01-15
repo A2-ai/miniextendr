@@ -4,8 +4,17 @@
 \name{miniextendr-package}
 \alias{miniextendr}
 \alias{miniextendr-package}
-\title{miniextendr: Rust-R Interoperability Runtime}
+\title{miniextendr: Rust-R Interoperability Framework}
 \description{
-What the package does (one paragraph).
+Provides a framework for building R packages with Rust backends. Enables seamless interoperability between R and Rust through procedural macros, automatic type conversion, external pointers with GC protection, ALTREP support, and safe multi-threading via worker threads.
+}
+\author{
+\strong{Maintainer}: Mossa M. Reimert \email{mossa@sund.ku.dk}
+
+Other contributors:
+\itemize{
+  \item A2-AI [copyright holder, funder]
+}
+
 }
 \keyword{internal}

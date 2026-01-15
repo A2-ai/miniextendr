@@ -1,5 +1,5 @@
 error: #[miniextendr] trait method `BadSelfByValue::foo` receiver must be `&self` or `&mut self`, not `self` by value
- --> tests/ui/trait_receiver_by_value.rs:7:5
+ --> tests/ui/trait_receiver_by_value.rs:7:12
   |
 7 |     fn foo(self);
-  |     ^^^^^^^^^^^^
+  |            ^^^^

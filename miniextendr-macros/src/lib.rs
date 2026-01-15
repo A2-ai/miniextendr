@@ -490,6 +490,7 @@ pub fn miniextendr(
         s3_generic,
         s3_class,
         dots_spec,
+        dots_span,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -575,45 +576,47 @@ pub fn miniextendr(
     // procedural macro machinery but not create unhygienic references to user code.
     // call_site() = span of the macro invocation (#[miniextendr])
     let call_param_ident = syn::Ident::new("__miniextendr_call", proc_macro2::Span::call_site());
-    let mut c_wrapper_inputs: Vec<_> = Vec::new();
+    let mut c_wrapper_inputs: Vec<syn::FnArg> = Vec::new();
     if uses_internal_c_wrapper {
         c_wrapper_inputs.push(syn::parse_quote!(#call_param_ident: ::miniextendr_api::ffi::SEXP));
     }
-    c_wrapper_inputs.extend(inputs.clone().into_pairs().map(|pair| {
-        let arg = pair.value();
+    for arg in inputs.iter() {
         match arg {
             syn::FnArg::Receiver(receiver) => {
-                syn::Error::new(
-                    receiver.span(),
+                let err = syn::Error::new_spanned(
+                    receiver,
                     "self parameter not allowed in standalone functions; \
-                     use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead"
-                ).to_compile_error()
+                     use #[miniextendr(env|r6|s3|s4|s7)] on impl blocks instead",
+                );
+                return err.into_compile_error().into();
             }
             syn::FnArg::Typed(pt) => {
-                let syn::PatType {
-                    attrs: _,
-                    pat,
-                    colon_token: _,
-                    ty: _,
-                } = pt;
+                let pat = &pt.pat;
                 match pat.as_ref() {
                     syn::Pat::Ident(pat_ident) => {
                         let mut pat_ident = pat_ident.clone();
                         pat_ident.mutability = None;
                         pat_ident.by_ref = None;
                         let ident = pat_ident;
-                        syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP)
+                        c_wrapper_inputs
+                            .push(syn::parse_quote!(#ident: ::miniextendr_api::ffi::SEXP));
                     }
                     syn::Pat::Wild(_) => {
-                        unreachable!("wildcard patterns should have been transformed to synthetic identifiers")
+                        unreachable!(
+                            "wildcard patterns should have been transformed to synthetic identifiers"
+                        )
                     }
                     _ => {
-                        panic!("unsupported pattern in function argument: {:?}", pat)
+                        let err = syn::Error::new_spanned(
+                            pat,
+                            "unsupported pattern in function argument; only simple identifiers are supported",
+                        );
+                        return err.into_compile_error().into();
                     }
                 }
             }
         }
-    }));
+    }
     // dbg!(&wrapper_inputs);
     let mut pre_call_statements: Vec<proc_macro2::TokenStream> = Vec::new();
     if check_interrupt {
@@ -625,7 +628,7 @@ pub fn miniextendr(
     // Validate dots_spec usage (actual injection happens later in the function body)
     if dots_spec.is_some() && !has_dots {
         let err = syn::Error::new(
-            proc_macro2::Span::call_site(),
+            dots_span.unwrap_or_else(proc_macro2::Span::call_site),
             "#[miniextendr(dots = typed_list!(...))] requires a `...` parameter in the function signature",
         );
         return err.into_compile_error().into();
@@ -1015,10 +1018,9 @@ pub fn miniextendr(
         // For S3 methods, function name is generic.class
         // generic defaults to Rust function name if not specified
         let generic = s3_generic.clone().unwrap_or_else(|| rust_ident.to_string());
-        let class = s3_class.as_ref().unwrap_or_else(|| {
-            // If no class specified, error
-            panic!("s3(...) requires `class = \"...\"` to specify the S3 class suffix")
-        });
+        // s3_class is guaranteed to be Some here because MiniextendrFnAttrs::parse
+        // validates that s3(...) always has class specified
+        let class = s3_class.as_ref().expect("s3_class validated at parse time");
         r_wrapper_ident_str = format!("{}.{}", generic, class);
         // Add @importFrom for vctrs generics so roxygen registers the dependency
         let import_comment = if is_vctrs_generic(&generic) {
@@ -1041,13 +1043,20 @@ pub fn miniextendr(
     let roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
+    let has_no_rd_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");
+    let has_internal_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "keywords internal");
     // Add roxygen comments: @source for traceability, @export if public
     let source_comment = format!(
         "#' @source Generated by miniextendr from Rust fn `{}`\n",
         rust_ident
     );
     // S3 methods need both @method (for registration) AND @export (for NAMESPACE)
-    let export_comment = if matches!(vis, syn::Visibility::Public(_)) && !has_export_tag {
+    // Don't auto-export functions marked with @noRd or @keywords internal
+    let export_comment = if matches!(vis, syn::Visibility::Public(_))
+        && !has_export_tag
+        && !has_no_rd_tag
+        && !has_internal_tag
+    {
         "#' @export\n".to_string()
     } else {
         String::new()
@@ -1328,6 +1337,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         .map(|(_, expr)| expr.clone())
         .collect();
 
+    // Generate sidecar call defs for registration (from #[derive(ExternalPtr)] with #[r_data])
+    // These are generated even if empty - the constants exist but may be zero-length arrays
+    let rdata_call_defs: Vec<syn::Expr> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let call_defs_static = i.rdata_call_defs_const_ident();
+            syn::parse_quote!(#call_defs_static)
+        })
+        .collect();
+
     // Generate impl R wrapper refs with cfg attributes
     let impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .impls
@@ -1336,6 +1356,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             let r_wrapper_const = i.r_wrappers_const_ident();
             let cfg_attrs = extract_cfg_attrs(&i.attrs);
             (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
+        })
+        .collect();
+
+    // Generate sidecar R wrapper refs (from #[derive(ExternalPtr)] with #[r_data])
+    let rdata_r_wrappers: Vec<syn::Expr> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let r_wrapper_const = i.rdata_r_wrappers_const_ident();
+            syn::parse_quote!(#r_wrapper_const)
         })
         .collect();
 
@@ -1554,6 +1584,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Sidecar call defs length (from #[derive(ExternalPtr)] with #[r_data])
+    let rdata_call_defs_len_exprs: Vec<proc_macro2::TokenStream> = parsed_module
+        .impls
+        .iter()
+        .map(|i| {
+            let call_defs_static = i.rdata_call_defs_const_ident();
+            quote::quote!(<[_]>::len(&#call_defs_static))
+        })
+        .collect();
+
     // Calculate total length expression, including conditional cfg lengths
     let cfg_len_exprs: Vec<proc_macro2::TokenStream> = cfg_len_idents
         .iter()
@@ -1564,12 +1604,14 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .chain(cfg_len_exprs.iter().cloned())
             .chain(impl_call_defs_len_exprs.iter().cloned())
             .chain(trait_impl_call_defs_len_exprs.iter().cloned())
+            .chain(rdata_call_defs_len_exprs.iter().cloned())
             .collect();
     let total_len_expr = if all_len_exprs.is_empty()
         || (call_entries_len == 0
             && cfg_len_idents.is_empty()
             && impl_call_defs_len_exprs.is_empty()
-            && trait_impl_call_defs_len_exprs.is_empty())
+            && trait_impl_call_defs_len_exprs.is_empty()
+            && rdata_call_defs_len_exprs.is_empty())
     {
         quote::quote!(0usize)
     } else {
@@ -1614,6 +1656,15 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             #(
                 let mut j: usize = 0;
                 let slice = &#trait_impl_call_defs;
+                while j < <[_]>::len(slice) {
+                    entries[idx] = slice[j];
+                    idx += 1;
+                    j += 1;
+                }
+            )*
+            #(
+                let mut j: usize = 0;
+                let slice = &#rdata_call_defs;
                 while j < <[_]>::len(slice) {
                     entries[idx] = slice[j];
                     idx += 1;
@@ -1688,11 +1739,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Check if we have trait impl blocks to register
     let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
-    // Generate R wrapper impls constant - includes both impl and trait impl wrappers
-    // Combine both with cfg info and generate conditional array elements
+    // Generate R wrapper impls constant - includes impl, trait impl, and sidecar wrappers
+    // Combine all with cfg info and generate conditional array elements
     let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
     all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
     all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
+    // Add sidecar R wrappers (from #[derive(ExternalPtr)] with #[r_data])
+    all_impl_r_wrappers_with_cfg.extend(
+        rdata_r_wrappers
+            .iter()
+            .map(|expr| (Vec::new(), expr.clone())),
+    );
 
     // Generate array elements with cfg attributes where needed
     let all_impl_r_wrapper_elements: Vec<proc_macro2::TokenStream> = all_impl_r_wrappers_with_cfg
@@ -1989,6 +2046,7 @@ pub fn r_ffi_checked(
                     let fn_name = &fn_item.sig.ident;
                     let fn_name_str = fn_name.to_string();
                     let unchecked_name = quote::format_ident!("{}_unchecked", fn_name);
+                    let unchecked_name_str = unchecked_name.to_string();
                     let inputs = &fn_item.sig.inputs;
                     let output = &fn_item.sig.output;
                     // Filter out link_name attributes (already checked above, but be safe)
@@ -1997,6 +2055,11 @@ pub fn r_ffi_checked(
                         .iter()
                         .filter(|attr| !attr.path().is_ident("link_name"))
                         .collect();
+                    let checked_doc = format!(
+                        "Checked wrapper for `{}`. Calls `{}` and routes through `with_r_thread`.",
+                        fn_name_str, unchecked_name_str
+                    );
+                    let checked_doc_lit = syn::LitStr::new(&checked_doc, fn_name.span());
 
                     // Generate the unchecked FFI binding with #[link_name]
                     let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
@@ -2031,6 +2094,7 @@ pub fn r_ffi_checked(
                         // Never-returning functions (like Rf_error)
                         quote::quote! {
                             #(#attrs)*
+                            #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2046,6 +2110,7 @@ pub fn r_ffi_checked(
                         // The pointer is valid during the with_r_thread callback.
                         quote::quote! {
                             #(#attrs)*
+                            #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2061,6 +2126,7 @@ pub fn r_ffi_checked(
                         // Normal functions - route via with_r_thread
                         quote::quote! {
                             #(#attrs)*
+                            #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2254,7 +2320,7 @@ pub fn derive_rnative_type(input: proc_macro::TokenStream) -> proc_macro::TokenS
 ///     const TYPE_NAME_CSTR: &'static [u8] = b"MyData\0";
 /// }
 /// ```
-#[proc_macro_derive(ExternalPtr, attributes(externalptr))]
+#[proc_macro_derive(ExternalPtr, attributes(externalptr, r_data))]
 pub fn derive_external_ptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
 
