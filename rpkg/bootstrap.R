@@ -6,15 +6,8 @@ message("Running bootstrap.R...")
 pkg_root <- getwd()
 is_windows <- .Platform$OS.type == "windows"
 
-# Find bash executable on Windows
+# Find bash executable on Windows (relies on Rtools being in PATH)
 find_bash <- function() {
-  # Try common Rtools locations
-  rtools_versions <- c("44", "43", "42", "40")
-  for (ver in rtools_versions) {
-    bash_path <- sprintf("C:/rtools%s/usr/bin/bash.exe", ver)
-    if (file.exists(bash_path)) return(bash_path)
-  }
-  # Fallback: try to find bash in PATH
   bash_in_path <- Sys.which("bash")
   if (nzchar(bash_in_path)) return(bash_in_path)
   NULL
