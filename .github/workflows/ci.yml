@@ -34,14 +34,18 @@ jobs:
           generated_files=(
             "rpkg/src/Makevars"
             "rpkg/src/entrypoint.c"
+            "rpkg/src/mx_abi.c"
             "rpkg/src/rust/Cargo.toml"
+            "rpkg/src/rust/document.rs"
             "rpkg/src/rust/.cargo/config.toml"
           )
 
           # Directories that should NOT be tracked
           generated_dirs=(
             "rpkg/src/rust/target"
+            "rpkg/src/rust/ra_target"
             "rpkg/src/rust/.cargo"
+            "rpkg/src/vendor"
           )
 
           failed=0
