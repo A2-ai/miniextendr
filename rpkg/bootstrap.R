@@ -72,6 +72,13 @@ if (is_windows) {
   # Unix: run configure directly
   configure_script <- file.path(pkg_root, "configure")
 
+  # Set NOT_CRAN=true for dev builds if not already set
+  # This ensures configure runs in dev mode during devtools workflows
+  if (!nzchar(Sys.getenv("NOT_CRAN"))) {
+    Sys.setenv(NOT_CRAN = "true")
+    message("Setting NOT_CRAN=true for dev build")
+  }
+
   if (file.exists(configure_script)) {
     message("Running ./configure...")
     run_cmd(configure_script)

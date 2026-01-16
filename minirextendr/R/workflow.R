@@ -12,17 +12,14 @@ miniextendr_autoconf <- function() {
 
   cli::cli_alert("Running autoconf...")
 
-  result <- withr::with_dir(usethis::proj_get(), {
-    system2("autoconf", c("-v", "-i", "-f"), stdout = TRUE, stderr = TRUE)
-  })
+  result <- run_with_logging(
+    "autoconf",
+    args = c("-v", "-i", "-f"),
+    log_prefix = "autoconf",
+    wd = usethis::proj_get()
+  )
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    abort(c(
-      "autoconf failed",
-      "i" = "Output: {paste(result, collapse = '\n')}"
-    ))
-  }
+  check_result(result, "autoconf")
 
   # Make configure executable
   configure_path <- usethis::proj_path("configure")
@@ -53,16 +50,19 @@ miniextendr_configure <- function() {
 
   cli::cli_alert("Running ./configure...")
 
-  result <- withr::with_dir(usethis::proj_get(), {
-    system2("./configure", stdout = TRUE, stderr = TRUE)
-  })
+  result <- run_with_logging(
+    "./configure",
+    log_prefix = "configure",
+    wd = usethis::proj_get(),
+    env = devtools::r_env_vars()
+  )
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    abort(c(
-      "./configure failed",
-      "i" = "Check config.log for details"
-    ))
+  check_result(result, "./configure")
+
+  # Also mention config.log if it exists
+  config_log <- usethis::proj_path("config.log")
+  if (fs::file_exists(config_log)) {
+    cli::cli_alert_info("Configure log also saved to: {.path config.log}")
   }
 
   cli::cli_alert_success("Generated build files")
@@ -89,18 +89,14 @@ miniextendr_document <- function() {
 
   cli::cli_alert("Running document binary...")
 
-  result <- withr::with_dir(usethis::proj_path("src", "rust"), {
-    system2("cargo", c("run", "--bin", "document", "--release"),
-            stdout = TRUE, stderr = TRUE)
-  })
+  result <- run_with_logging(
+    "cargo",
+    args = c("run", "--bin", "document", "--release"),
+    log_prefix = "document",
+    wd = usethis::proj_path("src", "rust")
+  )
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    abort(c(
-      "document binary failed",
-      "i" = "Output: {paste(utils::tail(result, 20), collapse = '\n')}"
-    ))
-  }
+  check_result(result, "document binary")
 
   # Copy generated wrappers to R/
   src_wrappers <- usethis::proj_path("src", "rust", "miniextendr_wrappers.R")
