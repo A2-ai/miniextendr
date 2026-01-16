@@ -504,11 +504,11 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	            --manifest-path "$MANIFEST" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-	            "$VENDOR_OUT" > /dev/null
+	            "$VENDOR_OUT"
 	        else
 	          $CARGO_CMD vendor \
 	            --manifest-path "$MANIFEST" \
-	            "$VENDOR_OUT" > /dev/null
+	            "$VENDOR_OUT"
 	        fi
 	        if test $? -ne 0; then
 	          echo "configure: error: cargo vendor failed" >&2
@@ -526,7 +526,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           if test "$FORCE_VENDOR" = "1"; then
             echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
             dnl Run cargo vendor without monorepo to fetch from crates.io
-            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
             if test $? -eq 0; then
               dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
               if test -f "$LOCKFILE"; then
@@ -845,6 +845,13 @@ CRATESIO_CONFIG_EOF
   dnl where the staticlib already exists (e.g., during R CMD check).
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+
+  dnl Update Cargo.lock after touching Cargo.toml (required when using --locked)
+  dnl This prevents "lock file needs to be updated" errors during compilation
+  if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
+    echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+  fi
 ],
 [RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
  ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \

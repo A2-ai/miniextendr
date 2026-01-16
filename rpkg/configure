@@ -3931,11 +3931,11 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 	            --manifest-path "$MANIFEST" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-	            "$VENDOR_OUT" > /dev/null
+	            "$VENDOR_OUT"
 	        else
 	          $CARGO_CMD vendor \
 	            --manifest-path "$MANIFEST" \
-	            "$VENDOR_OUT" > /dev/null
+	            "$VENDOR_OUT"
 	        fi
 	        if test $? -ne 0; then
 	          echo "configure: error: cargo vendor failed" >&2
@@ -3949,7 +3949,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
                 if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
                     if test "$FORCE_VENDOR" = "1"; then
             echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
-                        $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+                        $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
             if test $? -eq 0; then
                             if test -f "$LOCKFILE"; then
                 $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
@@ -4213,6 +4213,11 @@ CRATESIO_CONFIG_EOF
 
         touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+
+      if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
+    echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+  fi
  ;;
     "compress-vendor":C)
     if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then

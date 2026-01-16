@@ -262,7 +262,7 @@ devtools-check: devtools-document
 
 # Document rpkg with devtools::document
 devtools-document: configure
-    Rscript -e 'devtools::document("rpkg")'
+    NOT_CRAN=true Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages

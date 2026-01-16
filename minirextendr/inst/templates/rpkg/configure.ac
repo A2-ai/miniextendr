@@ -930,6 +930,13 @@ CRATESIO_CONFIG_EOF
   dnl where the staticlib already exists (e.g., during R CMD check).
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
+
+  dnl Update Cargo.lock after touching Cargo.toml (required when using --locked)
+  dnl This prevents "lock file needs to be updated" errors during compilation
+  if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" > /dev/null 2>&1
+    echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+  fi
 ],
 [RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
  ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \

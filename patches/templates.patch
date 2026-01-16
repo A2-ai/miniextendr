@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-01-16 13:08:57
-+++ b/monorepo/rpkg/configure.ac	2026-01-16 11:43:39
+--- a/monorepo/rpkg/configure.ac	2026-01-16 13:29:19
++++ b/monorepo/rpkg/configure.ac	2026-01-16 13:24:55
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -96,11 +96,11 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -	            --manifest-path "$MANIFEST" \
 -	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 -	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
--	            "$VENDOR_OUT" > /dev/null
+-	            "$VENDOR_OUT"
 -	        else
 -	          $CARGO_CMD vendor \
 -	            --manifest-path "$MANIFEST" \
--	            "$VENDOR_OUT" > /dev/null
+-	            "$VENDOR_OUT"
 -	        fi
 -	        if test $? -ne 0; then
 -	          echo "configure: error: cargo vendor failed" >&2
@@ -142,7 +142,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          if test "$FORCE_VENDOR" = "1"; then
 -            echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
 -            dnl Run cargo vendor without monorepo to fetch from crates.io
--            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+-            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
 -            if test $? -eq 0; then
 -              dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 -              if test -f "$LOCKFILE"; then
@@ -387,9 +387,16 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -    fi
    else
      echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2
+@@ -850,5 +935,5 @@
+   dnl This prevents "lock file needs to be updated" errors during compilation
+   if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
++    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" > /dev/null 2>&1
+     echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+   fi
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-01-16 13:08:57
-+++ b/rpkg/configure.ac	2026-01-16 11:43:18
+--- a/rpkg/configure.ac	2026-01-16 13:29:19
++++ b/rpkg/configure.ac	2026-01-16 13:24:37
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -485,11 +492,11 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -	            --manifest-path "$MANIFEST" \
 -	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 -	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
--	            "$VENDOR_OUT" > /dev/null
+-	            "$VENDOR_OUT"
 -	        else
 -	          $CARGO_CMD vendor \
 -	            --manifest-path "$MANIFEST" \
--	            "$VENDOR_OUT" > /dev/null
+-	            "$VENDOR_OUT"
 -	        fi
 -	        if test $? -ne 0; then
 -	          echo "configure: error: cargo vendor failed" >&2
@@ -531,7 +538,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          if test "$FORCE_VENDOR" = "1"; then
 -            echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
 -            dnl Run cargo vendor without monorepo to fetch from crates.io
--            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+-            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
 -            if test $? -eq 0; then
 -              dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 -              if test -f "$LOCKFILE"; then
@@ -776,3 +783,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -    fi
    else
      echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2
+@@ -850,5 +935,5 @@
+   dnl This prevents "lock file needs to be updated" errors during compilation
+   if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
++    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" > /dev/null 2>&1
+     echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+   fi
