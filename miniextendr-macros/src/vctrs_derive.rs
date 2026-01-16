@@ -71,6 +71,18 @@ struct VctrsAttrs {
     inherit_base: Option<bool>,
     /// Additional types to generate coercion methods for (e.g., "double", "integer")
     coerce_with: Vec<String>,
+    /// For list_of: R expression for the prototype (e.g., "integer()", "double()")
+    ptype: Option<String>,
+    /// Generate vec_proxy_equal method (for equality testing)
+    proxy_equal: bool,
+    /// Generate vec_proxy_compare method (for comparison/sorting)
+    proxy_compare: bool,
+    /// Generate vec_proxy_order method (for ordering)
+    proxy_order: bool,
+    /// Generate arithmetic methods (vec_arith)
+    arith: bool,
+    /// Generate math methods (vec_math)
+    math: bool,
 }
 
 /// Parsed vctrs attributes from a field.
@@ -110,9 +122,22 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
                 } else if meta.path.is_ident("coerce") {
                     let value: syn::LitStr = meta.value()?.parse()?;
                     result.coerce_with.push(value.value());
+                } else if meta.path.is_ident("ptype") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    result.ptype = Some(value.value());
+                } else if meta.path.is_ident("proxy_equal") {
+                    result.proxy_equal = true;
+                } else if meta.path.is_ident("proxy_compare") {
+                    result.proxy_compare = true;
+                } else if meta.path.is_ident("proxy_order") {
+                    result.proxy_order = true;
+                } else if meta.path.is_ident("arith") {
+                    result.arith = true;
+                } else if meta.path.is_ident("math") {
+                    result.math = true;
                 } else {
                     return Err(meta.error(
-                        "unknown vctrs attribute; expected one of: class, base, abbr, inherit_base, coerce",
+                        "unknown vctrs attribute; expected one of: class, base, abbr, inherit_base, coerce, ptype, proxy_equal, proxy_compare, proxy_order, arith, math",
                     ));
                 }
                 Ok(())
@@ -197,6 +222,22 @@ fn base_to_kind(base: &str) -> TokenStream {
     }
 }
 
+/// Options for R wrapper generation
+struct RWrapperOptions<'a> {
+    class: &'a str,
+    base: &'a str,
+    abbr: Option<&'a str>,
+    record_fields: &'a [String],
+    coerce_with: &'a [String],
+    inherit_base: bool,
+    ptype: Option<&'a str>,
+    proxy_equal: bool,
+    proxy_compare: bool,
+    proxy_order: bool,
+    arith: bool,
+    math: bool,
+}
+
 /// Generate R wrapper code for vctrs S3 methods.
 ///
 /// This generates the following S3 methods for the vctrs class:
@@ -210,14 +251,29 @@ fn base_to_kind(base: &str) -> TokenStream {
 ///
 /// For record types, it additionally generates:
 /// - Field accessor `$` methods via vctrs infrastructure
-fn generate_r_wrappers(
-    class: &str,
-    base: &str,
-    abbr: Option<&str>,
-    record_fields: &[String],
-    coerce_with: &[String],
-    inherit_base: bool,
-) -> String {
+///
+/// For list_of types (base = "list"):
+/// - Appropriate list handling methods
+///
+/// Optional methods (when enabled):
+/// - `vec_proxy_equal.<class>()` - For equality testing
+/// - `vec_proxy_compare.<class>()` - For comparison/sorting
+/// - `vec_proxy_order.<class>()` - For ordering
+/// - `vec_arith.<class>.<class>()` - For arithmetic operations
+/// - `vec_math.<class>()` - For math functions
+fn generate_r_wrappers(opts: &RWrapperOptions) -> String {
+    let class = opts.class;
+    let base = opts.base;
+    let abbr = opts.abbr;
+    let record_fields = opts.record_fields;
+    let coerce_with = opts.coerce_with;
+    let inherit_base = opts.inherit_base;
+    let ptype = opts.ptype;
+    let proxy_equal = opts.proxy_equal;
+    let proxy_compare = opts.proxy_compare;
+    let proxy_order = opts.proxy_order;
+    let arith = opts.arith;
+    let math = opts.math;
     let mut r_code = String::new();
 
     // =========================================================================
@@ -236,6 +292,18 @@ fn generate_r_wrappers(
 #' @export
 format.{class} <- function(x, ...) {{
   paste0({fields_str})
+}}
+"#
+        ));
+    } else if base == "list" {
+        // List-of format: show type and format each element
+        r_code.push_str(&format!(
+            r#"
+#' @export
+format.{class} <- function(x, ...) {{
+  vapply(unclass(x), function(elt) {{
+    if (is.null(elt)) "<NULL>" else paste0("<", vctrs::vec_ptype_abbr(elt), "[", vctrs::vec_size(elt), "]>")
+  }}, character(1))
 }}
 "#
         ));
@@ -296,6 +364,18 @@ vec_proxy.{class} <- function(x, ...) {{
 }}
 "#
         ));
+    } else if base == "list" {
+        // List-of proxy: use list_of_proxy (wraps elements in list for df-column behavior)
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_proxy new_data_frame
+#' @export
+vec_proxy.{class} <- function(x, ...) {{
+  # Wrap each element in a list so it becomes a df column
+  vctrs::new_data_frame(list(elt = unclass(x)))
+}}
+"#
+        ));
     } else {
         // Simple vctr proxy: strip class to get underlying data
         // Use unclass() instead of vec_data() to avoid recursion (vec_data calls vec_proxy)
@@ -325,6 +405,18 @@ vec_restore.{class} <- function(x, to, ...) {{
 }}
 "#
         ));
+    } else if base == "list" {
+        // List-of restore: extract elt column and wrap as list_of
+        let ptype_expr = ptype.unwrap_or("NULL");
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_restore new_list_of
+#' @export
+vec_restore.{class} <- function(x, to, ...) {{
+  vctrs::new_list_of(x$elt, ptype = {ptype_expr}, class = "{class}")
+}}
+"#
+        ));
     } else {
         // Simple vctr restore: use new_vctr
         let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
@@ -351,6 +443,19 @@ vec_restore.{class} <- function(x, to, ...) {{
 #' @export
 vec_ptype2.{class}.{class} <- function(x, y, ...) {{
   vctrs::vec_ptype(x)
+}}
+"#
+        ));
+    } else if base == "list" {
+        // List-of ptype2: use new_list_of with common ptype
+        let ptype_expr = ptype.unwrap_or("NULL");
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_ptype2 new_list_of vec_ptype_common
+#' @export
+vec_ptype2.{class}.{class} <- function(x, y, ...) {{
+  ptype <- vctrs::vec_ptype_common(attr(x, "ptype"), attr(y, "ptype"))
+  vctrs::new_list_of(list(), ptype = ptype, class = "{class}")
 }}
 "#
         ));
@@ -432,6 +537,207 @@ vec_cast.{class}.{other_type} <- function(x, to, ...) {{
 #' @export
 vec_cast.{other_type}.{class} <- function(x, to, ...) {{
   vctrs::vec_data(x)
+}}
+"#
+            ));
+        }
+    }
+
+    // =========================================================================
+    // vec_proxy_equal.<class> - proxy for equality testing
+    // =========================================================================
+    if proxy_equal {
+        if base == "record" {
+            // For records, use the data frame proxy (already suitable for equality)
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_equal new_data_frame
+#' @export
+vec_proxy_equal.{class} <- function(x, ...) {{
+  data <- unclass(x)
+  vctrs::new_data_frame(data, n = length(data[[1L]]))
+}}
+"#
+            ));
+        } else if base == "list" {
+            // For list_of, compare element by element
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_equal
+#' @export
+vec_proxy_equal.{class} <- function(x, ...) {{
+  # For list-of, use element-wise proxy
+  lapply(unclass(x), vctrs::vec_proxy_equal)
+}}
+"#
+            ));
+        } else {
+            // For simple vctrs, use underlying data
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_equal
+#' @export
+vec_proxy_equal.{class} <- function(x, ...) {{
+  unclass(x)
+}}
+"#
+            ));
+        }
+    }
+
+    // =========================================================================
+    // vec_proxy_compare.<class> - proxy for comparison/sorting
+    // =========================================================================
+    if proxy_compare {
+        if base == "record" {
+            // For records, use the data frame proxy
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_compare new_data_frame
+#' @export
+vec_proxy_compare.{class} <- function(x, ...) {{
+  data <- unclass(x)
+  vctrs::new_data_frame(data, n = length(data[[1L]]))
+}}
+"#
+            ));
+        } else if base == "list" {
+            // List-of types generally can't be compared
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_compare stop_incompatible_type
+#' @export
+vec_proxy_compare.{class} <- function(x, ...) {{
+  vctrs::stop_incompatible_type(x, x, x_arg = "", y_arg = "", action = "compare")
+}}
+"#
+            ));
+        } else {
+            // For simple vctrs, use underlying data
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_compare
+#' @export
+vec_proxy_compare.{class} <- function(x, ...) {{
+  unclass(x)
+}}
+"#
+            ));
+        }
+    }
+
+    // =========================================================================
+    // vec_proxy_order.<class> - proxy for ordering (may differ from compare)
+    // =========================================================================
+    if proxy_order {
+        if base == "record" {
+            // For records, use the data frame proxy
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_order new_data_frame
+#' @export
+vec_proxy_order.{class} <- function(x, ...) {{
+  data <- unclass(x)
+  vctrs::new_data_frame(data, n = length(data[[1L]]))
+}}
+"#
+            ));
+        } else if base == "list" {
+            // List-of types generally can't be ordered
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_order stop_incompatible_type
+#' @export
+vec_proxy_order.{class} <- function(x, ...) {{
+  vctrs::stop_incompatible_type(x, x, x_arg = "", y_arg = "", action = "order")
+}}
+"#
+            ));
+        } else {
+            // For simple vctrs, use underlying data
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_proxy_order
+#' @export
+vec_proxy_order.{class} <- function(x, ...) {{
+  unclass(x)
+}}
+"#
+            ));
+        }
+    }
+
+    // =========================================================================
+    // vec_arith.<class> - arithmetic operations
+    // =========================================================================
+    if arith {
+        // For numeric-backed vctrs, arithmetic returns the same class
+        if base != "record" && base != "list" && base != "character" && base != "raw" {
+            // vec_arith.<class>.<class>
+            let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_arith vec_arith_base new_vctr
+#' @export
+vec_arith.{class}.{class} <- function(op, x, y, ...) {{
+  result <- vctrs::vec_arith_base(op, x, y)
+  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+
+            // vec_arith.<class>.numeric (right-hand side)
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_arith vec_arith_base new_vctr
+#' @export
+vec_arith.{class}.numeric <- function(op, x, y, ...) {{
+  result <- vctrs::vec_arith_base(op, x, y)
+  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+
+            // vec_arith.numeric.<class> (left-hand side)
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_arith vec_arith_base new_vctr
+#' @export
+vec_arith.numeric.{class} <- function(op, x, y, ...) {{
+  result <- vctrs::vec_arith_base(op, x, y)
+  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+
+            // vec_arith.<class>.MISSING (unary operations like -x)
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_arith vec_arith_base new_vctr
+#' @export
+vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
+  result <- vctrs::vec_arith_base(op, x, y)
+  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#
+            ));
+        }
+    }
+
+    // =========================================================================
+    // vec_math.<class> - math operations (abs, sqrt, log, etc.)
+    // =========================================================================
+    if math {
+        // For numeric-backed vctrs, math returns the same class
+        if base != "record" && base != "list" && base != "character" && base != "raw" {
+            let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_math vec_math_base new_vctr
+#' @export
+vec_math.{class} <- function(.fn, .x, ...) {{
+  result <- vctrs::vec_math_base(.fn, .x, ...)
+  vctrs::new_vctr(result, class = "{class}", inherit_base_type = {inherit_str})
 }}
 "#
             ));
@@ -581,6 +887,26 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
                     }
                 }
             }
+            "list" => {
+                // For list_of types
+                // Note: ptype needs to be passed via an attribute or a trait method
+                quote! {
+                    impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
+                        fn into_vctrs(self) -> Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
+                            use ::miniextendr_api::IntoR;
+
+                            // Get attrs before moving data out of self
+                            let attrs = self.attrs();
+                            let data = self.#data_ident.into_sexp();
+                            ::miniextendr_api::vctrs::new_list_of(
+                                data,
+                                &[Self::CLASS_NAME],
+                                &attrs,
+                            )
+                        }
+                    }
+                }
+            }
             _ => {
                 // For simple vctrs (double, integer, etc.)
                 quote! {
@@ -636,14 +962,20 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     } else {
         Vec::new()
     };
-    let r_wrappers = generate_r_wrappers(
-        &class_name,
+    let r_wrappers = generate_r_wrappers(&RWrapperOptions {
+        class: &class_name,
         base,
-        attrs.abbr.as_deref(),
-        &record_field_names,
-        &attrs.coerce_with,
+        abbr: attrs.abbr.as_deref(),
+        record_fields: &record_field_names,
+        coerce_with: &attrs.coerce_with,
         inherit_base,
-    );
+        ptype: attrs.ptype.as_deref(),
+        proxy_equal: attrs.proxy_equal,
+        proxy_compare: attrs.proxy_compare,
+        proxy_order: attrs.proxy_order,
+        arith: attrs.arith,
+        math: attrs.math,
+    });
 
     // Generate the R_WRAPPERS_VCTRS_{TYPE} const
     let name_upper = name.to_string().to_uppercase();
@@ -846,7 +1178,20 @@ mod tests {
 
     #[test]
     fn test_r_wrappers_content_simple() {
-        let r_code = generate_r_wrappers("percent", "double", Some("pct"), &[], &[], false);
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "percent",
+            base: "double",
+            abbr: Some("pct"),
+            record_fields: &[],
+            coerce_with: &[],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: false,
+        });
 
         // Should have format method using unclass (not vec_data to avoid recursion)
         assert!(r_code.contains("format.percent"));
@@ -872,14 +1217,20 @@ mod tests {
 
     #[test]
     fn test_r_wrappers_content_record() {
-        let r_code = generate_r_wrappers(
-            "rational",
-            "record",
-            None,
-            &["n".to_string(), "d".to_string()],
-            &[],
-            true, // records default to inherit_base = true
-        );
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "rational",
+            base: "record",
+            abbr: None,
+            record_fields: &["n".to_string(), "d".to_string()],
+            coerce_with: &[],
+            inherit_base: true, // records default to inherit_base = true
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: false,
+        });
 
         // Should have format method with vctrs::field accessors
         assert!(r_code.contains("format.rational"));
@@ -907,7 +1258,20 @@ mod tests {
 
     #[test]
     fn test_r_wrappers_no_abbr() {
-        let r_code = generate_r_wrappers("mytype", "integer", None, &[], &[], false);
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "mytype",
+            base: "integer",
+            abbr: None,
+            record_fields: &[],
+            coerce_with: &[],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: false,
+        });
 
         // Should NOT have vec_ptype_abbr
         assert!(!r_code.contains("vec_ptype_abbr.mytype"));
@@ -919,14 +1283,20 @@ mod tests {
 
     #[test]
     fn test_r_wrappers_with_coercion() {
-        let r_code = generate_r_wrappers(
-            "percent",
-            "double",
-            Some("%"),
-            &[],
-            &["double".to_string()],
-            false,
-        );
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "percent",
+            base: "double",
+            abbr: Some("%"),
+            record_fields: &[],
+            coerce_with: &["double".to_string()],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: false,
+        });
 
         // Should have self-coercion
         assert!(r_code.contains("vec_ptype2.percent.percent"));
@@ -937,5 +1307,118 @@ mod tests {
         assert!(r_code.contains("vec_ptype2.double.percent"));
         assert!(r_code.contains("vec_cast.percent.double"));
         assert!(r_code.contains("vec_cast.double.percent"));
+    }
+
+    #[test]
+    fn test_r_wrappers_list_of() {
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "list_of_integers",
+            base: "list",
+            abbr: Some("list<int>"),
+            record_fields: &[],
+            coerce_with: &[],
+            inherit_base: true,
+            ptype: Some("integer()"),
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: false,
+        });
+
+        // Should have format for list_of
+        assert!(r_code.contains("format.list_of_integers"));
+        assert!(r_code.contains("vapply"));
+
+        // Should have vec_ptype_abbr
+        assert!(r_code.contains("vec_ptype_abbr.list_of_integers"));
+        assert!(r_code.contains("list<int>"));
+
+        // Should have vec_proxy for list_of
+        assert!(r_code.contains("vec_proxy.list_of_integers"));
+        assert!(r_code.contains("new_data_frame"));
+
+        // Should have vec_restore with ptype
+        assert!(r_code.contains("vec_restore.list_of_integers"));
+        assert!(r_code.contains("new_list_of"));
+        assert!(r_code.contains("integer()"));
+
+        // Should have vec_ptype2 for list_of
+        assert!(r_code.contains("vec_ptype2.list_of_integers.list_of_integers"));
+        assert!(r_code.contains("vec_ptype_common"));
+    }
+
+    #[test]
+    fn test_r_wrappers_proxy_methods() {
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "mynum",
+            base: "double",
+            abbr: None,
+            record_fields: &[],
+            coerce_with: &[],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: true,
+            proxy_compare: true,
+            proxy_order: true,
+            arith: false,
+            math: false,
+        });
+
+        // Should have proxy_equal method
+        assert!(r_code.contains("vec_proxy_equal.mynum"));
+
+        // Should have proxy_compare method
+        assert!(r_code.contains("vec_proxy_compare.mynum"));
+
+        // Should have proxy_order method
+        assert!(r_code.contains("vec_proxy_order.mynum"));
+    }
+
+    #[test]
+    fn test_r_wrappers_arith_methods() {
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "mynum",
+            base: "double",
+            abbr: None,
+            record_fields: &[],
+            coerce_with: &[],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: true,
+            math: false,
+        });
+
+        // Should have vec_arith methods
+        assert!(r_code.contains("vec_arith.mynum.mynum"));
+        assert!(r_code.contains("vec_arith.mynum.numeric"));
+        assert!(r_code.contains("vec_arith.numeric.mynum"));
+        assert!(r_code.contains("vec_arith.mynum.MISSING"));
+        assert!(r_code.contains("vec_arith_base"));
+    }
+
+    #[test]
+    fn test_r_wrappers_math_methods() {
+        let r_code = generate_r_wrappers(&RWrapperOptions {
+            class: "mynum",
+            base: "double",
+            abbr: None,
+            record_fields: &[],
+            coerce_with: &[],
+            inherit_base: false,
+            ptype: None,
+            proxy_equal: false,
+            proxy_compare: false,
+            proxy_order: false,
+            arith: false,
+            math: true,
+        });
+
+        // Should have vec_math method
+        assert!(r_code.contains("vec_math.mynum"));
+        assert!(r_code.contains("vec_math_base"));
     }
 }
