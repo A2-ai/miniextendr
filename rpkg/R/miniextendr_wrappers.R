@@ -6777,27 +6777,104 @@ NdIntVec$to_r <- function() {
 
 #' @export
 format.derived_percent <- function(x, ...) {
-  format(vctrs::vec_data(x), ...)
+  format(unclass(x), ...)
 }
 
+#' @importFrom vctrs vec_ptype_abbr
 #' @export
 vec_ptype_abbr.derived_percent <- function(x, ...) {
   "%"
 }
 
+#' @importFrom vctrs vec_ptype_full
 #' @export
 vec_ptype_full.derived_percent <- function(x, ...) {
   "derived_percent"
 }
 
+#' @importFrom vctrs vec_proxy
+#' @export
+vec_proxy.derived_percent <- function(x, ...) {
+  unclass(x)
+}
+
+#' @importFrom vctrs vec_restore new_vctr
+#' @export
+vec_restore.derived_percent <- function(x, to, ...) {
+  vctrs::new_vctr(x, class = "derived_percent", inherit_base_type = FALSE)
+}
+
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.derived_percent.derived_percent <- function(x, y, ...) {
+  vctrs::new_vctr(double(0), class = "derived_percent", inherit_base_type = FALSE)
+}
+
+#' @importFrom vctrs vec_cast
+#' @export
+vec_cast.derived_percent.derived_percent <- function(x, to, ...) {
+  x
+}
+
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.derived_percent.double <- function(x, y, ...) {
+  vctrs::new_vctr(double(0), class = "derived_percent", inherit_base_type = FALSE)
+}
+
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.double.derived_percent <- function(x, y, ...) {
+  vctrs::new_vctr(double(0), class = "derived_percent", inherit_base_type = FALSE)
+}
+
+#' @importFrom vctrs vec_cast new_vctr
+#' @export
+vec_cast.derived_percent.double <- function(x, to, ...) {
+  vctrs::new_vctr(as.double(x), class = "derived_percent", inherit_base_type = FALSE)
+}
+
+#' @importFrom vctrs vec_cast vec_data
+#' @export
+vec_cast.double.derived_percent <- function(x, to, ...) {
+  vctrs::vec_data(x)
+}
+
+#' @importFrom vctrs field
 #' @export
 format.derived_rational <- function(x, ...) {
   paste0(vctrs::field(x, "n"), "/", vctrs::field(x, "d"))
 }
 
+#' @importFrom vctrs vec_ptype_full
 #' @export
 vec_ptype_full.derived_rational <- function(x, ...) {
   "derived_rational"
+}
+
+#' @importFrom vctrs vec_proxy new_data_frame
+#' @export
+vec_proxy.derived_rational <- function(x, ...) {
+  data <- unclass(x)
+  vctrs::new_data_frame(data, n = length(data[[1L]]))
+}
+
+#' @importFrom vctrs vec_restore new_rcrd
+#' @export
+vec_restore.derived_rational <- function(x, to, ...) {
+  vctrs::new_rcrd(as.list(x), class = "derived_rational")
+}
+
+#' @importFrom vctrs vec_ptype2 vec_ptype
+#' @export
+vec_ptype2.derived_rational.derived_rational <- function(x, y, ...) {
+  vctrs::vec_ptype(x)
+}
+
+#' @importFrom vctrs vec_cast
+#' @export
+vec_cast.derived_rational.derived_rational <- function(x, to, ...) {
+  x
 }
 
 # nocov end

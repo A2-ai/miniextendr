@@ -22,22 +22,26 @@
 //! - `#[vctrs(base = "double" | "integer" | "list" | "record")]` - Base vector type
 //! - `#[vctrs(abbr = "pct")]` - Abbreviation for `vec_ptype_abbr`
 //! - `#[vctrs(inherit_base = true | false)]` - Whether to include base type in class vector
+//! - `#[vctrs(coerce = "double" | "integer" | ...)]` - Additional types this class coerces with
 //!
 //! ### Field-level
 //!
 //! - `#[vctrs(data)]` - Mark field as the underlying data (required for `IntoVctrs`)
 //! - `#[vctrs(skip)]` - Skip field when generating record fields
 //!
-//! ### Method-level (on impl methods)
+//! ## Generated S3 Methods
 //!
-//! - `#[vctrs(format)]` - Custom format method
-//! - `#[vctrs(proxy)]` - Custom vec_proxy
-//! - `#[vctrs(restore)]` - Custom vec_restore
-//! - `#[vctrs(ptype2)]` - Custom vec_ptype2
-//! - `#[vctrs(cast)]` - Custom vec_cast
-//! - `#[vctrs(proxy_equal)]` - Custom vec_proxy_equal
-//! - `#[vctrs(proxy_compare)]` - Custom vec_proxy_compare
-//! - `#[vctrs(proxy_order)]` - Custom vec_proxy_order
+//! The derive macro generates the following R S3 methods:
+//!
+//! - `format.<class>()` - Format for printing
+//! - `vec_ptype_abbr.<class>()` - Abbreviation (if provided)
+//! - `vec_ptype_full.<class>()` - Full type name
+//! - `vec_proxy.<class>()` - Proxy for subsetting operations
+//! - `vec_restore.<class>()` - Restore from proxy after subsetting
+//! - `vec_ptype2.<class>.<class>()` - Self-coercion prototype
+//! - `vec_cast.<class>.<class>()` - Self-cast (identity)
+//!
+//! For record types, additional field accessor methods are generated.
 //!
 //! ## Module Registration
 //!
@@ -65,6 +69,8 @@ struct VctrsAttrs {
     abbr: Option<String>,
     /// Whether to inherit base type in class vector
     inherit_base: Option<bool>,
+    /// Additional types to generate coercion methods for (e.g., "double", "integer")
+    coerce_with: Vec<String>,
 }
 
 /// Parsed vctrs attributes from a field.
@@ -101,9 +107,12 @@ fn parse_vctrs_attrs(attrs: &[syn::Attribute]) -> syn::Result<VctrsAttrs> {
                 } else if meta.path.is_ident("inherit_base") {
                     let value: syn::LitBool = meta.value()?.parse()?;
                     result.inherit_base = Some(value.value());
+                } else if meta.path.is_ident("coerce") {
+                    let value: syn::LitStr = meta.value()?.parse()?;
+                    result.coerce_with.push(value.value());
                 } else {
                     return Err(meta.error(
-                        "unknown vctrs attribute; expected one of: class, base, abbr, inherit_base",
+                        "unknown vctrs attribute; expected one of: class, base, abbr, inherit_base, coerce",
                     ));
                 }
                 Ok(())
@@ -194,6 +203,10 @@ fn base_to_kind(base: &str) -> TokenStream {
 /// - `format.<class>()` - Format for printing
 /// - `vec_ptype_abbr.<class>()` - Abbreviation (if provided)
 /// - `vec_ptype_full.<class>()` - Full type name
+/// - `vec_proxy.<class>()` - Proxy for subsetting operations
+/// - `vec_restore.<class>()` - Restore from proxy
+/// - `vec_ptype2.<class>.<class>()` - Self-coercion prototype
+/// - `vec_cast.<class>.<class>()` - Self-cast (identity)
 ///
 /// For record types, it additionally generates:
 /// - Field accessor `$` methods via vctrs infrastructure
@@ -202,10 +215,14 @@ fn generate_r_wrappers(
     base: &str,
     abbr: Option<&str>,
     record_fields: &[String],
+    coerce_with: &[String],
+    inherit_base: bool,
 ) -> String {
     let mut r_code = String::new();
 
-    // Generate format method
+    // =========================================================================
+    // format.<class>
+    // =========================================================================
     if base == "record" {
         // Record format: paste fields together with separator
         let field_formats: Vec<String> = record_fields
@@ -215,6 +232,7 @@ fn generate_r_wrappers(
         let fields_str = field_formats.join(", \"/\", ");
         r_code.push_str(&format!(
             r#"
+#' @importFrom vctrs field
 #' @export
 format.{class} <- function(x, ...) {{
   paste0({fields_str})
@@ -223,20 +241,24 @@ format.{class} <- function(x, ...) {{
         ));
     } else {
         // Simple vctr format: use underlying data representation
+        // Use unclass() instead of vec_data() to avoid recursion (vec_data calls vec_proxy)
         r_code.push_str(&format!(
             r#"
 #' @export
 format.{class} <- function(x, ...) {{
-  format(vctrs::vec_data(x), ...)
+  format(unclass(x), ...)
 }}
 "#
         ));
     }
 
-    // Generate vec_ptype_abbr if abbreviation provided
+    // =========================================================================
+    // vec_ptype_abbr.<class>
+    // =========================================================================
     if let Some(abbr) = abbr {
         r_code.push_str(&format!(
             r#"
+#' @importFrom vctrs vec_ptype_abbr
 #' @export
 vec_ptype_abbr.{class} <- function(x, ...) {{
   "{abbr}"
@@ -245,9 +267,12 @@ vec_ptype_abbr.{class} <- function(x, ...) {{
         ));
     }
 
-    // Generate vec_ptype_full
+    // =========================================================================
+    // vec_ptype_full.<class>
+    // =========================================================================
     r_code.push_str(&format!(
         r#"
+#' @importFrom vctrs vec_ptype_full
 #' @export
 vec_ptype_full.{class} <- function(x, ...) {{
   "{class}"
@@ -255,7 +280,191 @@ vec_ptype_full.{class} <- function(x, ...) {{
 "#
     ));
 
+    // =========================================================================
+    // vec_proxy.<class> - strip class for operations
+    // =========================================================================
+    if base == "record" {
+        // Record proxy: convert to data frame for vctrs operations
+        // vctrs expects rcrd proxy to be a data frame with n = number of records
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_proxy new_data_frame
+#' @export
+vec_proxy.{class} <- function(x, ...) {{
+  data <- unclass(x)
+  vctrs::new_data_frame(data, n = length(data[[1L]]))
+}}
+"#
+        ));
+    } else {
+        // Simple vctr proxy: strip class to get underlying data
+        // Use unclass() instead of vec_data() to avoid recursion (vec_data calls vec_proxy)
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_proxy
+#' @export
+vec_proxy.{class} <- function(x, ...) {{
+  unclass(x)
+}}
+"#
+        ));
+    }
+
+    // =========================================================================
+    // vec_restore.<class> - restore class after subsetting
+    // =========================================================================
+    if base == "record" {
+        // Record restore: convert data frame back to rcrd
+        // x is a data frame from vec_proxy, convert to list and wrap as rcrd
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_restore new_rcrd
+#' @export
+vec_restore.{class} <- function(x, to, ...) {{
+  vctrs::new_rcrd(as.list(x), class = "{class}")
+}}
+"#
+        ));
+    } else {
+        // Simple vctr restore: use new_vctr
+        let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_restore new_vctr
+#' @export
+vec_restore.{class} <- function(x, to, ...) {{
+  vctrs::new_vctr(x, class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#
+        ));
+    }
+
+    // =========================================================================
+    // vec_ptype2.<class>.<class> - self-coercion returns empty prototype
+    // =========================================================================
+    if base == "record" {
+        // Record ptype2: extract prototype from x using vctrs::vec_ptype
+        // This is the cleanest way since we don't know field types at compile time
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_ptype2 vec_ptype
+#' @export
+vec_ptype2.{class}.{class} <- function(x, y, ...) {{
+  vctrs::vec_ptype(x)
+}}
+"#
+        ));
+    } else {
+        // Simple vctr ptype2: return empty vector with class
+        let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+        r_code.push_str(&format!(
+            r#"
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.{class}.{class} <- function(x, y, ...) {{
+  vctrs::new_vctr({base}(0), class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#,
+            base = base_to_r_constructor(base)
+        ));
+    }
+
+    // =========================================================================
+    // vec_cast.<class>.<class> - self-cast is identity
+    // =========================================================================
+    r_code.push_str(&format!(
+        r#"
+#' @importFrom vctrs vec_cast
+#' @export
+vec_cast.{class}.{class} <- function(x, to, ...) {{
+  x
+}}
+"#
+    ));
+
+    // =========================================================================
+    // Generate coercion methods for other types (e.g., double, integer)
+    // =========================================================================
+    for other_type in coerce_with {
+        // vec_ptype2.<class>.<other> - class wins, return class prototype
+        let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+
+        if base != "record" {
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.{class}.{other_type} <- function(x, y, ...) {{
+  vctrs::new_vctr({base}(0), class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#,
+                base = base_to_r_constructor(base)
+            ));
+
+            // vec_ptype2.<other>.<class> - symmetric
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_ptype2 new_vctr
+#' @export
+vec_ptype2.{other_type}.{class} <- function(x, y, ...) {{
+  vctrs::new_vctr({base}(0), class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#,
+                base = base_to_r_constructor(base)
+            ));
+
+            // vec_cast.<class>.<other> - cast other to class
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_cast new_vctr
+#' @export
+vec_cast.{class}.{other_type} <- function(x, to, ...) {{
+  vctrs::new_vctr(as.{base}(x), class = "{class}", inherit_base_type = {inherit_str})
+}}
+"#,
+                base = base_to_r_as_func(base)
+            ));
+
+            // vec_cast.<other>.<class> - cast class to other (strip class)
+            r_code.push_str(&format!(
+                r#"
+#' @importFrom vctrs vec_cast vec_data
+#' @export
+vec_cast.{other_type}.{class} <- function(x, to, ...) {{
+  vctrs::vec_data(x)
+}}
+"#
+            ));
+        }
+    }
+
     r_code
+}
+
+/// Map base type to R constructor function name.
+fn base_to_r_constructor(base: &str) -> &'static str {
+    match base {
+        "double" | "numeric" => "double",
+        "integer" => "integer",
+        "logical" => "logical",
+        "character" => "character",
+        "raw" => "raw",
+        "list" => "list",
+        "record" => "list",
+        _ => "double",
+    }
+}
+
+/// Map base type to R as.* coercion function name.
+fn base_to_r_as_func(base: &str) -> &'static str {
+    match base {
+        "double" | "numeric" => "double",
+        "integer" => "integer",
+        "logical" => "logical",
+        "character" => "character",
+        "raw" => "raw",
+        _ => "double",
+    }
 }
 
 /// Generate the Vctrs derive implementation.
@@ -432,6 +641,8 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         base,
         attrs.abbr.as_deref(),
         &record_field_names,
+        &attrs.coerce_with,
+        inherit_base,
     );
 
     // Generate the R_WRAPPERS_VCTRS_{TYPE} const
@@ -635,11 +846,11 @@ mod tests {
 
     #[test]
     fn test_r_wrappers_content_simple() {
-        let r_code = generate_r_wrappers("percent", "double", Some("pct"), &[]);
+        let r_code = generate_r_wrappers("percent", "double", Some("pct"), &[], &[], false);
 
-        // Should have format method
+        // Should have format method using unclass (not vec_data to avoid recursion)
         assert!(r_code.contains("format.percent"));
-        assert!(r_code.contains("vctrs::vec_data"));
+        assert!(r_code.contains("unclass(x)"));
 
         // Should have vec_ptype_abbr since abbr provided
         assert!(r_code.contains("vec_ptype_abbr.percent"));
@@ -647,6 +858,16 @@ mod tests {
 
         // Should have vec_ptype_full
         assert!(r_code.contains("vec_ptype_full.percent"));
+
+        // Should have vec_proxy using unclass (not vec_data to avoid recursion)
+        assert!(r_code.contains("vec_proxy.percent"));
+
+        // Should have vec_restore
+        assert!(r_code.contains("vec_restore.percent"));
+
+        // Should have self-coercion methods
+        assert!(r_code.contains("vec_ptype2.percent.percent"));
+        assert!(r_code.contains("vec_cast.percent.percent"));
     }
 
     #[test]
@@ -656,6 +877,8 @@ mod tests {
             "record",
             None,
             &["n".to_string(), "d".to_string()],
+            &[],
+            true, // records default to inherit_base = true
         );
 
         // Should have format method with vctrs::field accessors
@@ -668,11 +891,23 @@ mod tests {
 
         // Should have vec_ptype_full
         assert!(r_code.contains("vec_ptype_full.rational"));
+
+        // Should have vec_proxy and vec_restore for records
+        assert!(r_code.contains("vec_proxy.rational"));
+        assert!(r_code.contains("vec_restore.rational"));
+        // vec_proxy uses new_data_frame, vec_restore uses new_rcrd
+        assert!(r_code.contains("new_data_frame"));
+        assert!(r_code.contains("new_rcrd"));
+
+        // Should have self-coercion (uses vec_ptype for records)
+        assert!(r_code.contains("vec_ptype2.rational.rational"));
+        assert!(r_code.contains("vec_ptype(x)"));
+        assert!(r_code.contains("vec_cast.rational.rational"));
     }
 
     #[test]
     fn test_r_wrappers_no_abbr() {
-        let r_code = generate_r_wrappers("mytype", "integer", None, &[]);
+        let r_code = generate_r_wrappers("mytype", "integer", None, &[], &[], false);
 
         // Should NOT have vec_ptype_abbr
         assert!(!r_code.contains("vec_ptype_abbr.mytype"));
@@ -680,5 +915,27 @@ mod tests {
         // Should still have format and vec_ptype_full
         assert!(r_code.contains("format.mytype"));
         assert!(r_code.contains("vec_ptype_full.mytype"));
+    }
+
+    #[test]
+    fn test_r_wrappers_with_coercion() {
+        let r_code = generate_r_wrappers(
+            "percent",
+            "double",
+            Some("%"),
+            &[],
+            &["double".to_string()],
+            false,
+        );
+
+        // Should have self-coercion
+        assert!(r_code.contains("vec_ptype2.percent.percent"));
+        assert!(r_code.contains("vec_cast.percent.percent"));
+
+        // Should have coercion with double
+        assert!(r_code.contains("vec_ptype2.percent.double"));
+        assert!(r_code.contains("vec_ptype2.double.percent"));
+        assert!(r_code.contains("vec_cast.percent.double"));
+        assert!(r_code.contains("vec_cast.double.percent"));
     }
 }

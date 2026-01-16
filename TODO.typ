@@ -318,20 +318,25 @@ Or manually simplify back to minimal output:
 Three comprehensive plans for deeper R class system integration. Each has detailed implementation specs in `plans/`.
 
 === vctrs Integration (`plans/vctrs-deep-integration-plan.md`)
-*Status: Runtime support complete, proc-macro derive not started*
+*Status: Core derive macro COMPLETE, advanced features pending*
 
 *Goal:* `#[derive(Vctrs)]` to auto-generate vctrs-compatible S3 classes from Rust types.
 
 *Current state:*
 - Runtime: `new_vctr()`, `new_rcrd()`, `new_list_of()` in `miniextendr-api/src/vctrs.rs`
 - Traits: `VctrsClass`, `IntoVctrs`, `VctrsRecord`, `VctrsListOf`
+- Derive macro: Complete with all core S3 methods
 
-*To implement:*
-- [ ] `#[derive(Vctrs)]` proc-macro
-- [ ] Auto-generate R methods: `format.<class>`, `vec_ptype_abbr.<class>`
-- [ ] Auto-generate `vec_proxy.<class>`, `vec_restore.<class>`
-- [ ] Auto-generate `vec_ptype2.<class>.<other>`, `vec_cast.<class>.<other>`
-- [ ] Record type support (`base = "record"`)
+*Completed (2026-01-16):*
+- [x] `#[derive(Vctrs)]` proc-macro
+- [x] Auto-generate R methods: `format.<class>`, `vec_ptype_abbr.<class>`, `vec_ptype_full.<class>`
+- [x] Auto-generate `vec_proxy.<class>`, `vec_restore.<class>`
+- [x] Auto-generate `vec_ptype2.<class>.<class>`, `vec_cast.<class>.<class>` (self-coercion)
+- [x] `#[vctrs(coerce = "type")]` attribute for cross-type coercion
+- [x] Record type support (`base = "record"`) with proper data frame proxy
+- [x] All 51 R tests passing
+
+*Remaining advanced features:*
 - [ ] List-of type support (`base = "list"`)
 - [ ] Proxy equal/compare/order methods
 - [ ] Arithmetic/math method generation
@@ -371,10 +376,12 @@ Three comprehensive plans for deeper R class system integration. Each has detail
 - [ ] Phase 4: `convert()` from Rust `From`/`TryFrom`, S3/S4 interop
 - [ ] Phase 5: Docs, tests, stabilization
 
-=== Recommended Starting Point
+=== Recommended Next Target
 
-*vctrs `#[derive(Vctrs)]`* is the best first target because:
-1. Runtime foundation already exists
-2. Self-contained proc-macro addition
-3. Doesn't require modifying existing class system code
-4. Clear test coverage via `rpkg/tests/testthat/test-vctrs-*.R`
+*R6 Integration* is the recommended next target because:
+1. Basic R6 support already exists
+2. Build on the vctrs derive pattern for method generation
+3. Inheritance and portable/cloneable flags are well-understood R6 features
+4. Clear value for users wanting reference class semantics
+
+*vctrs `#[derive(Vctrs)]`* is now COMPLETE (core features). See above for remaining advanced features.

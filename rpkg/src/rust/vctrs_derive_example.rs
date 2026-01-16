@@ -26,7 +26,7 @@
 //! }
 //! ```
 
-use miniextendr_api::vctrs::{IntoVctrs, VctrsClass, VctrsKind};
+use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
 use miniextendr_api::{miniextendr, miniextendr_module, Vctrs};
 
 // =============================================================================
@@ -38,8 +38,10 @@ use miniextendr_api::{miniextendr, miniextendr_module, Vctrs};
 /// The derive macro generates:
 /// - `VctrsClass` trait with class metadata
 /// - `IntoVctrs` trait for conversion to R vctrs object
+/// - R S3 methods for vctrs compatibility (format, vec_proxy, vec_restore, etc.)
+/// - Coercion methods for double type (vec_ptype2, vec_cast)
 #[derive(Vctrs)]
-#[vctrs(class = "derived_percent", base = "double", abbr = "%")]
+#[vctrs(class = "derived_percent", base = "double", abbr = "%", coerce = "double")]
 pub struct DerivedPercent {
     /// The underlying percentage values (as proportions, e.g., 0.5 = 50%)
     #[vctrs(data)]
