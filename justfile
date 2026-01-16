@@ -225,7 +225,7 @@ configure-cran:
     ./configure
 
 # Load and test rpkg with devtools
-devtools-test FILTER="": configure
+devtools-test FILTER="": devtools-document
     if [ -z "{{FILTER}}" ]; then \
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'; \
     else \
@@ -234,16 +234,20 @@ devtools-test FILTER="": configure
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
-devtools-load: configure
+devtools-load: devtools-document
     Rscript -e 'devtools::load_all("rpkg")'
 
 # Install rpkg with devtools::install
-devtools-install: configure
+devtools-install: devtools-document
     Rscript -e 'devtools::install("rpkg")'
 
-# Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, etc.)
+# Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, vctrs, etc.)
 install_deps:
-    Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7"), repos = "https://cloud.r-project.org")'
+    Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7","vctrs"), repos = "https://cloud.r-project.org")'
+
+# Install minirextendr dependencies (for scaffolding helper package)
+minirextendr-install-deps:
+    Rscript -e 'install.packages(c("cli","curl","desc","fs","gh","glue","rappdirs","rlang","rprojroot","usethis","withr","devtools","roxygen2","testthat"), repos = "https://cloud.r-project.org")'
 
 # Build rpkg with devtools::build
 devtools-build: configure
@@ -253,12 +257,12 @@ devtools-build: configure
 # NOT_CRAN=true ensures vendor directory is preserved during R CMD build
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
-devtools-check: configure
+devtools-check: devtools-document
     NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document
 devtools-document: configure
-    Rscript -e 'devtools::document("rpkg")'
+    NOT_CRAN=true Rscript -e 'devtools::document("rpkg")'
 
 # Document ALL R packages in the workspace
 # This includes: rpkg, minirextendr, and cross-package test packages
@@ -500,7 +504,21 @@ templates-approve:
     mkdir -p "$tmp/a" "$tmp/b"
 
     just _templates-upstream-populate "$tmp/a"
-    rsync -a "{{local_root}}/" "$tmp/b/"
+
+    # Populate b/ with template versions of same files (not entire template dir)
+    manifest="$(just --quiet templates-sources)"
+    while IFS=$'\t' read -r rel src; do
+      [[ -z "${rel:-}" ]] && continue
+      rel="$(printf '%s' "$rel" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      [[ -z "$rel" ]] && continue
+      [[ "$rel" == \#* ]] && continue
+
+      template_file="{{local_root}}/$rel"
+      if [[ -e "$template_file" ]]; then
+        mkdir -p "$(dirname "$tmp/b/$rel")"
+        cp -a "$template_file" "$tmp/b/$rel"
+      fi
+    done <<<"$manifest"
 
     # diff exits 1 when differences exist; that's expected here.
     # -U2 = 2 context lines (default is 3)
@@ -526,7 +544,25 @@ templates-check:
       patch -d "$tmp" -p1 --forward --batch < "{{patch_file}}" >/dev/null
     fi
 
-    diff -ruN "$tmp" "{{local_root}}"
+    # Compare only files defined in templates-sources (not entire templates dir)
+    tmp2="$(mktemp -d)"
+    trap 'rm -rf "$tmp" "$tmp2"' EXIT
+
+    manifest="$(just --quiet templates-sources)"
+    while IFS=$'\t' read -r rel src; do
+      [[ -z "${rel:-}" ]] && continue
+      rel="$(printf '%s' "$rel" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+      [[ -z "$rel" ]] && continue
+      [[ "$rel" == \#* ]] && continue
+
+      template_file="{{local_root}}/$rel"
+      if [[ -e "$template_file" ]]; then
+        mkdir -p "$(dirname "$tmp2/$rel")"
+        cp -a "$template_file" "$tmp2/$rel"
+      fi
+    done <<<"$manifest"
+
+    diff -ruN "$tmp" "$tmp2"
 
 # CI-friendly: only prints diff when failing
 templates-check-ci:

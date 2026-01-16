@@ -70,6 +70,13 @@ run_configure <- function() {
     # Unix: run ./configure
     configure_script <- file.path(pkg_root, "configure")
 
+    # Set NOT_CRAN=true for dev builds if not already set
+    # This ensures configure runs in dev mode during devtools workflows
+    if (!nzchar(Sys.getenv("NOT_CRAN"))) {
+      Sys.setenv(NOT_CRAN = "true")
+      message("Setting NOT_CRAN=true for dev build")
+    }
+
     if (!file.exists(configure_script)) {
       # Try running autoconf first
       message("configure script not found - running autoconf first")

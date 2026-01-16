@@ -10,6 +10,7 @@ use_miniextendr_config_scripts()
 Invisibly returns TRUE if files were copied
 }
 \description{
-Copies the bundled GNU autoconf helper scripts config.guess and config.sub.
-These are required for cross-compilation support.
+Copies the bundled GNU autoconf helper scripts config.guess and config.sub
+to the tools/ directory. These are required for cross-compilation support
+and are referenced by AC_CONFIG_AUX_DIR(\link{tools}) in configure.ac.
 }
