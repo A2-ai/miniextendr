@@ -26,3 +26,18 @@
 
 # Vendor compression stamp file (dev-only)
 ^inst/\.vendor\.tar\.xz\.cksum$
+
+# Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
+\.cargo-checksum\.json$
+\.cargo_vcs_info\.json$
+^src/vendor/.*\.github$
+^src/vendor/.*\.editorconfig$
+^src/vendor/.*\.git-blame-ignore-revs$
+^src/vendor/.*\.release-plz\.toml$
+^src/vendor/.*\.rustfmt\.toml$
+^src/vendor/.*\.travis\.yml$
+\.vendor\.lock\.cksum$
+
+# Static libraries in vendored crates (R CMD check objects NOTE)
+^src/vendor/.*\.a$
+^src/vendor/.*\.lib$

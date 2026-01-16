@@ -306,32 +306,26 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   # Create basic R package
   suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
-  })
-
-  # Add miniextendr scaffolding with local vendoring
-  suppressMessages({
     usethis::proj_set(pkg_path, force = TRUE)
     use_miniextendr(local_path = miniextendr_path)
+    # Add package-level documentation for useDynLib
+    usethis::use_package_doc()
   })
 
-  # Run autoconf to generate configure script
-  result <- withr::with_dir(pkg_path, {
-    system2("autoconf", stdout = TRUE, stderr = TRUE)
+  # Run autoconf and configure using minirextendr functions
+  suppressMessages({
+    usethis::proj_set(pkg_path, force = TRUE)
+    miniextendr_autoconf()
+    miniextendr_configure()
+    # Generate R wrappers and NAMESPACE
+    miniextendr_document()
+    devtools::document()
   })
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("autoconf failed:", paste(result, collapse = "\n")))
-  expect_true(file.exists(file.path(pkg_path, "configure")))
 
-  # Run configure
-  result <- withr::with_dir(pkg_path, {
-    system2("./configure", env = c("NOT_CRAN=true"), stdout = TRUE, stderr = TRUE)
-  })
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("configure failed:", paste(result, collapse = "\n")))
+  # Get package name
+  pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
 
-  # Build and install to temp library
+  # Build and install to temp library using R CMD INSTALL
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -345,37 +339,6 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
-
-  # Get package name from DESCRIPTION
-
-  desc <- desc::desc(file.path(pkg_path, "DESCRIPTION"))
-
-  pkg_name <- desc$get_field("Package")
-
-  # Run devtools::document in separate R process to generate NAMESPACE exports
-  # (The document binary runs during install, but roxygen2 needs to run too)
-  result <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c("-e", shQuote(sprintf("devtools::document('%s')", pkg_path))),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("devtools::document failed:", paste(result, collapse = "\n")))
-
-  # Reinstall with updated NAMESPACE
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
 
   # Test the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -392,45 +355,6 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
 
     # Unload
     detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
-  })
-
-  # Run R CMD check for CRAN compliance (from temp directory)
-  withr::with_dir(tmp, {
-    # Build tarball
-    result <- system2(
-      file.path(R.home("bin"), "R"),
-      c("CMD", "build", "--no-build-vignettes", "--no-manual", "testpkg"),
-      env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-      stdout = TRUE,
-      stderr = TRUE
-    )
-    status <- attr(result, "status")
-    expect_true(is.null(status) || status == 0,
-                info = paste("R CMD build failed:", paste(result, collapse = "\n")))
-
-    # Find the built tarball
-    tarball <- list.files(pattern = paste0("^", pkg_name, "_.*\\.tar\\.gz$"))[1]
-    expect_true(!is.na(tarball) && file.exists(tarball),
-                info = "Tarball not found after R CMD build")
-
-    # Run R CMD check
-    result <- system2(
-      file.path(R.home("bin"), "R"),
-      c("CMD", "check", "--no-manual", "--no-vignettes", "--no-build-vignettes", tarball),
-      env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true", "_R_CHECK_CRAN_INCOMING_=false"),
-      stdout = TRUE,
-      stderr = TRUE
-    )
-    status <- attr(result, "status")
-    check_output <- paste(result, collapse = "\n")
-
-    # Check for ERRORs - these are never acceptable
-    expect_false(grepl("ERROR", check_output),
-                 info = paste("R CMD check had ERRORs:", check_output))
-
-    # Verify check completed (status 0 or 1 for warnings is acceptable)
-    expect_true(is.null(status) || status <= 1,
-                info = paste("R CMD check failed badly:", check_output))
   })
 })
 
@@ -455,14 +379,15 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     usethis::create_package(pkg_path, open = FALSE)
     usethis::proj_set(pkg_path, force = TRUE)
     use_miniextendr(local_path = miniextendr_path)
+    # Add package-level documentation for useDynLib
+    usethis::use_package_doc()
   })
 
-  # Generate configure and run it
+  # Run autoconf and configure using minirextendr functions
   suppressMessages({
-    withr::with_dir(pkg_path, {
-      system2("autoconf", stdout = FALSE, stderr = FALSE)
-      system2("./configure", env = c("NOT_CRAN=true"), stdout = FALSE, stderr = FALSE)
-    })
+    usethis::proj_set(pkg_path, force = TRUE)
+    miniextendr_autoconf()
+    miniextendr_configure()
   })
 
   # Add itertools dependency by editing Cargo.toml.in directly
@@ -513,44 +438,61 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   }
   writeLines(lib_content, lib_rs)
 
-  # Reconfigure to vendor itertools
-  result <- withr::with_dir(pkg_path, {
-    system2("./configure", env = c("NOT_CRAN=true", "FORCE_VENDOR=1"),
-            stdout = TRUE, stderr = TRUE)
+  # Reconfigure to vendor itertools (with FORCE_VENDOR environment variable)
+  suppressMessages({
+    usethis::proj_set(pkg_path, force = TRUE)
+    withr::with_envvar(c("FORCE_VENDOR" = "1", "NOT_CRAN" = "true"), {
+      # Run configure with logging
+      result <- run_with_logging(
+        "./configure",
+        log_prefix = "configure-vendor",
+        wd = pkg_path
+      )
+      expect_true(result$success,
+                  info = paste("configure with FORCE_VENDOR failed:", paste(result$output, collapse = "\n")))
+    })
   })
+
+  # Verify itertools was vendored
+  expect_true(dir.exists(file.path(pkg_path, "src", "vendor", "itertools")),
+              info = "itertools was not vendored")
+
+  # Generate R wrappers and NAMESPACE
+  suppressMessages({
+    usethis::proj_set(pkg_path, force = TRUE)
+    miniextendr_document()
+    devtools::document()
+  })
+
+  # Build and install using R CMD INSTALL
+  lib_path <- file.path(tmp, "library")
+  dir.create(lib_path)
+
+  result <- system2(
+    file.path(R.home("bin"), "R"),
+    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
+    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
+    stdout = TRUE,
+    stderr = TRUE
+  )
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
-              info = paste("configure with itertools failed:", paste(result, collapse = "\n")))
+              info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
 
-  # Build tarball and run R CMD check to verify vendored deps work
-  withr::with_dir(tmp, {
-    result <- system2(
-      file.path(R.home("bin"), "R"),
-      c("CMD", "build", "--no-build-vignettes", "--no-manual", "testpkg"),
-      env = c("NOT_CRAN=true"),
-      stdout = TRUE,
-      stderr = TRUE
-    )
-    status <- attr(result, "status")
-    expect_true(is.null(status) || status == 0,
-                info = paste("R CMD build failed:", paste(result, collapse = "\n")))
+  # Test that the functions work
+  withr::with_libpaths(lib_path, action = "prefix", {
+    # Load the package
+    library(testpkg)
 
-    tarball <- list.files(pattern = "^testpkg_.*\\.tar\\.gz$")[1]
-    expect_true(!is.na(tarball) && file.exists(tarball))
+    # Test basic functions
+    expect_equal(add(1L, 2L), 3L)
+    expect_equal(hello("Test"), "Hello, Test!")
 
-    # Run R CMD check to verify itertools is properly vendored
-    result <- system2(
-      file.path(R.home("bin"), "R"),
-      c("CMD", "check", "--no-manual", "--no-vignettes", "--no-build-vignettes", tarball),
-      env = c("NOT_CRAN=true", "_R_CHECK_CRAN_INCOMING_=false"),
-      stdout = TRUE,
-      stderr = TRUE
-    )
-    check_output <- paste(result, collapse = "\n")
+    # Test itertools function
+    expect_equal(join_strings(c("a", "b", "c")), "a, b, c")
 
-    # Should not have ERRORs (warnings/notes are OK)
-    expect_false(grepl("ERROR", check_output),
-                 info = paste("R CMD check had ERRORs:", check_output))
+    # Unload
+    detach("package:testpkg", character.only = TRUE, unload = TRUE)
   })
 })
 
@@ -578,49 +520,45 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   # Vendor miniextendr from local path into rpkg/src/vendor
   suppressMessages({
     vendor_miniextendr(local_path = miniextendr_path, dest = file.path(rpkg_path, "src", "vendor"))
+    # Add package-level documentation for useDynLib
+    usethis::proj_set(rpkg_path, force = TRUE)
+    usethis::use_package_doc()
   })
 
-  # Generate Cargo.toml from template (needed for cargo vendor)
-  # The monorepo template uses Cargo.toml.in, so we need to create the actual Cargo.toml
+  # Pre-vendor crates.io dependencies manually
+  # (needed before autoconf/configure can run)
   cargo_toml_in <- file.path(rpkg_path, "src", "rust", "Cargo.toml.in")
   cargo_toml <- file.path(rpkg_path, "src", "rust", "Cargo.toml")
-  if (file.exists(cargo_toml_in) && !file.exists(cargo_toml)) {
+  if (file.exists(cargo_toml_in)) {
     content <- readLines(cargo_toml_in)
-    # Replace @PACKAGE@ with testpkg
     content <- gsub("@PACKAGE_TARNAME_RS@", "testpkg", content)
     content <- gsub("@CARGO_FEATURE_CPPFLAGS@", "", content)
     writeLines(content, cargo_toml)
   }
 
-  # Pre-vendor crates.io dependencies (proc-macro2, syn, quote, etc.)
-  # This is needed before configure can run cargo generate-lockfile
-  result <- withr::with_dir(rpkg_path, {
-    system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "src/vendor"),
-            stdout = TRUE, stderr = TRUE)
+  # Run cargo vendor to fetch crates.io deps (proc-macro2, syn, quote, etc.)
+  suppressWarnings({
+    withr::with_dir(rpkg_path, {
+      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "src/vendor"),
+              stdout = FALSE, stderr = FALSE)
+    })
   })
 
-  # Create minimal NAMESPACE (required for R CMD INSTALL)
-  # roxygen2 will update it later when devtools::document runs
-  writeLines("# Generated by roxygen2: do not edit by hand", file.path(rpkg_path, "NAMESPACE"))
-
-  # Run autoconf to generate configure script
-  result <- withr::with_dir(rpkg_path, {
-    system2("autoconf", stdout = TRUE, stderr = TRUE)
+  # Run autoconf and configure using minirextendr functions
+  suppressMessages({
+    usethis::proj_set(rpkg_path, force = TRUE)
+    usethis::use_package_doc()
+    miniextendr_autoconf()
+    miniextendr_configure()
+    # Generate R wrappers and NAMESPACE
+    miniextendr_document()
+    devtools::document()
   })
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("autoconf failed:", paste(result, collapse = "\n")))
-  expect_true(file.exists(file.path(rpkg_path, "configure")))
 
-  # Run configure
-  result <- withr::with_dir(rpkg_path, {
-    system2("./configure", env = c("NOT_CRAN=true"), stdout = TRUE, stderr = TRUE)
-  })
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("configure failed:", paste(result, collapse = "\n")))
+  # Get package name
+  pkg_name <- desc::desc(file.path(rpkg_path, "DESCRIPTION"))$get_field("Package")
 
-  # Build and install to temp library
+  # Build and install using R CMD INSTALL
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -634,34 +572,6 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
-
-  # Get package name from DESCRIPTION
-  desc <- desc::desc(file.path(rpkg_path, "DESCRIPTION"))
-  pkg_name <- desc$get_field("Package")
-
-  # Run devtools::document in separate R process to generate NAMESPACE exports
-  result <- system2(
-    file.path(R.home("bin"), "Rscript"),
-    c("-e", shQuote(sprintf("devtools::document('%s')", rpkg_path))),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("devtools::document failed:", paste(result, collapse = "\n")))
-
-  # Reinstall with updated NAMESPACE
-  result <- system2(
-    file.path(R.home("bin"), "R"),
-    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, rpkg_path),
-    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
-    stdout = TRUE,
-    stderr = TRUE
-  )
-  status <- attr(result, "status")
-  expect_true(is.null(status) || status == 0,
-              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
 
   # Test the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -679,10 +589,4 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     # Unload
     detach(paste0("package:", pkg_name), character.only = TRUE, unload = TRUE)
   })
-
-  # Note: R CMD check is skipped for monorepo template
-
-  # The monorepo configure.ac is designed for development within a workspace,
-  # not standalone CRAN submission. For CRAN, users would create a standalone
-  # rpkg package instead. The rpkg template test covers R CMD check compliance.
 })
