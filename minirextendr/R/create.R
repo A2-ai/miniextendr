@@ -135,6 +135,13 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   writeLines(desc_content, desc_path)
   bullet_created(file.path(rpkg_name, "DESCRIPTION"))
 
+  # Create minimal NAMESPACE (required for configure.ac check)
+  # devtools::document() will regenerate this with proper exports
+  namespace_path <- usethis::proj_path(rpkg_name, "NAMESPACE")
+  namespace_content <- sprintf("useDynLib(%s, .registration = TRUE)\n", data$package)
+  writeLines(namespace_content, namespace_path)
+  bullet_created(file.path(rpkg_name, "NAMESPACE"))
+
   # R package files (from rpkg subdir of monorepo template)
   use_template("package.R", save_as = file.path(rpkg_name, "R", paste0(data$package, "-package.R")),
                subdir = "rpkg", data = data)

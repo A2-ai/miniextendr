@@ -407,6 +407,49 @@ impl MiniextendrModuleImpl {
     }
 }
 
+/// A `vctrs <Type>;` line inside `miniextendr_module! { ... }`.
+///
+/// Registers a type that has `#[derive(Vctrs)]` attribute, including its R S3 method wrappers.
+///
+/// ```text
+/// vctrs Percent;
+/// ```
+pub(crate) struct MiniextendrModuleVctrs {
+    /// Attributes on the vctrs entry (for cfg propagation).
+    #[cfg_attr(not(feature = "vctrs"), allow(dead_code))]
+    pub attrs: Vec<syn::Attribute>,
+    /// Identifier for the custom `vctrs` keyword.
+    pub _vctrs_ident: syn::Ident,
+    /// Type that has `#[derive(Vctrs)]` attribute.
+    pub ident: syn::Ident,
+}
+
+impl syn::parse::Parse for MiniextendrModuleVctrs {
+    fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
+        let attrs = input.call(syn::Attribute::parse_outer)?;
+        let vctrs_ident: syn::Ident = input.parse()?;
+        if vctrs_ident != "vctrs" {
+            return Err(syn::Error::new(vctrs_ident.span(), "expected `vctrs`"));
+        }
+        Ok(Self {
+            attrs,
+            _vctrs_ident: vctrs_ident,
+            ident: input.parse()?,
+        })
+    }
+}
+
+impl MiniextendrModuleVctrs {
+    /// Returns the identifier for the R wrappers const.
+    ///
+    /// Format: `R_WRAPPERS_VCTRS_{TYPE}`
+    #[cfg(feature = "vctrs")]
+    pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
+        let type_upper = self.ident.to_string().to_uppercase();
+        quote::format_ident!("R_WRAPPERS_VCTRS_{}", type_upper)
+    }
+}
+
 /// A `use <module>;` line inside `miniextendr_module! { ... }`.
 ///
 /// Only the simple `use name;` form is supported. This is intentionally restrictive so the
@@ -455,6 +498,7 @@ impl syn::parse::Parse for MiniextendrModuleUse {
 /// struct MyAltrep;
 /// impl Counter;
 /// impl MyTrait for Counter;
+/// vctrs Percent;
 /// ```
 pub(crate) struct MiniextendrModule {
     /// The module header (`mod <name>;`) that drives symbol generation.
@@ -469,6 +513,9 @@ pub(crate) struct MiniextendrModule {
     pub(crate) impls: Vec<MiniextendrModuleImpl>,
     /// Trait impls registered via `impl Trait for Type;`.
     pub(crate) trait_impls: Vec<MiniextendrModuleTraitImpl>,
+    /// Vctrs types registered via `vctrs Type;`.
+    #[cfg_attr(not(feature = "vctrs"), allow(dead_code))]
+    pub(crate) vctrs: Vec<MiniextendrModuleVctrs>,
 }
 
 /// Internal: one semicolon-terminated item in a `miniextendr_module!` body.
@@ -479,6 +526,7 @@ enum MiniextendrModuleItem {
     Func(MiniextendrModuleFunction),
     Impl(MiniextendrModuleImpl),
     TraitImpl(Box<MiniextendrModuleTraitImpl>),
+    Vctrs(MiniextendrModuleVctrs),
 }
 
 impl MiniextendrModuleItem {
@@ -492,6 +540,7 @@ impl MiniextendrModuleItem {
             Self::Func(f) => f.ident.span(),
             Self::Impl(i) => i.ident.span(),
             Self::TraitImpl(t) => t.impl_type.span(),
+            Self::Vctrs(v) => v.ident.span(),
         }
     }
 }
@@ -525,6 +574,20 @@ impl syn::parse::Parse for MiniextendrModuleItem {
             }
         } else if look_ahead.peek(syn::Token![fn]) || look_ahead.peek(syn::Token![extern]) {
             Ok(Self::Func(input.parse()?))
+        } else if look_ahead.peek(syn::Ident) {
+            // Check for custom keywords like `vctrs`
+            let ident: syn::Ident = fork.parse()?;
+            if ident == "vctrs" {
+                Ok(Self::Vctrs(input.parse()?))
+            } else {
+                Err(syn::Error::new(
+                    ident.span(),
+                    format!(
+                        "unknown module item keyword `{}`; expected: mod, use, fn, struct, impl, vctrs",
+                        ident
+                    ),
+                ))
+            }
         } else {
             Err(look_ahead.error())
         }
@@ -545,6 +608,7 @@ impl syn::parse::Parse for MiniextendrModule {
         let mut structs = Vec::new();
         let mut impls = Vec::new();
         let mut trait_impls = Vec::new();
+        let mut vctrs_items = Vec::new();
         let mut first_item_span = None::<proc_macro2::Span>;
 
         for it in items {
@@ -564,6 +628,7 @@ impl syn::parse::Parse for MiniextendrModule {
                 MiniextendrModuleItem::Func(f) => funs.push(f),
                 MiniextendrModuleItem::Impl(i) => impls.push(i),
                 MiniextendrModuleItem::TraitImpl(ti) => trait_impls.push(*ti),
+                MiniextendrModuleItem::Vctrs(v) => vctrs_items.push(v),
             }
         }
 
@@ -581,6 +646,7 @@ impl syn::parse::Parse for MiniextendrModule {
             structs,
             impls,
             trait_impls,
+            vctrs: vctrs_items,
         })
     }
 }

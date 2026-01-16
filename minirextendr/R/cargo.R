@@ -1072,7 +1072,7 @@ cargo_deps <- function(depth = 1, duplicates = FALSE, invert = NULL) {
 #' @export
 #'
 #' @examples
-#' \dontrun
+#' \dontrun{
 #' # Create a new library crate
 #' cargo_new("my-utils")
 #'

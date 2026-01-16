@@ -81,7 +81,8 @@ tabled = ["dep:tabled"]
 raw_conversions = ["dep:bytemuck"]
 ## Enable vctrs integration. Provides access to vctrs' maturing C API (obj_is_vector,
 ## short_vec_size, short_vec_recycle) via R_GetCCallable. Requires vctrs R package.
-vctrs = []
+## Also enables the #[derive(Vctrs)] proc-macro.
+vctrs = ["miniextendr-macros/vctrs"]
 ## Enable fast hasher for refcount protect arenas. Uses ahash instead of SipHash
 ## for improved throughput on large collections. Not DOS-resistant.
 refcount-fast-hash = ["dep:ahash"]

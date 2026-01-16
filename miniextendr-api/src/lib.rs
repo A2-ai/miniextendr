@@ -188,6 +188,9 @@ pub use miniextendr_macros::r_ffi_checked;
 pub use miniextendr_macros::typed_list;
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)
+#[cfg(feature = "vctrs")]
+#[doc(inline)]
+pub use miniextendr_macros::Vctrs;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
