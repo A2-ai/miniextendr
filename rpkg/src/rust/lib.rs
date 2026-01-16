@@ -1516,6 +1516,14 @@ mod vctrs_class_example;
 #[path = "vctrs_class_example_disabled.rs"]
 mod vctrs_class_example;
 
+// vctrs derive example: demonstrates using #[derive(Vctrs)] for simpler class creation
+#[cfg(feature = "vctrs")]
+mod vctrs_derive_example;
+
+#[cfg(not(feature = "vctrs"))]
+#[path = "vctrs_derive_example_disabled.rs"]
+mod vctrs_derive_example;
+
 // endregion
 
 // region: Feature detection
@@ -1673,6 +1681,7 @@ miniextendr_module! {
     use factor_tests;
     use vctrs_tests;
     use vctrs_class_example;
+    use vctrs_derive_example;
 
     // ALTREP helper functions
     fn altrep_compact_int;

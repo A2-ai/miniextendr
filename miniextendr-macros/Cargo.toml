@@ -15,6 +15,7 @@ proc-macro = true
 
 [features]
 doc-lint = []
+vctrs = []
 
 [dependencies]
 proc-macro2 = { workspace = true }

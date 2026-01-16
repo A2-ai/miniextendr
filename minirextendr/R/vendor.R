@@ -342,22 +342,14 @@ vendor_crates_io <- function() {
 
   cli::cli_alert("Running cargo vendor...")
 
-  result <- withr::with_dir(usethis::proj_get(), {
-    system2(
-      "cargo",
-      c("vendor", "--manifest-path", cargo_toml, vendor_dir),
-      stdout = TRUE,
-      stderr = TRUE
-    )
-  })
+  result <- run_with_logging(
+    "cargo",
+    args = c("vendor", "--manifest-path", cargo_toml, vendor_dir),
+    log_prefix = "cargo-vendor",
+    wd = usethis::proj_get()
+  )
 
-  status <- attr(result, "status")
-  if (!is.null(status) && status != 0) {
-    abort(c(
-      "cargo vendor failed",
-      "i" = paste(utils::tail(result, 10), collapse = "\n")
-    ))
-  }
+  check_result(result, "cargo vendor")
 
   cli::cli_alert_success("External dependencies vendored")
   invisible(TRUE)

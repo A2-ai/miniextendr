@@ -226,6 +226,10 @@ mod miniextendr_trait;
 // Factor support
 mod factor_derive;
 
+// vctrs support
+#[cfg(feature = "vctrs")]
+mod vctrs_derive;
+
 /// Identifier for the generated `const` `R_CallMethodDef` value.
 ///
 /// This must remain consistent between the attribute macro (which defines the symbol)
@@ -1369,6 +1373,20 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         })
         .collect();
 
+    // Generate vctrs R wrapper refs (from #[derive(Vctrs)])
+    #[cfg(feature = "vctrs")]
+    let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
+        .vctrs
+        .iter()
+        .map(|v| {
+            let r_wrapper_const = v.r_wrappers_const_ident();
+            let cfg_attrs = extract_cfg_attrs(&v.attrs);
+            (cfg_attrs, syn::parse_quote!(#r_wrapper_const))
+        })
+        .collect();
+    #[cfg(not(feature = "vctrs"))]
+    let vctrs_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
+
     // Separate ALTREP trait impls from regular cross-package trait impls
     let (altrep_impls, regular_trait_impls) =
         altrep_module::extract_altrep_impls(&parsed_module.trait_impls);
@@ -1739,7 +1757,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Check if we have trait impl blocks to register
     let _has_trait_impls = !parsed_module.trait_impls.is_empty();
 
-    // Generate R wrapper impls constant - includes impl, trait impl, and sidecar wrappers
+    // Generate R wrapper impls constant - includes impl, trait impl, sidecar, and vctrs wrappers
     // Combine all with cfg info and generate conditional array elements
     let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
     all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
@@ -1750,6 +1768,8 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
             .iter()
             .map(|expr| (Vec::new(), expr.clone())),
     );
+    // Add vctrs R wrappers (from #[derive(Vctrs)])
+    all_impl_r_wrappers_with_cfg.extend(vctrs_r_wrappers_with_cfg.iter().cloned());
 
     // Generate array elements with cfg attributes where needed
     let all_impl_r_wrapper_elements: Vec<proc_macro2::TokenStream> = all_impl_r_wrappers_with_cfg
@@ -2531,6 +2551,38 @@ pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::Toke
 pub fn derive_r_factor(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     factor_derive::derive_r_factor(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `Vctrs`: enables creating vctrs-compatible S3 vector classes from Rust structs.
+///
+/// # Usage
+///
+/// ```ignore
+/// #[derive(Vctrs)]
+/// #[vctrs(class = "percent", base = "double")]
+/// pub struct Percent {
+///     data: Vec<f64>,
+/// }
+/// ```
+///
+/// # Attributes
+///
+/// - `#[vctrs(class = "name")]` - R class name (required)
+/// - `#[vctrs(base = "type")]` - Base type: double, integer, logical, character, raw, list, record
+/// - `#[vctrs(abbr = "abbr")]` - Abbreviation for `vec_ptype_abbr`
+/// - `#[vctrs(inherit_base = true|false)]` - Whether to include base type in class vector
+///
+/// # Generated Implementations
+///
+/// - `VctrsClass` - Metadata trait for vctrs class information
+/// - `VctrsRecord` (for `base = "record"`) - Field names for record types
+#[cfg(feature = "vctrs")]
+#[proc_macro_derive(Vctrs, attributes(vctrs))]
+pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    vctrs_derive::derive_vctrs(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }

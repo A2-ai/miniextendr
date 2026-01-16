@@ -37,6 +37,16 @@
 // Parser module (copied from miniextendr-macros for independent publishing).
 mod miniextendr_module;
 
+// Stubs required by miniextendr_module.rs (which imports these from crate::)
+// The lint only uses parsing, not code generation, so these return dummy idents.
+pub(crate) fn call_method_def_ident_for(_ident: &syn::Ident) -> syn::Ident {
+    syn::Ident::new("__stub", proc_macro2::Span::call_site())
+}
+
+pub(crate) fn r_wrapper_const_ident_for(_ident: &syn::Ident) -> syn::Ident {
+    syn::Ident::new("__stub", proc_macro2::Span::call_site())
+}
+
 // TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
 // is it altrep? is it too much?
 
