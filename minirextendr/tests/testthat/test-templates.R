@@ -434,6 +434,126 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   })
 })
 
+test_that("rpkg scaffolding with external cargo dependency works", {
+  skip_on_ci()  # Complex build environment requirements; test locally
+  skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
+  skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
+  skip_if_not(nzchar(Sys.which("R")), "R not available")
+
+  miniextendr_path <- find_miniextendr_repo()
+  skip_if(is.null(miniextendr_path),
+          "Local miniextendr repo not found (set MINIEXTENDR_LOCAL_PATH)")
+
+  tmp <- tempfile("rpkg-cargo-dep-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+  dir.create(tmp)
+
+  pkg_path <- file.path(tmp, "testpkg")
+
+  # Create package and add miniextendr
+  suppressMessages({
+    usethis::create_package(pkg_path, open = FALSE)
+    usethis::proj_set(pkg_path, force = TRUE)
+    use_miniextendr(local_path = miniextendr_path)
+  })
+
+  # Generate configure and run it
+  suppressMessages({
+    withr::with_dir(pkg_path, {
+      system2("autoconf", stdout = FALSE, stderr = FALSE)
+      system2("./configure", env = c("NOT_CRAN=true"), stdout = FALSE, stderr = FALSE)
+    })
+  })
+
+  # Add itertools dependency by editing Cargo.toml.in directly
+  # (cargo_add would modify Cargo.toml, but configure regenerates it from .in)
+  cargo_toml_in <- file.path(pkg_path, "src", "rust", "Cargo.toml.in")
+  cargo_content <- readLines(cargo_toml_in)
+  deps_idx <- grep("^\\[dependencies\\]", cargo_content)[1]
+  if (!is.na(deps_idx)) {
+    # Insert itertools right after [dependencies] header
+    cargo_content <- c(
+      cargo_content[1:deps_idx],
+      "itertools = \"0.13\"",
+      cargo_content[(deps_idx + 1):length(cargo_content)]
+    )
+    writeLines(cargo_content, cargo_toml_in)
+  }
+
+  # Update lib.rs to use itertools
+  lib_rs <- file.path(pkg_path, "src", "rust", "lib.rs")
+  lib_content <- readLines(lib_rs)
+  use_idx <- grep("use miniextendr_api", lib_content)[1]
+  lib_content <- c(
+    lib_content[1:use_idx],
+    "use itertools::Itertools;",
+    "",
+    "/// Join strings with itertools",
+    "/// @param parts Character vector to join",
+    "/// @return Joined string",
+    "#[miniextendr]",
+    "pub fn join_strings(parts: Vec<String>) -> String {",
+    "    parts.into_iter().join(\", \")",
+    "}",
+    "",
+    lib_content[(use_idx + 1):length(lib_content)]
+  )
+  # Update module to include new function
+  module_idx <- grep("miniextendr_module!", lib_content)
+  if (length(module_idx) > 0) {
+    # Find the line with fn declarations
+    fn_line <- grep("fn add;", lib_content)
+    if (length(fn_line) > 0) {
+      lib_content <- c(
+        lib_content[1:fn_line],
+        "    fn join_strings;",
+        lib_content[(fn_line + 1):length(lib_content)]
+      )
+    }
+  }
+  writeLines(lib_content, lib_rs)
+
+  # Reconfigure to vendor itertools
+  result <- withr::with_dir(pkg_path, {
+    system2("./configure", env = c("NOT_CRAN=true", "FORCE_VENDOR=1"),
+            stdout = TRUE, stderr = TRUE)
+  })
+  status <- attr(result, "status")
+  expect_true(is.null(status) || status == 0,
+              info = paste("configure with itertools failed:", paste(result, collapse = "\n")))
+
+  # Build tarball and run R CMD check to verify vendored deps work
+  withr::with_dir(tmp, {
+    result <- system2(
+      file.path(R.home("bin"), "R"),
+      c("CMD", "build", "--no-build-vignettes", "--no-manual", "testpkg"),
+      env = c("NOT_CRAN=true"),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+    status <- attr(result, "status")
+    expect_true(is.null(status) || status == 0,
+                info = paste("R CMD build failed:", paste(result, collapse = "\n")))
+
+    tarball <- list.files(pattern = "^testpkg_.*\\.tar\\.gz$")[1]
+    expect_true(!is.na(tarball) && file.exists(tarball))
+
+    # Run R CMD check to verify itertools is properly vendored
+    result <- system2(
+      file.path(R.home("bin"), "R"),
+      c("CMD", "check", "--no-manual", "--no-vignettes", "--no-build-vignettes", tarball),
+      env = c("NOT_CRAN=true", "_R_CHECK_CRAN_INCOMING_=false"),
+      stdout = TRUE,
+      stderr = TRUE
+    )
+    check_output <- paste(result, collapse = "\n")
+
+    # Should not have ERRORs (warnings/notes are OK)
+    expect_false(grepl("ERROR", check_output),
+                 info = paste("R CMD check had ERRORs:", check_output))
+  })
+})
+
 test_that("monorepo scaffolding builds and functions work end-to-end", {
   skip_on_ci()  # Complex build environment requirements; test locally
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
