@@ -53,7 +53,8 @@ miniextendr_configure <- function() {
   result <- run_with_logging(
     "./configure",
     log_prefix = "configure",
-    wd = usethis::proj_get()
+    wd = usethis::proj_get(),
+    env = devtools::r_env_vars()
   )
 
   check_result(result, "./configure")

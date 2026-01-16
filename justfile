@@ -225,7 +225,7 @@ configure-cran:
     ./configure
 
 # Load and test rpkg with devtools
-devtools-test FILTER="": configure
+devtools-test FILTER="": devtools-document
     if [ -z "{{FILTER}}" ]; then \
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("rpkg")'; \
     else \
@@ -234,16 +234,20 @@ devtools-test FILTER="": configure
 
 # Load rpkg with devtools::load_all
 alias devtools-load_all := devtools-load
-devtools-load: configure
+devtools-load: devtools-document
     Rscript -e 'devtools::load_all("rpkg")'
 
 # Install rpkg with devtools::install
-devtools-install: configure
+devtools-install: devtools-document
     Rscript -e 'devtools::install("rpkg")'
 
-# Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, etc.)
+# Install R dependencies used by the repo (devtools, roxygen2, testthat, R6, S7, vctrs, etc.)
 install_deps:
-    Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7"), repos = "https://cloud.r-project.org")'
+    Rscript -e 'install.packages(c("devtools","roxygen2","rcmdcheck","pkgbuild","processx","testthat","R6","S7","vctrs"), repos = "https://cloud.r-project.org")'
+
+# Install minirextendr dependencies (for scaffolding helper package)
+minirextendr-install-deps:
+    Rscript -e 'install.packages(c("cli","curl","desc","fs","gh","glue","rappdirs","rlang","rprojroot","usethis","withr","devtools","roxygen2","testthat"), repos = "https://cloud.r-project.org")'
 
 # Build rpkg with devtools::build
 devtools-build: configure
@@ -253,7 +257,7 @@ devtools-build: configure
 # NOT_CRAN=true ensures vendor directory is preserved during R CMD build
 # error_on = "error" matches CI behavior (ignore warnings/notes)
 # check_dir preserves output for investigation (not auto-cleaned)
-devtools-check: configure
+devtools-check: devtools-document
     NOT_CRAN=true Rscript -e 'devtools::check("rpkg", error_on = "error", check_dir = "{{check_output_dir}}")'
 
 # Document rpkg with devtools::document

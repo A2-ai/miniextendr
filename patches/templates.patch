@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-01-16 10:28:25
-+++ b/monorepo/rpkg/configure.ac	2026-01-16 10:30:34
+--- a/monorepo/rpkg/configure.ac	2026-01-16 13:08:57
++++ b/monorepo/rpkg/configure.ac	2026-01-16 11:43:39
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -51,7 +51,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources only
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@source.crates-io@:>@
-@@ -469,57 +469,111 @@
+@@ -469,69 +469,134 @@
      STAMP="$VENDOR_OUT/.vendor.lock.cksum"
  
 -    dnl Generate Cargo.lock if missing (required for fingerprinting)
@@ -106,6 +106,10 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -	          echo "configure: error: cargo vendor failed" >&2
 -	          exit 1
 -	        fi
+-	        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+-	        if test -f "$LOCKFILE"; then
+-	          $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
+-	        fi
 -	        echo "$_new" > "$STAMP"
 +    dnl For standalone scaffolded projects, we need to run cargo vendor BEFORE
 +    dnl generating lockfile because the cargo config uses vendored sources.
@@ -134,7 +138,15 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -        dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
 +        dnl Standalone scaffolded project or R CMD check from tarball
          if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
--          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+-          dnl Vendor exists - check if we need to update it for new dependencies
+-          if test "$FORCE_VENDOR" = "1"; then
+-            echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
+-            dnl Run cargo vendor without monorepo to fetch from crates.io
+-            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+-            if test $? -eq 0; then
+-              dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+-              if test -f "$LOCKFILE"; then
+-                $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
 +          dnl Vendor exists - check if it has crates.io deps or just miniextendr crates
 +          dnl If only miniextendr crates, need to vendor crates.io deps too
 +          if test ! -d "$VENDOR_OUT/proc-macro2"; then
@@ -199,17 +211,51 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +                fi
 +
 +                echo "configure: crates.io fallback configured successfully" >&2
-+              fi
+               fi
+-              echo "$_new" > "$STAMP"
 +            fi
-+          else
++          elif test "$FORCE_VENDOR" = "1"; then
++            echo "configure: FORCE_VENDOR=1, re-running cargo vendor to fetch new dependencies"
++            dnl Temporarily rename ALL .cargo/config.toml files to bypass vendored sources
++            _cargo_cfg1="src/rust/.cargo/config.toml"
++            _cargo_cfg1_bak="src/rust/.cargo/config.toml.bak"
++            _cargo_cfg2=".cargo/config.toml"
++            _cargo_cfg2_bak=".cargo/config.toml.bak"
++            if test -f "$_cargo_cfg1"; then
++              mv "$_cargo_cfg1" "$_cargo_cfg1_bak"
++            fi
++            if test -f "$_cargo_cfg2"; then
++              mv "$_cargo_cfg2" "$_cargo_cfg2_bak"
++            fi
++
++            $CARGO_CMD vendor \
++              --manifest-path "$MANIFEST" \
++              "$VENDOR_OUT" > /dev/null
++            _vendor_status=$?
++
++            dnl Restore cargo configs
++            if test -f "$_cargo_cfg1_bak"; then
++              mv "$_cargo_cfg1_bak" "$_cargo_cfg1"
++            fi
++            if test -f "$_cargo_cfg2_bak"; then
++              mv "$_cargo_cfg2_bak" "$_cargo_cfg2"
++            fi
++
++            if test $_vendor_status -eq 0; then
+               echo "configure: cargo vendor complete (updated with new dependencies)"
+             else
+@@ -539,8 +604,8 @@
+             fi
+           else
+-            echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
 +            echo "configure: skipping cargo vendor (vendor already has crates.io deps)"
-+          fi
+           fi
          elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
 +          echo "configure: vendor empty, unpacking inst/vendor.tar.xz"
            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-@@ -528,54 +582,81 @@
+@@ -549,54 +614,81 @@
            fi
          else
 -          dnl Fallback: use crates.io (dev mode only)
@@ -329,9 +375,21 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
  
  dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
+@@ -740,11 +832,4 @@
+ 
+     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
+-
+-    dnl Strip checksums from Cargo.lock when using vendored sources
+-    dnl (miniextendr crates are synced/modified, so checksums don't match)
+-    if test -f "src/rust/Cargo.lock"; then
+-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
+-      echo "configure: stripped checksums from Cargo.lock (vendored sources)" >&2
+-    fi
+   else
+     echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-01-16 10:28:25
-+++ b/rpkg/configure.ac	2026-01-16 10:29:34
+--- a/rpkg/configure.ac	2026-01-16 13:08:57
++++ b/rpkg/configure.ac	2026-01-16 11:43:18
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -382,7 +440,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  dnl CRAN/offline mode OR dev mode without miniextendr repo: use vendored sources only
    CARGO_SOURCE_REPLACE="$(cat <<EOF
  @<:@source.crates-io@:>@
-@@ -469,57 +469,111 @@
+@@ -469,69 +469,134 @@
      STAMP="$VENDOR_OUT/.vendor.lock.cksum"
  
 -    dnl Generate Cargo.lock if missing (required for fingerprinting)
@@ -437,6 +495,10 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -	          echo "configure: error: cargo vendor failed" >&2
 -	          exit 1
 -	        fi
+-	        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+-	        if test -f "$LOCKFILE"; then
+-	          $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
+-	        fi
 -	        echo "$_new" > "$STAMP"
 +    dnl For standalone scaffolded projects, we need to run cargo vendor BEFORE
 +    dnl generating lockfile because the cargo config uses vendored sources.
@@ -465,7 +527,15 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -        dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
 +        dnl Standalone scaffolded project or R CMD check from tarball
          if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
--          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+-          dnl Vendor exists - check if we need to update it for new dependencies
+-          if test "$FORCE_VENDOR" = "1"; then
+-            echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
+-            dnl Run cargo vendor without monorepo to fetch from crates.io
+-            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+-            if test $? -eq 0; then
+-              dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+-              if test -f "$LOCKFILE"; then
+-                $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
 +          dnl Vendor exists - check if it has crates.io deps or just miniextendr crates
 +          dnl If only miniextendr crates, need to vendor crates.io deps too
 +          if test ! -d "$VENDOR_OUT/proc-macro2"; then
@@ -530,17 +600,51 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +                fi
 +
 +                echo "configure: crates.io fallback configured successfully" >&2
-+              fi
+               fi
+-              echo "$_new" > "$STAMP"
 +            fi
-+          else
++          elif test "$FORCE_VENDOR" = "1"; then
++            echo "configure: FORCE_VENDOR=1, re-running cargo vendor to fetch new dependencies"
++            dnl Temporarily rename ALL .cargo/config.toml files to bypass vendored sources
++            _cargo_cfg1="src/rust/.cargo/config.toml"
++            _cargo_cfg1_bak="src/rust/.cargo/config.toml.bak"
++            _cargo_cfg2=".cargo/config.toml"
++            _cargo_cfg2_bak=".cargo/config.toml.bak"
++            if test -f "$_cargo_cfg1"; then
++              mv "$_cargo_cfg1" "$_cargo_cfg1_bak"
++            fi
++            if test -f "$_cargo_cfg2"; then
++              mv "$_cargo_cfg2" "$_cargo_cfg2_bak"
++            fi
++
++            $CARGO_CMD vendor \
++              --manifest-path "$MANIFEST" \
++              "$VENDOR_OUT" > /dev/null
++            _vendor_status=$?
++
++            dnl Restore cargo configs
++            if test -f "$_cargo_cfg1_bak"; then
++              mv "$_cargo_cfg1_bak" "$_cargo_cfg1"
++            fi
++            if test -f "$_cargo_cfg2_bak"; then
++              mv "$_cargo_cfg2_bak" "$_cargo_cfg2"
++            fi
++
++            if test $_vendor_status -eq 0; then
+               echo "configure: cargo vendor complete (updated with new dependencies)"
+             else
+@@ -539,8 +604,8 @@
+             fi
+           else
+-            echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
 +            echo "configure: skipping cargo vendor (vendor already has crates.io deps)"
-+          fi
+           fi
          elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
 -          echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
 +          echo "configure: vendor empty, unpacking inst/vendor.tar.xz"
            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-@@ -528,54 +582,81 @@
+@@ -549,54 +614,81 @@
            fi
          else
 -          dnl Fallback: use crates.io (dev mode only)
@@ -660,3 +764,15 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
  
  dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
+@@ -740,11 +832,4 @@
+ 
+     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
+-
+-    dnl Strip checksums from Cargo.lock when using vendored sources
+-    dnl (miniextendr crates are synced/modified, so checksums don't match)
+-    if test -f "src/rust/Cargo.lock"; then
+-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
+-      echo "configure: stripped checksums from Cargo.lock (vendored sources)" >&2
+-    fi
+   else
+     echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2

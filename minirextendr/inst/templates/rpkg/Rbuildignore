@@ -5,6 +5,7 @@
 ^src/rust/target$
 ^src/rust/ra_target$
 ^src/rust/\.cargo$
+^\.cargo$
 ^src/.*\.o$
 ^src/.*\.so$
 ^src/.*\.dll$

@@ -514,11 +514,32 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	          echo "configure: error: cargo vendor failed" >&2
 	          exit 1
 	        fi
+	        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+	        if test -f "$LOCKFILE"; then
+	          $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
+	        fi
 	        echo "$_new" > "$STAMP"
       else
         dnl Monorepo not available (e.g., R CMD check from tarball with NOT_CRAN=true)
         if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+          dnl Vendor exists - check if we need to update it for new dependencies
+          if test "$FORCE_VENDOR" = "1"; then
+            echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
+            dnl Run cargo vendor without monorepo to fetch from crates.io
+            $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+            if test $? -eq 0; then
+              dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+              if test -f "$LOCKFILE"; then
+                $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
+              fi
+              echo "$_new" > "$STAMP"
+              echo "configure: cargo vendor complete (updated with new dependencies)"
+            else
+              echo "configure: warning: cargo vendor failed, continuing with existing vendor" >&2
+            fi
+          else
+            echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+          fi
         elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
           echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
           tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
@@ -718,6 +739,13 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     rm -f "$VENDOR_OUT/r-efi/Makefile"
 
     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
+
+    dnl Strip checksums from Cargo.lock when using vendored sources
+    dnl (miniextendr crates are synced/modified, so checksums don't match)
+    if test -f "src/rust/Cargo.lock"; then
+      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
+      echo "configure: stripped checksums from Cargo.lock (vendored sources)" >&2
+    fi
   else
     echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2
 

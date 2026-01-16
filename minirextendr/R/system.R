@@ -12,7 +12,7 @@
 #' @param env Environment variables
 #' @param log_dir Directory to save log files (defaults to tempdir())
 #' @return List with status, output, and log_file path
-#' @keywords internal
+#' @export
 run_with_logging <- function(command, args = character(),
                               log_prefix = "command",
                               wd = NULL,
@@ -27,12 +27,25 @@ run_with_logging <- function(command, args = character(),
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   }
 
+  # Convert named vector to "NAME=value" format for system2
+  if (length(env) > 0 && !is.null(names(env))) {
+    env <- paste0(names(env), "=", env)
+  }
+
   # Run command and capture output
   result <- if (is.null(wd)) {
-    system2(command, args, stdout = TRUE, stderr = TRUE, env = env)
+    if (length(env) > 0) {
+      system2(command, args, stdout = TRUE, stderr = TRUE, env = env)
+    } else {
+      system2(command, args, stdout = TRUE, stderr = TRUE)
+    }
   } else {
     withr::with_dir(wd, {
-      system2(command, args, stdout = TRUE, stderr = TRUE, env = env)
+      if (length(env) > 0) {
+        system2(command, args, stdout = TRUE, stderr = TRUE, env = env)
+      } else {
+        system2(command, args, stdout = TRUE, stderr = TRUE)
+      }
     })
   }
 
@@ -61,7 +74,7 @@ run_with_logging <- function(command, args = character(),
 #'
 #' @param result Result from run_with_logging()
 #' @param context Description of what was being done
-#' @keywords internal
+#' @export
 check_result <- function(result, context) {
   if (!result$success) {
     cli::cli_alert_danger("{context} failed (status: {result$status %||% 'unknown'})")
@@ -76,7 +89,7 @@ check_result <- function(result, context) {
 
     abort(c(
       paste0(context, " failed"),
-      "i" = "Full output saved to: {result$log_file}"
+      "i" = paste0("Full output saved to: ", result$log_file)
     ))
   }
   invisible(result)

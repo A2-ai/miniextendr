@@ -317,15 +317,15 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
     usethis::proj_set(pkg_path, force = TRUE)
     miniextendr_autoconf()
     miniextendr_configure()
-    # Generate R wrappers and NAMESPACE
-    miniextendr_document()
-    devtools::document()
+    # Generate NAMESPACE from package doc (useDynLib)
+    devtools::document(pkg = pkg_path)
   })
 
   # Get package name
   pkg_name <- desc::desc(file.path(pkg_path, "DESCRIPTION"))$get_field("Package")
 
   # Build and install to temp library using R CMD INSTALL
+  # This will compile Rust code and generate R wrappers via document binary
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -339,6 +339,24 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
+
+  # Regenerate NAMESPACE with exports from generated R wrappers
+  # Use roxygen2::roxygenise directly to avoid pkgload compilation
+  suppressMessages({
+    roxygen2::roxygenise(pkg_path)
+  })
+
+  # Reinstall with updated NAMESPACE
+  result <- system2(
+    file.path(R.home("bin"), "R"),
+    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
+    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  status <- attr(result, "status")
+  expect_true(is.null(status) || status == 0,
+              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
 
   # Test the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -441,30 +459,23 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   # Reconfigure to vendor itertools (with FORCE_VENDOR environment variable)
   suppressMessages({
     usethis::proj_set(pkg_path, force = TRUE)
-    withr::with_envvar(c("FORCE_VENDOR" = "1", "NOT_CRAN" = "true"), {
-      # Run configure with logging
-      result <- run_with_logging(
-        "./configure",
-        log_prefix = "configure-vendor",
-        wd = pkg_path
-      )
-      expect_true(result$success,
-                  info = paste("configure with FORCE_VENDOR failed:", paste(result$output, collapse = "\n")))
-    })
+    # Combine devtools env vars with FORCE_VENDOR
+    config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
+    result <- run_with_logging(
+      "./configure",
+      log_prefix = "configure-vendor",
+      wd = pkg_path,
+      env = config_env
+    )
+    expect_true(result$success,
+                info = paste("configure with FORCE_VENDOR failed:", paste(result$output, collapse = "\n")))
   })
 
   # Verify itertools was vendored
   expect_true(dir.exists(file.path(pkg_path, "src", "vendor", "itertools")),
               info = "itertools was not vendored")
 
-  # Generate R wrappers and NAMESPACE
-  suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
-    miniextendr_document()
-    devtools::document()
-  })
-
-  # Build and install using R CMD INSTALL
+  # Build and install - this generates R wrappers via document binary
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -478,6 +489,24 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
+
+  # Generate NAMESPACE from the R wrappers created during build
+  # Use roxygen2::roxygenise directly to avoid pkgload compilation
+  suppressMessages({
+    roxygen2::roxygenise(pkg_path)
+  })
+
+  # Reinstall with updated NAMESPACE
+  result <- system2(
+    file.path(R.home("bin"), "R"),
+    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, pkg_path),
+    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  status <- attr(result, "status")
+  expect_true(is.null(status) || status == 0,
+              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
 
   # Test that the functions work
   withr::with_libpaths(lib_path, action = "prefix", {
@@ -550,15 +579,12 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     usethis::use_package_doc()
     miniextendr_autoconf()
     miniextendr_configure()
-    # Generate R wrappers and NAMESPACE
-    miniextendr_document()
-    devtools::document()
   })
 
   # Get package name
   pkg_name <- desc::desc(file.path(rpkg_path, "DESCRIPTION"))$get_field("Package")
 
-  # Build and install using R CMD INSTALL
+  # Build and install - this compiles Rust and generates R wrappers
   lib_path <- file.path(tmp, "library")
   dir.create(lib_path)
 
@@ -572,6 +598,24 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   status <- attr(result, "status")
   expect_true(is.null(status) || status == 0,
               info = paste("R CMD INSTALL failed:", paste(result, collapse = "\n")))
+
+  # Generate NAMESPACE from the R wrappers created during build
+  # Use roxygen2::roxygenise directly to avoid pkgload compilation
+  suppressMessages({
+    roxygen2::roxygenise(rpkg_path)
+  })
+
+  # Reinstall with updated NAMESPACE
+  result <- system2(
+    file.path(R.home("bin"), "R"),
+    c("CMD", "INSTALL", "--no-multiarch", "-l", lib_path, rpkg_path),
+    env = c(paste0("R_LIBS=", lib_path), "NOT_CRAN=true"),
+    stdout = TRUE,
+    stderr = TRUE
+  )
+  status <- attr(result, "status")
+  expect_true(is.null(status) || status == 0,
+              info = paste("R CMD INSTALL (2nd) failed:", paste(result, collapse = "\n")))
 
   # Test the functions work
   withr::with_libpaths(lib_path, action = "prefix", {

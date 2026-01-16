@@ -33,4 +33,3 @@ List with status, output, and log_file path
 Wrapper around system2() that saves stderr/stdout to timestamped log files
 for later inspection when errors occur.
 }
-\keyword{internal}

@@ -14,4 +14,3 @@ check_result(result, context)
 \description{
 Check command result and throw informative error if failed
 }
-\keyword{internal}

@@ -3941,10 +3941,27 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 	          echo "configure: error: cargo vendor failed" >&2
 	          exit 1
 	        fi
+	        	        if test -f "$LOCKFILE"; then
+	          $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
+	        fi
 	        echo "$_new" > "$STAMP"
       else
                 if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-          echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+                    if test "$FORCE_VENDOR" = "1"; then
+            echo "configure: FORCE_VENDOR=1, running cargo vendor to fetch new dependencies from crates.io"
+                        $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT" > /dev/null
+            if test $? -eq 0; then
+                            if test -f "$LOCKFILE"; then
+                $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
+              fi
+              echo "$_new" > "$STAMP"
+              echo "configure: cargo vendor complete (updated with new dependencies)"
+            else
+              echo "configure: warning: cargo vendor failed, continuing with existing vendor" >&2
+            fi
+          else
+            echo "configure: skipping cargo vendor (monorepo not found, using existing vendor)"
+          fi
         elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
           echo "configure: monorepo not found, unpacking inst/vendor.tar.xz"
           tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
@@ -4112,6 +4129,11 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
             rm -f "$VENDOR_OUT/r-efi/Makefile"
 
     echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
+
+            if test -f "src/rust/Cargo.lock"; then
+      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
+      echo "configure: stripped checksums from Cargo.lock (vendored sources)" >&2
+    fi
   else
     echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2
 

@@ -570,6 +570,38 @@ AC_CONFIG_COMMANDS([cargo-vendor],
                 echo "configure: crates.io fallback configured successfully" >&2
               fi
             fi
+          elif test "$FORCE_VENDOR" = "1"; then
+            echo "configure: FORCE_VENDOR=1, re-running cargo vendor to fetch new dependencies"
+            dnl Temporarily rename ALL .cargo/config.toml files to bypass vendored sources
+            _cargo_cfg1="src/rust/.cargo/config.toml"
+            _cargo_cfg1_bak="src/rust/.cargo/config.toml.bak"
+            _cargo_cfg2=".cargo/config.toml"
+            _cargo_cfg2_bak=".cargo/config.toml.bak"
+            if test -f "$_cargo_cfg1"; then
+              mv "$_cargo_cfg1" "$_cargo_cfg1_bak"
+            fi
+            if test -f "$_cargo_cfg2"; then
+              mv "$_cargo_cfg2" "$_cargo_cfg2_bak"
+            fi
+
+            $CARGO_CMD vendor \
+              --manifest-path "$MANIFEST" \
+              "$VENDOR_OUT" > /dev/null
+            _vendor_status=$?
+
+            dnl Restore cargo configs
+            if test -f "$_cargo_cfg1_bak"; then
+              mv "$_cargo_cfg1_bak" "$_cargo_cfg1"
+            fi
+            if test -f "$_cargo_cfg2_bak"; then
+              mv "$_cargo_cfg2_bak" "$_cargo_cfg2"
+            fi
+
+            if test $_vendor_status -eq 0; then
+              echo "configure: cargo vendor complete (updated with new dependencies)"
+            else
+              echo "configure: warning: cargo vendor failed, continuing with existing vendor" >&2
+            fi
           else
             echo "configure: skipping cargo vendor (vendor already has crates.io deps)"
           fi

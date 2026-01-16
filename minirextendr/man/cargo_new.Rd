@@ -40,3 +40,15 @@ root so the new crate is workspace-aware.
 Note: \verb{cargo new} does not accept \code{--manifest-path}, so this function changes
 to the appropriate directory before running the command.
 }
+\examples{
+\dontrun{
+# Create a new library crate
+cargo_new("my-utils")
+
+# Create a binary crate
+cargo_new("my-cli", lib = FALSE)
+
+# Create without adding to workspace
+cargo_new("standalone-crate", add_to_workspace = FALSE)
+}
+}
