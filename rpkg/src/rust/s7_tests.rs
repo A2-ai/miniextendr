@@ -40,8 +40,67 @@ impl S7Counter {
     }
 }
 
+/// Demonstrates S7 computed and dynamic properties.
+///
+/// This shows how to use `#[s7(getter)]` for computed properties (read-only)
+/// and `#[s7(getter)]` + `#[s7(setter)]` for dynamic properties (read-write).
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Range {
+    start: f64,
+    end: f64,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl S7Range {
+    /// Creates a new range with the given start and end values.
+    pub fn new(start: f64, end: f64) -> Self {
+        S7Range { start, end }
+    }
+
+    /// Computed property: read-only length of the range.
+    ///
+    /// This becomes an S7 property accessed as `obj@length` in R.
+    /// Since there's no setter, it's a computed (read-only) property.
+    #[miniextendr(s7(getter))]
+    pub fn length(&self) -> f64 {
+        self.end - self.start
+    }
+
+    /// Dynamic property getter: read the midpoint.
+    ///
+    /// Combined with set_midpoint, this creates a dynamic property
+    /// that can be both read and written.
+    #[miniextendr(s7(getter, prop = "midpoint"))]
+    pub fn get_midpoint(&self) -> f64 {
+        (self.start + self.end) / 2.0
+    }
+
+    /// Dynamic property setter: set the midpoint (adjusts start and end).
+    ///
+    /// When the midpoint is set, both start and end are adjusted
+    /// to maintain the current length while centering on the new midpoint.
+    #[miniextendr(s7(setter, prop = "midpoint"))]
+    pub fn set_midpoint(&mut self, value: f64) {
+        let half_length = (self.end - self.start) / 2.0;
+        self.start = value - half_length;
+        self.end = value + half_length;
+    }
+
+    /// Regular method: returns the start value.
+    pub fn s7_start(&self) -> f64 {
+        self.start
+    }
+
+    /// Regular method: returns the end value.
+    pub fn s7_end(&self) -> f64 {
+        self.end
+    }
+}
+
 miniextendr_module! {
     mod s7_tests;
 
     impl S7Counter;
+    impl S7Range;
 }

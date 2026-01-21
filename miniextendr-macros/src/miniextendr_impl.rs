@@ -346,6 +346,39 @@ pub struct MethodAttrs {
     pub defaults_span: Option<proc_macro2::Span>,
     /// Span of `active` for error reporting.
     pub active_span: Option<proc_macro2::Span>,
+    /// S7 property getter marker.
+    ///
+    /// Use `#[miniextendr(s7(getter))]` or `#[miniextendr(s7(getter, prop = "name"))]` to mark
+    /// a method as an S7 property getter. The generated S7 class will include a computed
+    /// property with this getter.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter))]
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    /// // Generates: length = new_property(getter = function(self) ...)
+    /// ```
+    pub s7_getter: bool,
+    /// S7 property setter marker.
+    ///
+    /// Use `#[miniextendr(s7(setter, prop = "name"))]` to mark a method as an S7 property
+    /// setter. The property name must match a getter to create a dynamic property.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, prop = "len"))]
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    ///
+    /// #[miniextendr(s7(setter, prop = "len"))]
+    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
+    /// // Generates: len = new_property(getter = ..., setter = ...)
+    /// ```
+    pub s7_setter: bool,
+    /// S7 property name (defaults to method name).
+    ///
+    /// When specified via `#[miniextendr(s7(getter, prop = "name"))]`, overrides the
+    /// default property name which is derived from the method name.
+    pub s7_prop: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -593,9 +626,17 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.class = Some(value.value());
+                        } else if inner.path.is_ident("getter") {
+                            method_attrs.s7_getter = true;
+                        } else if inner.path.is_ident("setter") {
+                            method_attrs.s7_setter = true;
+                        } else if inner.path.is_ident("prop") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_prop = Some(value.value());
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, prop"
                             ));
                         }
                         Ok(())
@@ -1680,9 +1721,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 ///
 /// Creates:
 /// - S7::new_class with constructor and .ptr property
+/// - S7::new_property for computed/dynamic properties (from #[s7(getter)]/setter)
 /// - S7::new_generic + S7::method for each instance method
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt};
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -1694,6 +1736,59 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
+    // Collect S7 property getters and setters
+    // Property name is: s7_prop if specified, else method name
+    // We store method idents so we can look them up later
+    struct S7Property {
+        name: String,
+        getter_method_ident: Option<String>,
+        setter_method_ident: Option<String>,
+    }
+
+    let mut properties: std::collections::HashMap<String, S7Property> =
+        std::collections::HashMap::new();
+    let mut property_method_idents: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+
+    // First pass: collect all property methods
+    for method in &parsed_impl.methods {
+        if !method.should_include() {
+            continue;
+        }
+        let attrs = &method.method_attrs;
+
+        if attrs.s7_getter || attrs.s7_setter {
+            let method_ident = method.ident.to_string();
+            let prop_name = attrs
+                .s7_prop
+                .clone()
+                .unwrap_or_else(|| method_ident.clone());
+
+            property_method_idents.insert(method_ident.clone());
+
+            let entry = properties.entry(prop_name.clone()).or_insert(S7Property {
+                name: prop_name,
+                getter_method_ident: None,
+                setter_method_ident: None,
+            });
+
+            if attrs.s7_getter {
+                entry.getter_method_ident = Some(method_ident.clone());
+            }
+            if attrs.s7_setter {
+                entry.setter_method_ident = Some(method_ident);
+            }
+        }
+    }
+
+    // Helper to find method by ident
+    let find_method = |ident: &str| -> Option<&ParsedMethod> {
+        parsed_impl
+            .methods
+            .iter()
+            .find(|m| m.ident.to_string() == ident)
+    };
+
     // Constructor - check if .ptr param will be added (for static methods returning Self)
     let has_self_returning_methods = parsed_impl
         .methods
@@ -1701,12 +1796,17 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .filter(|m| m.should_include())
         .any(|m| m.returns_self());
 
+    // Determine imports based on whether we have properties
+    let imports = if properties.is_empty() {
+        "@importFrom S7 new_class class_any new_object S7_object new_generic method"
+    } else {
+        "@importFrom S7 new_class class_any new_object S7_object new_generic method new_property"
+    };
+
     // Class definition with documentation
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
-            .with_imports(
-                "@importFrom S7 new_class class_any new_object S7_object new_generic method",
-            )
+            .with_imports(imports)
             .build(),
     );
 
@@ -1725,9 +1825,54 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         class_name, class_name
     ));
 
-    // Properties - .ptr holds the ExternalPtr
+    // Properties - .ptr holds the ExternalPtr, plus computed/dynamic properties
     lines.push("    properties = list(".to_string());
     lines.push("        .ptr = S7::class_any".to_string());
+
+    // Generate computed/dynamic properties
+    for prop in properties.values() {
+        lines.push(",".to_string());
+
+        // Generate property definition
+        let mut prop_parts = Vec::new();
+
+        if let Some(ref getter_ident) = prop.getter_method_ident {
+            if let Some(getter_method) = find_method(getter_ident) {
+                let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
+                let getter_call = ctx.instance_call("self@.ptr");
+                prop_parts.push(format!("getter = function(self) {}", getter_call));
+            }
+        }
+
+        if let Some(ref setter_ident) = prop.setter_method_ident {
+            if let Some(setter_method) = find_method(setter_ident) {
+                let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
+                let setter_call = ctx.instance_call("self@.ptr");
+                // Setter function takes self and value, calls the Rust method, returns self
+                // Note: instance_call already includes the method parameters (including 'value'),
+                // so we just need to wrap it in the setter function signature.
+                prop_parts.push(format!(
+                    "setter = function(self, value) {{ {}; self }}",
+                    setter_call
+                ));
+            }
+        }
+
+        if prop_parts.is_empty() {
+            // This shouldn't happen, but handle gracefully
+            lines.push(format!(
+                "        {} = S7::new_property()",
+                prop.name
+            ));
+        } else {
+            lines.push(format!(
+                "        {} = S7::new_property({})",
+                prop.name,
+                prop_parts.join(", ")
+            ));
+        }
+    }
+
     lines.push("    ),".to_string());
 
     if let Some(ctx) = parsed_impl.constructor_context() {
@@ -1764,7 +1909,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(String::new());
 
     // Instance methods as S7 generics + methods
+    // Skip methods that are property getters/setters (they're handled as S7 properties)
     for ctx in parsed_impl.instance_method_contexts() {
+        let method_ident = ctx.method.ident.to_string();
+        if property_method_idents.contains(&method_ident) {
+            continue;
+        }
+
         let generic_name = ctx.generic_name();
         let full_params = ctx.instance_formals(true); // adds x, ..., params
         let call = ctx.instance_call("x@.ptr");

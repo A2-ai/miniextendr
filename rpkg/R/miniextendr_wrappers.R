@@ -4557,6 +4557,30 @@ S7Counter_default_counter <- function() {
     S7Counter(.ptr = .Call(C_S7Counter__default_counter, .call = match.call()))
 }
 
+#' @noRd
+S7Range <- S7::new_class("S7Range",
+    properties = list(
+        .ptr = S7::class_any
+,
+        length = S7::new_property(getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
+,
+        midpoint = S7::new_property(getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
+    ),
+    constructor = function(start, end, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Range__new, .call = match.call(), start, end))
+        }
+    }
+)
+
+if (!exists("s7_start", mode = "function")) s7_start <- S7::new_generic("s7_start", "x", function(x, ...) S7::S7_dispatch())
+S7::method(s7_start, S7Range) <- function(x, ...) .Call(C_S7Range__s7_start, .call = match.call(), x@.ptr)
+
+if (!exists("s7_end", mode = "function")) s7_end <- S7::new_generic("s7_end", "x", function(x, ...) S7::S7_dispatch())
+S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call = match.call(), x@.ptr)
+
 methods::setClass("S4Counter", slots = c(ptr = "externalptr"))
 
 S4Counter <- function(initial) {
