@@ -326,6 +326,26 @@ pub mod backtrace;
 pub mod coerce;
 pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 
+/// Traits for R's `as.<class>()` coercion functions.
+///
+/// This module provides traits for implementing R's generic coercion methods
+/// (`as.data.frame()`, `as.list()`, `as.character()`, etc.) for Rust types
+/// wrapped in [`ExternalPtr`].
+///
+/// See the [`as_coerce`] module documentation for usage examples.
+pub mod as_coerce;
+pub use as_coerce::{
+    // Error type
+    AsCoerceError,
+    // Marker trait
+    AsCoercible,
+    // Core coercion traits
+    AsCharacter, AsComplex, AsDataFrame, AsDate, AsEnvironment, AsFactor, AsFunction, AsInteger,
+    AsList as AsListCoerce, AsLogical, AsMatrix, AsNumeric, AsPOSIXct, AsRaw, AsVector,
+    // Helpers
+    SUPPORTED_AS_GENERICS, is_supported_as_generic,
+};
+
 pub mod convert;
 pub mod dots;
 pub mod list;

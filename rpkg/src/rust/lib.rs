@@ -78,6 +78,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 // Test modules
 mod adapter_traits_tests;
+mod as_coerce_tests;
 mod class_system_matrix;
 mod coerce_tests;
 mod conversion_tests;
@@ -1639,6 +1640,7 @@ miniextendr_module! {
 
     // Aggregate all test modules
     use adapter_traits_tests;
+    use as_coerce_tests;
     use panic_tests;
     use unwind_protect_tests;
     use dots_tests;
