@@ -105,6 +105,7 @@ pub(crate) fn coverage_unused_named_dots(_dots: ...) {}
 
 /// Macro coverage: unnamed variadic dots parameter.
 #[miniextendr]
+#[allow(varargs_without_pattern)]
 pub(crate) fn coverage_unnamed_dots(...) {}
 
 /// Macro coverage: regular arg plus named dots.
@@ -119,6 +120,7 @@ pub(crate) fn coverage_argument_plus_unused_dots(_count: i32, _dots: ...) {}
 
 /// Macro coverage: regular arg plus unnamed dots.
 #[miniextendr]
+#[allow(varargs_without_pattern)]
 pub(crate) fn coverage_argument_plus_unnamed_dots(_count: i32, ...) {}
 
 /// Macro coverage: invisible return inferred from `Option<()>`.
