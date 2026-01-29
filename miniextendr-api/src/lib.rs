@@ -1,3 +1,4 @@
+#![allow(varargs_without_pattern)]
 //! miniextendr-api: core runtime for Rust <-> R interop.
 //!
 //! This crate provides the FFI surface, safety wrappers, and macro re-exports
@@ -186,6 +187,8 @@ pub use miniextendr_macros::miniextendr_module;
 pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
 pub use miniextendr_macros::typed_list;
+#[doc(inline)]
+pub use miniextendr_macros::list;
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)
 #[doc(inline)]

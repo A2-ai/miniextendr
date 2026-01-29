@@ -199,6 +199,7 @@ mod altrep_module;
 mod c_wrapper_builder;
 mod miniextendr_fn;
 mod typed_list;
+mod list_macro;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
 mod miniextendr_module;
@@ -2701,6 +2702,54 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as typed_list::TypedListInput);
     typed_list::expand_typed_list(parsed).into()
+}
+
+/// Construct an R list from Rust values.
+///
+/// This macro provides a convenient way to create R lists in Rust code,
+/// using R-like syntax. Values are converted to R objects via the [`IntoR`] trait.
+///
+/// # Syntax
+///
+/// ```ignore
+/// // Named entries (like R's list())
+/// list!(
+///     alpha = 1,
+///     beta = "hello",
+///     "my-name" = vec![1, 2, 3],
+/// )
+///
+/// // Unnamed entries
+/// list!(1, "hello", vec![1, 2, 3])
+///
+/// // Mixed (unnamed entries get empty string names)
+/// list!(alpha = 1, 2, beta = "hello")
+///
+/// // Empty list
+/// list!()
+/// ```
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::{list, IntoR};
+///
+/// // Create a named list
+/// let my_list = list!(
+///     x = 42,
+///     y = "hello world",
+///     z = vec![1.0, 2.0, 3.0],
+/// );
+///
+/// // In R this is equivalent to:
+/// // list(x = 42L, y = "hello world", z = c(1, 2, 3))
+/// ```
+///
+/// [`IntoR`]: miniextendr_api::into_r::IntoR
+#[proc_macro]
+pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed = syn::parse_macro_input!(input as list_macro::ListInput);
+    list_macro::expand_list(parsed).into()
 }
 
 #[cfg(test)]

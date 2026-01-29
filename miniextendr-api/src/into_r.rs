@@ -628,6 +628,184 @@ impl IntoR for BTreeSet<String> {
 }
 
 // =============================================================================
+// PathBuf conversions
+// =============================================================================
+
+use std::path::PathBuf;
+
+/// Convert `PathBuf` to R character scalar.
+///
+/// On Unix, paths that are not valid UTF-8 will produce lossy output
+/// (invalid sequences replaced with U+FFFD).
+impl IntoR for PathBuf {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.to_string_lossy().into_owned().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.to_string_lossy().into_owned().into_sexp_unchecked() }
+    }
+}
+
+/// Convert `&Path` to R character scalar.
+impl IntoR for &std::path::Path {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.to_string_lossy().into_owned().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.to_string_lossy().into_owned().into_sexp_unchecked() }
+    }
+}
+
+/// Convert `Option<PathBuf>` to R: Some(path) → character, None → NA_character_.
+impl IntoR for Option<PathBuf> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.map(|p| p.to_string_lossy().into_owned()).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            self.map(|p| p.to_string_lossy().into_owned())
+                .into_sexp_unchecked()
+        }
+    }
+}
+
+/// Convert `Vec<PathBuf>` to R character vector.
+impl IntoR for Vec<PathBuf> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let strings: Vec<String> = self
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        strings.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let strings: Vec<String> = self
+            .into_iter()
+            .map(|p| p.to_string_lossy().into_owned())
+            .collect();
+        unsafe { strings.into_sexp_unchecked() }
+    }
+}
+
+/// Convert `Vec<Option<PathBuf>>` to R character vector with NA support.
+impl IntoR for Vec<Option<PathBuf>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let strings: Vec<Option<String>> = self
+            .into_iter()
+            .map(|opt| opt.map(|p| p.to_string_lossy().into_owned()))
+            .collect();
+        strings.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let strings: Vec<Option<String>> = self
+            .into_iter()
+            .map(|opt| opt.map(|p| p.to_string_lossy().into_owned()))
+            .collect();
+        unsafe { strings.into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
+// OsString conversions
+// =============================================================================
+
+use std::ffi::OsString;
+
+/// Convert `OsString` to R character scalar.
+///
+/// On Unix, strings that are not valid UTF-8 will produce lossy output
+/// (invalid sequences replaced with U+FFFD).
+impl IntoR for OsString {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.to_string_lossy().into_owned().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.to_string_lossy().into_owned().into_sexp_unchecked() }
+    }
+}
+
+/// Convert `&OsStr` to R character scalar.
+impl IntoR for &std::ffi::OsStr {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.to_string_lossy().into_owned().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.to_string_lossy().into_owned().into_sexp_unchecked() }
+    }
+}
+
+/// Convert `Option<OsString>` to R: Some(s) → character, None → NA_character_.
+impl IntoR for Option<OsString> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.map(|s| s.to_string_lossy().into_owned()).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe {
+            self.map(|s| s.to_string_lossy().into_owned())
+                .into_sexp_unchecked()
+        }
+    }
+}
+
+/// Convert `Vec<OsString>` to R character vector.
+impl IntoR for Vec<OsString> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let strings: Vec<String> = self
+            .into_iter()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        strings.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let strings: Vec<String> = self
+            .into_iter()
+            .map(|s| s.to_string_lossy().into_owned())
+            .collect();
+        unsafe { strings.into_sexp_unchecked() }
+    }
+}
+
+/// Convert `Vec<Option<OsString>>` to R character vector with NA support.
+impl IntoR for Vec<Option<OsString>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        let strings: Vec<Option<String>> = self
+            .into_iter()
+            .map(|opt| opt.map(|s| s.to_string_lossy().into_owned()))
+            .collect();
+        strings.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let strings: Vec<Option<String>> = self
+            .into_iter()
+            .map(|opt| opt.map(|s| s.to_string_lossy().into_owned()))
+            .collect();
+        unsafe { strings.into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
 // Set coercion for non-native types (i8, i16, u16 → i32)
 // =============================================================================
 
