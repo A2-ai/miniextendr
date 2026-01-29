@@ -12,6 +12,8 @@ exclude = [
     "rpkg/src/vendor",
     "tests/cross-package/consumer.pkg/src/rust/",
     "tests/cross-package/producer.pkg/src/rust/",
+    # Template directories contain Cargo.toml with {{placeholders}} that break cargo
+    "minirextendr/inst/templates",
 ]
 
 [workspace.dependencies]
