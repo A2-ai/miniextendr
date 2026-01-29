@@ -8,12 +8,14 @@ members = [
     "miniextendr-lint",
 ]
 exclude = [
+    "rpkg",
     "rpkg/src/rust",
     "rpkg/src/vendor",
+    "tests/cross-package/consumer.pkg",
+    "tests/cross-package/producer.pkg",
     "tests/cross-package/consumer.pkg/src/rust/",
     "tests/cross-package/producer.pkg/src/rust/",
-    # Template directories contain Cargo.toml with {{placeholders}} that break cargo
-    "minirextendr/inst/templates",
+    "minirextendr",
 ]
 
 [workspace.dependencies]
