@@ -73,7 +73,7 @@
 //!
 //! ```rust,ignore
 //! use serde::{Serialize, Deserialize};
-//! use miniextendr_api::serde_r::{RSerializeNative, RDeserializeNative};
+//! use miniextendr_api::serde::{RSerializeNative, RDeserializeNative};
 //!
 //! #[derive(Serialize, Deserialize, Clone, ExternalPtr)]
 //! struct Point {
@@ -125,7 +125,7 @@
 //!
 //! ```rust,ignore
 //! use serde::{Serialize, Deserialize};
-//! use miniextendr_api::serde_r::to_r;
+//! use miniextendr_api::serde::to_r;
 //!
 //! // External type you don't control (e.g., from another crate)
 //! // pub struct Duration { secs: u64, nanos: u32 }
@@ -201,7 +201,7 @@
 //!
 //! impl IntoR for DurationR {
 //!     fn into_sexp(self) -> SEXP {
-//!         miniextendr_api::serde_r::to_r(&DurationSer(&self.0))
+//!         miniextendr_api::serde::to_r(&DurationSer(&self.0))
 //!             .expect("Duration serialization failed")
 //!     }
 //! }
@@ -213,22 +213,22 @@
 //! }
 //! ```
 //!
-//! # Comparison with `serde` (JSON) Feature
+//! # Comparison with `serde_json` Feature
 //!
-//! | Feature | `serde` (JSON) | `serde_r` (Native) |
-//! |---------|----------------|-------------------|
+//! | Feature | `serde_json` | `serde` (Native) |
+//! |---------|--------------|------------------|
 //! | Intermediate format | JSON string | None |
 //! | Type preservation | No (all numbers → f64) | Yes (i32 stays i32) |
 //! | NA handling | Limited | Full support |
 //! | Performance | Extra parse/stringify | Direct conversion |
 //! | External tools | JSON interop | R-native only |
 //!
-//! Use `serde_r` when:
+//! Use native `serde` when:
 //! - You need efficient Rust ↔ R conversion
 //! - Type preservation matters (integers vs doubles)
 //! - You want NA/NULL handling
 //!
-//! Use `serde` (JSON) when:
+//! Use `serde_json` when:
 //! - You need JSON string output for files/APIs
 //! - You want to share data with non-R systems
 //! - You need JSON inspection/manipulation
@@ -237,6 +237,9 @@ mod de;
 mod error;
 mod ser;
 mod traits;
+
+// Re-export the serde crate for convenience
+pub use ::serde::{Deserialize, Serialize};
 
 pub use de::RDeserializer;
 pub use error::RSerdeError;

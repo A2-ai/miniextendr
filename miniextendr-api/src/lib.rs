@@ -655,9 +655,6 @@ pub use optionals::{
     SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
     json_from_sexp_with, json_into_sexp,
 };
-#[cfg(feature = "serde")]
-pub use serde;
-
 #[cfg(feature = "toml")]
 pub use optionals::toml_impl;
 #[cfg(feature = "toml")]
@@ -698,17 +695,15 @@ pub use rarray::{RArray, RArray3D, RMatrix, RVector};
 /// Direct R serialization via serde (no JSON intermediate).
 ///
 /// Provides efficient type-preserving conversions between Rust types and native R objects:
-/// - [`AsSerialize<T>`][serde_r::AsSerialize] - Wrapper for returning `Serialize` types from `#[miniextendr]` functions
-/// - [`RSerializeNative`][serde_r::RSerializeNative] - Convert Rust → R (struct → named list)
-/// - [`RDeserializeNative`][serde_r::RDeserializeNative] - Convert R → Rust (named list → struct)
+/// - [`AsSerialize<T>`][serde::AsSerialize] - Wrapper for returning `Serialize` types from `#[miniextendr]` functions
+/// - [`RSerializeNative`][serde::RSerializeNative] - Convert Rust → R (struct → named list)
+/// - [`RDeserializeNative`][serde::RDeserializeNative] - Convert R → Rust (named list → struct)
 ///
 /// Enable with `features = ["serde"]`.
 ///
-/// See the [`serde_r`] module documentation for type mappings and examples.
+/// See the [`serde`] module documentation for type mappings and examples.
 #[cfg(feature = "serde")]
-pub mod serde_r;
-#[cfg(feature = "serde")]
-pub use serde_r::{AsSerialize, RDeserializeNative, RDeserializer, RSerdeError, RSerializeNative, RSerializer};
+pub mod serde;
 
 /// Integration with the `bytemuck` crate for POD type conversions.
 ///
