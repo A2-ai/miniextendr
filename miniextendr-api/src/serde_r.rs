@@ -241,4 +241,4 @@ mod traits;
 pub use de::RDeserializer;
 pub use error::RSerdeError;
 pub use ser::RSerializer;
-pub use traits::{RDeserializeNative, RSerializeNative, from_r, to_r};
+pub use traits::{AsSerialize, RDeserializeNative, RSerializeNative, from_r, to_r};
