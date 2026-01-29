@@ -3334,7 +3334,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"
 RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
  ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
  MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
@@ -3925,15 +3925,19 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 	      	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
 	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
 	        mkdir -p "$VENDOR_OUT"
+	        	        _vendor_locked_flag=""
+	        if test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
+	          _vendor_locked_flag="$CARGO_LOCKED_FLAG"
+	        fi
 	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
 	          echo "configure: cargo vendor: including extra --sync manifests (workspace/bench)"
-	          $CARGO_CMD vendor \
+	          $CARGO_CMD vendor $_vendor_locked_flag \
 	            --manifest-path "$MANIFEST" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
 	            "$VENDOR_OUT"
 	        else
-	          $CARGO_CMD vendor \
+	          $CARGO_CMD vendor $_vendor_locked_flag \
 	            --manifest-path "$MANIFEST" \
 	            "$VENDOR_OUT"
 	        fi
