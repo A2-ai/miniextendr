@@ -110,6 +110,109 @@
 //! p2$y  # 4.0
 //! ```
 //!
+//! # Remote Derive for External Types
+//!
+//! When you need to serialize types from external crates that don't implement
+//! `Serialize`/`Deserialize`, use serde's [remote derive] pattern.
+//!
+//! [remote derive]: https://serde.rs/remote-derive.html
+//!
+//! ## Basic Pattern
+//!
+//! 1. Define a "shadow" type that mirrors the external type's structure
+//! 2. Add `#[serde(remote = "ExternalType")]` to it
+//! 3. Use `#[serde(with = "ShadowType")]` on fields containing the external type
+//!
+//! ```rust,ignore
+//! use serde::{Serialize, Deserialize};
+//! use miniextendr_api::serde_r::to_r;
+//!
+//! // External type you don't control (e.g., from another crate)
+//! // pub struct Duration { secs: u64, nanos: u32 }
+//!
+//! // Define a shadow type for serialization
+//! #[derive(Serialize, Deserialize)]
+//! #[serde(remote = "std::time::Duration")]
+//! struct DurationDef {
+//!     #[serde(getter = "std::time::Duration::as_secs")]
+//!     secs: u64,
+//!     #[serde(getter = "std::time::Duration::subsec_nanos")]
+//!     nanos: u32,
+//! }
+//!
+//! // Use the shadow type in your serializable struct
+//! #[derive(Serialize)]
+//! struct TimingData {
+//!     name: String,
+//!     #[serde(with = "DurationDef")]
+//!     elapsed: std::time::Duration,
+//! }
+//!
+//! #[miniextendr]
+//! fn get_timing() -> SEXP {
+//!     let data = TimingData {
+//!         name: "benchmark".into(),
+//!         elapsed: std::time::Duration::new(5, 123_000_000),
+//!     };
+//!     to_r(&data).unwrap()
+//!     // Returns: list(name = "benchmark", elapsed = list(secs = 5, nanos = 123000000))
+//! }
+//! ```
+//!
+//! ## Standalone Conversion
+//!
+//! To convert an external type directly (not as a field), wrap it in a newtype:
+//!
+//! ```rust,ignore
+//! // Newtype wrapper for standalone serialization
+//! #[derive(Serialize)]
+//! struct DurationR(#[serde(with = "DurationDef")] std::time::Duration);
+//!
+//! #[miniextendr]
+//! fn duration_to_r(secs: f64) -> SEXP {
+//!     let dur = std::time::Duration::from_secs_f64(secs);
+//!     to_r(&DurationR(dur)).unwrap()
+//! }
+//! ```
+//!
+//! ## Implementing IntoR via Remote Derive
+//!
+//! To make external types work seamlessly with `IntoR`:
+//!
+//! ```rust,ignore
+//! use miniextendr_api::into_r::IntoR;
+//!
+//! // Wrapper that implements IntoR
+//! struct DurationR(std::time::Duration);
+//!
+//! // Shadow type for serde
+//! #[derive(Serialize)]
+//! #[serde(remote = "std::time::Duration")]
+//! struct DurationDef {
+//!     #[serde(getter = "std::time::Duration::as_secs")]
+//!     secs: u64,
+//!     #[serde(getter = "std::time::Duration::subsec_nanos")]
+//!     nanos: u32,
+//! }
+//!
+//! // Helper for serialization
+//! #[derive(Serialize)]
+//! struct DurationSer<'a>(#[serde(with = "DurationDef")] &'a std::time::Duration);
+//!
+//! impl IntoR for DurationR {
+//!     fn into_sexp(self) -> SEXP {
+//!         miniextendr_api::serde_r::to_r(&DurationSer(&self.0))
+//!             .expect("Duration serialization failed")
+//!     }
+//! }
+//!
+//! // Now DurationR can be returned from #[miniextendr] functions
+//! #[miniextendr]
+//! fn make_duration(secs: f64) -> DurationR {
+//!     DurationR(std::time::Duration::from_secs_f64(secs))
+//! }
+//! ```
+//!
 //! # Comparison with `serde` (JSON) Feature
 //!
 //! | Feature | `serde` (JSON) | `serde_r` (Native) |
