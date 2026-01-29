@@ -20,13 +20,15 @@ export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
 dnl - NOT_CRAN=true (dev): no --offline, use --locked
-dnl - NOT_CRAN not true (CRAN): use --offline, no --locked (may need to regenerate lockfile)
+dnl - NOT_CRAN not true (CRAN): use --offline and --locked for reproducible builds
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  CARGO_LOCKED_FLAG="--locked"
+  dnl In dev mode, don't use --locked because crate changes may require lockfile updates
+  CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
-  CARGO_LOCKED_FLAG=""
+  dnl CRAN build uses --locked for reproducible builds
+  CARGO_LOCKED_FLAG="--locked"
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([CARGO_LOCKED_FLAG])

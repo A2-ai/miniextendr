@@ -45,11 +45,12 @@ dnl - NOT_CRAN=true (dev): no --offline
 dnl - NOT_CRAN=false (CRAN): use --offline (pre-vendored tarball)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  CARGO_LOCKED_FLAG="--locked"
+  dnl In dev mode, don't use --locked because crate changes may require lockfile updates
+  CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
-  dnl CRAN build may need to regenerate lockfile with vendored paths
-  CARGO_LOCKED_FLAG=""
+  dnl CRAN build uses --locked for reproducible builds with pre-vendored tarball
+  CARGO_LOCKED_FLAG="--locked"
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([CARGO_LOCKED_FLAG])

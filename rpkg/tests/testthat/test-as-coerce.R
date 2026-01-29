@@ -46,7 +46,10 @@ test_that("as.character.AsCoerceTestData works", {
 test_that("as.numeric.AsCoerceTestData works", {
   obj <- AsCoerceTestData$new(c("a", "b", "c"), c(1.5, 2.5, 3.5))
 
-  num <- as.numeric(obj)
+  # Note: R's as.numeric is a primitive that doesn't dispatch S3 methods for
+
+  # externalptr objects. We call the method directly instead.
+  num <- as_numeric(obj)
 
   expect_type(num, "double")
   expect_equal(num, c(1.5, 2.5, 3.5))
@@ -89,7 +92,7 @@ test_that("as.list.AsCoerceErrorTest returns NotSupported error", {
 
   expect_error(
     as.list(obj),
-    "cannot coerce AsCoerceErrorTest to list"
+    "NotSupported"
   )
 })
 

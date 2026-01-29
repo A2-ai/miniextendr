@@ -1993,10 +1993,10 @@ export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  CARGO_LOCKED_FLAG="--locked"
+    CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
-    CARGO_LOCKED_FLAG=""
+    CARGO_LOCKED_FLAG="--locked"
 fi
 
 
