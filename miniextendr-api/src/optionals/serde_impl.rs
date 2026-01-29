@@ -10,11 +10,11 @@
 //!
 //! # Features
 //!
-//! Enable this module with the `serde` feature:
+//! Enable this module with the `serde_json` feature:
 //!
 //! ```toml
 //! [dependencies]
-//! miniextendr-api = { version = "0.1", features = ["serde"] }
+//! miniextendr-api = { version = "0.1", features = ["serde_json"] }
 //! ```
 //!
 //! # Example

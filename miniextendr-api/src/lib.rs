@@ -647,14 +647,14 @@ pub use optionals::time_impl;
 #[cfg(feature = "time")]
 pub use optionals::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 pub use optionals::serde_impl;
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 pub use optionals::{
     JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
     json_from_sexp_strict, json_into_sexp,
 };
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_r")]
 pub use serde;
 
 #[cfg(feature = "toml")]

@@ -33,13 +33,16 @@ either = ["dep:either"]
 ndarray = ["dep:ndarray"]
 ## Enable nalgebra integration. Provides conversions for DVector, DMatrix.
 nalgebra = ["dep:nalgebra"]
-## Enable serde integration. Re-exports serde for derive macros. Includes serde_json for JSON.
-serde = ["dep:serde", "dep:serde_json"]
-## Enable direct R serialization via serde (no JSON intermediate).
-## Provides RSerializeNative/RDeserializeNative traits for Rust<->R conversions.
+## Enable serde with native R serialization.
+## Provides RSerializeNative/RDeserializeNative traits for direct Rust<->R conversions.
 serde_r = ["dep:serde"]
+## Enable JSON string serialization via serde_json.
+## Provides RSerialize/RDeserialize traits for JSON conversion.
+serde_json = ["serde_r", "dep:serde_json"]
+## Alias: `serde` enables serde_r (native R serialization).
+serde = ["serde_r"]
 ## Enable both JSON and native R serialization.
-serde_full = ["serde", "serde_r"]
+serde_full = ["serde_json"]
 ## Enable num-bigint integration. Provides BigInt/BigUint conversions.
 num-bigint = ["dep:num-bigint", "dep:num-integer"]
 ## Enable rust_decimal integration. Provides Decimal conversions.
