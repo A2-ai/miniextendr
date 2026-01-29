@@ -1772,12 +1772,26 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Create class environment for static methods and trait namespace compatibility
+    // Check if class should be exported
+    let has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd");
+    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal");
+    let export_line = if !has_no_rd && !has_internal {
+        "#' @export\n"
+    } else {
+        ""
+    };
     lines.push(format!(
         "#' @rdname {}
-{} <- new.env(parent = emptyenv())",
-        class_name, class_name
+{}{} <- new.env(parent = emptyenv())",
+        class_name, export_line, class_name
     ));
     lines.push(String::new());
+
+    // Add $new binding to class environment (for Class$new() syntax)
+    if parsed_impl.constructor_context().is_some() {
+        lines.push(format!("{}$new <- {}", class_name, ctor_name));
+        lines.push(String::new());
+    }
 
     lines.join("\n")
 }
@@ -2525,11 +2539,7 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         if should_export {
             lines.push("#' @export".to_string());
         }
-        lines.push(format!(
-            "#' @method {} {}",
-            r_generic.trim_start_matches("as."),
-            class_name
-        ));
+        lines.push(format!("#' @method {} {}", r_generic, class_name));
 
         // Function signature: always takes x and ... for S3 method compatibility
         // Additional parameters from the method are included
