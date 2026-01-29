@@ -3,7 +3,7 @@ autom4te.cache
 .cargo/config.toml
 src/Makevars
 src/Makevars.win
-src/miniextendr_wrappers.R
+src/*-wrappers.R
 src/rust/Cargo.toml
 src/rust/document.rs
 src/entrypoint.c
