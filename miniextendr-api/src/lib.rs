@@ -651,8 +651,9 @@ pub use optionals::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 pub use optionals::serde_impl;
 #[cfg(feature = "serde_json")]
 pub use optionals::{
-    JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
-    json_from_sexp_strict, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
+    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
+    json_from_sexp_with, json_into_sexp,
 };
 #[cfg(feature = "serde")]
 pub use serde;

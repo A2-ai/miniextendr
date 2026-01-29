@@ -314,8 +314,9 @@ pub mod serde_impl;
 pub use serde;
 #[cfg(feature = "serde_json")]
 pub use serde_impl::{
-    JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
-    json_from_sexp_strict, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
+    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
+    json_from_sexp_with, json_into_sexp,
 };
 
 /// Integration with the `toml` crate for TOML value conversions.

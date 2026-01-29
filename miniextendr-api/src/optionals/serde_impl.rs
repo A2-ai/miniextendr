@@ -66,6 +66,121 @@ pub use serde_json;
 pub use serde_json::Value as JsonValue;
 
 use crate::altrep_traits::{NA_INTEGER, NA_LOGICAL, NA_REAL};
+
+// =============================================================================
+// JSON conversion options
+// =============================================================================
+
+/// How to handle NA values when converting R to JSON.
+#[derive(Debug, Clone, Default)]
+pub enum NaHandling {
+    /// Convert NA to JSON null (default).
+    #[default]
+    Null,
+    /// Return an error when NA is encountered.
+    Error,
+    /// Convert NA to a custom string value.
+    String(String),
+}
+
+/// How to handle special float values (NaN, Inf) when converting R to JSON.
+#[derive(Debug, Clone, Default)]
+pub enum SpecialFloatHandling {
+    /// Return an error (default) - JSON has no representation for these.
+    #[default]
+    Error,
+    /// Convert to JSON null.
+    Null,
+    /// Convert to a string representation ("NaN", "Infinity", "-Infinity").
+    String,
+}
+
+/// How to serialize R factors to JSON.
+#[derive(Debug, Clone, Default)]
+pub enum FactorHandling {
+    /// Use the factor level label as a string (default).
+    #[default]
+    Label,
+    /// Use the factor level index as an integer (1-based, matching R).
+    Index,
+}
+
+/// Options for converting R objects to JSON.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use miniextendr_api::serde_impl::{JsonOptions, NaHandling, SpecialFloatHandling};
+///
+/// let opts = JsonOptions::default()
+///     .na(NaHandling::String("NA".into()))
+///     .nan(SpecialFloatHandling::Null)
+///     .inf(SpecialFloatHandling::String);
+///
+/// let json = json_from_sexp_with(sexp, &opts)?;
+/// ```
+#[derive(Debug, Clone, Default)]
+pub struct JsonOptions {
+    /// How to handle NA values.
+    pub na: NaHandling,
+    /// How to handle NaN values.
+    pub nan: SpecialFloatHandling,
+    /// How to handle Inf/-Inf values.
+    pub inf: SpecialFloatHandling,
+    /// How to serialize factors.
+    pub factor: FactorHandling,
+}
+
+impl JsonOptions {
+    /// Create new options with defaults (NA→null, NaN/Inf→error, factors→labels).
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Create strict options (all special values cause errors).
+    pub fn strict() -> Self {
+        Self {
+            na: NaHandling::Error,
+            nan: SpecialFloatHandling::Error,
+            inf: SpecialFloatHandling::Error,
+            factor: FactorHandling::Label,
+        }
+    }
+
+    /// Create permissive options (all special values become null).
+    pub fn permissive() -> Self {
+        Self {
+            na: NaHandling::Null,
+            nan: SpecialFloatHandling::Null,
+            inf: SpecialFloatHandling::Null,
+            factor: FactorHandling::Label,
+        }
+    }
+
+    /// Set NA handling.
+    pub fn na(mut self, handling: NaHandling) -> Self {
+        self.na = handling;
+        self
+    }
+
+    /// Set NaN handling.
+    pub fn nan(mut self, handling: SpecialFloatHandling) -> Self {
+        self.nan = handling;
+        self
+    }
+
+    /// Set Inf handling.
+    pub fn inf(mut self, handling: SpecialFloatHandling) -> Self {
+        self.inf = handling;
+        self
+    }
+
+    /// Set factor handling.
+    pub fn factor(mut self, handling: FactorHandling) -> Self {
+        self.factor = handling;
+        self
+    }
+}
 use crate::ffi::{
     INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rboolean, Rf_allocVector, Rf_getAttrib, Rf_isFactor,
     Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
@@ -181,7 +296,21 @@ impl<T: for<'de> Deserialize<'de>> RDeserialize for T {
 // serde_json::Value <-> R Bridge
 // =============================================================================
 
-/// Convert an R object to a JSON value.
+/// Convert an R object to a JSON value with custom options.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// let opts = JsonOptions::default()
+///     .na(NaHandling::String("NA".into()))
+///     .nan(SpecialFloatHandling::Null);
+/// let json = json_from_sexp_with(sexp, &opts)?;
+/// ```
+pub fn json_from_sexp_with(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
+    sexp_to_json_value(sexp, opts)
+}
+
+/// Convert an R object to a JSON value with default options.
 ///
 /// Mapping rules (R -> JSON):
 /// - `NULL` -> `Null`
@@ -200,20 +329,35 @@ impl<T: for<'de> Deserialize<'de>> RDeserialize for T {
 /// - `NaN` or `Inf` values (JSON has no representation)
 /// - Unsupported R types (e.g., CLOSXP, ENVSXP)
 pub fn json_from_sexp(sexp: SEXP) -> Result<JsonValue, SexpError> {
-    sexp_to_json_value(sexp, false, false)
+    json_from_sexp_with(sexp, &JsonOptions::default())
 }
 
 /// Convert R to JSON with strict NA handling (errors on NA).
 pub fn json_from_sexp_strict(sexp: SEXP) -> Result<JsonValue, SexpError> {
-    sexp_to_json_value(sexp, true, false)
+    json_from_sexp_with(sexp, &JsonOptions::strict())
 }
 
 /// Convert R to JSON with permissive handling (NA/NaN/Inf -> Null).
 pub fn json_from_sexp_permissive(sexp: SEXP) -> Result<JsonValue, SexpError> {
-    sexp_to_json_value(sexp, false, true)
+    json_from_sexp_with(sexp, &JsonOptions::permissive())
 }
 
-fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<JsonValue, SexpError> {
+/// Helper to handle NA values according to options.
+fn handle_na(opts: &JsonOptions, context: Option<usize>) -> Result<JsonValue, SexpError> {
+    match &opts.na {
+        NaHandling::Null => Ok(JsonValue::Null),
+        NaHandling::Error => {
+            let msg = match context {
+                Some(i) => format!("NA at index {} not allowed", i),
+                None => "NA not allowed".into(),
+            };
+            Err(SexpError::InvalidValue(msg))
+        }
+        NaHandling::String(s) => Ok(JsonValue::String(s.clone())),
+    }
+}
+
+fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
     let sexp_type = sexp.type_of();
 
     // Handle NULL
@@ -223,7 +367,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
 
     // Handle factors first (convert to string)
     if unsafe { Rf_isFactor(sexp) } != Rboolean::FALSE {
-        return factor_to_json(sexp, strict, permissive);
+        return factor_to_json(sexp, opts);
     }
 
     let len = unsafe { Rf_xlength(sexp) } as usize;
@@ -233,12 +377,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
             if len == 1 {
                 let val = unsafe { LOGICAL_ELT(sexp, 0) };
                 if val == NA_LOGICAL {
-                    if strict {
-                        return Err(SexpError::InvalidValue(
-                            "NA not allowed in strict mode".into(),
-                        ));
-                    }
-                    return Ok(JsonValue::Null);
+                    return handle_na(opts, None);
                 }
                 Ok(JsonValue::Bool(val != 0))
             } else {
@@ -246,13 +385,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                     .map(|i| {
                         let val = unsafe { LOGICAL_ELT(sexp, i as isize) };
                         if val == NA_LOGICAL {
-                            if strict {
-                                return Err(SexpError::InvalidValue(format!(
-                                    "NA at index {} not allowed in strict mode",
-                                    i
-                                )));
-                            }
-                            Ok(JsonValue::Null)
+                            handle_na(opts, Some(i))
                         } else {
                             Ok(JsonValue::Bool(val != 0))
                         }
@@ -265,12 +398,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
             if len == 1 {
                 let val = unsafe { INTEGER_ELT(sexp, 0) };
                 if val == NA_INTEGER {
-                    if strict {
-                        return Err(SexpError::InvalidValue(
-                            "NA not allowed in strict mode".into(),
-                        ));
-                    }
-                    return Ok(JsonValue::Null);
+                    return handle_na(opts, None);
                 }
                 Ok(JsonValue::Number(serde_json::Number::from(val)))
             } else {
@@ -278,13 +406,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                     .map(|i| {
                         let val = unsafe { INTEGER_ELT(sexp, i as isize) };
                         if val == NA_INTEGER {
-                            if strict {
-                                return Err(SexpError::InvalidValue(format!(
-                                    "NA at index {} not allowed in strict mode",
-                                    i
-                                )));
-                            }
-                            Ok(JsonValue::Null)
+                            handle_na(opts, Some(i))
                         } else {
                             Ok(JsonValue::Number(serde_json::Number::from(val)))
                         }
@@ -296,12 +418,12 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
         SEXPTYPE::REALSXP => {
             if len == 1 {
                 let val = unsafe { REAL_ELT(sexp, 0) };
-                real_to_json(val, strict, permissive)
+                real_to_json(val, opts, None)
             } else {
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {
                         let val = unsafe { REAL_ELT(sexp, i as isize) };
-                        real_to_json(val, strict, permissive)
+                        real_to_json(val, opts, Some(i))
                     })
                     .collect();
                 Ok(JsonValue::Array(arr?))
@@ -311,12 +433,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
             if len == 1 {
                 let charsxp = unsafe { STRING_ELT(sexp, 0) };
                 if charsxp == unsafe { crate::ffi::R_NaString } {
-                    if strict {
-                        return Err(SexpError::InvalidValue(
-                            "NA not allowed in strict mode".into(),
-                        ));
-                    }
-                    return Ok(JsonValue::Null);
+                    return handle_na(opts, None);
                 }
                 let s = unsafe { charsxp_to_str(charsxp) };
                 Ok(JsonValue::String(s.to_string()))
@@ -325,13 +442,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                     .map(|i| {
                         let charsxp = unsafe { STRING_ELT(sexp, i as isize) };
                         if charsxp == unsafe { crate::ffi::R_NaString } {
-                            if strict {
-                                return Err(SexpError::InvalidValue(format!(
-                                    "NA at index {} not allowed in strict mode",
-                                    i
-                                )));
-                            }
-                            Ok(JsonValue::Null)
+                            handle_na(opts, Some(i))
                         } else {
                             let s = unsafe { charsxp_to_str(charsxp) };
                             Ok(JsonValue::String(s.to_string()))
@@ -357,7 +468,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                         unsafe { charsxp_to_str(charsxp) }.to_string()
                     };
                     let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as isize) };
-                    let val = sexp_to_json_value(elem, strict, permissive)?;
+                    let val = sexp_to_json_value(elem, opts)?;
                     map.insert(key, val);
                 }
                 Ok(JsonValue::Object(map))
@@ -366,7 +477,7 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
                 let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
                     .map(|i| {
                         let elem = unsafe { crate::ffi::VECTOR_ELT(sexp, i as isize) };
-                        sexp_to_json_value(elem, strict, permissive)
+                        sexp_to_json_value(elem, opts)
                     })
                     .collect();
                 Ok(JsonValue::Array(arr?))
@@ -379,33 +490,46 @@ fn sexp_to_json_value(sexp: SEXP, strict: bool, permissive: bool) -> Result<Json
     }
 }
 
-fn real_to_json(val: f64, strict: bool, permissive: bool) -> Result<JsonValue, SexpError> {
+fn real_to_json(val: f64, opts: &JsonOptions, context: Option<usize>) -> Result<JsonValue, SexpError> {
     // Check for NA (NA_REAL is a specific NaN bit pattern)
     if val.to_bits() == NA_REAL.to_bits() {
-        if strict {
-            return Err(SexpError::InvalidValue(
-                "NA not allowed in strict mode".into(),
-            ));
-        }
-        return Ok(JsonValue::Null);
+        return handle_na(opts, context);
     }
 
-    // Check for NaN/Inf
+    // Check for NaN
     if val.is_nan() {
-        if permissive {
-            return Ok(JsonValue::Null);
-        }
-        return Err(SexpError::InvalidValue(
-            "NaN cannot be represented in JSON".into(),
-        ));
+        return match &opts.nan {
+            SpecialFloatHandling::Error => {
+                let msg = match context {
+                    Some(i) => format!("NaN at index {} cannot be represented in JSON", i),
+                    None => "NaN cannot be represented in JSON".into(),
+                };
+                Err(SexpError::InvalidValue(msg))
+            }
+            SpecialFloatHandling::Null => Ok(JsonValue::Null),
+            SpecialFloatHandling::String => Ok(JsonValue::String("NaN".into())),
+        };
     }
+
+    // Check for Inf
     if val.is_infinite() {
-        if permissive {
-            return Ok(JsonValue::Null);
-        }
-        return Err(SexpError::InvalidValue(
-            "Infinity cannot be represented in JSON".into(),
-        ));
+        return match &opts.inf {
+            SpecialFloatHandling::Error => {
+                let msg = match context {
+                    Some(i) => format!("Infinity at index {} cannot be represented in JSON", i),
+                    None => "Infinity cannot be represented in JSON".into(),
+                };
+                Err(SexpError::InvalidValue(msg))
+            }
+            SpecialFloatHandling::Null => Ok(JsonValue::Null),
+            SpecialFloatHandling::String => {
+                if val.is_sign_positive() {
+                    Ok(JsonValue::String("Infinity".into()))
+                } else {
+                    Ok(JsonValue::String("-Infinity".into()))
+                }
+            }
+        };
     }
 
     serde_json::Number::from_f64(val)
@@ -413,40 +537,37 @@ fn real_to_json(val: f64, strict: bool, permissive: bool) -> Result<JsonValue, S
         .ok_or_else(|| SexpError::InvalidValue("cannot convert f64 to JSON number".into()))
 }
 
-fn factor_to_json(sexp: SEXP, strict: bool, _permissive: bool) -> Result<JsonValue, SexpError> {
+fn factor_to_json(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpError> {
     let len = unsafe { Rf_xlength(sexp) } as usize;
     let levels = unsafe { Rf_getAttrib(sexp, crate::ffi::R_LevelsSymbol) };
+
+    // Helper to convert factor index to JSON based on FactorHandling
+    let index_to_json = |idx: i32| -> JsonValue {
+        match opts.factor {
+            FactorHandling::Label => {
+                // Factor indices are 1-based
+                let charsxp = unsafe { STRING_ELT(levels, (idx - 1) as isize) };
+                let s = unsafe { charsxp_to_str(charsxp) };
+                JsonValue::String(s.to_string())
+            }
+            FactorHandling::Index => JsonValue::Number(serde_json::Number::from(idx)),
+        }
+    };
 
     if len == 1 {
         let idx = unsafe { INTEGER_ELT(sexp, 0) };
         if idx == NA_INTEGER {
-            if strict {
-                return Err(SexpError::InvalidValue(
-                    "NA factor not allowed in strict mode".into(),
-                ));
-            }
-            return Ok(JsonValue::Null);
+            return handle_na(opts, None);
         }
-        // Factor indices are 1-based
-        let charsxp = unsafe { STRING_ELT(levels, (idx - 1) as isize) };
-        let s = unsafe { charsxp_to_str(charsxp) };
-        Ok(JsonValue::String(s.to_string()))
+        Ok(index_to_json(idx))
     } else {
         let arr: Result<Vec<JsonValue>, SexpError> = (0..len)
             .map(|i| {
                 let idx = unsafe { INTEGER_ELT(sexp, i as isize) };
                 if idx == NA_INTEGER {
-                    if strict {
-                        return Err(SexpError::InvalidValue(format!(
-                            "NA factor at index {} not allowed in strict mode",
-                            i
-                        )));
-                    }
-                    Ok(JsonValue::Null)
+                    handle_na(opts, Some(i))
                 } else {
-                    let charsxp = unsafe { STRING_ELT(levels, (idx - 1) as isize) };
-                    let s = unsafe { charsxp_to_str(charsxp) };
-                    Ok(JsonValue::String(s.to_string()))
+                    Ok(index_to_json(idx))
                 }
             })
             .collect();
