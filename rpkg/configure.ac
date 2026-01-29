@@ -498,15 +498,20 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
 	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
 	        mkdir -p "$VENDOR_OUT"
+	        dnl Use --locked if Cargo.lock exists to respect existing dependency versions
+	        _vendor_locked_flag=""
+	        if test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
+	          _vendor_locked_flag="$CARGO_LOCKED_FLAG"
+	        fi
 	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
 	          echo "configure: cargo vendor: including extra --sync manifests (workspace/bench)"
-	          $CARGO_CMD vendor \
+	          $CARGO_CMD vendor $_vendor_locked_flag \
 	            --manifest-path "$MANIFEST" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
 	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
 	            "$VENDOR_OUT"
 	        else
-	          $CARGO_CMD vendor \
+	          $CARGO_CMD vendor $_vendor_locked_flag \
 	            --manifest-path "$MANIFEST" \
 	            "$VENDOR_OUT"
 	        fi
@@ -597,7 +602,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
 
 dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
 

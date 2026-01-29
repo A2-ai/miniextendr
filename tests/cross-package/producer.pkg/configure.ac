@@ -270,7 +270,10 @@ AS_IF([test "$NOT_CRAN" = "true"], [
       AS_IF([test $_need -eq 1], [
         AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
         AS_MKDIR_P(["$VENDOR_OUT"])
-        $CARGO_CMD vendor \
+        dnl Use --locked if Cargo.lock exists to respect existing dependency versions
+        _vendor_locked_flag=""
+        AS_IF([test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"], [_vendor_locked_flag="$CARGO_LOCKED_FLAG"])
+        $CARGO_CMD vendor $_vendor_locked_flag \
           --sync "$MANIFEST" \
           "$VENDOR_OUT" > /dev/null || AC_MSG_ERROR([`cargo vendor` failed])
         echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])
