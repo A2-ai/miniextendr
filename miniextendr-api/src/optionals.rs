@@ -310,7 +310,7 @@ pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 /// Enable with `features = ["serde_json"]`.
 #[cfg(feature = "serde_json")]
 pub mod serde_impl;
-#[cfg(feature = "serde_r")]
+#[cfg(feature = "serde")]
 pub use serde;
 #[cfg(feature = "serde_json")]
 pub use serde_impl::{

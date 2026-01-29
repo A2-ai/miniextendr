@@ -5,11 +5,11 @@
 //!
 //! # Features
 //!
-//! Enable this module with the `serde_r` feature:
+//! Enable this module with the `serde` feature:
 //!
 //! ```toml
 //! [dependencies]
-//! miniextendr-api = { version = "0.1", features = ["serde_r"] }
+//! miniextendr-api = { version = "0.1", features = ["serde"] }
 //! ```
 //!
 //! # Type Mappings

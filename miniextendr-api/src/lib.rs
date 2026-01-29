@@ -654,7 +654,7 @@ pub use optionals::{
     JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
     json_from_sexp_strict, json_into_sexp,
 };
-#[cfg(feature = "serde_r")]
+#[cfg(feature = "serde")]
 pub use serde;
 
 #[cfg(feature = "toml")]
@@ -703,9 +703,9 @@ pub use rarray::{RArray, RArray3D, RMatrix, RVector};
 /// Enable with `features = ["serde_r"]`.
 ///
 /// See the [`serde_r`] module documentation for type mappings and examples.
-#[cfg(feature = "serde_r")]
+#[cfg(feature = "serde")]
 pub mod serde_r;
-#[cfg(feature = "serde_r")]
+#[cfg(feature = "serde")]
 pub use serde_r::{RDeserializeNative, RDeserializer, RSerdeError, RSerializeNative, RSerializer};
 
 /// Integration with the `bytemuck` crate for POD type conversions.
