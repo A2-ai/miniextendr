@@ -305,9 +305,9 @@ pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
 #[cfg(feature = "nonapi")]
 pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
 
-// Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
+// Error handling helpers (r_stop, r_warning, r_error!, r_print!, r_println! macros)
 pub mod error;
-pub use error::{r_print, r_println, r_stop, r_warning};
+pub use error::{r_stop, r_warning};
 
 // RNG (random number generation) utilities
 pub mod rng;
