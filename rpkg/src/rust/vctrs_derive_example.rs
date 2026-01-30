@@ -27,7 +27,7 @@
 //! ```
 
 use miniextendr_api::vctrs::{IntoVctrs, VctrsClass};
-use miniextendr_api::{miniextendr, miniextendr_module, Vctrs};
+use miniextendr_api::{Vctrs, miniextendr, miniextendr_module};
 
 // =============================================================================
 // Simple vctr: Percent backed by doubles
@@ -41,7 +41,12 @@ use miniextendr_api::{miniextendr, miniextendr_module, Vctrs};
 /// - R S3 methods for vctrs compatibility (format, vec_proxy, vec_restore, etc.)
 /// - Coercion methods for double type (vec_ptype2, vec_cast)
 #[derive(Vctrs)]
-#[vctrs(class = "derived_percent", base = "double", abbr = "%", coerce = "double")]
+#[vctrs(
+    class = "derived_percent",
+    base = "double",
+    abbr = "%",
+    coerce = "double"
+)]
 pub struct DerivedPercent {
     /// The underlying percentage values (as proportions, e.g., 0.5 = 50%)
     #[vctrs(data)]
@@ -112,7 +117,10 @@ impl DerivedRational {
 /// @param d Denominator values.
 /// @return A derived_rational record vector.
 #[miniextendr]
-pub fn new_derived_rational(n: Vec<i32>, d: Vec<i32>) -> Result<miniextendr_api::ffi::SEXP, String> {
+pub fn new_derived_rational(
+    n: Vec<i32>,
+    d: Vec<i32>,
+) -> Result<miniextendr_api::ffi::SEXP, String> {
     let rational = DerivedRational::new(n, d)?;
     rational.into_vctrs().map_err(|e| e.to_string())
 }

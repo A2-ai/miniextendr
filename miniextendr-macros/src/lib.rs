@@ -197,6 +197,7 @@
 mod altrep;
 mod altrep_module;
 mod c_wrapper_builder;
+mod list_macro;
 mod miniextendr_fn;
 mod typed_list;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
@@ -213,6 +214,7 @@ mod method_return_builder;
 /// Helpers for shaping method return handling (R vs Rust wrapper code).
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
+mod dataframe_derive;
 mod list_derive;
 mod r_class_formatter;
 mod return_type_analysis;
@@ -2512,6 +2514,15 @@ pub fn derive_prefer_list(input: proc_macro::TokenStream) -> proc_macro::TokenSt
         .into()
 }
 
+/// Derive `PreferDataFrame`: opt into data.frame-first IntoR by implementing the marker and IntoR wrapper.
+#[proc_macro_derive(PreferDataFrame)]
+pub fn derive_prefer_data_frame(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    list_derive::derive_prefer_data_frame(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
 /// Derive `PreferExternalPtr`: marks a type as preferring ExternalPtr conversion.
 #[proc_macro_derive(PreferExternalPtr)]
 pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
@@ -2526,6 +2537,28 @@ pub fn derive_prefer_externalptr(input: proc_macro::TokenStream) -> proc_macro::
 pub fn derive_prefer_rnative(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let input = syn::parse_macro_input!(input as syn::DeriveInput);
     list_derive::derive_prefer_rnative(input)
+        .unwrap_or_else(|e| e.into_compile_error())
+        .into()
+}
+
+/// Derive `DataFrameRow`: generates a companion DataFrame type with collection fields.
+///
+/// # Example
+///
+/// ```ignore
+/// #[derive(DataFrameRow)]
+/// struct Measurement {
+///     time: f64,
+///     value: f64,
+/// }
+///
+/// // Generates MeasurementDataFrame { time: Vec<f64>, value: Vec<f64> }
+/// // And all conversion impls
+/// ```
+#[proc_macro_derive(DataFrameRow, attributes(dataframe))]
+pub fn derive_dataframe_row(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    dataframe_derive::derive_dataframe_row(input)
         .unwrap_or_else(|e| e.into_compile_error())
         .into()
 }
@@ -2701,6 +2734,54 @@ pub fn derive_vctrs(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as typed_list::TypedListInput);
     typed_list::expand_typed_list(parsed).into()
+}
+
+/// Construct an R list from Rust values.
+///
+/// This macro provides a convenient way to create R lists in Rust code,
+/// using R-like syntax. Values are converted to R objects via the [`IntoR`] trait.
+///
+/// # Syntax
+///
+/// ```ignore
+/// // Named entries (like R's list())
+/// list!(
+///     alpha = 1,
+///     beta = "hello",
+///     "my-name" = vec![1, 2, 3],
+/// )
+///
+/// // Unnamed entries
+/// list!(1, "hello", vec![1, 2, 3])
+///
+/// // Mixed (unnamed entries get empty string names)
+/// list!(alpha = 1, 2, beta = "hello")
+///
+/// // Empty list
+/// list!()
+/// ```
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::{list, IntoR};
+///
+/// // Create a named list
+/// let my_list = list!(
+///     x = 42,
+///     y = "hello world",
+///     z = vec![1.0, 2.0, 3.0],
+/// );
+///
+/// // In R this is equivalent to:
+/// // list(x = 42L, y = "hello world", z = c(1, 2, 3))
+/// ```
+///
+/// [`IntoR`]: miniextendr_api::into_r::IntoR
+#[proc_macro]
+pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
+    let parsed = syn::parse_macro_input!(input as list_macro::ListInput);
+    list_macro::expand_list(parsed).into()
 }
 
 #[cfg(test)]

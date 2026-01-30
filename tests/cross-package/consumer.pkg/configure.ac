@@ -20,13 +20,15 @@ export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
 dnl - NOT_CRAN=true (dev): no --offline, use --locked
-dnl - NOT_CRAN not true (CRAN): use --offline, no --locked (may need to regenerate lockfile)
+dnl - NOT_CRAN not true (CRAN): use --offline and --locked for reproducible builds
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  CARGO_LOCKED_FLAG="--locked"
+  dnl In dev mode, don't use --locked because crate changes may require lockfile updates
+  CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
-  CARGO_LOCKED_FLAG=""
+  dnl CRAN build uses --locked for reproducible builds
+  CARGO_LOCKED_FLAG="--locked"
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([CARGO_LOCKED_FLAG])
@@ -270,7 +272,10 @@ AS_IF([test "$NOT_CRAN" = "true"], [
       AS_IF([test $_need -eq 1], [
         AC_MSG_NOTICE([cargo vendor (Cargo.lock changed or vendor missing)])
         AS_MKDIR_P(["$VENDOR_OUT"])
-        $CARGO_CMD vendor \
+        dnl Use --locked if Cargo.lock exists to respect existing dependency versions
+        _vendor_locked_flag=""
+        AS_IF([test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"], [_vendor_locked_flag="$CARGO_LOCKED_FLAG"])
+        $CARGO_CMD vendor $_vendor_locked_flag \
           --sync "$MANIFEST" \
           "$VENDOR_OUT" > /dev/null || AC_MSG_ERROR([`cargo vendor` failed])
         echo "$_new" > "$STAMP" || AC_MSG_ERROR([failed to write vendor stamp])

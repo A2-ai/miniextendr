@@ -95,7 +95,14 @@ fn link_to_r() {
 
     // Link to libR.
     let r_arch = env::var("R_ARCH").unwrap_or_default();
-    let r_libdir = format!("{}/lib{}", r_home, r_arch);
+    let target_os = env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+
+    // On Windows, R's library is in bin/ not lib/
+    let r_libdir = if target_os == "windows" {
+        format!("{}/bin{}", r_home, r_arch)
+    } else {
+        format!("{}/lib{}", r_home, r_arch)
+    };
     println!("cargo:rustc-link-search=native={}", r_libdir);
     println!("cargo:rustc-link-lib=R");
 

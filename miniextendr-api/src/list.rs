@@ -277,6 +277,129 @@ impl List {
     }
 
     // =========================================================================
+    // Convenience setters (string-based)
+    // =========================================================================
+
+    /// Set the `class` attribute from a slice of class names.
+    ///
+    /// This is a convenience wrapper that creates a character vector from the
+    /// provided strings and sets it as the class attribute.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let list = List::from_pairs(vec![("x", vec![1, 2, 3])]);
+    /// let df = list.set_class_str(&["data.frame"]);
+    /// ```
+    #[inline]
+    pub fn set_class_str(self, classes: &[&str]) -> Self {
+        use crate::ffi::SEXPTYPE::STRSXP;
+
+        let n = classes.len() as isize;
+        unsafe {
+            let class_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            for (i, class) in classes.iter().enumerate() {
+                let chars =
+                    ffi::Rf_mkCharLenCE(class.as_ptr().cast(), class.len() as i32, ffi::CE_UTF8);
+                ffi::SET_STRING_ELT(class_vec.get(), i as isize, chars);
+            }
+            ffi::Rf_setAttrib(self.0, ffi::R_ClassSymbol, class_vec.get());
+        }
+        self
+    }
+
+    /// Set the `names` attribute from a slice of strings.
+    ///
+    /// This is a convenience wrapper that creates a character vector from the
+    /// provided strings and sets it as the names attribute.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let list = List::from_values(vec![1, 2, 3]);
+    /// let named = list.set_names_str(&["a", "b", "c"]);
+    /// ```
+    #[inline]
+    pub fn set_names_str(self, names: &[&str]) -> Self {
+        use crate::ffi::SEXPTYPE::STRSXP;
+
+        let n = names.len() as isize;
+        unsafe {
+            let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            for (i, name) in names.iter().enumerate() {
+                let chars =
+                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
+                ffi::SET_STRING_ELT(names_vec.get(), i as isize, chars);
+            }
+            ffi::Rf_namesgets(self.0, names_vec.get());
+        }
+        self
+    }
+
+    /// Set `row.names` for a data.frame using compact integer form.
+    ///
+    /// R internally represents row.names as a compact integer vector
+    /// `c(NA_integer_, -n)` when the row names are just `1:n`. This is more
+    /// memory-efficient than storing n strings.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let list = List::from_pairs(vec![
+    ///     ("x", vec![1, 2, 3]),
+    ///     ("y", vec![4, 5, 6]),
+    /// ])
+    /// .set_class_str(&["data.frame"])
+    /// .set_row_names_int(3);  // Row names: "1", "2", "3"
+    /// ```
+    #[inline]
+    pub fn set_row_names_int(self, n: usize) -> Self {
+        use crate::ffi::SEXPTYPE::INTSXP;
+
+        unsafe {
+            // R's compact row.names: c(NA_integer_, -n)
+            let row_names = OwnedProtect::new(ffi::Rf_allocVector(INTSXP, 2));
+            let ptr = ffi::INTEGER(row_names.get());
+            // NA_INTEGER is i32::MIN in R
+            *ptr = i32::MIN;
+            *ptr.add(1) = -(n as i32);
+            ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, row_names.get());
+        }
+        self
+    }
+
+    /// Set `row.names` from a vector of strings.
+    ///
+    /// Use this when you need custom row names. For simple sequential row names
+    /// (1, 2, 3, ...), use [`set_row_names_int`](Self::set_row_names_int) instead.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// let list = List::from_pairs(vec![
+    ///     ("x", vec![1, 2, 3]),
+    /// ])
+    /// .set_class_str(&["data.frame"])
+    /// .set_row_names_str(&["row_a", "row_b", "row_c"]);
+    /// ```
+    #[inline]
+    pub fn set_row_names_str(self, row_names: &[&str]) -> Self {
+        use crate::ffi::SEXPTYPE::STRSXP;
+
+        let n = row_names.len() as isize;
+        unsafe {
+            let names_vec = OwnedProtect::new(ffi::Rf_allocVector(STRSXP, n));
+            for (i, name) in row_names.iter().enumerate() {
+                let chars =
+                    ffi::Rf_mkCharLenCE(name.as_ptr().cast(), name.len() as i32, ffi::CE_UTF8);
+                ffi::SET_STRING_ELT(names_vec.get(), i as isize, chars);
+            }
+            ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, names_vec.get());
+        }
+        self
+    }
+
+    // =========================================================================
     // Safe element insertion
     // =========================================================================
 

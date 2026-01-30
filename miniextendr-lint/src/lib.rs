@@ -35,14 +35,18 @@
 //! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
 // Parser module (copied from miniextendr-macros for independent publishing).
+// Allow dead_code since we only use parsing, not code generation helpers.
+#[allow(dead_code)]
 mod miniextendr_module;
 
 // Stubs required by miniextendr_module.rs (which imports these from crate::)
 // The lint only uses parsing, not code generation, so these return dummy idents.
+#[allow(dead_code)]
 pub(crate) fn call_method_def_ident_for(_ident: &syn::Ident) -> syn::Ident {
     syn::Ident::new("__stub", proc_macro2::Span::call_site())
 }
 
+#[allow(dead_code)]
 pub(crate) fn r_wrapper_const_ident_for(_ident: &syn::Ident) -> syn::Ident {
     syn::Ident::new("__stub", proc_macro2::Span::call_site())
 }

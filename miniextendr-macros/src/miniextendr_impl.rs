@@ -294,6 +294,21 @@ pub struct MethodAttrs {
     pub private: bool,
     /// Mark as active binding (R6)
     pub active: bool,
+    /// Generate as `as.<class>()` S3 method (e.g., "data.frame", "list", "character").
+    ///
+    /// When set, generates an S3 method for R's `as.<class>()` generic:
+    /// ```r
+    /// as.data.frame.MyType <- function(x, ...) {
+    ///     .Call(C_MyType__as_data_frame, .call = match.call(), x)
+    /// }
+    /// ```
+    ///
+    /// Valid values: data.frame, list, character, numeric, double, integer,
+    /// logical, matrix, vector, factor, Date, POSIXct, complex, raw,
+    /// environment, function
+    pub as_coercion: Option<String>,
+    /// Span of `as = "..."` for error reporting.
+    pub as_coercion_span: Option<proc_macro2::Span>,
     /// Override generic name for S3/S4/S7 methods.
     ///
     /// Use this to implement methods for existing generics (like `print`, `format`, `length`)
@@ -346,6 +361,39 @@ pub struct MethodAttrs {
     pub defaults_span: Option<proc_macro2::Span>,
     /// Span of `active` for error reporting.
     pub active_span: Option<proc_macro2::Span>,
+    /// S7 property getter marker.
+    ///
+    /// Use `#[miniextendr(s7(getter))]` or `#[miniextendr(s7(getter, prop = "name"))]` to mark
+    /// a method as an S7 property getter. The generated S7 class will include a computed
+    /// property with this getter.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter))]
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    /// // Generates: length = new_property(getter = function(self) ...)
+    /// ```
+    pub s7_getter: bool,
+    /// S7 property setter marker.
+    ///
+    /// Use `#[miniextendr(s7(setter, prop = "name"))]` to mark a method as an S7 property
+    /// setter. The property name must match a getter to create a dynamic property.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, prop = "len"))]
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    ///
+    /// #[miniextendr(s7(setter, prop = "len"))]
+    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
+    /// // Generates: len = new_property(getter = ..., setter = ...)
+    /// ```
+    pub s7_setter: bool,
+    /// S7 property name (defaults to method name).
+    ///
+    /// When specified via `#[miniextendr(s7(getter, prop = "name"))]`, overrides the
+    /// default property name which is derived from the method name.
+    pub s7_prop: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -593,9 +641,17 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.class = Some(value.value());
+                        } else if inner.path.is_ident("getter") {
+                            method_attrs.s7_getter = true;
+                        } else if inner.path.is_ident("setter") {
+                            method_attrs.s7_setter = true;
+                        } else if inner.path.is_ident("prop") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_prop = Some(value.value());
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, prop"
                             ));
                         }
                         Ok(())
@@ -638,9 +694,49 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else if meta.path.is_ident("as") {
+                    // Parse as = "data.frame", as = "list", etc.
+                    use syn::spanned::Spanned;
+                    method_attrs.as_coercion_span = Some(meta.path.span());
+                    let _: syn::Token![=] = meta.input.parse()?;
+                    let value: syn::LitStr = meta.input.parse()?;
+                    let coercion_type = value.value();
+
+                    // Validate the coercion type
+                    const SUPPORTED_AS_TYPES: &[&str] = &[
+                        "data.frame",
+                        "list",
+                        "character",
+                        "numeric",
+                        "double",
+                        "integer",
+                        "logical",
+                        "matrix",
+                        "vector",
+                        "factor",
+                        "Date",
+                        "POSIXct",
+                        "complex",
+                        "raw",
+                        "environment",
+                        "function",
+                    ];
+
+                    if !SUPPORTED_AS_TYPES.contains(&coercion_type.as_str()) {
+                        return Err(syn::Error::new(
+                            value.span(),
+                            format!(
+                                "unsupported `as` type: \"{}\". Supported types: {}",
+                                coercion_type,
+                                SUPPORTED_AS_TYPES.join(", ")
+                            ),
+                        ));
+                    }
+
+                    method_attrs.as_coercion = Some(coercion_type);
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r, as"
                     ));
                 }
                 Ok(())
@@ -995,6 +1091,16 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
         })
+    }
+
+    /// Get methods with `#[miniextendr(as = "...")]` attribute.
+    ///
+    /// These generate S3 methods for R's `as.<class>()` generics like
+    /// `as.data.frame.MyType`, `as.list.MyType`, etc.
+    pub fn as_coercion_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods
+            .iter()
+            .filter(|m| m.should_include() && m.method_attrs.as_coercion.is_some())
     }
 
     /// Get the finalizer method, if any.
@@ -1666,12 +1772,26 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Create class environment for static methods and trait namespace compatibility
+    // Check if class should be exported
+    let has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd");
+    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal");
+    let export_line = if !has_no_rd && !has_internal {
+        "#' @export\n"
+    } else {
+        ""
+    };
     lines.push(format!(
         "#' @rdname {}
-{} <- new.env(parent = emptyenv())",
-        class_name, class_name
+{}{} <- new.env(parent = emptyenv())",
+        class_name, export_line, class_name
     ));
     lines.push(String::new());
+
+    // Add $new binding to class environment (for Class$new() syntax)
+    if parsed_impl.constructor_context().is_some() {
+        lines.push(format!("{}$new <- {}", class_name, ctor_name));
+        lines.push(String::new());
+    }
 
     lines.join("\n")
 }
@@ -1680,9 +1800,12 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 ///
 /// Creates:
 /// - S7::new_class with constructor and .ptr property
+/// - S7::new_property for computed/dynamic properties (from #[s7(getter)]/setter)
 /// - S7::new_generic + S7::method for each instance method
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{
+        ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
+    };
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -1694,6 +1817,59 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
+    // Collect S7 property getters and setters
+    // Property name is: s7_prop if specified, else method name
+    // We store method idents so we can look them up later
+    struct S7Property {
+        name: String,
+        getter_method_ident: Option<String>,
+        setter_method_ident: Option<String>,
+    }
+
+    let mut properties: std::collections::HashMap<String, S7Property> =
+        std::collections::HashMap::new();
+    let mut property_method_idents: std::collections::HashSet<String> =
+        std::collections::HashSet::new();
+
+    // First pass: collect all property methods
+    for method in &parsed_impl.methods {
+        if !method.should_include() {
+            continue;
+        }
+        let attrs = &method.method_attrs;
+
+        if attrs.s7_getter || attrs.s7_setter {
+            let method_ident = method.ident.to_string();
+            let prop_name = attrs
+                .s7_prop
+                .clone()
+                .unwrap_or_else(|| method_ident.clone());
+
+            property_method_idents.insert(method_ident.clone());
+
+            let entry = properties.entry(prop_name.clone()).or_insert(S7Property {
+                name: prop_name,
+                getter_method_ident: None,
+                setter_method_ident: None,
+            });
+
+            if attrs.s7_getter {
+                entry.getter_method_ident = Some(method_ident.clone());
+            }
+            if attrs.s7_setter {
+                entry.setter_method_ident = Some(method_ident);
+            }
+        }
+    }
+
+    // Helper to find method by ident
+    let find_method = |ident: &str| -> Option<&ParsedMethod> {
+        parsed_impl
+            .methods
+            .iter()
+            .find(|m| m.ident.to_string() == ident)
+    };
+
     // Constructor - check if .ptr param will be added (for static methods returning Self)
     let has_self_returning_methods = parsed_impl
         .methods
@@ -1701,12 +1877,17 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .filter(|m| m.should_include())
         .any(|m| m.returns_self());
 
+    // Determine imports based on whether we have properties
+    let imports = if properties.is_empty() {
+        "@importFrom S7 new_class class_any new_object S7_object new_generic method"
+    } else {
+        "@importFrom S7 new_class class_any new_object S7_object new_generic method new_property"
+    };
+
     // Class definition with documentation
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
-            .with_imports(
-                "@importFrom S7 new_class class_any new_object S7_object new_generic method",
-            )
+            .with_imports(imports)
             .build(),
     );
 
@@ -1725,9 +1906,51 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         class_name, class_name
     ));
 
-    // Properties - .ptr holds the ExternalPtr
+    // Properties - .ptr holds the ExternalPtr, plus computed/dynamic properties
     lines.push("    properties = list(".to_string());
     lines.push("        .ptr = S7::class_any".to_string());
+
+    // Generate computed/dynamic properties
+    for prop in properties.values() {
+        lines.push(",".to_string());
+
+        // Generate property definition
+        let mut prop_parts = Vec::new();
+
+        if let Some(ref getter_ident) = prop.getter_method_ident {
+            if let Some(getter_method) = find_method(getter_ident) {
+                let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
+                let getter_call = ctx.instance_call("self@.ptr");
+                prop_parts.push(format!("getter = function(self) {}", getter_call));
+            }
+        }
+
+        if let Some(ref setter_ident) = prop.setter_method_ident {
+            if let Some(setter_method) = find_method(setter_ident) {
+                let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
+                let setter_call = ctx.instance_call("self@.ptr");
+                // Setter function takes self and value, calls the Rust method, returns self
+                // Note: instance_call already includes the method parameters (including 'value'),
+                // so we just need to wrap it in the setter function signature.
+                prop_parts.push(format!(
+                    "setter = function(self, value) {{ {}; self }}",
+                    setter_call
+                ));
+            }
+        }
+
+        if prop_parts.is_empty() {
+            // This shouldn't happen, but handle gracefully
+            lines.push(format!("        {} = S7::new_property()", prop.name));
+        } else {
+            lines.push(format!(
+                "        {} = S7::new_property({})",
+                prop.name,
+                prop_parts.join(", ")
+            ));
+        }
+    }
+
     lines.push("    ),".to_string());
 
     if let Some(ctx) = parsed_impl.constructor_context() {
@@ -1764,7 +1987,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(String::new());
 
     // Instance methods as S7 generics + methods
+    // Skip methods that are property getters/setters (they're handled as S7 properties)
     for ctx in parsed_impl.instance_method_contexts() {
+        let method_ident = ctx.method.ident.to_string();
+        if property_method_idents.contains(&method_ident) {
+            continue;
+        }
+
         let generic_name = ctx.generic_name();
         let full_params = ctx.instance_formals(true); // adds x, ..., params
         let call = ctx.instance_call("x@.ptr");
@@ -2242,6 +2471,102 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
+/// Generate R S3 method wrappers for `as.<class>()` coercion methods.
+///
+/// For each method with `#[miniextendr(as = "...")]`, generates an S3 method like:
+///
+/// ```r
+/// #' @export
+/// #' @method as.data.frame MyType
+/// as.data.frame.MyType <- function(x, ...) {
+///     .Call(C_MyType__as_data_frame, .call = match.call(), x)
+/// }
+/// ```
+///
+/// This function is called by each class system generator to append the
+/// `as.*` methods to the R wrapper output.
+pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
+    use crate::r_class_formatter::MethodContext;
+
+    let class_name = parsed_impl.class_name();
+    let type_ident = &parsed_impl.type_ident;
+
+    // Check if class has @noRd - if so, skip documentation
+    let class_doc_tags = &parsed_impl.doc_tags;
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal");
+    let should_export = !class_has_no_rd && !class_has_internal;
+
+    let mut lines = Vec::new();
+
+    for method in parsed_impl.as_coercion_methods() {
+        // Get the coercion target (e.g., "data.frame", "list", "character")
+        let coercion_target = match &method.method_attrs.as_coercion {
+            Some(target) => target.clone(),
+            None => continue,
+        };
+
+        // Build method context for .Call generation
+        let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+
+        // Normalize coercion target for R generic name
+        // R has both as.numeric and as.double - they're equivalent, but we use the specified one
+        let r_generic = match coercion_target.as_str() {
+            "numeric" => "as.numeric".to_string(),
+            "double" => "as.double".to_string(),
+            other => format!("as.{}", other),
+        };
+
+        // S3 method name: as.data.frame.MyType
+        let s3_method_name = format!("{}.{}", r_generic, class_name);
+
+        // Documentation
+        if !class_has_no_rd {
+            // Add documentation from the method
+            if !method.doc_tags.is_empty() {
+                crate::roxygen::push_roxygen_tags(&mut lines, &method.doc_tags);
+            }
+            lines.push(format!("#' @name {}", s3_method_name));
+            lines.push(format!("#' @rdname {}", class_name));
+            lines.push(format!(
+                "#' @source Generated by miniextendr from `{}::{}`",
+                type_ident, method.ident
+            ));
+        }
+
+        // Export and method registration
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
+        lines.push(format!("#' @method {} {}", r_generic, class_name));
+
+        // Function signature: always takes x and ... for S3 method compatibility
+        // Additional parameters from the method are included
+        let method_params =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
+        let formals = if method_params.is_empty() {
+            "x, ...".to_string()
+        } else {
+            format!("x, {}, ...", method_params)
+        };
+
+        lines.push(format!("{} <- function({}) {{", s3_method_name, formals));
+
+        // Build the .Call() invocation
+        let call = ctx.instance_call("x");
+        let strategy = crate::ReturnStrategy::for_method(method);
+        let return_builder = crate::MethodReturnBuilder::new(call)
+            .with_strategy(strategy)
+            .with_class_name(class_name.clone());
+        lines.extend(return_builder.build_s3_body());
+
+        lines.push("}".to_string());
+        lines.push(String::new());
+    }
+
+    lines.join("\n")
+}
+
 /// Expand a #[miniextendr(env|r6|s7|s3|s4|vctrs)] impl block.
 ///
 /// This handles two cases:
@@ -2285,7 +2610,7 @@ pub fn expand_impl(
         .collect();
 
     // Generate R wrapper string based on class system
-    let r_wrapper_string = match parsed.class_system {
+    let mut r_wrapper_string = match parsed.class_system {
         ClassSystem::Env => generate_env_r_wrapper(&parsed),
         ClassSystem::R6 => generate_r6_r_wrapper(&parsed),
         ClassSystem::S3 => generate_s3_r_wrapper(&parsed),
@@ -2293,6 +2618,14 @@ pub fn expand_impl(
         ClassSystem::S4 => generate_s4_r_wrapper(&parsed),
         ClassSystem::Vctrs => generate_vctrs_r_wrapper(&parsed),
     };
+
+    // Append as.<class>() coercion methods (works with all class systems)
+    let as_coercion_wrappers = generate_as_coercion_methods(&parsed);
+    if !as_coercion_wrappers.is_empty() {
+        r_wrapper_string.push_str("\n\n");
+        r_wrapper_string.push_str(&as_coercion_wrappers);
+    }
+
     let call_defs_const = parsed.call_defs_const_ident();
 
     let label = parsed.label();

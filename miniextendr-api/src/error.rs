@@ -75,22 +75,63 @@ pub fn r_warning(msg: &str) {
     }
 }
 
-/// Print a message to R's console.
+/// Print a message to R's console (internal implementation).
+#[doc(hidden)]
 #[inline]
-pub fn r_print(msg: &str) {
-    debug_assert_main_thread("r_print");
-    let c_msg = std::ffi::CString::new(msg).expect("r_print: message contains null bytes");
+pub fn _r_print_str(msg: &str) {
+    debug_assert_main_thread("r_print!");
+    let c_msg = std::ffi::CString::new(msg).expect("r_print!: message contains null bytes");
     unsafe {
         crate::ffi::Rprintf_unchecked(c"%s".as_ptr(), c_msg.as_ptr());
     }
 }
 
-/// Print a message to R's console with a newline.
+/// Print a newline to R's console (internal implementation).
+#[doc(hidden)]
 #[inline]
-pub fn r_println(msg: &str) {
-    debug_assert_main_thread("r_println");
-    let c_msg = std::ffi::CString::new(msg).expect("r_println: message contains null bytes");
+pub fn _r_print_newline() {
+    debug_assert_main_thread("r_println!");
     unsafe {
-        crate::ffi::Rprintf_unchecked(c"%s\n".as_ptr(), c_msg.as_ptr());
+        crate::ffi::Rprintf_unchecked(c"\n".as_ptr());
     }
+}
+
+/// Print to R's console (like `print!`).
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::r_print;
+///
+/// r_print!("Hello ");
+/// r_print!("value: {}", 42);
+/// ```
+#[macro_export]
+macro_rules! r_print {
+    () => {};
+    ($($arg:tt)*) => {
+        $crate::error::_r_print_str(&format!($($arg)*))
+    };
+}
+
+/// Print to R's console with a newline (like `println!`).
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::r_println;
+///
+/// r_println!();  // just a newline
+/// r_println!("Hello, world!");
+/// r_println!("value: {}", 42);
+/// ```
+#[macro_export]
+macro_rules! r_println {
+    () => {
+        $crate::error::_r_print_newline()
+    };
+    ($($arg:tt)*) => {{
+        $crate::error::_r_print_str(&format!($($arg)*));
+        $crate::error::_r_print_newline();
+    }};
 }
