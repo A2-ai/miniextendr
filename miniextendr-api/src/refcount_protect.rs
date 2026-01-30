@@ -11,7 +11,7 @@
 //! 1. **[`MapStorage`]** - Trait abstracting over map implementations (BTreeMap, HashMap)
 //! 2. **[`Arena`]** - Generic arena using RefCell for interior mutability
 //!
-//! For thread-local storage without RefCell overhead, use the [`define_thread_local_arena!`] macro.
+//! For thread-local storage without RefCell overhead, use the `define_thread_local_arena!` macro.
 //!
 //! # How It Works
 //!

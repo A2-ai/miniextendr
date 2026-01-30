@@ -346,7 +346,7 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 ///
 /// This module provides traits for implementing R's generic coercion methods
 /// (`as.data.frame()`, `as.list()`, `as.character()`, etc.) for Rust types
-/// wrapped in [`ExternalPtr`].
+/// wrapped in [`ExternalPtr`](struct@ExternalPtr).
 ///
 /// See the [`as_coerce`] module documentation for usage examples.
 pub mod as_coerce;

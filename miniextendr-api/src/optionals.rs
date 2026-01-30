@@ -7,30 +7,30 @@
 //!
 //! | Feature | Module | Description |
 //! |---------|--------|-------------|
-//! | `rayon` | [`rayon_bridge`] | Parallel computation with R interop |
-//! | `rand` | [`rand_impl`] | R's RNG wrapped for `rand` crate |
+//! | `rayon` | `rayon_bridge` | Parallel computation with R interop |
+//! | `rand` | `rand_impl` | R's RNG wrapped for `rand` crate |
 //! | `rand_distr` | - | Re-exports `rand_distr` distributions |
-//! | `either` | [`either_impl`] | `Either<L, R>` conversions |
-//! | `ndarray` | [`ndarray_impl`] | N-dimensional array conversions |
-//! | `nalgebra` | [`nalgebra_impl`] | Linear algebra type conversions |
-//! | `num-bigint` | [`num_bigint_impl`] | Big integer support |
-//! | `rust_decimal` | [`rust_decimal_impl`] | Decimal number support |
-//! | `ordered-float` | [`ordered_float_impl`] | Ordered floats for sorting |
-//! | `uuid` | [`uuid_impl`] | UUID conversions |
-//! | `regex` | [`regex_impl`] | Compiled regex from R strings |
-//! | `indexmap` | [`indexmap_impl`] | Order-preserving maps |
-//! | `time` | [`time_impl`] | Date/time conversions |
-//! | `serde` | [`serde_impl`] | JSON serialization |
-//! | `num-traits` | [`num_traits_impl`] | Generic numeric operations |
-//! | `bytes` | [`bytes_impl`] | Byte buffer operations |
-//! | `num-complex` | [`num_complex_impl`] | Complex number support |
-//! | `url` | [`url_impl`] | URL parsing and validation |
-//! | `sha2` | [`sha2_impl`] | Cryptographic hashing |
-//! | `bitflags` | [`bitflags_impl`] | Bitflag conversions |
-//! | `bitvec` | [`bitvec_impl`] | Bit vector conversions |
-//! | `aho-corasick` | [`aho_corasick_impl`] | Multi-pattern string search |
-//! | `toml` | [`toml_impl`] | TOML parsing |
-//! | `tabled` | [`tabled_impl`] | Table formatting |
+//! | `either` | `either_impl` | `Either<L, R>` conversions |
+//! | `ndarray` | `ndarray_impl` | N-dimensional array conversions |
+//! | `nalgebra` | `nalgebra_impl` | Linear algebra type conversions |
+//! | `num-bigint` | `num_bigint_impl` | Big integer support |
+//! | `rust_decimal` | `rust_decimal_impl` | Decimal number support |
+//! | `ordered-float` | `ordered_float_impl` | Ordered floats for sorting |
+//! | `uuid` | `uuid_impl` | UUID conversions |
+//! | `regex` | `regex_impl` | Compiled regex from R strings |
+//! | `indexmap` | `indexmap_impl` | Order-preserving maps |
+//! | `time` | `time_impl` | Date/time conversions |
+//! | `serde` | `serde_impl` | JSON serialization |
+//! | `num-traits` | `num_traits_impl` | Generic numeric operations |
+//! | `bytes` | `bytes_impl` | Byte buffer operations |
+//! | `num-complex` | `num_complex_impl` | Complex number support |
+//! | `url` | `url_impl` | URL parsing and validation |
+//! | `sha2` | `sha2_impl` | Cryptographic hashing |
+//! | `bitflags` | `bitflags_impl` | Bitflag conversions |
+//! | `bitvec` | `bitvec_impl` | Bit vector conversions |
+//! | `aho-corasick` | `aho_corasick_impl` | Multi-pattern string search |
+//! | `toml` | `toml_impl` | TOML parsing |
+//! | `tabled` | `tabled_impl` | Table formatting |
 
 // =============================================================================
 // Rayon - Parallel computation

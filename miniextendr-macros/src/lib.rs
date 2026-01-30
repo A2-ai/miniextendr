@@ -2777,7 +2777,7 @@ pub fn typed_list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
 /// // list(x = 42L, y = "hello world", z = c(1, 2, 3))
 /// ```
 ///
-/// [`IntoR`]: miniextendr_api::into_r::IntoR
+/// [`IntoR`]: https://docs.rs/miniextendr-api/latest/miniextendr_api/into_r/trait.IntoR.html
 #[proc_macro]
 pub fn list(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
     let parsed = syn::parse_macro_input!(input as list_macro::ListInput);

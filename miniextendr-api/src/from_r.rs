@@ -2424,7 +2424,7 @@ impl TryFromSexp for Vec<Option<Rboolean>> {
 
 /// Convert R logical vector (LGLSXP) to `Vec<Logical>` (ALTREP-compatible).
 ///
-/// This converts R's logical vector to a vector of [`Logical`] values,
+/// This converts R's logical vector to a vector of [`Logical`](crate::altrep_data::Logical) values,
 /// which is the native representation used by ALTREP logical vectors.
 /// Unlike `Vec<bool>`, this preserves NA values.
 impl TryFromSexp for Vec<crate::altrep_data::Logical> {

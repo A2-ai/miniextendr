@@ -159,7 +159,7 @@ impl<T: IntoList> IntoR for DataFrame<T> {
 /// Trait for types that can be converted into R data frames.
 ///
 /// This trait allows Rust types to define how they convert to R data frames.
-/// Use with [`AsDataFrame`] wrapper or `#[derive(PreferDataFrame)]` to enable
+/// Use with [`ToDataFrame`] wrapper or `#[derive(PreferDataFrame)]` to enable
 /// automatic conversion.
 ///
 /// # Example
