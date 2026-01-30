@@ -19,3 +19,6 @@ src/rust/target
 
 # Vendor compression stamp file
 inst/.vendor.tar.xz.cksum
+
+# Intermediary files from configure.ac
+src/.vendor-tarball-staging/
