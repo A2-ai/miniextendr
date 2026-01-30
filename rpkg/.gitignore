@@ -3,8 +3,7 @@ autom4te.cache
 .cargo/config.toml
 src/Makevars
 src/Makevars.win
-src/miniextendr_wrappers.R
-src/rust/Cargo.toml
+src/*-wrappers.R
 src/rust/document.rs
 src/entrypoint.c
 
@@ -19,3 +18,6 @@ src/rust/target
 
 # Vendor compression stamp file
 inst/.vendor.tar.xz.cksum
+
+# Intermediary files from configure.ac
+src/.vendor-tarball-staging/

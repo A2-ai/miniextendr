@@ -35,5 +35,9 @@ error[E0277]: the trait bound `ExternalPtr<Counter>: IntoR` is not satisfied
 7 | #[miniextendr(r6, s4)]
   | ^^^^^^^^^^^^^^^^^^^^^^ the trait `IntoR` is not implemented for `ExternalPtr<Counter>`
   |
-  = help: the trait `IntoR` is implemented for `ExternalPtr<T>`
+help: the trait `IntoR` is implemented for `ExternalPtr<T>`
+ --> $WORKSPACE/miniextendr-api/src/into_r.rs
+  |
+  | impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
+  | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
   = note: this error originates in the attribute macro `miniextendr` (in Nightly builds, run with -Z macro-backtrace for more info)

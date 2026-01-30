@@ -67,3 +67,37 @@ test_that("Calculator defaults and methods work", {
 test_that("r6_standalone_add sums", {
   expect_equal(r6_standalone_add(2L, 3L), 5L)
 })
+
+test_that("S7Range computed property (length) works", {
+  r <- S7Range(0, 10)
+  # Computed property - read-only via @
+  expect_equal(r@length, 10)
+
+  # Regular methods still work
+  expect_equal(s7_start(r), 0)
+  expect_equal(s7_end(r), 10)
+})
+
+test_that("S7Range dynamic property (midpoint) read/write works", {
+  r <- S7Range(0, 10)
+  # Read the midpoint
+  expect_equal(r@midpoint, 5)
+
+  # Write the midpoint - this should adjust start and end
+  r@midpoint <- 10
+  # New range should be centered at 10 with same length (10)
+  expect_equal(r@midpoint, 10)
+  expect_equal(s7_start(r), 5)  # 10 - 5
+  expect_equal(s7_end(r), 15)   # 10 + 5
+
+  # Length should still be 10
+  expect_equal(r@length, 10)
+})
+
+test_that("S7Range property methods are not exposed as generics", {
+  # get_midpoint and set_midpoint should NOT be exposed as S7 generics
+  # (they're internal to the property, accessed via @midpoint)
+  # Note: We can't test for 'length' since base::length exists
+  expect_false(exists("get_midpoint", mode = "function", envir = globalenv()))
+  expect_false(exists("set_midpoint", mode = "function", envir = globalenv()))
+})

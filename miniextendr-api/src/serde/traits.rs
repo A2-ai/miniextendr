@@ -185,3 +185,94 @@ pub fn to_r<T: serde::Serialize>(value: &T) -> Result<SEXP, RSerdeError> {
 pub fn from_r<T: for<'de> serde::Deserialize<'de>>(sexp: SEXP) -> Result<T, RSerdeError> {
     RDeserializer::from_sexp_to(sexp)
 }
+
+// =============================================================================
+// AsSerialize wrapper for IntoR
+// =============================================================================
+
+use crate::into_r::IntoR;
+
+/// Wrapper that converts any `Serialize` type to R via serde_r.
+///
+/// This is the serde analog to `AsList<T: IntoList>`. Use it when you want to
+/// return a `Serialize` type from a `#[miniextendr]` function and have it
+/// automatically converted to an R list.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use miniextendr_api::serde_r::AsSerialize;
+/// use serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct Point { x: f64, y: f64 }
+///
+/// #[miniextendr]
+/// fn make_point(x: f64, y: f64) -> AsSerialize<Point> {
+///     AsSerialize(Point { x, y })
+/// }
+/// // Returns list(x = 1.0, y = 2.0) in R
+///
+/// #[derive(Serialize)]
+/// struct Result { success: bool, message: String }
+///
+/// #[miniextendr]
+/// fn process() -> AsSerialize<Vec<Result>> {
+///     AsSerialize(vec![
+///         Result { success: true, message: "ok".into() },
+///         Result { success: false, message: "error".into() },
+///     ])
+/// }
+/// // Returns list of lists in R
+/// ```
+///
+/// # Extracting the inner value
+///
+/// ```rust,ignore
+/// let wrapped = AsSerialize(my_value);
+/// let inner = wrapped.into_inner();  // Get T back
+/// let inner_ref = wrapped.as_ref();  // Get &T
+/// ```
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct AsSerialize<T: serde::Serialize>(pub T);
+
+impl<T: serde::Serialize> AsSerialize<T> {
+    /// Create a new `AsSerialize` wrapper.
+    #[inline]
+    pub fn new(value: T) -> Self {
+        Self(value)
+    }
+
+    /// Extract the inner value.
+    #[inline]
+    pub fn into_inner(self) -> T {
+        self.0
+    }
+
+    /// Get a reference to the inner value.
+    #[inline]
+    pub fn as_ref(&self) -> &T {
+        &self.0
+    }
+
+    /// Get a mutable reference to the inner value.
+    #[inline]
+    pub fn as_mut(&mut self) -> &mut T {
+        &mut self.0
+    }
+}
+
+impl<T: serde::Serialize> From<T> for AsSerialize<T> {
+    #[inline]
+    fn from(value: T) -> Self {
+        Self(value)
+    }
+}
+
+impl<T: serde::Serialize> IntoR for AsSerialize<T> {
+    fn into_sexp(self) -> SEXP {
+        to_r(&self.0).unwrap_or_else(|e| {
+            crate::error::r_stop(&format!("serde_r serialization failed: {}", e))
+        })
+    }
+}

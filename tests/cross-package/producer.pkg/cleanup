@@ -13,5 +13,5 @@ if [ "$NOT_CRAN" != "true" ]; then
   rm     src/rust/Cargo.toml
   rm -rf src/rust/document.rs
   rm -rf src/entrypoint.c
-  rm -rf src/miniextendr_wrappers.R
+  rm -f src/*-wrappers.R
 fi

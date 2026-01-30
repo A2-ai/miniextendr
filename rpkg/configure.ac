@@ -41,14 +41,15 @@ esac
 export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline
-dnl - NOT_CRAN=false (CRAN): use --offline (pre-vendored tarball)
+dnl - NOT_CRAN=true (dev): no --offline, use --locked for reproducibility
+dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
+  dnl Dev mode uses --locked for reproducible builds matching committed lockfile
   CARGO_LOCKED_FLAG="--locked"
 else
   CARGO_OFFLINE_FLAG="--offline"
-  dnl CRAN build may need to regenerate lockfile with vendored paths
+  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
   CARGO_LOCKED_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
@@ -69,22 +70,19 @@ dnl Enable all features by default for this demo package
 dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
   dnl MINIEXTENDR_FEATURES not set - enable all optional features
-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-  # Set C preprocessor flags based on enabled features
+  # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
-  case ",$MINIEXTENDR_FEATURES," in
-    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
-  esac
+  IFS=','
+  for _feature in $MINIEXTENDR_FEATURES; do
+    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
+    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
+  done
+  unset IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
@@ -186,8 +184,8 @@ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
 : ${CARGO_PROFILE="release"}
 AC_SUBST([CARGO_PROFILE])
 
-dnl CARGO_STATICLIB_NAME will be extracted after Cargo.toml generation
-dnl Use placeholder for now - AC_CONFIG_COMMANDS will substitute the real value
+dnl CARGO_STATICLIB_NAME will be extracted via cargo pkgid in AC_CONFIG_COMMANDS
+dnl Use placeholder for now - will be substituted after Cargo.toml is available
 CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 AC_SUBST([CARGO_STATICLIB_NAME])
 
@@ -323,11 +321,10 @@ AS_MKDIR_P([src/rust/.cargo])
 
 AC_CONFIG_FILES([
   .cargo/config.toml:src/rust/cargo-config.toml.in
-  src/rust/Cargo.toml
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-  src/Makevars
-  src/entrypoint.c
-  src/mx_abi.c
+  src/Makevars:src/Makevars.in
+  src/entrypoint.c:src/entrypoint.c.in
+  src/mx_abi.c:src/mx_abi.c.in
 ])
 
 dnl 2a) Ensure the monorepo root has a cargo config (needed for workspace resolution)
@@ -440,7 +437,7 @@ dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
   dnl Only vendor in dev mode (NOT_CRAN=true).
-  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by R CMD build).
+  dnl In CRAN/offline mode we prefer vendor/ dir OR vendor.tar.xz, but fall back to network if needed.
   if test "$NOT_CRAN" != "true"; then
     dnl Check if vendor directory exists and is populated
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
@@ -457,12 +454,16 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
         fi
       else
-        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
-        exit 1
+        dnl No vendor available - fall back to network (e.g., GitHub installs)
+        echo "configure: no cached vendor found, will proceed with network access" >&2
+        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+        dnl Continue to dev mode vendoring logic below
+        NOT_CRAN=true
       fi
     fi
-    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+    if test "$NOT_CRAN" != "true"; then
+      echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+    fi
   else
     MANIFEST="src/rust/Cargo.toml"
     LOCKFILE="src/rust/Cargo.lock"
@@ -496,24 +497,50 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	    if test $_need -eq 1; then
 	      dnl Check if monorepo Cargo.toml exists (won't exist during R CMD check)
 	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
-	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
+	        echo "configure: vendoring dependencies using cargo package approach"
 	        mkdir -p "$VENDOR_OUT"
-	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
-	          echo "configure: cargo vendor: including extra --sync manifests (workspace/bench)"
-	          $CARGO_CMD vendor \
-	            --manifest-path "$MANIFEST" \
-	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
-	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-	            "$VENDOR_OUT"
-	        else
-	          $CARGO_CMD vendor \
-	            --manifest-path "$MANIFEST" \
-	            "$VENDOR_OUT"
-	        fi
+
+	        dnl Create staging directory for .crate extraction
+	        STAGING_DIR="$abs_rpkg_src/.vendor-tarball-staging"
+	        mkdir -p "$STAGING_DIR"
+
+	        dnl Package workspace crates using cargo package
+	        echo "configure: packaging workspace crates..."
+	        for _crate_dir in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+	          if test -d "$ROOT_MINIEXTENDR_REPO/$_crate_dir"; then
+	            echo "configure:   packaging $_crate_dir"
+	            $CARGO_CMD package --manifest-path "$ROOT_MINIEXTENDR_REPO/$_crate_dir/Cargo.toml" \
+	              --target-dir "$STAGING_DIR/target" --allow-dirty --no-verify 2>&1 | \
+	              grep -v "warning: manifest has no" || true
+	            if test ${PIPESTATUS[[0]]} -ne 0; then
+	              echo "configure: error: cargo package failed for $_crate_dir" >&2
+	              exit 1
+	            fi
+	          fi
+	        done
+
+	        dnl Extract .crate files to vendor directory
+	        echo "configure: extracting packaged crates to vendor..."
+	        for _crate_file in "$STAGING_DIR/target/package/"*.crate; do
+	          if test -f "$_crate_file"; then
+	            _basename=$(basename "$_crate_file" .crate)
+	            echo "configure:   extracting $_basename"
+	            mkdir -p "$VENDOR_OUT/$_basename"
+	            tar -xzf "$_crate_file" -C "$VENDOR_OUT/$_basename" --strip-components=1
+	          fi
+	        done
+
+	        dnl Run cargo vendor for external dependencies only
+	        echo "configure: running cargo vendor for external dependencies"
+	        $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
 	        if test $? -ne 0; then
 	          echo "configure: error: cargo vendor failed" >&2
 	          exit 1
 	        fi
+
+	        dnl Clean up staging directory
+	        rm -rf "$STAGING_DIR"
+
 	        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 	        if test -f "$LOCKFILE"; then
 	          $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
@@ -597,7 +624,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     fi
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
 
 dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
 
@@ -966,13 +993,11 @@ AC_CONFIG_COMMANDS([compress-vendor],
 ],
 [NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
 
-dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
+dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
 AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
-  dnl cargo pkgid outputs: path+file:///path/to/project#name@version
-  dnl Extract package name between # and @, convert hyphens to underscores for Rust
-  dnl Use --offline only for CRAN builds (NOT_CRAN != true) to avoid network access
-  dnl Dev builds (NOT_CRAN=true) may not have cache populated yet
+  dnl Use cargo pkgid to extract the actual package name from Cargo.toml
+  dnl This handles hyphens correctly (converted to underscores for Rust lib name)
   if test "$NOT_CRAN" = "true"; then
     _pkgid_flags="--color=never"
   else
@@ -982,17 +1007,16 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    echo "configure: cargo pkgid output: $_pkgid_output" >&2
     exit 1
   fi
   REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
   if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
+    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
     exit 1
   fi
   echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
 
-  dnl Patch generated files to replace placeholder (portable: temp file + mv)
+  dnl Patch generated files to replace placeholder
   for f in src/Makevars src/rust/document.rs; do
     if test -f "$f"; then
       "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"

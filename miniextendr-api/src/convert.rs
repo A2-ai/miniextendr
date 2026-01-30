@@ -62,7 +62,7 @@
 use crate::externalptr::{ExternalPtr, IntoExternalPtr};
 use crate::ffi::RNativeType;
 use crate::into_r::IntoR;
-use crate::list::IntoList;
+use crate::list::{IntoList, List};
 
 /// Wrap a value and convert it to an R list via [`IntoList`] when returned from Rust.
 ///
@@ -94,6 +94,345 @@ impl<T: IntoList> IntoR for AsList<T> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.0.into_list().into_sexp()
+    }
+}
+
+/// Wrap a value and convert it to an R data.frame via [`IntoDataFrame`] when returned from Rust.
+///
+/// Use this wrapper when you want to convert a single value to an R data.frame without
+/// making that the default behavior for the type.
+///
+/// # Example
+///
+/// ```ignore
+/// struct TimeSeries {
+///     timestamps: Vec<f64>,
+///     values: Vec<f64>,
+/// }
+///
+/// impl IntoDataFrame for TimeSeries {
+///     fn into_data_frame(self) -> List {
+///         List::from_pairs(vec![
+///             ("timestamp", self.timestamps),
+///             ("value", self.values),
+///         ])
+///         .set_class_str(&["data.frame"])
+///         .set_row_names_int(self.timestamps.len())
+///     }
+/// }
+///
+/// #[miniextendr]
+/// fn make_time_series() -> ToDataFrame<TimeSeries> {
+///     ToDataFrame(TimeSeries {
+///         timestamps: vec![1.0, 2.0, 3.0],
+///         values: vec![10.0, 20.0, 30.0],
+///     })
+/// }
+/// // In R: make_time_series() returns a data.frame
+/// ```
+#[derive(Debug, Clone, Copy)]
+pub struct ToDataFrame<T: IntoDataFrame>(pub T);
+
+impl<T: IntoDataFrame> From<T> for ToDataFrame<T> {
+    fn from(value: T) -> Self {
+        ToDataFrame(value)
+    }
+}
+
+impl<T: IntoDataFrame> IntoR for ToDataFrame<T> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.0.into_data_frame().into_sexp()
+    }
+}
+
+/// IntoR implementation for DataFrame.
+///
+/// This allows DataFrame to be returned directly from `#[miniextendr]` functions.
+impl<T: IntoList> IntoR for DataFrame<T> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.into_data_frame().into_sexp()
+    }
+}
+
+/// Trait for types that can be converted into R data frames.
+///
+/// This trait allows Rust types to define how they convert to R data frames.
+/// Use with [`AsDataFrame`] wrapper or `#[derive(PreferDataFrame)]` to enable
+/// automatic conversion.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::convert::IntoDataFrame;
+/// use miniextendr_api::List;
+///
+/// struct TimeSeries {
+///     timestamps: Vec<f64>,
+///     values: Vec<f64>,
+/// }
+///
+/// impl IntoDataFrame for TimeSeries {
+///     fn into_data_frame(self) -> List {
+///         List::from_pairs(vec![
+///             ("timestamp", self.timestamps),
+///             ("value", self.values),
+///         ])
+///         .set_class_str(&["data.frame"])
+///         .set_row_names_int(self.timestamps.len())
+///     }
+/// }
+/// ```
+///
+/// # Comparison with `AsDataFrame` coercion trait
+///
+/// - [`AsDataFrame`](crate::as_coerce::AsDataFrame): Used with `#[miniextendr(as = "data.frame")]`
+///   to generate S3 methods for `as.data.frame()` on external pointer types
+/// - `IntoDataFrame`: Used for direct conversion when returning from functions
+///
+/// Both return a `List` with appropriate data.frame attributes, but serve different purposes:
+/// - S3 `AsDataFrame` is for coercion methods on existing objects (`&self`)
+/// - `IntoDataFrame` is for consuming conversion (`self`) when returning from functions
+pub trait IntoDataFrame {
+    /// Convert this value into an R data.frame.
+    ///
+    /// The returned List should have:
+    /// - Named columns of equal length
+    /// - Class attribute set to "data.frame"
+    /// - row.names attribute set appropriately
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// impl IntoDataFrame for MyStruct {
+    ///     fn into_data_frame(self) -> List {
+    ///         List::from_pairs(vec![
+    ///             ("col1", self.field1),
+    ///             ("col2", self.field2),
+    ///         ])
+    ///         .set_class_str(&["data.frame"])
+    ///         .set_row_names_int(self.field1.len())
+    ///     }
+    /// }
+    /// ```
+    fn into_data_frame(self) -> List;
+}
+
+// =============================================================================
+// Serde Row Wrapper
+// =============================================================================
+
+/// Wrap a serde-serializable value for use as a data frame row.
+///
+/// This wrapper implements [`IntoList`] via serde serialization, allowing
+/// types that implement `serde::Serialize` to be used with [`DataFrame`]
+/// without manually implementing [`IntoList`].
+///
+/// # Feature Flag
+///
+/// Requires the `serde` feature to be enabled.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, convert::{AsSerializeRow, DataFrame}};
+/// use serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct Measurement {
+///     time: f64,
+///     value: f64,
+/// }
+///
+/// #[miniextendr]
+/// fn get_data() -> DataFrame<AsSerializeRow<Measurement>> {
+///     DataFrame::from_rows(vec![
+///         AsSerializeRow(Measurement { time: 1.0, value: 10.0 }),
+///         AsSerializeRow(Measurement { time: 2.0, value: 20.0 }),
+///     ])
+/// }
+/// ```
+#[cfg(feature = "serde")]
+#[derive(Debug, Clone, Copy)]
+pub struct AsSerializeRow<T: serde::Serialize>(pub T);
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> From<T> for AsSerializeRow<T> {
+    fn from(value: T) -> Self {
+        AsSerializeRow(value)
+    }
+}
+
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
+    fn into_list(self) -> List {
+        use crate::serde::RSerializer;
+        match RSerializer::to_sexp(&self.0) {
+            Ok(sexp) => unsafe { List::from_raw(sexp) },
+            Err(_) => {
+                // If serialization fails, return empty list
+                List::from_raw_pairs(Vec::<(&str, crate::ffi::SEXP)>::new())
+            }
+        }
+    }
+}
+
+// =============================================================================
+// Data Frame Row Conversion
+// =============================================================================
+
+/// Convert row-oriented data into a column-oriented R data.frame.
+///
+/// This type collects a sequence of row elements (structs implementing [`IntoList`])
+/// and transposes them into column vectors suitable for creating an R data.frame.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, convert::DataFrame};
+///
+/// #[derive(IntoList)]
+/// struct Person {
+///     name: String,
+///     age: i32,
+///     height: f64,
+/// }
+///
+/// #[miniextendr]
+/// fn make_people() -> DataFrame<Person> {
+///     DataFrame::from_rows(vec![
+///         Person { name: "Alice".into(), age: 30, height: 165.0 },
+///         Person { name: "Bob".into(), age: 25, height: 180.0 },
+///         Person { name: "Carol".into(), age: 35, height: 170.0 },
+///     ])
+/// }
+/// // In R: make_people() returns a data.frame with 3 rows and columns: name, age, height
+/// ```
+///
+/// # Row-oriented to Column-oriented
+///
+/// R data frames are column-oriented (each column is a vector), but data is often
+/// produced row-by-row in Rust. `DataFrame` handles the transposition:
+///
+/// ```text
+/// Input (row-oriented):           Output (column-oriented):
+/// Row 1: {name: "A", age: 30}     name column:  ["A", "B", "C"]
+/// Row 2: {name: "B", age: 25}  →  age column:   [30, 25, 35]
+/// Row 3: {name: "C", age: 35}
+/// ```
+#[derive(Debug, Clone)]
+pub struct DataFrame<T: IntoList> {
+    rows: Vec<T>,
+}
+
+impl<T: IntoList> DataFrame<T> {
+    /// Create a new `DataFrame` from a vector of row elements.
+    pub fn from_rows(rows: Vec<T>) -> Self {
+        Self { rows }
+    }
+
+    /// Create an empty `DataFrame`.
+    pub fn new() -> Self {
+        Self { rows: Vec::new() }
+    }
+
+    /// Add a row to the data frame.
+    pub fn push(&mut self, row: T) {
+        self.rows.push(row);
+    }
+
+    /// Get the number of rows.
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Check if empty.
+    pub fn is_empty(&self) -> bool {
+        self.rows.is_empty()
+    }
+}
+
+impl<T: IntoList> Default for DataFrame<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T: IntoList> FromIterator<T> for DataFrame<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        Self {
+            rows: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<T: IntoList> IntoDataFrame for DataFrame<T> {
+    fn into_data_frame(self) -> List {
+        if self.rows.is_empty() {
+            // Empty data frame
+            return List::from_raw_pairs(Vec::<(&str, crate::ffi::SEXP)>::new())
+                .set_class_str(&["data.frame"])
+                .set_row_names_int(0);
+        }
+
+        // Convert all rows to lists
+        let lists: Vec<List> = self.rows.into_iter().map(|row| row.into_list()).collect();
+        let n_rows = lists.len() as isize;
+
+        // Get column names from the first row
+        let first_names_sexp = lists[0].names();
+        if first_names_sexp.is_none() {
+            // Row has no names - can't create a data frame from unnamed lists
+            panic!("Cannot create data frame from unnamed list elements");
+        }
+
+        // Extract column names as Vec<String>
+        let names_sexp = first_names_sexp.unwrap();
+        let n_cols = unsafe { crate::ffi::Rf_xlength(names_sexp) };
+        let mut col_names = Vec::with_capacity(n_cols as usize);
+        for i in 0..n_cols {
+            unsafe {
+                let name_sexp = crate::ffi::STRING_ELT(names_sexp, i);
+                let name_ptr = crate::ffi::R_CHAR(name_sexp);
+                let name_cstr = std::ffi::CStr::from_ptr(name_ptr);
+                if let Ok(s) = name_cstr.to_str() {
+                    col_names.push(s.to_string());
+                }
+            }
+        }
+
+        // Transpose: collect values by column
+        use std::collections::HashMap;
+        let mut columns: HashMap<String, Vec<crate::ffi::SEXP>> =
+            HashMap::with_capacity(col_names.len());
+        for name in &col_names {
+            columns.insert(name.clone(), Vec::with_capacity(n_rows as usize));
+        }
+
+        // Iterate through rows and extract each column value
+        for list in &lists {
+            for name in &col_names {
+                // Get the named element from this row
+                let value = list
+                    .get_named::<crate::ffi::SEXP>(name)
+                    .unwrap_or(unsafe { crate::ffi::R_NilValue });
+                columns.get_mut(name).unwrap().push(value);
+            }
+        }
+
+        // Build column vectors from the collected values
+        let mut df_pairs: Vec<(String, crate::ffi::SEXP)> = Vec::with_capacity(col_names.len());
+        for name in col_names {
+            let col_values = columns.remove(&name).unwrap();
+            // Create an R list column from the collected SEXPs
+            let col_sexp = List::from_raw_values(col_values).as_sexp();
+            df_pairs.push((name, col_sexp));
+        }
+
+        List::from_raw_pairs(df_pairs)
+            .set_class_str(&["data.frame"])
+            .set_row_names_int(n_rows as usize)
     }
 }
 
@@ -230,6 +569,43 @@ pub trait AsListExt: IntoList + Sized {
 }
 
 impl<T: IntoList> AsListExt for T {}
+
+/// Extension trait for wrapping values as [`ToDataFrame`].
+///
+/// This trait is automatically implemented for all types that implement [`IntoDataFrame`].
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::convert::ToDataFrameExt;
+///
+/// struct TimeSeries {
+///     timestamps: Vec<f64>,
+///     values: Vec<f64>,
+/// }
+///
+/// impl IntoDataFrame for TimeSeries {
+///     fn into_data_frame(self) -> List {
+///         List::from_pairs(vec![
+///             ("timestamp", self.timestamps),
+///             ("value", self.values),
+///         ])
+///         .set_class_str(&["data.frame"])
+///         .set_row_names_int(self.timestamps.len())
+///     }
+/// }
+///
+/// let ts = TimeSeries { timestamps: vec![1.0, 2.0], values: vec![10.0, 20.0] };
+/// let wrapped: ToDataFrame<TimeSeries> = ts.to_data_frame();
+/// ```
+pub trait ToDataFrameExt: IntoDataFrame + Sized {
+    /// Wrap `self` in [`ToDataFrame`] for R data.frame conversion.
+    fn to_data_frame(self) -> ToDataFrame<Self> {
+        ToDataFrame(self)
+    }
+}
+
+impl<T: IntoDataFrame> ToDataFrameExt for T {}
 
 /// Extension trait for wrapping values as [`AsExternalPtr`].
 ///
