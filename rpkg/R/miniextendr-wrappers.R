@@ -4873,9 +4873,9 @@ S7Range <- S7::new_class("S7Range",
     properties = list(
         .ptr = S7::class_any
 ,
-        midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
-,
         length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
+,
+        midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
     ),
     constructor = function(start, end, .ptr = NULL) {
         if (!is.null(.ptr)) {
@@ -4897,9 +4897,9 @@ S7Config <- S7::new_class("S7Config",
     properties = list(
         .ptr = S7::class_any
 ,
-        old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
-,
         name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
+,
+        old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
 ,
         score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self })
     ),
@@ -4934,6 +4934,51 @@ S7::method(strict_length, S7Strict) <- function(x) .Call(C_S7Strict__strict_leng
 
 if (!exists("describe_any", mode = "function")) describe_any <- S7::new_generic("describe_any", "x", function(x, ...) S7::S7_dispatch())
 S7::method(describe_any, S7::class_any) <- function(x, ...) .Call(C_S7Strict__describe_any, .call = match.call(), x@.ptr)
+
+#' @noRd
+S7Celsius <- S7::new_class("S7Celsius",
+    properties = list(
+        .ptr = S7::class_any
+    ),
+    constructor = function(value, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Celsius__new, .call = match.call(), value))
+        }
+    }
+)
+
+if (!exists("value", mode = "function")) value <- S7::new_generic("value", "x", function(x, ...) S7::S7_dispatch())
+S7::method(value, S7Celsius) <- function(x, ...) .Call(C_S7Celsius__value, .call = match.call(), x@.ptr)
+
+#' @noRd
+S7Fahrenheit <- S7::new_class("S7Fahrenheit",
+    properties = list(
+        .ptr = S7::class_any
+    ),
+    constructor = function(value, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Fahrenheit__new, .call = match.call(), value))
+        }
+    }
+)
+
+if (!exists("value", mode = "function")) value <- S7::new_generic("value", "x", function(x, ...) S7::S7_dispatch())
+S7::method(value, S7Fahrenheit) <- function(x, ...) .Call(C_S7Fahrenheit__value, .call = match.call(), x@.ptr)
+
+if (!exists("to_celsius", mode = "function")) to_celsius <- S7::new_generic("to_celsius", "x", function(x, ...) S7::S7_dispatch())
+S7::method(to_celsius, S7Fahrenheit) <- function(x, ...) .Call(C_S7Fahrenheit__to_celsius, .call = match.call(), x@.ptr)
+
+S7Fahrenheit_from_celsius <- function(c) {
+    S7Fahrenheit(.ptr = .Call(C_S7Fahrenheit__from_celsius, .call = match.call(), c))
+}
+
+S7::method(convert, list(S7Celsius, S7Fahrenheit)) <- function(from, to) S7Fahrenheit(.ptr = .Call(C_S7Fahrenheit__from_celsius, .call = match.call(), from@.ptr))
+
+S7::method(convert, list(S7Fahrenheit, S7Celsius)) <- function(from, to) S7Celsius(.ptr = .Call(C_S7Fahrenheit__to_celsius, .call = match.call(), from@.ptr))
 
 methods::setClass("S4Counter", slots = c(ptr = "externalptr"))
 

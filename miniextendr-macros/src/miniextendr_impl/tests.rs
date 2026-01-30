@@ -1115,3 +1115,122 @@ fn s7_generic_fallback() {
     // Should register method for class_any instead of Printer
     assert!(wrapper.contains("S7::method(describe, S7::class_any)"), "Expected fallback to class_any, got:\n{}", wrapper);
 }
+
+// =============================================================================
+// S7 Phase 4: convert() methods from Rust From/TryFrom patterns
+// =============================================================================
+
+#[test]
+fn s7_convert_from() {
+    // Test convert_from: converts FROM another type TO this type
+    // Pattern: static method takes OtherType and returns Self
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Point3D {
+            pub fn new(x: f64, y: f64, z: f64) -> Self { Self { x, y, z } }
+
+            #[miniextendr(s7(convert_from = "Point2D"))]
+            pub fn from_2d(p: Point2D) -> Self { Self { x: 0.0, y: 0.0, z: 0.0 } }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should generate S7::method(convert, list(Point2D, Point3D))
+    assert!(
+        wrapper.contains("S7::method(convert, list(Point2D, Point3D))"),
+        "Expected convert method registration, got:\n{}",
+        wrapper
+    );
+    // The method should call the C wrapper with from@.ptr
+    assert!(
+        wrapper.contains("from@.ptr"),
+        "Expected from@.ptr in convert call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_convert_to() {
+    // Test convert_to: converts FROM this type TO another type
+    // Pattern: instance method takes &self and returns OtherType
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Point3D {
+            pub fn new(x: f64, y: f64, z: f64) -> Self { Self { x, y, z } }
+
+            #[miniextendr(s7(convert_to = "Point2D"))]
+            pub fn to_2d(&self) -> Point2D { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should generate S7::method(convert, list(Point3D, Point2D))
+    assert!(
+        wrapper.contains("S7::method(convert, list(Point3D, Point2D))"),
+        "Expected convert method registration, got:\n{}",
+        wrapper
+    );
+    // The method should call the C wrapper with from@.ptr
+    assert!(
+        wrapper.contains("from@.ptr"),
+        "Expected from@.ptr in convert call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_convert_bidirectional() {
+    // Test both convert_from and convert_to on the same class
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Celsius {
+            pub fn new(value: f64) -> Self { Self { value } }
+
+            #[miniextendr(s7(convert_from = "Fahrenheit"))]
+            pub fn from_fahrenheit(f: Fahrenheit) -> Self { unimplemented!() }
+
+            #[miniextendr(s7(convert_to = "Fahrenheit"))]
+            pub fn to_fahrenheit(&self) -> Fahrenheit { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have both convert methods
+    assert!(
+        wrapper.contains("S7::method(convert, list(Fahrenheit, Celsius))"),
+        "Expected convert from Fahrenheit, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("S7::method(convert, list(Celsius, Fahrenheit))"),
+        "Expected convert to Fahrenheit, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_convert_from_and_to_mutually_exclusive() {
+    // Test that specifying both convert_from and convert_to on the same method is an error
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Converter {
+            pub fn new() -> Self { Self {} }
+
+            // This should be invalid - can't have both on same method
+            #[miniextendr(s7(convert_from = "TypeA", convert_to = "TypeB"))]
+            pub fn invalid_convert(&self) -> TypeB { unimplemented!() }
+        }
+    };
+
+    // This should fail during parsing/validation
+    let result = std::panic::catch_unwind(|| {
+        parse_impl(ClassSystem::S7, impl_code)
+    });
+
+    // The parse_impl function should panic or return an error for this invalid config
+    // If it doesn't panic, we need to check the behavior differently
+    if result.is_ok() {
+        // If parsing succeeded, the validation should have caught this
+        // The current implementation validates during parse_impl
+        panic!("Expected error when both convert_from and convert_to are specified on same method");
+    }
+}

@@ -496,6 +496,37 @@ pub struct MethodAttrs {
     /// // Registers method for S7::class_any
     /// ```
     pub s7_fallback: bool,
+    // =========================================================================
+    // S7 Phase 4: Conversion support
+    // =========================================================================
+    /// S7 convert_from - marks a method that converts FROM another type.
+    ///
+    /// Use `#[miniextendr(s7(convert_from = "OtherType"))]` on a static method
+    /// that takes OtherType and returns Self. This generates an S7 convert() method.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(convert_from = "Point2D"))]
+    /// fn from_2d(p: &Point2D) -> Self {
+    ///     Point3D { x: p.x, y: p.y, z: 0.0 }
+    /// }
+    /// // Generates: S7::method(convert, list(Point2D, Point3D)) <- function(from, to) ...
+    /// ```
+    pub s7_convert_from: Option<String>,
+    /// S7 convert_to - marks a method that converts TO another type.
+    ///
+    /// Use `#[miniextendr(s7(convert_to = "OtherType"))]` on an instance method
+    /// that returns OtherType. This generates an S7 convert() method.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(convert_to = "Point2D"))]
+    /// fn to_2d(&self) -> Point2D {
+    ///     Point2D { x: self.x, y: self.y }
+    /// }
+    /// // Generates: S7::method(convert, list(Point3D, Point2D)) <- function(from, to) ...
+    /// ```
+    pub s7_convert_to: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -677,6 +708,17 @@ impl ParsedMethod {
             ));
         }
 
+        // convert_from and convert_to are mutually exclusive on the same method
+        // - convert_from expects a static method (no &self, takes source type)
+        // - convert_to expects an instance method (&self, returns target type)
+        if attrs.s7_convert_from.is_some() && attrs.s7_convert_to.is_some() {
+            return Err(syn::Error::new(
+                span,
+                "cannot specify both `convert_from` and `convert_to` on the same method; \
+                 convert_from is for static methods, convert_to is for instance methods",
+            ));
+        }
+
         // Worker attribute is now supported on methods
         // (validation happens during wrapper generation based on return type)
 
@@ -773,9 +815,17 @@ impl ParsedMethod {
                             method_attrs.s7_dispatch = Some(value.value());
                         } else if inner.path.is_ident("fallback") {
                             method_attrs.s7_fallback = true;
+                        } else if inner.path.is_ident("convert_from") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_convert_from = Some(value.value());
+                        } else if inner.path.is_ident("convert_to") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_convert_to = Some(value.value());
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to"
                             ));
                         }
                         Ok(())
@@ -2128,6 +2178,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         import_parts.push("new_property");
     }
 
+    // Check if any methods use S7 convert (convert_from or convert_to)
+    let has_convert_methods = parsed_impl.methods.iter().any(|m| {
+        m.should_include()
+            && (m.method_attrs.s7_convert_from.is_some() || m.method_attrs.s7_convert_to.is_some())
+    });
+    if has_convert_methods {
+        import_parts.push("convert");
+    }
+
     // Collect unique S7 class types used in properties
     let mut class_imports: std::collections::HashSet<&str> = std::collections::HashSet::new();
     for prop in properties.values() {
@@ -2457,6 +2516,101 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push("}".to_string());
         lines.push(String::new());
+    }
+
+    // Phase 4: S7 convert() methods from Rust From/TryFrom patterns
+    // Convert methods enable type coercion between S7 classes using S7::convert()
+    //
+    // Two patterns:
+    // 1. convert_from = "OtherType" on static method: converts FROM OtherType TO this class
+    //    Rust: fn from_other(other: OtherType) -> Self
+    //    R: S7::method(S7::convert, list(OtherType, ThisClass)) <- function(from, to) ...
+    //
+    // 2. convert_to = "OtherType" on instance method: converts FROM this class TO OtherType
+    //    Rust: fn to_other(&self) -> OtherType
+    //    R: S7::method(S7::convert, list(ThisClass, OtherType)) <- function(from, to) ...
+
+    for method in &parsed_impl.methods {
+        if !method.should_include() {
+            continue;
+        }
+        let attrs = &method.method_attrs;
+
+        // Handle convert_from (static method pattern)
+        // S7 convert signature is function(from, to) - one parameter for the source object
+        if let Some(ref from_type) = attrs.s7_convert_from {
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+
+            // Documentation for convert method (skip if class has @noRd)
+            if !class_has_no_rd {
+                lines.push(format!(
+                    "#' @name convert-{}-to-{}",
+                    from_type, class_name
+                ));
+                lines.push(format!("#' @rdname {}", class_name));
+                lines.push(format!(
+                    "#' @source Generated by miniextendr from `{}::{}`",
+                    type_ident,
+                    method.ident
+                ));
+            }
+
+            // Generate: S7::method(S7::convert, list(FromType, ThisClass)) <- function(from, to) ...
+            // The convert_from method takes the source object as its sole parameter
+            // We pass from@.ptr to extract the ExternalPtr from the S7 object
+            let call_with_from = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
+
+            let strategy = crate::ReturnStrategy::for_method(method);
+            let return_expr = crate::MethodReturnBuilder::new(call_with_from)
+                .with_strategy(strategy)
+                .with_class_name(class_name.clone())
+                .build_s7_inline();
+
+            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            lines.push(format!(
+                "S7::method(convert, list({}, {})) <- function(from, to) {}",
+                from_type, class_name, return_expr
+            ));
+            lines.push(String::new());
+        }
+
+        // Handle convert_to (instance method pattern)
+        // S7 convert signature is function(from, to) - self becomes from
+        if let Some(ref to_type) = attrs.s7_convert_to {
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+
+            // Documentation for convert method (skip if class has @noRd)
+            if !class_has_no_rd {
+                lines.push(format!(
+                    "#' @name convert-{}-to-{}",
+                    class_name, to_type
+                ));
+                lines.push(format!("#' @rdname {}", class_name));
+                lines.push(format!(
+                    "#' @source Generated by miniextendr from `{}::{}`",
+                    type_ident,
+                    method.ident
+                ));
+            }
+
+            // Generate: S7::method(S7::convert, list(ThisClass, ToType)) <- function(from, to) ...
+            // The convert_to method is an instance method where self is mapped to from@.ptr
+            let call = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
+
+            // Force ReturnSelf strategy for convert methods since they return S7 class types
+            // that need to be wrapped: ToType(.ptr = <result>)
+            let return_expr = crate::MethodReturnBuilder::new(call)
+                .with_strategy(crate::ReturnStrategy::ReturnSelf)
+                .with_class_name(to_type.clone())
+                .build_s7_inline();
+
+            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            lines.push(format!(
+                "S7::method(convert, list({}, {})) <- function(from, to) {}",
+                class_name, to_type, return_expr
+            ));
+            lines.push(String::new());
+        }
     }
 
     lines.join("\n")

@@ -455,6 +455,131 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// Active bindings must be getter-only methods taking only `&self`.
 ///
+/// ## S7 Properties
+///
+/// For S7 classes, use `#[miniextendr(s7(getter))]` and `#[miniextendr(s7(setter))]`
+/// to create computed properties accessed via `@`:
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+///
+/// #[derive(ExternalPtr)]
+/// pub struct Range {
+///     start: f64,
+///     end: f64,
+/// }
+///
+/// #[miniextendr(s7)]
+/// impl Range {
+///     pub fn new(start: f64, end: f64) -> Self {
+///         Self { start, end }
+///     }
+///
+///     /// Computed property (read-only): length of the range.
+///     #[miniextendr(s7(getter))]
+///     pub fn length(&self) -> f64 {
+///         self.end - self.start
+///     }
+///
+///     /// Dynamic property getter.
+///     #[miniextendr(s7(getter, prop = "midpoint"))]
+///     pub fn get_midpoint(&self) -> f64 {
+///         (self.start + self.end) / 2.0
+///     }
+///
+///     /// Dynamic property setter.
+///     #[miniextendr(s7(setter, prop = "midpoint"))]
+///     pub fn set_midpoint(&mut self, value: f64) {
+///         let half = self.length() / 2.0;
+///         self.start = value - half;
+///         self.end = value + half;
+///     }
+/// }
+/// ```
+///
+/// In R:
+/// ```r
+/// r <- Range(0, 10)
+/// r@length     # 10 (computed, read-only)
+/// r@midpoint   # 5 (dynamic property)
+/// r@midpoint <- 20  # Adjusts start/end to center at 20
+/// ```
+///
+/// ### Property Attributes
+///
+/// - `#[miniextendr(s7(getter))]` - Read-only computed property
+/// - `#[miniextendr(s7(getter, prop = "name"))]` - Named property getter
+/// - `#[miniextendr(s7(setter, prop = "name"))]` - Named property setter
+/// - `#[miniextendr(s7(getter, default = "0.0"))]` - Property with default value
+/// - `#[miniextendr(s7(getter, required))]` - Required property (error if not provided)
+/// - `#[miniextendr(s7(getter, frozen))]` - Property that can only be set once
+/// - `#[miniextendr(s7(getter, deprecated = "Use X instead"))]` - Deprecated property
+/// - `#[miniextendr(s7(validate))]` - Validator function for property
+///
+/// ## S7 Generic Dispatch Control
+///
+/// Control how S7 generics are created:
+///
+/// - `#[miniextendr(s7(no_dots))]` - Create strict generic without `...`
+/// - `#[miniextendr(s7(dispatch = "x,y"))]` - Multi-dispatch on multiple arguments
+/// - `#[miniextendr(s7(fallback))]` - Register method for `class_any` (catch-all)
+///
+/// ```ignore
+/// #[miniextendr(s7)]
+/// impl MyClass {
+///     /// Strict generic: function(x) instead of function(x, ...)
+///     #[miniextendr(s7(no_dots))]
+///     pub fn strict_method(&self) -> i32 { 42 }
+///
+///     /// Fallback method for any S7 object
+///     #[miniextendr(s7(fallback))]
+///     pub fn describe(&self) -> String { "generic description".into() }
+/// }
+/// ```
+///
+/// ## S7 Type Conversion (`convert`)
+///
+/// Use `convert_from` and `convert_to` to enable S7's `convert()` for type coercion:
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, miniextendr_module, ExternalPtr};
+///
+/// #[derive(ExternalPtr)]
+/// pub struct Celsius { value: f64 }
+///
+/// #[derive(ExternalPtr)]
+/// pub struct Fahrenheit { value: f64 }
+///
+/// #[miniextendr(s7)]
+/// impl Fahrenheit {
+///     pub fn new(value: f64) -> Self { Self { value } }
+///
+///     /// Convert FROM Celsius TO Fahrenheit.
+///     /// Usage: S7::convert(celsius_obj, Fahrenheit)
+///     #[miniextendr(s7(convert_from = "Celsius"))]
+///     pub fn from_celsius(c: ExternalPtr<Celsius>) -> Self {
+///         Fahrenheit { value: c.value * 9.0 / 5.0 + 32.0 }
+///     }
+///
+///     /// Convert FROM Fahrenheit TO Celsius.
+///     /// Usage: S7::convert(fahrenheit_obj, Celsius)
+///     #[miniextendr(s7(convert_to = "Celsius"))]
+///     pub fn to_celsius(&self) -> Celsius {
+///         Celsius { value: (self.value - 32.0) * 5.0 / 9.0 }
+///     }
+/// }
+/// ```
+///
+/// In R:
+/// ```r
+/// c <- Celsius(100)
+/// f <- S7::convert(c, Fahrenheit)  # Uses convert_from
+/// c2 <- S7::convert(f, Celsius)    # Uses convert_to
+/// ```
+///
+/// **Note:** Classes must be defined before they can be referenced in convert methods.
+/// Define the "from" class before the "to" class to avoid forward reference issues.
+///
 /// # Traits (ABI)
 ///
 /// Apply `#[miniextendr]` to a trait to generate ABI metadata, then use

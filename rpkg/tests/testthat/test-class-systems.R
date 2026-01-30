@@ -165,3 +165,37 @@ test_that("S7Strict fallback method works for class_any", {
   # Since it's registered for class_any, it might work on other types too
   # (though in this case the C function expects S7Strict specifically)
 })
+
+# =============================================================================
+# S7 Phase 4: convert() methods - type coercion
+# =============================================================================
+
+test_that("S7 convert_from works (Celsius to Fahrenheit)", {
+  c <- S7Celsius(100.0)  # Boiling point
+  expect_equal(value(c), 100.0)
+
+  # Convert using S7::convert() - uses convert_from on S7Fahrenheit
+  f <- S7::convert(c, S7Fahrenheit)
+  expect_equal(value(f), 212.0)  # 100C = 212F
+})
+
+test_that("S7 convert_to works (Fahrenheit to Celsius)", {
+  f <- S7Fahrenheit(32.0)  # Freezing point
+
+  # Convert using S7::convert() - uses convert_to on S7Fahrenheit
+  c <- S7::convert(f, S7Celsius)
+  expect_equal(value(c), 0.0)  # 32F = 0C
+})
+
+test_that("S7 bidirectional conversion works", {
+  # Start with Celsius
+  c1 <- S7Celsius(25.0)
+
+  # Convert to Fahrenheit (uses convert_from on S7Fahrenheit)
+  f <- S7::convert(c1, S7Fahrenheit)
+  expect_equal(value(f), 77.0)  # 25C = 77F
+
+  # Convert back to Celsius (uses convert_to on S7Fahrenheit)
+  c2 <- S7::convert(f, S7Celsius)
+  expect_equal(value(c2), 25.0, tolerance = 1e-10)
+})
