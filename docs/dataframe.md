@@ -68,6 +68,57 @@ fn get_measurements() -> MeasurementDataFrame {
 }
 ```
 
+### Heterogeneous Types
+
+The derive macro fully supports different types in different fields:
+
+```rust
+#[derive(Clone, IntoList, DataFrameRow)]
+struct Person {
+    name: String,      // character in R
+    age: i32,          // integer in R
+    height: f64,       // numeric in R
+    is_student: bool,  // logical in R
+}
+
+// Each field maintains its distinct type throughout conversion
+```
+
+### Collection Types
+
+Row fields can use various collection types:
+
+```rust
+use std::collections::{HashSet, BTreeSet};
+
+#[derive(Clone, DataFrameRow)]
+struct ComplexRow {
+    // Standard vectors
+    measurements: Vec<f64>,
+
+    // Fixed-size arrays
+    coords: [f64; 3],
+
+    // Boxed slices (heap-allocated)
+    data: Box<[i32]>,
+
+    // Hash sets (unordered, unique values)
+    tags: HashSet<String>,
+
+    // Tree sets (ordered, unique values)
+    categories: BTreeSet<i32>,
+}
+
+// Generated DataFrame has Vec<CollectionType> for each field:
+// - measurements: Vec<Vec<f64>>
+// - coords: Vec<[f64; 3]>
+// - data: Vec<Box<[i32]>>
+// - tags: Vec<HashSet<String>>
+// - categories: Vec<BTreeSet<i32>>
+```
+
+**Note:** Collection field types need manual `IntoList` implementations (see examples in `rpkg/src/rust/dataframe_collections_test.rs`)
+
 ### With Serde (when `serde` feature enabled)
 
 ```rust
@@ -122,6 +173,13 @@ for measurement in df {
 let rows: Vec<Measurement> = df.into_iter().collect();
 ```
 
+### Requirements
+
+The row type must implement `IntoList`:
+- Automatically via `#[derive(IntoList)]`
+- Via `#[derive(Serialize)]` when `serde` feature is enabled
+- Via manual implementation using `List::from_raw_pairs()` (for heterogeneous fields)
+
 ### Attributes (TODO)
 
 Future attributes for customization:
@@ -129,9 +187,10 @@ Future attributes for customization:
 ```rust
 #[derive(DataFrameRow)]
 #[dataframe(name = "Measurements")]  // Custom DataFrame name
-#[dataframe(collection = "Box<[T]>")]  // Use Box<[T]> instead of Vec<T>
 struct Measurement { /* ... */ }
 ```
+
+Note: Collection type is always `Vec<T>` currently. Future versions may support custom collection types via attributes.
 
 ---
 
@@ -200,7 +259,9 @@ let df: DataFrame<Point> = points.into_iter().collect();
 
 For full control or complex scenarios, implement `IntoDataFrame` manually.
 
-### Column-Oriented Data
+### Column-Oriented Data (Homogeneous Types)
+
+For data frames where all columns have the same element type, use `List::from_pairs()`:
 
 ```rust
 struct TimeSeries {
@@ -228,6 +289,34 @@ fn time_series() -> TimeSeries {
 }
 // Automatically converts to data.frame via IntoR
 ```
+
+### Column-Oriented Data (Heterogeneous Types)
+
+**Important:** For data frames with different column types, use `List::from_raw_pairs()` instead of `from_pairs()`:
+
+```rust
+use miniextendr_api::IntoR;
+
+struct MixedData {
+    names: Vec<String>,
+    ages: Vec<i32>,
+    heights: Vec<f64>,
+}
+
+impl IntoDataFrame for MixedData {
+    fn into_data_frame(self) -> List {
+        List::from_raw_pairs(vec![
+            ("name", self.names.into_sexp()),
+            ("age", self.ages.into_sexp()),
+            ("height", self.heights.into_sexp()),
+        ])
+        .set_class_str(&["data.frame"])
+        .set_row_names_int(self.names.len())
+    }
+}
+```
+
+**Why?** `from_pairs()` is generic over a single type `T: IntoR`, so all columns must have the same type. `from_raw_pairs()` accepts pre-converted `SEXP` values, allowing heterogeneous columns.
 
 ### Call-Site Control with Wrappers
 
