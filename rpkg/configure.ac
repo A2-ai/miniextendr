@@ -321,11 +321,10 @@ AS_MKDIR_P([src/rust/.cargo])
 
 AC_CONFIG_FILES([
   .cargo/config.toml:src/rust/cargo-config.toml.in
-  src/rust/Cargo.toml
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
-  src/Makevars
-  src/entrypoint.c
-  src/mx_abi.c
+  src/Makevars:src/Makevars.in
+  src/entrypoint.c:src/entrypoint.c.in
+  src/mx_abi.c:src/mx_abi.c.in
 ])
 
 dnl 2a) Ensure the monorepo root has a cargo config (needed for workspace resolution)

@@ -146,6 +146,16 @@ impl<T: IntoDataFrame> IntoR for ToDataFrame<T> {
     }
 }
 
+/// IntoR implementation for DataFrameRows.
+///
+/// This allows DataFrameRows to be returned directly from `#[miniextendr]` functions.
+impl<T: IntoList> IntoR for DataFrameRows<T> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.into_data_frame().into_sexp()
+    }
+}
+
 /// Trait for types that can be converted into R data frames.
 ///
 /// This trait allows Rust types to define how they convert to R data frames.

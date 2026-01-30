@@ -1,6 +1,7 @@
 //! Examples and tests for data frame conversion features.
 
 use miniextendr_api::{miniextendr, DataFrameRow, IntoList, List};
+use miniextendr_api::convert::{DataFrameRows, IntoDataFrame, ToDataFrame};
 
 // =============================================================================
 // Approach 1: Derive Macro with IntoList
@@ -18,7 +19,7 @@ pub struct Measurement {
 ///
 /// @export
 #[miniextendr]
-pub fn create_measurements_df() -> MeasurementDataFrame {
+pub fn create_measurements_df() -> ToDataFrame<MeasurementDataFrame> {
     let rows = vec![
         Measurement {
             time: 1.0,
@@ -31,14 +32,12 @@ pub fn create_measurements_df() -> MeasurementDataFrame {
             sensor_id: "sensor_B".into(),
         },
     ];
-    Measurement::to_dataframe(rows)
+    ToDataFrame(Measurement::to_dataframe(rows))
 }
 
 // =============================================================================
 // Approach 2: DataFrameRows with IntoList
 // =============================================================================
-
-use miniextendr_api::convert::DataFrameRows;
 
 #[derive(Clone, IntoList)]
 pub struct Point {
@@ -61,8 +60,6 @@ pub fn create_points_df() -> DataFrameRows<Point> {
 // Approach 3: Manual IntoDataFrame Implementation
 // =============================================================================
 
-use miniextendr_api::convert::IntoDataFrame;
-
 /// Example with column-oriented data.
 #[derive(Clone)]
 pub struct TimeSeries {
@@ -72,12 +69,13 @@ pub struct TimeSeries {
 
 impl IntoDataFrame for TimeSeries {
     fn into_data_frame(self) -> List {
+        let len = self.timestamps.len();
         List::from_pairs(vec![
             ("timestamp", self.timestamps),
             ("value", self.values),
         ])
         .set_class_str(&["data.frame"])
-        .set_row_names_int(self.timestamps.len())
+        .set_row_names_int(len)
     }
 }
 
@@ -85,11 +83,11 @@ impl IntoDataFrame for TimeSeries {
 ///
 /// @export
 #[miniextendr]
-pub fn create_timeseries() -> TimeSeries {
-    TimeSeries {
+pub fn create_timeseries() -> ToDataFrame<TimeSeries> {
+    ToDataFrame(TimeSeries {
         timestamps: vec![1.0, 2.0, 3.0],
         values: vec![10.0, 20.0, 30.0],
-    }
+    })
 }
 
 // =============================================================================
