@@ -4,7 +4,6 @@ autom4te.cache
 src/Makevars
 src/Makevars.win
 src/*-wrappers.R
-src/rust/Cargo.toml
 src/rust/document.rs
 src/entrypoint.c
 
