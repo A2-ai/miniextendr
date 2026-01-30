@@ -1,374 +1,280 @@
-# Trait Pattern Review: Marker Types vs Macro-Generated Impls
+# Trait Pattern Review: Blanket Impls with Marker Traits
 
-This document reviews how traits are used across miniextendr-api to guide future implementations.
+This document reviews how traits are used across miniextendr-api after the blanket impl migration (commit e91190e).
 
 ## Executive Summary
 
-The codebase uses **three main patterns**:
+The codebase now uses **blanket implementations as the primary pattern**:
 
-1. **Blanket impls with trait bounds** - For `IntoR` on `Vec<T>`, `&[T]`, `Array1<T>` where `T: RNativeType`
-2. **Macro-generated impls** - For `TryFromSexp` and when you need per-type control
-3. **Generic helper functions + macro impls** - Combines code reuse with explicit type coverage
+1. **Blanket impls with `RNativeType` bound** - For containers: `Vec<T>`, `&[T]`, `TinyVec<[T; N]>`, `DVector<T>`, `SMatrix<T, R, C>`, etc.
+2. **Marker traits for behavior control** - `WidensToI32`, `WidensToF64` for coercion paths
+3. **Macros for non-parametric types only** - Scalar coercions, specialized conversions
 
-**Key insight**: `IntoR` uses blanket impls **for core containers** (Vec, slice, HashMap); optional integrations use explicit/macro impls. `TryFromSexp` always uses macros.
+**Key insight**: Any type implementing `RNativeType` automatically gets ~150+ conversions across all containers (Vec, TinyVec, ndarray, nalgebra, HashMap, etc.) without modification.
 
-**Tinyvec status**: Uses pattern #2 (macro-only). Pattern #3 would add generic helpers.
+**External extensibility**: External crates can implement `RNativeType` for custom types and immediately get full ecosystem integration.
 
 ---
 
-## Pattern 1: Blanket Implementations with Trait Bounds
+## Pattern 1: Blanket Implementations (Primary Pattern)
 
-Used when you want a single impl to cover all types satisfying a trait bound.
+Used for all container types. A single impl covers all `T: RNativeType`.
 
-### Core Example: `IntoR` for `Vec<T>` and `&[T]`
+### Core Example: Slices and Vectors
 
 ```rust
-// into_r.rs
-impl<T> IntoR for Vec<T>
+// from_r.rs - works for ANY T: RNativeType
+impl<T> TryFromSexp for &[T]
 where
-    T: crate::ffi::RNativeType,
+    T: RNativeType + Copy,
 {
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        // Type checking via T::SEXP_TYPE
+        // Direct pointer cast - no per-type code needed
+    }
+}
+
+// into_r.rs
+impl<T: RNativeType> IntoR for Vec<T> {
     fn into_sexp(self) -> SEXP {
         unsafe { vec_to_sexp(&self) }
     }
 }
-
-impl<T> IntoR for &[T]
-where
-    T: crate::ffi::RNativeType,
-{
-    fn into_sexp(self) -> SEXP {
-        unsafe { vec_to_sexp(self) }
-    }
-}
 ```
 
-### Key Trait: `RNativeType`
+### Container Coverage via Blanket Impls
+
+| Container | TryFromSexp | IntoR | Notes |
+|-----------|-------------|-------|-------|
+| `Vec<T>` | ✅ Blanket | ✅ Blanket | Core container |
+| `&[T]`, `&mut [T]` | ✅ Blanket | ✅ Blanket | Arbitrary lifetimes |
+| `[T; N]` | ✅ Blanket | ✅ Blanket | Fixed-size arrays |
+| `VecDeque<T>` | ✅ Blanket | ✅ Blanket | Double-ended queue |
+| `BinaryHeap<T>` | ✅ Blanket | ✅ Blanket | Requires `T: Ord` |
+| `Cow<'_, [T]>` | ✅ Blanket | ✅ Blanket | Zero-copy wrapper |
+| `HashMap<String, T>` | ✅ Blanket | ✅ Blanket | Named list |
+| `TinyVec<[T; N]>` | ✅ Blanket | ✅ Blanket | Small-vec optimization |
+| `ArrayVec<[T; N]>` | ✅ Blanket | ✅ Blanket | Stack-only vec |
+| `DVector<T>` | ✅ Blanket | ✅ Blanket | Dynamic nalgebra vector |
+| `DMatrix<T>` | ✅ Blanket | ✅ Blanket | Dynamic nalgebra matrix |
+| `SVector<T, D>` | ✅ Blanket | ✅ Blanket | Static nalgebra vector |
+| `SMatrix<T, R, C>` | ✅ Blanket | ✅ Blanket | Static nalgebra matrix |
+| `Array0..6<T>` | ✅ Blanket | ✅ Blanket | ndarray types |
+| `ArrayD<T>` | ✅ Blanket | ✅ Blanket | ndarray dynamic-dim |
+
+### The Key Trait: `RNativeType`
 
 ```rust
 // ffi.rs
 pub trait RNativeType: Sized + Copy + 'static {
+    /// The SEXPTYPE for vectors containing this element type.
     const SEXP_TYPE: SEXPTYPE;
+
+    /// Get mutable pointer to vector data.
     unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self;
 }
 ```
 
-Implemented for: `i32`, `f64`, `u8`, `RLogical`, `Rcomplex`
+**Implemented for**: `i32`, `f64`, `u8`, `RLogical`, `Rcomplex`
 
-### Where Blanket Impls Work
+**Why these types?** They have direct memory layout correspondence with R's internal storage:
+- `i32` ↔ `INTSXP` (R's integer)
+- `f64` ↔ `REALSXP` (R's numeric)
+- `u8` ↔ `RAWSXP` (R's raw)
+- `RLogical` ↔ `LGLSXP` (R's logical, stored as i32)
+- `Rcomplex` ↔ `CPLXSXP` (R's complex)
 
-| Type | IntoR | TryFromSexp | Notes |
-|------|-------|-------------|-------|
-| `Vec<T: RNativeType>` | ✅ Blanket | ❌ Macro | TryFromSexp uses `impl_vec_try_from_sexp_native!` |
-| `&[T: RNativeType]` | ✅ Blanket | ❌ Macro | TryFromSexp uses `impl_ref_conversions_for!` |
-| `Array1<T: RNativeType>` | ✅ Generic per-dim | ❌ Macro | IntoR is generic but explicit per dimension type |
-
-**Why this asymmetry?** `IntoR` has a simple, uniform implementation (delegate to slice). `TryFromSexp` needs more control over error handling and type checking per element type.
-
-**Note on ndarray**: While ndarray IntoR impls are generic over `T: RNativeType`, they're written explicitly for each dimension variant (Array0-6, ArrayD) because each has different conversion semantics (Array0 → scalar, Array1 → vector, Array2+ → matrix with dims). This is not a violation of the pattern—it's intentional design.
+**Cannot be RNativeType**: `i8`, `i16`, `f32`, `i64` - memory layout doesn't match any R type.
 
 ---
 
-## Pattern 2: Macro-Generated Implementations
+## Pattern 2: Marker Traits for Behavior Control
 
-Used for `TryFromSexp` and when you need explicit per-type impls.
+Marker traits declare capabilities that enable blanket impls.
 
-### Example: TryFromSexp for Slices
-
-```rust
-// from_r.rs
-macro_rules! impl_ref_conversions_for {
-    ($t:ty) => {
-        impl TryFromSexp for &'static [$t] { ... }
-        impl TryFromSexp for &'static mut [$t] { ... }
-        impl TryFromSexp for Option<&'static [$t]> { ... }
-        // etc.
-    };
-}
-
-impl_ref_conversions_for!(i32);
-impl_ref_conversions_for!(f64);
-impl_ref_conversions_for!(u8);
-impl_ref_conversions_for!(RLogical);
-impl_ref_conversions_for!(crate::ffi::Rcomplex);
-```
-
-### Example: ndarray TryFromSexp
+### Coercion Markers
 
 ```rust
-// ndarray_impl.rs
-macro_rules! impl_array_try_from_sexp_native {
-    ($t:ty) => {
-        impl TryFromSexp for Array0<$t> { ... }
-        impl TryFromSexp for Array1<$t> { ... }
-        impl TryFromSexp for Array2<$t> { ... }
-        // etc.
-    };
-}
+// markers.rs
+/// Marker: type can be losslessly widened to i32
+pub trait WidensToI32: Into<i32> + Copy {}
 
-impl_array_try_from_sexp_native!(i32);
-impl_array_try_from_sexp_native!(f64);
-impl_array_try_from_sexp_native!(u8);
-impl_array_try_from_sexp_native!(RLogical);
-impl_array_try_from_sexp_native!(Rcomplex);
+impl WidensToI32 for i8 {}
+impl WidensToI32 for i16 {}
+impl WidensToI32 for u8 {}
+impl WidensToI32 for u16 {}
+// NOT i32 - identity coercion handled separately
+
+/// Marker: type can be losslessly widened to f64
+pub trait WidensToF64: Into<f64> + Copy {}
+
+impl WidensToF64 for f32 {}
+impl WidensToF64 for i8 {}
+impl WidensToF64 for i16 {}
+impl WidensToF64 for i32 {}
+impl WidensToF64 for u8 {}
+impl WidensToF64 for u16 {}
+impl WidensToF64 for u32 {}
 ```
 
-### When to Use Macros
+### Blanket Impls Using Markers
 
-1. **Explicit type coverage** - Only support types you've tested
-2. **Per-type logic** - Different coercion paths (`i8` from `i32`, `f32` from `f64`)
-3. **Avoiding overlap** - When a blanket impl would conflict with existing explicit impls
-4. **Convention** - `TryFromSexp` consistently uses macros throughout the codebase
+```rust
+// coerce.rs
+impl<T: WidensToI32> Coerce<i32> for T {
+    fn coerce(self) -> i32 {
+        self.into()
+    }
+}
+
+impl<T: WidensToF64> Coerce<f64> for T {
+    fn coerce(self) -> f64 {
+        self.into()
+    }
+}
+```
+
+### Why Markers Instead of Direct Bounds?
+
+**Without markers** (doesn't work):
+```rust
+// This would conflict with other impls
+impl<T: Into<i32> + Copy> Coerce<i32> for T { ... }
+```
+
+**With markers** (works):
+```rust
+// Opt-in via marker trait - no conflicts
+impl<T: WidensToI32> Coerce<i32> for T { ... }
+```
+
+Markers provide **explicit opt-in** without blanket overlap problems.
 
 ---
 
-## Pattern 3: Generic Helper Functions + Macro Impls
+## Pattern 3: Macros (Limited Use)
 
-Combines code reuse (generic helpers) with explicit type coverage (macro impls).
+Macros are now only used for:
 
-### Example: ndarray
+1. **Scalar coercions** - Per-type conversion paths (i8→i32, f32→f64)
+2. **Non-parametric types** - Types without a generic parameter (String, bool)
+3. **Specialized behavior** - When different types need fundamentally different logic
+
+### Example: Scalar TryFromSexp
 
 ```rust
-// Generic helper (internal) - code reuse
-fn dmatrix_from_sexp<T: RNativeType>(sexp: SEXP) -> Result<DMatrix<T>, SexpError> {
-    let slice: &[T] = unsafe { sexp.as_slice() };
-    let (nrow, ncol) = get_matrix_dims(sexp)?;
-    Ok(DMatrix::from_column_slice(nrow, ncol, slice))
-}
-
-// Macro generates explicit impls that call the generic helper
-macro_rules! impl_nalgebra_try_from_sexp {
-    ($t:ty) => {
-        impl TryFromSexp for DMatrix<$t> {
-            type Error = SexpError;
+// from_r.rs - scalar reads need per-type NA handling
+macro_rules! impl_scalar_try_from_sexp {
+    ($t:ty, $na_check:expr) => {
+        impl TryFromSexp for $t {
             fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                dmatrix_from_sexp::<$t>(sexp)
-            }
-        }
-    };
-}
-
-// But IntoR uses blanket impl (no overlap concerns going this direction)
-impl<T: RNativeType + Clone> IntoR for DMatrix<T> {
-    fn into_sexp(self) -> SEXP {
-        // ... delegates to slice
-    }
-}
-```
-
-**Why this pattern?** You get:
-- Code reuse via generic helpers
-- Explicit type coverage via macro invocations
-- No overlap conflicts (macros don't overlap with each other)
-
----
-
-## Current tinyvec Implementation
-
-Uses **pattern #2** (macro-only, no generic helpers):
-
-```rust
-macro_rules! impl_tinyvec_native {
-    ($t:ty) => {
-        impl<const N: usize> TryFromSexp for TinyVec<[$t; N]> { ... }
-        impl<const N: usize> IntoR for TinyVec<[$t; N]> { ... }
-        impl<const N: usize> TryFromSexp for ArrayVec<[$t; N]> { ... }
-        impl<const N: usize> IntoR for ArrayVec<[$t; N]> { ... }
-    };
-}
-
-impl_tinyvec_native!(i32);
-impl_tinyvec_native!(f64);
-impl_tinyvec_native!(u8);
-impl_tinyvec_native!(RLogical);
-```
-
-### Why Not Blanket IntoR?
-
-A blanket impl like this:
-```rust
-impl<A> IntoR for TinyVec<A>
-where
-    A: Array,
-    A::Item: RNativeType,
-{ ... }
-```
-
-**Would conflict with the existing macro-generated impls** (`impl IntoR for TinyVec<[i32; N]>`, etc.). You can't have both a blanket impl and explicit impls for overlapping types.
-
-**To use blanket impls**, you'd need to remove the macro impls first. This is a design choice, not a compiler limitation.
-
-### Why No Blanket Option<T> IntoR?
-
-You might expect a blanket impl like:
-```rust
-impl<T: IntoR> IntoR for Option<T> {
-    fn into_sexp(self) -> SEXP {
-        match self {
-            Some(v) => v.into_sexp(),
-            None => unsafe { R_NilValue },
-        }
-    }
-}
-```
-
-**This doesn't exist** because it would conflict with specialized implementations:
-- `Option<i32>`, `Option<f64>` use R's NA values, not NULL
-- `Option<&T>` has different lifetime semantics
-
-**Pattern for optional integrations**: Every custom type must explicitly implement both:
-- `impl IntoR for MyType`
-- `impl IntoR for Option<MyType>` (using NULL for None)
-
-Copy-paste template:
-```rust
-impl IntoR for Option<MyType> {
-    #[inline]
-    fn into_sexp(self) -> SEXP {
-        match self {
-            Some(v) => v.into_sexp(),
-            None => unsafe { crate::ffi::R_NilValue },
-        }
-    }
-
-    #[inline]
-    unsafe fn into_sexp_unchecked(self) -> SEXP {
-        match self {
-            Some(v) => unsafe { v.into_sexp_unchecked() },
-            None => unsafe { crate::ffi::R_NilValue },
-        }
-    }
-}
-```
-
-### Possible Enhancement
-
-Could upgrade to pattern #3 by adding generic helpers:
-
-```rust
-// Generic helper
-fn tinyvec_from_sexp<T: RNativeType, const N: usize>(sexp: SEXP) -> Result<TinyVec<[T; N]>, SexpTypeError>
-where
-    [T; N]: tinyvec::Array<Item = T>,
-{
-    let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-    let mut tv = TinyVec::new();
-    tv.extend_from_slice(slice);
-    Ok(tv)
-}
-
-// Macro calls the helper
-macro_rules! impl_tinyvec_native {
-    ($t:ty) => {
-        impl<const N: usize> TryFromSexp for TinyVec<[$t; N]> { ... }
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                tinyvec_from_sexp::<$t, N>(sexp)
+                // Per-type NA checking and conversion
             }
         }
     };
 }
 ```
 
-This would reduce code duplication while keeping explicit type coverage.
-
 ---
 
-## Marker Traits
+## Adding New Types
 
-### What Marker Traits Actually Do
-
-Marker traits in `markers.rs` are **informational** - they identify types with certain capabilities:
+### External Crate Adding `RNativeType`
 
 ```rust
-pub trait IsRNativeType: crate::ffi::RNativeType {}
-impl<T: crate::ffi::RNativeType> IsRNativeType for T {}  // Blanket impl
+// In your crate (no miniextendr modification needed!)
+use miniextendr_api::ffi::{RNativeType, SEXP, SEXPTYPE};
+
+pub struct Temperature(f64);
+
+impl RNativeType for Temperature {
+    const SEXP_TYPE: SEXPTYPE = SEXPTYPE::REALSXP;
+
+    unsafe fn dataptr_mut(sexp: SEXP) -> *mut Self {
+        miniextendr_api::ffi::REAL(sexp) as *mut Self
+    }
+}
+
+// Now automatically works:
+// - Vec<Temperature>
+// - &[Temperature]
+// - TinyVec<[Temperature; N]>
+// - DVector<Temperature>
+// - HashMap<String, Temperature>
+// - All Option<> variants
+// - ~150+ total conversions
 ```
 
-**Important**: Since `IsRNativeType` has a blanket impl from `RNativeType`, it does NOT distinguish "derived" vs "manual" impls. Any type implementing `RNativeType` automatically gets `IsRNativeType`.
+### Adding Coercion Support
 
-### Marker Trait Categories
+```rust
+// Your type widens to f64
+impl WidensToF64 for Temperature {}
 
-| Trait | Purpose | Blanket From |
-|-------|---------|--------------|
-| `IsRNativeType` | R native element types | `RNativeType` |
-| `IsAltrepIntegerData` | ALTREP integer data | `AltIntegerData` |
-| `IsAltrepRealData` | ALTREP real data | `AltRealData` |
-| `IsAltrepLogicalData` | ALTREP logical data | `AltLogicalData` |
-| `IsAltrepRawData` | ALTREP raw data | `AltRawData` |
-| `IsAltrepStringData` | ALTREP string data | `AltStringData` |
-| `IsAltrepComplexData` | ALTREP complex data | `AltComplexData` |
-| `IsAltrepListData` | ALTREP list data | `AltListData` |
-| `PrefersList` | Types preferring list conversion | `IsIntoList` |
-| `PrefersExternalPtr` | Types preferring ExternalPtr | `IntoExternalPtr` |
-| `PrefersDataFrame` | Types preferring DataFrame | (explicit impls) |
-| `PrefersRNativeType` | Types preferring native vector | `IsRNativeType` |
-
----
-
-## Core Conversion Traits
-
-| Trait | Purpose | Implementation Strategy |
-|-------|---------|------------------------|
-| `IntoR` | Rust → SEXP | Blanket impls for containers of `T: RNativeType` |
-| `TryFromSexp` | SEXP → Rust | Macro-generated per concrete type |
-| `IntoRAs<Target>` | Rust → SEXP with coercion | Explicit impls |
-| `Coerce<R>` / `TryCoerce<R>` | Scalar coercion | Explicit impls |
-
----
-
-## Optional Crate Adapter Traits
-
-| Trait | Crate | Purpose |
-|-------|-------|---------|
-| `RNdArrayOps` | ndarray | Array operations (sum, mean, etc.) |
-| `RNdSlice` | ndarray | Slice/view operations |
-
-(Other adapter traits like `RVectorOps`, `RRegexOps`, etc. are mentioned in docs but may not exist yet)
-
----
-
-## Recommendations
-
-### Pattern Decision Tree
-
-```
-Want impl for Wrapper<T> where T: RNativeType?
-│
-├─ Is this for IntoR (Rust → R)?
-│   ├─ Yes → Try blanket impl first
-│   │         └─ If overlap with existing impls → Use macro
-│   └─ No (TryFromSexp) → Use macro (codebase convention)
-│
-├─ Do you already have explicit impls for this type?
-│   ├─ Yes → Blanket impl will conflict; stick with macros
-│   └─ No → Blanket impl may work
-│
-├─ Do you need per-type logic (different error handling, coercion)?
-│   ├─ Yes → Use macro
-│   └─ No → Blanket impl may work
-│
-└─ Does the blanket impl compile without overlap errors?
-    ├─ Yes → Use it
-    └─ No → Use macro
+// Now you get:
+// - Vec<Temperature>.coerce() -> Vec<f64>
+// - Temperature as function parameter with auto-coercion
 ```
 
-### For Future Optionals
+---
 
-1. **IntoR**: Try blanket impl first (`impl<T: RNativeType> IntoR for Container<T>`)
-2. **TryFromSexp**: Use macros (matches codebase convention)
-3. **Code reuse**: Add generic helper functions, call from macro impls (pattern #3)
-4. **If blanket conflicts**: You probably have existing explicit impls; remove them or stick with macros
+## Design Principles
+
+### 1. Prefer Blanket Impls
+
+**Before (macro approach)**:
+```rust
+// Must modify library for each type
+impl_conversions_for!(MyType);
+impl_tinyvec_for!(MyType);
+impl_nalgebra_for!(MyType);
+// ...repeat for every container
+```
+
+**After (blanket approach)**:
+```rust
+// One impl unlocks everything
+impl RNativeType for MyType { ... }
+```
+
+### 2. Use Markers for Opt-in Behavior
+
+Instead of complex trait bounds, use marker traits:
+```rust
+// Clear intent, no overlap issues
+impl<T: WidensToI32> Coerce<i32> for T { ... }
+```
+
+### 3. Macros Only When Necessary
+
+Use macros only when:
+- Types have fundamentally different behavior (NA handling)
+- No generic parameter to abstract over
+- Specialization is required
 
 ---
 
-## Files to Reference
+## Option<T> Handling
 
-| File | Contains |
-|------|----------|
-| `markers.rs` | Marker trait definitions and blanket impls |
-| `ffi.rs` | `RNativeType` trait definition |
-| `into_r.rs` | `IntoR` trait with blanket impls for Vec/slice |
-| `from_r.rs` | `TryFromSexp` trait with macro-generated impls |
-| `optionals/ndarray_impl.rs` | Example of pattern #3 (helpers + macros + blanket IntoR) |
-| `optionals/tinyvec_impl.rs` | Example of pattern #2 (macro-only) |
-| `optionals/nalgebra_impl.rs` | Another pattern #3 example |
+`Option<T>` **cannot** have a blanket `IntoR` impl because:
+- `Option<i32>`, `Option<f64>` use R's NA values
+- `Option<MyCustomType>` uses R's NULL
+
+This is handled by explicit impls for each container type:
+```rust
+impl<T: RNativeType> IntoR for Option<Vec<T>> { ... }
+impl<T, const N: usize> IntoR for Option<TinyVec<[T; N]>> { ... }
+// etc.
+```
+
+---
+
+## Summary
+
+| Pattern | When to Use | Example |
+|---------|-------------|---------|
+| Blanket impl | Containers over `T: RNativeType` | `Vec<T>`, `DVector<T>` |
+| Marker trait | Opt-in capabilities | `WidensToI32`, `WidensToF64` |
+| Macro | Scalar types, specialized behavior | `TryFromSexp for i32` |
+
+The blanket impl approach transforms miniextendr from a **library** (fixed set of supported types) to a **framework** (extensible via trait implementation).
