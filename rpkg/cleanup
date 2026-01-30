@@ -41,7 +41,7 @@ rm -f src/rust/Cargo.toml
 rm -f src/rust/document.rs
 rm -f src/entrypoint.c
 rm -f src/mx_abi.c
-rm -f src/miniextendr_wrappers.R
+rm -f src/*-wrappers.R
 
 # Remove vendor directory for the tarball (vendor.tar.xz was created by configure)
 # This avoids CRAN NOTEs about hidden files and long paths.

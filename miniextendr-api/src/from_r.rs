@@ -2965,6 +2965,173 @@ impl TryFromSexp for BTreeSet<String> {
 }
 
 // =============================================================================
+// PathBuf conversions
+// =============================================================================
+
+use std::path::PathBuf;
+
+/// Convert R character scalar (STRSXP of length 1) to `PathBuf`.
+///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` is converted to empty path `""`. This is lossy!
+/// If you need to distinguish between NA and empty strings, use `Option<PathBuf>` instead.
+impl TryFromSexp for PathBuf {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: String = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(PathBuf::from(s))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(PathBuf::from(s))
+    }
+}
+
+/// NA-aware PathBuf conversion: returns `None` for `NA_character_` or `NULL`.
+impl TryFromSexp for Option<PathBuf> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(opt.map(PathBuf::from))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let opt: Option<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(opt.map(PathBuf::from))
+    }
+}
+
+/// Convert R character vector (STRSXP) to `Vec<PathBuf>`.
+///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` elements are converted to empty paths.
+/// Use `Vec<Option<PathBuf>>` if you need to preserve NA values.
+impl TryFromSexp for Vec<PathBuf> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().map(PathBuf::from).collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(vec.into_iter().map(PathBuf::from).collect())
+    }
+}
+
+/// Convert R character vector (STRSXP) to `Vec<Option<PathBuf>>` with NA support.
+///
+/// `NA_character_` elements are converted to `None`.
+impl TryFromSexp for Vec<Option<PathBuf>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().map(|opt| opt.map(PathBuf::from)).collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Option<String>> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(vec.into_iter().map(|opt| opt.map(PathBuf::from)).collect())
+    }
+}
+
+// =============================================================================
+// OsString conversions
+// =============================================================================
+
+use std::ffi::OsString;
+
+/// Convert R character scalar (STRSXP of length 1) to `OsString`.
+///
+/// Since R strings are converted to UTF-8, the resulting `OsString` contains
+/// valid UTF-8 data.
+///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` is converted to empty string. This is lossy!
+/// If you need to distinguish between NA and empty strings, use `Option<OsString>` instead.
+impl TryFromSexp for OsString {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: String = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(OsString::from(s))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(OsString::from(s))
+    }
+}
+
+/// NA-aware OsString conversion: returns `None` for `NA_character_` or `NULL`.
+impl TryFromSexp for Option<OsString> {
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let opt: Option<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(opt.map(OsString::from))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let opt: Option<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(opt.map(OsString::from))
+    }
+}
+
+/// Convert R character vector (STRSXP) to `Vec<OsString>`.
+///
+/// # NA Handling
+///
+/// **Warning:** `NA_character_` elements are converted to empty strings.
+/// Use `Vec<Option<OsString>>` if you need to preserve NA values.
+impl TryFromSexp for Vec<OsString> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().map(OsString::from).collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<String> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(vec.into_iter().map(OsString::from).collect())
+    }
+}
+
+/// Convert R character vector (STRSXP) to `Vec<Option<OsString>>` with NA support.
+///
+/// `NA_character_` elements are converted to `None`.
+impl TryFromSexp for Vec<Option<OsString>> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Option<String>> = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(vec.into_iter().map(|opt| opt.map(OsString::from)).collect())
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let vec: Vec<Option<String>> = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(vec.into_iter().map(|opt| opt.map(OsString::from)).collect())
+    }
+}
+
+// =============================================================================
 // Option<Collection> conversions
 // =============================================================================
 //

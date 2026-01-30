@@ -10,7 +10,7 @@ miniextendr supports five R class systems. This guide helps you choose the right
 | **Method Call** | `obj$method()` | `obj$method()` | `generic(obj)` | `generic(obj)` | `generic(obj)` |
 | **Encapsulation** | Weak | Strong | None | Moderate | Strong |
 | **Dependencies** | None | R6 package | None | methods package | S7 package |
-| **Active Bindings** | No | Yes | No | No | Yes (properties) |
+| **Active Bindings** | No | Yes | No | No | Yes (computed/dynamic properties) |
 | **Inheritance** | No | Limited | S3 dispatch | S4 dispatch | S7 dispatch |
 | **Best For** | Simple APIs | Complex state | Tidyverse compat | Bioconductor | Modern OOP |
 
@@ -494,8 +494,110 @@ print(p1)          # Point(0, 0)
 
 - New packages without legacy constraints
 - Clean, modern OOP design
-- Property validation (future)
+- Computed and dynamic properties (see below)
 - S7 ecosystem integration
+
+### S7 Computed and Dynamic Properties
+
+S7 supports properties that are computed from Rust methods. Use `#[miniextendr(s7(getter))]` for read-only computed properties and add `#[miniextendr(s7(setter, prop = "name"))]` for read-write dynamic properties.
+
+#### Rust Code
+
+```rust
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct Range {
+    start: f64,
+    end: f64,
+}
+
+#[miniextendr(s7)]
+impl Range {
+    pub fn new(start: f64, end: f64) -> Self {
+        Range { start, end }
+    }
+
+    /// Computed property (read-only): length of the range.
+    /// Accessed as obj@length in R.
+    #[miniextendr(s7(getter))]
+    pub fn length(&self) -> f64 {
+        self.end - self.start
+    }
+
+    /// Dynamic property getter: read the midpoint.
+    #[miniextendr(s7(getter, prop = "midpoint"))]
+    pub fn get_midpoint(&self) -> f64 {
+        (self.start + self.end) / 2.0
+    }
+
+    /// Dynamic property setter: set the midpoint.
+    /// Adjusts start and end to maintain length while centering on new midpoint.
+    #[miniextendr(s7(setter, prop = "midpoint"))]
+    pub fn set_midpoint(&mut self, value: f64) {
+        let half = (self.end - self.start) / 2.0;
+        self.start = value - half;
+        self.end = value + half;
+    }
+
+    /// Regular method (not a property).
+    pub fn start(&self) -> f64 {
+        self.start
+    }
+}
+```
+
+#### Generated R Code
+
+```r
+Range <- S7::new_class("Range",
+    properties = list(
+        .ptr = S7::class_any,
+        length = S7::new_property(
+            getter = function(self) .Call(C_Range__length, self@.ptr)
+        ),
+        midpoint = S7::new_property(
+            getter = function(self) .Call(C_Range__get_midpoint, self@.ptr),
+            setter = function(self, value) {
+                .Call(C_Range__set_midpoint, self@.ptr, value)
+                self
+            }
+        )
+    ),
+    constructor = function(start, end, .ptr = NULL) { ... }
+)
+
+# Regular method as S7 generic
+S7::method(start, Range) <- function(x, ...) .Call(C_Range__start, x@.ptr)
+```
+
+#### Usage
+
+```r
+r <- Range(0, 10)
+
+# Computed property (read-only)
+r@length         # 10
+
+# Dynamic property (read-write)
+r@midpoint       # 5
+r@midpoint <- 10 # Adjusts start/end
+r@midpoint       # 10
+start(r)         # 5 (new start after midpoint shift)
+r@length         # 10 (length preserved)
+```
+
+#### Property Attributes
+
+| Attribute | Description |
+|-----------|-------------|
+| `#[miniextendr(s7(getter))]` | Read-only computed property. Property name = method name. |
+| `#[miniextendr(s7(getter, prop = "name"))]` | Getter with custom property name. |
+| `#[miniextendr(s7(setter, prop = "name"))]` | Setter for a dynamic property. Must match a getter's `prop` name. |
+
+**Rules:**
+- A getter without a setter creates a computed (read-only) property
+- A getter + setter with the same `prop` name creates a dynamic (read-write) property
+- Property methods are NOT exposed as S7 generics (accessed via `@` only)
+- Setters must take exactly one parameter (the new value)
 
 ---
 

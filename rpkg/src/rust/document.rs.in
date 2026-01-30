@@ -14,7 +14,7 @@ fn main() {
         .write(true)
         .truncate(true)
         .create(true)
-        .open("miniextendr_wrappers.R")
+        .open("@PACKAGE_TARNAME@-wrappers.R")
         .unwrap();
 
     // Write "do not edit" header with lintr guards

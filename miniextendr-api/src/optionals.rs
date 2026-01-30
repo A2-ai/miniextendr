@@ -303,19 +303,18 @@ pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 // Serialization
 // =============================================================================
 
-/// Integration with the `serde` crate for JSON serialization.
+/// Integration with `serde_json` for JSON string serialization.
 ///
-/// Provides adapter traits for serializing/deserializing Rust types to/from JSON.
+/// Provides adapter traits for serializing/deserializing Rust types to/from JSON strings.
 ///
-/// Enable with `features = ["serde"]`.
-#[cfg(feature = "serde")]
+/// Enable with `features = ["serde_json"]`.
+#[cfg(feature = "serde_json")]
 pub mod serde_impl;
-#[cfg(feature = "serde")]
-pub use serde;
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 pub use serde_impl::{
-    JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
-    json_from_sexp_strict, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
+    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
+    json_from_sexp_with, json_into_sexp,
 };
 
 /// Integration with the `toml` crate for TOML value conversions.

@@ -1,3 +1,4 @@
+#![allow(varargs_without_pattern)]
 //! miniextendr-api: core runtime for Rust <-> R interop.
 //!
 //! This crate provides the FFI surface, safety wrappers, and macro re-exports
@@ -179,6 +180,8 @@ pub use miniextendr_macros::ExternalPtr;
 #[doc(inline)]
 pub use miniextendr_macros::RNativeType;
 #[doc(inline)]
+pub use miniextendr_macros::list;
+#[doc(inline)]
 pub use miniextendr_macros::miniextendr;
 #[doc(inline)]
 pub use miniextendr_macros::miniextendr_module;
@@ -194,7 +197,8 @@ pub use miniextendr_macros::Vctrs;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList,
+    DataFrameRow, IntoList, PreferDataFrame, PreferExternalPtr, PreferList, PreferRNativeType,
+    RFactor, TryFromList,
 };
 
 pub mod altrep;
@@ -302,9 +306,9 @@ pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
 #[cfg(feature = "nonapi")]
 pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
 
-// Error handling helpers (r_stop, r_warning, r_print, r_println, r_error! macro)
+// Error handling helpers (r_stop, r_warning, r_error!, r_print!, r_println! macros)
 pub mod error;
-pub use error::{r_print, r_println, r_stop, r_warning};
+pub use error::{r_stop, r_warning};
 
 // RNG (random number generation) utilities
 pub mod rng;
@@ -326,12 +330,51 @@ pub mod backtrace;
 pub mod coerce;
 pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 
+/// Traits for R's `as.<class>()` coercion functions.
+///
+/// This module provides traits for implementing R's generic coercion methods
+/// (`as.data.frame()`, `as.list()`, `as.character()`, etc.) for Rust types
+/// wrapped in [`ExternalPtr`].
+///
+/// See the [`as_coerce`] module documentation for usage examples.
+pub mod as_coerce;
+pub use as_coerce::{
+    // Core coercion traits
+    AsCharacter,
+    // Error type
+    AsCoerceError,
+    // Marker trait
+    AsCoercible,
+    AsComplex,
+    AsDataFrame,
+    AsDate,
+    AsEnvironment,
+    AsFactor,
+    AsFunction,
+    AsInteger,
+    AsList as AsListCoerce,
+    AsLogical,
+    AsMatrix,
+    AsNumeric,
+    AsPOSIXct,
+    AsRaw,
+    AsVector,
+    // Helpers
+    SUPPORTED_AS_GENERICS,
+    is_supported_as_generic,
+};
+
 pub mod convert;
 pub mod dots;
 pub mod list;
 pub mod strvec;
 pub mod typed_list;
-pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
+#[cfg(feature = "serde")]
+pub use convert::AsSerializeRow;
+pub use convert::{
+    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt, DataFrame,
+    IntoDataFrame, ToDataFrame, ToDataFrameExt,
+};
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
@@ -473,7 +516,8 @@ pub use trait_abi::TraitView;
 pub mod markers;
 pub use markers::{
     IsAltrepComplexData, IsAltrepIntegerData, IsAltrepListData, IsAltrepLogicalData,
-    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType,
+    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType, PrefersDataFrame,
+    PrefersExternalPtr, PrefersList, PrefersRNativeType,
 };
 
 // =============================================================================
@@ -624,18 +668,16 @@ pub use optionals::time_impl;
 #[cfg(feature = "time")]
 pub use optionals::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 
-#[cfg(feature = "serde")]
+#[cfg(feature = "serde_json")]
 pub use optionals::serde_impl;
-#[cfg(feature = "serde")]
-pub use optionals::{
-    JsonValue, RDeserialize, RJsonValueOps, RSerialize, json_from_sexp, json_from_sexp_permissive,
-    json_from_sexp_strict, json_into_sexp,
-};
-#[cfg(feature = "serde")]
-pub use serde;
-
 #[cfg(feature = "toml")]
 pub use optionals::toml_impl;
+#[cfg(feature = "serde_json")]
+pub use optionals::{
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
+    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
+    json_from_sexp_with, json_into_sexp,
+};
 #[cfg(feature = "toml")]
 pub use optionals::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty};
 
@@ -674,16 +716,15 @@ pub use rarray::{RArray, RArray3D, RMatrix, RVector};
 /// Direct R serialization via serde (no JSON intermediate).
 ///
 /// Provides efficient type-preserving conversions between Rust types and native R objects:
-/// - [`RSerializeNative`][serde_r::RSerializeNative] - Convert Rust → R (struct → named list)
-/// - [`RDeserializeNative`][serde_r::RDeserializeNative] - Convert R → Rust (named list → struct)
+/// - [`AsSerialize<T>`][serde::AsSerialize] - Wrapper for returning `Serialize` types from `#[miniextendr]` functions
+/// - [`RSerializeNative`][serde::RSerializeNative] - Convert Rust → R (struct → named list)
+/// - [`RDeserializeNative`][serde::RDeserializeNative] - Convert R → Rust (named list → struct)
 ///
-/// Enable with `features = ["serde_r"]`.
+/// Enable with `features = ["serde"]`.
 ///
-/// See the [`serde_r`] module documentation for type mappings and examples.
-#[cfg(feature = "serde_r")]
-pub mod serde_r;
-#[cfg(feature = "serde_r")]
-pub use serde_r::{RDeserializeNative, RDeserializer, RSerdeError, RSerializeNative, RSerializer};
+/// See the [`serde`] module documentation for type mappings and examples.
+#[cfg(feature = "serde")]
+pub mod serde;
 
 /// Integration with the `bytemuck` crate for POD type conversions.
 ///
