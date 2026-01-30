@@ -494,31 +494,50 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	    if test $_need -eq 1; then
 	      dnl Check if monorepo Cargo.toml exists (won't exist during R CMD check)
 	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
-	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
+	        echo "configure: vendoring dependencies using cargo package approach"
 	        mkdir -p "$VENDOR_OUT"
-	        dnl Use --locked if Cargo.lock exists to respect existing dependency versions
-	        dnl In DEV mode, don't pass --locked to vendor (allow lockfile updates)
-	        dnl In CRAN mode, use --locked if lockfile exists
-	        _vendor_locked_flag=""
-	        if test "$NOT_CRAN" != "true" && test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
-	          _vendor_locked_flag="$CARGO_LOCKED_FLAG"
-	        fi
-	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
-	          echo "configure: cargo vendor: including extra --sync manifests (workspace/bench)"
-	          $CARGO_CMD vendor $_vendor_locked_flag \
-	            --manifest-path "$MANIFEST" \
-	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/Cargo.toml" \
-	            --sync "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench/Cargo.toml" \
-	            "$VENDOR_OUT"
-	        else
-	          $CARGO_CMD vendor $_vendor_locked_flag \
-	            --manifest-path "$MANIFEST" \
-	            "$VENDOR_OUT"
-	        fi
+
+	        dnl Create staging directory for .crate extraction
+	        STAGING_DIR="$abs_rpkg_src/.vendor-tarball-staging"
+	        mkdir -p "$STAGING_DIR"
+
+	        dnl Package workspace crates using cargo package
+	        echo "configure: packaging workspace crates..."
+	        for _crate_dir in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+	          if test -d "$ROOT_MINIEXTENDR_REPO/$_crate_dir"; then
+	            echo "configure:   packaging $_crate_dir"
+	            $CARGO_CMD package --manifest-path "$ROOT_MINIEXTENDR_REPO/$_crate_dir/Cargo.toml" \
+	              --target-dir "$STAGING_DIR/target" --allow-dirty --no-verify 2>&1 | \
+	              grep -v "warning: manifest has no" || true
+	            if test ${PIPESTATUS[[0]]} -ne 0; then
+	              echo "configure: error: cargo package failed for $_crate_dir" >&2
+	              exit 1
+	            fi
+	          fi
+	        done
+
+	        dnl Extract .crate files to vendor directory
+	        echo "configure: extracting packaged crates to vendor..."
+	        for _crate_file in "$STAGING_DIR/target/package/"*.crate; do
+	          if test -f "$_crate_file"; then
+	            _basename=$(basename "$_crate_file" .crate)
+	            echo "configure:   extracting $_basename"
+	            mkdir -p "$VENDOR_OUT/$_basename"
+	            tar -xzf "$_crate_file" -C "$VENDOR_OUT/$_basename" --strip-components=1
+	          fi
+	        done
+
+	        dnl Run cargo vendor for external dependencies only
+	        echo "configure: running cargo vendor for external dependencies"
+	        $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
 	        if test $? -ne 0; then
 	          echo "configure: error: cargo vendor failed" >&2
 	          exit 1
 	        fi
+
+	        dnl Clean up staging directory
+	        rm -rf "$STAGING_DIR"
+
 	        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 	        if test -f "$LOCKFILE"; then
 	          $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
