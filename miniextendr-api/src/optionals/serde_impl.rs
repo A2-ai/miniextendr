@@ -1026,7 +1026,8 @@ mod tests {
 
     #[test]
     fn real_to_json_normal() {
-        let result = real_to_json(std::f64::consts::PI, false, false);
+        let opts = JsonOptions::default();
+        let result = real_to_json(std::f64::consts::PI, &opts, None);
         assert!(result.is_ok());
         let val = result.unwrap();
         assert!(RJsonValueOps::is_number(&val));
@@ -1034,20 +1035,23 @@ mod tests {
 
     #[test]
     fn real_to_json_nan_strict() {
-        let result = real_to_json(f64::NAN, true, false);
+        let opts = JsonOptions { nan: SpecialFloatHandling::Error, ..Default::default() };
+        let result = real_to_json(f64::NAN, &opts, None);
         assert!(result.is_err());
     }
 
     #[test]
     fn real_to_json_nan_permissive() {
-        let result = real_to_json(f64::NAN, false, true);
+        let opts = JsonOptions { nan: SpecialFloatHandling::Null, ..Default::default() };
+        let result = real_to_json(f64::NAN, &opts, None);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
     }
 
     #[test]
     fn real_to_json_inf_permissive() {
-        let result = real_to_json(f64::INFINITY, false, true);
+        let opts = JsonOptions { inf: SpecialFloatHandling::Null, ..Default::default() };
+        let result = real_to_json(f64::INFINITY, &opts, None);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
     }

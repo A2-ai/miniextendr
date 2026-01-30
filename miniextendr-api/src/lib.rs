@@ -194,7 +194,8 @@ pub use miniextendr_macros::list;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
-    IntoList, PreferExternalPtr, PreferList, PreferRNativeType, RFactor, TryFromList,
+    DataFrameRow, IntoList, PreferDataFrame, PreferExternalPtr, PreferList, PreferRNativeType,
+    RFactor, TryFromList,
 };
 #[cfg(feature = "vctrs")]
 #[doc(inline)]
@@ -354,7 +355,12 @@ pub mod dots;
 pub mod list;
 pub mod strvec;
 pub mod typed_list;
-pub use convert::{AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt};
+pub use convert::{
+    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt, DataFrameRows,
+    IntoDataFrame, ToDataFrame, ToDataFrameExt,
+};
+#[cfg(feature = "serde")]
+pub use convert::AsSerializeRow;
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
@@ -496,7 +502,8 @@ pub use trait_abi::TraitView;
 pub mod markers;
 pub use markers::{
     IsAltrepComplexData, IsAltrepIntegerData, IsAltrepListData, IsAltrepLogicalData,
-    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType,
+    IsAltrepRawData, IsAltrepRealData, IsAltrepStringData, IsRNativeType, PrefersDataFrame,
+    PrefersExternalPtr, PrefersList, PrefersRNativeType,
 };
 
 // =============================================================================

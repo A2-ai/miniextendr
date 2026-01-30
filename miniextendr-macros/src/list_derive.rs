@@ -301,6 +301,30 @@ pub fn derive_prefer_externalptr(input: DeriveInput) -> syn::Result<TokenStream>
     Ok(expand)
 }
 
+/// Derive `PreferDataFrame`: marker and IntoR impl that routes through IntoDataFrame.
+pub fn derive_prefer_data_frame(input: DeriveInput) -> syn::Result<TokenStream> {
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let expand = quote! {
+        impl #impl_generics ::miniextendr_api::markers::PrefersDataFrame for #name #ty_generics #where_clause {}
+
+        impl #impl_generics ::miniextendr_api::into_r::IntoR for #name #ty_generics #where_clause {
+            #[inline]
+            fn into_sexp(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+            }
+
+            #[inline]
+            unsafe fn into_sexp_unchecked(self) -> ::miniextendr_api::ffi::SEXP {
+                ::miniextendr_api::convert::IntoDataFrame::into_data_frame(self).into_sexp()
+            }
+        }
+    };
+
+    Ok(expand)
+}
+
 /// Derive `PreferRNativeType`: marker and IntoR impl that routes through native R vector allocation.
 ///
 /// The type must also derive `RNativeType` for this to work.

@@ -84,6 +84,7 @@ mod coerce_tests;
 mod conversion_tests;
 mod conversions;
 mod convert_pref_tests;
+mod dataframe_examples;
 mod default_tests;
 mod dots_tests;
 mod externalptr_tests;
@@ -1667,6 +1668,7 @@ miniextendr_module! {
     use class_system_matrix;
     use shared_trait_test;
     use convert_pref_tests;
+    use dataframe_examples;
     use rng_tests;
     use rayon_tests;
     use serde_r_tests;
