@@ -991,8 +991,10 @@ pub fn miniextendr(
     if has_dots {
         arg_builder = arg_builder.with_dots(named_dots.clone().map(|id| id.to_string()));
     }
-    // Add user-specified parameter defaults
-    arg_builder = arg_builder.with_defaults(parsed.param_defaults().clone());
+    // Add user-specified parameter defaults, merged with auto-defaults for Missing<T> params
+    let merged_defaults =
+        r_wrapper_builder::merge_missing_defaults(inputs, parsed.param_defaults());
+    arg_builder = arg_builder.with_defaults(merged_defaults);
 
     let r_formals = arg_builder.build_formals();
     let mut r_call_args_strs = arg_builder.build_call_args_vec();

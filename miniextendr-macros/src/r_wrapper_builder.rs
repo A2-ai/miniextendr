@@ -210,6 +210,9 @@ impl<'a> RArgumentBuilder<'a> {
 }
 
 /// Build R formal parameters from a Rust signature, with optional defaults.
+///
+/// Automatically adds `quote(expr=)` as default for `Missing<T>` parameters
+/// unless a different default is specified.
 pub(crate) fn build_r_formals_from_sig(
     sig: &syn::Signature,
     defaults: &std::collections::HashMap<String, String>,
@@ -218,7 +221,9 @@ pub(crate) fn build_r_formals_from_sig(
     if matches!(sig.inputs.first(), Some(syn::FnArg::Receiver(_))) {
         builder = builder.skip_first();
     }
-    builder = builder.with_defaults(defaults.clone());
+    // Merge user defaults with auto-generated defaults for Missing<T> params
+    let merged = merge_missing_defaults(&sig.inputs, defaults);
+    builder = builder.with_defaults(merged);
     builder.build_formals()
 }
 
@@ -258,6 +263,67 @@ pub(crate) fn collect_param_idents(
         }
     }
     params
+}
+
+// =============================================================================
+// Missing<T> detection for automatic defaults
+// =============================================================================
+
+/// Check if a type is `Missing<T>`.
+fn is_missing_type(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(tp) => {
+            tp.path
+                .segments
+                .last()
+                .map(|s| s.ident == "Missing")
+                .unwrap_or(false)
+        }
+        _ => false,
+    }
+}
+
+/// Collect parameter names that have `Missing<T>` types.
+///
+/// These parameters need an automatic R default of `quote(expr=)` which
+/// evaluates to `R_MissingArg` (the "missing argument" sentinel).
+pub fn collect_missing_params(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+) -> Vec<String> {
+    let mut missing_params = Vec::new();
+
+    for arg in inputs.iter() {
+        let syn::FnArg::Typed(pt) = arg else {
+            continue;
+        };
+        let syn::Pat::Ident(pat_ident) = pt.pat.as_ref() else {
+            continue;
+        };
+
+        if is_missing_type(pt.ty.as_ref()) {
+            missing_params.push(normalize_r_arg_ident(&pat_ident.ident).to_string());
+        }
+    }
+
+    missing_params
+}
+
+/// Merge Missing<T> defaults with user-specified defaults.
+///
+/// Parameters with `Missing<T>` type get `quote(expr=)` as default unless
+/// the user has already specified a different default.
+pub fn merge_missing_defaults(
+    inputs: &syn::punctuated::Punctuated<syn::FnArg, syn::token::Comma>,
+    user_defaults: &std::collections::HashMap<String, String>,
+) -> std::collections::HashMap<String, String> {
+    let mut merged = user_defaults.clone();
+
+    for param in collect_missing_params(inputs) {
+        // Only add default if user hasn't already specified one
+        merged.entry(param).or_insert_with(|| "quote(expr=)".to_string());
+    }
+
+    merged
 }
 
 // =============================================================================

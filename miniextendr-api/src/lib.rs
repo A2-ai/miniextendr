@@ -364,6 +364,7 @@ pub use as_coerce::{
 
 pub mod convert;
 pub mod dots;
+pub mod missing;
 pub mod list;
 pub mod strvec;
 pub mod typed_list;
@@ -374,6 +375,7 @@ pub use convert::{
 #[cfg(feature = "serde")]
 pub use convert::AsSerializeRow;
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
+pub use missing::{Missing, is_missing_arg};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
