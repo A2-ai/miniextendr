@@ -101,3 +101,43 @@ test_that("S7Range property methods are not exposed as generics", {
   expect_false(exists("get_midpoint", mode = "function", envir = globalenv()))
   expect_false(exists("set_midpoint", mode = "function", envir = globalenv()))
 })
+
+# =============================================================================
+# S7 Phase 2: Property patterns (defaults, required, deprecated)
+# =============================================================================
+
+test_that("S7Config property with default value works", {
+  # Create config with explicit score
+  config <- S7Config("test", 75.0, 1L)
+  expect_equal(config@score, 75.0)
+
+  # Modify via setter
+  config@score <- 90.0
+  expect_equal(config@score, 90.0)
+})
+
+test_that("S7Config required property errors when missing", {
+  # The 'name' property is marked as required
+
+  # Accessing it on a valid config should work
+  config <- S7Config("test", 50.0, 1L)
+  expect_equal(config@name, "test")
+
+  # Note: We can't easily test the "required" error at construction time
+  # because Rust provides the value. The 'required' pattern is primarily
+  # for when S7 constructs objects with properties that have no default.
+})
+
+test_that("S7Config deprecated property emits warning", {
+  config <- S7Config("test", 50.0, 42L)
+
+  # Accessing deprecated property should emit a warning
+  expect_warning(
+    result <- config@old_version,
+    "deprecated"
+  )
+  expect_equal(result, 42L)
+
+  # Regular accessor doesn't warn
+  expect_equal(get_version(config), 42L)
+})

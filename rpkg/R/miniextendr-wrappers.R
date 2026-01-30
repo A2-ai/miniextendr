@@ -4892,6 +4892,29 @@ S7::method(s7_start, S7Range) <- function(x, ...) .Call(C_S7Range__s7_start, .ca
 if (!exists("s7_end", mode = "function")) s7_end <- S7::new_generic("s7_end", "x", function(x, ...) S7::S7_dispatch())
 S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call = match.call(), x@.ptr)
 
+#' @noRd
+S7Config <- S7::new_class("S7Config",
+    properties = list(
+        .ptr = S7::class_any
+,
+        old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
+,
+        score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self })
+,
+        name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
+    ),
+    constructor = function(name, score, version, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Config__new, .call = match.call(), name, score, version))
+        }
+    }
+)
+
+if (!exists("get_version", mode = "function")) get_version <- S7::new_generic("get_version", "x", function(x, ...) S7::S7_dispatch())
+S7::method(get_version, S7Config) <- function(x, ...) .Call(C_S7Config__get_version, .call = match.call(), x@.ptr)
+
 methods::setClass("S4Counter", slots = c(ptr = "externalptr"))
 
 S4Counter <- function(initial) {

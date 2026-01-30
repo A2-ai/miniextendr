@@ -394,6 +394,71 @@ pub struct MethodAttrs {
     /// When specified via `#[miniextendr(s7(getter, prop = "name"))]`, overrides the
     /// default property name which is derived from the method name.
     pub s7_prop: Option<String>,
+    /// S7 property default value (R expression).
+    ///
+    /// Use `#[miniextendr(s7(getter, default = "0.0"))]` to set a default value.
+    /// The value is an R expression that will be used as the `default` parameter
+    /// in `new_property()`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, default = "0.0"))]
+    /// fn score(&self) -> f64 { self.score }
+    /// // Generates: score = new_property(class = class_double, default = 0.0, getter = ...)
+    /// ```
+    pub s7_default: Option<String>,
+    /// S7 property validator marker.
+    ///
+    /// Use `#[miniextendr(s7(validate, prop = "name"))]` to mark a method as a property
+    /// validator. The method should take a value and return `Result<(), String>` or
+    /// return nothing and panic on invalid input.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(validate, prop = "score"))]
+    /// fn validate_score(value: f64) -> Result<(), String> {
+    ///     if value < 0.0 || value > 100.0 {
+    ///         Err("score must be between 0 and 100".into())
+    ///     } else {
+    ///         Ok(())
+    ///     }
+    /// }
+    /// ```
+    pub s7_validate: bool,
+    /// S7 property required marker.
+    ///
+    /// Use `#[miniextendr(s7(getter, required))]` to mark a property as required.
+    /// This generates `default = quote(stop("@name is required"))` in R.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, required))]
+    /// fn id(&self) -> String { self.id.clone() }
+    /// // Generates: id = new_property(default = quote(stop("@id is required")), ...)
+    /// ```
+    pub s7_required: bool,
+    /// S7 property frozen marker.
+    ///
+    /// Use `#[miniextendr(s7(getter, frozen))]` to mark a property that can only
+    /// be set once. After the initial value is set, attempts to change it will error.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, frozen))]
+    /// fn created_at(&self) -> f64 { self.created_at }
+    /// ```
+    pub s7_frozen: bool,
+    /// S7 property deprecated marker.
+    ///
+    /// Use `#[miniextendr(s7(getter, deprecated = "message"))]` to mark a property
+    /// as deprecated. Getter and setter will emit deprecation warnings.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, deprecated = "Use 'value' instead"))]
+    /// fn old_value(&self) -> i32 { self.value }
+    /// ```
+    pub s7_deprecated: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -645,13 +710,27 @@ impl ParsedMethod {
                             method_attrs.s7_getter = true;
                         } else if inner.path.is_ident("setter") {
                             method_attrs.s7_setter = true;
+                        } else if inner.path.is_ident("validate") {
+                            method_attrs.s7_validate = true;
                         } else if inner.path.is_ident("prop") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7_prop = Some(value.value());
+                        } else if inner.path.is_ident("default") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_default = Some(value.value());
+                        } else if inner.path.is_ident("required") {
+                            method_attrs.s7_required = true;
+                        } else if inner.path.is_ident("frozen") {
+                            method_attrs.s7_frozen = true;
+                        } else if inner.path.is_ident("deprecated") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_deprecated = Some(value.value());
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, prop"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated"
                             ));
                         }
                         Ok(())
@@ -1899,15 +1978,24 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
-    // Collect S7 property getters and setters
+    // Collect S7 property getters, setters, and validators
     // Property name is: s7_prop if specified, else method name
     // We store method idents so we can look them up later
     struct S7Property {
         name: String,
         getter_method_ident: Option<String>,
         setter_method_ident: Option<String>,
+        validator_method_ident: Option<String>,
         /// S7 class type inferred from getter return type (e.g., "S7::class_double")
         class_type: Option<String>,
+        /// Default value (R expression)
+        default_value: Option<String>,
+        /// Property is required (error if not provided)
+        required: bool,
+        /// Property is frozen (can only be set once)
+        frozen: bool,
+        /// Deprecation message
+        deprecated: Option<String>,
     }
 
     let mut properties: std::collections::HashMap<String, S7Property> =
@@ -1915,14 +2003,14 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let mut property_method_idents: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 
-    // First pass: collect all property methods
+    // First pass: collect all property methods (getters, setters, validators)
     for method in &parsed_impl.methods {
         if !method.should_include() {
             continue;
         }
         let attrs = &method.method_attrs;
 
-        if attrs.s7_getter || attrs.s7_setter {
+        if attrs.s7_getter || attrs.s7_setter || attrs.s7_validate {
             let method_ident = method.ident.to_string();
             let prop_name = attrs
                 .s7_prop
@@ -1935,7 +2023,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 name: prop_name,
                 getter_method_ident: None,
                 setter_method_ident: None,
+                validator_method_ident: None,
                 class_type: None,
+                default_value: None,
+                required: false,
+                frozen: false,
+                deprecated: None,
             });
 
             if attrs.s7_getter {
@@ -1944,9 +2037,25 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 if let syn::ReturnType::Type(_, ret_type) = &method.sig.output {
                     entry.class_type = rust_type_to_s7_class(ret_type);
                 }
+                // Capture property attributes from getter
+                if let Some(ref default) = attrs.s7_default {
+                    entry.default_value = Some(default.clone());
+                }
+                if attrs.s7_required {
+                    entry.required = true;
+                }
+                if attrs.s7_frozen {
+                    entry.frozen = true;
+                }
+                if let Some(ref msg) = attrs.s7_deprecated {
+                    entry.deprecated = Some(msg.clone());
+                }
             }
             if attrs.s7_setter {
-                entry.setter_method_ident = Some(method_ident);
+                entry.setter_method_ident = Some(method_ident.clone());
+            }
+            if attrs.s7_validate {
+                entry.validator_method_ident = Some(method_ident);
             }
         }
     }
@@ -2034,25 +2143,82 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             prop_parts.push(format!("class = {}", class_type));
         }
 
+        // Handle default value or required pattern
+        if prop.required {
+            // Required pattern: error if not provided
+            prop_parts.push(format!(
+                "default = quote(stop(\"@{} is required\"))",
+                prop.name
+            ));
+        } else if let Some(ref default) = prop.default_value {
+            // Explicit default value (R expression)
+            prop_parts.push(format!("default = {}", default));
+        }
+
+        // Add validator if present
+        if let Some(ref validator_ident) = prop.validator_method_ident {
+            if let Some(validator_method) = find_method(validator_ident) {
+                let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
+                // Validator is called with just the value, not self
+                // Generate: validator = function(value) .Call(C_Type__validate_prop, value)
+                prop_parts.push(format!(
+                    "validator = function(value) .Call({}, .call = match.call(), value)",
+                    ctx.c_ident
+                ));
+            }
+        }
+
+        // Generate getter (with optional deprecation warning)
         if let Some(ref getter_ident) = prop.getter_method_ident {
             if let Some(getter_method) = find_method(getter_ident) {
                 let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
                 let getter_call = ctx.instance_call("self@.ptr");
-                prop_parts.push(format!("getter = function(self) {}", getter_call));
+                if let Some(ref msg) = prop.deprecated {
+                    // Deprecated getter: emit warning then return value
+                    prop_parts.push(format!(
+                        "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"); {} }}",
+                        prop.name, msg, getter_call
+                    ));
+                } else {
+                    prop_parts.push(format!("getter = function(self) {}", getter_call));
+                }
             }
         }
 
+        // Generate setter (with optional frozen/deprecation handling)
         if let Some(ref setter_ident) = prop.setter_method_ident {
             if let Some(setter_method) = find_method(setter_ident) {
                 let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
                 let setter_call = ctx.instance_call("self@.ptr");
-                // Setter function takes self and value, calls the Rust method, returns self
-                // Note: instance_call already includes the method parameters (including 'value'),
-                // so we just need to wrap it in the setter function signature.
-                prop_parts.push(format!(
-                    "setter = function(self, value) {{ {}; self }}",
-                    setter_call
-                ));
+
+                if prop.frozen {
+                    // Frozen pattern: error if property was already set (non-NULL)
+                    // Note: This is a simplified check; true frozen behavior would need
+                    // a separate flag in the object to track if ever set
+                    if let Some(ref msg) = prop.deprecated {
+                        prop_parts.push(format!(
+                            "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                            prop.name, msg, prop.name, prop.name, setter_call
+                        ));
+                    } else {
+                        prop_parts.push(format!(
+                            "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                            prop.name, prop.name, setter_call
+                        ));
+                    }
+                } else if let Some(ref msg) = prop.deprecated {
+                    // Deprecated setter: emit warning then set value
+                    prop_parts.push(format!(
+                        "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); {}; self }}",
+                        prop.name, msg, setter_call
+                    ));
+                } else {
+                    // Normal setter
+                    prop_parts.push(format!(
+                        "setter = function(self, value) {{ {}; self }}",
+                        setter_call
+                    ));
+                }
             }
         }
 

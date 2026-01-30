@@ -932,3 +932,116 @@ fn s7_type_mapping_unknown() {
     let ty: syn::Type = syn::parse_quote!(ExternalPtr<Foo>);
     assert_eq!(rust_type_to_s7_class(&ty), None);
 }
+
+// =============================================================================
+// S7 Phase 2: validation/defaults/required/frozen/deprecated tests
+// =============================================================================
+
+#[test]
+fn s7_property_default_value() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Range {
+            #[miniextendr(s7(getter, default = "0.0"))]
+            pub fn score(&self) -> f64 { self.score }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include default = 0.0 in property definition
+    assert!(wrapper.contains("default = 0.0"), "Expected default value in property, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_property_required() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl User {
+            #[miniextendr(s7(getter, required))]
+            pub fn id(&self) -> String { self.id.clone() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include error message for required property
+    assert!(wrapper.contains("@id is required"), "Expected required error in property, got:\n{}", wrapper);
+    assert!(wrapper.contains("stop("), "Expected stop() call for required property, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_property_frozen() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Config {
+            #[miniextendr(s7(getter, frozen))]
+            pub fn created_at(&self) -> f64 { self.created_at }
+
+            #[miniextendr(s7(setter, prop = "created_at"))]
+            pub fn set_created_at(&mut self, value: f64) { self.created_at = value; }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include frozen check in setter
+    assert!(wrapper.contains("is frozen"), "Expected frozen error message in setter, got:\n{}", wrapper);
+    assert!(wrapper.contains("cannot be modified"), "Expected frozen check in setter, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_property_deprecated() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Legacy {
+            #[miniextendr(s7(getter, deprecated = "Use 'value' instead"))]
+            pub fn old_value(&self) -> i32 { self.value }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include deprecation warning in getter
+    assert!(wrapper.contains("is deprecated"), "Expected deprecation warning in getter, got:\n{}", wrapper);
+    assert!(wrapper.contains("Use 'value' instead"), "Expected deprecation message in getter, got:\n{}", wrapper);
+    assert!(wrapper.contains("warning("), "Expected warning() call for deprecated property, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_property_validator() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Score {
+            #[miniextendr(s7(getter))]
+            pub fn score(&self) -> f64 { self.score }
+
+            #[miniextendr(s7(validate, prop = "score"))]
+            pub fn validate_score(value: f64) -> Result<(), String> {
+                if value < 0.0 || value > 100.0 {
+                    Err("score must be between 0 and 100".into())
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include validator function in property
+    assert!(wrapper.contains("validator = function(value)"), "Expected validator in property, got:\n{}", wrapper);
+    assert!(wrapper.contains("C_Score__validate_score"), "Expected validator C function call, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_property_combined_patterns() {
+    // Test combining default + deprecated
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Config {
+            #[miniextendr(s7(getter, default = "\"default\"", deprecated = "Will be removed"))]
+            pub fn legacy_name(&self) -> String { self.name.clone() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have both default and deprecation
+    assert!(wrapper.contains("default = \"default\""), "Expected default value, got:\n{}", wrapper);
+    assert!(wrapper.contains("Will be removed"), "Expected deprecation message, got:\n{}", wrapper);
+}
