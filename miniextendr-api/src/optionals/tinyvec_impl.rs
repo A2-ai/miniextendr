@@ -266,6 +266,151 @@ where
     }
 }
 
+// =============================================================================
+// Coerced element support
+// =============================================================================
+//
+// Support for `TinyVec<[Coerced<T, R>; N]>` and `ArrayVec<[Coerced<T, R>; N]>`.
+// This allows reading R native types (i32, f64) and coercing to non-native types
+// (i8, f32, etc.) element-wise.
+//
+// Example: `TinyVec<[Coerced<i8, i32>; 8]>` reads from R integer and coerces each
+// element to i8.
+
+use crate::coerce::{Coerced, TryCoerce};
+
+/// Helper to coerce a slice element-wise into a container.
+fn coerce_slice_to_vec<R, T>(slice: &[R]) -> Result<Vec<Coerced<T, R>>, SexpError>
+where
+    R: Copy + TryCoerce<T>,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    slice
+        .iter()
+        .copied()
+        .map(|v| {
+            v.try_coerce()
+                .map(Coerced::new)
+                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+        })
+        .collect()
+}
+
+/// TryFromSexp for `TinyVec<[Coerced<T, R>; N]>` - reads R native type and coerces.
+impl<T, R, const N: usize> TryFromSexp for TinyVec<[Coerced<T, R>; N]>
+where
+    R: RNativeType + Copy + TryCoerce<T>,
+    T: Copy,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != R::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: R::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let slice: &[R] = unsafe { sexp.as_slice() };
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice)?;
+        let mut tv = TinyVec::new();
+        for item in data {
+            tv.push(item);
+        }
+        Ok(tv)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// TryFromSexp for `ArrayVec<[Coerced<T, R>; N]>` - reads R native type and coerces.
+impl<T, R, const N: usize> TryFromSexp for ArrayVec<[Coerced<T, R>; N]>
+where
+    R: RNativeType + Copy + TryCoerce<T>,
+    T: Copy,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+    [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != R::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: R::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let slice: &[R] = unsafe { sexp.as_slice() };
+        if slice.len() > N {
+            return Err(SexpError::InvalidValue(format!(
+                "R vector length {} exceeds ArrayVec capacity {}",
+                slice.len(),
+                N
+            )));
+        }
+        let data: Vec<Coerced<T, R>> = coerce_slice_to_vec(slice)?;
+        let mut av = ArrayVec::new();
+        for item in data {
+            av.push(item);
+        }
+        Ok(av)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// IntoR for `TinyVec<[Coerced<T, R>; N]>` - coerces back and writes to R.
+impl<T, R, const N: usize> IntoR for TinyVec<[Coerced<T, R>; N]>
+where
+    T: Copy + Into<R>,
+    R: RNativeType + Copy,
+    [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
+        r_values.into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
+        unsafe { r_values.into_sexp_unchecked() }
+    }
+}
+
+/// IntoR for `ArrayVec<[Coerced<T, R>; N]>` - coerces back and writes to R.
+impl<T, R, const N: usize> IntoR for ArrayVec<[Coerced<T, R>; N]>
+where
+    T: Copy + Into<R>,
+    R: RNativeType + Copy,
+    [Coerced<T, R>; N]: tinyvec::Array<Item = Coerced<T, R>>,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
+        r_values.into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let r_values: Vec<R> = self.into_iter().map(|c| (*c).into()).collect();
+        unsafe { r_values.into_sexp_unchecked() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

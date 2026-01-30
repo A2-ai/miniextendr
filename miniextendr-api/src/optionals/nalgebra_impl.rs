@@ -818,6 +818,149 @@ impl RMatrixOps for DMatrix<f64> {
     }
 }
 
+// =============================================================================
+// Coerced element support
+// =============================================================================
+//
+// Support for `DVector<Coerced<T, R>>` and `DMatrix<Coerced<T, R>>`.
+// This allows reading R native types (i32, f64) and coercing to non-native types
+// (i8, f32, etc.) element-wise.
+//
+// Example: `DVector<Coerced<f32, f64>>` reads from R numeric and coerces each
+// element to f32.
+
+use crate::coerce::{Coerced, TryCoerce};
+
+/// Helper to coerce a slice element-wise.
+fn coerce_slice<R, T>(slice: &[R]) -> Result<Vec<T>, SexpError>
+where
+    R: Copy + TryCoerce<T>,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    slice
+        .iter()
+        .copied()
+        .map(|v| {
+            v.try_coerce()
+                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+        })
+        .collect()
+}
+
+/// TryFromSexp for `DVector<Coerced<T, R>>` - reads R native type and coerces.
+impl<T, R> TryFromSexp for DVector<Coerced<T, R>>
+where
+    R: RNativeType + Scalar + Copy + TryCoerce<T>,
+    T: Scalar + Copy,
+    Coerced<T, R>: Scalar,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != R::SEXP_TYPE {
+            return Err(crate::from_r::SexpTypeError {
+                expected: R::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let slice: &[R] = unsafe { sexp.as_slice() };
+        let data: Vec<T> = coerce_slice(slice)?;
+        let coerced_data: Vec<Coerced<T, R>> = data.into_iter().map(Coerced::new).collect();
+        Ok(DVector::from_vec(coerced_data))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// TryFromSexp for `DMatrix<Coerced<T, R>>` - reads R native type and coerces.
+impl<T, R> TryFromSexp for DMatrix<Coerced<T, R>>
+where
+    R: RNativeType + Scalar + Copy + TryCoerce<T>,
+    T: Scalar + Copy,
+    Coerced<T, R>: Scalar,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != R::SEXP_TYPE {
+            return Err(crate::from_r::SexpTypeError {
+                expected: R::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        let slice: &[R] = unsafe { sexp.as_slice() };
+        if slice.len() != nrow * ncol {
+            return Err(SexpLengthError {
+                expected: nrow * ncol,
+                actual: slice.len(),
+            }
+            .into());
+        }
+        let data: Vec<T> = coerce_slice(slice)?;
+        let coerced_data: Vec<Coerced<T, R>> = data.into_iter().map(Coerced::new).collect();
+        Ok(DMatrix::from_vec(nrow, ncol, coerced_data))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// IntoR for `DVector<Coerced<T, R>>` - coerces back and writes to R.
+impl<T, R> IntoR for DVector<Coerced<T, R>>
+where
+    T: Copy + Into<R> + Scalar,
+    R: RNativeType + Scalar + Copy,
+    Coerced<T, R>: Scalar,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        DVector::from_vec(r_values).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        unsafe { DVector::from_vec(r_values).into_sexp_unchecked() }
+    }
+}
+
+/// IntoR for `DMatrix<Coerced<T, R>>` - coerces back and writes to R.
+impl<T, R> IntoR for DMatrix<Coerced<T, R>>
+where
+    T: Copy + Into<R> + Scalar,
+    R: RNativeType + Scalar + Copy,
+    Coerced<T, R>: Scalar,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        let nrow = self.nrows();
+        let ncol = self.ncols();
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        DMatrix::from_vec(nrow, ncol, r_values).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let nrow = self.nrows();
+        let ncol = self.ncols();
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        unsafe { DMatrix::from_vec(nrow, ncol, r_values).into_sexp_unchecked() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

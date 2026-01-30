@@ -1021,6 +1021,36 @@ impl ParsedMethod {
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
 
+        // Validate: `self` by value (consuming) methods are not fully supported
+        // They're either: constructor (returns Self), finalizer (marked or inferred), or error
+        if env == ReceiverKind::Value {
+            let returns_self = matches!(&item.sig.output, syn::ReturnType::Type(_, ty)
+                if matches!(ty.as_ref(), syn::Type::Path(p)
+                    if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)));
+
+            // Allow if: constructor (returns Self) or explicitly marked as finalize
+            let is_allowed = returns_self || method_attrs.constructor || method_attrs.finalize;
+
+            if !is_allowed {
+                return Err(syn::Error::new(
+                    item.sig.fn_token.span,
+                    format!(
+                        "method `{}` takes `self` by value (consuming), which is not fully supported.\n\
+                         \n\
+                         Methods that consume `self` cannot be called from R because R uses reference \
+                         semantics via ExternalPtr - the R object would remain alive after the Rust \
+                         value is consumed.\n\
+                         \n\
+                         Options:\n\
+                         1. Use `&self` or `&mut self` instead of `self`\n\
+                         2. If this is a finalizer (cleanup method), add `#[miniextendr(finalize)]`\n\
+                         3. If this returns a new Self (builder pattern), add `#[miniextendr(constructor)]`",
+                        item.sig.ident
+                    ),
+                ));
+            }
+        }
+
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
             env,

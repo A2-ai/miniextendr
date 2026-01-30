@@ -293,3 +293,145 @@ fn protect_raw_convenience() {
         assert_eq!(scope.count(), 1);
     });
 }
+
+// =============================================================================
+// TLS panic cleanup tests
+// =============================================================================
+
+#[test]
+fn tls_cleanup_on_panic() {
+    // Test: TLS scope state should be properly cleaned up after a panic
+    // This is critical for preventing dangling protect stack entries
+    use std::panic;
+
+    r_test_utils::with_r_thread(|| unsafe {
+        // Verify initial state: no active scope
+        assert!(!tls::has_active_scope());
+        assert_eq!(tls::scope_depth(), 0);
+
+        // Catch a panic that occurs inside a TLS scope
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            tls::with_protect_scope(|| {
+                assert!(tls::has_active_scope());
+                assert_eq!(tls::scope_depth(), 1);
+
+                let _x = tls::protect(Rf_ScalarInteger(42));
+                assert_eq!(tls::current_count(), Some(1));
+
+                // Panic inside the scope
+                panic!("intentional panic for testing");
+            });
+        }));
+
+        // Verify the panic was caught
+        assert!(result.is_err());
+
+        // Critical: TLS state should be cleaned up despite the panic
+        // The scope should have been properly unwound
+        assert!(
+            !tls::has_active_scope(),
+            "TLS scope should be cleaned up after panic"
+        );
+        assert_eq!(
+            tls::scope_depth(),
+            0,
+            "TLS scope depth should be 0 after panic cleanup"
+        );
+    });
+}
+
+#[test]
+fn tls_nested_cleanup_on_panic() {
+    // Test: nested TLS scopes should be properly cleaned up on panic
+    use std::panic;
+
+    r_test_utils::with_r_thread(|| unsafe {
+        assert_eq!(tls::scope_depth(), 0);
+
+        let result = panic::catch_unwind(panic::AssertUnwindSafe(|| {
+            tls::with_protect_scope(|| {
+                assert_eq!(tls::scope_depth(), 1);
+                let _a = tls::protect(Rf_ScalarInteger(1));
+
+                tls::with_protect_scope(|| {
+                    assert_eq!(tls::scope_depth(), 2);
+                    let _b = tls::protect(Rf_ScalarInteger(2));
+
+                    // Panic in innermost scope
+                    panic!("nested panic test");
+                });
+            });
+        }));
+
+        assert!(result.is_err());
+
+        // Both nested scopes should be cleaned up
+        assert!(!tls::has_active_scope());
+        assert_eq!(tls::scope_depth(), 0);
+    });
+}
+
+// =============================================================================
+// ReprotectSlot invalidation tests
+// =============================================================================
+
+#[test]
+fn reprotect_slot_old_value_unprotected() {
+    // Test: after set(), the OLD value should no longer be protected by this slot
+    // The new value takes its place in the protection slot
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        // Allocate two distinct vectors
+        let vec_a = Rf_allocVector(SEXPTYPE::REALSXP, 10);
+        let vec_b = Rf_allocVector(SEXPTYPE::INTSXP, 5);
+
+        // Protect vec_a in a reprotect slot
+        let slot = scope.protect_with_index(vec_a);
+        assert!(std::ptr::eq(slot.get().0, vec_a.0));
+
+        // Replace with vec_b
+        slot.set(vec_b);
+
+        // Now vec_b is protected, vec_a is NOT protected by this slot anymore
+        assert!(std::ptr::eq(slot.get().0, vec_b.0));
+        assert!(!std::ptr::eq(slot.get().0, vec_a.0));
+
+        // The protection count is still 1 (only vec_b is protected)
+        assert_eq!(scope.count(), 1);
+
+        // Note: vec_a is now unprotected and eligible for GC
+        // (unless protected elsewhere). In a real scenario with gctorture(),
+        // accessing vec_a after this point could cause issues if it was collected.
+    });
+}
+
+#[test]
+fn reprotect_slot_multiple_replacements() {
+    // Test: multiple set() calls, verifying each replacement invalidates the previous
+    r_test_utils::with_r_thread(|| unsafe {
+        let scope = ProtectScope::new();
+
+        let values: Vec<_> = (0..5)
+            .map(|i| Rf_allocVector(SEXPTYPE::INTSXP, i + 1))
+            .collect();
+
+        let slot = scope.protect_with_index(values[0]);
+
+        for (i, &val) in values.iter().enumerate().skip(1) {
+            // Before set: slot points to previous value
+            let prev = slot.get();
+            assert!(std::ptr::eq(prev.0, values[i - 1].0));
+
+            // After set: slot points to new value
+            slot.set(val);
+            assert!(std::ptr::eq(slot.get().0, val.0));
+
+            // Count stays at 1 throughout
+            assert_eq!(scope.count(), 1);
+        }
+
+        // Final value should be the last one
+        assert!(std::ptr::eq(slot.get().0, values[4].0));
+    });
+}
