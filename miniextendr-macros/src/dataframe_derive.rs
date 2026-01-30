@@ -105,7 +105,7 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     };
 
     // Generate From<Vec<Row>> for DataFrame
-    let field_collections = field_names.iter().map(|name| {
+    let field_collections: Vec<_> = field_names.iter().map(|name| {
         match collection_type {
             CollectionType::Vec => quote! {
                 #name: rows.iter().map(|r| r.#name.clone()).collect()
@@ -120,7 +120,7 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
                 #name: rows.iter().map(|r| r.#name.clone()).collect::<Vec<_>>().try_into().expect("mismatched array length")
             },
         }
-    });
+    }).collect();
 
     let from_vec_impl = quote! {
         impl From<Vec<#row_name>> for #df_name {
