@@ -218,10 +218,11 @@ fn points() -> DataFrame<Point> {
 
 ### With Serialize Types
 
-When the `serde` feature is enabled, use `AsSerializeRow` wrapper:
+When the `serde` feature is enabled, use `from_serialize()` for the simplest experience:
 
 ```rust
 use serde::Serialize;
+use miniextendr_api::SerializeDataFrame;
 
 #[derive(Serialize)]
 struct Event {
@@ -229,6 +230,23 @@ struct Event {
     message: String,
 }
 
+#[miniextendr]
+fn events() -> SerializeDataFrame<Event> {
+    let events = vec![
+        Event { timestamp: 1.0, message: "start".into() },
+        Event { timestamp: 2.0, message: "end".into() },
+    ];
+    SerializeDataFrame::from_serialize(events)
+}
+```
+
+`SerializeDataFrame<T>` is a type alias for `DataFrame<AsSerializeRow<T>>`, and `from_serialize()` handles wrapping each row automatically.
+
+**Alternative (explicit wrapping):**
+
+If you prefer the explicit form or need more control:
+
+```rust
 #[miniextendr]
 fn events() -> DataFrame<AsSerializeRow<Event>> {
     DataFrame::from_rows(vec![
