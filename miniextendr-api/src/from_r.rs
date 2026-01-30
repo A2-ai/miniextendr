@@ -1425,65 +1425,7 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for &'static [$t] {
-            type Error = SexpTypeError;
-
-            #[inline]
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    });
-                }
-                Ok(unsafe { sexp.as_slice::<$t>() })
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    });
-                }
-                Ok(unsafe { sexp.as_slice_unchecked::<$t>() })
-            }
-        }
-
-        impl TryFromSexp for &'static mut [$t] {
-            type Error = SexpTypeError;
-
-            #[inline]
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    });
-                }
-                let len = sexp.len();
-                let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
-                Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                let actual = sexp.type_of();
-                if actual != <$t as RNativeType>::SEXP_TYPE {
-                    return Err(SexpTypeError {
-                        expected: <$t as RNativeType>::SEXP_TYPE,
-                        actual,
-                    });
-                }
-                let len = unsafe { sexp.len_unchecked() };
-                let ptr = unsafe { <$t as RNativeType>::dataptr_mut(sexp) };
-                Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
-            }
-        }
+        // Slice impls removed - now use blanket impls for &[T] and &mut [T]
 
         impl TryFromSexp for Option<&'static $t> {
             type Error = SexpError;
@@ -1530,55 +1472,7 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
-        impl TryFromSexp for Option<&'static [$t]> {
-            type Error = SexpError;
-
-            #[inline]
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                let slice: &'static [$t] =
-                    TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
-                Ok(Some(slice))
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                let slice: &'static [$t] = unsafe {
-                    TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
-                };
-                Ok(Some(slice))
-            }
-        }
-
-        impl TryFromSexp for Option<&'static mut [$t]> {
-            type Error = SexpError;
-
-            #[inline]
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                let slice: &'static mut [$t] =
-                    TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
-                Ok(Some(slice))
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                let slice: &'static mut [$t] = unsafe {
-                    TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
-                };
-                Ok(Some(slice))
-            }
-        }
+        // Option<&[T]> and Option<&mut [T]> impls removed - now use blanket impls
 
         impl TryFromSexp for Vec<&'static $t> {
             type Error = SexpError;
@@ -1855,6 +1749,138 @@ impl_ref_conversions_for!(f64);
 impl_ref_conversions_for!(u8);
 impl_ref_conversions_for!(RLogical);
 impl_ref_conversions_for!(crate::ffi::Rcomplex);
+
+// =============================================================================
+// Blanket implementations for slices with arbitrary lifetimes
+// =============================================================================
+
+/// Blanket impl for `&[T]` where T: RNativeType
+///
+/// This replaces the macro-generated `&'static [T]` impls with a more composable
+/// blanket impl that works for any lifetime. This enables containers like TinyVec
+/// to use blanket impls without needing helper functions.
+impl<T> TryFromSexp for &[T]
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpTypeError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        Ok(unsafe { sexp.as_slice::<T>() })
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        Ok(unsafe { sexp.as_slice_unchecked::<T>() })
+    }
+}
+
+/// Blanket impl for `&mut [T]` where T: RNativeType
+impl<T> TryFromSexp for &mut [T]
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpTypeError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        let len = sexp.len();
+        let ptr = unsafe { T::dataptr_mut(sexp) };
+        Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != T::SEXP_TYPE {
+            return Err(SexpTypeError {
+                expected: T::SEXP_TYPE,
+                actual,
+            });
+        }
+        let len = unsafe { sexp.len_unchecked() };
+        let ptr = unsafe { T::dataptr_mut(sexp) };
+        Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+    }
+}
+
+/// Blanket impl for `Option<&[T]>` where T: RNativeType
+impl<T> TryFromSexp for Option<&[T]>
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
+        Ok(Some(slice))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let slice: &[T] = unsafe {
+            TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
+        };
+        Ok(Some(slice))
+    }
+}
+
+/// Blanket impl for `Option<&mut [T]>` where T: RNativeType
+impl<T> TryFromSexp for Option<&mut [T]>
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpError;
+
+    #[inline]
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let slice: &mut [T] = TryFromSexp::try_from_sexp(sexp).map_err(SexpError::from)?;
+        Ok(Some(slice))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        let slice: &mut [T] = unsafe {
+            TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
+        };
+        Ok(Some(slice))
+    }
+}
 
 // =============================================================================
 // String conversions - STRSXP requires special handling via STRING_ELT
@@ -2811,6 +2837,142 @@ impl_vec_try_from_sexp_native!(f64);
 impl_vec_try_from_sexp_native!(u8);
 impl_vec_try_from_sexp_native!(RLogical);
 impl_vec_try_from_sexp_native!(crate::ffi::Rcomplex);
+
+// =============================================================================
+// Fixed-size array conversions
+// =============================================================================
+
+/// Blanket impl: Convert R vector to `[T; N]` where T: RNativeType.
+///
+/// Returns an error if the R vector length doesn't match N.
+/// Useful for SHA hashes ([u8; 32]), fixed-size patterns, etc.
+impl<T, const N: usize> TryFromSexp for [T; N]
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        if slice.len() != N {
+            return Err(SexpLengthError {
+                expected: N,
+                actual: slice.len(),
+            }
+            .into());
+        }
+
+        // Safe because T: Copy and length is verified
+        let mut arr = std::mem::MaybeUninit::<[T; N]>::uninit();
+        unsafe {
+            std::ptr::copy_nonoverlapping(
+                slice.as_ptr(),
+                arr.as_mut_ptr() as *mut T,
+                N,
+            );
+            Ok(arr.assume_init())
+        }
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+// =============================================================================
+// VecDeque conversions
+// =============================================================================
+
+use std::collections::VecDeque;
+
+/// Blanket impl: Convert R vector to `VecDeque<T>` where T: RNativeType.
+impl<T> TryFromSexp for VecDeque<T>
+where
+    T: crate::ffi::RNativeType + Copy,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(VecDeque::from(slice.to_vec()))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(VecDeque::from(slice.to_vec()))
+    }
+}
+
+// =============================================================================
+// BinaryHeap conversions
+// =============================================================================
+
+use std::collections::BinaryHeap;
+
+/// Blanket impl: Convert R vector to `BinaryHeap<T>` where T: RNativeType + Ord.
+///
+/// Creates a binary heap from the R vector elements.
+impl<T> TryFromSexp for BinaryHeap<T>
+where
+    T: crate::ffi::RNativeType + Copy + Ord,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(BinaryHeap::from(slice.to_vec()))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(BinaryHeap::from(slice.to_vec()))
+    }
+}
+
+// =============================================================================
+// Cow conversions
+// =============================================================================
+
+use std::borrow::Cow;
+
+/// Blanket impl: Convert R vector to `Cow<'static, [T]>` where T: RNativeType.
+///
+/// Always returns `Cow::Owned` since we can't safely return a borrowed slice
+/// with 'static lifetime from SEXP memory (it's not truly static).
+impl<T> TryFromSexp for Cow<'static, [T]>
+where
+    T: crate::ffi::RNativeType + Copy + Clone,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Cow::Owned(slice.to_vec()))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Cow::Owned(slice.to_vec()))
+    }
+}
+
+/// Convert R character scalar to `Cow<'static, str>`.
+///
+/// Always returns `Cow::Owned` since we can't safely return a borrowed &str
+/// with 'static lifetime from SEXP memory.
+impl TryFromSexp for Cow<'static, str> {
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: String = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(Cow::Owned(s))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let s: String = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(Cow::Owned(s))
+    }
+}
 
 /// Convert R character vector to `Vec<String>`.
 ///

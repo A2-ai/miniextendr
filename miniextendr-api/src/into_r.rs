@@ -628,6 +628,116 @@ impl IntoR for BTreeSet<String> {
 }
 
 // =============================================================================
+// Fixed-size array conversions
+// =============================================================================
+
+/// Blanket impl for `[T; N]` where T: RNativeType.
+///
+/// Enables direct conversion of fixed-size arrays to R vectors.
+/// Useful for SHA hashes, fixed-size byte patterns, etc.
+impl<T: crate::ffi::RNativeType, const N: usize> IntoR for [T; N] {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_slice().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_slice().into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
+// VecDeque conversions
+// =============================================================================
+
+use std::collections::VecDeque;
+
+/// Convert `VecDeque<T>` to R vector where T: RNativeType.
+impl<T> IntoR for VecDeque<T>
+where
+    T: crate::ffi::RNativeType,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        // Convert to Vec for efficient bulk copy
+        let vec: Vec<T> = self.into_iter().collect();
+        vec.into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        let vec: Vec<T> = self.into_iter().collect();
+        unsafe { vec.into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
+// BinaryHeap conversions
+// =============================================================================
+
+use std::collections::BinaryHeap;
+
+/// Convert `BinaryHeap<T>` to R vector where T: RNativeType + Ord.
+///
+/// The heap is drained into a vector (destroying the heap property).
+/// Elements are returned in arbitrary order, not sorted.
+impl<T> IntoR for BinaryHeap<T>
+where
+    T: crate::ffi::RNativeType + Ord,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.into_vec().into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.into_vec().into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
+// Cow conversions
+// =============================================================================
+
+use std::borrow::Cow;
+
+/// Convert `Cow<'_, [T]>` to R vector where T: RNativeType.
+///
+/// Clones borrowed data if needed.
+impl<T> IntoR for Cow<'_, [T]>
+where
+    T: crate::ffi::RNativeType + Clone,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_ref().into_sexp()
+    }
+
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_ref().into_sexp_unchecked() }
+    }
+}
+
+/// Convert `Cow<'_, str>` to R character scalar.
+impl IntoR for Cow<'_, str> {
+    #[inline]
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        self.as_ref().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+        unsafe { self.as_ref().into_sexp_unchecked() }
+    }
+}
+
+// =============================================================================
+// Box conversions (skipped - conflicts with IntoExternalPtr blanket impl)
+// =============================================================================
+//
+// We can't add `impl<T: IntoR> IntoR for Box<T>` because it conflicts with
+// the blanket impl `impl<T: IntoExternalPtr> IntoR for T`. If downstream
+// crates implement `IntoExternalPtr for Box<SomeType>`, we'd have overlapping
+// impls. Users can manually unbox with `*boxed_value` before conversion.
+
+// =============================================================================
 // PathBuf conversions
 // =============================================================================
 

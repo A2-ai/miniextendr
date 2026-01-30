@@ -63,201 +63,208 @@
 
 pub use tinyvec::{Array, ArrayVec, TinyVec};
 
-use crate::ffi::{RLogical, SEXP, SEXPTYPE, SexpExt};
+use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
 
 // =============================================================================
-// Macro for native R types (i32, f64, u8, RLogical)
+// Blanket implementations for TinyVec and ArrayVec
 // =============================================================================
+//
+// Now that we have blanket impls for `&[T]` where T: RNativeType, we can write
+// blanket impls for containers instead of using macros. This provides maximum
+// composability - any type implementing RNativeType automatically works with
+// TinyVec and ArrayVec.
 
-macro_rules! impl_tinyvec_native {
-    ($t:ty) => {
-        // TinyVec<[T; N]>
-        impl<const N: usize> TryFromSexp for TinyVec<[$t; N]>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            type Error = SexpTypeError;
+/// Blanket impl for `TinyVec<[T; N]>` where T: RNativeType
+impl<T, const N: usize> TryFromSexp for TinyVec<[T; N]>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    type Error = SexpTypeError;
 
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
-                let mut tv = TinyVec::new();
-                tv.extend_from_slice(slice);
-                Ok(tv)
-            }
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        let mut tv = TinyVec::new();
+        tv.extend_from_slice(slice);
+        Ok(tv)
+    }
 
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                let slice: &[$t] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp) }?;
-                let mut tv = TinyVec::new();
-                tv.extend_from_slice(slice);
-                Ok(tv)
-            }
-        }
-
-        impl<const N: usize> IntoR for TinyVec<[$t; N]>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            #[inline]
-            fn into_sexp(self) -> SEXP {
-                self.as_slice().into_sexp()
-            }
-
-            #[inline]
-            unsafe fn into_sexp_unchecked(self) -> SEXP {
-                unsafe { self.as_slice().into_sexp_unchecked() }
-            }
-        }
-
-        // ArrayVec<[T; N]>
-        impl<const N: usize> TryFromSexp for ArrayVec<[$t; N]>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            type Error = SexpError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                let slice: &[$t] = TryFromSexp::try_from_sexp(sexp)?;
-                if slice.len() > N {
-                    return Err(SexpError::InvalidValue(format!(
-                        "R vector length {} exceeds ArrayVec capacity {}",
-                        slice.len(),
-                        N
-                    )));
-                }
-                let mut av = ArrayVec::new();
-                av.extend_from_slice(slice);
-                Ok(av)
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                let slice: &[$t] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp) }?;
-                if slice.len() > N {
-                    return Err(SexpError::InvalidValue(format!(
-                        "R vector length {} exceeds ArrayVec capacity {}",
-                        slice.len(),
-                        N
-                    )));
-                }
-                let mut av = ArrayVec::new();
-                av.extend_from_slice(slice);
-                Ok(av)
-            }
-        }
-
-        impl<const N: usize> IntoR for ArrayVec<[$t; N]>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            #[inline]
-            fn into_sexp(self) -> SEXP {
-                self.as_slice().into_sexp()
-            }
-
-            #[inline]
-            unsafe fn into_sexp_unchecked(self) -> SEXP {
-                unsafe { self.as_slice().into_sexp_unchecked() }
-            }
-        }
-
-        // Option<TinyVec<[T; N]>> for NULL handling
-        impl<const N: usize> TryFromSexp for Option<TinyVec<[$t; N]>>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            type Error = SexpTypeError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                TinyVec::try_from_sexp(sexp).map(Some)
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                unsafe { TinyVec::try_from_sexp_unchecked(sexp) }.map(Some)
-            }
-        }
-
-        impl<const N: usize> IntoR for Option<TinyVec<[$t; N]>>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            #[inline]
-            fn into_sexp(self) -> SEXP {
-                match self {
-                    Some(tv) => tv.into_sexp(),
-                    None => unsafe { crate::ffi::R_NilValue },
-                }
-            }
-
-            #[inline]
-            unsafe fn into_sexp_unchecked(self) -> SEXP {
-                match self {
-                    Some(tv) => unsafe { tv.into_sexp_unchecked() },
-                    None => unsafe { crate::ffi::R_NilValue },
-                }
-            }
-        }
-
-        // Option<ArrayVec<[T; N]>> for NULL handling
-        impl<const N: usize> TryFromSexp for Option<ArrayVec<[$t; N]>>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            type Error = SexpError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                ArrayVec::try_from_sexp(sexp).map(Some)
-            }
-
-            #[inline]
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                if sexp.type_of() == SEXPTYPE::NILSXP {
-                    return Ok(None);
-                }
-                unsafe { ArrayVec::try_from_sexp_unchecked(sexp) }.map(Some)
-            }
-        }
-
-        impl<const N: usize> IntoR for Option<ArrayVec<[$t; N]>>
-        where
-            [$t; N]: tinyvec::Array<Item = $t>,
-        {
-            #[inline]
-            fn into_sexp(self) -> SEXP {
-                match self {
-                    Some(av) => av.into_sexp(),
-                    None => unsafe { crate::ffi::R_NilValue },
-                }
-            }
-
-            #[inline]
-            unsafe fn into_sexp_unchecked(self) -> SEXP {
-                match self {
-                    Some(av) => unsafe { av.into_sexp_unchecked() },
-                    None => unsafe { crate::ffi::R_NilValue },
-                }
-            }
-        }
-    };
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        let mut tv = TinyVec::new();
+        tv.extend_from_slice(slice);
+        Ok(tv)
+    }
 }
 
-// Implement for all native R types
-impl_tinyvec_native!(i32);
-impl_tinyvec_native!(f64);
-impl_tinyvec_native!(u8);
-impl_tinyvec_native!(RLogical);
+/// Blanket impl for `ArrayVec<[T; N]>` where T: RNativeType
+impl<T, const N: usize> TryFromSexp for ArrayVec<[T; N]>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        if slice.len() > N {
+            return Err(SexpError::InvalidValue(format!(
+                "R vector length {} exceeds ArrayVec capacity {}",
+                slice.len(),
+                N
+            )));
+        }
+        let mut av = ArrayVec::new();
+        av.extend_from_slice(slice);
+        Ok(av)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        if slice.len() > N {
+            return Err(SexpError::InvalidValue(format!(
+                "R vector length {} exceeds ArrayVec capacity {}",
+                slice.len(),
+                N
+            )));
+        }
+        let mut av = ArrayVec::new();
+        av.extend_from_slice(slice);
+        Ok(av)
+    }
+}
+
+/// Blanket impl for `IntoR` on `TinyVec<[T; N]>` where T: RNativeType
+impl<T, const N: usize> IntoR for TinyVec<[T; N]>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.as_slice().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { self.as_slice().into_sexp_unchecked() }
+    }
+}
+
+/// Blanket impl for `IntoR` on `ArrayVec<[T; N]>` where T: RNativeType
+impl<T, const N: usize> IntoR for ArrayVec<[T; N]>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        self.as_slice().into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        unsafe { self.as_slice().into_sexp_unchecked() }
+    }
+}
+
+/// Blanket impl for `Option<TinyVec<[T; N]>>` where T: RNativeType
+impl<T, const N: usize> TryFromSexp for Option<TinyVec<[T; N]>>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    type Error = SexpTypeError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        TinyVec::try_from_sexp(sexp).map(Some)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        unsafe { TinyVec::try_from_sexp_unchecked(sexp) }.map(Some)
+    }
+}
+
+/// Blanket impl for `IntoR` on `Option<TinyVec<[T; N]>>` where T: RNativeType
+impl<T, const N: usize> IntoR for Option<TinyVec<[T; N]>>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(tv) => tv.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        match self {
+            Some(tv) => unsafe { tv.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+/// Blanket impl for `Option<ArrayVec<[T; N]>>` where T: RNativeType
+impl<T, const N: usize> TryFromSexp for Option<ArrayVec<[T; N]>>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        ArrayVec::try_from_sexp(sexp).map(Some)
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        unsafe { ArrayVec::try_from_sexp_unchecked(sexp) }.map(Some)
+    }
+}
+
+/// Blanket impl for `IntoR` on `Option<ArrayVec<[T; N]>>` where T: RNativeType
+impl<T, const N: usize> IntoR for Option<ArrayVec<[T; N]>>
+where
+    T: RNativeType + Copy,
+    [T; N]: tinyvec::Array<Item = T>,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(av) => av.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        match self {
+            Some(av) => unsafe { av.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
