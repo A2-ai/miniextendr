@@ -438,7 +438,7 @@ dnl 2) Run cargo vendor (dev mode only, after Cargo.toml is generated)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
   dnl Only vendor in dev mode (NOT_CRAN=true).
-  dnl In CRAN/offline mode we need either vendor/ dir OR vendor.tar.xz (compressed by R CMD build).
+  dnl In CRAN/offline mode we prefer vendor/ dir OR vendor.tar.xz, but fall back to network if needed.
   if test "$NOT_CRAN" != "true"; then
     dnl Check if vendor directory exists and is populated
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
@@ -455,12 +455,16 @@ AC_CONFIG_COMMANDS([cargo-vendor],
           $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
         fi
       else
-        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
-        exit 1
+        dnl No vendor available - fall back to network (e.g., GitHub installs)
+        echo "configure: no cached vendor found, will proceed with network access" >&2
+        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+        dnl Continue to dev mode vendoring logic below
+        NOT_CRAN=true
       fi
     fi
-    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+    if test "$NOT_CRAN" != "true"; then
+      echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+    fi
   else
     MANIFEST="src/rust/Cargo.toml"
     LOCKFILE="src/rust/Cargo.lock"

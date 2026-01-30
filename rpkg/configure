@@ -3884,12 +3884,14 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
           $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
         fi
       else
-        echo "configure: error: CRAN/offline build but vendor directory is missing or empty: $VENDOR_OUT" >&2
-        echo "configure:        Either build from a release tarball that includes inst/vendor.tar.xz, or rerun configure with NOT_CRAN=true." >&2
-        exit 1
+                echo "configure: no cached vendor found, will proceed with network access" >&2
+        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+                NOT_CRAN=true
       fi
     fi
-    echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+    if test "$NOT_CRAN" != "true"; then
+      echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+    fi
   else
     MANIFEST="src/rust/Cargo.toml"
     LOCKFILE="src/rust/Cargo.lock"
