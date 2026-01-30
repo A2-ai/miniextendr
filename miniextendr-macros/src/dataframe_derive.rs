@@ -129,44 +129,33 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    // Generate IntoIterator for DataFrame
+    // Generate IntoIterator for DataFrame - use concrete types for simplicity
     let iterator_name = format_ident!("{}Iterator", df_name);
 
-    // Use unique type parameter names for each field's iterator
-    let iter_type_params: Vec<_> = (0..field_names.len())
-        .map(|i| format_ident!("I{}", i))
-        .collect();
-
-    let iter_field_decls: Vec<_> = iter_type_params.iter().zip(field_names.iter()).map(|(type_param, field_name)| {
-        quote! { #field_name: #type_param }
-    }).collect();
-
-    let iter_type_bounds: Vec<_> = iter_type_params.iter().zip(field_info.iter()).map(|(type_param, (_, ty))| {
-        quote! { #type_param: Iterator<Item = #ty> }
-    }).collect();
-
-    let iter_inits: Vec<_> = field_names.iter().map(|field_name| {
-        quote! { #field_name: self.#field_name.into_iter() }
-    }).collect();
-
-    let next_fields: Vec<_> = field_names.iter().map(|field_name| {
-        quote! { #field_name: self.#field_name.next()? }
-    }).collect();
-
-    let iter_concrete_types: Vec<_> = field_info.iter().map(|(_, ty)| {
+    let iter_field_types: Vec<_> = field_info.iter().map(|(_name, ty)| {
         quote! { <Vec<#ty> as IntoIterator>::IntoIter }
     }).collect();
 
-    let iter_type_bounds2 = iter_type_bounds.clone();
+    let iter_field_decls: Vec<_> = field_names.iter().zip(iter_field_types.iter()).map(|(name, iter_ty)| {
+        quote! { #name: #iter_ty }
+    }).collect();
+
+    let iter_inits: Vec<_> = field_names.iter().map(|name| {
+        quote! { #name: self.#name.into_iter() }
+    }).collect();
+
+    let next_fields: Vec<_> = field_names.iter().map(|name| {
+        quote! { #name: self.#name.next()? }
+    }).collect();
 
     let into_iterator_impl = quote! {
-        pub struct #iterator_name<#(#iter_type_bounds),*> {
+        pub struct #iterator_name {
             #(#iter_field_decls),*
         }
 
         impl IntoIterator for #df_name {
             type Item = #row_name;
-            type IntoIter = #iterator_name<#(#iter_concrete_types),*>;
+            type IntoIter = #iterator_name;
 
             fn into_iter(self) -> Self::IntoIter {
                 #iterator_name {
@@ -175,7 +164,7 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             }
         }
 
-        impl<#(#iter_type_bounds2),*> Iterator for #iterator_name<#(#iter_type_params),*> {
+        impl Iterator for #iterator_name {
             type Item = #row_name;
 
             fn next(&mut self) -> Option<Self::Item> {
