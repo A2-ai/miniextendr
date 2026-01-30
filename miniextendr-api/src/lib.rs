@@ -609,7 +609,7 @@ pub use optionals::{
 #[cfg(feature = "nalgebra")]
 pub use optionals::nalgebra_impl;
 #[cfg(feature = "nalgebra")]
-pub use optionals::{DMatrix, DVector, RMatrixOps, RVectorOps};
+pub use optionals::{DMatrix, DVector, RMatrixOps, RVectorOps, SMatrix, SVector};
 
 #[cfg(feature = "num-bigint")]
 pub use optionals::num_bigint_impl;

@@ -158,13 +158,13 @@ pub use ndarray_impl::{
 /// Integration with the `nalgebra` crate.
 ///
 /// Provides conversions between R vectors/matrices and nalgebra types
-/// (`DVector`, `DMatrix`).
+/// (`DVector`, `DMatrix`, `SVector`, `SMatrix`).
 ///
 /// Enable with `features = ["nalgebra"]`.
 #[cfg(feature = "nalgebra")]
 pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
-pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps};
+pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps, SMatrix, SVector};
 
 // =============================================================================
 // Numeric types
