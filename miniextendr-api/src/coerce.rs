@@ -841,7 +841,23 @@ impl TryCoerce<u32> for f64 {
 // =============================================================================
 // Float to i64/u64 (fallible)
 // =============================================================================
+//
+// These conversions validate that the f64 can be exactly represented as an integer.
+//
+// **Checks performed:**
+// - NaN → `Err(CoerceError::NaN)`
+// - Infinity → `Err(CoerceError::Overflow)`
+// - Out of range → `Err(CoerceError::Overflow)`
+// - Has fractional part → `Err(CoerceError::PrecisionLoss)`
+//
+// **Note on precision:**
+// f64 can exactly represent all integers in [-2^53, 2^53]. For values in this
+// range that pass the fractional check, conversion is exact. For larger f64
+// values (which must have been created through approximation), the conversion
+// returns whatever integer the f64 represents, which may not be what was
+// originally intended.
 
+/// Convert `f64` to `i64`, validating exact representation.
 impl TryCoerce<i64> for f64 {
     type Error = CoerceError;
 
@@ -930,7 +946,23 @@ impl TryCoerce<usize> for f64 {
 // =============================================================================
 // Large int to f64 (fallible - precision)
 // =============================================================================
+//
+// These conversions only succeed if the integer can be exactly represented
+// in f64. This is stricter than Rust's `as f64` which silently rounds.
+//
+// **Safe integer range:**
+// - f64 has 53 bits of mantissa precision
+// - Integers in [-2^53, 2^53] (±9,007,199,254,740,992) are exactly representable
+// - Outside this range: `Err(CoerceError::PrecisionLoss)`
+//
+// **Use cases:**
+// - Validating R function inputs won't lose precision
+// - Checked conversions in data pipelines
+// - Ensuring round-trip fidelity (i64 → R → i64)
 
+/// Convert `i64` to `f64`, failing if precision would be lost.
+///
+/// Only succeeds for values in [-2^53, 2^53].
 impl TryCoerce<f64> for i64 {
     type Error = CoerceError;
 
@@ -945,6 +977,9 @@ impl TryCoerce<f64> for i64 {
     }
 }
 
+/// Convert `u64` to `f64`, failing if precision would be lost.
+///
+/// Only succeeds for values ≤ 2^53.
 impl TryCoerce<f64> for u64 {
     type Error = CoerceError;
 

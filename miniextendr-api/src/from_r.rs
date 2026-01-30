@@ -1054,7 +1054,38 @@ impl TryFromSexp for Option<f32> {
 //
 // R doesn't have native 64-bit integers, so these read from REALSXP (f64)
 // and convert with range/precision checking.
+//
+// **Round-trip precision:**
+// - Values in [-2^53, 2^53] round-trip exactly: i64 → R → i64
+// - Values outside this range may not round-trip due to f64 precision loss
+//
+// **Conversion behavior:**
+// - Reads from REALSXP (f64) or INTSXP (i32)
+// - Validates the value is a whole number (no fractional part)
+// - Validates the value fits in the target type's range
+// - Returns error for NA values (use Option<i64> for nullable)
 
+/// Convert R numeric scalar to `i64`.
+///
+/// # Behavior
+///
+/// - Reads from REALSXP (f64) or INTSXP (i32)
+/// - Validates value is a whole number (no fractional part)
+/// - Validates value fits in i64 range
+/// - Returns `Err` for NA values
+///
+/// # Example
+///
+/// ```ignore
+/// // From R integer
+/// let val: i64 = TryFromSexp::try_from_sexp(int_sexp)?;
+///
+/// // From R numeric (must be whole number)
+/// let val: i64 = TryFromSexp::try_from_sexp(real_sexp)?;
+///
+/// // Error: 3.14 is not a whole number
+/// let val: Result<i64, _> = TryFromSexp::try_from_sexp(pi_sexp);
+/// ```
 impl TryFromSexp for i64 {
     type Error = SexpError;
 
@@ -1069,6 +1100,10 @@ impl TryFromSexp for i64 {
     }
 }
 
+/// Convert R numeric scalar to `u64`.
+///
+/// Same behavior as [`i64`](impl TryFromSexp for i64), but also validates
+/// the value is non-negative.
 impl TryFromSexp for u64 {
     type Error = SexpError;
 
@@ -1083,6 +1118,7 @@ impl TryFromSexp for u64 {
     }
 }
 
+/// Convert R numeric scalar to `Option<i64>`, with NA → `None`.
 impl TryFromSexp for Option<i64> {
     type Error = SexpError;
 

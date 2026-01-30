@@ -106,7 +106,42 @@ impl_into_r_via_coerce!(u16 => i32);
 impl_into_r_via_coerce!(f32 => f64);
 impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
 
-// Large integers to f64 (R's REALSXP) - may lose precision for values > 2^53
+// =============================================================================
+// Large integer types → REALSXP (f64)
+// =============================================================================
+//
+// R doesn't have native 64-bit integers. These types convert to f64 (REALSXP)
+// which may lose precision for values outside the "safe integer" range.
+//
+// **Precision Loss Warning:**
+// - f64 can exactly represent integers in range [-2^53, 2^53] (±9,007,199,254,740,992)
+// - Values outside this range may be rounded to the nearest representable f64
+// - This is silent - no error or warning is raised
+//
+// **Alternatives for exact 64-bit integers:**
+// - Use the `bit64` R package (stores as REALSXP but interprets as int64)
+// - Store as character strings and parse in R
+// - Split into high/low 32-bit parts
+//
+// For most use cases (counters, IDs, timestamps), values fit within 2^53.
+
+/// Convert `i64` to R numeric (REALSXP).
+///
+/// # Precision Loss
+///
+/// Values outside [-2^53, 2^53] (±9,007,199,254,740,992) may lose precision
+/// when converted to f64. This is unavoidable since R has no native 64-bit
+/// integer type.
+///
+/// ```ignore
+/// // Safe - exact representation
+/// let small: i64 = 1_000_000;
+/// small.into_sexp(); // Exact
+///
+/// // Unsafe - may lose precision
+/// let large: i64 = i64::MAX; // 9,223,372,036,854,775,807
+/// large.into_sexp(); // Rounded to 9,223,372,036,854,775,808.0
+/// ```
 impl IntoR for i64 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -119,6 +154,12 @@ impl IntoR for i64 {
     }
 }
 
+/// Convert `u64` to R numeric (REALSXP).
+///
+/// # Precision Loss
+///
+/// Values > 2^53 (9,007,199,254,740,992) may lose precision when converted
+/// to f64. See [`i64`'s IntoR impl](impl IntoR for i64) for details.
 impl IntoR for u64 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -131,6 +172,10 @@ impl IntoR for u64 {
     }
 }
 
+/// Convert `isize` to R numeric (REALSXP).
+///
+/// On 64-bit platforms, `isize` is 64-bit and subject to the same precision
+/// loss as [`i64`](impl IntoR for i64). On 32-bit platforms, conversion is exact.
 impl IntoR for isize {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
