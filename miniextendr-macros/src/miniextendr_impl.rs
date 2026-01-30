@@ -2004,33 +2004,32 @@ fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 
                 // Vec types - check inner type
                 "Vec" => {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
-                            // Recursively get the inner type's class
-                            return rust_type_to_s7_class(inner);
-                        }
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+                    {
+                        // Recursively get the inner type's class
+                        return rust_type_to_s7_class(inner);
                     }
                     None
                 }
 
                 // Option types - create union with NULL
                 "Option" => {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
-                            if let Some(inner_class) = rust_type_to_s7_class(inner) {
-                                return Some(format!("NULL | {}", inner_class));
-                            }
-                        }
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+                        && let Some(inner_class) = rust_type_to_s7_class(inner)
+                    {
+                        return Some(format!("NULL | {}", inner_class));
                     }
                     None
                 }
 
                 // Result types - use the Ok type
                 "Result" => {
-                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
-                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
-                            return rust_type_to_s7_class(inner);
-                        }
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+                    {
+                        return rust_type_to_s7_class(inner);
                     }
                     None
                 }
@@ -2040,12 +2039,11 @@ fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
         }
         syn::Type::Reference(type_ref) => {
             // Handle &str
-            if let syn::Type::Path(type_path) = type_ref.elem.as_ref() {
-                if let Some(seg) = type_path.path.segments.last() {
-                    if seg.ident == "str" {
-                        return Some("S7::class_character".to_string());
-                    }
-                }
+            if let syn::Type::Path(type_path) = type_ref.elem.as_ref()
+                && let Some(seg) = type_path.path.segments.last()
+                && seg.ident == "str"
+            {
+                return Some("S7::class_character".to_string());
             }
             // Recurse for other reference types
             rust_type_to_s7_class(&type_ref.elem)
@@ -2160,7 +2158,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         parsed_impl
             .methods
             .iter()
-            .find(|m| m.ident.to_string() == ident)
+            .find(|m| m.ident == ident)
     };
 
     // Constructor - check if .ptr param will be added (for static methods returning Self)
@@ -2260,69 +2258,69 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         // Add validator if present
-        if let Some(ref validator_ident) = prop.validator_method_ident {
-            if let Some(validator_method) = find_method(validator_ident) {
-                let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
-                // Validator is called with just the value, not self
-                // Generate: validator = function(value) .Call(C_Type__validate_prop, value)
-                prop_parts.push(format!(
-                    "validator = function(value) .Call({}, .call = match.call(), value)",
-                    ctx.c_ident
-                ));
-            }
+        if let Some(ref validator_ident) = prop.validator_method_ident
+            && let Some(validator_method) = find_method(validator_ident)
+        {
+            let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
+            // Validator is called with just the value, not self
+            // Generate: validator = function(value) .Call(C_Type__validate_prop, value)
+            prop_parts.push(format!(
+                "validator = function(value) .Call({}, .call = match.call(), value)",
+                ctx.c_ident
+            ));
         }
 
         // Generate getter (with optional deprecation warning)
-        if let Some(ref getter_ident) = prop.getter_method_ident {
-            if let Some(getter_method) = find_method(getter_ident) {
-                let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
-                let getter_call = ctx.instance_call("self@.ptr");
-                if let Some(ref msg) = prop.deprecated {
-                    // Deprecated getter: emit warning then return value
-                    prop_parts.push(format!(
-                        "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"); {} }}",
-                        prop.name, msg, getter_call
-                    ));
-                } else {
-                    prop_parts.push(format!("getter = function(self) {}", getter_call));
-                }
+        if let Some(ref getter_ident) = prop.getter_method_ident
+            && let Some(getter_method) = find_method(getter_ident)
+        {
+            let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
+            let getter_call = ctx.instance_call("self@.ptr");
+            if let Some(ref msg) = prop.deprecated {
+                // Deprecated getter: emit warning then return value
+                prop_parts.push(format!(
+                    "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"); {} }}",
+                    prop.name, msg, getter_call
+                ));
+            } else {
+                prop_parts.push(format!("getter = function(self) {}", getter_call));
             }
         }
 
         // Generate setter (with optional frozen/deprecation handling)
-        if let Some(ref setter_ident) = prop.setter_method_ident {
-            if let Some(setter_method) = find_method(setter_ident) {
-                let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
-                let setter_call = ctx.instance_call("self@.ptr");
+        if let Some(ref setter_ident) = prop.setter_method_ident
+            && let Some(setter_method) = find_method(setter_ident)
+        {
+            let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
+            let setter_call = ctx.instance_call("self@.ptr");
 
-                if prop.frozen {
-                    // Frozen pattern: error if property was already set (non-NULL)
-                    // Note: This is a simplified check; true frozen behavior would need
-                    // a separate flag in the object to track if ever set
-                    if let Some(ref msg) = prop.deprecated {
-                        prop_parts.push(format!(
-                            "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
-                            prop.name, msg, prop.name, prop.name, setter_call
-                        ));
-                    } else {
-                        prop_parts.push(format!(
-                            "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
-                            prop.name, prop.name, setter_call
-                        ));
-                    }
-                } else if let Some(ref msg) = prop.deprecated {
-                    // Deprecated setter: emit warning then set value
+            if prop.frozen {
+                // Frozen pattern: error if property was already set (non-NULL)
+                // Note: This is a simplified check; true frozen behavior would need
+                // a separate flag in the object to track if ever set
+                if let Some(ref msg) = prop.deprecated {
                     prop_parts.push(format!(
-                        "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); {}; self }}",
-                        prop.name, msg, setter_call
+                        "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                        prop.name, msg, prop.name, prop.name, setter_call
                     ));
                 } else {
-                    // Normal setter
                     prop_parts.push(format!(
-                        "setter = function(self, value) {{ {}; self }}",
-                        setter_call
+                        "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                        prop.name, prop.name, setter_call
                     ));
                 }
+            } else if let Some(ref msg) = prop.deprecated {
+                // Deprecated setter: emit warning then set value
+                prop_parts.push(format!(
+                    "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); {}; self }}",
+                    prop.name, msg, setter_call
+                ));
+            } else {
+                // Normal setter
+                prop_parts.push(format!(
+                    "setter = function(self, value) {{ {}; self }}",
+                    setter_call
+                ));
             }
         }
 

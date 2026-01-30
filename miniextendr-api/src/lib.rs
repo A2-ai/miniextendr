@@ -128,6 +128,7 @@
 //! | `indexmap` | `IndexMap<String, T>` | named `list` | Preserves insertion order |
 //! | `bitflags` | `RFlags<T>` | `integer` | Bitflags ↔ integer |
 //! | `bitvec` | `RBitVec` | `logical` | Bit vectors ↔ logical |
+//! | `tinyvec` | `TinyVec<[T; N]>`, `ArrayVec<[T; N]>` | vectors | Small-vector optimization |
 //!
 //! ### Matrix & Array Libraries
 //!
@@ -708,6 +709,11 @@ pub use optionals::{
     Builder, Table, Tabled, builder_to_string, table_from_vecs, table_to_string,
     table_to_string_opts, table_to_string_styled,
 };
+
+#[cfg(feature = "tinyvec")]
+pub use optionals::tinyvec_impl;
+#[cfg(feature = "tinyvec")]
+pub use optionals::{Array, ArrayVec, TinyVec};
 
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;

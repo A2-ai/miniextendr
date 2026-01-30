@@ -31,6 +31,7 @@
 //! | `aho-corasick` | `aho_corasick_impl` | Multi-pattern string search |
 //! | `toml` | `toml_impl` | TOML parsing |
 //! | `tabled` | `tabled_impl` | Table formatting |
+//! | `tinyvec` | `tinyvec_impl` | Small-vector optimized types |
 
 // =============================================================================
 // Rayon - Parallel computation
@@ -391,3 +392,19 @@ pub use tabled_impl::{
     Builder, Table, Tabled, builder_to_string, table_from_vecs, table_to_string,
     table_to_string_opts, table_to_string_styled,
 };
+
+// =============================================================================
+// TinyVec - Small vector optimization
+// =============================================================================
+
+/// Integration with the `tinyvec` crate for small-vector optimization.
+///
+/// Provides conversions for `TinyVec<[T; N]>` and `ArrayVec<[T; N]>`:
+/// - `TinyVec`: Growable, stores inline up to N elements, then spills to heap
+/// - `ArrayVec`: Fixed capacity N, never allocates, errors if exceeded
+///
+/// Enable with `features = ["tinyvec"]`.
+#[cfg(feature = "tinyvec")]
+pub mod tinyvec_impl;
+#[cfg(feature = "tinyvec")]
+pub use tinyvec_impl::{Array, ArrayVec, TinyVec};
