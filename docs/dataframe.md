@@ -7,7 +7,7 @@ miniextendr provides comprehensive support for converting between Rust types and
 | Approach | Best For | Code Generation | Flexibility |
 |----------|----------|-----------------|-------------|
 | `#[derive(DataFrameRow)]` | Type-safe, ergonomic APIs | ✅ Generates DataFrame type | ⭐⭐⭐ Easy |
-| `DataFrameRows<T>` | Generic, reusable code | ❌ No codegen | ⭐⭐ Moderate |
+| `DataFrame<T>` | Generic, reusable code | ❌ No codegen | ⭐⭐ Moderate |
 | `impl IntoDataFrame` | Full control, complex cases | ❌ Manual impl | ⭐ Advanced |
 
 ## Core Traits
@@ -135,7 +135,7 @@ struct Measurement { /* ... */ }
 
 ---
 
-## Approach 2: DataFrameRows<T>
+## Approach 2: DataFrame<T>
 
 Generic type for transposing row-oriented data. Works with any `T: IntoList`.
 
@@ -149,8 +149,8 @@ struct Point {
 }
 
 #[miniextendr]
-fn points() -> DataFrameRows<Point> {
-    DataFrameRows::from_rows(vec![
+fn points() -> DataFrame<Point> {
+    DataFrame::from_rows(vec![
         Point { x: 1.0, y: 2.0 },
         Point { x: 3.0, y: 4.0 },
     ])
@@ -171,8 +171,8 @@ struct Event {
 }
 
 #[miniextendr]
-fn events() -> DataFrameRows<AsSerializeRow<Event>> {
-    DataFrameRows::from_rows(vec![
+fn events() -> DataFrame<AsSerializeRow<Event>> {
+    DataFrame::from_rows(vec![
         AsSerializeRow(Event { timestamp: 1.0, message: "start".into() }),
         AsSerializeRow(Event { timestamp: 2.0, message: "end".into() }),
     ])
@@ -182,7 +182,7 @@ fn events() -> DataFrameRows<AsSerializeRow<Event>> {
 ### Methods
 
 ```rust
-impl<T: IntoList> DataFrameRows<T> {
+impl<T: IntoList> DataFrame<T> {
     pub fn new() -> Self;
     pub fn from_rows(rows: Vec<T>) -> Self;
     pub fn push(&mut self, row: T);
@@ -191,7 +191,7 @@ impl<T: IntoList> DataFrameRows<T> {
 }
 
 // Also implements FromIterator
-let df: DataFrameRows<Point> = points.into_iter().collect();
+let df: DataFrame<Point> = points.into_iter().collect();
 ```
 
 ---
@@ -319,7 +319,7 @@ MeasurementDataFrame {
    - You want type-safe field access
    - You want automatic conversions
 
-2. **Use `DataFrameRows<T>`** when:
+2. **Use `DataFrame<T>`** when:
    - You need generic code over many row types
    - You're working with existing IntoList types
    - You want runtime flexibility

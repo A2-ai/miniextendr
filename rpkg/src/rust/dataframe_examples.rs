@@ -1,7 +1,7 @@
 //! Examples and tests for data frame conversion features.
 
 use miniextendr_api::{miniextendr, DataFrameRow, IntoList, List};
-use miniextendr_api::convert::{DataFrameRows, IntoDataFrame, ToDataFrame};
+use miniextendr_api::convert::{DataFrame, IntoDataFrame, ToDataFrame};
 
 // =============================================================================
 // Approach 1: Derive Macro with IntoList
@@ -36,7 +36,7 @@ pub fn create_measurements_df() -> ToDataFrame<MeasurementDataFrame> {
 }
 
 // =============================================================================
-// Approach 2: DataFrameRows with IntoList
+// Approach 2: DataFrame with IntoList
 // =============================================================================
 
 #[derive(Clone, IntoList)]
@@ -45,12 +45,12 @@ pub struct Point {
     pub y: f64,
 }
 
-/// Create a data frame using DataFrameRows wrapper.
+/// Create a data frame using DataFrame wrapper.
 ///
 /// @export
 #[miniextendr]
-pub fn create_points_df() -> DataFrameRows<Point> {
-    DataFrameRows::from_rows(vec![
+pub fn create_points_df() -> DataFrame<Point> {
+    DataFrame::from_rows(vec![
         Point { x: 1.0, y: 2.0 },
         Point { x: 3.0, y: 4.0 },
     ])

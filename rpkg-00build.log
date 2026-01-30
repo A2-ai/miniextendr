@@ -1,0 +1,8 @@
+* checking for file ‘rpkg/DESCRIPTION’ ... OK
+* preparing ‘miniextendr’:
+* checking DESCRIPTION meta-information ... OK
+* cleaning src
+* running ‘cleanup’
+* checking for LF line-endings in source and make files and shell scripts
+* checking for empty or unneeded directories
+* building ‘miniextendr_0.1.0.tar.gz’

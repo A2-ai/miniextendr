@@ -146,10 +146,10 @@ impl<T: IntoDataFrame> IntoR for ToDataFrame<T> {
     }
 }
 
-/// IntoR implementation for DataFrameRows.
+/// IntoR implementation for DataFrame.
 ///
-/// This allows DataFrameRows to be returned directly from `#[miniextendr]` functions.
-impl<T: IntoList> IntoR for DataFrameRows<T> {
+/// This allows DataFrame to be returned directly from `#[miniextendr]` functions.
+impl<T: IntoList> IntoR for DataFrame<T> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
         self.into_data_frame().into_sexp()
@@ -226,7 +226,7 @@ pub trait IntoDataFrame {
 /// Wrap a serde-serializable value for use as a data frame row.
 ///
 /// This wrapper implements [`IntoList`] via serde serialization, allowing
-/// types that implement `serde::Serialize` to be used with [`DataFrameRows`]
+/// types that implement `serde::Serialize` to be used with [`DataFrame`]
 /// without manually implementing [`IntoList`].
 ///
 /// # Feature Flag
@@ -236,7 +236,7 @@ pub trait IntoDataFrame {
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, convert::{AsSerializeRow, DataFrameRows}};
+/// use miniextendr_api::{miniextendr, convert::{AsSerializeRow, DataFrame}};
 /// use serde::Serialize;
 ///
 /// #[derive(Serialize)]
@@ -246,8 +246,8 @@ pub trait IntoDataFrame {
 /// }
 ///
 /// #[miniextendr]
-/// fn get_data() -> DataFrameRows<AsSerializeRow<Measurement>> {
-///     DataFrameRows::from_rows(vec![
+/// fn get_data() -> DataFrame<AsSerializeRow<Measurement>> {
+///     DataFrame::from_rows(vec![
 ///         AsSerializeRow(Measurement { time: 1.0, value: 10.0 }),
 ///         AsSerializeRow(Measurement { time: 2.0, value: 20.0 }),
 ///     ])
@@ -290,7 +290,7 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
 /// # Example
 ///
 /// ```ignore
-/// use miniextendr_api::{miniextendr, convert::DataFrameRows};
+/// use miniextendr_api::{miniextendr, convert::DataFrame};
 ///
 /// #[derive(IntoList)]
 /// struct Person {
@@ -300,8 +300,8 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
 /// }
 ///
 /// #[miniextendr]
-/// fn make_people() -> DataFrameRows<Person> {
-///     DataFrameRows::from_rows(vec![
+/// fn make_people() -> DataFrame<Person> {
+///     DataFrame::from_rows(vec![
 ///         Person { name: "Alice".into(), age: 30, height: 165.0 },
 ///         Person { name: "Bob".into(), age: 25, height: 180.0 },
 ///         Person { name: "Carol".into(), age: 35, height: 170.0 },
@@ -313,7 +313,7 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
 /// # Row-oriented to Column-oriented
 ///
 /// R data frames are column-oriented (each column is a vector), but data is often
-/// produced row-by-row in Rust. `DataFrameRows` handles the transposition:
+/// produced row-by-row in Rust. `DataFrame` handles the transposition:
 ///
 /// ```text
 /// Input (row-oriented):           Output (column-oriented):
@@ -322,17 +322,17 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
 /// Row 3: {name: "C", age: 35}
 /// ```
 #[derive(Debug, Clone)]
-pub struct DataFrameRows<T: IntoList> {
+pub struct DataFrame<T: IntoList> {
     rows: Vec<T>,
 }
 
-impl<T: IntoList> DataFrameRows<T> {
-    /// Create a new `DataFrameRows` from a vector of row elements.
+impl<T: IntoList> DataFrame<T> {
+    /// Create a new `DataFrame` from a vector of row elements.
     pub fn from_rows(rows: Vec<T>) -> Self {
         Self { rows }
     }
 
-    /// Create an empty `DataFrameRows`.
+    /// Create an empty `DataFrame`.
     pub fn new() -> Self {
         Self { rows: Vec::new() }
     }
@@ -354,13 +354,13 @@ impl<T: IntoList> DataFrameRows<T> {
 }
 
 
-impl<T: IntoList> Default for DataFrameRows<T> {
+impl<T: IntoList> Default for DataFrame<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T: IntoList> FromIterator<T> for DataFrameRows<T> {
+impl<T: IntoList> FromIterator<T> for DataFrame<T> {
     fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
         Self {
             rows: iter.into_iter().collect(),
@@ -368,7 +368,7 @@ impl<T: IntoList> FromIterator<T> for DataFrameRows<T> {
     }
 }
 
-impl<T: IntoList> IntoDataFrame for DataFrameRows<T> {
+impl<T: IntoList> IntoDataFrame for DataFrame<T> {
     fn into_data_frame(self) -> List {
         if self.rows.is_empty() {
             // Empty data frame

@@ -356,7 +356,7 @@ pub mod list;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
-    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt, DataFrameRows,
+    AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt, DataFrame,
     IntoDataFrame, ToDataFrame, ToDataFrameExt,
 };
 #[cfg(feature = "serde")]
