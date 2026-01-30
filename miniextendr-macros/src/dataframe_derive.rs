@@ -238,6 +238,7 @@ enum CollectionType {
     Vec,
     BoxedSlice,
     Slice,
+    Array(usize),
 }
 
 /// Wrap a type in the specified collection type.
@@ -246,5 +247,9 @@ fn wrap_in_collection(inner: &Type, collection: &CollectionType) -> Type {
         CollectionType::Vec => parse_quote! { Vec<#inner> },
         CollectionType::BoxedSlice => parse_quote! { Box<[#inner]> },
         CollectionType::Slice => parse_quote! { &'static [#inner] },
+        CollectionType::Array(n) => {
+            let len = syn::Index::from(*n);
+            parse_quote! { [#inner; #len] }
+        }
     }
 }
