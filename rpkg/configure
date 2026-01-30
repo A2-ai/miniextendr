@@ -1993,10 +1993,10 @@ export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-    CARGO_LOCKED_FLAG=""
+    CARGO_LOCKED_FLAG="--locked"
 else
   CARGO_OFFLINE_FLAG="--offline"
-    CARGO_LOCKED_FLAG="--locked"
+    CARGO_LOCKED_FLAG=""
 fi
 
 
@@ -2005,22 +2005,19 @@ fi
 
 
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
-    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+    MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-  # Set C preprocessor flags based on enabled features
+  # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
-  case ",$MINIEXTENDR_FEATURES," in
-    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
-  esac
+  IFS=','
+  for _feature in $MINIEXTENDR_FEATURES; do
+    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
+    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
+  done
+  unset IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
@@ -3925,8 +3922,8 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 	      	      if test -f "$ROOT_MINIEXTENDR_REPO/Cargo.toml"; then
 	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
 	        mkdir -p "$VENDOR_OUT"
-	        	        _vendor_locked_flag=""
-	        if test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
+	        	        	        	        _vendor_locked_flag=""
+	        if test "$NOT_CRAN" != "true" && test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
 	          _vendor_locked_flag="$CARGO_LOCKED_FLAG"
 	        fi
 	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
@@ -4308,7 +4305,7 @@ CRATESIO_CONFIG_EOF
   fi
  ;;
     "patch-staticlib-name":C)
-          if test "$NOT_CRAN" = "true"; then
+      if test "$NOT_CRAN" = "true"; then
     _pkgid_flags="--color=never"
   else
     _pkgid_flags="--offline --color=never"
@@ -4317,12 +4314,11 @@ CRATESIO_CONFIG_EOF
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    echo "configure: cargo pkgid output: $_pkgid_output" >&2
     exit 1
   fi
   REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\([^@]*\)@.*/\1/' | tr '-' '_')"
   if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
+    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
     exit 1
   fi
   echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"

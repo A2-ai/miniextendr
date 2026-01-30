@@ -41,16 +41,16 @@ esac
 export NOT_CRAN
 
 dnl Set cargo offline flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline
-dnl - NOT_CRAN=false (CRAN): use --offline (pre-vendored tarball)
+dnl - NOT_CRAN=true (dev): no --offline, use --locked for reproducibility
+dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  dnl In dev mode, don't use --locked because crate changes may require lockfile updates
-  CARGO_LOCKED_FLAG=""
+  dnl Dev mode uses --locked for reproducible builds matching committed lockfile
+  CARGO_LOCKED_FLAG="--locked"
 else
   CARGO_OFFLINE_FLAG="--offline"
-  dnl CRAN build uses --locked for reproducible builds with pre-vendored tarball
-  CARGO_LOCKED_FLAG="--locked"
+  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
+  CARGO_LOCKED_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
 AC_SUBST([CARGO_LOCKED_FLAG])
@@ -70,22 +70,19 @@ dnl Enable all features by default for this demo package
 dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
 if test -z "${MINIEXTENDR_FEATURES+x}"; then
   dnl MINIEXTENDR_FEATURES not set - enable all optional features
-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
 fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-  # Set C preprocessor flags based on enabled features
+  # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
-  case ",$MINIEXTENDR_FEATURES," in
-    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
-  esac
+  IFS=','
+  for _feature in $MINIEXTENDR_FEATURES; do
+    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
+    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
+  done
+  unset IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
@@ -187,8 +184,8 @@ AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
 : ${CARGO_PROFILE="release"}
 AC_SUBST([CARGO_PROFILE])
 
-dnl CARGO_STATICLIB_NAME will be extracted after Cargo.toml generation
-dnl Use placeholder for now - AC_CONFIG_COMMANDS will substitute the real value
+dnl CARGO_STATICLIB_NAME will be extracted via cargo pkgid in AC_CONFIG_COMMANDS
+dnl Use placeholder for now - will be substituted after Cargo.toml is available
 CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 AC_SUBST([CARGO_STATICLIB_NAME])
 
@@ -500,8 +497,10 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 	        echo "configure: running cargo vendor (Cargo.lock changed or vendor missing)"
 	        mkdir -p "$VENDOR_OUT"
 	        dnl Use --locked if Cargo.lock exists to respect existing dependency versions
+	        dnl In DEV mode, don't pass --locked to vendor (allow lockfile updates)
+	        dnl In CRAN mode, use --locked if lockfile exists
 	        _vendor_locked_flag=""
-	        if test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
+	        if test "$NOT_CRAN" != "true" && test -f "$LOCKFILE" && test -n "$CARGO_LOCKED_FLAG"; then
 	          _vendor_locked_flag="$CARGO_LOCKED_FLAG"
 	        fi
 	        if test "$VENDOR_SYNC_EXTRA" = "1"; then
@@ -972,13 +971,11 @@ AC_CONFIG_COMMANDS([compress-vendor],
 ],
 [NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
 
-dnl 3) Extract CARGO_STATICLIB_NAME from generated Cargo.toml and patch files
+dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
 AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
-  dnl cargo pkgid outputs: path+file:///path/to/project#name@version
-  dnl Extract package name between # and @, convert hyphens to underscores for Rust
-  dnl Use --offline only for CRAN builds (NOT_CRAN != true) to avoid network access
-  dnl Dev builds (NOT_CRAN=true) may not have cache populated yet
+  dnl Use cargo pkgid to extract the actual package name from Cargo.toml
+  dnl This handles hyphens correctly (converted to underscores for Rust lib name)
   if test "$NOT_CRAN" = "true"; then
     _pkgid_flags="--color=never"
   else
@@ -988,17 +985,16 @@ AC_CONFIG_COMMANDS([patch-staticlib-name],
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then
     echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    echo "configure: cargo pkgid output: $_pkgid_output" >&2
     exit 1
   fi
   REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
   if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
+    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
     exit 1
   fi
   echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
 
-  dnl Patch generated files to replace placeholder (portable: temp file + mv)
+  dnl Patch generated files to replace placeholder
   for f in src/Makevars src/rust/document.rs; do
     if test -f "$f"; then
       "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
