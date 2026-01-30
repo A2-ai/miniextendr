@@ -90,11 +90,28 @@ impl<'a> MethodContext<'a> {
     /// For S3/S4/S7: `"x, <params>, ..."`
     /// For Env/R6: `"<params>"` (self is implicit)
     pub fn instance_formals(&self, add_self_param: bool) -> String {
+        self.instance_formals_with_dots(add_self_param, true)
+    }
+
+    /// Build full R formals for instance methods with optional dots.
+    ///
+    /// When `include_dots` is false, omits `...` from the signature.
+    /// This is used for strict generics that don't accept extra args.
+    pub fn instance_formals_with_dots(&self, add_self_param: bool, include_dots: bool) -> String {
         if add_self_param {
-            if self.params.is_empty() {
-                "x, ...".to_string()
+            if include_dots {
+                if self.params.is_empty() {
+                    "x, ...".to_string()
+                } else {
+                    format!("x, {}, ...", self.params)
+                }
             } else {
-                format!("x, {}, ...", self.params)
+                // No dots - strict formals
+                if self.params.is_empty() {
+                    "x".to_string()
+                } else {
+                    format!("x, {}", self.params)
+                }
             }
         } else {
             self.params.clone()

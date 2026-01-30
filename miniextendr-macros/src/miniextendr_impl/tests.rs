@@ -1045,3 +1045,73 @@ fn s7_property_combined_patterns() {
     assert!(wrapper.contains("default = \"default\""), "Expected default value, got:\n{}", wrapper);
     assert!(wrapper.contains("Will be removed"), "Expected deprecation message, got:\n{}", wrapper);
 }
+
+// =============================================================================
+// S7 Phase 3: Generic dispatch control tests
+// =============================================================================
+
+#[test]
+fn s7_generic_no_dots() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            #[miniextendr(s7(no_dots))]
+            pub fn length(&self) -> i32 { self.len }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have generic without ... in signature
+    assert!(wrapper.contains("function(x) S7::S7_dispatch()"), "Expected no_dots generic, got:\n{}", wrapper);
+    // Should NOT have ... in the generic definition
+    assert!(!wrapper.contains("function(x, ...) S7::S7_dispatch()"), "Expected no_dots to remove ..., got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_generic_multi_dispatch() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Dog {
+            #[miniextendr(s7(dispatch = "x,y"))]
+            pub fn compare(&self, other: i32) -> i32 { 0 }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have c("x", "y") dispatch args
+    assert!(wrapper.contains(r#"c("x", "y")"#), "Expected multi-dispatch args, got:\n{}", wrapper);
+    // Should have function(x, y, ...) signature
+    assert!(wrapper.contains("function(x, y, ...) S7::S7_dispatch()"), "Expected multi-dispatch signature, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_generic_multi_dispatch_no_dots() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Matrix {
+            #[miniextendr(s7(dispatch = "x,y", no_dots))]
+            pub fn multiply(&self, other: i32) -> i32 { 0 }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have c("x", "y") dispatch args
+    assert!(wrapper.contains(r#"c("x", "y")"#), "Expected multi-dispatch args, got:\n{}", wrapper);
+    // Should have function(x, y) signature without ...
+    assert!(wrapper.contains("function(x, y) S7::S7_dispatch()"), "Expected strict multi-dispatch signature, got:\n{}", wrapper);
+}
+
+#[test]
+fn s7_generic_fallback() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Printer {
+            #[miniextendr(s7(fallback))]
+            pub fn describe(&self) -> String { "unknown".to_string() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should register method for class_any instead of Printer
+    assert!(wrapper.contains("S7::method(describe, S7::class_any)"), "Expected fallback to class_any, got:\n{}", wrapper);
+}

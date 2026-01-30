@@ -146,10 +146,37 @@ impl S7Config {
     }
 }
 
+/// Demonstrates S7 Phase 3 generic dispatch control.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Strict {
+    value: i32,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl S7Strict {
+    pub fn new(value: i32) -> Self {
+        S7Strict { value }
+    }
+
+    /// Length method without `...` (strict generic).
+    #[miniextendr(s7(no_dots))]
+    pub fn strict_length(&self) -> i32 {
+        self.value
+    }
+
+    /// Method with fallback to class_any.
+    #[miniextendr(s7(fallback))]
+    pub fn describe_any(&self) -> String {
+        format!("S7Strict with value {}", self.value)
+    }
+}
+
 miniextendr_module! {
     mod s7_tests;
 
     impl S7Counter;
     impl S7Range;
     impl S7Config;
+    impl S7Strict;
 }

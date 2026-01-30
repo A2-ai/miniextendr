@@ -141,3 +141,27 @@ test_that("S7Config deprecated property emits warning", {
   # Regular accessor doesn't warn
   expect_equal(get_version(config), 42L)
 })
+
+# =============================================================================
+# S7 Phase 3: Generic dispatch control
+# =============================================================================
+
+test_that("S7Strict no_dots generic works", {
+  strict <- S7Strict(42L)
+
+  # strict_length should work normally
+  expect_equal(strict_length(strict), 42L)
+
+  # The generic signature should be function(x), not function(x, ...)
+  # This means extra arguments would cause an error (in strict S7)
+})
+
+test_that("S7Strict fallback method works for class_any", {
+  strict <- S7Strict(123L)
+
+  # describe_any should work on S7Strict
+  expect_equal(describe_any(strict), "S7Strict with value 123")
+
+  # Since it's registered for class_any, it might work on other types too
+  # (though in this case the C function expects S7Strict specifically)
+})

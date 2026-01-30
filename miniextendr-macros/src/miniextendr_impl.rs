@@ -459,6 +459,43 @@ pub struct MethodAttrs {
     /// fn old_value(&self) -> i32 { self.value }
     /// ```
     pub s7_deprecated: Option<String>,
+    // =========================================================================
+    // S7 Phase 3: Generic dispatch control
+    // =========================================================================
+    /// S7 no_dots marker - removes `...` from generic signature.
+    ///
+    /// Use for strict generics like `length()` that don't accept extra args.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(no_dots))]
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    /// // Generates: new_generic("length", "x", function(x) S7_dispatch())
+    /// // Instead of: new_generic("length", "x", function(x, ...) S7_dispatch())
+    /// ```
+    pub s7_no_dots: bool,
+    /// S7 multiple dispatch - specifies dispatch arguments.
+    ///
+    /// Use `#[miniextendr(s7(dispatch = "x,y"))]` to enable double dispatch.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(dispatch = "x,y"))]
+    /// fn compare(&self, other: &OtherType) -> i32 { ... }
+    /// // Generates: new_generic("compare", c("x", "y"), function(x, y, ...) S7_dispatch())
+    /// ```
+    pub s7_dispatch: Option<String>,
+    /// S7 fallback marker - register method for class_any.
+    ///
+    /// Use for fallback implementations that handle any type.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(fallback))]
+    /// fn describe(&self) -> String { "unknown".to_string() }
+    /// // Registers method for S7::class_any
+    /// ```
+    pub s7_fallback: bool,
 }
 
 /// Parsed impl block with all methods.
@@ -728,9 +765,17 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7_deprecated = Some(value.value());
+                        } else if inner.path.is_ident("no_dots") {
+                            method_attrs.s7_no_dots = true;
+                        } else if inner.path.is_ident("dispatch") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_dispatch = Some(value.value());
+                        } else if inner.path.is_ident("fallback") {
+                            method_attrs.s7_fallback = true;
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback"
                             ));
                         }
                         Ok(())
@@ -2320,8 +2365,44 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             if should_export {
                 lines.push("#' @export".to_string());
             }
+
+            // Phase 3: Handle dispatch control attributes
+            let method_attrs = &ctx.method.method_attrs;
+
+            // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
+            let dispatch_args = if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                // Multiple dispatch: "x,y" -> c("x", "y")
+                let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
+                if args.len() == 1 {
+                    format!("\"{}\"", args[0])
+                } else {
+                    format!("c({})", args.iter().map(|a| format!("\"{}\"", a)).collect::<Vec<_>>().join(", "))
+                }
+            } else {
+                "\"x\"".to_string()
+            };
+
+            // Determine function signature (with or without ...)
+            let generic_sig = if method_attrs.s7_no_dots {
+                // no_dots: strict generic without ...
+                if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                    let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
+                    format!("function({}) S7::S7_dispatch()", args.join(", "))
+                } else {
+                    "function(x) S7::S7_dispatch()".to_string()
+                }
+            } else {
+                // Default: include ... for extra args
+                if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                    let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
+                    format!("function({}, ...) S7::S7_dispatch()", args.join(", "))
+                } else {
+                    "function(x, ...) S7::S7_dispatch()".to_string()
+                }
+            };
+
             lines.push(format!(
-                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
             ));
 
             // Define method
@@ -2330,8 +2411,19 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
+
+            // Phase 3: Handle fallback (class_any) dispatch
+            let method_class = if method_attrs.s7_fallback {
+                "S7::class_any".to_string()
+            } else {
+                class_name.clone()
+            };
+
+            // Phase 3: Use matching formals for method (with or without ...)
+            let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
+
             lines.push(format!(
-                "S7::method({generic_name}, {class_name}) <- function({full_params}) {return_expr}"
+                "S7::method({generic_name}, {method_class}) <- function({method_formals}) {return_expr}"
             ));
         }
         lines.push(String::new());
