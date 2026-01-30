@@ -116,6 +116,9 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             CollectionType::Slice => quote! {
                 #name: Box::leak(rows.iter().map(|r| r.#name.clone()).collect::<Vec<_>>().into_boxed_slice())
             },
+            CollectionType::Array(_n) => quote! {
+                #name: rows.iter().map(|r| r.#name.clone()).collect::<Vec<_>>().try_into().expect("mismatched array length")
+            },
         }
     });
 
