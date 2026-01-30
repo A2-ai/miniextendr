@@ -22,13 +22,16 @@ extern int miniextendr_init_vctrs(void);
 // Trait ABI C-callable registration (defined in mx_abi.c)
 extern void mx_abi_register(void);
 
-void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+// NOTE: R_init function uses @PACKAGE_NAME@ (case-preserved) to match the
+// package name in DESCRIPTION and NAMESPACE useDynLib(). The internal Rust
+// module uses @PACKAGE_TARNAME_RS@ (lowercase with underscores).
+void R_init_@PACKAGE_NAME@(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
 
     // Set ALTREP package name before ALTREP registration
-    // The string "@PACKAGE_TARNAME_RS@" is substituted by configure
-    miniextendr_set_altrep_pkg_name("@PACKAGE_TARNAME_RS@");
+    // Use @PACKAGE_NAME@ (case-preserved) for R-facing APIs
+    miniextendr_set_altrep_pkg_name("@PACKAGE_NAME@");
 
     // Optional: initialize vctrs C API support
     // Status 1 (not available) is fine - vctrs is optional

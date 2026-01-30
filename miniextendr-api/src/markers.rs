@@ -92,6 +92,11 @@ pub trait IsIntoList: crate::list::IntoList {}
 /// Implemented by the `PreferList` derive; you can also implement it manually.
 pub trait PrefersList: IsIntoList {}
 
+/// Marker trait for types that should be converted to R data frames via `IntoR`.
+///
+/// Implemented by the `PreferDataFrame` derive; you can also implement it manually.
+pub trait PrefersDataFrame: crate::convert::IntoDataFrame {}
+
 /// Marker trait for types that prefer `ExternalPtr` conversion.
 ///
 /// Implemented by the `PreferExternalPtr` derive; currently informational.

@@ -12,7 +12,7 @@ fn main() {
         .write(true)
         .truncate(true)
         .create(true)
-        .open("miniextendr_wrappers.R")
+        .open("@PACKAGE_TARNAME@-wrappers.R")
         .unwrap();
 
     let mut seen = std::collections::HashSet::<&str>::new();
