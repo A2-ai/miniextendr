@@ -1512,3 +1512,170 @@ where
         unsafe { crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null()) }
     }
 }
+
+// =============================================================================
+// Additional collection type conversions for DataFrameRow support
+// =============================================================================
+
+/// Convert `Vec<Box<[T]>>` to R list of vectors (for RNativeType elements).
+/// Each boxed slice becomes an R vector.
+impl<T> IntoR for Vec<Box<[T]>>
+where
+    T: crate::ffi::RNativeType,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, boxed_slice) in self.into_iter().enumerate() {
+                let vec: Vec<T> = boxed_slice.into_vec();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<Box<[String]>>` to R list of character vectors.
+impl IntoR for Vec<Box<[String]>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, boxed_slice) in self.into_iter().enumerate() {
+                let vec: Vec<String> = boxed_slice.into_vec();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<[T; N]>` to R list of vectors.
+/// Each array becomes an R vector.
+impl<T, const N: usize> IntoR for Vec<[T; N]>
+where
+    T: crate::ffi::RNativeType,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let len = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, len as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, array) in self.into_iter().enumerate() {
+                let vec: Vec<T> = array.into();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<HashSet<T>>` to R list of vectors (for RNativeType elements).
+/// Each HashSet becomes an R vector (unordered).
+impl<T> IntoR for Vec<std::collections::HashSet<T>>
+where
+    T: crate::ffi::RNativeType,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, set) in self.into_iter().enumerate() {
+                let vec: Vec<T> = set.into_iter().collect();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<BTreeSet<T>>` to R list of vectors (for RNativeType elements).
+/// Each BTreeSet becomes an R vector (sorted).
+impl<T> IntoR for Vec<std::collections::BTreeSet<T>>
+where
+    T: crate::ffi::RNativeType,
+{
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, set) in self.into_iter().enumerate() {
+                let vec: Vec<T> = set.into_iter().collect();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<HashSet<String>>` to R list of character vectors.
+impl IntoR for Vec<std::collections::HashSet<String>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, set) in self.into_iter().enumerate() {
+                let vec: Vec<String> = set.into_iter().collect();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}
+
+/// Convert `Vec<BTreeSet<String>>` to R list of character vectors.
+impl IntoR for Vec<std::collections::BTreeSet<String>> {
+    fn into_sexp(self) -> crate::ffi::SEXP {
+        unsafe {
+            let n = self.len();
+            let list =
+                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, n as crate::ffi::R_xlen_t);
+            crate::ffi::Rf_protect(list);
+
+            for (i, set) in self.into_iter().enumerate() {
+                let vec: Vec<String> = set.into_iter().collect();
+                let inner_sexp = vec.into_sexp();
+                crate::ffi::SET_VECTOR_ELT(list, i as crate::ffi::R_xlen_t, inner_sexp);
+            }
+
+            crate::ffi::Rf_unprotect(1);
+            list
+        }
+    }
+}

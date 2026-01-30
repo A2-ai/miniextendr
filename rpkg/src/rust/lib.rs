@@ -1784,3 +1784,4 @@ miniextendr_module! {
     // Feature detection
     fn rpkg_enabled_features;
 }
+mod dataframe_collections_test;

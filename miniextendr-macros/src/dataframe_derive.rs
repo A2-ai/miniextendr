@@ -2,7 +2,7 @@
 
 use proc_macro2::TokenStream;
 use quote::{format_ident, quote};
-use syn::{parse_quote, Data, DeriveInput, Fields, Type};
+use syn::{Data, DeriveInput, Fields};
 
 /// Derive `DataFrameRow`: generates a companion DataFrame type with collection fields.
 ///
@@ -33,7 +33,6 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 
     // Parse attributes
     let df_name = parse_dataframe_name(&input)?;
-    let collection_type = parse_collection_type(&input)?;
 
     // Extract fields
     let fields = match &input.data {
@@ -64,12 +63,11 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         })
         .collect();
 
-    // Generate DataFrame struct with collection fields
-    let df_fields: Vec<_> = field_info
+    // Build DataFrame struct with one field at a time
+    let df_fields_tokens: Vec<TokenStream> = field_info
         .iter()
         .map(|(name, ty)| {
-            let col_ty = wrap_in_collection(ty, &collection_type);
-            quote! { pub #name: #col_ty }
+            quote! { pub #name: Vec<#ty> }
         })
         .collect();
 
@@ -77,7 +75,7 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let dataframe_struct = quote! {
         #[derive(Debug, Clone)]
         pub struct #df_name {
-            #(#df_fields),*
+            #(#df_fields_tokens),*
         }
     };
 
@@ -88,14 +86,14 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let first_field = field_names.first().unwrap();
     let df_pairs = field_names.iter().map(|name| {
         let name_str = name.to_string();
-        quote! { (#name_str, self.#name) }
+        quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
     });
 
     let into_dataframe_impl = quote! {
         impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
             fn into_data_frame(self) -> ::miniextendr_api::List {
                 let n_rows = self.#first_field.len();
-                ::miniextendr_api::List::from_pairs(vec![
+                ::miniextendr_api::list::List::from_raw_pairs(vec![
                     #(#df_pairs),*
                 ])
                 .set_class_str(&["data.frame"])
@@ -104,29 +102,22 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    // Generate From<Vec<Row>> for DataFrame
-    let field_collections: Vec<_> = field_names.iter().map(|name| {
-        match collection_type {
-            CollectionType::Vec => quote! {
-                #name: rows.iter().map(|r| r.#name.clone()).collect()
-            },
-            CollectionType::BoxedSlice => quote! {
-                #name: rows.iter().map(|r| r.#name.clone()).collect::<Vec<_>>().into_boxed_slice()
-            },
-            CollectionType::Slice => quote! {
-                #name: Box::leak(rows.iter().map(|r| r.#name.clone()).collect::<Vec<_>>().into_boxed_slice())
-            },
-            CollectionType::Array(_n) => quote! {
-                #name: rows.iter().map(|r| r.#name.clone()).collect::<Vec<_>>().try_into().expect("mismatched array length")
-            },
+    // Build From impl struct initialization explicitly
+    let mut from_struct_tokens = TokenStream::new();
+    for (i, (name, ty)) in field_info.iter().enumerate() {
+        if i > 0 {
+            from_struct_tokens.extend(quote! { , });
         }
-    }).collect();
+        from_struct_tokens.extend(quote! {
+            #name: rows.iter().map(|r| r.#name.clone()).collect::<Vec<#ty>>()
+        });
+    }
 
     let from_vec_impl = quote! {
         impl From<Vec<#row_name>> for #df_name {
             fn from(rows: Vec<#row_name>) -> Self {
                 #df_name {
-                    #(#field_collections),*
+                    #from_struct_tokens
                 }
             }
         }
@@ -135,21 +126,37 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     // Generate IntoIterator for DataFrame - use concrete types for simplicity
     let iterator_name = format_ident!("{}Iterator", df_name);
 
-    let iter_field_types: Vec<_> = field_info.iter().map(|(_name, ty)| {
-        quote! { <Vec<#ty> as IntoIterator>::IntoIter }
-    }).collect();
+    // Generate iterator fields paired with their types to ensure correct correspondence
+    let iter_field_decls: Vec<_> = field_info
+        .iter()
+        .map(|(name, ty)| {
+            quote! { #name: std::vec::IntoIter<#ty> }
+        })
+        .collect();
 
-    let iter_field_decls: Vec<_> = field_names.iter().zip(iter_field_types.iter()).map(|(name, iter_ty)| {
-        quote! { #name: #iter_ty }
-    }).collect();
+    // Generate destructuring pattern
+    let destruct_pattern = field_info
+        .iter()
+        .map(|(name, _ty)| quote! { #name })
+        .collect::<Vec<_>>();
 
-    let iter_inits: Vec<_> = field_names.iter().map(|name| {
-        quote! { #name: self.#name.into_iter() }
-    }).collect();
+    // Build struct initialization tokens explicitly with explicit types
+    let mut iter_init_tokens = TokenStream::new();
+    for (i, (name, ty)) in field_info.iter().enumerate() {
+        if i > 0 {
+            iter_init_tokens.extend(quote! { , });
+        }
+        iter_init_tokens.extend(quote! { #name: <Vec<#ty>>::into_iter(#name) });
+    }
 
-    let next_fields: Vec<_> = field_names.iter().map(|name| {
-        quote! { #name: self.#name.next()? }
-    }).collect();
+    // Build Iterator::next() return struct tokens explicitly
+    let mut next_struct_tokens = TokenStream::new();
+    for (i, (name, _ty)) in field_info.iter().enumerate() {
+        if i > 0 {
+            next_struct_tokens.extend(quote! { , });
+        }
+        next_struct_tokens.extend(quote! { #name: self.#name.next()? });
+    }
 
     let into_iterator_impl = quote! {
         pub struct #iterator_name {
@@ -161,8 +168,9 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             type IntoIter = #iterator_name;
 
             fn into_iter(self) -> Self::IntoIter {
+                let #df_name { #(#destruct_pattern),* } = self;
                 #iterator_name {
-                    #(#iter_inits),*
+                    #iter_init_tokens
                 }
             }
         }
@@ -172,7 +180,7 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 
             fn next(&mut self) -> Option<Self::Item> {
                 Some(#row_name {
-                    #(#next_fields),*
+                    #next_struct_tokens
                 })
             }
         }
@@ -229,30 +237,3 @@ fn parse_dataframe_name(input: &DeriveInput) -> syn::Result<syn::Ident> {
     Ok(default_name)
 }
 
-/// Parse the collection type from attributes, defaulting to `Vec<T>`.
-fn parse_collection_type(_input: &DeriveInput) -> syn::Result<CollectionType> {
-    // TODO: Parse #[dataframe(collection = "...")] attribute
-    // For now, use Vec
-    Ok(CollectionType::Vec)
-}
-
-#[derive(Debug, Clone, Copy)]
-enum CollectionType {
-    Vec,
-    BoxedSlice,
-    Slice,
-    Array(usize),
-}
-
-/// Wrap a type in the specified collection type.
-fn wrap_in_collection(inner: &Type, collection: &CollectionType) -> Type {
-    match collection {
-        CollectionType::Vec => parse_quote! { Vec<#inner> },
-        CollectionType::BoxedSlice => parse_quote! { Box<[#inner]> },
-        CollectionType::Slice => parse_quote! { &'static [#inner] },
-        CollectionType::Array(n) => {
-            let len = syn::Index::from(*n);
-            parse_quote! { [#inner; #len] }
-        }
-    }
-}
