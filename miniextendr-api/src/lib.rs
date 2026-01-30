@@ -373,7 +373,7 @@ pub use convert::{
     IntoDataFrame, ToDataFrame, ToDataFrameExt,
 };
 #[cfg(feature = "serde")]
-pub use convert::AsSerializeRow;
+pub use convert::{AsSerializeRow, SerializeDataFrame};
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
 pub use missing::{Missing, is_missing_arg};
 pub use strvec::{StrVec, StrVecBuilder};

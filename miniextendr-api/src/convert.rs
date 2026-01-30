@@ -278,6 +278,34 @@ impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
     }
 }
 
+/// Type alias for a [`DataFrame`] of serde-serializable rows.
+///
+/// This is equivalent to `DataFrame<AsSerializeRow<T>>` but more concise.
+///
+/// # Example
+///
+/// ```ignore
+/// use miniextendr_api::{miniextendr, SerializeDataFrame};
+/// use serde::Serialize;
+///
+/// #[derive(Serialize)]
+/// struct Person {
+///     name: String,
+///     age: i32,
+/// }
+///
+/// #[miniextendr]
+/// fn get_people() -> SerializeDataFrame<Person> {
+///     let people = vec![
+///         Person { name: "Alice".into(), age: 30 },
+///         Person { name: "Bob".into(), age: 25 },
+///     ];
+///     SerializeDataFrame::from_serialize(people)
+/// }
+/// ```
+#[cfg(feature = "serde")]
+pub type SerializeDataFrame<T> = DataFrame<AsSerializeRow<T>>;
+
 // =============================================================================
 // Data Frame Row Conversion
 // =============================================================================
@@ -353,6 +381,37 @@ impl<T: IntoList> DataFrame<T> {
     }
 }
 
+#[cfg(feature = "serde")]
+impl<T: serde::Serialize> DataFrame<AsSerializeRow<T>> {
+    /// Create a DataFrame from serde-serializable rows.
+    ///
+    /// This is a convenience method that wraps each row in [`AsSerializeRow`]
+    /// automatically, avoiding the need to manually map over the input.
+    ///
+    /// # Example
+    ///
+    /// ```ignore
+    /// use miniextendr_api::DataFrame;
+    /// use serde::Serialize;
+    ///
+    /// #[derive(Serialize)]
+    /// struct Person { name: String, age: i32 }
+    ///
+    /// let people = vec![
+    ///     Person { name: "Alice".into(), age: 30 },
+    ///     Person { name: "Bob".into(), age: 25 },
+    /// ];
+    ///
+    /// // Instead of:
+    /// // DataFrame::from_iter(people.into_iter().map(AsSerializeRow))
+    ///
+    /// // Just write:
+    /// let df = DataFrame::from_serialize(people);
+    /// ```
+    pub fn from_serialize(rows: impl IntoIterator<Item = T>) -> Self {
+        Self::from_iter(rows.into_iter().map(AsSerializeRow))
+    }
+}
 
 impl<T: IntoList> Default for DataFrame<T> {
     fn default() -> Self {
