@@ -1796,6 +1796,90 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
+/// Map a Rust return type to an S7 class name.
+///
+/// Returns `None` if the type doesn't map to a specific S7 class (uses class_any).
+///
+/// # S7 Class Mapping
+///
+/// | Rust Type | S7 Class |
+/// |-----------|----------|
+/// | `i32`, `i16`, `i8` | `class_integer` |
+/// | `f64`, `f32` | `class_double` |
+/// | `bool` | `class_logical` |
+/// | `u8` | `class_raw` |
+/// | `String`, `&str` | `class_character` |
+/// | `Vec<i32>` | `class_integer` |
+/// | `Vec<f64>` | `class_double` |
+/// | `Vec<bool>` | `class_logical` |
+/// | `Vec<String>` | `class_character` |
+/// | `Option<T>` | `NULL | class_T` (union) |
+fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Path(type_path) => {
+            let seg = type_path.path.segments.last()?;
+            let ident = seg.ident.to_string();
+
+            match ident.as_str() {
+                // Scalar types
+                "i32" | "i16" | "i8" | "isize" => Some("S7::class_integer".to_string()),
+                "f64" | "f32" => Some("S7::class_double".to_string()),
+                "bool" => Some("S7::class_logical".to_string()),
+                "u8" => Some("S7::class_raw".to_string()),
+                "String" => Some("S7::class_character".to_string()),
+
+                // Vec types - check inner type
+                "Vec" => {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                            // Recursively get the inner type's class
+                            return rust_type_to_s7_class(inner);
+                        }
+                    }
+                    None
+                }
+
+                // Option types - create union with NULL
+                "Option" => {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                            if let Some(inner_class) = rust_type_to_s7_class(inner) {
+                                return Some(format!("NULL | {}", inner_class));
+                            }
+                        }
+                    }
+                    None
+                }
+
+                // Result types - use the Ok type
+                "Result" => {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                        if let Some(syn::GenericArgument::Type(inner)) = args.args.first() {
+                            return rust_type_to_s7_class(inner);
+                        }
+                    }
+                    None
+                }
+
+                _ => None,
+            }
+        }
+        syn::Type::Reference(type_ref) => {
+            // Handle &str
+            if let syn::Type::Path(type_path) = type_ref.elem.as_ref() {
+                if let Some(seg) = type_path.path.segments.last() {
+                    if seg.ident == "str" {
+                        return Some("S7::class_character".to_string());
+                    }
+                }
+            }
+            // Recurse for other reference types
+            rust_type_to_s7_class(&type_ref.elem)
+        }
+        _ => None,
+    }
+}
+
 /// Generate R wrapper string for S7-style class.
 ///
 /// Creates:
@@ -1822,6 +1906,8 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         name: String,
         getter_method_ident: Option<String>,
         setter_method_ident: Option<String>,
+        /// S7 class type inferred from getter return type (e.g., "S7::class_double")
+        class_type: Option<String>,
     }
 
     let mut properties: std::collections::HashMap<String, S7Property> =
@@ -1849,10 +1935,15 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 name: prop_name,
                 getter_method_ident: None,
                 setter_method_ident: None,
+                class_type: None,
             });
 
             if attrs.s7_getter {
                 entry.getter_method_ident = Some(method_ident.clone());
+                // Extract S7 class type from getter's return type
+                if let syn::ReturnType::Type(_, ret_type) = &method.sig.output {
+                    entry.class_type = rust_type_to_s7_class(ret_type);
+                }
             }
             if attrs.s7_setter {
                 entry.setter_method_ident = Some(method_ident);
@@ -1875,17 +1966,40 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .filter(|m| m.should_include())
         .any(|m| m.returns_self());
 
-    // Determine imports based on whether we have properties
-    let imports = if properties.is_empty() {
-        "@importFrom S7 new_class class_any new_object S7_object new_generic method"
-    } else {
-        "@importFrom S7 new_class class_any new_object S7_object new_generic method new_property"
-    };
+    // Determine imports based on whether we have properties and what class types are used
+    let base_imports = "new_class class_any new_object S7_object new_generic method";
+    let mut import_parts: Vec<&str> = vec![base_imports];
+
+    if !properties.is_empty() {
+        import_parts.push("new_property");
+    }
+
+    // Collect unique S7 class types used in properties
+    let mut class_imports: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for prop in properties.values() {
+        if let Some(ref class_type) = prop.class_type {
+            // Extract class name from "S7::class_xxx" or "NULL | S7::class_xxx"
+            for part in class_type.split('|') {
+                let part = part.trim();
+                if let Some(class_name) = part.strip_prefix("S7::") {
+                    class_imports.insert(class_name);
+                }
+            }
+        }
+    }
+    // Sort for deterministic output
+    let mut sorted_imports: Vec<&str> = class_imports.into_iter().collect();
+    sorted_imports.sort();
+    for class_name in sorted_imports {
+        import_parts.push(class_name);
+    }
+
+    let imports = format!("@importFrom S7 {}", import_parts.join(" "));
 
     // Class definition with documentation
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
-            .with_imports(imports)
+            .with_imports(&imports)
             .build(),
     );
 
@@ -1914,6 +2028,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Generate property definition
         let mut prop_parts = Vec::new();
+
+        // Add class constraint if known (inferred from getter return type)
+        if let Some(ref class_type) = prop.class_type {
+            prop_parts.push(format!("class = {}", class_type));
+        }
 
         if let Some(ref getter_ident) = prop.getter_method_ident {
             if let Some(getter_method) = find_method(getter_ident) {

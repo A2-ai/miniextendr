@@ -11,7 +11,7 @@
 //! - Round-trip conversions
 
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::serde_r::{from_r, to_r};
+use miniextendr_api::serde::{from_r, to_r, RSerdeError};
 use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
@@ -35,12 +35,12 @@ impl SerdeRPoint {
 
     /// Serialize this Point to an R list.
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     /// Deserialize a Point from an R list.
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -60,11 +60,11 @@ impl SerdeRPoint3D {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -99,11 +99,11 @@ impl Rectangle {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -149,11 +149,11 @@ impl DeepNest {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -197,11 +197,11 @@ impl Collections {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -241,11 +241,11 @@ impl Maps {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -296,11 +296,11 @@ impl WithEnums {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -351,11 +351,11 @@ impl WithOptionals {
     }
 
     pub fn to_r(&self) -> Result<SEXP, String> {
-        to_r(self).map_err(|e| e.to_string())
+        to_r(self).map_err(|e: RSerdeError| e.to_string())
     }
 
     pub fn from_r(sexp: SEXP) -> Result<Self, String> {
-        from_r(sexp).map_err(|e| e.to_string())
+        from_r(sexp).map_err(|e: RSerdeError| e.to_string())
     }
 }
 
@@ -520,13 +520,13 @@ pub fn serde_r_roundtrip_optionals_none() -> bool {
 /// @noRd
 #[miniextendr]
 pub fn serde_r_deserialize_wrong_type(sexp: SEXP) -> Result<i32, String> {
-    from_r::<i32>(sexp).map_err(|e| e.to_string())
+    from_r::<i32>(sexp).map_err(|e: RSerdeError| e.to_string())
 }
 
 /// @noRd
 #[miniextendr]
 pub fn serde_r_deserialize_missing_field(sexp: SEXP) -> Result<SerdeRPoint, String> {
-    from_r::<SerdeRPoint>(sexp).map_err(|e| e.to_string())
+    from_r::<SerdeRPoint>(sexp).map_err(|e: RSerdeError| e.to_string())
 }
 
 // =============================================================================

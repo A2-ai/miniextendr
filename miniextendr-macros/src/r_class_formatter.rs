@@ -144,7 +144,7 @@ pub struct ClassDocBuilder<'a> {
     type_ident: &'a syn::Ident,
     doc_tags: &'a [String],
     class_system_label: &'static str,
-    imports: Option<&'static str>,
+    imports: Option<String>,
 }
 
 impl<'a> ClassDocBuilder<'a> {
@@ -165,8 +165,8 @@ impl<'a> ClassDocBuilder<'a> {
     }
 
     /// Set R package imports (e.g., "@importFrom R6 R6Class").
-    pub fn with_imports(mut self, imports: &'static str) -> Self {
-        self.imports = Some(imports);
+    pub fn with_imports(mut self, imports: impl Into<String>) -> Self {
+        self.imports = Some(imports.into());
         self
     }
 
@@ -200,7 +200,7 @@ impl<'a> ClassDocBuilder<'a> {
                 self.type_ident
             ));
         }
-        if let Some(imports) = self.imports
+        if let Some(ref imports) = self.imports
             && !has_no_rd
         {
             lines.push(format!("#' {}", imports));

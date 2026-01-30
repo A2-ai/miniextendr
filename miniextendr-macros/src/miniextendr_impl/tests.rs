@@ -723,3 +723,212 @@ fn vctrs_wrapper_no_abbr() {
     assert!(wrapper.contains("vec_ptype2.Simple.Simple"));
     assert!(wrapper.contains("vec_cast.Simple.Simple"));
 }
+
+// =============================================================================
+// S7 property class type tests
+// =============================================================================
+
+#[test]
+fn s7_property_class_types() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Range {
+            pub fn new(start: f64, end: f64) -> Self { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 { unimplemented!() }
+
+            #[miniextendr(s7(getter, prop = "midpoint"))]
+            pub fn get_midpoint(&self) -> f64 { unimplemented!() }
+
+            #[miniextendr(s7(setter, prop = "midpoint"))]
+            pub fn set_midpoint(&mut self, value: f64) { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn is_valid(&self) -> bool { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn name(&self) -> String { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Debug: print the generated wrapper
+    eprintln!("Generated S7 wrapper:\n{}", wrapper);
+
+    // Verify class types are included in property definitions
+    assert!(wrapper.contains("length = S7::new_property(class = S7::class_double, getter ="), "length property missing class type");
+    assert!(wrapper.contains("midpoint = S7::new_property(class = S7::class_double, getter ="), "midpoint property missing class type");
+    assert!(wrapper.contains("is_valid = S7::new_property(class = S7::class_logical, getter ="), "is_valid property missing class type");
+    assert!(wrapper.contains("name = S7::new_property(class = S7::class_character, getter ="), "name property missing class type");
+
+    // Verify imports include the class types
+    assert!(wrapper.contains("class_double"), "missing class_double import");
+    assert!(wrapper.contains("class_logical"), "missing class_logical import");
+    assert!(wrapper.contains("class_character"), "missing class_character import");
+}
+
+#[test]
+fn s7_property_option_class_type() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Container {
+            pub fn new() -> Self { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn maybe_value(&self) -> Option<i32> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Option<i32> should map to NULL | S7::class_integer
+    assert!(wrapper.contains("maybe_value = S7::new_property(class = NULL | S7::class_integer, getter ="));
+}
+
+#[test]
+fn s7_property_mirrors_s7_tests_rs() {
+    // This test mirrors the exact structure of s7_tests.rs::S7Range
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl S7Range {
+            pub fn new(start: f64, end: f64) -> Self {
+                S7Range { start, end }
+            }
+
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 {
+                self.end - self.start
+            }
+
+            #[miniextendr(s7(getter, prop = "midpoint"))]
+            pub fn get_midpoint(&self) -> f64 {
+                (self.start + self.end) / 2.0
+            }
+
+            #[miniextendr(s7(setter, prop = "midpoint"))]
+            pub fn set_midpoint(&mut self, value: f64) {
+                let half_length = (self.end - self.start) / 2.0;
+                self.start = value - half_length;
+                self.end = value + half_length;
+            }
+
+            pub fn s7_start(&self) -> f64 {
+                self.start
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+
+    // Debug: check method attributes
+    for method in &parsed.methods {
+        if method.ident == "length" {
+            eprintln!("length method attrs: s7_getter={}, s7_setter={}",
+                     method.method_attrs.s7_getter, method.method_attrs.s7_setter);
+            eprintln!("length return type: {:?}", method.sig.output);
+        }
+    }
+
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    eprintln!("Generated wrapper for S7Range:\n{}", wrapper);
+
+    // Should have class type for length property
+    assert!(wrapper.contains("length = S7::new_property(class = S7::class_double"),
+            "length property should have class = S7::class_double");
+}
+
+// =============================================================================
+// S7 type mapping tests
+// =============================================================================
+
+#[test]
+fn s7_type_mapping_scalars() {
+    use super::rust_type_to_s7_class;
+
+    // Integer types
+    let ty: syn::Type = syn::parse_quote!(i32);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+
+    let ty: syn::Type = syn::parse_quote!(i16);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+
+    // Float types
+    let ty: syn::Type = syn::parse_quote!(f64);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_double".to_string()));
+
+    let ty: syn::Type = syn::parse_quote!(f32);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_double".to_string()));
+
+    // Logical
+    let ty: syn::Type = syn::parse_quote!(bool);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_logical".to_string()));
+
+    // Raw
+    let ty: syn::Type = syn::parse_quote!(u8);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_raw".to_string()));
+
+    // Character
+    let ty: syn::Type = syn::parse_quote!(String);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_character".to_string()));
+}
+
+#[test]
+fn s7_type_mapping_references() {
+    use super::rust_type_to_s7_class;
+
+    // &str maps to character
+    let ty: syn::Type = syn::parse_quote!(&str);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_character".to_string()));
+}
+
+#[test]
+fn s7_type_mapping_vec() {
+    use super::rust_type_to_s7_class;
+
+    // Vec<i32> -> class_integer
+    let ty: syn::Type = syn::parse_quote!(Vec<i32>);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+
+    // Vec<f64> -> class_double
+    let ty: syn::Type = syn::parse_quote!(Vec<f64>);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_double".to_string()));
+
+    // Vec<String> -> class_character
+    let ty: syn::Type = syn::parse_quote!(Vec<String>);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_character".to_string()));
+}
+
+#[test]
+fn s7_type_mapping_option() {
+    use super::rust_type_to_s7_class;
+
+    // Option<i32> -> NULL | class_integer
+    let ty: syn::Type = syn::parse_quote!(Option<i32>);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("NULL | S7::class_integer".to_string()));
+
+    // Option<String> -> NULL | class_character
+    let ty: syn::Type = syn::parse_quote!(Option<String>);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("NULL | S7::class_character".to_string()));
+}
+
+#[test]
+fn s7_type_mapping_result() {
+    use super::rust_type_to_s7_class;
+
+    // Result<i32, E> -> class_integer (from Ok type)
+    let ty: syn::Type = syn::parse_quote!(Result<i32, String>);
+    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+}
+
+#[test]
+fn s7_type_mapping_unknown() {
+    use super::rust_type_to_s7_class;
+
+    // Unknown types return None (will use class_any)
+    let ty: syn::Type = syn::parse_quote!(MyCustomType);
+    assert_eq!(rust_type_to_s7_class(&ty), None);
+
+    let ty: syn::Type = syn::parse_quote!(ExternalPtr<Foo>);
+    assert_eq!(rust_type_to_s7_class(&ty), None);
+}
