@@ -23,11 +23,13 @@ pub trait IntoDataFrame {
 ```
 
 **Key Points:**
+
 - Consumes `self` (owning conversion)
 - Returns a `List` with data.frame attributes
 - Used by all other approaches under the hood
 
 **Related:**
+
 - `AsDataFrame` (in `as_coerce` module) - S3 coercion methods for `as.data.frame()` on ExternalPtr types
 - `IntoDataFrame` (this trait) - Direct conversion for return values
 
@@ -176,6 +178,7 @@ let rows: Vec<Measurement> = df.into_iter().collect();
 ### Requirements
 
 The row type must implement `IntoList`:
+
 - Automatically via `#[derive(IntoList)]`
 - Via `#[derive(Serialize)]` when `serde` feature is enabled
 - Via manual implementation using `List::from_raw_pairs()` (for heterogeneous fields)
@@ -194,7 +197,7 @@ Note: Collection type is always `Vec<T>` currently. Future versions may support 
 
 ---
 
-## Approach 2: DataFrame<T>
+## Approach 2: `DataFrame<T>`
 
 Generic type for transposing row-oriented data. Works with any `T: IntoList`.
 
@@ -389,11 +392,13 @@ vec![
 ```
 
 **Pros:**
+
 - Natural Rust data structure
 - Easy to work with in Rust code
 - Type-safe field access
 
 **Cons:**
+
 - Needs transposition for R
 - Memory layout not optimal for R
 
@@ -407,11 +412,13 @@ MeasurementDataFrame {
 ```
 
 **Pros:**
+
 - Direct R data.frame representation
 - No transposition needed
 - Memory efficient for R
 
 **Cons:**
+
 - Less ergonomic in Rust
 - Easy to create invalid data (mismatched lengths)
 
