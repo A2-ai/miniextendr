@@ -1,5 +1,7 @@
 //! Test DataFrameRow with various collection types
 
+#![allow(dead_code)]
+
 use miniextendr_api::{DataFrameRow, IntoList};
 use std::collections::{HashSet, BTreeSet};
 

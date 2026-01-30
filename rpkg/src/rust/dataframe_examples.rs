@@ -1,7 +1,7 @@
 //! Examples and tests for data frame conversion features.
 
 use miniextendr_api::{miniextendr, DataFrameRow, IntoList};
-use miniextendr_api::convert::{DataFrame, ToDataFrame};
+use miniextendr_api::convert::ToDataFrame;
 
 // Test with homogeneous types first
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -24,6 +24,7 @@ pub fn create_points_df() -> ToDataFrame<PointDataFrame> {
 
 // Test with just two different types first
 #[derive(Clone, Debug, DataFrameRow)]
+#[allow(dead_code)]
 pub struct SimplePerson {
     pub name: String,
     pub age: i32,
