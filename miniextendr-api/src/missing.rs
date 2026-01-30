@@ -33,6 +33,39 @@
 //! - Missing argument (not passed)
 //! - `NULL` (explicitly passed `NULL`)
 //! - A value (explicitly passed a non-NULL value)
+//!
+//! # How it works: the `quote(expr=)` trick
+//!
+//! In regular R functions, you detect missing arguments with `missing()`:
+//!
+//! ```r
+//! my_func <- function(x) {
+//!   if (missing(x)) "not provided" else x
+//! }
+//! my_func()   # "not provided"
+//! my_func(5)  # 5
+//! ```
+//!
+//! However, `.Call()` (the FFI boundary) forces argument evaluation. Without a
+//! default value, R errors before the call even reaches Rust:
+//!
+//! ```r
+//! wrapper <- function(x) .Call(rust_fn, x)
+//! wrapper()  # Error: argument "x" is missing, with no default
+//! ```
+//!
+//! The generated R wrappers use `quote(expr=)` as the default for `Missing<T>` parameters:
+//!
+//! ```r
+//! wrapper <- function(x = quote(expr=)) .Call(rust_fn, x)
+//! ```
+//!
+//! `quote(expr=)` is an R idiom that captures the "missing" state - calling `quote()`
+//! without providing its `expr` argument returns `R_MissingArg`. This allows:
+//!
+//! 1. The call to proceed without error
+//! 2. `R_MissingArg` to be passed through `.Call()` to Rust
+//! 3. `Missing<T>` to detect it as `Missing::Absent`
 
 use crate::ffi::{R_MissingArg, SEXP};
 use crate::from_r::{SexpError, TryFromSexp};
@@ -78,15 +111,11 @@ impl<T> Missing<T> {
     }
 
     /// Returns `true` if the argument was not provided.
-    #[inline]
-    pub fn is_absent(&self) -> bool {
-        matches!(self, Missing::Absent)
-    }
-
-    /// Alias for `is_absent()` to match R's `missing()` function.
+    ///
+    /// Named to match R's `missing()` function.
     #[inline]
     pub fn is_missing(&self) -> bool {
-        self.is_absent()
+        matches!(self, Missing::Absent)
     }
 
     /// Convert to `Option<T>`, returning `None` if missing.
@@ -261,11 +290,9 @@ mod tests {
         let absent: Missing<i32> = Missing::Absent;
 
         assert!(present.is_present());
-        assert!(!present.is_absent());
         assert!(!present.is_missing());
 
         assert!(!absent.is_present());
-        assert!(absent.is_absent());
         assert!(absent.is_missing());
 
         assert_eq!(present.into_option(), Some(42));
@@ -293,7 +320,7 @@ mod tests {
     #[test]
     fn missing_default() {
         let m: Missing<i32> = Missing::default();
-        assert!(m.is_absent());
+        assert!(m.is_missing());
     }
 
     #[test]
