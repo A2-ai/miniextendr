@@ -605,3 +605,99 @@ fn bitvec_unchecked_option() {
         }
     });
 }
+
+// =============================================================================
+// Tests for blanket impl with arbitrary lifetimes
+// =============================================================================
+
+#[test]
+fn slice_arbitrary_lifetime_i32() {
+    // Test that &[T] works with arbitrary lifetimes (not just &'static [T])
+    r_test_utils::with_r_thread(|| {
+        unsafe {
+            let sexp = make_int_vec(&[1, 2, 3], &mut ProtectCount::default());
+
+            // This should work with non-static lifetime
+            let slice: &[i32] = TryFromSexp::try_from_sexp(sexp).unwrap();
+            assert_eq!(slice.len(), 3);
+            assert_eq!(slice[0], 1);
+            assert_eq!(slice[1], 2);
+            assert_eq!(slice[2], 3);
+        }
+    });
+}
+
+#[test]
+fn slice_arbitrary_lifetime_f64() {
+    r_test_utils::with_r_thread(|| unsafe {
+        let sexp = make_real_vec(&[1.5, 2.5, 3.5], &mut ProtectCount::default());
+
+        let slice: &[f64] = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(slice.len(), 3);
+        assert_eq!(slice[0], 1.5);
+        assert_eq!(slice[1], 2.5);
+        assert_eq!(slice[2], 3.5);
+    });
+}
+
+#[test]
+fn slice_mut_arbitrary_lifetime() {
+    r_test_utils::with_r_thread(|| {
+        unsafe {
+            let sexp = make_int_vec(&[10, 20, 30], &mut ProtectCount::default());
+
+            // Get mutable slice
+            let slice: &mut [i32] = TryFromSexp::try_from_sexp(sexp).unwrap();
+            assert_eq!(slice.len(), 3);
+
+            // Modify in place
+            slice[0] = 100;
+            slice[1] = 200;
+
+            // Verify modification worked
+            assert_eq!(slice[0], 100);
+            assert_eq!(slice[1], 200);
+            assert_eq!(slice[2], 30);
+        }
+    });
+}
+
+#[test]
+fn option_slice_arbitrary_lifetime() {
+    r_test_utils::with_r_thread(|| {
+        unsafe {
+            // Test Some case
+            let sexp = make_int_vec(&[1, 2], &mut ProtectCount::default());
+            let opt: Option<&[i32]> = TryFromSexp::try_from_sexp(sexp).unwrap();
+            assert!(opt.is_some());
+            let slice = opt.unwrap();
+            assert_eq!(slice.len(), 2);
+
+            // Test None case
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let opt_nil: Option<&[i32]> = TryFromSexp::try_from_sexp(nil).unwrap();
+            assert!(opt_nil.is_none());
+        }
+    });
+}
+
+#[test]
+fn option_slice_mut_arbitrary_lifetime() {
+    r_test_utils::with_r_thread(|| {
+        unsafe {
+            // Test Some case with mutation
+            let sexp = make_int_vec(&[5, 10], &mut ProtectCount::default());
+            let opt: Option<&mut [i32]> = TryFromSexp::try_from_sexp(sexp).unwrap();
+            assert!(opt.is_some());
+            let slice = opt.unwrap();
+            slice[0] = 50;
+            assert_eq!(slice[0], 50);
+            assert_eq!(slice[1], 10);
+
+            // Test None case
+            let nil = miniextendr_api::ffi::R_NilValue;
+            let opt_nil: Option<&mut [i32]> = TryFromSexp::try_from_sexp(nil).unwrap();
+            assert!(opt_nil.is_none());
+        }
+    });
+}

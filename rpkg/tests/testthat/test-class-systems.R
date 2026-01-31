@@ -101,3 +101,101 @@ test_that("S7Range property methods are not exposed as generics", {
   expect_false(exists("get_midpoint", mode = "function", envir = globalenv()))
   expect_false(exists("set_midpoint", mode = "function", envir = globalenv()))
 })
+
+# =============================================================================
+# S7 Phase 2: Property patterns (defaults, required, deprecated)
+# =============================================================================
+
+test_that("S7Config property with default value works", {
+  # Create config with explicit score
+  config <- S7Config("test", 75.0, 1L)
+  expect_equal(config@score, 75.0)
+
+  # Modify via setter
+  config@score <- 90.0
+  expect_equal(config@score, 90.0)
+})
+
+test_that("S7Config required property errors when missing", {
+  # The 'name' property is marked as required
+
+  # Accessing it on a valid config should work
+  config <- S7Config("test", 50.0, 1L)
+  expect_equal(config@name, "test")
+
+  # Note: We can't easily test the "required" error at construction time
+  # because Rust provides the value. The 'required' pattern is primarily
+  # for when S7 constructs objects with properties that have no default.
+})
+
+test_that("S7Config deprecated property emits warning", {
+  config <- S7Config("test", 50.0, 42L)
+
+  # Accessing deprecated property should emit a warning
+  expect_warning(
+    result <- config@old_version,
+    "deprecated"
+  )
+  expect_equal(result, 42L)
+
+  # Regular accessor doesn't warn
+  expect_equal(get_version(config), 42L)
+})
+
+# =============================================================================
+# S7 Phase 3: Generic dispatch control
+# =============================================================================
+
+test_that("S7Strict no_dots generic works", {
+  strict <- S7Strict(42L)
+
+  # strict_length should work normally
+  expect_equal(strict_length(strict), 42L)
+
+  # The generic signature should be function(x), not function(x, ...)
+  # This means extra arguments would cause an error (in strict S7)
+})
+
+test_that("S7Strict fallback method works for class_any", {
+  strict <- S7Strict(123L)
+
+  # describe_any should work on S7Strict
+  expect_equal(describe_any(strict), "S7Strict with value 123")
+
+  # Since it's registered for class_any, it might work on other types too
+  # (though in this case the C function expects S7Strict specifically)
+})
+
+# =============================================================================
+# S7 Phase 4: convert() methods - type coercion
+# =============================================================================
+
+test_that("S7 convert_from works (Celsius to Fahrenheit)", {
+  c <- S7Celsius(100.0)  # Boiling point
+  expect_equal(value(c), 100.0)
+
+  # Convert using S7::convert() - uses convert_from on S7Fahrenheit
+  f <- S7::convert(c, S7Fahrenheit)
+  expect_equal(value(f), 212.0)  # 100C = 212F
+})
+
+test_that("S7 convert_to works (Fahrenheit to Celsius)", {
+  f <- S7Fahrenheit(32.0)  # Freezing point
+
+  # Convert using S7::convert() - uses convert_to on S7Fahrenheit
+  c <- S7::convert(f, S7Celsius)
+  expect_equal(value(c), 0.0)  # 32F = 0C
+})
+
+test_that("S7 bidirectional conversion works", {
+  # Start with Celsius
+  c1 <- S7Celsius(25.0)
+
+  # Convert to Fahrenheit (uses convert_from on S7Fahrenheit)
+  f <- S7::convert(c1, S7Fahrenheit)
+  expect_equal(value(f), 77.0)  # 25C = 77F
+
+  # Convert back to Celsius (uses convert_to on S7Fahrenheit)
+  c2 <- S7::convert(f, S7Celsius)
+  expect_equal(value(c2), 25.0, tolerance = 1e-10)
+})

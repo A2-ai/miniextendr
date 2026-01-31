@@ -107,6 +107,22 @@ pub trait PrefersExternalPtr: crate::externalptr::IntoExternalPtr {}
 /// Implemented by the `PreferRNativeType` derive; currently informational.
 pub trait PrefersRNativeType: IsRNativeType {}
 
+// =============================================================================
+// Coercion marker traits
+// =============================================================================
+
+/// Marker trait for types that can widen to `i32` without loss.
+///
+/// Manually implemented for specific types to avoid conflicts with identity/
+/// special-case conversions. Used by blanket Coerce implementations.
+pub trait WidensToI32: Into<i32> + Copy {}
+
+/// Marker trait for types that can widen to `f64` without loss.
+///
+/// Manually implemented for specific types to avoid conflicts with identity/
+/// special-case conversions. Used by blanket Coerce implementations.
+pub trait WidensToF64: Into<f64> + Copy {}
+
 // Blanket implementations: any type satisfying the underlying data trait
 // automatically gets the marker trait. This keeps derived and manual impls
 // consistent without requiring an explicit marker impl.
@@ -119,3 +135,17 @@ impl<T: crate::altrep_data::AltStringData> IsAltrepStringData for T {}
 impl<T: crate::altrep_data::AltComplexData> IsAltrepComplexData for T {}
 impl<T: crate::altrep_data::AltListData> IsAltrepListData for T {}
 impl<T: crate::list::IntoList> IsIntoList for T {}
+
+// Explicit marker impls for widening conversions (no blanket impl to avoid conflicts)
+impl WidensToI32 for i8 {}
+impl WidensToI32 for i16 {}
+impl WidensToI32 for u8 {}
+impl WidensToI32 for u16 {}
+
+impl WidensToF64 for f32 {}
+impl WidensToF64 for i8 {}
+impl WidensToF64 for i16 {}
+impl WidensToF64 for i32 {}
+impl WidensToF64 for u8 {}
+impl WidensToF64 for u16 {}
+impl WidensToF64 for u32 {}

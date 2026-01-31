@@ -394,6 +394,139 @@ pub struct MethodAttrs {
     /// When specified via `#[miniextendr(s7(getter, prop = "name"))]`, overrides the
     /// default property name which is derived from the method name.
     pub s7_prop: Option<String>,
+    /// S7 property default value (R expression).
+    ///
+    /// Use `#[miniextendr(s7(getter, default = "0.0"))]` to set a default value.
+    /// The value is an R expression that will be used as the `default` parameter
+    /// in `new_property()`.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, default = "0.0"))]
+    /// fn score(&self) -> f64 { self.score }
+    /// // Generates: score = new_property(class = class_double, default = 0.0, getter = ...)
+    /// ```
+    pub s7_default: Option<String>,
+    /// S7 property validator marker.
+    ///
+    /// Use `#[miniextendr(s7(validate, prop = "name"))]` to mark a method as a property
+    /// validator. The method should take a value and return `Result<(), String>` or
+    /// return nothing and panic on invalid input.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(validate, prop = "score"))]
+    /// fn validate_score(value: f64) -> Result<(), String> {
+    ///     if value < 0.0 || value > 100.0 {
+    ///         Err("score must be between 0 and 100".into())
+    ///     } else {
+    ///         Ok(())
+    ///     }
+    /// }
+    /// ```
+    pub s7_validate: bool,
+    /// S7 property required marker.
+    ///
+    /// Use `#[miniextendr(s7(getter, required))]` to mark a property as required.
+    /// This generates `default = quote(stop("@name is required"))` in R.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, required))]
+    /// fn id(&self) -> String { self.id.clone() }
+    /// // Generates: id = new_property(default = quote(stop("@id is required")), ...)
+    /// ```
+    pub s7_required: bool,
+    /// S7 property frozen marker.
+    ///
+    /// Use `#[miniextendr(s7(getter, frozen))]` to mark a property that can only
+    /// be set once. After the initial value is set, attempts to change it will error.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, frozen))]
+    /// fn created_at(&self) -> f64 { self.created_at }
+    /// ```
+    pub s7_frozen: bool,
+    /// S7 property deprecated marker.
+    ///
+    /// Use `#[miniextendr(s7(getter, deprecated = "message"))]` to mark a property
+    /// as deprecated. Getter and setter will emit deprecation warnings.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(getter, deprecated = "Use 'value' instead"))]
+    /// fn old_value(&self) -> i32 { self.value }
+    /// ```
+    pub s7_deprecated: Option<String>,
+    // =========================================================================
+    // S7 Phase 3: Generic dispatch control
+    // =========================================================================
+    /// S7 no_dots marker - removes `...` from generic signature.
+    ///
+    /// Use for strict generics like `length()` that don't accept extra args.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(no_dots))]
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    /// // Generates: new_generic("length", "x", function(x) S7_dispatch())
+    /// // Instead of: new_generic("length", "x", function(x, ...) S7_dispatch())
+    /// ```
+    pub s7_no_dots: bool,
+    /// S7 multiple dispatch - specifies dispatch arguments.
+    ///
+    /// Use `#[miniextendr(s7(dispatch = "x,y"))]` to enable double dispatch.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(dispatch = "x,y"))]
+    /// fn compare(&self, other: &OtherType) -> i32 { ... }
+    /// // Generates: new_generic("compare", c("x", "y"), function(x, y, ...) S7_dispatch())
+    /// ```
+    pub s7_dispatch: Option<String>,
+    /// S7 fallback marker - register method for class_any.
+    ///
+    /// Use for fallback implementations that handle any type.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(fallback))]
+    /// fn describe(&self) -> String { "unknown".to_string() }
+    /// // Registers method for S7::class_any
+    /// ```
+    pub s7_fallback: bool,
+    // =========================================================================
+    // S7 Phase 4: Conversion support
+    // =========================================================================
+    /// S7 convert_from - marks a method that converts FROM another type.
+    ///
+    /// Use `#[miniextendr(s7(convert_from = "OtherType"))]` on a static method
+    /// that takes OtherType and returns Self. This generates an S7 convert() method.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(convert_from = "Point2D"))]
+    /// fn from_2d(p: &Point2D) -> Self {
+    ///     Point3D { x: p.x, y: p.y, z: 0.0 }
+    /// }
+    /// // Generates: S7::method(convert, list(Point2D, Point3D)) <- function(from, to) ...
+    /// ```
+    pub s7_convert_from: Option<String>,
+    /// S7 convert_to - marks a method that converts TO another type.
+    ///
+    /// Use `#[miniextendr(s7(convert_to = "OtherType"))]` on an instance method
+    /// that returns OtherType. This generates an S7 convert() method.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(s7(convert_to = "Point2D"))]
+    /// fn to_2d(&self) -> Point2D {
+    ///     Point2D { x: self.x, y: self.y }
+    /// }
+    /// // Generates: S7::method(convert, list(Point3D, Point2D)) <- function(from, to) ...
+    /// ```
+    pub s7_convert_to: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -575,6 +708,17 @@ impl ParsedMethod {
             ));
         }
 
+        // convert_from and convert_to are mutually exclusive on the same method
+        // - convert_from expects a static method (no &self, takes source type)
+        // - convert_to expects an instance method (&self, returns target type)
+        if attrs.s7_convert_from.is_some() && attrs.s7_convert_to.is_some() {
+            return Err(syn::Error::new(
+                span,
+                "cannot specify both `convert_from` and `convert_to` on the same method; \
+                 convert_from is for static methods, convert_to is for instance methods",
+            ));
+        }
+
         // Worker attribute is now supported on methods
         // (validation happens during wrapper generation based on return type)
 
@@ -645,13 +789,43 @@ impl ParsedMethod {
                             method_attrs.s7_getter = true;
                         } else if inner.path.is_ident("setter") {
                             method_attrs.s7_setter = true;
+                        } else if inner.path.is_ident("validate") {
+                            method_attrs.s7_validate = true;
                         } else if inner.path.is_ident("prop") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7_prop = Some(value.value());
+                        } else if inner.path.is_ident("default") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_default = Some(value.value());
+                        } else if inner.path.is_ident("required") {
+                            method_attrs.s7_required = true;
+                        } else if inner.path.is_ident("frozen") {
+                            method_attrs.s7_frozen = true;
+                        } else if inner.path.is_ident("deprecated") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_deprecated = Some(value.value());
+                        } else if inner.path.is_ident("no_dots") {
+                            method_attrs.s7_no_dots = true;
+                        } else if inner.path.is_ident("dispatch") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_dispatch = Some(value.value());
+                        } else if inner.path.is_ident("fallback") {
+                            method_attrs.s7_fallback = true;
+                        } else if inner.path.is_ident("convert_from") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_convert_from = Some(value.value());
+                        } else if inner.path.is_ident("convert_to") {
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            method_attrs.s7_convert_to = Some(value.value());
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, prop"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to"
                             ));
                         }
                         Ok(())
@@ -846,6 +1020,36 @@ impl ParsedMethod {
 
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
+
+        // Validate: `self` by value (consuming) methods are not fully supported
+        // They're either: constructor (returns Self), finalizer (marked or inferred), or error
+        if env == ReceiverKind::Value {
+            let returns_self = matches!(&item.sig.output, syn::ReturnType::Type(_, ty)
+                if matches!(ty.as_ref(), syn::Type::Path(p)
+                    if p.path.segments.last().map(|s| s.ident == "Self").unwrap_or(false)));
+
+            // Allow if: constructor (returns Self) or explicitly marked as finalize
+            let is_allowed = returns_self || method_attrs.constructor || method_attrs.finalize;
+
+            if !is_allowed {
+                return Err(syn::Error::new(
+                    item.sig.fn_token.span,
+                    format!(
+                        "method `{}` takes `self` by value (consuming), which is not fully supported.\n\
+                         \n\
+                         Methods that consume `self` cannot be called from R because R uses reference \
+                         semantics via ExternalPtr - the R object would remain alive after the Rust \
+                         value is consumed.\n\
+                         \n\
+                         Options:\n\
+                         1. Use `&self` or `&mut self` instead of `self`\n\
+                         2. If this is a finalizer (cleanup method), add `#[miniextendr(finalize)]`\n\
+                         3. If this returns a new Self (builder pattern), add `#[miniextendr(constructor)]`",
+                        item.sig.ident
+                    ),
+                ));
+            }
+        }
 
         Ok(ParsedMethod {
             ident: item.sig.ident.clone(),
@@ -1796,6 +2000,88 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.join("\n")
 }
 
+/// Map a Rust return type to an S7 class name.
+///
+/// Returns `None` if the type doesn't map to a specific S7 class (uses class_any).
+///
+/// # S7 Class Mapping
+///
+/// | Rust Type | S7 Class |
+/// |-----------|----------|
+/// | `i32`, `i16`, `i8` | `class_integer` |
+/// | `f64`, `f32` | `class_double` |
+/// | `bool` | `class_logical` |
+/// | `u8` | `class_raw` |
+/// | `String`, `&str` | `class_character` |
+/// | `Vec<i32>` | `class_integer` |
+/// | `Vec<f64>` | `class_double` |
+/// | `Vec<bool>` | `class_logical` |
+/// | `Vec<String>` | `class_character` |
+/// | `Option<T>` | `NULL | class_T` (union) |
+fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
+    match ty {
+        syn::Type::Path(type_path) => {
+            let seg = type_path.path.segments.last()?;
+            let ident = seg.ident.to_string();
+
+            match ident.as_str() {
+                // Scalar types
+                "i32" | "i16" | "i8" | "isize" => Some("S7::class_integer".to_string()),
+                "f64" | "f32" => Some("S7::class_double".to_string()),
+                "bool" => Some("S7::class_logical".to_string()),
+                "u8" => Some("S7::class_raw".to_string()),
+                "String" => Some("S7::class_character".to_string()),
+
+                // Vec types - check inner type
+                "Vec" => {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+                    {
+                        // Recursively get the inner type's class
+                        return rust_type_to_s7_class(inner);
+                    }
+                    None
+                }
+
+                // Option types - create union with NULL
+                "Option" => {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+                        && let Some(inner_class) = rust_type_to_s7_class(inner)
+                    {
+                        return Some(format!("NULL | {}", inner_class));
+                    }
+                    None
+                }
+
+                // Result types - use the Ok type
+                "Result" => {
+                    if let syn::PathArguments::AngleBracketed(args) = &seg.arguments
+                        && let Some(syn::GenericArgument::Type(inner)) = args.args.first()
+                    {
+                        return rust_type_to_s7_class(inner);
+                    }
+                    None
+                }
+
+                _ => None,
+            }
+        }
+        syn::Type::Reference(type_ref) => {
+            // Handle &str
+            if let syn::Type::Path(type_path) = type_ref.elem.as_ref()
+                && let Some(seg) = type_path.path.segments.last()
+                && seg.ident == "str"
+            {
+                return Some("S7::class_character".to_string());
+            }
+            // Recurse for other reference types
+            rust_type_to_s7_class(&type_ref.elem)
+        }
+        _ => None,
+    }
+}
+
 /// Generate R wrapper string for S7-style class.
 ///
 /// Creates:
@@ -1817,13 +2103,24 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     let mut lines = Vec::new();
 
-    // Collect S7 property getters and setters
+    // Collect S7 property getters, setters, and validators
     // Property name is: s7_prop if specified, else method name
     // We store method idents so we can look them up later
     struct S7Property {
         name: String,
         getter_method_ident: Option<String>,
         setter_method_ident: Option<String>,
+        validator_method_ident: Option<String>,
+        /// S7 class type inferred from getter return type (e.g., "S7::class_double")
+        class_type: Option<String>,
+        /// Default value (R expression)
+        default_value: Option<String>,
+        /// Property is required (error if not provided)
+        required: bool,
+        /// Property is frozen (can only be set once)
+        frozen: bool,
+        /// Deprecation message
+        deprecated: Option<String>,
     }
 
     let mut properties: std::collections::HashMap<String, S7Property> =
@@ -1831,14 +2128,14 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let mut property_method_idents: std::collections::HashSet<String> =
         std::collections::HashSet::new();
 
-    // First pass: collect all property methods
+    // First pass: collect all property methods (getters, setters, validators)
     for method in &parsed_impl.methods {
         if !method.should_include() {
             continue;
         }
         let attrs = &method.method_attrs;
 
-        if attrs.s7_getter || attrs.s7_setter {
+        if attrs.s7_getter || attrs.s7_setter || attrs.s7_validate {
             let method_ident = method.ident.to_string();
             let prop_name = attrs
                 .s7_prop
@@ -1851,23 +2148,46 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 name: prop_name,
                 getter_method_ident: None,
                 setter_method_ident: None,
+                validator_method_ident: None,
+                class_type: None,
+                default_value: None,
+                required: false,
+                frozen: false,
+                deprecated: None,
             });
 
             if attrs.s7_getter {
                 entry.getter_method_ident = Some(method_ident.clone());
+                // Extract S7 class type from getter's return type
+                if let syn::ReturnType::Type(_, ret_type) = &method.sig.output {
+                    entry.class_type = rust_type_to_s7_class(ret_type);
+                }
+                // Capture property attributes from getter
+                if let Some(ref default) = attrs.s7_default {
+                    entry.default_value = Some(default.clone());
+                }
+                if attrs.s7_required {
+                    entry.required = true;
+                }
+                if attrs.s7_frozen {
+                    entry.frozen = true;
+                }
+                if let Some(ref msg) = attrs.s7_deprecated {
+                    entry.deprecated = Some(msg.clone());
+                }
             }
             if attrs.s7_setter {
-                entry.setter_method_ident = Some(method_ident);
+                entry.setter_method_ident = Some(method_ident.clone());
+            }
+            if attrs.s7_validate {
+                entry.validator_method_ident = Some(method_ident);
             }
         }
     }
 
     // Helper to find method by ident
     let find_method = |ident: &str| -> Option<&ParsedMethod> {
-        parsed_impl
-            .methods
-            .iter()
-            .find(|m| m.ident.to_string() == ident)
+        parsed_impl.methods.iter().find(|m| m.ident == ident)
     };
 
     // Constructor - check if .ptr param will be added (for static methods returning Self)
@@ -1877,17 +2197,49 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         .filter(|m| m.should_include())
         .any(|m| m.returns_self());
 
-    // Determine imports based on whether we have properties
-    let imports = if properties.is_empty() {
-        "@importFrom S7 new_class class_any new_object S7_object new_generic method"
-    } else {
-        "@importFrom S7 new_class class_any new_object S7_object new_generic method new_property"
-    };
+    // Determine imports based on whether we have properties and what class types are used
+    let base_imports = "new_class class_any new_object S7_object new_generic method";
+    let mut import_parts: Vec<&str> = vec![base_imports];
+
+    if !properties.is_empty() {
+        import_parts.push("new_property");
+    }
+
+    // Check if any methods use S7 convert (convert_from or convert_to)
+    let has_convert_methods = parsed_impl.methods.iter().any(|m| {
+        m.should_include()
+            && (m.method_attrs.s7_convert_from.is_some() || m.method_attrs.s7_convert_to.is_some())
+    });
+    if has_convert_methods {
+        import_parts.push("convert");
+    }
+
+    // Collect unique S7 class types used in properties
+    let mut class_imports: std::collections::HashSet<&str> = std::collections::HashSet::new();
+    for prop in properties.values() {
+        if let Some(ref class_type) = prop.class_type {
+            // Extract class name from "S7::class_xxx" or "NULL | S7::class_xxx"
+            for part in class_type.split('|') {
+                let part = part.trim();
+                if let Some(class_name) = part.strip_prefix("S7::") {
+                    class_imports.insert(class_name);
+                }
+            }
+        }
+    }
+    // Sort for deterministic output
+    let mut sorted_imports: Vec<&str> = class_imports.into_iter().collect();
+    sorted_imports.sort();
+    for class_name in sorted_imports {
+        import_parts.push(class_name);
+    }
+
+    let imports = format!("@importFrom S7 {}", import_parts.join(" "));
 
     // Class definition with documentation
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
-            .with_imports(imports)
+            .with_imports(&imports)
             .build(),
     );
 
@@ -1917,21 +2269,83 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Generate property definition
         let mut prop_parts = Vec::new();
 
-        if let Some(ref getter_ident) = prop.getter_method_ident {
-            if let Some(getter_method) = find_method(getter_ident) {
-                let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
-                let getter_call = ctx.instance_call("self@.ptr");
+        // Add class constraint if known (inferred from getter return type)
+        if let Some(ref class_type) = prop.class_type {
+            prop_parts.push(format!("class = {}", class_type));
+        }
+
+        // Handle default value or required pattern
+        if prop.required {
+            // Required pattern: error if not provided
+            prop_parts.push(format!(
+                "default = quote(stop(\"@{} is required\"))",
+                prop.name
+            ));
+        } else if let Some(ref default) = prop.default_value {
+            // Explicit default value (R expression)
+            prop_parts.push(format!("default = {}", default));
+        }
+
+        // Add validator if present
+        if let Some(ref validator_ident) = prop.validator_method_ident
+            && let Some(validator_method) = find_method(validator_ident)
+        {
+            let ctx = MethodContext::new(validator_method, type_ident, parsed_impl.label());
+            // Validator is called with just the value, not self
+            // Generate: validator = function(value) .Call(C_Type__validate_prop, value)
+            prop_parts.push(format!(
+                "validator = function(value) .Call({}, .call = match.call(), value)",
+                ctx.c_ident
+            ));
+        }
+
+        // Generate getter (with optional deprecation warning)
+        if let Some(ref getter_ident) = prop.getter_method_ident
+            && let Some(getter_method) = find_method(getter_ident)
+        {
+            let ctx = MethodContext::new(getter_method, type_ident, parsed_impl.label());
+            let getter_call = ctx.instance_call("self@.ptr");
+            if let Some(ref msg) = prop.deprecated {
+                // Deprecated getter: emit warning then return value
+                prop_parts.push(format!(
+                    "getter = function(self) {{ warning(\"Property @{} is deprecated: {}\"); {} }}",
+                    prop.name, msg, getter_call
+                ));
+            } else {
                 prop_parts.push(format!("getter = function(self) {}", getter_call));
             }
         }
 
-        if let Some(ref setter_ident) = prop.setter_method_ident {
-            if let Some(setter_method) = find_method(setter_ident) {
-                let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
-                let setter_call = ctx.instance_call("self@.ptr");
-                // Setter function takes self and value, calls the Rust method, returns self
-                // Note: instance_call already includes the method parameters (including 'value'),
-                // so we just need to wrap it in the setter function signature.
+        // Generate setter (with optional frozen/deprecation handling)
+        if let Some(ref setter_ident) = prop.setter_method_ident
+            && let Some(setter_method) = find_method(setter_ident)
+        {
+            let ctx = MethodContext::new(setter_method, type_ident, parsed_impl.label());
+            let setter_call = ctx.instance_call("self@.ptr");
+
+            if prop.frozen {
+                // Frozen pattern: error if property was already set (non-NULL)
+                // Note: This is a simplified check; true frozen behavior would need
+                // a separate flag in the object to track if ever set
+                if let Some(ref msg) = prop.deprecated {
+                    prop_parts.push(format!(
+                        "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                        prop.name, msg, prop.name, prop.name, setter_call
+                    ));
+                } else {
+                    prop_parts.push(format!(
+                        "setter = function(self, value) {{ if (!is.null(self@{})) stop(\"Property @{} is frozen and cannot be modified\"); {}; self }}",
+                        prop.name, prop.name, setter_call
+                    ));
+                }
+            } else if let Some(ref msg) = prop.deprecated {
+                // Deprecated setter: emit warning then set value
+                prop_parts.push(format!(
+                    "setter = function(self, value) {{ warning(\"Property @{} is deprecated: {}\"); {}; self }}",
+                    prop.name, msg, setter_call
+                ));
+            } else {
+                // Normal setter
                 prop_parts.push(format!(
                     "setter = function(self, value) {{ {}; self }}",
                     setter_call
@@ -2034,8 +2448,50 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             if should_export {
                 lines.push("#' @export".to_string());
             }
+
+            // Phase 3: Handle dispatch control attributes
+            let method_attrs = &ctx.method.method_attrs;
+
+            // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
+            let dispatch_args = if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                // Multiple dispatch: "x,y" -> c("x", "y")
+                let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
+                if args.len() == 1 {
+                    format!("\"{}\"", args[0])
+                } else {
+                    format!(
+                        "c({})",
+                        args.iter()
+                            .map(|a| format!("\"{}\"", a))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
+                }
+            } else {
+                "\"x\"".to_string()
+            };
+
+            // Determine function signature (with or without ...)
+            let generic_sig = if method_attrs.s7_no_dots {
+                // no_dots: strict generic without ...
+                if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                    let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
+                    format!("function({}) S7::S7_dispatch()", args.join(", "))
+                } else {
+                    "function(x) S7::S7_dispatch()".to_string()
+                }
+            } else {
+                // Default: include ... for extra args
+                if let Some(ref dispatch) = method_attrs.s7_dispatch {
+                    let args: Vec<&str> = dispatch.split(',').map(|s| s.trim()).collect();
+                    format!("function({}, ...) S7::S7_dispatch()", args.join(", "))
+                } else {
+                    "function(x, ...) S7::S7_dispatch()".to_string()
+                }
+            };
+
             lines.push(format!(
-                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
             ));
 
             // Define method
@@ -2044,8 +2500,19 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
+
+            // Phase 3: Handle fallback (class_any) dispatch
+            let method_class = if method_attrs.s7_fallback {
+                "S7::class_any".to_string()
+            } else {
+                class_name.clone()
+            };
+
+            // Phase 3: Use matching formals for method (with or without ...)
+            let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
+
             lines.push(format!(
-                "S7::method({generic_name}, {class_name}) <- function({full_params}) {return_expr}"
+                "S7::method({generic_name}, {method_class}) <- function({method_formals}) {return_expr}"
             ));
         }
         lines.push(String::new());
@@ -2079,6 +2546,93 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push("}".to_string());
         lines.push(String::new());
+    }
+
+    // Phase 4: S7 convert() methods from Rust From/TryFrom patterns
+    // Convert methods enable type coercion between S7 classes using S7::convert()
+    //
+    // Two patterns:
+    // 1. convert_from = "OtherType" on static method: converts FROM OtherType TO this class
+    //    Rust: fn from_other(other: OtherType) -> Self
+    //    R: S7::method(S7::convert, list(OtherType, ThisClass)) <- function(from, to) ...
+    //
+    // 2. convert_to = "OtherType" on instance method: converts FROM this class TO OtherType
+    //    Rust: fn to_other(&self) -> OtherType
+    //    R: S7::method(S7::convert, list(ThisClass, OtherType)) <- function(from, to) ...
+
+    for method in &parsed_impl.methods {
+        if !method.should_include() {
+            continue;
+        }
+        let attrs = &method.method_attrs;
+
+        // Handle convert_from (static method pattern)
+        // S7 convert signature is function(from, to) - one parameter for the source object
+        if let Some(ref from_type) = attrs.s7_convert_from {
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+
+            // Documentation for convert method (skip if class has @noRd)
+            if !class_has_no_rd {
+                lines.push(format!("#' @name convert-{}-to-{}", from_type, class_name));
+                lines.push(format!("#' @rdname {}", class_name));
+                lines.push(format!(
+                    "#' @source Generated by miniextendr from `{}::{}`",
+                    type_ident, method.ident
+                ));
+            }
+
+            // Generate: S7::method(S7::convert, list(FromType, ThisClass)) <- function(from, to) ...
+            // The convert_from method takes the source object as its sole parameter
+            // We pass from@.ptr to extract the ExternalPtr from the S7 object
+            let call_with_from = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
+
+            let strategy = crate::ReturnStrategy::for_method(method);
+            let return_expr = crate::MethodReturnBuilder::new(call_with_from)
+                .with_strategy(strategy)
+                .with_class_name(class_name.clone())
+                .build_s7_inline();
+
+            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            lines.push(format!(
+                "S7::method(convert, list({}, {})) <- function(from, to) {}",
+                from_type, class_name, return_expr
+            ));
+            lines.push(String::new());
+        }
+
+        // Handle convert_to (instance method pattern)
+        // S7 convert signature is function(from, to) - self becomes from
+        if let Some(ref to_type) = attrs.s7_convert_to {
+            let ctx = MethodContext::new(method, type_ident, parsed_impl.label());
+
+            // Documentation for convert method (skip if class has @noRd)
+            if !class_has_no_rd {
+                lines.push(format!("#' @name convert-{}-to-{}", class_name, to_type));
+                lines.push(format!("#' @rdname {}", class_name));
+                lines.push(format!(
+                    "#' @source Generated by miniextendr from `{}::{}`",
+                    type_ident, method.ident
+                ));
+            }
+
+            // Generate: S7::method(S7::convert, list(ThisClass, ToType)) <- function(from, to) ...
+            // The convert_to method is an instance method where self is mapped to from@.ptr
+            let call = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
+
+            // Force ReturnSelf strategy for convert methods since they return S7 class types
+            // that need to be wrapped: ToType(.ptr = <result>)
+            let return_expr = crate::MethodReturnBuilder::new(call)
+                .with_strategy(crate::ReturnStrategy::ReturnSelf)
+                .with_class_name(to_type.clone())
+                .build_s7_inline();
+
+            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            lines.push(format!(
+                "S7::method(convert, list({}, {})) <- function(from, to) {}",
+                class_name, to_type, return_expr
+            ));
+            lines.push(String::new());
+        }
     }
 
     lines.join("\n")

@@ -24,7 +24,21 @@ This guide documents how miniextendr converts between R and Rust types, includin
 | `logical` | `Vec<i32>` | TRUE=1, FALSE=0, NA=`i32::MIN` |
 | `character` | `Vec<String>` | NA → panic |
 | `raw` | `Vec<u8>`, `&[u8]` | No NA |
-| `list` | Various | See Lists section |
+| `list` | Various | See Lists and Collections sections |
+
+### Nested Collection Types
+
+miniextendr supports converting nested collections to R lists:
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Vec<Vec<T>>` | list of vectors | For `T: RNativeType` or `T = String` |
+| `Vec<Box<[T]>>` | list of vectors | Boxed slices → vectors |
+| `Vec<[T; N]>` | list of vectors | Fixed arrays → vectors |
+| `Vec<HashSet<T>>` | list of vectors | Sets → unordered vectors |
+| `Vec<BTreeSet<T>>` | list of vectors | Sets → sorted vectors |
+
+These are particularly useful with `#[derive(DataFrameRow)]` where row fields can contain collections.
 
 ### Option Types (NA-Safe)
 
