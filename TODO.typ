@@ -7,11 +7,9 @@
 == Codex Review Findings (2024)
 
 === API/Ergonomics
-- [ ] `#[miniextendr]` impl blocks: consuming `self` by value not fully supported
-  - `miniextendr-macros/src/miniextendr_impl.rs:79` - "Consuming method (not supported in v1)"
-  - Note: `&self` and `&mut self` work correctly
-  - `self` by value treated as finalizer unless `#[miniextendr(returns_self)]` is set
-  - Future: Allow consuming methods that return a different type
+- [x] `#[miniextendr]` impl blocks: consuming `self` by value not fully supported
+  - DONE: Added compile error for consuming `self` unless constructor/finalizer (2026-01-31)
+  - `miniextendr-macros/src/miniextendr_impl.rs:1024-1052`
 === Testing
 - [ ] No automated regression test for registration bug
   - Note: User indicated this is likely a fluke, low priority.
@@ -23,8 +21,10 @@
 See `reviews/gc_protect_review.md` for full context.
 
 === Testing Gaps
-- [ ] Add tests for TLS panic cleanup behavior
-- [ ] Add tests for `ReprotectSlot::set` invalidation semantics
+- [x] Add tests for TLS panic cleanup behavior
+  - DONE: `tls_cleanup_on_panic`, `tls_nested_cleanup_on_panic` in gc_protect.rs (2026-01-31)
+- [x] Add tests for `ReprotectSlot::set` invalidation semantics
+  - DONE: `reprotect_slot_old_value_unprotected`, `reprotect_slot_multiple_replacements` (2026-01-31)
 
 == ExternalPtr Sidecar R Wrappers (Planned Feature)
 See `plans/externalptr_sidecar_r_wrappers.md` for full design.
@@ -33,11 +33,15 @@ See `plans/externalptr_sidecar_r_wrappers.md` for full design.
 Expose `#[r_data]` sidecar fields from `ExternalPtr` structs to R as getter/setter functions.
 
 === Implementation Tasks
-- [ ] The `rdname` is not default to file-name for the sidecar impls.
+- [x] The `rdname` is not default to file-name for the sidecar impls.
+  - DONE: Added documentation header with `@name {type}` (2026-01-31)
 
 === Tests
-- [ ] UI tests: multiple selector fields error, non-marker type error, generic type error
-- [ ] Runtime tests: getter returns stored SEXP, setter updates and returns invisible(x)
+- [x] UI tests: multiple selector fields error, generic type error
+  - DONE: `rdata_multiple_selectors.rs`, `rdata_generic_with_pub.rs`
+  - Note: "non-marker type error" N/A - current design accepts any type as sidecar slot
+- [x] Runtime tests: getter returns stored SEXP, setter updates and returns invisible(x)
+  - DONE: Added `invisible(x)` return tests, SEXP identity tests in test-sidecar.R (2026-01-31)
 
 === Reference Study Tasks (from background/)
 
@@ -257,9 +261,13 @@ Standalone adapter traits not needed - use connection framework instead.
 
 ==== Feature module Coerce/TryCoerce integration
 
-- [ ] Use `Coerced<T, R>` in feature `TryFromSexp` impls
-  - Standardize error messages and NA handling
-  - Replace manual parsing in `ordered_float_impl`, `rust_decimal_impl`, `num_bigint_impl`
+- [x] Add `Coerced<T, R>` support to container types in feature modules (2026-01-31)
+  - Added to `tinyvec_impl.rs`: TinyVec/ArrayVec with Coerced elements
+  - Added to `nalgebra_impl.rs`: DVector/DMatrix with Coerced elements
+- [~] Use `Coerced<T, R>` in scalar feature `TryFromSexp` impls
+  - Analysis: Direct impls (e.g., `TryFromSexp for OrderedFloat<f64>`) are cleaner for scalar types
+  - `Coerced<T, R>` wrapper is better suited for container element coercion
+  - Feature modules like `ordered_float_impl` already have proper Coerce/TryCoerce impls
 - [ ] Document per-feature coercion policy
   - Clarify integer inputs for float-centric types
   - Document truncation/rounding behavior
