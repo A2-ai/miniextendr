@@ -90,11 +90,28 @@ impl<'a> MethodContext<'a> {
     /// For S3/S4/S7: `"x, <params>, ..."`
     /// For Env/R6: `"<params>"` (self is implicit)
     pub fn instance_formals(&self, add_self_param: bool) -> String {
+        self.instance_formals_with_dots(add_self_param, true)
+    }
+
+    /// Build full R formals for instance methods with optional dots.
+    ///
+    /// When `include_dots` is false, omits `...` from the signature.
+    /// This is used for strict generics that don't accept extra args.
+    pub fn instance_formals_with_dots(&self, add_self_param: bool, include_dots: bool) -> String {
         if add_self_param {
-            if self.params.is_empty() {
-                "x, ...".to_string()
+            if include_dots {
+                if self.params.is_empty() {
+                    "x, ...".to_string()
+                } else {
+                    format!("x, {}, ...", self.params)
+                }
             } else {
-                format!("x, {}, ...", self.params)
+                // No dots - strict formals
+                if self.params.is_empty() {
+                    "x".to_string()
+                } else {
+                    format!("x, {}", self.params)
+                }
             }
         } else {
             self.params.clone()
@@ -144,7 +161,7 @@ pub struct ClassDocBuilder<'a> {
     type_ident: &'a syn::Ident,
     doc_tags: &'a [String],
     class_system_label: &'static str,
-    imports: Option<&'static str>,
+    imports: Option<String>,
 }
 
 impl<'a> ClassDocBuilder<'a> {
@@ -165,8 +182,8 @@ impl<'a> ClassDocBuilder<'a> {
     }
 
     /// Set R package imports (e.g., "@importFrom R6 R6Class").
-    pub fn with_imports(mut self, imports: &'static str) -> Self {
-        self.imports = Some(imports);
+    pub fn with_imports(mut self, imports: impl Into<String>) -> Self {
+        self.imports = Some(imports.into());
         self
     }
 
@@ -200,7 +217,7 @@ impl<'a> ClassDocBuilder<'a> {
                 self.type_ident
             ));
         }
-        if let Some(imports) = self.imports
+        if let Some(ref imports) = self.imports
             && !has_no_rd
         {
             lines.push(format!("#' {}", imports));

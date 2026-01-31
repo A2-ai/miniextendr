@@ -155,3 +155,73 @@ fn test_roxygen_s4_method() {
         ]
     );
 }
+
+// Missing<T> tests
+#[test]
+fn test_is_missing_type() {
+    let inputs = parse_inputs("x: Missing<i32>");
+    let arg = inputs.first().unwrap();
+    if let syn::FnArg::Typed(pat_type) = arg {
+        assert!(is_missing_type(&pat_type.ty));
+    } else {
+        panic!("Expected typed argument");
+    }
+}
+
+#[test]
+fn test_is_not_missing_type() {
+    let inputs = parse_inputs("x: Option<i32>");
+    let arg = inputs.first().unwrap();
+    if let syn::FnArg::Typed(pat_type) = arg {
+        assert!(!is_missing_type(&pat_type.ty));
+    } else {
+        panic!("Expected typed argument");
+    }
+}
+
+#[test]
+fn test_collect_missing_params() {
+    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
+    let missing = collect_missing_params(&inputs);
+    assert_eq!(missing, vec!["y"]);
+}
+
+#[test]
+fn test_collect_multiple_missing_params() {
+    let inputs = parse_inputs("a: Missing<i32>, b: f64, c: Missing<String>");
+    let missing = collect_missing_params(&inputs);
+    assert_eq!(missing, vec!["a", "c"]);
+}
+
+#[test]
+fn test_merge_missing_defaults() {
+    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
+    let user_defaults = std::collections::HashMap::new();
+    let merged = merge_missing_defaults(&inputs, &user_defaults);
+
+    assert_eq!(merged.len(), 1);
+    assert_eq!(merged.get("y"), Some(&"quote(expr=)".to_string()));
+}
+
+#[test]
+fn test_merge_missing_defaults_preserves_user_defaults() {
+    let inputs = parse_inputs("x: i32, y: Missing<f64>, z: String");
+    let mut user_defaults = std::collections::HashMap::new();
+    user_defaults.insert("x".to_string(), "42".to_string());
+    user_defaults.insert("y".to_string(), "custom_default".to_string());
+
+    let merged = merge_missing_defaults(&inputs, &user_defaults);
+
+    assert_eq!(merged.len(), 2);
+    assert_eq!(merged.get("x"), Some(&"42".to_string()));
+    // User's explicit default takes precedence over auto-generated quote(expr=)
+    assert_eq!(merged.get("y"), Some(&"custom_default".to_string()));
+}
+
+#[test]
+fn test_missing_type_formals_with_defaults() {
+    let inputs = parse_inputs("x: i32, y: Missing<f64>");
+    let merged = merge_missing_defaults(&inputs, &std::collections::HashMap::new());
+    let builder = RArgumentBuilder::new(&inputs).with_defaults(merged);
+    assert_eq!(builder.build_formals(), "x, y = quote(expr=)");
+}

@@ -723,3 +723,658 @@ fn vctrs_wrapper_no_abbr() {
     assert!(wrapper.contains("vec_ptype2.Simple.Simple"));
     assert!(wrapper.contains("vec_cast.Simple.Simple"));
 }
+
+// =============================================================================
+// S7 property class type tests
+// =============================================================================
+
+#[test]
+fn s7_property_class_types() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Range {
+            pub fn new(start: f64, end: f64) -> Self { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 { unimplemented!() }
+
+            #[miniextendr(s7(getter, prop = "midpoint"))]
+            pub fn get_midpoint(&self) -> f64 { unimplemented!() }
+
+            #[miniextendr(s7(setter, prop = "midpoint"))]
+            pub fn set_midpoint(&mut self, value: f64) { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn is_valid(&self) -> bool { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn name(&self) -> String { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Debug: print the generated wrapper
+    eprintln!("Generated S7 wrapper:\n{}", wrapper);
+
+    // Verify class types are included in property definitions
+    assert!(
+        wrapper.contains("length = S7::new_property(class = S7::class_double, getter ="),
+        "length property missing class type"
+    );
+    assert!(
+        wrapper.contains("midpoint = S7::new_property(class = S7::class_double, getter ="),
+        "midpoint property missing class type"
+    );
+    assert!(
+        wrapper.contains("is_valid = S7::new_property(class = S7::class_logical, getter ="),
+        "is_valid property missing class type"
+    );
+    assert!(
+        wrapper.contains("name = S7::new_property(class = S7::class_character, getter ="),
+        "name property missing class type"
+    );
+
+    // Verify imports include the class types
+    assert!(
+        wrapper.contains("class_double"),
+        "missing class_double import"
+    );
+    assert!(
+        wrapper.contains("class_logical"),
+        "missing class_logical import"
+    );
+    assert!(
+        wrapper.contains("class_character"),
+        "missing class_character import"
+    );
+}
+
+#[test]
+fn s7_property_option_class_type() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Container {
+            pub fn new() -> Self { unimplemented!() }
+
+            #[miniextendr(s7(getter))]
+            pub fn maybe_value(&self) -> Option<i32> { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Option<i32> should map to NULL | S7::class_integer
+    assert!(
+        wrapper
+            .contains("maybe_value = S7::new_property(class = NULL | S7::class_integer, getter =")
+    );
+}
+
+#[test]
+fn s7_property_mirrors_s7_tests_rs() {
+    // This test mirrors the exact structure of s7_tests.rs::S7Range
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl S7Range {
+            pub fn new(start: f64, end: f64) -> Self {
+                S7Range { start, end }
+            }
+
+            #[miniextendr(s7(getter))]
+            pub fn length(&self) -> f64 {
+                self.end - self.start
+            }
+
+            #[miniextendr(s7(getter, prop = "midpoint"))]
+            pub fn get_midpoint(&self) -> f64 {
+                (self.start + self.end) / 2.0
+            }
+
+            #[miniextendr(s7(setter, prop = "midpoint"))]
+            pub fn set_midpoint(&mut self, value: f64) {
+                let half_length = (self.end - self.start) / 2.0;
+                self.start = value - half_length;
+                self.end = value + half_length;
+            }
+
+            pub fn s7_start(&self) -> f64 {
+                self.start
+            }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+
+    // Debug: check method attributes
+    for method in &parsed.methods {
+        if method.ident == "length" {
+            eprintln!(
+                "length method attrs: s7_getter={}, s7_setter={}",
+                method.method_attrs.s7_getter, method.method_attrs.s7_setter
+            );
+            eprintln!("length return type: {:?}", method.sig.output);
+        }
+    }
+
+    let wrapper = generate_s7_r_wrapper(&parsed);
+    eprintln!("Generated wrapper for S7Range:\n{}", wrapper);
+
+    // Should have class type for length property
+    assert!(
+        wrapper.contains("length = S7::new_property(class = S7::class_double"),
+        "length property should have class = S7::class_double"
+    );
+}
+
+// =============================================================================
+// S7 type mapping tests
+// =============================================================================
+
+#[test]
+fn s7_type_mapping_scalars() {
+    use super::rust_type_to_s7_class;
+
+    // Integer types
+    let ty: syn::Type = syn::parse_quote!(i32);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
+
+    let ty: syn::Type = syn::parse_quote!(i16);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
+
+    // Float types
+    let ty: syn::Type = syn::parse_quote!(f64);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_double".to_string())
+    );
+
+    let ty: syn::Type = syn::parse_quote!(f32);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_double".to_string())
+    );
+
+    // Logical
+    let ty: syn::Type = syn::parse_quote!(bool);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_logical".to_string())
+    );
+
+    // Raw
+    let ty: syn::Type = syn::parse_quote!(u8);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_raw".to_string())
+    );
+
+    // Character
+    let ty: syn::Type = syn::parse_quote!(String);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_character".to_string())
+    );
+}
+
+#[test]
+fn s7_type_mapping_references() {
+    use super::rust_type_to_s7_class;
+
+    // &str maps to character
+    let ty: syn::Type = syn::parse_quote!(&str);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_character".to_string())
+    );
+}
+
+#[test]
+fn s7_type_mapping_vec() {
+    use super::rust_type_to_s7_class;
+
+    // Vec<i32> -> class_integer
+    let ty: syn::Type = syn::parse_quote!(Vec<i32>);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
+
+    // Vec<f64> -> class_double
+    let ty: syn::Type = syn::parse_quote!(Vec<f64>);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_double".to_string())
+    );
+
+    // Vec<String> -> class_character
+    let ty: syn::Type = syn::parse_quote!(Vec<String>);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_character".to_string())
+    );
+}
+
+#[test]
+fn s7_type_mapping_option() {
+    use super::rust_type_to_s7_class;
+
+    // Option<i32> -> NULL | class_integer
+    let ty: syn::Type = syn::parse_quote!(Option<i32>);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("NULL | S7::class_integer".to_string())
+    );
+
+    // Option<String> -> NULL | class_character
+    let ty: syn::Type = syn::parse_quote!(Option<String>);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("NULL | S7::class_character".to_string())
+    );
+}
+
+#[test]
+fn s7_type_mapping_result() {
+    use super::rust_type_to_s7_class;
+
+    // Result<i32, E> -> class_integer (from Ok type)
+    let ty: syn::Type = syn::parse_quote!(Result<i32, String>);
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
+}
+
+#[test]
+fn s7_type_mapping_unknown() {
+    use super::rust_type_to_s7_class;
+
+    // Unknown types return None (will use class_any)
+    let ty: syn::Type = syn::parse_quote!(MyCustomType);
+    assert_eq!(rust_type_to_s7_class(&ty), None);
+
+    let ty: syn::Type = syn::parse_quote!(ExternalPtr<Foo>);
+    assert_eq!(rust_type_to_s7_class(&ty), None);
+}
+
+// =============================================================================
+// S7 Phase 2: validation/defaults/required/frozen/deprecated tests
+// =============================================================================
+
+#[test]
+fn s7_property_default_value() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Range {
+            #[miniextendr(s7(getter, default = "0.0"))]
+            pub fn score(&self) -> f64 { self.score }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include default = 0.0 in property definition
+    assert!(
+        wrapper.contains("default = 0.0"),
+        "Expected default value in property, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_property_required() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl User {
+            #[miniextendr(s7(getter, required))]
+            pub fn id(&self) -> String { self.id.clone() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include error message for required property
+    assert!(
+        wrapper.contains("@id is required"),
+        "Expected required error in property, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("stop("),
+        "Expected stop() call for required property, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_property_frozen() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Config {
+            #[miniextendr(s7(getter, frozen))]
+            pub fn created_at(&self) -> f64 { self.created_at }
+
+            #[miniextendr(s7(setter, prop = "created_at"))]
+            pub fn set_created_at(&mut self, value: f64) { self.created_at = value; }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include frozen check in setter
+    assert!(
+        wrapper.contains("is frozen"),
+        "Expected frozen error message in setter, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("cannot be modified"),
+        "Expected frozen check in setter, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_property_deprecated() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Legacy {
+            #[miniextendr(s7(getter, deprecated = "Use 'value' instead"))]
+            pub fn old_value(&self) -> i32 { self.value }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include deprecation warning in getter
+    assert!(
+        wrapper.contains("is deprecated"),
+        "Expected deprecation warning in getter, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("Use 'value' instead"),
+        "Expected deprecation message in getter, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("warning("),
+        "Expected warning() call for deprecated property, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_property_validator() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Score {
+            #[miniextendr(s7(getter))]
+            pub fn score(&self) -> f64 { self.score }
+
+            #[miniextendr(s7(validate, prop = "score"))]
+            pub fn validate_score(value: f64) -> Result<(), String> {
+                if value < 0.0 || value > 100.0 {
+                    Err("score must be between 0 and 100".into())
+                } else {
+                    Ok(())
+                }
+            }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should include validator function in property
+    assert!(
+        wrapper.contains("validator = function(value)"),
+        "Expected validator in property, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("C_Score__validate_score"),
+        "Expected validator C function call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_property_combined_patterns() {
+    // Test combining default + deprecated
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Config {
+            #[miniextendr(s7(getter, default = "\"default\"", deprecated = "Will be removed"))]
+            pub fn legacy_name(&self) -> String { self.name.clone() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have both default and deprecation
+    assert!(
+        wrapper.contains("default = \"default\""),
+        "Expected default value, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("Will be removed"),
+        "Expected deprecation message, got:\n{}",
+        wrapper
+    );
+}
+
+// =============================================================================
+// S7 Phase 3: Generic dispatch control tests
+// =============================================================================
+
+#[test]
+fn s7_generic_no_dots() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Counter {
+            #[miniextendr(s7(no_dots))]
+            pub fn length(&self) -> i32 { self.len }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have generic without ... in signature
+    assert!(
+        wrapper.contains("function(x) S7::S7_dispatch()"),
+        "Expected no_dots generic, got:\n{}",
+        wrapper
+    );
+    // Should NOT have ... in the generic definition
+    assert!(
+        !wrapper.contains("function(x, ...) S7::S7_dispatch()"),
+        "Expected no_dots to remove ..., got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_generic_multi_dispatch() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Dog {
+            #[miniextendr(s7(dispatch = "x,y"))]
+            pub fn compare(&self, other: i32) -> i32 { 0 }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have c("x", "y") dispatch args
+    assert!(
+        wrapper.contains(r#"c("x", "y")"#),
+        "Expected multi-dispatch args, got:\n{}",
+        wrapper
+    );
+    // Should have function(x, y, ...) signature
+    assert!(
+        wrapper.contains("function(x, y, ...) S7::S7_dispatch()"),
+        "Expected multi-dispatch signature, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_generic_multi_dispatch_no_dots() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Matrix {
+            #[miniextendr(s7(dispatch = "x,y", no_dots))]
+            pub fn multiply(&self, other: i32) -> i32 { 0 }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have c("x", "y") dispatch args
+    assert!(
+        wrapper.contains(r#"c("x", "y")"#),
+        "Expected multi-dispatch args, got:\n{}",
+        wrapper
+    );
+    // Should have function(x, y) signature without ...
+    assert!(
+        wrapper.contains("function(x, y) S7::S7_dispatch()"),
+        "Expected strict multi-dispatch signature, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_generic_fallback() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Printer {
+            #[miniextendr(s7(fallback))]
+            pub fn describe(&self) -> String { "unknown".to_string() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should register method for class_any instead of Printer
+    assert!(
+        wrapper.contains("S7::method(describe, S7::class_any)"),
+        "Expected fallback to class_any, got:\n{}",
+        wrapper
+    );
+}
+
+// =============================================================================
+// S7 Phase 4: convert() methods from Rust From/TryFrom patterns
+// =============================================================================
+
+#[test]
+fn s7_convert_from() {
+    // Test convert_from: converts FROM another type TO this type
+    // Pattern: static method takes OtherType and returns Self
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Point3D {
+            pub fn new(x: f64, y: f64, z: f64) -> Self { Self { x, y, z } }
+
+            #[miniextendr(s7(convert_from = "Point2D"))]
+            pub fn from_2d(p: Point2D) -> Self { Self { x: 0.0, y: 0.0, z: 0.0 } }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should generate S7::method(convert, list(Point2D, Point3D))
+    assert!(
+        wrapper.contains("S7::method(convert, list(Point2D, Point3D))"),
+        "Expected convert method registration, got:\n{}",
+        wrapper
+    );
+    // The method should call the C wrapper with from@.ptr
+    assert!(
+        wrapper.contains("from@.ptr"),
+        "Expected from@.ptr in convert call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_convert_to() {
+    // Test convert_to: converts FROM this type TO another type
+    // Pattern: instance method takes &self and returns OtherType
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Point3D {
+            pub fn new(x: f64, y: f64, z: f64) -> Self { Self { x, y, z } }
+
+            #[miniextendr(s7(convert_to = "Point2D"))]
+            pub fn to_2d(&self) -> Point2D { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should generate S7::method(convert, list(Point3D, Point2D))
+    assert!(
+        wrapper.contains("S7::method(convert, list(Point3D, Point2D))"),
+        "Expected convert method registration, got:\n{}",
+        wrapper
+    );
+    // The method should call the C wrapper with from@.ptr
+    assert!(
+        wrapper.contains("from@.ptr"),
+        "Expected from@.ptr in convert call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_convert_bidirectional() {
+    // Test both convert_from and convert_to on the same class
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Celsius {
+            pub fn new(value: f64) -> Self { Self { value } }
+
+            #[miniextendr(s7(convert_from = "Fahrenheit"))]
+            pub fn from_fahrenheit(f: Fahrenheit) -> Self { unimplemented!() }
+
+            #[miniextendr(s7(convert_to = "Fahrenheit"))]
+            pub fn to_fahrenheit(&self) -> Fahrenheit { unimplemented!() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should have both convert methods
+    assert!(
+        wrapper.contains("S7::method(convert, list(Fahrenheit, Celsius))"),
+        "Expected convert from Fahrenheit, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("S7::method(convert, list(Celsius, Fahrenheit))"),
+        "Expected convert to Fahrenheit, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_convert_from_and_to_mutually_exclusive() {
+    // Test that specifying both convert_from and convert_to on the same method is an error
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Converter {
+            pub fn new() -> Self { Self {} }
+
+            // This should be invalid - can't have both on same method
+            #[miniextendr(s7(convert_from = "TypeA", convert_to = "TypeB"))]
+            pub fn invalid_convert(&self) -> TypeB { unimplemented!() }
+        }
+    };
+
+    // This should fail during parsing/validation
+    let result = std::panic::catch_unwind(|| parse_impl(ClassSystem::S7, impl_code));
+
+    // The parse_impl function should panic or return an error for this invalid config
+    // If it doesn't panic, we need to check the behavior differently
+    if result.is_ok() {
+        // If parsing succeeded, the validation should have caught this
+        // The current implementation validates during parse_impl
+        panic!("Expected error when both convert_from and convert_to are specified on same method");
+    }
+}

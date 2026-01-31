@@ -128,6 +128,7 @@
 //! | `indexmap` | `IndexMap<String, T>` | named `list` | Preserves insertion order |
 //! | `bitflags` | `RFlags<T>` | `integer` | Bitflags ↔ integer |
 //! | `bitvec` | `RBitVec` | `logical` | Bit vectors ↔ logical |
+//! | `tinyvec` | `TinyVec<[T; N]>`, `ArrayVec<[T; N]>` | vectors | Small-vector optimization |
 //!
 //! ### Matrix & Array Libraries
 //!
@@ -288,7 +289,19 @@ pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod unwind_protect;
 pub mod worker;
 
-pub use worker::*;
+// Re-export commonly used worker items at root for convenience
+pub use worker::{Sendable, is_r_main_thread, with_r_thread};
+
+// Required exports for generated code and initialization
+pub use worker::miniextendr_worker_init;
+
+// Advanced/internal worker items remain under worker:: namespace:
+// - has_worker_context()
+// - assert_r_main_thread_for_pointer_api()
+// - panic_payload_to_string()
+// - panic_message_to_r_error()
+// - panic_message_to_r_errorcall()
+// - run_on_worker() (used by macro-generated code, but kept namespaced)
 
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
@@ -334,7 +347,7 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 ///
 /// This module provides traits for implementing R's generic coercion methods
 /// (`as.data.frame()`, `as.list()`, `as.character()`, etc.) for Rust types
-/// wrapped in [`ExternalPtr`].
+/// wrapped in [`ExternalPtr`](struct@ExternalPtr).
 ///
 /// See the [`as_coerce`] module documentation for usage examples.
 pub mod as_coerce;
@@ -367,15 +380,17 @@ pub use as_coerce::{
 pub mod convert;
 pub mod dots;
 pub mod list;
+pub mod missing;
 pub mod strvec;
 pub mod typed_list;
-#[cfg(feature = "serde")]
-pub use convert::AsSerializeRow;
 pub use convert::{
     AsExternalPtr, AsExternalPtrExt, AsList, AsListExt, AsRNative, AsRNativeExt, DataFrame,
     IntoDataFrame, ToDataFrame, ToDataFrameExt,
 };
+#[cfg(feature = "serde")]
+pub use convert::{AsSerializeRow, SerializeDataFrame};
 pub use list::{IntoList, List, ListAccumulator, ListBuilder, ListMut, TryFromList, collect_list};
+pub use missing::{Missing, is_missing_arg};
 pub use strvec::{StrVec, StrVecBuilder};
 pub use typed_list::{
     TypeSpec, TypedEntry, TypedList, TypedListError, TypedListSpec, actual_type_string,
@@ -608,7 +623,7 @@ pub use optionals::{
 #[cfg(feature = "nalgebra")]
 pub use optionals::nalgebra_impl;
 #[cfg(feature = "nalgebra")]
-pub use optionals::{DMatrix, DVector, RMatrixOps, RVectorOps};
+pub use optionals::{DMatrix, DVector, RMatrixOps, RVectorOps, SMatrix, SVector};
 
 #[cfg(feature = "num-bigint")]
 pub use optionals::num_bigint_impl;
@@ -708,6 +723,11 @@ pub use optionals::{
     Builder, Table, Tabled, builder_to_string, table_from_vecs, table_to_string,
     table_to_string_opts, table_to_string_styled,
 };
+
+#[cfg(feature = "tinyvec")]
+pub use optionals::tinyvec_impl;
+#[cfg(feature = "tinyvec")]
+pub use optionals::{Array, ArrayVec, TinyVec};
 
 /// N-dimensional R arrays with const generic dimension count.
 pub mod rarray;

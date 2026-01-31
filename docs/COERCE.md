@@ -460,3 +460,156 @@ fn r_style_to_int(x: f64) -> i32 {
 | Match R's truncation | Use `as` cast after bounds check |
 
 The `Coerce<R>` trait system provides type-safe conversions within Rust while respecting R's copy-on-coerce semantics at the language boundary.
+
+## Feature Module Coercion Policies
+
+Each optional feature module has its own coercion behavior. This section documents how R values are converted to feature-specific types.
+
+### Float-Centric Types
+
+#### `ordered-float` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `OrderedFloat<f64>` | R numeric (`REALSXP`) | Direct conversion via `TryFromSexp` for `f64` |
+| `OrderedFloat<f32>` | R numeric (`REALSXP`) | Converts f64 → f32 (may lose precision) |
+| `Vec<OrderedFloat<T>>` | R numeric vector | Element-wise conversion |
+
+**Integer input behavior:** R integers are coerced by R's standard rules when passed to a function expecting numeric. The `Coerce` trait provides `i32 → OrderedFloat<f64>` (infallible widening) and `i32 → OrderedFloat<f32>` as `TryCoerce` (may fail for large values due to f32 precision limits).
+
+**Precision loss:** f64 → f32 narrowing uses `TryCoerce` with `PrecisionLoss` error when round-trip fails.
+
+#### `rust-decimal` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `Decimal` | R numeric (`REALSXP`) or character (`STRSXP`) | Numeric: fast but may lose precision. String: exact parsing. |
+| `Option<Decimal>` | Same + NA | `NA` → `None` |
+| `Vec<Decimal>` | Numeric/character vector | Element-wise, NA values error |
+
+**Integer input behavior:** R integers are coerced to numeric by R before reaching Rust. The `Decimal::from_f64_retain()` is used, which may not exactly represent all float values.
+
+**Recommended for precision:** Use character input for exact decimal values:
+```r
+# Exact decimal from string
+precise <- rust_decimal_from_str("123.456789012345")
+
+# May have floating-point artifacts
+approx <- rust_decimal_from_numeric(123.456789012345)
+```
+
+### String-Based Types
+
+#### `num-bigint` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `BigInt` | R character (`STRSXP`) | Parses string, supports hex (`0x`), octal (`0o`), binary (`0b`) |
+| `BigUint` | R character (`STRSXP`) | Same, but rejects negative values |
+| `Vec<BigInt>` | Character vector | Element-wise, NA values error |
+
+**Why string-only:** R's numeric types cannot represent arbitrary-precision integers without loss. Even `i32` input would lose information for values outside `[-2^31, 2^31)`.
+
+**Usage:**
+```r
+# Correct - string input preserves full precision
+big <- bigint_from_str("123456789012345678901234567890")
+
+# Also supported
+hex <- bigint_from_str("0xDEADBEEF")
+```
+
+#### `uuid` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `Uuid` | R character (`STRSXP`) | Parses standard UUID formats |
+| `Option<Uuid>` | Same + NA | `NA` → `None` |
+
+**Accepted formats:**
+- Hyphenated: `550e8400-e29b-41d4-a716-446655440000`
+- Simple: `550e8400e29b41d4a716446655440000`
+- URN: `urn:uuid:550e8400-e29b-41d4-a716-446655440000`
+- Braced: `{550e8400-e29b-41d4-a716-446655440000}`
+
+### Container Types with `Coerced<T, R>`
+
+#### `tinyvec` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `TinyVec<[T; N]>` where `T: TryFromSexp` | Matching R vector | Direct element conversion |
+| `TinyVec<[Coerced<T, R>; N]>` | R vector of type `R` | Element-wise coercion via `TryCoerce` |
+| `ArrayVec<T, N>` | Same patterns | Fixed-capacity variant |
+
+**`Coerced<T, R>` pattern:** Wraps each element to apply `TryCoerce` during conversion:
+```rust
+// Accepts R integer, coerces each element to u16
+fn process(values: TinyVec<[Coerced<u16, i32>; 8]>) -> i32 {
+    values.iter().map(|c| c.0 as i32).sum()
+}
+```
+
+#### `nalgebra` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `DVector<T>` | R vector | Element-wise conversion |
+| `DVector<Coerced<T, R>>` | R vector of type `R` | Element-wise coercion |
+| `DMatrix<T>` | R matrix | By-column conversion |
+| `DMatrix<Coerced<T, R>>` | R matrix of type `R` | Element-wise coercion |
+
+**Matrix coercion example:**
+```rust
+// Accepts R integer matrix, coerces to f32 elements
+fn process_matrix(m: DMatrix<Coerced<f32, f64>>) -> f64 {
+    m.iter().map(|c| c.0 as f64).sum()
+}
+```
+
+### Time Types
+
+#### `time` Feature
+
+| Target Type | Accepts | Behavior |
+|-------------|---------|----------|
+| `Date` | R Date (numeric with class) | Days since 1970-01-01 |
+| `OffsetDateTime` | R POSIXct (numeric with class) | Seconds since epoch + timezone |
+| `PrimitiveDateTime` | R POSIXlt list | Components: year, month, day, etc. |
+| `Time` | R character (`STRSXP`) | Parses time string |
+| `Duration` | R numeric (`REALSXP`) | Seconds as f64 |
+
+**Note:** R Date/POSIXct are stored as numeric internally. The conversion respects R's epoch (1970-01-01) and timezone handling.
+
+### Summary Table: Input Type by Feature
+
+| Feature | Primary R Input | Alternative | Notes |
+|---------|-----------------|-------------|-------|
+| `ordered-float` | numeric | - | Wraps f64/f32 |
+| `rust-decimal` | numeric | character | String for exact values |
+| `num-bigint` | character | - | String only (precision) |
+| `uuid` | character | - | UUID string formats |
+| `time` | Date/POSIXct/numeric | character | Depends on target type |
+| `tinyvec` | Any via `Coerced` | Direct | Flexible with wrapper |
+| `nalgebra` | Any via `Coerced` | Direct | Flexible with wrapper |
+
+### Error Handling Patterns
+
+**Strict (default):** Most features reject invalid input with errors:
+```rust
+// Fails for negative values
+fn positive_only(x: BigUint) -> String { ... }
+```
+
+**Lossy (explicit):** Some features provide both strict and lossy paths:
+```rust
+// rust_decimal: exact vs approximate
+let exact = Decimal::from_str("1.1")?;           // Exact
+let approx = Decimal::from_f64_retain(1.1)?;    // May have artifacts
+```
+
+**With `Coerced<T, R>`:** Coercion errors become function errors:
+```rust
+// Returns Err if any element overflows u16
+fn coerced_sum(values: Vec<Coerced<u16, i32>>) -> Result<u32, CoerceError> { ... }
+```

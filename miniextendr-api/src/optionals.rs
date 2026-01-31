@@ -7,30 +7,31 @@
 //!
 //! | Feature | Module | Description |
 //! |---------|--------|-------------|
-//! | `rayon` | [`rayon_bridge`] | Parallel computation with R interop |
-//! | `rand` | [`rand_impl`] | R's RNG wrapped for `rand` crate |
+//! | `rayon` | `rayon_bridge` | Parallel computation with R interop |
+//! | `rand` | `rand_impl` | R's RNG wrapped for `rand` crate |
 //! | `rand_distr` | - | Re-exports `rand_distr` distributions |
-//! | `either` | [`either_impl`] | `Either<L, R>` conversions |
-//! | `ndarray` | [`ndarray_impl`] | N-dimensional array conversions |
-//! | `nalgebra` | [`nalgebra_impl`] | Linear algebra type conversions |
-//! | `num-bigint` | [`num_bigint_impl`] | Big integer support |
-//! | `rust_decimal` | [`rust_decimal_impl`] | Decimal number support |
-//! | `ordered-float` | [`ordered_float_impl`] | Ordered floats for sorting |
-//! | `uuid` | [`uuid_impl`] | UUID conversions |
-//! | `regex` | [`regex_impl`] | Compiled regex from R strings |
-//! | `indexmap` | [`indexmap_impl`] | Order-preserving maps |
-//! | `time` | [`time_impl`] | Date/time conversions |
-//! | `serde` | [`serde_impl`] | JSON serialization |
-//! | `num-traits` | [`num_traits_impl`] | Generic numeric operations |
-//! | `bytes` | [`bytes_impl`] | Byte buffer operations |
-//! | `num-complex` | [`num_complex_impl`] | Complex number support |
-//! | `url` | [`url_impl`] | URL parsing and validation |
-//! | `sha2` | [`sha2_impl`] | Cryptographic hashing |
-//! | `bitflags` | [`bitflags_impl`] | Bitflag conversions |
-//! | `bitvec` | [`bitvec_impl`] | Bit vector conversions |
-//! | `aho-corasick` | [`aho_corasick_impl`] | Multi-pattern string search |
-//! | `toml` | [`toml_impl`] | TOML parsing |
-//! | `tabled` | [`tabled_impl`] | Table formatting |
+//! | `either` | `either_impl` | `Either<L, R>` conversions |
+//! | `ndarray` | `ndarray_impl` | N-dimensional array conversions |
+//! | `nalgebra` | `nalgebra_impl` | Linear algebra type conversions |
+//! | `num-bigint` | `num_bigint_impl` | Big integer support |
+//! | `rust_decimal` | `rust_decimal_impl` | Decimal number support |
+//! | `ordered-float` | `ordered_float_impl` | Ordered floats for sorting |
+//! | `uuid` | `uuid_impl` | UUID conversions |
+//! | `regex` | `regex_impl` | Compiled regex from R strings |
+//! | `indexmap` | `indexmap_impl` | Order-preserving maps |
+//! | `time` | `time_impl` | Date/time conversions |
+//! | `serde` | `serde_impl` | JSON serialization |
+//! | `num-traits` | `num_traits_impl` | Generic numeric operations |
+//! | `bytes` | `bytes_impl` | Byte buffer operations |
+//! | `num-complex` | `num_complex_impl` | Complex number support |
+//! | `url` | `url_impl` | URL parsing and validation |
+//! | `sha2` | `sha2_impl` | Cryptographic hashing |
+//! | `bitflags` | `bitflags_impl` | Bitflag conversions |
+//! | `bitvec` | `bitvec_impl` | Bit vector conversions |
+//! | `aho-corasick` | `aho_corasick_impl` | Multi-pattern string search |
+//! | `toml` | `toml_impl` | TOML parsing |
+//! | `tabled` | `tabled_impl` | Table formatting |
+//! | `tinyvec` | `tinyvec_impl` | Small-vector optimized types |
 
 // =============================================================================
 // Rayon - Parallel computation
@@ -157,13 +158,13 @@ pub use ndarray_impl::{
 /// Integration with the `nalgebra` crate.
 ///
 /// Provides conversions between R vectors/matrices and nalgebra types
-/// (`DVector`, `DMatrix`).
+/// (`DVector`, `DMatrix`, `SVector`, `SMatrix`).
 ///
 /// Enable with `features = ["nalgebra"]`.
 #[cfg(feature = "nalgebra")]
 pub mod nalgebra_impl;
 #[cfg(feature = "nalgebra")]
-pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps};
+pub use nalgebra_impl::{DMatrix, DVector, RMatrixOps, RVectorOps, SMatrix, SVector};
 
 // =============================================================================
 // Numeric types
@@ -391,3 +392,19 @@ pub use tabled_impl::{
     Builder, Table, Tabled, builder_to_string, table_from_vecs, table_to_string,
     table_to_string_opts, table_to_string_styled,
 };
+
+// =============================================================================
+// TinyVec - Small vector optimization
+// =============================================================================
+
+/// Integration with the `tinyvec` crate for small-vector optimization.
+///
+/// Provides conversions for `TinyVec<[T; N]>` and `ArrayVec<[T; N]>`:
+/// - `TinyVec`: Growable, stores inline up to N elements, then spills to heap
+/// - `ArrayVec`: Fixed capacity N, never allocates, errors if exceeded
+///
+/// Enable with `features = ["tinyvec"]`.
+#[cfg(feature = "tinyvec")]
+pub mod tinyvec_impl;
+#[cfg(feature = "tinyvec")]
+pub use tinyvec_impl::{Array, ArrayVec, TinyVec};

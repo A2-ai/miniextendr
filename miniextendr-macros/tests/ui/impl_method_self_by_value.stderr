@@ -1,19 +1,12 @@
-error[E0061]: this function takes 1 argument but 0 arguments were supplied
- --> tests/ui/impl_method_self_by_value.rs:8:6
-  |
-7 |   #[miniextendr]
-  |   -------------- argument #1 of type `Counter` is missing
-8 |   impl Counter {
-  |  ______^
-9 | |     fn consume(self) -> i32 {
-  | |______________^
-  |
-note: method defined here
- --> tests/ui/impl_method_self_by_value.rs:9:8
+error: method `consume` takes `self` by value (consuming), which is not fully supported.
+
+       Methods that consume `self` cannot be called from R because R uses reference semantics via ExternalPtr - the R object would remain alive after the Rust value is consumed.
+
+       Options:
+       1. Use `&self` or `&mut self` instead of `self`
+       2. If this is a finalizer (cleanup method), add `#[miniextendr(finalize)]`
+       3. If this returns a new Self (builder pattern), add `#[miniextendr(constructor)]`
+ --> tests/ui/impl_method_self_by_value.rs:9:5
   |
 9 |     fn consume(self) -> i32 {
-  |        ^^^^^^^ ----
-help: provide the argument
-  |
-9 |     fn consume(/* Counter */)(self) -> i32 {
-  |               +++++++++++++++
+  |     ^^

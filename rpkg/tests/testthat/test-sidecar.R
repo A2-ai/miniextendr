@@ -261,6 +261,80 @@ test_that("SidecarRawSexp func_val getter/setter works", {
 })
 
 # =============================================================================
+# Setter returns invisible(x) tests
+# =============================================================================
+
+test_that("SidecarEnv setters return invisible(x)", {
+  obj <- rdata_sidecar_env_new(count = 0L, score = 0.0, flag = FALSE, name = "")
+
+  # Setter should return the same object (invisibly)
+  result <- SidecarEnv_set_count(obj, 42L)
+  expect_identical(result, obj)
+
+  # Verify it's actually invisible (withVisible returns vis=FALSE)
+  vis_result <- withVisible(SidecarEnv_set_score(obj, 1.5))
+  expect_identical(vis_result$value, obj)
+  expect_false(vis_result$visible)
+})
+
+test_that("SidecarR6 setters return invisible(x)", {
+  obj <- rdata_sidecar_r6_new(value = 0L, label = "")
+
+  result <- SidecarR6_set_value(obj, 99L)
+  expect_identical(result, obj)
+
+  vis_result <- withVisible(SidecarR6_set_label(obj, "test"))
+  expect_identical(vis_result$value, obj)
+  expect_false(vis_result$visible)
+})
+
+test_that("SidecarS4 setters return invisible(x)", {
+  obj <- rdata_sidecar_s4_new(slot_int = 0L, slot_real = 0.0, slot_str = "")
+
+  result <- SidecarS4_set_slot_int(obj, 7L)
+  expect_identical(result, obj)
+
+  vis_result <- withVisible(SidecarS4_set_slot_real(obj, 2.5))
+  expect_identical(vis_result$value, obj)
+  expect_false(vis_result$visible)
+})
+
+# =============================================================================
+# Raw SEXP identity tests (getter returns exact stored SEXP)
+# =============================================================================
+
+test_that("SidecarRawSexp getter returns identical SEXP", {
+  obj <- rdata_sidecar_rawsexp_new()
+
+  # Create unique identifiable objects
+  env <- new.env()
+  env$marker <- "unique_marker_12345"
+
+  SidecarRawSexp_set_env_val(obj, env)
+  result <- SidecarRawSexp_get_env_val(obj)
+
+  # Not just equal - should be the exact same object
+  expect_identical(result, env)
+
+  # Modify through one reference, visible through the other
+  result$new_field <- 42L
+  expect_equal(env$new_field, 42L)
+})
+
+test_that("SidecarEnv raw_slot preserves SEXP identity", {
+  obj <- rdata_sidecar_env_new(count = 1L, score = 1.0, flag = TRUE, name = "x")
+
+  # Store a list with a reference
+  lst <- list(nested = list(deep = 1:10))
+
+  SidecarEnv_set_raw_slot(obj, lst)
+  result <- SidecarEnv_get_raw_slot(obj)
+
+  # Should be identical (same SEXP, not a copy)
+  expect_identical(result, lst)
+})
+
+# =============================================================================
 # SidecarVctrs vctrs S3 dispatch tests
 # =============================================================================
 
