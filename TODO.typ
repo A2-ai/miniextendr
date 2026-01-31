@@ -268,10 +268,12 @@ Standalone adapter traits not needed - use connection framework instead.
   - Analysis: Direct impls (e.g., `TryFromSexp for OrderedFloat<f64>`) are cleaner for scalar types
   - `Coerced<T, R>` wrapper is better suited for container element coercion
   - Feature modules like `ordered_float_impl` already have proper Coerce/TryCoerce impls
-- [ ] Document per-feature coercion policy
-  - Clarify integer inputs for float-centric types
-  - Document truncation/rounding behavior
-  - Note lossy vs strict conversions
+- [x] Document per-feature coercion policy (2026-01-31)
+  - DONE: Added "Feature Module Coercion Policies" section to docs/COERCE.md
+  - Clarifies integer inputs for float-centric types (ordered-float, rust-decimal)
+  - Documents truncation/rounding behavior
+  - Notes lossy vs strict conversions (rust-decimal string vs numeric)
+  - Covers Coerced<T, R> pattern for container types
 
 
 
