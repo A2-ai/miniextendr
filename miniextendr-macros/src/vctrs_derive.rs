@@ -668,15 +668,42 @@ vec_proxy_order.{class} <- function(x, ...) {{
     }
 
     // =========================================================================
-    // vec_arith.<class> - arithmetic operations
+    // vec_arith.<class> - arithmetic operations (double dispatch)
     // =========================================================================
     if arith {
         // For numeric-backed vctrs, arithmetic returns the same class
         if base != "record" && base != "list" && base != "character" && base != "raw" {
-            // vec_arith.<class>.<class>
             let inherit_str = if inherit_base { "TRUE" } else { "FALSE" };
+
+            // Base dispatcher: vec_arith.<class> does secondary dispatch on y
             r_code.push_str(&format!(
                 r#"
+#' @importFrom vctrs vec_arith
+#' @export
+vec_arith.{class} <- function(op, x, y, ...) {{
+  UseMethod("vec_arith.{class}", y)
+}}
+"#
+            ));
+
+            // Default fallback for unknown y types
+            // Use @method tag to tell roxygen that vec_arith.{class} is the generic
+            r_code.push_str(&format!(
+                r#"
+#' @method vec_arith.{class} default
+#' @importFrom vctrs stop_incompatible_op
+#' @export
+vec_arith.{class}.default <- function(op, x, y, ...) {{
+  vctrs::stop_incompatible_op(op, x, y)
+}}
+"#
+            ));
+
+            // vec_arith.<class>.<class>
+            // Use @method tag for proper S3 registration
+            r_code.push_str(&format!(
+                r#"
+#' @method vec_arith.{class} {class}
 #' @importFrom vctrs vec_arith vec_arith_base new_vctr
 #' @export
 vec_arith.{class}.{class} <- function(op, x, y, ...) {{
@@ -687,8 +714,10 @@ vec_arith.{class}.{class} <- function(op, x, y, ...) {{
             ));
 
             // vec_arith.<class>.numeric (right-hand side)
+            // Use @method tag for proper S3 registration
             r_code.push_str(&format!(
                 r#"
+#' @method vec_arith.{class} numeric
 #' @importFrom vctrs vec_arith vec_arith_base new_vctr
 #' @export
 vec_arith.{class}.numeric <- function(op, x, y, ...) {{
@@ -698,10 +727,13 @@ vec_arith.{class}.numeric <- function(op, x, y, ...) {{
 "#
             ));
 
-            // vec_arith.numeric.<class> (left-hand side)
+            // vec_arith.numeric.<class> (left-hand side numeric op class)
+            // vctrs exports vec_arith.numeric, so we import it to register methods on it.
+            // Use @method tag for proper S3 registration.
             r_code.push_str(&format!(
                 r#"
-#' @importFrom vctrs vec_arith vec_arith_base new_vctr
+#' @method vec_arith.numeric {class}
+#' @importFrom vctrs vec_arith.numeric vec_arith_base new_vctr
 #' @export
 vec_arith.numeric.{class} <- function(op, x, y, ...) {{
   result <- vctrs::vec_arith_base(op, x, y)
@@ -711,8 +743,10 @@ vec_arith.numeric.{class} <- function(op, x, y, ...) {{
             ));
 
             // vec_arith.<class>.MISSING (unary operations like -x)
+            // Use @method tag for proper S3 registration
             r_code.push_str(&format!(
                 r#"
+#' @method vec_arith.{class} MISSING
 #' @importFrom vctrs vec_arith vec_arith_base new_vctr
 #' @export
 vec_arith.{class}.MISSING <- function(op, x, y, ...) {{
@@ -889,17 +923,25 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
             }
             "list" => {
                 // For list_of types
-                // Note: ptype needs to be passed via an attribute or a trait method
+                // The ptype is optional and passed via #[vctrs(ptype = "...")]
+                // new_list_of requires: List, Option<SEXP> ptype, Option<i32> size, &[&str] class, &[(&str, SEXP)] attrs
                 quote! {
                     impl #impl_generics ::miniextendr_api::vctrs::IntoVctrs for #name #ty_generics #where_clause {
                         fn into_vctrs(self) -> Result<::miniextendr_api::ffi::SEXP, ::miniextendr_api::vctrs::VctrsBuildError> {
                             use ::miniextendr_api::IntoR;
+                            use ::miniextendr_api::list::List;
 
                             // Get attrs before moving data out of self
                             let attrs = self.attrs();
-                            let data = self.#data_ident.into_sexp();
+                            // Convert data to List type - safe because into_sexp() for Vec<Vec<T>> produces VECSXP
+                            let data_sexp = self.#data_ident.into_sexp();
+                            let list = unsafe { List::from_raw(data_sexp) };
+                            // For list_of, we pass size = list length, ptype = None (handled in R wrapper)
+                            let size = Some(list.len() as i32);
                             ::miniextendr_api::vctrs::new_list_of(
-                                data,
+                                list,
+                                None,  // ptype - handled in R wrapper via attribute
+                                size,
                                 &[Self::CLASS_NAME],
                                 &attrs,
                             )
@@ -1392,10 +1434,26 @@ mod tests {
             math: false,
         });
 
-        // Should have vec_arith methods
+        // Should have base dispatcher for double dispatch
+        assert!(r_code.contains("vec_arith.mynum <- function(op, x, y, ...)"));
+        assert!(r_code.contains("UseMethod(\"vec_arith.mynum\", y)"));
+
+        // Should have default fallback with @method tag
+        assert!(r_code.contains("@method vec_arith.mynum default"));
+        assert!(r_code.contains("vec_arith.mynum.default"));
+        assert!(r_code.contains("stop_incompatible_op"));
+
+        // Should have vec_arith methods with @method tags for proper S3 registration
+        assert!(r_code.contains("@method vec_arith.mynum mynum"));
         assert!(r_code.contains("vec_arith.mynum.mynum"));
+        assert!(r_code.contains("@method vec_arith.mynum numeric"));
         assert!(r_code.contains("vec_arith.mynum.numeric"));
+        // vec_arith.numeric.mynum uses @method since vec_arith.numeric
+        // is exported by vctrs (we import it)
+        assert!(r_code.contains("@method vec_arith.numeric mynum"));
+        assert!(r_code.contains("@importFrom vctrs vec_arith.numeric"));
         assert!(r_code.contains("vec_arith.numeric.mynum"));
+        assert!(r_code.contains("@method vec_arith.mynum MISSING"));
         assert!(r_code.contains("vec_arith.mynum.MISSING"));
         assert!(r_code.contains("vec_arith_base"));
     }
