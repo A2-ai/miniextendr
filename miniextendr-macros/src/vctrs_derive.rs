@@ -448,7 +448,7 @@ vec_ptype2.{class}.{class} <- function(x, y, ...) {{
         ));
     } else if base == "list" {
         // List-of ptype2: use new_list_of with common ptype
-        let ptype_expr = ptype.unwrap_or("NULL");
+        let _ptype_expr = ptype.unwrap_or("NULL");
         r_code.push_str(&format!(
             r#"
 #' @importFrom vctrs vec_ptype2 new_list_of vec_ptype_common

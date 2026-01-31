@@ -800,6 +800,16 @@ unsafe extern "C-unwind" {
     pub static R_BaseEnv: SEXP;
     pub static R_EmptyEnv: SEXP;
 
+    /// The "missing argument" sentinel value.
+    ///
+    /// When an R function is called without providing a value for a formal
+    /// argument, R passes `R_MissingArg` as a placeholder. This is different
+    /// from `R_NilValue` (NULL) - a missing argument means "not provided",
+    /// while NULL is an explicit value.
+    ///
+    /// In R: `f <- function(x) missing(x); f()` returns `TRUE`.
+    pub static R_MissingArg: SEXP;
+
     // Rinterface.h
     pub fn R_FlushConsole();
 
