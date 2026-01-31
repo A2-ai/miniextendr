@@ -6,6 +6,8 @@
 //! |--------|--------------|-------|
 //! | REALSXP | `DVector<f64>`, `DMatrix<f64>` | Dynamic vectors/matrices |
 //! | INTSXP | `DVector<i32>`, `DMatrix<i32>` | Integer vectors/matrices |
+//! | REALSXP | `SVector<f64, D>`, `SMatrix<f64, R, C>` | Static (stack-allocated) |
+//! | INTSXP | `SVector<i32, D>`, `SMatrix<i32, R, C>` | Static (stack-allocated) |
 //!
 //! # Features
 //!
@@ -59,89 +61,76 @@
 //! }
 //! ```
 
-pub use nalgebra::{DMatrix, DVector};
+pub use nalgebra::{DMatrix, DVector, SMatrix, SVector};
 
-use crate::ffi::{RLogical, RNativeType, SEXP, SEXPTYPE, SexpExt};
-use crate::from_r::{SexpError, SexpLengthError, SexpTypeError, TryFromSexp};
+use crate::ffi::{RNativeType, SEXP, SEXPTYPE, SexpExt};
+use crate::from_r::{SexpError, SexpLengthError, TryFromSexp};
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
 use nalgebra::Scalar;
 
 // =============================================================================
-// R-native DVector/DMatrix conversions (explicit)
+// Blanket implementations for DVector and DMatrix
 // =============================================================================
+//
+// Now that we have blanket impls for `&[T]` where T: RNativeType, we can write
+// blanket impls for nalgebra types instead of using macros.
 
-fn dvector_from_sexp<T: RNativeType + Scalar + Copy>(sexp: SEXP) -> Result<DVector<T>, SexpError> {
-    let actual = sexp.type_of();
-    if actual != T::SEXP_TYPE {
-        return Err(SexpTypeError {
-            expected: T::SEXP_TYPE,
-            actual,
-        }
-        .into());
+/// Blanket impl for `DVector<T>` where T: RNativeType
+impl<T> TryFromSexp for DVector<T>
+where
+    T: RNativeType + Scalar + Copy,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        Ok(DVector::from_column_slice(slice))
     }
 
-    let slice: &[T] = unsafe { sexp.as_slice() };
-    Ok(DVector::from_column_slice(slice))
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(DVector::from_column_slice(slice))
+    }
 }
 
-fn dmatrix_from_sexp<T: RNativeType + Scalar + Copy>(sexp: SEXP) -> Result<DMatrix<T>, SexpError> {
-    let actual = sexp.type_of();
-    if actual != T::SEXP_TYPE {
-        return Err(SexpTypeError {
-            expected: T::SEXP_TYPE,
-            actual,
+/// Blanket impl for `DMatrix<T>` where T: RNativeType
+impl<T> TryFromSexp for DMatrix<T>
+where
+    T: RNativeType + Scalar + Copy,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+
+        if slice.len() != nrow * ncol {
+            return Err(SexpLengthError {
+                expected: nrow * ncol,
+                actual: slice.len(),
+            }
+            .into());
         }
-        .into());
+
+        Ok(DMatrix::from_column_slice(nrow, ncol, slice))
     }
 
-    let (nrow, ncol) = get_matrix_dims(sexp)?;
-    let slice: &[T] = unsafe { sexp.as_slice() };
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
 
-    if slice.len() != nrow * ncol {
-        return Err(SexpLengthError {
-            expected: nrow * ncol,
-            actual: slice.len(),
+        if slice.len() != nrow * ncol {
+            return Err(SexpLengthError {
+                expected: nrow * ncol,
+                actual: slice.len(),
+            }
+            .into());
         }
-        .into());
+
+        Ok(DMatrix::from_column_slice(nrow, ncol, slice))
     }
-
-    Ok(DMatrix::from_column_slice(nrow, ncol, slice))
 }
-
-macro_rules! impl_nalgebra_try_from_sexp_native {
-    ($t:ty) => {
-        impl TryFromSexp for DVector<$t> {
-            type Error = SexpError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                dvector_from_sexp::<$t>(sexp)
-            }
-
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                dvector_from_sexp::<$t>(sexp)
-            }
-        }
-
-        impl TryFromSexp for DMatrix<$t> {
-            type Error = SexpError;
-
-            fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
-                dmatrix_from_sexp::<$t>(sexp)
-            }
-
-            unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
-                dmatrix_from_sexp::<$t>(sexp)
-            }
-        }
-    };
-}
-
-impl_nalgebra_try_from_sexp_native!(i32);
-impl_nalgebra_try_from_sexp_native!(f64);
-impl_nalgebra_try_from_sexp_native!(u8);
-impl_nalgebra_try_from_sexp_native!(RLogical);
-impl_nalgebra_try_from_sexp_native!(crate::ffi::Rcomplex);
 
 // =============================================================================
 // DVector conversions
@@ -225,6 +214,134 @@ fn get_matrix_dims(sexp: SEXP) -> Result<(usize, usize), SexpError> {
 }
 
 // =============================================================================
+// Static (stack-allocated) vector and matrix: SVector and SMatrix
+// =============================================================================
+//
+// SVector<T, D> and SMatrix<T, R, C> are stack-allocated, compile-time sized
+// nalgebra types. They're useful when dimensions are known at compile time:
+//
+// - SVector<f64, 3> - 3D point/vector (24 bytes on stack)
+// - SMatrix<f64, 4, 4> - transformation matrix (128 bytes on stack)
+//
+// These avoid heap allocation and are more cache-friendly for small sizes.
+//
+// **Important**: `SVector<T, D>` is a type alias for `SMatrix<T, D, 1>`.
+// We only implement conversions for SMatrix; SVector works through this alias.
+//
+// R Conversion Semantics:
+// - SMatrix<T, R, C> ↔ R matrix with dim (R, C)
+// - SVector<T, D> (= SMatrix<T, D, 1>) ↔ R column vector with dim (D, 1)
+//
+// If you want a plain R vector (no dim attr), use DVector instead.
+
+/// Blanket impl for `SMatrix<T, R, C>` where T: RNativeType
+///
+/// Converts an R matrix to a statically-sized nalgebra matrix.
+/// Fails if the R matrix dimensions don't match R×C.
+impl<T, const R: usize, const C: usize> TryFromSexp for SMatrix<T, R, C>
+where
+    T: RNativeType + Scalar + Copy,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        if nrow != R || ncol != C {
+            return Err(SexpError::InvalidValue(format!(
+                "expected {}x{} matrix, got {}x{}",
+                R, C, nrow, ncol
+            )));
+        }
+
+        let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
+        // SAFETY: dimensions validated above
+        Ok(SMatrix::from_column_slice(slice))
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        if nrow != R || ncol != C {
+            return Err(SexpError::InvalidValue(format!(
+                "expected {}x{} matrix, got {}x{}",
+                R, C, nrow, ncol
+            )));
+        }
+
+        let slice: &[T] = unsafe { TryFromSexp::try_from_sexp_unchecked(sexp)? };
+        Ok(SMatrix::from_column_slice(slice))
+    }
+}
+
+// =============================================================================
+// SMatrix IntoR (also covers SVector since SVector<T,D> = SMatrix<T,D,1>)
+// =============================================================================
+
+/// Convert `SMatrix<T, R, C>` to R matrix.
+///
+/// nalgebra stores data in column-major order (same as R), so this is efficient.
+impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for SMatrix<T, R, C> {
+    fn into_sexp(self) -> SEXP {
+        unsafe {
+            let mat = crate::ffi::Rf_allocMatrix(T::SEXP_TYPE, R as i32, C as i32);
+            let guard = OwnedProtect::new(mat);
+
+            let ptr = crate::ffi::DATAPTR_RO(guard.get()) as *mut T;
+            std::ptr::copy_nonoverlapping(self.as_slice().as_ptr(), ptr, R * C);
+
+            guard.get()
+        }
+    }
+}
+
+// =============================================================================
+// Option<SVector> and Option<SMatrix> conversions
+// =============================================================================
+
+// Note: Option<SVector<T, D>> is handled by Option<SMatrix<T, D, 1>> below
+// since SVector<T, D> = SMatrix<T, D, 1>.
+
+impl<T, const R: usize, const C: usize> TryFromSexp for Option<SMatrix<T, R, C>>
+where
+    T: RNativeType + Scalar + Copy,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        SMatrix::<T, R, C>::try_from_sexp(sexp).map(Some)
+    }
+
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        if sexp.type_of() == SEXPTYPE::NILSXP {
+            return Ok(None);
+        }
+        unsafe { SMatrix::<T, R, C>::try_from_sexp_unchecked(sexp).map(Some) }
+    }
+}
+
+// Note: Option<SVector<T, D>> IntoR is handled by Option<SMatrix<T, D, 1>> below.
+
+impl<T: RNativeType + Scalar, const R: usize, const C: usize> IntoR for Option<SMatrix<T, R, C>> {
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        match self {
+            Some(m) => m.into_sexp(),
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        match self {
+            Some(m) => unsafe { m.into_sexp_unchecked() },
+            None => unsafe { crate::ffi::R_NilValue },
+        }
+    }
+}
+
+// =============================================================================
 // TypedExternal implementations for ExternalPtr support
 // =============================================================================
 //
@@ -263,6 +380,24 @@ impl_te_nalgebra!(DVector<u8>, "nalgebra::DVector<u8>");
 impl_te_nalgebra!(DMatrix<i32>, "nalgebra::DMatrix<i32>");
 impl_te_nalgebra!(DMatrix<f64>, "nalgebra::DMatrix<f64>");
 impl_te_nalgebra!(DMatrix<u8>, "nalgebra::DMatrix<u8>");
+
+// --- SVector TypedExternal (common sizes) ---
+// 2D, 3D, 4D vectors (graphics, physics)
+impl_te_nalgebra!(SVector<f64, 2>, "nalgebra::SVector<f64,2>");
+impl_te_nalgebra!(SVector<f64, 3>, "nalgebra::SVector<f64,3>");
+impl_te_nalgebra!(SVector<f64, 4>, "nalgebra::SVector<f64,4>");
+impl_te_nalgebra!(SVector<i32, 2>, "nalgebra::SVector<i32,2>");
+impl_te_nalgebra!(SVector<i32, 3>, "nalgebra::SVector<i32,3>");
+impl_te_nalgebra!(SVector<i32, 4>, "nalgebra::SVector<i32,4>");
+
+// --- SMatrix TypedExternal (common sizes) ---
+// 2x2, 3x3, 4x4 transformation matrices (graphics, physics)
+impl_te_nalgebra!(SMatrix<f64, 2, 2>, "nalgebra::SMatrix<f64,2,2>");
+impl_te_nalgebra!(SMatrix<f64, 3, 3>, "nalgebra::SMatrix<f64,3,3>");
+impl_te_nalgebra!(SMatrix<f64, 4, 4>, "nalgebra::SMatrix<f64,4,4>");
+impl_te_nalgebra!(SMatrix<i32, 2, 2>, "nalgebra::SMatrix<i32,2,2>");
+impl_te_nalgebra!(SMatrix<i32, 3, 3>, "nalgebra::SMatrix<i32,3,3>");
+impl_te_nalgebra!(SMatrix<i32, 4, 4>, "nalgebra::SMatrix<i32,4,4>");
 
 // =============================================================================
 // RVectorOps adapter trait
@@ -683,6 +818,149 @@ impl RMatrixOps for DMatrix<f64> {
     }
 }
 
+// =============================================================================
+// Coerced element support
+// =============================================================================
+//
+// Support for `DVector<Coerced<T, R>>` and `DMatrix<Coerced<T, R>>`.
+// This allows reading R native types (i32, f64) and coercing to non-native types
+// (i8, f32, etc.) element-wise.
+//
+// Example: `DVector<Coerced<f32, f64>>` reads from R numeric and coerces each
+// element to f32.
+
+use crate::coerce::{Coerced, TryCoerce};
+
+/// Helper to coerce a slice element-wise.
+fn coerce_slice<R, T>(slice: &[R]) -> Result<Vec<T>, SexpError>
+where
+    R: Copy + TryCoerce<T>,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    slice
+        .iter()
+        .copied()
+        .map(|v| {
+            v.try_coerce()
+                .map_err(|e| SexpError::InvalidValue(format!("{e:?}")))
+        })
+        .collect()
+}
+
+/// TryFromSexp for `DVector<Coerced<T, R>>` - reads R native type and coerces.
+impl<T, R> TryFromSexp for DVector<Coerced<T, R>>
+where
+    R: RNativeType + Scalar + Copy + TryCoerce<T>,
+    T: Scalar + Copy,
+    Coerced<T, R>: Scalar,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != R::SEXP_TYPE {
+            return Err(crate::from_r::SexpTypeError {
+                expected: R::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let slice: &[R] = unsafe { sexp.as_slice() };
+        let data: Vec<T> = coerce_slice(slice)?;
+        let coerced_data: Vec<Coerced<T, R>> = data.into_iter().map(Coerced::new).collect();
+        Ok(DVector::from_vec(coerced_data))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// TryFromSexp for `DMatrix<Coerced<T, R>>` - reads R native type and coerces.
+impl<T, R> TryFromSexp for DMatrix<Coerced<T, R>>
+where
+    R: RNativeType + Scalar + Copy + TryCoerce<T>,
+    T: Scalar + Copy,
+    Coerced<T, R>: Scalar,
+    <R as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    type Error = SexpError;
+
+    fn try_from_sexp(sexp: SEXP) -> Result<Self, Self::Error> {
+        let actual = sexp.type_of();
+        if actual != R::SEXP_TYPE {
+            return Err(crate::from_r::SexpTypeError {
+                expected: R::SEXP_TYPE,
+                actual,
+            }
+            .into());
+        }
+        let (nrow, ncol) = get_matrix_dims(sexp)?;
+        let slice: &[R] = unsafe { sexp.as_slice() };
+        if slice.len() != nrow * ncol {
+            return Err(SexpLengthError {
+                expected: nrow * ncol,
+                actual: slice.len(),
+            }
+            .into());
+        }
+        let data: Vec<T> = coerce_slice(slice)?;
+        let coerced_data: Vec<Coerced<T, R>> = data.into_iter().map(Coerced::new).collect();
+        Ok(DMatrix::from_vec(nrow, ncol, coerced_data))
+    }
+
+    #[inline]
+    unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
+        Self::try_from_sexp(sexp)
+    }
+}
+
+/// IntoR for `DVector<Coerced<T, R>>` - coerces back and writes to R.
+impl<T, R> IntoR for DVector<Coerced<T, R>>
+where
+    T: Copy + Into<R> + Scalar,
+    R: RNativeType + Scalar + Copy,
+    Coerced<T, R>: Scalar,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        DVector::from_vec(r_values).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        unsafe { DVector::from_vec(r_values).into_sexp_unchecked() }
+    }
+}
+
+/// IntoR for `DMatrix<Coerced<T, R>>` - coerces back and writes to R.
+impl<T, R> IntoR for DMatrix<Coerced<T, R>>
+where
+    T: Copy + Into<R> + Scalar,
+    R: RNativeType + Scalar + Copy,
+    Coerced<T, R>: Scalar,
+{
+    #[inline]
+    fn into_sexp(self) -> SEXP {
+        let nrow = self.nrows();
+        let ncol = self.ncols();
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        DMatrix::from_vec(nrow, ncol, r_values).into_sexp()
+    }
+
+    #[inline]
+    unsafe fn into_sexp_unchecked(self) -> SEXP {
+        let nrow = self.nrows();
+        let ncol = self.ncols();
+        let r_values: Vec<R> = self.iter().map(|c| (*c.as_inner()).into()).collect();
+        unsafe { DMatrix::from_vec(nrow, ncol, r_values).into_sexp_unchecked() }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -844,5 +1122,71 @@ mod tests {
         assert!((c[(0, 1)] - 31.0).abs() < 1e-10);
         assert!((c[(1, 0)] - 34.0).abs() < 1e-10);
         assert!((c[(1, 1)] - 46.0).abs() < 1e-10);
+    }
+
+    // =========================================================================
+    // SVector and SMatrix tests
+    // =========================================================================
+
+    #[test]
+    fn svector_can_be_created() {
+        let v: SVector<f64, 3> = SVector::from_column_slice(&[1.0, 2.0, 3.0]);
+        assert_eq!(v.len(), 3);
+        assert!((v[0] - 1.0).abs() < 1e-10);
+        assert!((v[1] - 2.0).abs() < 1e-10);
+        assert!((v[2] - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn smatrix_can_be_created() {
+        // 2x3 matrix in column-major order
+        let m: SMatrix<f64, 2, 3> = SMatrix::from_column_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 3);
+        // Column-major: m = [[1, 3, 5], [2, 4, 6]]
+        assert!((m[(0, 0)] - 1.0).abs() < 1e-10);
+        assert!((m[(1, 0)] - 2.0).abs() < 1e-10);
+        assert!((m[(0, 1)] - 3.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn svector_type_alias() {
+        // SVector<T, D> is SMatrix<T, D, 1>
+        let v: SVector<f64, 3> = SVector::from_column_slice(&[1.0, 2.0, 3.0]);
+        let m: SMatrix<f64, 3, 1> = SMatrix::from_column_slice(&[1.0, 2.0, 3.0]);
+
+        // They're the same type
+        assert_eq!(v.nrows(), m.nrows());
+        assert_eq!(v.ncols(), m.ncols());
+        assert_eq!(v.as_slice(), m.as_slice());
+    }
+
+    #[test]
+    fn smatrix_operations() {
+        let m: SMatrix<f64, 2, 2> = SMatrix::from_column_slice(&[1.0, 2.0, 3.0, 4.0]);
+        // Column-major: [[1, 3], [2, 4]]
+        assert!((m.determinant() - -2.0).abs() < 1e-10);
+        assert!((m.trace() - 5.0).abs() < 1e-10);
+
+        let t = m.transpose();
+        assert_eq!(t.nrows(), 2);
+        assert_eq!(t.ncols(), 2);
+        // Transposed: [[1, 2], [3, 4]]
+        assert!((t[(0, 1)] - 2.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn svector_norm() {
+        let v: SVector<f64, 2> = SVector::from_column_slice(&[3.0, 4.0]);
+        assert!((v.norm() - 5.0).abs() < 1e-10);
+    }
+
+    #[test]
+    fn smatrix_i32() {
+        let m: SMatrix<i32, 2, 2> = SMatrix::from_column_slice(&[1, 2, 3, 4]);
+        assert_eq!(m.nrows(), 2);
+        assert_eq!(m.ncols(), 2);
+        assert_eq!(m[(0, 0)], 1);
+        assert_eq!(m[(1, 1)], 4);
     }
 }

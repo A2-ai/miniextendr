@@ -48,7 +48,7 @@
 //! These modules require specific Cargo features to be enabled:
 //!
 //! - [`rayon_tests`]: Parallel iteration tests (feature: `rayon`)
-//! - [`serde_r_tests`]: Serde R serialization tests (feature: `serde_r`)
+//! - [`serde_r_tests`]: Serde R serialization tests (feature: `serde`)
 //! - [`ndarray_tests`]: N-dimensional array tests (feature: `ndarray`)
 //! - [`vctrs_tests`]: vctrs compatibility tests (feature: `vctrs`)
 //! - [`vctrs_class_example`]: vctrs class implementation example (feature: `vctrs`)
@@ -114,10 +114,10 @@ mod rng_tests;
 mod s3_tests;
 mod s4_tests;
 mod s7_tests;
-#[cfg(feature = "serde_r")]
+#[cfg(feature = "serde")]
 #[path = "serde_r_tests.rs"]
 mod serde_r_tests;
-#[cfg(not(feature = "serde_r"))]
+#[cfg(not(feature = "serde"))]
 #[path = "serde_r_tests_disabled.rs"]
 mod serde_r_tests;
 // Feature adapter tests - each feature has its own enabled/disabled module
@@ -1563,9 +1563,6 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     }
     if cfg!(feature = "serde") {
         features.push("serde");
-    }
-    if cfg!(feature = "serde_r") {
-        features.push("serde_r");
     }
     if cfg!(feature = "num-bigint") {
         features.push("num-bigint");

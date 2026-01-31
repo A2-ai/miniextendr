@@ -97,6 +97,10 @@ where
 // =============================================================================
 // Identity coercions
 // =============================================================================
+//
+// Note: Can't use blanket `impl<T> Coerce<T> for T` because it would conflict
+// with container coercion impls like `impl<T: Coerce<R>> Coerce<Vec<R>> for Vec<T>`.
+// Both would apply to `Vec<T>: Coerce<Vec<T>>`, causing overlap.
 
 macro_rules! impl_identity {
     ($t:ty) => {
@@ -116,47 +120,30 @@ impl_identity!(u8);
 impl_identity!(Rcomplex);
 
 // =============================================================================
-// Widening to i32
+// Widening conversions (blanket impls using marker traits)
 // =============================================================================
 
-macro_rules! impl_widen_i32 {
-    ($t:ty) => {
-        impl Coerce<i32> for $t {
-            #[inline(always)]
-            fn coerce(self) -> i32 {
-                self.into()
-            }
-        }
-    };
+/// Blanket impl: Any type that widens to i32 can be coerced to i32.
+///
+/// This replaces individual macro invocations with a single blanket impl.
+/// Covers: i8, i16, u8, u16 (all types where T: Into<i32>).
+impl<T: crate::markers::WidensToI32> Coerce<i32> for T {
+    #[inline(always)]
+    fn coerce(self) -> i32 {
+        self.into()
+    }
 }
 
-impl_widen_i32!(i8);
-impl_widen_i32!(i16);
-impl_widen_i32!(u8);
-impl_widen_i32!(u16);
-
-// =============================================================================
-// Widening to f64
-// =============================================================================
-
-macro_rules! impl_widen_f64 {
-    ($t:ty) => {
-        impl Coerce<f64> for $t {
-            #[inline(always)]
-            fn coerce(self) -> f64 {
-                self.into()
-            }
-        }
-    };
+/// Blanket impl: Any type that widens to f64 can be coerced to f64.
+///
+/// This replaces individual macro invocations with a single blanket impl.
+/// Covers: f32, i8, i16, i32, u8, u16, u32 (all types where T: Into<f64>).
+impl<T: crate::markers::WidensToF64> Coerce<f64> for T {
+    #[inline(always)]
+    fn coerce(self) -> f64 {
+        self.into()
+    }
 }
-
-impl_widen_f64!(f32);
-impl_widen_f64!(i8);
-impl_widen_f64!(i16);
-impl_widen_f64!(i32);
-impl_widen_f64!(u8);
-impl_widen_f64!(u16);
-impl_widen_f64!(u32);
 
 // =============================================================================
 // Widening from u8 to larger integer/float types
@@ -854,7 +841,23 @@ impl TryCoerce<u32> for f64 {
 // =============================================================================
 // Float to i64/u64 (fallible)
 // =============================================================================
+//
+// These conversions validate that the f64 can be exactly represented as an integer.
+//
+// **Checks performed:**
+// - NaN → `Err(CoerceError::NaN)`
+// - Infinity → `Err(CoerceError::Overflow)`
+// - Out of range → `Err(CoerceError::Overflow)`
+// - Has fractional part → `Err(CoerceError::PrecisionLoss)`
+//
+// **Note on precision:**
+// f64 can exactly represent all integers in [-2^53, 2^53]. For values in this
+// range that pass the fractional check, conversion is exact. For larger f64
+// values (which must have been created through approximation), the conversion
+// returns whatever integer the f64 represents, which may not be what was
+// originally intended.
 
+/// Convert `f64` to `i64`, validating exact representation.
 impl TryCoerce<i64> for f64 {
     type Error = CoerceError;
 
@@ -943,7 +946,23 @@ impl TryCoerce<usize> for f64 {
 // =============================================================================
 // Large int to f64 (fallible - precision)
 // =============================================================================
+//
+// These conversions only succeed if the integer can be exactly represented
+// in f64. This is stricter than Rust's `as f64` which silently rounds.
+//
+// **Safe integer range:**
+// - f64 has 53 bits of mantissa precision
+// - Integers in [-2^53, 2^53] (±9,007,199,254,740,992) are exactly representable
+// - Outside this range: `Err(CoerceError::PrecisionLoss)`
+//
+// **Use cases:**
+// - Validating R function inputs won't lose precision
+// - Checked conversions in data pipelines
+// - Ensuring round-trip fidelity (i64 → R → i64)
 
+/// Convert `i64` to `f64`, failing if precision would be lost.
+///
+/// Only succeeds for values in [-2^53, 2^53].
 impl TryCoerce<f64> for i64 {
     type Error = CoerceError;
 
@@ -958,6 +977,9 @@ impl TryCoerce<f64> for i64 {
     }
 }
 
+/// Convert `u64` to `f64`, failing if precision would be lost.
+///
+/// Only succeeds for values ≤ 2^53.
 impl TryCoerce<f64> for u64 {
     type Error = CoerceError;
 
@@ -1080,9 +1102,51 @@ impl<T: Coerce<R>, R> Coerce<Vec<R>> for Vec<T> {
     }
 }
 
+/// Infallible element-wise coercion for VecDeque to VecDeque.
+impl<T: Coerce<R>, R> Coerce<std::collections::VecDeque<R>> for std::collections::VecDeque<T> {
+    fn coerce(self) -> std::collections::VecDeque<R> {
+        self.into_iter().map(Coerce::coerce).collect()
+    }
+}
+
 // Note: TryCoerce<Vec<R>> is automatically provided by the blanket impl
-// when T: Coerce<R>. For types that only implement TryCoerce (not Coerce),
-// use: slice.iter().map(|x| x.try_coerce()).collect::<Result<Vec<_>, _>>()
+// `impl<T: Coerce<R>> TryCoerce<R> for T`. For types that only implement
+// TryCoerce (not Coerce), use manual iteration:
+// slice.iter().map(|x| x.try_coerce()).collect::<Result<Vec<_>, _>>()
+
+// =============================================================================
+// TinyVec coercions (element-wise)
+// =============================================================================
+
+#[cfg(feature = "tinyvec")]
+/// Element-wise coercion for TinyVec.
+///
+/// Enables conversions like `TinyVec<[i8; 10]>` → `TinyVec<[i32; 10]>` via widening.
+impl<T, R, const N: usize> Coerce<tinyvec::TinyVec<[R; N]>> for tinyvec::TinyVec<[T; N]>
+where
+    T: Coerce<R>,
+    [T; N]: tinyvec::Array<Item = T>,
+    [R; N]: tinyvec::Array<Item = R>,
+{
+    fn coerce(self) -> tinyvec::TinyVec<[R; N]> {
+        self.into_iter().map(Coerce::coerce).collect()
+    }
+}
+
+#[cfg(feature = "tinyvec")]
+/// Element-wise coercion for ArrayVec.
+///
+/// Enables conversions like `ArrayVec<[i8; 10]>` → `ArrayVec<[i32; 10]>` via widening.
+impl<T, R, const N: usize> Coerce<tinyvec::ArrayVec<[R; N]>> for tinyvec::ArrayVec<[T; N]>
+where
+    T: Coerce<R>,
+    [T; N]: tinyvec::Array<Item = T>,
+    [R; N]: tinyvec::Array<Item = R>,
+{
+    fn coerce(self) -> tinyvec::ArrayVec<[R; N]> {
+        self.into_iter().map(Coerce::coerce).collect()
+    }
+}
 
 // =============================================================================
 // Tuple coercions (element-wise)

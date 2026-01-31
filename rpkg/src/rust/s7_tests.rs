@@ -98,9 +98,154 @@ impl S7Range {
     }
 }
 
+/// Demonstrates S7 Phase 2 property patterns: default, required, deprecated.
+///
+/// This struct shows the new property validation and pattern features.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Config {
+    name: String,
+    score: f64,
+    version: i32,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl S7Config {
+    /// Creates a new config.
+    pub fn new(name: String, score: f64, version: i32) -> Self {
+        S7Config {
+            name,
+            score,
+            version,
+        }
+    }
+
+    /// Property with default value.
+    #[miniextendr(s7(getter, default = "0.0"))]
+    pub fn score(&self) -> f64 {
+        self.score
+    }
+
+    /// Setter for score property.
+    #[miniextendr(s7(setter, prop = "score"))]
+    pub fn set_score(&mut self, value: f64) {
+        self.score = value;
+    }
+
+    /// Required property - must be provided.
+    #[miniextendr(s7(getter, required))]
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// Deprecated property - emits warning when accessed.
+    #[miniextendr(s7(getter, deprecated = "Use 'version' property instead"))]
+    pub fn old_version(&self) -> i32 {
+        self.version
+    }
+
+    /// Regular getter for version.
+    pub fn get_version(&self) -> i32 {
+        self.version
+    }
+}
+
+/// Demonstrates S7 Phase 3 generic dispatch control.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Strict {
+    value: i32,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl S7Strict {
+    pub fn new(value: i32) -> Self {
+        S7Strict { value }
+    }
+
+    /// Length method without `...` (strict generic).
+    #[miniextendr(s7(no_dots))]
+    pub fn strict_length(&self) -> i32 {
+        self.value
+    }
+
+    /// Method with fallback to class_any.
+    #[miniextendr(s7(fallback))]
+    pub fn describe_any(&self) -> String {
+        format!("S7Strict with value {}", self.value)
+    }
+}
+
+// =============================================================================
+// S7 Phase 4: convert() methods - type coercion between S7 classes
+// =============================================================================
+
+/// Temperature in Celsius - demonstrates convert_to pattern.
+/// Note: This class is defined first, so it cannot use convert_from
+/// to reference S7Fahrenheit (which is defined later).
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Celsius {
+    value: f64,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl S7Celsius {
+    pub fn new(value: f64) -> Self {
+        S7Celsius { value }
+    }
+
+    /// Get the temperature value.
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+}
+
+/// Temperature in Fahrenheit - demonstrates convert_from and convert_to patterns.
+/// This class is defined after S7Celsius, so it can reference it in convert methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Fahrenheit {
+    value: f64,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl S7Fahrenheit {
+    pub fn new(value: f64) -> Self {
+        S7Fahrenheit { value }
+    }
+
+    /// Get the temperature value.
+    pub fn value(&self) -> f64 {
+        self.value
+    }
+
+    /// Convert Fahrenheit from Celsius.
+    /// Uses S7::convert() for type coercion: S7::convert(celsius_obj, S7Fahrenheit)
+    #[miniextendr(s7(convert_from = "S7Celsius"))]
+    pub fn from_celsius(c: miniextendr_api::ExternalPtr<S7Celsius>) -> Self {
+        S7Fahrenheit {
+            value: c.value * 9.0 / 5.0 + 32.0,
+        }
+    }
+
+    /// Convert Fahrenheit to Celsius.
+    /// Uses S7::convert() for type coercion: S7::convert(fahrenheit_obj, S7Celsius)
+    #[miniextendr(s7(convert_to = "S7Celsius"))]
+    pub fn to_celsius(&self) -> S7Celsius {
+        S7Celsius {
+            value: (self.value - 32.0) * 5.0 / 9.0,
+        }
+    }
+}
+
 miniextendr_module! {
     mod s7_tests;
 
     impl S7Counter;
     impl S7Range;
+    impl S7Config;
+    impl S7Strict;
+    impl S7Celsius;
+    impl S7Fahrenheit;
 }

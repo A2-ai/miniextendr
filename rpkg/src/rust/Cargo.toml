@@ -49,6 +49,7 @@ toml = ["miniextendr-api/toml"]
 tabled = ["miniextendr-api/tabled"]
 raw_conversions = ["miniextendr-api/raw_conversions"]
 vctrs = ["miniextendr-api/vctrs"]
+tinyvec = ["miniextendr-api/tinyvec"]
 
 [dependencies]
 miniextendr-api = { version = "*" }
