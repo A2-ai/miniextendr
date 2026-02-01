@@ -995,11 +995,22 @@ fn generate_trait_s3_r_wrapper(
             .with_args(&params)
             .build();
 
+        // Always define the S3 method (roxygen expects it for NAMESPACE export)
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
         ));
         lines.push(format!("    {}", call));
+        lines.push("}".to_string());
+
+        // Additionally register as S7 method if the generic is S7
+        // This ensures S7 dispatch works when the generic was defined by an S7 class
+        lines.push(format!(
+            "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
+        ));
+        lines.push(format!(
+            "    S7::method({generic_name}, S7::new_S3_class(\"{type_str}\")) <- {s3_method_name}"
+        ));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1103,7 +1114,7 @@ fn generate_trait_s4_r_wrapper(
     lines.push(String::new());
 
     // Register the S3 class for S4 dispatch using setOldClass
-    lines.push("#' @importFrom methods setOldClass setGeneric setMethod isGeneric".to_string());
+    lines.push("#' @importFrom methods setOldClass setGeneric setMethod".to_string());
     lines.push(format!("methods::setOldClass(\"{}\")", type_str));
     lines.push(String::new());
 
@@ -1149,9 +1160,9 @@ fn generate_trait_s4_r_wrapper(
         }
         lines.extend(generic_roxygen.export().build());
 
-        // S4 generic definition
+        // S4 generic definition - setGeneric() is idempotent, no conditional needed
         lines.push(format!(
-            "if (!methods::isGeneric(\"{generic_name}\")) methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
+            "methods::setGeneric(\"{generic_name}\", function(x, ...) standardGeneric(\"{generic_name}\"))"
         ));
         lines.push(String::new());
 

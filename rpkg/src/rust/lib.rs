@@ -1628,6 +1628,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
         features.push("vctrs");
     }
 
+    // Class systems (always available, not feature-gated)
+    features.push("s7");
+
     features
 }
 

@@ -171,13 +171,24 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
-AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: src/rust/target)])
-: ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
+dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
+dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
+dnl pkgbuild's sources() function recursively finds .rs files in src/, and
+dnl if any generated file has a newer mtime than the DLL, it triggers rebuild.
+AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
+: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
 AC_SUBST([CARGO_TARGET_DIR])
 
 dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
 dnl These are used in .cargo/config.toml which Cargo reads directly
-CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
+    fi
+    ;;
+esac
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
@@ -796,7 +807,9 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
     if test $_have_vendor -eq 1; then
       dnl Force CARGO_TARGET_DIR to be local when source crates aren't found.
       dnl This prevents using a stale target directory from a previous build.
-      CARGO_TARGET_DIR="$ABS_RPKG_SRC/rust/target"
+      dnl Use rust-target/ (outside src/) to avoid pkgbuild scanning generated .rs files.
+      dnl Note: Use $abs_rpkg_dir (from init-commands), not $abs_top_srcdir
+      CARGO_TARGET_DIR="$abs_rpkg_dir/rust-target"
       CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
       echo "configure: forcing local CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >&2
 
@@ -873,11 +886,13 @@ CRATESIO_CONFIG_EOF
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
-  dnl Update Cargo.lock after touching Cargo.toml (required when using --locked)
-  dnl This prevents "lock file needs to be updated" errors during compilation
+  dnl Update Cargo.lock to reflect patched/vendored sources.
+  dnl When [patch.crates-io] redirects miniextendr-* to local paths, the lock file
+  dnl needs updating so cargo --locked doesn't complain about source mismatches.
+  dnl This doesn't change versions, just updates source locations.
   if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
-    echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2 2>/dev/null || true
+    echo "configure: updated Cargo.lock for patched sources" >&2
   fi
 ],
 [RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \

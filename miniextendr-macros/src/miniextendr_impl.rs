@@ -2594,7 +2594,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
 
-            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            // Use imported `convert` - requires `@importFrom S7 convert` in package
             lines.push(format!(
                 "S7::method(convert, list({}, {})) <- function(from, to) {}",
                 from_type, class_name, return_expr
@@ -2621,7 +2621,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 ));
             }
 
-            // Generate: S7::method(S7::convert, list(ThisClass, ToType)) <- function(from, to) ...
+            // Generate: S7::method(convert, list(ThisClass, ToType)) <- function(from, to) ...
             // The convert_to method is an instance method where self is mapped to from@.ptr
             let call = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
 
@@ -2632,7 +2632,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_class_name(to_type.clone())
                 .build_s7_inline();
 
-            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            // Use imported `convert` - requires `@importFrom S7 convert` in package
             lines.push(format!(
                 "S7::method(convert, list({}, {})) <- function(from, to) {}",
                 class_name, to_type, return_expr
@@ -2667,7 +2667,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S4")
-            .with_imports("@importFrom methods setClass setGeneric setMethod new isGeneric")
+            .with_imports("@importFrom methods setClass setGeneric setMethod new")
             .build(),
     );
     // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
@@ -2742,10 +2742,13 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
 
-        // Define generic if needed
+        // Define generic unconditionally - setGeneric() is idempotent and handles
+        // re-definition correctly. The conditional `if (!isGeneric())` pattern fails
+        // during package reload because isGeneric() can return TRUE from stale cache
+        // entries while the actual generic no longer exists in the namespace.
         lines.push(format!(
-            "if (!methods::isGeneric(\"{}\")) methods::setGeneric(\"{}\", function(x, ...) standardGeneric(\"{}\"))",
-            method_name, method_name, method_name
+            "methods::setGeneric(\"{}\", function(x, ...) standardGeneric(\"{}\"))",
+            method_name, method_name
         ));
 
         // Define method with @exportMethod for proper S4 dispatch (if class should be exported)

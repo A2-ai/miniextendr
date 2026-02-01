@@ -36,7 +36,11 @@ CounterTraitS4
 
 \method{[[}{CounterTraitS4}(self, name)
 
+s4_trait_MatrixCounter_custom_get(x, ...)
+
 \S4method{s4_trait_MatrixCounter_custom_get}{CounterTraitS4}(x, ...)
+
+s4_trait_MatrixCounter_custom_add(x, ...)
 
 \S4method{s4_trait_MatrixCounter_custom_add}{CounterTraitS4}(x, n, ...)
 

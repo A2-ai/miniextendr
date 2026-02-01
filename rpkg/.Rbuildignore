@@ -7,6 +7,8 @@
 # Build artifacts and generated files
 ^src/rust/target$
 ^src/rust/ra_target$
+^rust-target$
+^ra-target$
 ^src/rust/\.cargo$
 ^\.cargo$
 ^src/.*\.o$

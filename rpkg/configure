@@ -1327,7 +1327,7 @@ Some influential environment variables:
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
   CARGO_TARGET_DIR
-              Cargo target directory (default: src/rust/target)
+              Cargo target directory (default: rust-target, outside src/)
   CARGO_PROFILE
               Cargo build profile (debug or release)
   ENV_RUSTFLAGS
@@ -2460,10 +2460,17 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 
 
-: ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
+: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
 
 
-CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
+    fi
+    ;;
+esac
 
 
 
@@ -4173,7 +4180,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
     fi
 
     if test $_have_vendor -eq 1; then
-                  CARGO_TARGET_DIR="$ABS_RPKG_SRC/rust/target"
+                              CARGO_TARGET_DIR="$abs_rpkg_dir/rust-target"
       CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
       echo "configure: forcing local CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >&2
 
@@ -4233,9 +4240,9 @@ CRATESIO_CONFIG_EOF
         touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
-      if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
-    echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+          if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
+    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2 2>/dev/null || true
+    echo "configure: updated Cargo.lock for patched sources" >&2
   fi
  ;;
     "compress-vendor":C)

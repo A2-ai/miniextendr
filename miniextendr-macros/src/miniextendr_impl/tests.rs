@@ -304,7 +304,7 @@ fn s4_wrapper_full_snapshot() {
     assert!(wrapper.contains("methods::setClass(\"Counter\", slots = c(ptr = \"externalptr\"))"));
 
     // Verify @importFrom methods
-    assert!(wrapper.contains("@importFrom methods setClass setGeneric setMethod new isGeneric"));
+    assert!(wrapper.contains("@importFrom methods setClass setGeneric setMethod new"));
 
     // Verify @slot documentation
     assert!(wrapper.contains("@slot ptr External pointer to Rust `Counter` struct"));
@@ -313,12 +313,12 @@ fn s4_wrapper_full_snapshot() {
     assert!(wrapper.contains("Counter <- function(value)"));
     assert!(wrapper.contains("methods::new(\"Counter\", ptr = .Call(C_Counter__new"));
 
-    // Verify S4 generics
+    // Verify S4 generics (unconditional - setGeneric is idempotent)
     assert!(wrapper.contains(
-        "if (!methods::isGeneric(\"s4_get\")) methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
+        "methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
     ));
     assert!(wrapper.contains(
-        "if (!methods::isGeneric(\"s4_increment\")) methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
+        "methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
     ));
 
     // Verify setMethod calls

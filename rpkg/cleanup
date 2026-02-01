@@ -35,13 +35,13 @@ rm -rf src/.cargo
 rm -rf src/rust/target
 rm -rf src/rust/.cargo
 
-# Remove generated files (configure recreates them)
+# Remove generated files (configure recreates them from .in templates)
 rm -f src/Makevars
-rm -f src/rust/Cargo.toml
 rm -f src/rust/document.rs
 rm -f src/entrypoint.c
 rm -f src/mx_abi.c
 rm -f src/*-wrappers.R
+# Note: Cargo.toml is NOT removed - it's a source file, not generated
 
 # Remove vendor directory for the tarball (vendor.tar.xz was created by configure)
 # This avoids CRAN NOTEs about hidden files and long paths.
