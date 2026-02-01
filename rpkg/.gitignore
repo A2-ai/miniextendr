@@ -2,7 +2,7 @@ configure~
 autom4te.cache
 .cargo/config.toml
 src/Makevars
-src/Makevars.win
+# Note: Makevars.win is a static file (uses `include Makevars`), tracked in git
 src/*-wrappers.R
 src/rust/document.rs
 src/entrypoint.c

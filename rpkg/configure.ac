@@ -815,6 +815,7 @@ AC_CONFIG_COMMANDS([sync-miniextendr-crates],
 
       dnl Update Makevars with the new paths (it was generated before we knew crates were missing)
       dnl Also clear CARGO_LOCKED_FLAG since we need to regenerate lockfile with vendored paths
+      dnl Note: Makevars.win uses `include Makevars` so it inherits these changes automatically
       $SED -i.bak \
         -e "s|^CARGO_TARGET_DIR = .*|CARGO_TARGET_DIR = $CARGO_TARGET_DIR|" \
         -e "s|^CARGO_LIBDIR = .*|CARGO_LIBDIR = $CARGO_LIBDIR|" \

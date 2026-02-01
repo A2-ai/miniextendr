@@ -4184,7 +4184,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
       echo "configure: forcing local CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >&2
 
-                  $SED -i.bak \
+                        $SED -i.bak \
         -e "s|^CARGO_TARGET_DIR = .*|CARGO_TARGET_DIR = $CARGO_TARGET_DIR|" \
         -e "s|^CARGO_LIBDIR = .*|CARGO_LIBDIR = $CARGO_LIBDIR|" \
         -e "s|^CARGO_LOCKED_FLAG = .*|CARGO_LOCKED_FLAG = |" \

@@ -11,6 +11,7 @@ Description: Provides a framework for building R packages with Rust backends.
     macros, automatic type conversion, external pointers with GC protection,
     ALTREP support, and safe multi-threading via worker threads.
 License: MIT + file LICENSE
+SystemRequirements: Cargo (Rust package manager), rustc >= 1.85.0
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.3
