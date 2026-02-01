@@ -62,6 +62,17 @@ miniextendr_build()
 See `inst/templates/README.md` for the standalone package and monorepo layouts
 used by the scaffolder.
 
+Both standalone and monorepo templates use git dependencies for miniextendr crates.
+For monorepo development (where you want to use local miniextendr crates instead of
+git), add a `[patch."https://..."]` section to your Cargo.toml:
+
+```toml
+[patch."https://github.com/CGMossa/miniextendr"]
+miniextendr-api = { path = "../path/to/miniextendr-api" }
+miniextendr-macros = { path = "../path/to/miniextendr-macros" }
+miniextendr-lint = { path = "../path/to/miniextendr-lint" }
+```
+
 ## Status and validation
 
 ```r
