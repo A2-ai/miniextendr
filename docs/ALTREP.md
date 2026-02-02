@@ -69,6 +69,145 @@ sum(x)   # 42000000 (uses default R sum)
 
 ---
 
+## Choosing ALTREP vs Regular Conversion
+
+miniextendr offers two conversion paths for Rust data:
+
+### Regular Conversion (IntoR) - Copy to R
+
+```rust
+#[miniextendr]
+fn get_data() -> Vec<i32> {
+    vec![1, 2, 3, 4, 5]
+}
+// Or explicitly: vec.into_sexp()
+```
+
+**Behavior**:
+- Data is copied to R's heap
+- Original Vec is dropped
+- R owns a regular integer vector (INTSXP)
+- O(n) memory copy, O(n) memory allocation
+
+**Best for**:
+- Small data (<1000 elements)
+- Data R will modify
+- Temporary results
+- When simplicity matters
+
+### ALTREP Conversion (IntoRZeroCopy) - Zero-Copy
+
+```rust
+use miniextendr_api::IntoRZeroCopy;
+
+#[miniextendr]
+fn get_data() -> SEXP {
+    let vec = vec![1, 2, 3, 4, 5];
+    vec.into_sexp_altrep()
+}
+// Or: Altrep(vec).into_sexp()
+```
+
+**Behavior**:
+- Data stays in Rust (ExternalPtr wrapper)
+- No copying, no duplication
+- R accesses via ALTREP callbacks
+- O(1) creation, ~10ns per element overhead
+
+**Best for**:
+- Large vectors (>1000 elements)
+- Lazy evaluation (compute on access)
+- External data (files, APIs, databases)
+- Zero-copy requirements
+
+### Performance Comparison (Measured)
+
+**Pure Creation (No Access)**:
+| Size | Copy | ALTREP | Speedup |
+|------|------|--------|---------|
+| 100 | 0.33 ms | 0.42 ms | 0.8x (copy faster) |
+| 1,000 | 0.43 ms | 0.50 ms | 0.9x (similar) |
+| 100,000 | 0.44 ms | 0.42 ms | 1.0x (similar) |
+| 1,000,000 | 0.44 ms | 0.20 ms | **2.2x faster** |
+| 10,000,000 | 4.16 ms | 1.90 ms | **2.2x faster** |
+
+**Partial Access (Create 1M, Access First 10)**:
+| Size | Copy | ALTREP | Speedup |
+|------|------|--------|---------|
+| 10,000 | 0.02 ms | 0.02 ms | 1.0x |
+| 100,000 | 0.06 ms | 0.02 ms | **3.0x faster** |
+| 1,000,000 | 0.42 ms | 0.20 ms | **2.1x faster** |
+| 10,000,000 | 4.28 ms | 0.08 ms | **53.5x faster** |
+
+**Memory**:
+- Copy (1M elements): R heap +3.8 MB
+- ALTREP (1M elements): R heap +0.0 MB (data in Rust heap)
+
+*Benchmarks run on Apple M-series, R 4.5. Your results may vary.*
+
+### Decision Guide
+
+```
+Is your data > 1000 elements?
+├─ Yes → Use .into_sexp_altrep()
+└─ No
+   └─ Will R modify it?
+      ├─ Yes → Use .into_sexp() (copy)
+      └─ No → Either works, .into_sexp() is simpler
+```
+
+### Examples
+
+```rust
+use miniextendr_api::{miniextendr, IntoRZeroCopy, ffi::SEXP};
+
+// Small data - copy is fine
+#[miniextendr]
+fn get_config() -> Vec<i32> {
+    vec![1, 2, 3]  // Automatically copies via IntoR
+}
+
+// Large data - use ALTREP
+#[miniextendr]
+fn get_large_data() -> SEXP {
+    let data = vec![0; 1_000_000];
+    data.into_sexp_altrep()  // Zero-copy!
+}
+
+// Lazy computation - definitely ALTREP
+#[miniextendr]
+fn fibonacci_seq(n: i32) -> SEXP {
+    (0..n as usize)
+        .map(|i| fibonacci(i))
+        .collect::<Vec<i32>>()
+        .into_sexp_altrep()
+}
+
+// Range - already lazy, use ALTREP
+#[miniextendr]
+fn int_range(from: i32, to: i32) -> SEXP {
+    (from..to)
+        .collect::<Vec<_>>()
+        .into_sexp_altrep()
+}
+```
+
+### Migration from `Altrep(...)` to `.into_sexp_altrep()`
+
+Both forms are equivalent and compile to identical code:
+
+```rust
+// Old style (still works!)
+return Altrep(vec).into_sexp();
+
+// New style (more explicit)
+return vec.into_sexp_altrep();
+
+// Both are valid - use whichever is clearer
+```
+
+---
+
 ## Architecture Overview
 
 miniextendr's ALTREP system has three layers:

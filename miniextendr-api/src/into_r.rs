@@ -1568,6 +1568,87 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 }
 
 // =============================================================================
+// ALTREP zero-copy extension trait
+// =============================================================================
+
+/// Extension trait for zero-copy ALTREP conversions.
+///
+/// This trait provides ergonomic methods for converting Rust types to R ALTREP
+/// vectors without copying data. The data stays in Rust memory (wrapped in an
+/// ExternalPtr) and R accesses it via ALTREP callbacks.
+///
+/// # Performance Characteristics
+///
+/// | Operation | Regular (IntoR) | ALTREP (IntoRZeroCopy) |
+/// |-----------|-----------------|------------------------|
+/// | Creation | O(n) copy | O(1) wrap |
+/// | Memory | Duplicated in R | Single copy in Rust |
+/// | Element access | Direct pointer | Callback (~10ns overhead) |
+/// | DATAPTR ops | O(1) | O(1) if Vec/Box, N/A if lazy |
+///
+/// # When to Use ALTREP
+///
+/// **Good candidates**:
+/// - ✅ Large vectors (>1000 elements)
+/// - ✅ Lazy/computed data (avoid eager materialization)
+/// - ✅ External data sources (files, databases, APIs)
+/// - ✅ Data that might not be fully accessed by R
+///
+/// **Not recommended**:
+/// - ❌ Small vectors (<100 elements) - copy overhead is negligible
+/// - ❌ Data R will immediately modify (triggers copy anyway)
+/// - ❌ Temporary results (extra indirection not worth it)
+///
+/// # Example
+///
+/// ```rust
+/// use miniextendr_api::{miniextendr, IntoRZeroCopy};
+///
+/// #[miniextendr]
+/// fn large_dataset() -> SEXP {
+///     let data: Vec<f64> = (0..1_000_000).map(|i| i as f64).collect();
+///
+///     // Zero-copy: wraps pointer instead of copying 1M elements
+///     data.into_sexp_altrep()
+/// }
+///
+/// #[miniextendr]
+/// fn small_result() -> SEXP {
+///     let data = vec![1, 2, 3, 4, 5];
+///
+///     // Regular copy is fine for small data
+///     data.into_sexp()
+/// }
+/// ```
+pub trait IntoRZeroCopy {
+    /// Convert to R SEXP using ALTREP zero-copy representation.
+    ///
+    /// This is equivalent to `Altrep(self).into_sexp()` but more discoverable
+    /// and explicit about the zero-copy intent.
+    fn into_sexp_altrep(self) -> crate::ffi::SEXP;
+
+    /// Create an `Altrep<Self>` wrapper.
+    ///
+    /// This returns the wrapper explicitly, allowing you to store it or
+    /// further process it before conversion.
+    fn as_altrep(self) -> Altrep<Self>
+    where
+        Self: Sized,
+    {
+        Altrep(self)
+    }
+}
+
+impl<T> IntoRZeroCopy for T
+where
+    T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
+{
+    fn into_sexp_altrep(self) -> crate::ffi::SEXP {
+        Altrep(self).into_sexp()
+    }
+}
+
+// =============================================================================
 // ALTREP marker type
 // =============================================================================
 

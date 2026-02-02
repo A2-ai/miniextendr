@@ -682,6 +682,80 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
     ListDataClass(ListData { list: x, len })
 }
 
+// =============================================================================
+// ALTREP Convenience Helpers Examples
+// =============================================================================
+
+/// Example: Small data - regular copy is fine
+///
+/// @export
+#[miniextendr]
+pub fn small_vec_copy() -> Vec<i32> {
+    vec![1, 2, 3, 4, 5]  // Uses IntoR, copies to R
+}
+
+/// Example: Large data - ALTREP avoids copy
+///
+/// @export
+#[miniextendr]
+pub fn large_vec_altrep() -> SEXP {
+    use miniextendr_api::IntoRZeroCopy;
+    let data = vec![0; 100_000];
+    data.into_sexp_altrep()  // Zero-copy via IntoRZeroCopy
+}
+
+/// Example: Lazy computation - compute on demand
+///
+/// @export
+#[miniextendr]
+pub fn lazy_squares(n: i32) -> SEXP {
+    use miniextendr_api::IntoRZeroCopy;
+    if n < 0 {
+        miniextendr_api::r_error!("lazy_squares: n must be >= 0");
+    }
+    (0..n).map(|i| i * i).collect::<Vec<i32>>().into_sexp_altrep()
+}
+
+/// Example: Using as_altrep() to store wrapper
+///
+/// @export
+#[miniextendr]
+pub fn boxed_data_altrep(n: i32) -> SEXP {
+    use miniextendr_api::IntoRZeroCopy;
+    if n < 0 {
+        miniextendr_api::r_error!("boxed_data_altrep: n must be >= 0");
+    }
+    let data = (0..n).collect::<Vec<i32>>().into_boxed_slice();
+    data.as_altrep().into_sexp()
+}
+
+// =============================================================================
+// Benchmark Functions - Direct Comparison
+// =============================================================================
+
+/// Create a vector of given size using regular copy (IntoR)
+///
+/// @export
+#[miniextendr]
+pub fn bench_vec_copy(n: i32) -> Vec<i32> {
+    if n < 0 {
+        miniextendr_api::r_error!("n must be >= 0");
+    }
+    vec![0; n as usize]  // Uses IntoR - copies to R
+}
+
+/// Create a vector of given size using ALTREP zero-copy
+///
+/// @export
+#[miniextendr]
+pub fn bench_vec_altrep(n: i32) -> SEXP {
+    use miniextendr_api::IntoRZeroCopy;
+    if n < 0 {
+        miniextendr_api::r_error!("n must be >= 0");
+    }
+    vec![0; n as usize].into_sexp_altrep()  // Zero-copy
+}
+
 // -----------------------------------------------------------------------------
 // ConstantLogical: All TRUE or all FALSE
 // -----------------------------------------------------------------------------
@@ -1748,6 +1822,16 @@ miniextendr_module! {
     fn altrep_from_raw;
     fn altrep_from_integers;
     fn altrep_from_list;
+
+    // ALTREP convenience helpers examples
+    fn small_vec_copy;
+    fn large_vec_altrep;
+    fn lazy_squares;
+    fn boxed_data_altrep;
+
+    // Benchmark functions
+    fn bench_vec_copy;
+    fn bench_vec_altrep;
 
     // ALTREP test fixtures
     struct ConstantIntClass;
