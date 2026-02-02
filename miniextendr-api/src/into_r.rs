@@ -1571,7 +1571,7 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 // ALTREP zero-copy extension trait
 // =============================================================================
 
-/// Extension trait for zero-copy ALTREP conversions.
+/// Extension trait for ALTREP conversions.
 ///
 /// This trait provides ergonomic methods for converting Rust types to R ALTREP
 /// vectors without copying data. The data stays in Rust memory (wrapped in an
@@ -1579,7 +1579,7 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 ///
 /// # Performance Characteristics
 ///
-/// | Operation | Regular (IntoR) | ALTREP (IntoRZeroCopy) |
+/// | Operation | Regular (IntoR) | ALTREP (IntoRAltrep) |
 /// |-----------|-----------------|------------------------|
 /// | Creation | O(n) copy | O(1) wrap |
 /// | Memory | Duplicated in R | Single copy in Rust |
@@ -1602,7 +1602,7 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 /// # Example
 ///
 /// ```rust
-/// use miniextendr_api::{miniextendr, IntoRZeroCopy};
+/// use miniextendr_api::{miniextendr, IntoRAltrep};
 ///
 /// #[miniextendr]
 /// fn large_dataset() -> SEXP {
@@ -1620,7 +1620,7 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 ///     data.into_sexp()
 /// }
 /// ```
-pub trait IntoRZeroCopy {
+pub trait IntoRAltrep {
     /// Convert to R SEXP using ALTREP zero-copy representation.
     ///
     /// This is equivalent to `Altrep(self).into_sexp()` but more discoverable
@@ -1639,7 +1639,7 @@ pub trait IntoRZeroCopy {
     }
 }
 
-impl<T> IntoRZeroCopy for T
+impl<T> IntoRAltrep for T
 where
     T: crate::altrep::RegisterAltrep + crate::externalptr::TypedExternal,
 {

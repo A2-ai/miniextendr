@@ -154,7 +154,7 @@ p4 <- ggplot(creation_data, aes(x = size, y = time, color = expression)) +
   scale_y_log10(labels = function(x) format(bench::as_bench_time(x))) +
   scale_color_manual(
     values = c("copy" = "#D55E00", "altrep" = "#0072B2"),
-    labels = c("Copy (IntoR)", "ALTREP (IntoRZeroCopy)")
+    labels = c("Copy (IntoR)", "ALTREP (IntoRAltrep)")
   ) +
   labs(
     title = "Creation Time vs Vector Size",

@@ -95,10 +95,10 @@ fn get_data() -> Vec<i32> {
 - Temporary results
 - When simplicity matters
 
-### ALTREP Conversion (IntoRZeroCopy) - Zero-Copy
+### ALTREP Conversion (IntoRAltrep) - Zero-Copy
 
 ```rust
-use miniextendr_api::IntoRZeroCopy;
+use miniextendr_api::IntoRAltrep;
 
 #[miniextendr]
 fn get_data() -> SEXP {
@@ -159,7 +159,7 @@ Is your data > 1000 elements?
 ### Examples
 
 ```rust
-use miniextendr_api::{miniextendr, IntoRZeroCopy, ffi::SEXP};
+use miniextendr_api::{miniextendr, IntoRAltrep, ffi::SEXP};
 
 // Small data - copy is fine
 #[miniextendr]

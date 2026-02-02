@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-This report presents empirical performance benchmarks comparing traditional copy-based conversions (`IntoR::into_sexp()`) with zero-copy ALTREP conversions (`IntoRZeroCopy::into_sexp_altrep()`) in the miniextendr framework.
+This report presents empirical performance benchmarks comparing traditional copy-based conversions (`IntoR::into_sexp()`) with zero-copy ALTREP conversions (`IntoRAltrep::into_sexp_altrep()`) in the miniextendr framework.
 
 ### Key Findings
 
@@ -24,7 +24,7 @@ This report presents empirical performance benchmarks comparing traditional copy
 
 ### Recommendation
 
-Implement the new `IntoRZeroCopy` trait for production use, with clear documentation guiding users on when to choose ALTREP vs. copy-based conversions based on data size and access patterns.
+Implement the new `IntoRAltrep` trait for production use, with clear documentation guiding users on when to choose ALTREP vs. copy-based conversions based on data size and access patterns.
 
 ---
 
@@ -422,7 +422,7 @@ Creating a vector in Rust for R?
 #### ✅ Recommended Pattern
 
 ```rust
-use miniextendr_api::{miniextendr, IntoRZeroCopy};
+use miniextendr_api::{miniextendr, IntoRAltrep};
 
 #[miniextendr]
 fn get_data(size: &str) -> SEXP {
@@ -554,7 +554,7 @@ This comprehensive benchmark study demonstrates that ALTREP zero-copy conversion
 
 ### 7.2 Impact Assessment
 
-The `IntoRZeroCopy` trait provides a **major performance improvement** for a significant class of use cases:
+The `IntoRAltrep` trait provides a **major performance improvement** for a significant class of use cases:
 
 1. **Large dataset returns** (database queries, file I/O)
 2. **Lazy computation** (sequences, generators)
@@ -565,7 +565,7 @@ The trade-offs are well-characterized and predictable, allowing developers to ma
 
 ### 7.3 Final Recommendation
 
-**Deploy the `IntoRZeroCopy` trait to production** with:
+**Deploy the `IntoRAltrep` trait to production** with:
 
 1. ✅ Clear documentation of when to use each approach
 2. ✅ Decision tree for developers

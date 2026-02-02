@@ -18,7 +18,7 @@ pub fn bench_vec_copy(n: i32) -> Vec<i32> {
     vec![0; n as usize]  // Copies to R heap
 }
 
-// ALTREP zero-copy (IntoRZeroCopy)
+// ALTREP zero-copy (IntoRAltrep)
 #[miniextendr]
 pub fn bench_vec_altrep(n: i32) -> SEXP {
     vec![0; n as usize].into_sexp_altrep()  // Wraps in ExternalPtr

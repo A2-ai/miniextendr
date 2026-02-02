@@ -4,7 +4,7 @@ One-page reference for miniextendr's ALTREP system.
 
 ## Conversion Methods
 
-### IntoR vs IntoRZeroCopy
+### IntoR vs IntoRAltrep
 
 | Method | Conversion | Memory | Speed (1M elements) | Use When |
 |--------|------------|--------|---------------------|----------|

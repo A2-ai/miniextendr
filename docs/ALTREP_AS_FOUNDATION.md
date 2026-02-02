@@ -150,7 +150,7 @@ impl AltIntegerData for InstrumentedVec {
 
 ## Convenience Features Added
 
-### 1. **IntoRZeroCopy Trait** ⭐ NEW
+### 1. **IntoRAltrep Trait** ⭐ NEW
 
 Before:
 ```rust
@@ -166,7 +166,7 @@ fn get_data() -> SEXP {
 After:
 ```rust
 // Discoverable method name
-use miniextendr_api::IntoRZeroCopy;
+use miniextendr_api::IntoRAltrep;
 
 #[miniextendr]
 fn get_data() -> SEXP {
@@ -185,7 +185,7 @@ fn get_data() -> SEXP {
 For cases where you need the wrapper explicitly:
 
 ```rust
-use miniextendr_api::IntoRZeroCopy;
+use miniextendr_api::IntoRAltrep;
 
 #[miniextendr]
 fn get_data() -> SEXP {
@@ -271,7 +271,7 @@ All exported and tested, serving as live examples in the package.
 **Goal**: Return Rust data to R without copying
 
 ```rust
-use miniextendr_api::IntoRZeroCopy;
+use miniextendr_api::IntoRAltrep;
 
 #[miniextendr]
 fn get_large_dataset() -> SEXP {
@@ -310,7 +310,7 @@ struct LazyRangeClass(LazyRange);
 
 #[miniextendr]
 fn lazy_range(start: i32, end: i32, step: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     let len = ((end - start) / step) as usize;
     LazyRangeClass(LazyRange { start, step, len })
         .into_sexp_altrep()
@@ -343,7 +343,7 @@ impl AltrepDataptr<f64> for MemoryMappedData {
 
 #[miniextendr]
 fn mmap_file(path: &str) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     let file = File::open(path)?;
     let mmap = unsafe { Mmap::map(&file)? };
     let len = mmap.len() / 8;  // f64 size
@@ -379,7 +379,7 @@ impl AltRealData for ScaledView {
 
 #[miniextendr]
 fn scaled_view(x: Vec<f64>, scale: f64, offset: f64) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     ScaledViewClass(ScaledView { source: x, scale, offset })
         .into_sexp_altrep()
 }
@@ -512,12 +512,12 @@ impl SortedIntVec {
 
 ## Convenience Features in Detail
 
-### 1. IntoRZeroCopy Trait
+### 1. IntoRAltrep Trait
 
 **What it provides**:
 
 ```rust
-pub trait IntoRZeroCopy {
+pub trait IntoRAltrep {
     fn into_sexp_altrep(self) -> SEXP;
     fn as_altrep(self) -> Altrep<Self>;
 }
@@ -559,7 +559,7 @@ Follows Rust ecosystem conventions:
 Works with **any** type that supports ALTREP:
 
 ```rust
-impl<T> IntoRZeroCopy for T
+impl<T> IntoRAltrep for T
 where
     T: RegisterAltrep + TypedExternal
 {
@@ -608,13 +608,13 @@ pub fn small_vec_copy() -> Vec<i32> {
 
 // 2. Large vector template
 pub fn large_vec_altrep() -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     vec![0; 100_000].into_sexp_altrep()
 }
 
 // 3. Computed data template
 pub fn lazy_squares(n: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     (0..n).map(|i| i * i)
         .collect::<Vec<i32>>()
         .into_sexp_altrep()
@@ -622,7 +622,7 @@ pub fn lazy_squares(n: i32) -> SEXP {
 
 // 4. Boxed data template
 pub fn boxed_data_altrep(n: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     (0..n).collect::<Vec<i32>>()
         .into_boxed_slice()
         .as_altrep()
@@ -658,7 +658,7 @@ Users can copy these patterns and adapt to their needs.
 // Each column is an ALTREP vector
 #[miniextendr]
 fn create_large_dataframe(n_rows: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
 
     let col1 = (0..n_rows).collect::<Vec<i32>>()
         .into_sexp_altrep();
@@ -704,7 +704,7 @@ impl AltrepDataptr<f64> for MatrixData {
 
 #[miniextendr]
 fn create_matrix(data: Vec<f64>, nrow: i32, ncol: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
 
     let matrix_data = MatrixDataClass(MatrixData {
         data,
@@ -735,7 +735,7 @@ fn create_matrix(data: Vec<f64>, nrow: i32, ncol: i32) -> SEXP {
 // Each transformation is an ALTREP layer
 #[miniextendr]
 fn pipeline(data: Vec<f64>) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
 
     // Layer 1: Source data (ALTREP)
     let source = data.into_sexp_altrep();
@@ -786,7 +786,7 @@ vec.altrep_builder()
 
 ### Immediate (Phase 1 - ✅ COMPLETE)
 
-1. **IntoRZeroCopy trait**
+1. **IntoRAltrep trait**
    - `.into_sexp_altrep()` method
    - `.as_altrep()` helper
    - Works with all ALTREP types
@@ -827,7 +827,7 @@ ALTREP is a powerful foundation for building:
 - Compact representations
 - Stateful generators
 
-The new `IntoRZeroCopy` trait makes this foundation **accessible and ergonomic**, with:
+The new `IntoRAltrep` trait makes this foundation **accessible and ergonomic**, with:
 - Discoverable API (method autocomplete)
 - Clear performance characteristics (real benchmarks)
 - Comprehensive documentation (guides, reports, examples)

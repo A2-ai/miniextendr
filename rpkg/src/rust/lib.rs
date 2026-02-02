@@ -699,9 +699,9 @@ pub fn small_vec_copy() -> Vec<i32> {
 /// @export
 #[miniextendr]
 pub fn large_vec_altrep() -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     let data = vec![0; 100_000];
-    data.into_sexp_altrep()  // Zero-copy via IntoRZeroCopy
+    data.into_sexp_altrep()  // Zero-copy via IntoRAltrep
 }
 
 /// Example: Lazy computation - compute on demand
@@ -709,7 +709,7 @@ pub fn large_vec_altrep() -> SEXP {
 /// @export
 #[miniextendr]
 pub fn lazy_squares(n: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     if n < 0 {
         miniextendr_api::r_error!("lazy_squares: n must be >= 0");
     }
@@ -721,7 +721,7 @@ pub fn lazy_squares(n: i32) -> SEXP {
 /// @export
 #[miniextendr]
 pub fn boxed_data_altrep(n: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     if n < 0 {
         miniextendr_api::r_error!("boxed_data_altrep: n must be >= 0");
     }
@@ -749,7 +749,7 @@ pub fn bench_vec_copy(n: i32) -> Vec<i32> {
 /// @export
 #[miniextendr]
 pub fn bench_vec_altrep(n: i32) -> SEXP {
-    use miniextendr_api::IntoRZeroCopy;
+    use miniextendr_api::IntoRAltrep;
     if n < 0 {
         miniextendr_api::r_error!("n must be >= 0");
     }
