@@ -93,6 +93,7 @@ mod gc_protect_tests;
 mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
+mod lifecycle_tests;
 #[cfg(feature = "ndarray")]
 #[path = "ndarray_tests.rs"]
 mod ndarray_tests;
@@ -1664,6 +1665,7 @@ miniextendr_module! {
     use visibility_tests;
     use thread_tests;
     use misc_tests;
+    use lifecycle_tests;
     use trait_abi_tests;
     use class_system_matrix;
     use shared_trait_test;

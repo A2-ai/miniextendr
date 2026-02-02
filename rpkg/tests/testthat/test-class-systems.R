@@ -68,6 +68,28 @@ test_that("r6_standalone_add sums", {
   expect_equal(r6_standalone_add(2L, 3L), 5L)
 })
 
+test_that("R6Temperature active binding getters work", {
+  t <- R6Temperature$new(100)  # Boiling point in Celsius
+  expect_equal(t$celsius, 100)
+  expect_equal(t$fahrenheit, 212)  # 100 C = 212 F
+})
+
+test_that("R6Temperature active binding setters work", {
+  t <- R6Temperature$new(0)  # Freezing point in Celsius
+  expect_equal(t$celsius, 0)
+  expect_equal(t$fahrenheit, 32)  # 0 C = 32 F
+
+  # Set via Celsius setter
+  t$celsius <- 100
+  expect_equal(t$celsius, 100)
+  expect_equal(t$fahrenheit, 212)
+
+  # Set via Fahrenheit setter
+  t$fahrenheit <- 32
+  expect_equal(t$fahrenheit, 32)
+  expect_equal(t$celsius, 0)  # Should be back to 0 C
+})
+
 test_that("S7Range computed property (length) works", {
   r <- S7Range(0, 10)
   # Computed property - read-only via @

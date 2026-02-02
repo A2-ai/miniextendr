@@ -292,8 +292,29 @@ pub struct MethodAttrs {
     pub finalize: bool,
     /// Mark as private (R6)
     pub private: bool,
-    /// Mark as active binding (R6)
+    /// Mark as active binding getter (R6)
     pub active: bool,
+    /// R6 active binding setter marker.
+    ///
+    /// Use `#[miniextendr(r6(setter, prop = "name"))]` to mark a method as an R6 active
+    /// binding setter. The property name must match a getter to create a combined binding.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(r6(active))]  // or r6(active, prop = "len")
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    ///
+    /// #[miniextendr(r6(setter, prop = "length"))]
+    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
+    /// // Generates combined active binding:
+    /// // length = function(value) { if (missing(value)) get_length() else set_length(value) }
+    /// ```
+    pub r6_setter: bool,
+    /// R6 property name for active bindings (defaults to method name).
+    ///
+    /// When specified via `#[miniextendr(r6(active, prop = "name"))]`, overrides the
+    /// default property name which is derived from the method name.
+    pub r6_prop: Option<String>,
     /// Generate as `as.<class>()` S3 method (e.g., "data.frame", "list", "character").
     ///
     /// When set, generates an S3 method for R's `as.<class>()` generic:
@@ -765,6 +786,10 @@ impl ParsedMethod {
                             use syn::spanned::Spanned;
                             method_attrs.active = true;
                             method_attrs.active_span = Some(inner.path.span());
+                        } else if inner.path.is_ident("setter") {
+                            // Active binding setter: works for both R6 and S7
+                            method_attrs.r6_setter = true;
+                            method_attrs.s7_setter = true;
                         } else if inner.path.is_ident("worker") {
                             method_attrs.worker = true;
                         } else if inner.path.is_ident("main_thread") {
@@ -787,14 +812,15 @@ impl ParsedMethod {
                             method_attrs.class = Some(value.value());
                         } else if inner.path.is_ident("getter") {
                             method_attrs.s7_getter = true;
-                        } else if inner.path.is_ident("setter") {
-                            method_attrs.s7_setter = true;
                         } else if inner.path.is_ident("validate") {
                             method_attrs.s7_validate = true;
                         } else if inner.path.is_ident("prop") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_prop = Some(value.value());
+                            let prop_value = value.value();
+                            // Set both S7 and R6 prop - the class system will use the appropriate one
+                            method_attrs.s7_prop = Some(prop_value.clone());
+                            method_attrs.r6_prop = Some(prop_value);
                         } else if inner.path.is_ident("default") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1268,7 +1294,7 @@ impl ParsedImpl {
         })
     }
 
-    /// Get active binding methods for R6 (have env, marked active).
+    /// Get active binding getter methods for R6 (have env, marked active, not setter).
     /// Active bindings provide property-like access (obj$name instead of obj$name()).
     pub fn active_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
@@ -1277,6 +1303,30 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_active()
+                && !m.method_attrs.r6_setter // Exclude setters
+        })
+    }
+
+    /// Get active binding setter methods for R6 (have env, marked as r6_setter).
+    pub fn active_setter_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods.iter().filter(|m| {
+            m.should_include()
+                && m.env.is_instance()
+                && m.method_attrs.r6_setter
+        })
+    }
+
+    /// Find the setter method for a given property name.
+    pub fn find_setter_for_prop(&self, prop_name: &str) -> Option<&ParsedMethod> {
+        self.active_setter_methods().find(|m| {
+            // Match by explicit prop name or by method name with "set_" prefix removed
+            if let Some(ref explicit_prop) = m.method_attrs.r6_prop {
+                explicit_prop == prop_name
+            } else {
+                // Try to match by stripping "set_" prefix from method name
+                let method_name = m.ident.to_string();
+                method_name.strip_prefix("set_").unwrap_or(&method_name) == prop_name
+            }
         })
     }
 
@@ -1804,19 +1854,49 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
             }
 
-            // Active bindings are getter-only (no parameters besides self)
-            // Format: name = function() { ... }
-            lines.push(format!("        {} = function() {{", ctx.method.ident));
+            // Determine the property name (from r6_prop or method name)
+            let prop_name = ctx.method.method_attrs.r6_prop
+                .clone()
+                .unwrap_or_else(|| ctx.method.ident.to_string());
 
-            let call = ctx.instance_call("private$.ptr");
-            let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let return_builder = crate::MethodReturnBuilder::new(call)
-                .with_strategy(strategy)
-                .with_class_name(class_name.clone())
-                .with_indent(12); // R6 active bindings have 12-space indent
-            lines.extend(return_builder.build_r6_body());
+            // Check if there's a matching setter for this property
+            let setter = parsed_impl.find_setter_for_prop(&prop_name);
 
-            lines.push(format!("        }}{}", comma));
+            if let Some(setter_method) = setter {
+                // Combined getter/setter active binding
+                // Format: name = function(value) { if (missing(value)) getter else setter }
+                lines.push(format!("        {} = function(value) {{", prop_name));
+                lines.push("            if (missing(value)) {".to_string());
+
+                // Getter call
+                let getter_call = ctx.instance_call("private$.ptr");
+                lines.push(format!("                {}", getter_call));
+
+                lines.push("            } else {".to_string());
+
+                // Setter call - construct directly
+                let setter_c_ident = setter_method.c_wrapper_ident(type_ident, parsed_impl.label.as_deref());
+                let setter_call = format!(".Call({}, .call = match.call(), private$.ptr, value)", setter_c_ident);
+                lines.push(format!("                {}", setter_call));
+                lines.push("                invisible(self)".to_string());
+
+                lines.push("            }".to_string());
+                lines.push(format!("        }}{}", comma));
+            } else {
+                // Getter-only active binding (no parameters besides self)
+                // Format: name = function() { ... }
+                lines.push(format!("        {} = function() {{", prop_name));
+
+                let call = ctx.instance_call("private$.ptr");
+                let strategy = crate::ReturnStrategy::for_method(ctx.method);
+                let return_builder = crate::MethodReturnBuilder::new(call)
+                    .with_strategy(strategy)
+                    .with_class_name(class_name.clone())
+                    .with_indent(12); // R6 active bindings have 12-space indent
+                lines.extend(return_builder.build_r6_body());
+
+                lines.push(format!("        }}{}", comma));
+            }
         }
 
         lines.push("    ),".to_string());

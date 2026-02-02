@@ -563,6 +563,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) dots_spec: Option<proc_macro2::TokenStream>,
     /// Span of the `dots = ...` attribute for error reporting.
     pub(crate) dots_span: Option<proc_macro2::Span>,
+    /// Lifecycle specification for deprecation/experimental status.
+    pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -669,10 +671,15 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                                 "dots expects `typed_list!(...)` macro",
                             ));
                         }
+                    } else if nv.path.is_ident("lifecycle") {
+                        // lifecycle = "stage"
+                        if let Some(spec) = crate::lifecycle::parse_lifecycle_attr(&syn::Meta::NameValue(nv.clone()))? {
+                            out.lifecycle = Some(spec);
+                        }
                     } else {
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "unknown option; expected `return` or `dots`",
+                            "unknown option; expected `return`, `dots`, or `lifecycle`",
                         ));
                     }
                 }
@@ -701,6 +708,11 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     } else if list.path.is_ident("defaults") {
                         // Ignore defaults(...) - it's handled by impl method parsing
                         // This allows #[miniextendr(defaults(...))] on impl methods
+                    } else if list.path.is_ident("lifecycle") {
+                        // lifecycle(stage = "deprecated", when = "0.4.0", ...)
+                        if let Some(spec) = crate::lifecycle::parse_lifecycle_attr(&syn::Meta::List(list.clone()))? {
+                            out.lifecycle = Some(spec);
+                        }
                     } else if list.path.is_ident("s3") {
                         // Parse s3(generic = "...", class = "...")
                         list.parse_nested_meta(|meta| {

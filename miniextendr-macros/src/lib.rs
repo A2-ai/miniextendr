@@ -219,6 +219,7 @@ mod list_derive;
 mod r_class_formatter;
 mod return_type_analysis;
 mod roxygen;
+mod lifecycle;
 
 // Trait ABI support modules
 mod externalptr_derive;
@@ -622,6 +623,7 @@ pub fn miniextendr(
         s3_class,
         dots_spec,
         dots_span,
+        lifecycle,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -1173,7 +1175,20 @@ pub fn miniextendr(
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
     // r_formals is already a joined string from build_formals()
     let formals_joined = r_formals;
-    let roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
+    let mut roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
+
+    // Determine lifecycle: explicit attr > #[deprecated] extraction
+    let lifecycle_spec = lifecycle.or_else(|| {
+        attrs
+            .iter()
+            .find_map(crate::lifecycle::parse_rust_deprecated)
+    });
+
+    // Inject lifecycle badge into roxygen tags if present
+    if let Some(ref spec) = lifecycle_spec {
+        crate::lifecycle::inject_lifecycle_badge(&mut roxygen_tags, spec);
+    }
+
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
     let has_no_rd_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");
@@ -1194,14 +1209,22 @@ pub fn miniextendr(
     } else {
         String::new()
     };
+    // Generate lifecycle prelude if needed
+    let lifecycle_prelude = lifecycle_spec
+        .as_ref()
+        .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str))
+        .map(|prelude| format!("{}; ", prelude))
+        .unwrap_or_default();
+
     let r_wrapper_string = format!(
-        "{}{}{}{}{} <- function({}) {{\n    {}\n}}",
+        "{}{}{}{}{} <- function({}) {{\n    {}{}\n}}",
         roxygen_tags_str,
         source_comment,
         s3_method_comment,
         export_comment,
         r_wrapper_ident_str,
         formals_joined,
+        lifecycle_prelude,
         r_wrapper_return_str
     );
     // Use a raw string literal for better readability in macro expansion
