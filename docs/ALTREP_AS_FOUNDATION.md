@@ -780,28 +780,6 @@ vec.altrep_builder()
 
 **Status**: Deferred until user demand is proven
 
-### Phase 3: Smart Defaults (Optional)
-
-Automatically choose based on size:
-
-```rust
-// Proposed API
-vec.into_sexp_smart()  // Chooses copy or ALTREP based on size
-
-// Implementation:
-impl<T> IntoRSmart for Vec<T> {
-    fn into_sexp_smart(self) -> SEXP {
-        if self.len() < 1000 {
-            self.into_sexp()  // Copy for small
-        } else {
-            self.into_sexp_altrep()  // ALTREP for large
-        }
-    }
-}
-```
-
-**Status**: Deferred - users should make explicit choice
-
 ---
 
 ## Summary: What You Get
@@ -836,8 +814,7 @@ impl<T> IntoRSmart for Vec<T> {
 ### Future (Optional, Based on Demand)
 
 1. **Builder pattern** for optimization hints
-2. **Smart defaults** based on heuristics
-3. **Additional ALTREP types** (compressed, cached, etc.)
+2. **Additional ALTREP types** (compressed, cached, etc.)
 
 ---
 
