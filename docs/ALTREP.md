@@ -2,6 +2,11 @@
 
 ALTREP (Alternative Representations) is R's system for creating custom vector implementations. miniextendr provides a powerful, safe abstraction for creating ALTREP vectors from Rust.
 
+**Additional Resources**:
+- **[Quick Reference](ALTREP_QUICKREF.md)** - One-page cheat sheet
+- **[Practical Examples](ALTREP_EXAMPLES.md)** - Real-world use cases
+- **[Test Suite](../rpkg/tests/testthat/test-altrep*.R)** - Working examples
+
 ## What is ALTREP?
 
 ALTREP allows you to create R vectors with custom internal representations. Instead of storing data in R's native format, you can:
@@ -313,6 +318,123 @@ miniextendr_api::impl_altinteger_from_data!(LazyIntSeqData, dataptr, serialize);
 
 ---
 
+## Mutable Vectors (Set_elt)
+
+String and List vectors can be made mutable by implementing the `set_elt()` method. This allows R code to modify elements in-place.
+
+**Important**: Only String and List types support `set_elt`. Numeric vectors (Integer, Real, Logical, Raw, Complex) cannot be mutated through ALTREP.
+
+### Mutable String Vectors
+
+```rust
+use miniextendr_api::altrep_data::{AltrepLen, AltStringData};
+use miniextendr_api::ffi::SEXP;
+use std::cell::RefCell;
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct MutableStringData {
+    strings: RefCell<Vec<Option<String>>>,
+}
+
+impl AltrepLen for MutableStringData {
+    fn len(&self) -> usize {
+        self.strings.borrow().len()
+    }
+}
+
+impl AltStringData for MutableStringData {
+    fn elt(&self, i: usize) -> Option<&str> {
+        // SAFETY: This is unsafe - we're returning a reference into RefCell
+        // In practice, you'd need to use a different strategy (e.g., cache in thread-local)
+        // or return owned String and convert to SEXP
+        unsafe {
+            let ptr = self.strings.as_ptr();
+            (*ptr).get(i).and_then(|s| s.as_deref())
+        }
+    }
+
+    // Enable mutation
+    fn set_elt(&mut self, i: usize, value: Option<&str>) {
+        if let Some(s) = self.strings.get_mut().get_mut(i) {
+            *s = value.map(|v| v.to_string());
+        }
+    }
+}
+
+miniextendr_api::impl_altstring_from_data!(MutableStringData, set_elt);
+```
+
+**Note**: The above example shows the concept but has lifetime issues. For production use, consider:
+- Storing SEXPs directly instead of Rust strings
+- Using thread-local storage for temporary string references
+- Materializing to a regular R vector when mutations occur
+
+### Mutable List Vectors
+
+Lists are easier to make mutable since they already store SEXPs:
+
+```rust
+use miniextendr_api::altrep_data::{AltrepLen, AltListData};
+use miniextendr_api::ffi::SEXP;
+use std::cell::RefCell;
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct MutableListData {
+    // SEXPs need to be protected from GC
+    elements: RefCell<Vec<SEXP>>,
+}
+
+impl AltrepLen for MutableListData {
+    fn len(&self) -> usize {
+        self.elements.borrow().len()
+    }
+}
+
+impl AltListData for MutableListData {
+    fn elt(&self, i: usize) -> SEXP {
+        self.elements.borrow()[i]
+    }
+
+    fn set_elt(&mut self, i: usize, value: SEXP) {
+        self.elements.borrow_mut()[i] = value;
+    }
+}
+
+miniextendr_api::impl_altlist_from_data!(MutableListData, set_elt);
+```
+
+### Safety Considerations
+
+**1. R's Copy-on-Write**: R may copy your vector before calling `set_elt`, so mutations may not affect the original vector reference.
+
+**2. GC Protection**: When storing SEXPs in mutable lists:
+   - SEXPs in the ALTREP data slot are automatically protected
+   - If you create new SEXPs, ensure they're returned to R immediately
+   - Don't store raw SEXP pointers that outlive their protection
+
+**3. Thread Safety**:
+   - ALTREP callbacks run on R's main thread
+   - Use `RefCell` (not `Mutex`) for interior mutability
+   - No async/threading allowed inside ALTREP methods
+
+**4. Materialization**:
+   - R may materialize (copy to regular vector) when it needs a `dataptr`
+   - After materialization, mutations go to the copy, not your ALTREP
+
+### When to Use Mutable ALTREP
+
+**Good use cases**:
+- Lazy evaluation with caching
+- Proxying to external mutable data sources
+- Implementing special data structures (e.g., sparse vectors)
+
+**Avoid for**:
+- Regular data storage (use `Vec<T>` instead)
+- Situations where you need `dataptr` (forces materialization)
+- Performance-critical code (mutations have overhead)
+
+---
+
 ## Standard Type Support
 
 miniextendr provides built-in ALTREP support for common Rust types:
@@ -497,6 +619,97 @@ miniextendr_api::impl_altraw_from_data!(RepeatingRawData);
 
 ---
 
+## List Vectors
+
+List vectors (R's `list` type / VECSXP) can contain any R objects. The `AltListData` trait allows you to create lists that compute or fetch elements on demand.
+
+```rust
+use miniextendr_api::altrep_data::{AltrepLen, AltListData};
+use miniextendr_api::ffi::SEXP;
+use miniextendr_api::{IntoR, Rf_ScalarInteger};
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct IntegerSequenceList {
+    n: usize,  // Number of elements in the list
+}
+
+impl AltrepLen for IntegerSequenceList {
+    fn len(&self) -> usize {
+        self.n
+    }
+}
+
+impl AltListData for IntegerSequenceList {
+    fn elt(&self, i: usize) -> SEXP {
+        // Each element is a scalar integer equal to its index
+        unsafe { Rf_ScalarInteger((i + 1) as i32) }
+    }
+}
+
+miniextendr_api::impl_altlist_from_data!(IntegerSequenceList);
+
+#[miniextendr(class = "IntegerSequenceList", pkg = "mypkg")]
+pub struct IntSeqList(pub IntegerSequenceList);
+
+#[miniextendr]
+pub fn int_seq_list(n: i32) -> SEXP {
+    let data = IntegerSequenceList { n: n as usize };
+    IntSeqList(data).into_sexp()
+}
+```
+
+Usage in R:
+```r
+lst <- int_seq_list(5L)
+length(lst)  # 5
+lst[[1]]     # 1L
+lst[[3]]     # 3L
+lst[[5]]     # 5L
+```
+
+### List Safety Considerations
+
+**Important**: List elements are SEXPs that must be properly protected from garbage collection. When implementing `AltListData::elt()`:
+
+1. **Return existing SEXPs**: If you store SEXPs in your data structure, they're already protected by being in the ALTREP object's data slot
+2. **Create new SEXPs**: If you create SEXPs on-the-fly (like `Rf_ScalarInteger`), R will protect them when they're added to the list
+3. **Avoid raw pointers**: Don't store raw SEXP pointers that might become invalid
+
+### Practical List Examples
+
+**Example 1: Repeating Element**
+```rust
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct RepeatedList {
+    element: SEXP,  // Stored in data1 slot (protected)
+    n: usize,
+}
+
+impl AltListData for RepeatedList {
+    fn elt(&self, _i: usize) -> SEXP {
+        self.element  // Same element for all indices
+    }
+}
+```
+
+**Example 2: List of Named Lists**
+```rust
+impl AltListData for NamedListGenerator {
+    fn elt(&self, i: usize) -> SEXP {
+        // Create a named list for each element
+        let names = vec!["x", "y"];
+        let values = vec![
+            unsafe { Rf_ScalarInteger(i as i32) },
+            unsafe { Rf_ScalarReal(i as f64) },
+        ];
+        // Use miniextendr's list builder
+        miniextendr_api::list::named_list(&names, &values).into_sexp()
+    }
+}
+```
+
+---
+
 ## Reference Types
 
 When you need to pass an ALTREP back to Rust functions:
@@ -572,6 +785,158 @@ impl AltIntegerData for MyData {
 
 ---
 
+## Subsetting Optimization (Extract_subset)
+
+The `extract_subset()` method allows you to optimize R's subsetting operations (`x[indices]`). Instead of R extracting elements one-by-one, you can return a new ALTREP object or optimized representation.
+
+### When R Calls Extract_subset
+
+R calls `extract_subset(x, indices, call)` when:
+- User writes `x[c(1, 3, 5)]` - integer vector indices
+- User writes `x[condition]` - logical vector indices
+- Subsetting with names: `x[c("a", "b")]`
+
+**Note**: Single element access `x[i]` or `x[[i]]` uses `elt()`, not `extract_subset()`.
+
+### Basic Example: Range Subsetting
+
+```rust
+use miniextendr_api::altrep_traits::AltVec;
+use miniextendr_api::ffi::{SEXP, R_xlen_t};
+
+impl AltVec for RangeData {
+    const HAS_EXTRACT_SUBSET: bool = true;
+
+    fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
+        // Extract the RangeData from x
+        let data = unsafe { altrep_data1_as::<RangeData>(x) }.unwrap();
+
+        // For simple cases, return a new optimized Range
+        // Example: Range(1..100)[1..10] = Range(1..10)
+
+        // In practice, you'd:
+        // 1. Parse indices SEXP
+        // 2. Compute the subset
+        // 3. Return new ALTREP or regular vector
+
+        // Fallback to default R behavior for complex cases
+        std::ptr::null_mut()  // R will use default elt-based extraction
+    }
+}
+```
+
+### Practical Example: Constant Vector Subset
+
+For a constant vector, any subset is also constant:
+
+```rust
+impl AltVec for ConstantIntData {
+    const HAS_EXTRACT_SUBSET: bool = true;
+
+    fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
+        use miniextendr_api::ffi::{Rf_xlength, TYPEOF, SEXPTYPE};
+
+        let data = unsafe { altrep_data1_as::<ConstantIntData>(x) }?;
+
+        // Get length of indices
+        let n = unsafe { Rf_xlength(indices) };
+
+        // Return new constant vector with same value, different length
+        let subset = ConstantIntData {
+            value: data.value,
+            len: n as usize,
+        };
+
+        ConstantIntClass(subset).into_sexp()
+    }
+}
+```
+
+### Performance Benefits
+
+**O(1) Subset Creation**:
+```r
+x <- range_int_altrep(1L, 1000000L)  # O(1) - no allocation
+y <- x[1:100000]                       # O(1) - returns new Range(1, 100001)
+```
+
+Without `extract_subset`, R would:
+1. Allocate a 100,000-element vector
+2. Call `elt()` 100,000 times
+3. Fill the new vector
+
+With `extract_subset`:
+1. Return a new `Range` object (few bytes)
+2. No element extraction
+3. Lazy evaluation continues
+
+### When to Implement Extract_subset
+
+**Good candidates**:
+- ✅ **Mathematical sequences**: Range, arithmetic sequences (subset is another sequence)
+- ✅ **Constant vectors**: Subset is constant with different length
+- ✅ **Views/windows**: Subset adjusts the window bounds
+- ✅ **External data**: Subset delegates to underlying data source
+- ✅ **Sparse vectors**: Subset maintains sparsity
+
+**Not worth it for**:
+- ❌ **Materialized data** (Vec, Box): R's default is already efficient
+- ❌ **Complex computations**: Unless subset is much simpler than original
+- ❌ **Small vectors**: Overhead not worth the optimization
+
+### Handling Different Index Types
+
+```rust
+fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
+    use miniextendr_api::ffi::{TYPEOF, SEXPTYPE};
+
+    unsafe {
+        match TYPEOF(indices) {
+            SEXPTYPE::INTSXP => {
+                // Integer indices: x[c(1L, 3L, 5L)]
+                // Extract and process integer vector
+            }
+            SEXPTYPE::REALSXP => {
+                // Numeric indices: x[c(1, 3, 5)]
+                // Convert to integers and process
+            }
+            SEXPTYPE::LGLSXP => {
+                // Logical indices: x[c(TRUE, FALSE, TRUE)]
+                // Find TRUE positions
+            }
+            SEXPTYPE::STRSXP => {
+                // Named indices: x[c("a", "b")]
+                // Match names (if your vector has names)
+            }
+            _ => {
+                // Unknown type - let R handle it
+                std::ptr::null_mut()
+            }
+        }
+    }
+}
+```
+
+### Fallback Strategy
+
+**Always provide a fallback**: Return `NULL` (null_mut()) to let R use default element-by-element extraction:
+
+```rust
+fn extract_subset(x: SEXP, indices: SEXP, _call: SEXP) -> SEXP {
+    // Try optimized path
+    if let Some(result) = try_optimized_subset(x, indices) {
+        return result;
+    }
+
+    // Fallback: R will call elt() for each index
+    std::ptr::null_mut()
+}
+```
+
+This ensures correctness even when optimization isn't possible.
+
+---
+
 ## Performance Tips
 
 1. **Implement `sum`/`min`/`max`** when you can compute them in O(1)
@@ -622,6 +987,137 @@ fn dataptr(&mut self) -> *mut T {
 
 ---
 
+## Advanced Methods
+
+These methods are rarely needed but available for special use cases.
+
+### Inspect - Custom Debug Output
+
+The `inspect()` method customizes the output of `.Internal(inspect(x))`, R's internal debugging tool.
+
+```rust
+impl Altrep for MyData {
+    const HAS_INSPECT: bool = true;
+
+    fn inspect(
+        x: SEXP,
+        pre: i32,
+        deep: i32,
+        pvec: i32,
+        inspect_subtree: Option<unsafe extern "C-unwind" fn(SEXP, i32, i32, i32)>,
+    ) -> bool {
+        // Print custom information
+        eprintln!("  MyData ALTREP");
+        eprintln!("  - custom_field: {}", /* access your data */);
+
+        // Optionally inspect child objects
+        if let Some(inspect) = inspect_subtree {
+            unsafe { inspect(/* child SEXP */, pre, deep, pvec); }
+        }
+
+        true  // Return true if inspection succeeded
+    }
+}
+```
+
+**When to use**:
+- Debugging complex ALTREP structures
+- Showing internal state in `.Internal(inspect())`
+- Documenting ALTREP design for users
+
+**When to skip**:
+- Most use cases (R's default inspection is fine)
+- Production code (debugging feature)
+
+### Duplicate - Custom Object Duplication
+
+The `duplicate()` and `duplicate_ex()` methods customize how R duplicates your ALTREP object when copy-on-write semantics require it.
+
+```rust
+impl Altrep for LazyWithCache {
+    const HAS_DUPLICATE: bool = true;
+
+    fn duplicate(x: SEXP, deep: bool) -> SEXP {
+        let data = unsafe { altrep_data1_as::<LazyWithCache>(x) }?;
+
+        if deep {
+            // Deep copy: clone cached data too
+            let new_data = LazyWithCache {
+                params: data.params.clone(),
+                cache: RefCell::new(data.cache.borrow().clone()),
+            };
+            MyClass(new_data).into_sexp()
+        } else {
+            // Shallow copy: share cache (default R behavior)
+            x  // Return self
+        }
+    }
+}
+```
+
+**When to use**:
+- Controlling what gets copied (cache vs params)
+- Optimizing duplication for large cached data
+- Implementing copy-on-write semantics
+- Sharing immutable state across copies
+
+**When to skip**:
+- Default R duplication is correct
+- No shared mutable state
+- No expensive cached data
+
+**Note**: `duplicate_ex()` is the newer extended version - prefer it over `duplicate()` if implementing both.
+
+### Coerce - Custom Type Conversion
+
+The `coerce()` method customizes how R converts your ALTREP to other types (e.g., integer → real, real → integer).
+
+```rust
+impl Altrep for ArithSeq {
+    const HAS_COERCE: bool = true;
+
+    fn coerce(x: SEXP, to_type: SEXPTYPE) -> SEXP {
+        use SEXPTYPE::*;
+
+        let data = unsafe { altrep_data1_as::<ArithSeq>(x) }?;
+
+        match to_type {
+            REALSXP => {
+                // Convert integer sequence to real sequence
+                // Instead of materializing, return a new Real ALTREP
+                let real_seq = RealArithSeq {
+                    start: data.start as f64,
+                    step: data.step as f64,
+                    len: data.len,
+                };
+                RealArithSeqClass(real_seq).into_sexp()
+            }
+            _ => {
+                // Let R handle other conversions
+                std::ptr::null_mut()
+            }
+        }
+    }
+}
+```
+
+**When to use**:
+- Converting between related ALTREP types (IntSeq → RealSeq)
+- Avoiding materialization during coercion
+- Preserving ALTREP properties after conversion
+- Optimizing common conversion paths
+
+**When to skip**:
+- Default R coercion is acceptable
+- Conversion requires materialization anyway
+- Rare conversion path
+
+**Return values**:
+- Return new SEXP: Your custom coercion
+- Return `NULL` (null_mut()): Let R use default coercion
+
+---
+
 ## Module Registration
 
 Register your ALTREP types in `miniextendr_module!`:
@@ -638,6 +1134,214 @@ miniextendr_module! {
     // ALTREP classes are registered automatically via #[miniextendr] attribute
 }
 ```
+
+---
+
+## Materialization and DATAPTR
+
+### Understanding Materialization
+
+**Materialization** is the process of converting your lazy/compact ALTREP representation into a standard R vector with contiguous memory. This happens when R needs direct memory access to your data.
+
+### When R Requests DATAPTR
+
+R calls the `dataptr()` or `dataptr_or_null()` methods when:
+
+1. **Operations requiring contiguous memory**:
+   - `sort()`, `order()`, `unique()`
+   - `.C()` or `.Fortran()` calls passing the vector
+   - `as.vector()` with specific types
+   - Some vectorized operations (`x + y`, `x * 2`)
+
+2. **Serialization** (unless you provide `serialize()`)
+
+3. **Interop with other packages** expecting raw pointers
+
+### The Three Dataptr Strategies
+
+#### Strategy 1: No DATAPTR (Lazy Forever)
+
+**When to use**: Pure lazy evaluation, external data sources, mathematical sequences
+
+```rust
+// Don't implement AltrepDataptr - only provide elt()
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct LazySequence {
+    start: i32,
+    step: i32,
+    len: usize,
+}
+
+impl AltIntegerData for LazySequence {
+    fn elt(&self, i: usize) -> i32 {
+        self.start + (i as i32) * self.step
+    }
+}
+
+// No dataptr option
+miniextendr_api::impl_altinteger_from_data!(LazySequence);
+```
+
+**Behavior**:
+- ✅ O(1) creation
+- ✅ O(1) element access
+- ❌ Operations needing DATAPTR will materialize to regular R vector
+- ❌ R owns the materialized copy (you lose control)
+
+#### Strategy 2: Materialization on Demand
+
+**When to use**: Lazy until needed, then cache the materialized form
+
+```rust
+use miniextendr_api::altrep_data::AltrepDataptr;
+use std::cell::RefCell;
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct LazyWithCache {
+    // Computation parameters
+    start: i32,
+    step: i32,
+    len: usize,
+
+    // Materialized cache (initially None)
+    materialized: RefCell<Option<Vec<i32>>>,
+}
+
+impl AltrepDataptr<i32> for LazyWithCache {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        // Materialize on first call
+        let mut mat = self.materialized.borrow_mut();
+        if mat.is_none() {
+            let vec: Vec<i32> = (0..self.len)
+                .map(|i| self.start + (i as i32) * self.step)
+                .collect();
+            *mat = Some(vec);
+        }
+
+        // Return pointer to cached data
+        mat.as_mut().map(|v| v.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        // Return None if not yet materialized (saves memory)
+        self.materialized
+            .borrow()
+            .as_ref()
+            .map(|v| v.as_ptr())
+    }
+}
+
+// Enable dataptr
+miniextendr_api::impl_altinteger_from_data!(LazyWithCache, dataptr);
+```
+
+**Behavior**:
+- ✅ Lazy until DATAPTR requested
+- ✅ Subsequent DATAPTR calls are O(1)
+- ✅ You control the materialized form
+- ⚠️ Uses memory after materialization
+
+#### Strategy 3: Pre-Materialized (Vec/Box)
+
+**When to use**: Data already in memory, just wrapping existing vector
+
+```rust
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct VecWrapper {
+    data: Vec<i32>,
+}
+
+impl AltrepDataptr<i32> for VecWrapper {
+    fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+        Some(self.data.as_mut_ptr())
+    }
+
+    fn dataptr_or_null(&self) -> Option<*const i32> {
+        Some(self.data.as_ptr())
+    }
+}
+
+miniextendr_api::impl_altinteger_from_data!(VecWrapper, dataptr);
+```
+
+**Behavior**:
+- ✅ DATAPTR always available (O(1))
+- ✅ No lazy evaluation overhead
+- ❌ Memory used immediately
+- ❌ No computation savings
+
+### Materialization Trade-offs
+
+| Aspect | No DATAPTR | On-Demand | Pre-Materialized |
+|--------|------------|-----------|------------------|
+| **Memory** | Minimal | Grows on use | Full upfront |
+| **Speed** | Fast `elt()` | Fast after first | Fastest DATAPTR |
+| **Use case** | Math sequences | Caching | Existing data |
+| **Lazy eval** | ✅ Always | ✅ Until DATAPTR | ❌ Never |
+
+### When to Provide DATAPTR
+
+**Provide DATAPTR if**:
+- ✅ Your data is already in memory (Vec, Box, slice)
+- ✅ Users will frequently perform operations requiring contiguous memory
+- ✅ You can efficiently materialize when needed
+- ✅ You want to control the materialization process
+
+**Skip DATAPTR if**:
+- ✅ Data is external (database, file, network)
+- ✅ Pure mathematical sequence (no need to materialize)
+- ✅ Memory is at a premium
+- ✅ R's default materialization is acceptable
+
+### Safety Requirements
+
+When implementing `dataptr()`:
+
+1. **Pointer Validity**: The returned pointer must remain valid until the next GC or until the ALTREP object is collected
+
+2. **Lifetime**: Store materialized data in the ALTREP object itself (in the data1 ExternalPtr)
+
+3. **Mutability**: If `writable=true`, the pointer must be mutable. R may modify the data.
+
+```rust
+// ❌ WRONG - pointer becomes invalid
+fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+    let vec = vec![1, 2, 3];
+    Some(vec.as_mut_ptr())  // vec is dropped! Pointer is now invalid!
+}
+
+// ✅ CORRECT - pointer remains valid
+fn dataptr(&mut self, _writable: bool) -> Option<*mut i32> {
+    self.cached_data.as_mut().map(|v| v.as_mut_ptr())
+}
+```
+
+### Example: Controlling Materialization
+
+```rust
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct OptionallyMaterialized {
+    generator: Box<dyn Fn(usize) -> i32>,
+    len: usize,
+    cache: RefCell<Option<Vec<i32>>>,
+}
+
+impl OptionallyMaterialized {
+    pub fn is_materialized(&self) -> bool {
+        self.cache.borrow().is_some()
+    }
+
+    pub fn force_materialize(&mut self) {
+        if self.cache.borrow().is_none() {
+            let vec = (0..self.len).map(|i| (self.generator)(i)).collect();
+            *self.cache.borrow_mut() = Some(vec);
+        }
+    }
+}
+```
+
+**Key Insight**: Materialization is a one-way door. Once materialized, you typically stay materialized. Plan your memory strategy accordingly.
 
 ---
 

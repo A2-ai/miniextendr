@@ -952,6 +952,57 @@ pub fn unit_circle(n: i32) -> SEXP {
 }
 
 // -----------------------------------------------------------------------------
+// IntegerSequenceList: List where each element is an integer vector 1:i
+// This demonstrates ALTREP for list vectors (VECSXP)
+// -----------------------------------------------------------------------------
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct IntegerSequenceListData {
+    /// Number of elements in the list
+    n: usize,
+}
+
+impl AltrepLen for IntegerSequenceListData {
+    fn len(&self) -> usize {
+        self.n
+    }
+}
+
+impl AltListData for IntegerSequenceListData {
+    fn elt(&self, i: usize) -> SEXP {
+        // Each element is an integer vector from 1 to (i+1)
+        // Element 1: c(1L)
+        // Element 2: c(1L, 2L)
+        // Element 3: c(1L, 2L, 3L)
+        // etc.
+        let seq: Vec<i32> = (1..=((i + 1) as i32)).collect();
+        seq.into_sexp()
+    }
+}
+
+miniextendr_api::impl_altlist_from_data!(IntegerSequenceListData);
+
+/// @noRd
+#[miniextendr(class = "IntegerSequenceList")]
+pub struct IntegerSequenceListClass(pub IntegerSequenceListData);
+
+/// Create a list ALTREP where each element is an integer sequence.
+///
+/// @param n Number of elements in the list.
+/// @return A list where element i contains the vector 1:i.
+/// @examples
+/// lst <- integer_sequence_list(3L)
+/// lst[[1]]  # c(1L)
+/// lst[[2]]  # c(1L, 2L)
+/// lst[[3]]  # c(1L, 2L, 3L)
+/// @export
+#[miniextendr]
+pub fn integer_sequence_list(n: i32) -> SEXP {
+    let data = IntegerSequenceListData { n: n as usize };
+    IntegerSequenceListClass(data).into_sexp()
+}
+
+// -----------------------------------------------------------------------------
 // SimpleVecInt: Vec<i32> wrapper (simplest example)
 // -----------------------------------------------------------------------------
 
@@ -1740,6 +1791,8 @@ miniextendr_module! {
 
     // List ALTREP
     struct ListDataClass;
+    struct IntegerSequenceListClass;
+    fn integer_sequence_list;
 
     // Box<[T]> ALTREP example
     struct BoxedIntsClass;
