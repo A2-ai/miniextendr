@@ -716,7 +716,7 @@ pub fn lazy_squares(n: i32) -> SEXP {
     (0..n).map(|i| i * i).collect::<Vec<i32>>().into_sexp_altrep()
 }
 
-/// Example: Using as_altrep() to store wrapper
+/// Example: Using into_altrep() to store wrapper
 ///
 /// @export
 #[miniextendr]
@@ -726,7 +726,7 @@ pub fn boxed_data_altrep(n: i32) -> SEXP {
         miniextendr_api::r_error!("boxed_data_altrep: n must be >= 0");
     }
     let data = (0..n).collect::<Vec<i32>>().into_boxed_slice();
-    data.as_altrep().into_sexp()
+    data.into_altrep().into_sexp()
 }
 
 // =============================================================================

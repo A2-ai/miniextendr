@@ -180,7 +180,7 @@ fn get_data() -> SEXP {
 - ✅ Consistent with Rust naming conventions (into_*, as_*)
 - ✅ Less imports needed
 
-### 2. **as_altrep() Helper** ⭐ NEW
+### 2. **into_altrep() Helper** ⭐ NEW
 
 For cases where you need the wrapper explicitly:
 
@@ -190,7 +190,7 @@ use miniextendr_api::IntoRAltrep;
 #[miniextendr]
 fn get_data() -> SEXP {
     let data = vec![0; 1_000_000];
-    let wrapper = data.as_altrep();  // Returns Altrep<Vec<i32>>
+    let wrapper = data.into_altrep();  // Returns Altrep<Vec<i32>>
 
     // Can store, inspect, or modify before conversion
     wrapper.into_sexp()
@@ -257,7 +257,7 @@ large_vec_altrep() -> SEXP    // 100K zeros, zero-copy
 lazy_squares(n) -> SEXP       // Computes i² on access
 
 // Pattern 4: Boxed data
-boxed_data_altrep(n) -> SEXP  // Using as_altrep()
+boxed_data_altrep(n) -> SEXP  // Using into_altrep()
 ```
 
 All exported and tested, serving as live examples in the package.
@@ -519,7 +519,7 @@ impl SortedIntVec {
 ```rust
 pub trait IntoRAltrep {
     fn into_sexp_altrep(self) -> SEXP;
-    fn as_altrep(self) -> Altrep<Self>;
+    fn into_altrep(self) -> Altrep<Self>;
 }
 ```
 
@@ -625,7 +625,7 @@ pub fn boxed_data_altrep(n: i32) -> SEXP {
     use miniextendr_api::IntoRAltrep;
     (0..n).collect::<Vec<i32>>()
         .into_boxed_slice()
-        .as_altrep()
+        .into_altrep()
         .into_sexp()
 }
 ```
@@ -788,7 +788,7 @@ vec.altrep_builder()
 
 1. **IntoRAltrep trait**
    - `.into_sexp_altrep()` method
-   - `.as_altrep()` helper
+   - `.into_altrep()` helper
    - Works with all ALTREP types
 
 2. **Comprehensive documentation**

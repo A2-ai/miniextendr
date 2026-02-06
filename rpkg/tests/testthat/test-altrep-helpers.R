@@ -27,7 +27,7 @@ test_that("lazy computation via ALTREP", {
   expect_equal(x[10], 81L) # 9^2
 })
 
-test_that("as_altrep wrapper works", {
+test_that("into_altrep wrapper works", {
   x <- boxed_data_altrep(5L)
 
   expect_equal(length(x), 5L)

@@ -241,16 +241,14 @@ pub fn parse_lifecycle_attr(meta: &syn::Meta) -> syn::Result<Option<LifecycleSpe
     match meta {
         syn::Meta::NameValue(nv) if nv.path.is_ident("lifecycle") => {
             // lifecycle = "stage"
-            if let syn::Expr::Lit(expr_lit) = &nv.value {
-                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                    let stage = LifecycleStage::from_str(&lit.value()).ok_or_else(|| {
-                        syn::Error::new_spanned(
-                            lit,
-                            "invalid lifecycle stage; expected one of: experimental, stable, superseded, soft-deprecated, deprecated, defunct",
-                        )
-                    })?;
-                    return Ok(Some(LifecycleSpec::new(stage)));
-                }
+            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &nv.value {
+                let stage = LifecycleStage::from_str(&lit.value()).ok_or_else(|| {
+                    syn::Error::new_spanned(
+                        lit,
+                        "invalid lifecycle stage; expected one of: experimental, stable, superseded, soft-deprecated, deprecated, defunct",
+                    )
+                })?;
+                return Ok(Some(LifecycleSpec::new(stage)));
             }
             Err(syn::Error::new_spanned(
                 &nv.value,
@@ -329,10 +327,8 @@ pub fn parse_rust_deprecated(attr: &syn::Attribute) -> Option<LifecycleSpec> {
         }
         syn::Meta::NameValue(nv) => {
             // #[deprecated = "message"]
-            if let syn::Expr::Lit(expr_lit) = &nv.value {
-                if let syn::Lit::Str(lit) = &expr_lit.lit {
-                    note = Some(lit.value());
-                }
+            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &nv.value {
+                note = Some(lit.value());
             }
         }
         syn::Meta::List(list) => {
@@ -341,15 +337,13 @@ pub fn parse_rust_deprecated(attr: &syn::Attribute) -> Option<LifecycleSpec> {
                 syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
             ) {
                 for meta in nested {
-                    if let syn::Meta::NameValue(nv) = meta {
-                        if let syn::Expr::Lit(expr_lit) = &nv.value {
-                            if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                if nv.path.is_ident("since") {
-                                    since = Some(lit.value());
-                                } else if nv.path.is_ident("note") {
-                                    note = Some(lit.value());
-                                }
-                            }
+                    if let syn::Meta::NameValue(nv) = meta
+                        && let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &nv.value
+                    {
+                        if nv.path.is_ident("since") {
+                            since = Some(lit.value());
+                        } else if nv.path.is_ident("note") {
+                            note = Some(lit.value());
                         }
                     }
                 }
@@ -389,10 +383,10 @@ pub fn inject_lifecycle_badge(tags: &mut Vec<String>, spec: &LifecycleSpec) {
     }
 
     // Add keywords if needed and not present
-    if let Some(keywords) = spec.stage.keywords() {
-        if !tags.iter().any(|t| t.starts_with("@keywords")) {
-            tags.push(format!("@keywords {}", keywords));
-        }
+    if let Some(keywords) = spec.stage.keywords()
+        && !tags.iter().any(|t| t.starts_with("@keywords"))
+    {
+        tags.push(format!("@keywords {}", keywords));
     }
 }
 

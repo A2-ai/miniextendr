@@ -1652,8 +1652,8 @@ impl<T: IntoR> IntoR for Result<T, NullOnErr> {
 ///
 /// # Example
 ///
-/// ```rust
-/// use miniextendr_api::{miniextendr, IntoRAltrep};
+/// ```rust,ignore
+/// use miniextendr_api::{miniextendr, IntoRAltrep, IntoR, ffi::SEXP};
 ///
 /// #[miniextendr]
 /// fn large_dataset() -> SEXP {
@@ -1682,7 +1682,7 @@ pub trait IntoRAltrep {
     ///
     /// This returns the wrapper explicitly, allowing you to store it or
     /// further process it before conversion.
-    fn as_altrep(self) -> Altrep<Self>
+    fn into_altrep(self) -> Altrep<Self>
     where
         Self: Sized,
     {
