@@ -525,6 +525,55 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   })
 })
 
+# -----------------------------------------------------------------------------
+# Package name handling tests
+# -----------------------------------------------------------------------------
+
+test_that("monorepo handles dots in package names", {
+  tmp <- tempfile("monorepo-dots-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  # Dots in R package names should convert to hyphens in crate names
+  create_miniextendr_monorepo(tmp, package = "my.pkg", crate_name = "my-pkg", open = FALSE)
+
+  # Rust crate should use hyphens
+  crate_cargo <- readLines(file.path(tmp, "my-pkg", "Cargo.toml"))
+  expect_true(any(grepl('name = "my-pkg"', crate_cargo)))
+
+  # R package should keep dots
+  desc <- readLines(file.path(tmp, "rpkg", "DESCRIPTION"))
+  expect_true(any(grepl("Package: my.pkg", desc)))
+
+  # rpkg lib.rs should use underscores (Rust module names)
+  rpkg_lib <- readLines(file.path(tmp, "rpkg", "src", "rust", "lib.rs"))
+  expect_true(any(grepl("mod my_pkg;", rpkg_lib)))
+})
+
+test_that("monorepo handles hyphens in crate names", {
+  tmp <- tempfile("monorepo-hyphens-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "test-pkg", open = FALSE)
+
+  # Crate name should have hyphens
+  crate_cargo <- readLines(file.path(tmp, "test-pkg", "Cargo.toml"))
+  expect_true(any(grepl('name = "test-pkg"', crate_cargo)))
+})
+
+test_that("create_miniextendr_package rejects invalid R package names", {
+  tmp <- tempfile("invalid-name-")
+  on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
+
+  # Package names starting with a digit are invalid
+  expect_error(
+    create_miniextendr_package(file.path(tmp, "1badname"), open = FALSE)
+  )
+})
+
+# -----------------------------------------------------------------------------
+# End-to-end scaffolding tests (continued)
+# -----------------------------------------------------------------------------
+
 test_that("monorepo scaffolding builds and functions work end-to-end", {
   skip_on_ci()  # Complex build environment requirements; test locally
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")

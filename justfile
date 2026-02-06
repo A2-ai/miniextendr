@@ -180,6 +180,28 @@ alias cargo-bench := bench
 bench *cargo_flags:
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
 
+# Save benchmark baseline (JSON output for regression comparison)
+bench-save *cargo_flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p miniextendr-bench/baselines
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}} 2>&1 | tee "miniextendr-bench/baselines/bench-${timestamp}.txt"
+    echo "Baseline saved to miniextendr-bench/baselines/bench-${timestamp}.txt"
+
+# Compare current benchmarks against most recent baseline
+bench-compare *cargo_flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    baseline=$(ls -t miniextendr-bench/baselines/bench-*.txt 2>/dev/null | head -1)
+    if [[ -z "$baseline" ]]; then
+      echo "No baseline found. Run 'just bench-save' first."
+      exit 1
+    fi
+    echo "Comparing against baseline: $baseline"
+    echo "---"
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
+
 # Check benchmark crate
 bench-check *cargo_flags:
     cargo check --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
@@ -213,10 +235,27 @@ expand *cargo_flags:
 #
 # This is the only vendoring needed - R packages must be self-contained for CRAN.
 # Workspace crates use normal cargo dependency resolution (no vendoring needed).
-configure:
+configure: lint-sync
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     NOT_CRAN=true ./configure
+
+# Sync miniextendr_module.rs from macros to lint, removing vctrs feature gates
+lint-sync:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    src="miniextendr-macros/src/miniextendr_module.rs"
+    dst="miniextendr-lint/src/miniextendr_module.rs"
+    if [[ ! -f "$src" ]]; then
+      echo "lint-sync: $src not found, skipping"
+      exit 0
+    fi
+    # Copy and remove vctrs feature-gate attributes
+    sed \
+      -e '/^#\[cfg_attr(not(feature = "vctrs")/d' \
+      -e '/^#\[cfg(feature = "vctrs")\]/d' \
+      "$src" > "$dst"
+    echo "lint-sync: synced $src -> $dst"
 
 # Configure in CRAN/offline mode (do NOT force NOT_CRAN=true)
 configure-cran:

@@ -125,78 +125,96 @@ impl_into_r_via_coerce!(u32 => f64); // all u32 exactly representable in f64
 //
 // For most use cases (counters, IDs, timestamps), values fit within 2^53.
 
-/// Convert `i64` to R numeric (REALSXP).
+/// Convert `i64` to R integer (INTSXP) or numeric (REALSXP).
 ///
-/// # Precision Loss
-///
-/// Values outside [-2^53, 2^53] (±9,007,199,254,740,992) may lose precision
-/// when converted to f64. This is unavoidable since R has no native 64-bit
-/// integer type.
+/// Uses smart conversion: values in `(i32::MIN, i32::MAX]` are returned as
+/// R integers for exact representation. Values outside that range (including
+/// `i32::MIN` which is `NA_integer_` in R) fall back to R doubles.
 ///
 /// ```ignore
-/// // Safe - exact representation
-/// let small: i64 = 1_000_000;
-/// small.into_sexp(); // Exact
+/// let small: i64 = 42;
+/// small.into_sexp(); // R integer 42L
 ///
-/// // Unsafe - may lose precision
-/// let large: i64 = i64::MAX; // 9,223,372,036,854,775,807
-/// large.into_sexp(); // Rounded to 9,223,372,036,854,775,808.0
+/// let big: i64 = 3_000_000_000;
+/// big.into_sexp(); // R double 3e9
+///
+/// let na_trap: i64 = i32::MIN as i64;
+/// na_trap.into_sexp(); // R double (not NA_integer_!)
 /// ```
 impl IntoR for i64 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        (self as f64).into_sexp()
+        // i32::MIN is NA_integer_ in R, so exclude it from the integer range
+        if self > i32::MIN as i64 && self <= i32::MAX as i64 {
+            (self as i32).into_sexp()
+        } else {
+            (self as f64).into_sexp()
+        }
     }
 
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { (self as f64).into_sexp_unchecked() }
+        if self > i32::MIN as i64 && self <= i32::MAX as i64 {
+            unsafe { (self as i32).into_sexp_unchecked() }
+        } else {
+            unsafe { (self as f64).into_sexp_unchecked() }
+        }
     }
 }
 
-/// Convert `u64` to R numeric (REALSXP).
+/// Convert `u64` to R integer (INTSXP) or numeric (REALSXP).
 ///
-/// # Precision Loss
-///
-/// Values > 2^53 (9,007,199,254,740,992) may lose precision when converted
-/// to f64. See [`i64`'s IntoR impl](impl IntoR for i64) for details.
+/// Values in `[0, i32::MAX]` are returned as R integers. Larger values
+/// fall back to R doubles (which may lose precision above 2^53).
 impl IntoR for u64 {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        (self as f64).into_sexp()
+        if self <= i32::MAX as u64 {
+            (self as i32).into_sexp()
+        } else {
+            (self as f64).into_sexp()
+        }
     }
 
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { (self as f64).into_sexp_unchecked() }
+        if self <= i32::MAX as u64 {
+            unsafe { (self as i32).into_sexp_unchecked() }
+        } else {
+            unsafe { (self as f64).into_sexp_unchecked() }
+        }
     }
 }
 
-/// Convert `isize` to R numeric (REALSXP).
+/// Convert `isize` to R integer (INTSXP) or numeric (REALSXP).
 ///
-/// On 64-bit platforms, `isize` is 64-bit and subject to the same precision
-/// loss as [`i64`](impl IntoR for i64). On 32-bit platforms, conversion is exact.
+/// On 64-bit platforms, uses the same smart conversion as [`i64`](impl IntoR for i64).
+/// On 32-bit platforms, `isize` fits in i32 so conversion is always exact.
 impl IntoR for isize {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        (self as f64).into_sexp()
+        (self as i64).into_sexp()
     }
 
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { (self as f64).into_sexp_unchecked() }
+        unsafe { (self as i64).into_sexp_unchecked() }
     }
 }
 
+/// Convert `usize` to R integer (INTSXP) or numeric (REALSXP).
+///
+/// Values in `[0, i32::MAX]` are returned as R integers. Larger values
+/// fall back to R doubles.
 impl IntoR for usize {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
-        (self as f64).into_sexp()
+        (self as u64).into_sexp()
     }
 
     #[inline]
     unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
-        unsafe { (self as f64).into_sexp_unchecked() }
+        unsafe { (self as u64).into_sexp_unchecked() }
     }
 }
 
@@ -576,6 +594,39 @@ impl_vec_coerce_into_r!(u16 => i32);
 
 // f32 coerces to f64 (R's REALSXP)
 impl_vec_coerce_into_r!(f32 => f64);
+
+// i64/u64/isize/usize: smart conversion (INTSXP when all fit, else REALSXP)
+macro_rules! impl_vec_smart_i64_into_r {
+    ($t:ty, $fits_i32:expr) => {
+        impl IntoR for Vec<$t> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                if self.iter().all(|&x| $fits_i32(x)) {
+                    let coerced: Vec<i32> = self.into_iter().map(|x| x as i32).collect();
+                    coerced.into_sexp()
+                } else {
+                    let coerced: Vec<f64> = self.into_iter().map(|x| x as f64).collect();
+                    coerced.into_sexp()
+                }
+            }
+
+            unsafe fn into_sexp_unchecked(self) -> crate::ffi::SEXP {
+                if self.iter().all(|&x| $fits_i32(x)) {
+                    let coerced: Vec<i32> = self.into_iter().map(|x| x as i32).collect();
+                    unsafe { coerced.into_sexp_unchecked() }
+                } else {
+                    let coerced: Vec<f64> = self.into_iter().map(|x| x as f64).collect();
+                    unsafe { coerced.into_sexp_unchecked() }
+                }
+            }
+        }
+    };
+}
+
+// i32::MIN is NA_integer_ in R, so exclude it
+impl_vec_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
+impl_vec_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
+impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize && x <= i32::MAX as isize);
+impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 
 // =============================================================================
 // Collection conversions (HashMap, BTreeMap, HashSet, BTreeSet)
