@@ -177,6 +177,11 @@ macro_rules! __impl_altvec_dataptr {
             const HAS_DATAPTR: bool = true;
 
             fn dataptr(x: $crate::ffi::SEXP, writable: bool) -> *mut core::ffi::c_void {
+                #[cfg(feature = "materialization-tracking")]
+                $crate::altrep_tracking::record_materialization(
+                    core::any::type_name::<$ty>(),
+                    writable,
+                );
                 unsafe { $crate::altrep_data1_mut::<$ty>(x) }
                     .and_then(|d| {
                         <$ty as $crate::altrep_data::AltrepDataptr<$elem>>::dataptr(d, writable)

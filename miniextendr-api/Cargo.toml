@@ -84,6 +84,9 @@ tinyvec = ["dep:tinyvec"]
 ## short_vec_size, short_vec_recycle) via R_GetCCallable. Requires vctrs R package.
 ## Also enables the #[derive(Vctrs)] proc-macro.
 vctrs = ["miniextendr-macros/vctrs"]
+## Enable ALTREP materialization tracking. Logs when ALTREP vectors materialize
+## (Dataptr called) and provides a counter for diagnostics. Zero-cost when disabled.
+materialization-tracking = []
 ## Enable fast hasher for refcount protect arenas. Uses ahash instead of SipHash
 ## for improved throughput on large collections. Not DOS-resistant.
 refcount-fast-hash = ["dep:ahash"]

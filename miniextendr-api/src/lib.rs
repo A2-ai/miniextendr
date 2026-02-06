@@ -306,6 +306,10 @@ pub use worker::miniextendr_worker_init;
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
 
+// ALTREP materialization tracking (diagnostics)
+#[cfg(feature = "materialization-tracking")]
+pub mod altrep_tracking;
+
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]
 pub mod progress;
