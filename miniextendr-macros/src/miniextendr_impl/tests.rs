@@ -17,6 +17,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         r6_lock_class: None,
         s7_parent: None,
         s7_abstract: false,
+        r_data_accessors: false,
     }
 }
 
@@ -1437,4 +1438,139 @@ fn parse_s7_parent_and_abstract() {
     assert_eq!(attrs.class_system, ClassSystem::S7);
     assert_eq!(attrs.s7_parent, Some("Base".to_string()));
     assert!(attrs.s7_abstract);
+}
+
+// =============================================================================
+// r_data_accessors parsing tests
+// =============================================================================
+
+#[test]
+fn parse_r6_with_r_data_accessors() {
+    let attrs: ImplAttrs = syn::parse_str("r6(r_data_accessors)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::R6);
+    assert!(attrs.r_data_accessors);
+}
+
+#[test]
+fn parse_r6_with_r_data_accessors_and_options() {
+    let attrs: ImplAttrs =
+        syn::parse_str("r6(cloneable, lock_class, r_data_accessors)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::R6);
+    assert!(attrs.r_data_accessors);
+    assert_eq!(attrs.r6_cloneable, Some(true));
+    assert_eq!(attrs.r6_lock_class, Some(true));
+}
+
+#[test]
+fn parse_s7_with_r_data_accessors() {
+    let attrs: ImplAttrs = syn::parse_str("s7(r_data_accessors)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::S7);
+    assert!(attrs.r_data_accessors);
+}
+
+#[test]
+fn parse_r6_without_r_data_accessors() {
+    let attrs: ImplAttrs = syn::parse_str("r6(cloneable)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::R6);
+    assert!(!attrs.r_data_accessors);
+}
+
+// =============================================================================
+// R6 r_data_accessors wrapper generation test
+// =============================================================================
+
+#[test]
+fn r6_wrapper_r_data_accessors() {
+    let code: syn::ItemImpl = syn::parse_quote! {
+        impl MyType {
+            pub fn new() -> Self { Self }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.r_data_accessors = true;
+    let parsed = ParsedImpl::parse(attrs, code).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // Should contain the call to .rdata_active_bindings_MyType
+    assert!(
+        wrapper.contains(".rdata_active_bindings_MyType(MyType)"),
+        "Expected .rdata_active_bindings_MyType(MyType) in:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn r6_wrapper_no_r_data_accessors() {
+    let code: syn::ItemImpl = syn::parse_quote! {
+        impl MyType {
+            pub fn new() -> Self { Self }
+        }
+    };
+
+    let attrs = default_impl_attrs(ClassSystem::R6);
+    let parsed = ParsedImpl::parse(attrs, code).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // Should NOT contain the call to .rdata_active_bindings
+    assert!(
+        !wrapper.contains(".rdata_active_bindings"),
+        "Should not have .rdata_active_bindings in:\n{}",
+        wrapper
+    );
+}
+
+// =============================================================================
+// S7 r_data_accessors wrapper generation test
+// =============================================================================
+
+#[test]
+fn s7_wrapper_r_data_accessors() {
+    let code: syn::ItemImpl = syn::parse_quote! {
+        impl MyType {
+            pub fn new() -> Self { Self }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.r_data_accessors = true;
+    let parsed = ParsedImpl::parse(attrs, code).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should use c(list(...), .rdata_properties_MyType) pattern
+    assert!(
+        wrapper.contains("properties = c(list("),
+        "Expected 'properties = c(list(' in:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains(".rdata_properties_MyType)"),
+        "Expected '.rdata_properties_MyType)' in:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_wrapper_no_r_data_accessors() {
+    let code: syn::ItemImpl = syn::parse_quote! {
+        impl MyType {
+            pub fn new() -> Self { Self }
+        }
+    };
+
+    let attrs = default_impl_attrs(ClassSystem::S7);
+    let parsed = ParsedImpl::parse(attrs, code).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Should use regular properties = list(...) pattern
+    assert!(
+        wrapper.contains("properties = list("),
+        "Expected 'properties = list(' in:\n{}",
+        wrapper
+    );
+    assert!(
+        !wrapper.contains(".rdata_properties"),
+        "Should not have .rdata_properties in:\n{}",
+        wrapper
+    );
 }

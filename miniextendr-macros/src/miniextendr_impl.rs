@@ -615,6 +615,10 @@ pub struct ParsedImpl {
     // S7-specific configuration (propagated from ImplAttrs)
     pub s7_parent: Option<String>,
     pub s7_abstract: bool,
+    /// When true, auto-include sidecar `#[r_data]` field accessors in the class definition.
+    /// For R6: active bindings are added via `$set("active", ...)` after class creation.
+    /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
+    pub r_data_accessors: bool,
 }
 
 /// Attributes on the impl block itself.
@@ -655,6 +659,13 @@ pub struct ImplAttrs {
     pub s7_parent: Option<String>,
     /// S7 abstract class flag. Abstract classes cannot be instantiated.
     pub s7_abstract: bool,
+    // =========================================================================
+    // Sidecar integration
+    // =========================================================================
+    /// When true, auto-include `#[r_data]` field accessors in the class definition.
+    /// For R6: active bindings via `$set("active", ...)` post-creation.
+    /// For S7: properties spliced from `.rdata_properties_{Type}`.
+    pub r_data_accessors: bool,
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -670,6 +681,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut r6_lock_class = None;
         let mut s7_parent = None;
         let mut s7_abstract = false;
+        let mut r_data_accessors = false;
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
@@ -816,11 +828,14 @@ impl syn::parse::Parse for ImplAttrs {
                                     r6_lock_class = Some(true);
                                 }
                             }
+                            "r_data_accessors" => {
+                                r_data_accessors = true;
+                            }
                             _ => {
                                 return Err(syn::Error::new(
                                     key.span(),
                                     format!(
-                                        "unknown r6 option: {} (expected inherit, portable, cloneable, lock_objects, lock_class)",
+                                        "unknown r6 option: {} (expected inherit, portable, cloneable, lock_objects, lock_class, r_data_accessors)",
                                         key_str
                                     ),
                                 ));
@@ -863,11 +878,14 @@ impl syn::parse::Parse for ImplAttrs {
                                     s7_abstract = true;
                                 }
                             }
+                            "r_data_accessors" => {
+                                r_data_accessors = true;
+                            }
                             _ => {
                                 return Err(syn::Error::new(
                                     key.span(),
                                     format!(
-                                        "unknown s7 option: {} (expected parent, abstract)",
+                                        "unknown s7 option: {} (expected parent, abstract, r_data_accessors)",
                                         key_str
                                     ),
                                 ));
@@ -905,6 +923,7 @@ impl syn::parse::Parse for ImplAttrs {
             r6_lock_class,
             s7_parent,
             s7_abstract,
+            r_data_accessors,
         })
     }
 }
@@ -1540,6 +1559,7 @@ impl ParsedImpl {
             r6_lock_class: attrs.r6_lock_class,
             s7_parent: attrs.s7_parent,
             s7_abstract: attrs.s7_abstract,
+            r_data_accessors: attrs.r_data_accessors,
         })
     }
 
@@ -2257,6 +2277,15 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     ));
     lines.push(")".to_string());
 
+    // If r_data_accessors is set, apply sidecar active bindings from #[derive(ExternalPtr)]
+    if parsed_impl.r_data_accessors {
+        let type_name = type_ident.to_string();
+        lines.push(format!(
+            ".rdata_active_bindings_{}({})",
+            type_name, class_name
+        ));
+    }
+
     // Check if class has @noRd
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
 
@@ -2718,8 +2747,14 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     // Properties - .ptr holds the ExternalPtr, plus computed/dynamic properties
-    lines.push("    properties = list(".to_string());
-    lines.push("        .ptr = S7::class_any".to_string());
+    // When r_data_accessors is set, merge with sidecar properties from #[derive(ExternalPtr)]
+    if parsed_impl.r_data_accessors {
+        lines.push("    properties = c(list(".to_string());
+        lines.push("        .ptr = S7::class_any".to_string());
+    } else {
+        lines.push("    properties = list(".to_string());
+        lines.push("        .ptr = S7::class_any".to_string());
+    }
 
     // Generate computed/dynamic properties
     for prop in properties.values() {
@@ -2827,7 +2862,16 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
 
-    lines.push("    ),".to_string());
+    // Close the properties list (or merge with sidecar properties)
+    if parsed_impl.r_data_accessors {
+        let type_name = type_ident.to_string();
+        lines.push(format!(
+            "    ), .rdata_properties_{}),",
+            type_name
+        ));
+    } else {
+        lines.push("    ),".to_string());
+    }
 
     if let Some(ctx) = parsed_impl.constructor_context() {
         if has_self_returning_methods {

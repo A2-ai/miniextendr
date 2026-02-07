@@ -3411,6 +3411,8 @@ new_derived_temp <- function(x) {
     .Call(C_new_derived_temp, .call = match.call(), x)
 }
 
+
+
 #' @noRd
 Point <- new.env(parent = emptyenv())
 
@@ -3868,8 +3870,6 @@ IterableVecIter$collect_all <- function() {
 #' @export
 `[[.IterableVecIter` <- `$.IterableVecIter`
 
-
-
 #' @rdname AsCoerceTestData
 #' @title as.<class>() Coercion Test Type
 #' @name AsCoerceTestData
@@ -4165,121 +4165,6 @@ as.character.AsCoerceErrorTest <- function(x, ...) {
     .Call(C_AsCoerceErrorTest__as_character, .call = match.call(), x)
 }
 
-#' @noRd
-SidecarEnv <- new.env(parent = emptyenv())
-
-#' @noRd
-`$.SidecarEnv` <- function(self, name) {
-    obj <- SidecarEnv[[name]]
-    if (is.environment(obj)) {
-        # Trait namespace - bind self to all methods
-        bound <- new.env(parent = emptyenv())
-        for (method_name in names(obj)) {
-            method <- obj[[method_name]]
-            if (is.function(method)) {
-                environment(method) <- environment()
-                bound[[method_name]] <- method
-            }
-        }
-        bound
-    } else {
-        environment(obj) <- environment()
-        obj
-    }
-}
-#' @noRd
-`[[.SidecarEnv` <- `$.SidecarEnv`
-
-#' @noRd
-SidecarR6 <- R6::R6Class("SidecarR6",
-    public = list(
-    ),
-    private = list(
-        .ptr = NULL
-    ),
-    lock_objects = TRUE,
-    lock_class = FALSE,
-    cloneable = FALSE
-)
-
-#' @rdname SidecarS3
-SidecarS3 <- new.env(parent = emptyenv())
-
-methods::setClass("SidecarS4", slots = c(ptr = "externalptr"))
-
-#' @noRd
-SidecarS7 <- S7::new_class("SidecarS7",
-    properties = list(
-        .ptr = S7::class_any
-    ),
-)
-
-#' @rdname SidecarVctrs
-#' @method vec_ptype2 SidecarVctrs.SidecarVctrs
-#' @param x A SidecarVctrs vector.
-#' @param y A SidecarVctrs vector.
-#' @param ... Additional arguments (unused).
-#' @export
-vec_ptype2.SidecarVctrs.SidecarVctrs <- function(x, y, ...) vctrs::new_vctr(double(), class = "SidecarVctrs")
-
-#' @rdname SidecarVctrs
-#' @method vec_cast SidecarVctrs.SidecarVctrs
-#' @param x A SidecarVctrs vector to cast.
-#' @param to A SidecarVctrs prototype.
-#' @param ... Additional arguments (unused).
-#' @export
-vec_cast.SidecarVctrs.SidecarVctrs <- function(x, to, ...) x
-
-#' @noRd
-SidecarRawSexp <- new.env(parent = emptyenv())
-
-#' @noRd
-`$.SidecarRawSexp` <- function(self, name) {
-    obj <- SidecarRawSexp[[name]]
-    if (is.environment(obj)) {
-        # Trait namespace - bind self to all methods
-        bound <- new.env(parent = emptyenv())
-        for (method_name in names(obj)) {
-            method <- obj[[method_name]]
-            if (is.function(method)) {
-                environment(method) <- environment()
-                bound[[method_name]] <- method
-            }
-        }
-        bound
-    } else {
-        environment(obj) <- environment()
-        obj
-    }
-}
-#' @noRd
-`[[.SidecarRawSexp` <- `$.SidecarRawSexp`
-
-#' @noRd
-SidecarRaw <- new.env(parent = emptyenv())
-
-#' @noRd
-`$.SidecarRaw` <- function(self, name) {
-    obj <- SidecarRaw[[name]]
-    if (is.environment(obj)) {
-        # Trait namespace - bind self to all methods
-        bound <- new.env(parent = emptyenv())
-        for (method_name in names(obj)) {
-            method <- obj[[method_name]]
-            if (is.function(method)) {
-                environment(method) <- environment()
-                bound[[method_name]] <- method
-            }
-        }
-        bound
-    } else {
-        environment(obj) <- environment()
-        obj
-    }
-}
-#' @noRd
-`[[.SidecarRaw` <- `$.SidecarRaw`
-
 #' @title SidecarEnv Sidecar Accessors
 #' @name SidecarEnv
 #' @description Getter and setter functions for `#[r_data]` fields on `SidecarEnv`.
@@ -4418,6 +4303,19 @@ SidecarR6_get_label <- function(x) .Call(C__mx_rdata_get_SidecarR6_label, x)
 SidecarR6_set_label <- function(x, value) {
   .Call(C__mx_rdata_set_SidecarR6_label, x, value)
   invisible(x)
+}
+
+# Auto-generated active bindings for SidecarR6 sidecar fields.
+# These are applied when `r_data_accessors` is set on the impl block.
+.rdata_active_bindings_SidecarR6 <- function(cls) {
+  cls$set("active", "value", function(value) {
+if (missing(value)) .Call(C__mx_rdata_get_SidecarR6_value, private$.ptr)
+else { .Call(C__mx_rdata_set_SidecarR6_value, private$.ptr, value); invisible(self) }
+  }, overwrite = TRUE)
+  cls$set("active", "label", function(value) {
+if (missing(value)) .Call(C__mx_rdata_get_SidecarR6_label, private$.ptr)
+else { .Call(C__mx_rdata_set_SidecarR6_label, private$.ptr, value); invisible(self) }
+  }, overwrite = TRUE)
 }
 
 #' @title SidecarS3 Sidecar Accessors
@@ -4566,6 +4464,22 @@ SidecarS7_set_prop_name <- function(x, value) {
   .Call(C__mx_rdata_set_SidecarS7_prop_name, x, value)
   invisible(x)
 }
+
+# Auto-generated S7 property definitions for SidecarS7 sidecar fields.
+.rdata_properties_SidecarS7 <- list(
+prop_int = S7::new_property(
+    getter = function(self) .Call(C__mx_rdata_get_SidecarS7_prop_int, self@.ptr),
+    setter = function(self, value) { .Call(C__mx_rdata_set_SidecarS7_prop_int, self@.ptr, value); self }
+),
+prop_flag = S7::new_property(
+    getter = function(self) .Call(C__mx_rdata_get_SidecarS7_prop_flag, self@.ptr),
+    setter = function(self, value) { .Call(C__mx_rdata_set_SidecarS7_prop_flag, self@.ptr, value); self }
+),
+prop_name = S7::new_property(
+    getter = function(self) .Call(C__mx_rdata_get_SidecarS7_prop_name, self@.ptr),
+    setter = function(self, value) { .Call(C__mx_rdata_set_SidecarS7_prop_name, self@.ptr, value); self }
+)
+)
 
 #' @title SidecarVctrs Sidecar Accessors
 #' @name SidecarVctrs
@@ -4749,6 +4663,138 @@ SidecarRaw_set_byte_val <- function(x, value) {
   .Call(C__mx_rdata_set_SidecarRaw_byte_val, x, value)
   invisible(x)
 }
+
+#' @noRd
+SidecarEnv <- new.env(parent = emptyenv())
+
+#' @noRd
+`$.SidecarEnv` <- function(self, name) {
+    obj <- SidecarEnv[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @noRd
+`[[.SidecarEnv` <- `$.SidecarEnv`
+
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @noRd
+SidecarR6 <- R6::R6Class("SidecarR6",
+    public = list(
+        #' @description Create a new SidecarR6 with initial values.
+        initialize = function(value, label, .ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_SidecarR6__new, .call = match.call(), value, label)
+            }
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = FALSE,
+    cloneable = FALSE
+)
+.rdata_active_bindings_SidecarR6(SidecarR6)
+
+#' @rdname SidecarS3
+SidecarS3 <- new.env(parent = emptyenv())
+
+methods::setClass("SidecarS4", slots = c(ptr = "externalptr"))
+
+#' @noRd
+SidecarS7 <- S7::new_class("SidecarS7",
+    properties = c(list(
+        .ptr = S7::class_any
+    ), .rdata_properties_SidecarS7),
+    constructor = function(prop_int, prop_flag, prop_name, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_SidecarS7__new, .call = match.call(), prop_int, prop_flag, prop_name))
+        }
+    }
+)
+
+#' @rdname SidecarVctrs
+#' @method vec_ptype2 SidecarVctrs.SidecarVctrs
+#' @param x A SidecarVctrs vector.
+#' @param y A SidecarVctrs vector.
+#' @param ... Additional arguments (unused).
+#' @export
+vec_ptype2.SidecarVctrs.SidecarVctrs <- function(x, y, ...) vctrs::new_vctr(double(), class = "SidecarVctrs")
+
+#' @rdname SidecarVctrs
+#' @method vec_cast SidecarVctrs.SidecarVctrs
+#' @param x A SidecarVctrs vector to cast.
+#' @param to A SidecarVctrs prototype.
+#' @param ... Additional arguments (unused).
+#' @export
+vec_cast.SidecarVctrs.SidecarVctrs <- function(x, to, ...) x
+
+#' @noRd
+SidecarRawSexp <- new.env(parent = emptyenv())
+
+#' @noRd
+`$.SidecarRawSexp` <- function(self, name) {
+    obj <- SidecarRawSexp[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @noRd
+`[[.SidecarRawSexp` <- `$.SidecarRawSexp`
+
+#' @noRd
+SidecarRaw <- new.env(parent = emptyenv())
+
+#' @noRd
+`$.SidecarRaw` <- function(self, name) {
+    obj <- SidecarRaw[[name]]
+    if (is.environment(obj)) {
+        # Trait namespace - bind self to all methods
+        bound <- new.env(parent = emptyenv())
+        for (method_name in names(obj)) {
+            method <- obj[[method_name]]
+            if (is.function(method)) {
+                environment(method) <- environment()
+                bound[[method_name]] <- method
+            }
+        }
+        bound
+    } else {
+        environment(obj) <- environment()
+        obj
+    }
+}
+#' @noRd
+`[[.SidecarRaw` <- `$.SidecarRaw`
 
 #' @noRd
 ReceiverCounter <- new.env(parent = emptyenv())
@@ -5151,9 +5197,9 @@ S7Range <- S7::new_class("S7Range",
     properties = list(
         .ptr = S7::class_any
 ,
-        midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
-,
         length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
+,
+        midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
     ),
     constructor = function(start, end, .ptr = NULL) {
         if (!is.null(.ptr)) {

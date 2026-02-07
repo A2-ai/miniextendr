@@ -1912,14 +1912,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Generate R wrapper impls constant - includes impl, trait impl, sidecar, and vctrs wrappers
     // Combine all with cfg info and generate conditional array elements
     let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
-    all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
-    all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
-    // Add sidecar R wrappers (from #[derive(ExternalPtr)] with #[r_data])
+    // Sidecar R wrappers FIRST (from #[derive(ExternalPtr)] with #[r_data])
+    // These must come before impl wrappers because R6/S7 class definitions
+    // may reference .rdata_active_bindings_* / .rdata_properties_* helpers.
     all_impl_r_wrappers_with_cfg.extend(
         rdata_r_wrappers
             .iter()
             .map(|expr| (Vec::new(), expr.clone())),
     );
+    all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
+    all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
     // Add vctrs R wrappers (from #[derive(Vctrs)])
     all_impl_r_wrappers_with_cfg.extend(vctrs_r_wrappers_with_cfg.iter().cloned());
 
