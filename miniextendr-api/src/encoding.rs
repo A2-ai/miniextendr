@@ -54,8 +54,8 @@ pub fn encoding_info() -> Option<&'static REncodingInfo> {
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_assert_utf8_locale() {
     use crate::ffi::{
-        Rf_eval, Rf_getAttrib, Rf_install, Rf_protect, Rf_unprotect, Rf_xlength, LOGICAL,
-        R_BaseEnv, R_NamesSymbol, STRING_ELT, VECTOR_ELT,
+        LOGICAL, R_BaseEnv, R_NamesSymbol, Rf_eval, Rf_getAttrib, Rf_install, Rf_protect,
+        Rf_unprotect, Rf_xlength, STRING_ELT, VECTOR_ELT,
     };
 
     unsafe {
@@ -83,7 +83,9 @@ pub extern "C-unwind" fn miniextendr_assert_utf8_locale() {
         Rf_unprotect(2);
 
         if !is_utf8 {
-            crate::r_error!("miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)");
+            crate::r_error!(
+                "miniextendr requires a UTF-8 locale (R >= 4.2.0 uses UTF-8 by default)"
+            );
         }
     }
 }
