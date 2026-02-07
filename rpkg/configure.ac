@@ -40,13 +40,13 @@ case "$NOT_CRAN" in
 esac
 export NOT_CRAN
 
-dnl Set cargo offline flag based on NOT_CRAN
-dnl - NOT_CRAN=true (dev): no --offline, use --locked for reproducibility
+dnl Set cargo offline/locked flags based on NOT_CRAN
+dnl - NOT_CRAN=true (dev): no --offline, no --locked (cargo updates lockfile for patches)
 dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  dnl Dev mode uses --locked for reproducible builds matching committed lockfile
-  CARGO_LOCKED_FLAG="--locked"
+  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
+  CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
   dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
@@ -192,9 +192,23 @@ case "$host_os" in
 esac
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
-AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
+AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
 : ${CARGO_PROFILE="release"}
+dnl Map legacy 'debug' → 'dev' (cargo rejects --profile debug)
+if test "$CARGO_PROFILE" = "debug"; then
+  AC_MSG_WARN([CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead])
+  CARGO_PROFILE="dev"
+fi
 AC_SUBST([CARGO_PROFILE])
+
+dnl Cargo output directory differs from profile name:
+dnl   --profile dev     → target/debug/
+dnl   --profile release → target/release/
+if test "$CARGO_PROFILE" = "dev"; then
+  CARGO_PROFILE_DIR="debug"
+else
+  CARGO_PROFILE_DIR="$CARGO_PROFILE"
+fi
 
 dnl CARGO_STATICLIB_NAME will be extracted via cargo pkgid in AC_CONFIG_COMMANDS
 dnl Use placeholder for now - will be substituted after Cargo.toml is available
@@ -210,6 +224,9 @@ if test -z "$CARGO_BUILD_TARGET"; then
   if test -n "$host" && test -n "$build" && test "$host" != "$build"; then
     CARGO_BUILD_TARGET="$host"
     AC_MSG_NOTICE([CARGO_BUILD_TARGET not set; using host triple $host])
+    AC_MSG_WARN([Autoconf host triple '$host' may differ from Rust target triple.
+  If the build fails, set CARGO_BUILD_TARGET explicitly (e.g. x86_64-unknown-linux-gnu).
+  Run 'rustc --print target-list' to see valid Rust targets.])
   else
     CARGO_BUILD_TARGET=""
   fi
@@ -217,12 +234,13 @@ fi
 AC_SUBST([CARGO_BUILD_TARGET])
 
 dnl Compute Cargo libdir path:
-dnl - If CARGO_BUILD_TARGET is set, use target/<that>/<profile>
-dnl - Otherwise, use target/<profile>
+dnl - If CARGO_BUILD_TARGET is set, use target/<that>/<profile_dir>
+dnl - Otherwise, use target/<profile_dir>
+dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
 if test -n "$CARGO_BUILD_TARGET"; then
-  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE"
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
 else
-  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE_DIR"
 fi
 AC_SUBST([CARGO_LIBDIR])
 
@@ -273,17 +291,6 @@ AC_SUBST([VENDOR_OUT])
 dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
 VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
-
-dnl Force refresh if you want
-AC_ARG_VAR([FORCE_VENDOR],[Set to 1 to force `cargo vendor` refresh in dev mode])
-: ${FORCE_VENDOR="0"}
-AC_SUBST([FORCE_VENDOR])
-
-dnl Include extra manifests in `cargo vendor` (pulls in bench/tooling deps).
-dnl Default is minimal vendoring based on rpkg/src/rust/Cargo.toml only.
-AC_ARG_VAR([VENDOR_SYNC_EXTRA],[Set to 1 to include extra `cargo vendor --sync` manifests (workspace/bench)])
-: ${VENDOR_SYNC_EXTRA="0"}
-AC_SUBST([VENDOR_SYNC_EXTRA])
 
 dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
 dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
@@ -429,9 +436,9 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     echo "configure: dev mode - skipping cargo vendor (use 'just vendor' for CRAN prep)"
   fi
 ],
-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
 
-dnl 2b) Post-vendor tasks: touch Cargo.toml and update Cargo.lock for patched sources
+dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],
 [
   dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
@@ -440,16 +447,10 @@ AC_CONFIG_COMMANDS([post-vendor],
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
-  dnl Update Cargo.lock to reflect patched sources.
-  dnl When [patch."https://..."] redirects miniextendr-* to local paths, the lock file
-  dnl needs updating so cargo --locked doesn't complain about source mismatches.
-  dnl This doesn't change versions, just updates source locations.
-  if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" 2>/dev/null || true
-    echo "configure: updated Cargo.lock for patched sources" >&2
-  fi
+  dnl Note: Cargo.lock updates for patched sources are handled by cargo build itself.
+  dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
 ],
-[CARGO_CMD="$CARGO_CMD" ABS_RPKG_SRC="$abs_rpkg_src"])
+[ABS_RPKG_SRC="$abs_rpkg_src"])
 
 dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).
 dnl configure no longer compresses vendor — dev mode doesn't need it,

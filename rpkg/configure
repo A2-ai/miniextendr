@@ -608,8 +608,6 @@ PACKAGE_URL=''
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
-VENDOR_SYNC_EXTRA
-FORCE_VENDOR
 VENDOR_OUT_CARGO
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
@@ -699,9 +697,7 @@ RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
 ENV_RUSTFLAGS
-CARGO_BUILD_TARGET
-FORCE_VENDOR
-VENDOR_SYNC_EXTRA'
+CARGO_BUILD_TARGET'
 
 
 # Initialize some variables set by options.
@@ -1328,16 +1324,11 @@ Some influential environment variables:
   CARGO_TARGET_DIR
               Cargo target directory (default: rust-target, outside src/)
   CARGO_PROFILE
-              Cargo build profile (debug or release)
+              Cargo build profile (dev or release)
   ENV_RUSTFLAGS
               Rust compiler flags passed as RUSTFLAGS
   CARGO_BUILD_TARGET
               Cargo build target triple (e.g. aarch64-apple-darwin)
-  FORCE_VENDOR
-              Set to 1 to force `cargo vendor` refresh in dev mode
-  VENDOR_SYNC_EXTRA
-              Set to 1 to include extra `cargo vendor --sync` manifests
-              (workspace/bench)
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -1992,7 +1983,7 @@ export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-    CARGO_LOCKED_FLAG="--locked"
+    CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
     CARGO_LOCKED_FLAG=""
@@ -2475,7 +2466,18 @@ esac
 
 
 : ${CARGO_PROFILE="release"}
+if test "$CARGO_PROFILE" = "debug"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead" >&5
+printf "%s\n" "$as_me: WARNING: CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead" >&2;}
+  CARGO_PROFILE="dev"
+fi
 
+
+if test "$CARGO_PROFILE" = "dev"; then
+  CARGO_PROFILE_DIR="debug"
+else
+  CARGO_PROFILE_DIR="$CARGO_PROFILE"
+fi
 
 CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 
@@ -2490,6 +2492,12 @@ if test -z "$CARGO_BUILD_TARGET"; then
     CARGO_BUILD_TARGET="$host"
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET not set; using host triple $host" >&5
 printf "%s\n" "$as_me: CARGO_BUILD_TARGET not set; using host triple $host" >&6;}
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: Autoconf host triple '$host' may differ from Rust target triple.
+  If the build fails, set CARGO_BUILD_TARGET explicitly (e.g. x86_64-unknown-linux-gnu).
+  Run 'rustc --print target-list' to see valid Rust targets." >&5
+printf "%s\n" "$as_me: WARNING: Autoconf host triple '$host' may differ from Rust target triple.
+  If the build fails, set CARGO_BUILD_TARGET explicitly (e.g. x86_64-unknown-linux-gnu).
+  Run 'rustc --print target-list' to see valid Rust targets." >&2;}
   else
     CARGO_BUILD_TARGET=""
   fi
@@ -2497,9 +2505,9 @@ fi
 
 
 if test -n "$CARGO_BUILD_TARGET"; then
-  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE"
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
 else
-  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE_DIR"
 fi
 
 
@@ -2560,14 +2568,6 @@ done
 VENDOR_OUT="$abs_rpkg_src/vendor"
 
 VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
-
-
-
-: ${FORCE_VENDOR="0"}
-
-
-
-: ${VENDOR_SYNC_EXTRA="0"}
 
 
 
@@ -3297,8 +3297,8 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"
-CARGO_CMD="$CARGO_CMD" ABS_RPKG_SRC="$abs_rpkg_src"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"
+ABS_RPKG_SRC="$abs_rpkg_src"
 NOT_CRAN="$NOT_CRAN"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
 
@@ -3841,11 +3841,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
-          if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" 2>/dev/null || true
-    echo "configure: updated Cargo.lock for patched sources" >&2
-  fi
- ;;
+     ;;
     "compress-vendor":C)
   echo "configure: skipping vendor compression (use 'just vendor' for CRAN prep)"
  ;;
