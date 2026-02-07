@@ -51,6 +51,8 @@
 - [COERCE.md](COERCE.md) -- Type coercion in miniextendr
 - [CONVERSION_SEMANTICS.md](CONVERSION_SEMANTICS.md) -- Storage-directed conversion semantics
 - [as_coerce.md](as_coerce.md) -- `as.<class>()` coercion methods
+- [trait-patterns-review.md](trait-patterns-review.md) -- Blanket impl patterns and marker traits
+- [extending-miniextendr.md](extending-miniextendr.md) -- Guide: adding custom types to miniextendr
 
 ## Internals
 
