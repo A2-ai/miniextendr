@@ -4,7 +4,7 @@
 # detect_cargo_features tests
 # =============================================================================
 
-test_that("detect_cargo_features extracts features from Cargo.toml.in", {
+test_that("detect_cargo_features extracts features from Cargo.toml", {
   tmp <- tempfile("feature-detect-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
@@ -12,7 +12,7 @@ test_that("detect_cargo_features extracts features from Cargo.toml.in", {
   usethis::proj_set(tmp, force = TRUE)
   writeLines("Package: testpkg\n", file.path(tmp, "DESCRIPTION"))
 
-  # Create Cargo.toml.in with features
+  # Create Cargo.toml with features
   cargo_dir <- file.path(tmp, "src", "rust")
   dir.create(cargo_dir, recursive = TRUE)
   writeLines(c(
@@ -27,7 +27,7 @@ test_that("detect_cargo_features extracts features from Cargo.toml.in", {
     '',
     '[dependencies]',
     'miniextendr-api = "0.1"'
-  ), file.path(cargo_dir, "Cargo.toml.in"))
+  ), file.path(cargo_dir, "Cargo.toml"))
 
   features <- detect_cargo_features()
   expect_type(features, "character")
@@ -53,13 +53,13 @@ test_that("detect_cargo_features returns empty for no features section", {
     'name = "testpkg"',
     '',
     '[dependencies]'
-  ), file.path(cargo_dir, "Cargo.toml.in"))
+  ), file.path(cargo_dir, "Cargo.toml"))
 
   features <- detect_cargo_features()
   expect_equal(features, character())
 })
 
-test_that("detect_cargo_features warns on missing Cargo.toml.in", {
+test_that("detect_cargo_features warns on missing Cargo.toml", {
   tmp <- tempfile("feature-missing-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 

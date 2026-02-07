@@ -365,7 +365,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 ],
 [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
 
-dnl 3) Run cargo vendor (dev mode only, after Cargo.toml is generated)
+dnl 3) Run cargo vendor (dev mode only)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
   dnl Only vendor in dev mode (NOT_CRAN=true).

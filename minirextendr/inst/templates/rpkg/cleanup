@@ -10,7 +10,6 @@ if [ "$NOT_CRAN" != "true" ]; then
   rm -rf src/rust/target
   rm -rf src/rust/ra_target
   rm -rf src/rust/.cargo
-  rm     src/rust/Cargo.toml
   rm -rf src/rust/document.rs
   rm -rf src/entrypoint.c
   rm -rf src/miniextendr_wrappers.R

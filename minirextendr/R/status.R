@@ -33,7 +33,7 @@ miniextendr_status <- function() {
       "tools/config.sub"
     ),
     "Rust Project" = c(
-      "src/rust/Cargo.toml.in",
+      "src/rust/Cargo.toml",
       "src/rust/lib.rs",
       "src/rust/build.rs",
       "src/rust/cargo-config.toml.in",
@@ -51,7 +51,6 @@ miniextendr_status <- function() {
     ),
     "Generated Files" = c(
       "src/Makevars",
-      "src/rust/Cargo.toml",
       "src/entrypoint.c",
       "R/miniextendr_wrappers.R"
     )
@@ -87,7 +86,6 @@ miniextendr_status <- function() {
 
   template_pairs <- list(
     c("src/Makevars.in", "src/Makevars"),
-    c("src/rust/Cargo.toml.in", "src/rust/Cargo.toml"),
     c("src/entrypoint.c.in", "src/entrypoint.c"),
     c("src/rust/document.rs.in", "src/rust/document.rs"),
     c("src/rust/cargo-config.toml.in", "src/rust/.cargo/config.toml")

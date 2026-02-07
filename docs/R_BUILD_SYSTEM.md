@@ -196,7 +196,6 @@ This means:
 
 ```
 configure.ac → configure → Makevars (from Makevars.in)
-                         → Cargo.toml (from Cargo.toml.in)
                          → .cargo/config.toml (from cargo-config.toml.in)
                          → entrypoint.c (from entrypoint.c.in)
 

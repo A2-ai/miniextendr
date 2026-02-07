@@ -371,13 +371,12 @@ is_miniextendr_package <- function() {
   }
 
   templates <- c(
-    "src/rust/Cargo.toml.in",
+    "src/rust/Cargo.toml",
     "src/rust/document.rs.in",
     "src/entrypoint.c.in",
     "src/Makevars.in"
   )
   generated <- c(
-    "src/rust/Cargo.toml",
     "src/rust/document.rs",
     "src/entrypoint.c",
     "src/Makevars"

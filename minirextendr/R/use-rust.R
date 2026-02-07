@@ -2,7 +2,7 @@
 
 #' Create Rust project structure
 #'
-#' Creates the src/rust/ directory with Cargo.toml.in, lib.rs, and build.rs.
+#' Creates the src/rust/ directory with Cargo.toml, lib.rs, and build.rs.
 #' This sets up a basic miniextendr Rust library with example functions.
 #'
 #' @return Invisibly returns TRUE if files were created
