@@ -104,6 +104,21 @@ test_that("Vec<Rcomplex> ALTREP survives serialization round-trip", {
   expect_equal(Im(restored[3]), -2)
 })
 
+test_that("List ALTREP survives serialization round-trip", {
+  original <- integer_sequence_list(3L)
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp))
+
+  saveRDS(original, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(restored, original)
+  expect_equal(length(restored), 3L)
+  expect_equal(restored[[1]], 1L)
+  expect_equal(restored[[2]], c(1L, 2L))
+  expect_equal(restored[[3]], c(1L, 2L, 3L))
+})
+
 test_that("Box<[i32]> ALTREP survives serialization round-trip", {
   original <- boxed_ints(4L)
   tmp <- tempfile(fileext = ".rds")

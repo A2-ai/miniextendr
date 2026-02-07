@@ -1,6 +1,6 @@
 # Comprehensive conversions tests for #[miniextendr] args and returns
 
-test_that("conversions scalars work", {
+test_that("all scalar type round-trips work", {
   expect_equal(conv_i32_arg(1L), 1L)
   expect_equal(conv_i32_ret(), 1L)
 
@@ -54,7 +54,7 @@ test_that("conversions scalars work", {
   expect_equal(conv_f32_ret(), 1.5)
 })
 
-test_that("conversions option scalars work", {
+test_that("NULL and NA map to None for optional scalar arguments", {
   expect_equal(conv_opt_i32_is_some(NULL), 0L)
   expect_equal(conv_opt_i32_is_some(NA_integer_), 0L)
   expect_equal(conv_opt_i32_is_some(5L), 1L)
@@ -80,7 +80,7 @@ test_that("conversions option scalars work", {
   expect_true(is.na(conv_opt_string_none()))
 })
 
-test_that("conversions option coercions (arg-only) work", {
+test_that("optional scalars accept coerced types (i8, i16, u16, f32, etc.)", {
   expect_equal(conv_opt_i8_is_some(1L), 1L)
   expect_equal(conv_opt_i8_is_some(1.0), 1L)
   expect_equal(conv_opt_i8_is_some(as.raw(1)), 1L)
@@ -195,7 +195,7 @@ test_that("conversions vec and vec-option work", {
   expect_equal(conv_vec_opt_u8_len(as.raw(c(1, 2, 3))), 3L)
 })
 
-test_that("conversion helpers count optional-length inputs", {
+test_that("Vec<Option<T>> length includes NA elements", {
   expect_equal(conv_vec_opt_i32_len(c(4L, NA_integer_, 6L)), 3L)
   expect_equal(conv_vec_opt_f64_len(c(1.5, NA_real_, 2.5)), 3L)
   expect_equal(conv_vec_opt_bool_len(c(FALSE, NA, TRUE)), 3L)
@@ -267,13 +267,13 @@ test_that("conversions maps work", {
   expect_false(res_blog$b)
 })
 
-test_that("conversions list mut work", {
+test_that("in-place list modification works", {
   x <- list(1L, 2L)
   conv_list_mut_set_first(x)
   expect_equal(x[[1]], 99L)
 })
 
-test_that("conversions result returns work", {
+test_that("Result conversions work for args and returns", {
   expect_equal(conv_result_i32_arg(1L), 1L)
   expect_equal(conv_result_i32_arg(NULL), 0L)
   expect_equal(conv_result_vec_i32_arg(1:2), 1L)
@@ -345,7 +345,7 @@ test_that("HashSet/BTreeSet coercion (i8/i16/u16) returns work", {
   expect_equal(sort(conv_btreeset_u16_ret()), c(1L, 2L, 100L))
 })
 
-test_that("Option<&T> return (copies value) works", {
+test_that("optional reference return gives value or NULL", {
   # Some(&i32) → integer (copied)
   expect_equal(conv_opt_ref_i32_some_ret(), 42L)
 

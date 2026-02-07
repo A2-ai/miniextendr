@@ -2,7 +2,6 @@
 name = "rpkg"
 version = "0.1.0"
 edition = "2024"
-# edition = "2021" # testing 2021 compatibility!
 publish = false
 
 # Make this a standalone workspace (prevents inheriting from parent)
@@ -52,8 +51,17 @@ vctrs = ["miniextendr-api/vctrs"]
 tinyvec = ["miniextendr-api/tinyvec"]
 
 [dependencies]
-miniextendr-api = { version = "*" }
+miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
 serde = { version = "1", optional = true, features = ["derive"] }
 
 [build-dependencies]
-miniextendr-lint = { version = "*" }
+miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
+
+# Development: use local monorepo paths instead of git
+# These patches are active when building from the monorepo
+# Note: miniextendr-macros is a dependency of miniextendr-api, so we patch it too
+[patch."https://github.com/CGMossa/miniextendr"]
+miniextendr-api = { path = "../../../miniextendr-api" }
+miniextendr-macros = { path = "../../../miniextendr-macros" }
+miniextendr-macros-core = { path = "../../../miniextendr-macros-core" }
+miniextendr-lint = { path = "../../../miniextendr-lint" }

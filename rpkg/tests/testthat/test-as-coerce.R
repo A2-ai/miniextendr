@@ -43,12 +43,11 @@ test_that("as.character.AsCoerceTestData works", {
   expect_match(chr, "2 items")
 })
 
-test_that("as.numeric.AsCoerceTestData works", {
+test_that("as_numeric.AsCoerceTestData extracts numeric values", {
   obj <- AsCoerceTestData$new(c("a", "b", "c"), c(1.5, 2.5, 3.5))
 
-  # Note: R's as.numeric is a primitive that doesn't dispatch S3 methods for
-
-  # externalptr objects. We call the method directly instead.
+  # Note: R's as.numeric() is a primitive that doesn't dispatch S3 methods for
+  # externalptr objects, so we use the as_numeric() wrapper instead.
   num <- as_numeric(obj)
 
   expect_type(num, "double")

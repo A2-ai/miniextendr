@@ -344,12 +344,13 @@ Three comprehensive plans for deeper R class system integration. Each has detail
 - [x] Auto-generate `vec_ptype2.<class>.<class>`, `vec_cast.<class>.<class>` (self-coercion)
 - [x] `#[vctrs(coerce = "type")]` attribute for cross-type coercion
 - [x] Record type support (`base = "record"`) with proper data frame proxy
-- [x] All 51 R tests passing
+- [x] All 79 R tests passing (51 core + 28 advanced)
 
-*Remaining advanced features:*
-- [ ] List-of type support (`base = "list"`)
-- [ ] Proxy equal/compare/order methods
-- [ ] Arithmetic/math method generation
+*Completed advanced features (2026-01-31):*
+- [x] List-of type support (`base = "list"`) with `#[vctrs(ptype = "...")]`
+- [x] Proxy equal/compare/order methods with `#[vctrs(proxy_equal, proxy_compare, proxy_order)]`
+- [x] Arithmetic/math method generation with `#[vctrs(arith, math)]`
+  - Fixed vctrs double dispatch: base dispatcher + `@method` tags + `@importFrom vctrs vec_arith.numeric`
 
 === R6 Integration (`plans/r6-deep-integration-plan.md`)
 *Status: Basic support exists, advanced features not started*
@@ -371,20 +372,26 @@ Three comprehensive plans for deeper R class system integration. Each has detail
 - [ ] Field-level `#[r6(public|private|skip)]` annotations
 
 === S7 Integration (`plans/s7-computed-properties-plan.md`)
-*Status: Basic support exists, comprehensive features not started*
+*Status: COMPLETE - All 5 phases implemented*
 
 *Goal:* Full S7 class generation with property inference, generics, and validation.
 
-*Current state:*
-- Basic `new_class()` generation from `#[miniextendr(s7)]`
-- Property support via `#[externalptr(s7)]`
-
-*To implement (5 phases):*
-- [ ] Phase 1: Property inference + accessor wiring
-- [ ] Phase 2: Validation, defaults, required/frozen/deprecated patterns
-- [ ] Phase 3: Generics (multi-dispatch, no-dots, optional/required args)
-- [ ] Phase 4: `convert()` from Rust `From`/`TryFrom`, S3/S4 interop
-- [ ] Phase 5: Docs, tests, stabilization
+*Implemented features:*
+- [x] Phase 1: Property inference + accessor wiring
+  - `#[miniextendr(s7(getter))]` for computed properties
+  - `#[miniextendr(s7(getter, prop = "..."))]` + `setter` for dynamic properties
+- [x] Phase 2: Validation, defaults, required/frozen/deprecated patterns
+  - `#[miniextendr(s7(getter, default = "..."))]`
+  - `#[miniextendr(s7(getter, required))]`
+  - `#[miniextendr(s7(getter, deprecated = "..."))]`
+- [x] Phase 3: Generics (multi-dispatch, no-dots, optional/required args)
+  - `#[miniextendr(s7(no_dots))]` for strict generics
+  - `#[miniextendr(s7(fallback))]` for class_any fallback
+- [x] Phase 4: `convert()` from Rust `From`/`TryFrom`, S3/S4 interop
+  - `#[miniextendr(s7(convert_from = "Type"))]`
+  - `#[miniextendr(s7(convert_to = "Type"))]`
+- [x] Phase 5: Docs, tests, stabilization
+  - Tests in `rpkg/src/rust/s7_tests.rs` and `rpkg/tests/testthat/test-class-systems.R`
 
 === Recommended Next Target
 
@@ -394,4 +401,4 @@ Three comprehensive plans for deeper R class system integration. Each has detail
 3. Inheritance and portable/cloneable flags are well-understood R6 features
 4. Clear value for users wanting reference class semantics
 
-*vctrs `#[derive(Vctrs)]`* is now COMPLETE (core features). See above for remaining advanced features.
+*vctrs `#[derive(Vctrs)]`* is now FULLY COMPLETE (all core + advanced features).

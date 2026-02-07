@@ -1,11 +1,11 @@
-test_that("As* wrappers choose representation even with multiple traits", {
+test_that("objects can be returned as pointer, list, or native R type", {
   expect_identical(typeof(hybrid_as_ptr(2L)), "externalptr")
   expect_identical(typeof(hybrid_as_list(2L)), "list")
   expect_identical(typeof(hybrid_as_native(2L)), "integer")
   expect_identical(hybrid_as_native(2L), 2L)
 })
 
-test_that("As* wrappers work for partial trait sets", {
+test_that("return-type wrappers work with subset of representations", {
   expect_identical(typeof(ptr_list_as_ptr(5L)), "externalptr")
   expect_identical(typeof(ptr_list_as_list(5L)), "list")
   expect_identical(ptr_list_as_list(5L)[[1]], 5L)

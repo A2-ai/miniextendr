@@ -248,3 +248,131 @@ test_that("derived_percent behaves like manual percent", {
   # Both should support subsetting
   expect_equal(vctrs::vec_data(derived[1]), vctrs::vec_data(manual[1]))
 })
+
+# =============================================================================
+# DerivedIntLists tests (list_of type)
+# =============================================================================
+
+test_that("new_derived_int_lists creates a vctrs list_of", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_int_lists(list(1:3, 4:6, 7:10))
+
+  expect_true(vctrs::vec_is(x))
+  expect_s3_class(x, "derived_int_lists")
+  expect_s3_class(x, "vctrs_list_of")
+  expect_equal(vctrs::vec_size(x), 3)
+})
+
+test_that("derived_int_lists elements are integer vectors", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_int_lists(list(1:3, 4:5))
+
+  expect_equal(x[[1]], 1:3)
+  expect_equal(x[[2]], 4:5)
+})
+
+test_that("derived_int_lists subsetting preserves class", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_int_lists(list(1:2, 3:4, 5:6))
+
+  subset <- x[1:2]
+
+  expect_s3_class(subset, "derived_int_lists")
+  expect_equal(vctrs::vec_size(subset), 2)
+})
+
+# =============================================================================
+# DerivedPoint tests (record with proxy_equal/compare/order)
+# =============================================================================
+
+test_that("new_derived_point creates a vctrs record", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_point(c(1.0, 2.0, 3.0), c(4.0, 5.0, 6.0))
+
+  expect_true(vctrs::vec_is(x))
+  expect_s3_class(x, "derived_point")
+  expect_s3_class(x, "vctrs_rcrd")
+  expect_equal(vctrs::vec_size(x), 3)
+})
+
+test_that("derived_point fields are accessible", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_point(c(1.0, 2.0), c(3.0, 4.0))
+
+  expect_equal(vctrs::field(x, "x"), c(1.0, 2.0))
+  expect_equal(vctrs::field(x, "y"), c(3.0, 4.0))
+})
+
+test_that("derived_point vec_proxy_equal works", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_point(c(1.0, 2.0, 1.0), c(2.0, 3.0, 2.0))
+
+  # vec_equal should work via proxy_equal
+  result <- vctrs::vec_equal(x[1], x[3])
+  expect_true(result)
+
+  result2 <- vctrs::vec_equal(x[1], x[2])
+  expect_false(result2)
+})
+
+# =============================================================================
+# DerivedTemp tests (arith/math support)
+# =============================================================================
+
+test_that("new_derived_temp creates a vctrs vector", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_temp(c(20.0, 25.0, 30.0))
+
+  expect_true(vctrs::vec_is(x))
+  expect_s3_class(x, "derived_temp")
+  expect_equal(vctrs::vec_size(x), 3)
+})
+
+test_that("vec_ptype_abbr.derived_temp returns '°'", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_temp(c(20.0))
+
+  expect_equal(vctrs::vec_ptype_abbr(x), "°")
+})
+
+test_that("derived_temp arithmetic works", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_temp(c(20.0, 25.0))
+  y <- new_derived_temp(c(5.0, 10.0))
+
+  # Addition
+  result <- vctrs::vec_arith("+", x, y)
+  expect_s3_class(result, "derived_temp")
+  expect_equal(vctrs::vec_data(result), c(25.0, 35.0))
+
+  # Subtraction
+  result2 <- vctrs::vec_arith("-", x, y)
+  expect_s3_class(result2, "derived_temp")
+  expect_equal(vctrs::vec_data(result2), c(15.0, 15.0))
+})
+
+test_that("derived_temp math works", {
+  skip_if_vctrs_disabled()
+
+  x <- new_derived_temp(c(4.0, 9.0, 16.0))
+
+  # sqrt
+  result <- vctrs::vec_math("sqrt", x)
+  expect_s3_class(result, "derived_temp")
+  expect_equal(vctrs::vec_data(result), c(2.0, 3.0, 4.0))
+
+  # abs
+  y <- new_derived_temp(c(-5.0, 10.0, -15.0))
+  result2 <- vctrs::vec_math("abs", y)
+  expect_s3_class(result2, "derived_temp")
+  expect_equal(vctrs::vec_data(result2), c(5.0, 10.0, 15.0))
+})

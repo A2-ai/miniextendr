@@ -716,6 +716,94 @@ fn generate_r_wrapper_for_slot(
     }
 }
 
+/// Generate class-integrated R code for sidecar fields.
+///
+/// For R6: generates `Type$set("active", "field", ...)` calls that add active bindings
+/// referencing the sidecar getter/setter .Call entrypoints.
+///
+/// For S7: generates `.rdata_properties_Type <- list(...)` with S7::new_property()
+/// definitions that can be spliced into the S7 class's properties list.
+///
+/// Other class systems return empty strings (their standalone accessors suffice).
+fn generate_class_integration_r_code(
+    class_system: ClassSystem,
+    type_name: &str,
+    pub_slots: &[&SidecarSlot],
+) -> String {
+    if pub_slots.is_empty() {
+        return String::new();
+    }
+
+    match class_system {
+        ClassSystem::R6 => {
+            // Generate $set("active", ...) calls for each sidecar field.
+            // These are appended after the R6Class definition and add active bindings
+            // that delegate to the sidecar .Call accessors.
+            let mut code = String::new();
+            code.push_str(&format!(
+                "\n# Auto-generated active bindings for {type} sidecar fields.\n",
+                type = type_name,
+            ));
+            code.push_str(
+                "# These are applied when `r_data_accessors` is set on the impl block.\n",
+            );
+            code.push_str(&format!(
+                ".rdata_active_bindings_{type} <- function(cls) {{\n",
+                type = type_name,
+            ));
+            for slot in pub_slots {
+                let field = slot.name.to_string();
+                let getter_c = format!("C__mx_rdata_get_{}_{}", type_name, field);
+                let setter_c = format!("C__mx_rdata_set_{}_{}", type_name, field);
+                code.push_str(&format!(
+                    "  cls$set(\"active\", \"{field}\", function(value) {{\n\
+                     \x20   if (missing(value)) .Call({getter_c}, private$.ptr)\n\
+                     \x20   else {{ .Call({setter_c}, private$.ptr, value); invisible(self) }}\n\
+                     \x20 }}, overwrite = TRUE)\n",
+                    field = field,
+                    getter_c = getter_c,
+                    setter_c = setter_c,
+                ));
+            }
+            code.push_str("}\n");
+            code
+        }
+        ClassSystem::S7 => {
+            // Generate a helper list of S7::new_property() definitions.
+            // The S7 wrapper generator references this when `r_data_accessors` is set.
+            let mut code = String::new();
+            code.push_str(&format!(
+                "\n# Auto-generated S7 property definitions for {type} sidecar fields.\n",
+                type = type_name,
+            ));
+            code.push_str(&format!(
+                ".rdata_properties_{type} <- list(\n",
+                type = type_name,
+            ));
+            for (i, slot) in pub_slots.iter().enumerate() {
+                let field = slot.name.to_string();
+                let getter_c = format!("C__mx_rdata_get_{}_{}", type_name, field);
+                let setter_c = format!("C__mx_rdata_set_{}_{}", type_name, field);
+                let comma = if i < pub_slots.len() - 1 { "," } else { "" };
+                code.push_str(&format!(
+                    "    {field} = S7::new_property(\n\
+                     \x20       getter = function(self) .Call({getter_c}, self@.ptr),\n\
+                     \x20       setter = function(self, value) {{ .Call({setter_c}, self@.ptr, value); self }}\n\
+                     \x20   ){comma}\n",
+                    field = field,
+                    getter_c = getter_c,
+                    setter_c = setter_c,
+                    comma = comma,
+                ));
+            }
+            code.push_str(")\n");
+            code
+        }
+        // Other class systems don't need class-integrated code
+        _ => String::new(),
+    }
+}
+
 /// Generate sidecar accessor constants and functions.
 ///
 /// Generates code for pub #[r_data] fields based on their SlotKind and ClassSystem.
@@ -857,6 +945,15 @@ NULL
             &setter_c_name,
         ));
     }
+
+    // Generate class-integrated R code for R6 and S7.
+    // This code is appended after the standalone accessors so that
+    // `r_data_accessors` in the impl block can auto-integrate sidecar fields.
+    r_wrappers.push_str(&generate_class_integration_r_code(
+        info.class_system,
+        &name_str,
+        &pub_slots,
+    ));
 
     let const_name_defs = Ident::new(
         &format!("RDATA_CALL_DEFS_{}", name_upper),

@@ -1,0 +1,336 @@
+---
+title: "Getting Started with minirextendr"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Getting Started with minirextendr}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r, include = FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Overview
+
+**minirextendr** is a scaffolding and workflow package for creating R packages
+with Rust backends powered by the miniextendr framework. It provides:
+
+- Package scaffolding (`create_miniextendr_package()`, `create_miniextendr_monorepo()`)
+- Build workflow helpers (`miniextendr_build()`, `miniextendr_configure()`, etc.)
+- Dependency vendoring (`vendor_miniextendr()`, `miniextendr_update()`)
+- Project diagnostics (`miniextendr_status()`, `miniextendr_doctor()`)
+
+## Prerequisites
+
+Before you begin, ensure you have:
+
+- **Rust** (1.85+): Install from [rustup.rs](https://rustup.rs)
+- **R** (4.0+): Install from [CRAN](https://cran.r-project.org)
+- **autoconf**: Required for generating `configure` scripts
+- **R development tools**: `install.packages("devtools")`
+
+Verify your setup:
+
+```{bash}
+rustc --version   # Should be 1.85+
+R --version       # Should be 4.0+
+autoconf --version
+```
+
+## Creating a New Package
+
+### Standalone R Package
+
+The simplest way to get started is `create_miniextendr_package()`, which
+creates a new R package with full miniextendr scaffolding:
+
+```{r}
+library(minirextendr)
+
+create_miniextendr_package("mypackage")
+```
+
+This creates a complete package structure:
+
+```
+mypackage/
+├── DESCRIPTION
+├── NAMESPACE
+├── R/
+├── src/
+│   ├── rust/
+│   │   ├── Cargo.toml.in    # Rust project config (template)
+│   │   ├── lib.rs           # Your Rust code goes here
+│   │   ├── build.rs         # Build script (runs lint)
+│   │   └── vendor/          # Vendored miniextendr crates
+│   ├── Makevars.in          # Makefile template
+│   └── entrypoint.c.in      # C entry point template
+├── configure.ac              # Autoconf source
+└── tools/
+    ├── config.guess
+    └── config.sub
+```
+
+### Monorepo (Rust Workspace + R Package)
+
+For projects where Rust is the primary language, use the monorepo template:
+
+```{r}
+create_miniextendr_monorepo("myproject")
+```
+
+This creates a Rust workspace with an embedded R package in `rpkg/`:
+
+```
+myproject/
+├── Cargo.toml          # Rust workspace
+├── justfile            # Build recipes
+├── myproject/          # Main Rust crate
+│   └── src/lib.rs
+└── rpkg/               # R package
+    ├── DESCRIPTION
+    ├── src/rust/
+    │   └── lib.rs      # R-exposed functions
+    └── ...
+```
+
+### Adding to an Existing Package
+
+If you already have an R package or Rust project, use `use_miniextendr()`:
+
+```{r}
+# From an existing R package directory
+usethis::proj_set("path/to/mypackage")
+use_miniextendr()
+
+# Auto-detects project type (R package vs Rust workspace)
+```
+
+## Writing Your First Rust Function
+
+Edit `src/rust/lib.rs` (or `rpkg/src/rust/lib.rs` for monorepos):
+
+```rust
+use miniextendr_api::{miniextendr, miniextendr_module};
+
+/// Add two integers.
+/// @param a First number
+/// @param b Second number
+/// @return The sum of a and b
+#[miniextendr]
+pub fn add(a: i32, b: i32) -> i32 {
+    a + b
+}
+
+/// Greet someone by name.
+/// @param name The name to greet
+/// @return A greeting string
+#[miniextendr]
+pub fn greet(name: &str) -> String {
+    format!("Hello, {}!", name)
+}
+
+miniextendr_module! {
+    mod mypackage;
+    fn add;
+    fn greet;
+}
+```
+
+Key points:
+
+- **`#[miniextendr]`** marks functions for export to R
+- **`pub fn`** is required for the function to get `@export` in R
+- **`miniextendr_module!`** registers functions so R can find them
+- Rust doc comments (`///`) become roxygen2 documentation
+
+## Building and Installing
+
+### Step-by-Step
+
+```{r}
+library(minirextendr)
+
+# 1. Generate configure script from configure.ac
+miniextendr_autoconf()
+
+# 2. Run configure to generate Makevars, Cargo.toml, etc.
+miniextendr_configure()
+
+# 3. Install the package (compiles Rust code)
+devtools::install()
+
+# 4. Generate R wrapper functions from Rust signatures
+miniextendr_document()
+
+# 5. Reinstall with generated wrappers
+devtools::install()
+```
+
+### All-in-One
+
+```{r}
+# Runs autoconf -> configure -> install -> document
+miniextendr_build()
+```
+
+### Using from R
+
+```{r}
+library(mypackage)
+
+add(1L, 2L)
+#> [1] 3
+
+greet("World")
+#> [1] "Hello, World!"
+```
+
+## Managing Dependencies
+
+### Vendoring miniextendr Crates
+
+miniextendr crates are vendored into your package's `src/vendor/` directory
+for reproducible, offline builds:
+
+```{r}
+# Vendor from latest GitHub release
+vendor_miniextendr()
+
+# Vendor a specific version
+vendor_miniextendr(version = "v0.1.0")
+
+# Vendor from a local checkout (for development)
+vendor_miniextendr(local_path = "~/projects/miniextendr")
+```
+
+### Updating
+
+```{r}
+# Update to latest version
+miniextendr_update()
+
+# Update to specific version
+miniextendr_update(version = "v0.2.0")
+```
+
+### Cache Management
+
+Downloaded archives are cached locally to avoid repeated downloads:
+
+```{r}
+# Show cache location and contents
+miniextendr_cache_info()
+
+# Clear all cached downloads
+miniextendr_clear_cache()
+
+# Clear specific version
+miniextendr_clear_cache(version = "main")
+```
+
+## Project Diagnostics
+
+### Quick Status Check
+
+```{r}
+miniextendr_status()
+#> miniextendr status for: mypackage
+#> ── Required Files ────────────────────────────────────
+#> ✔ src/rust/Cargo.toml.in
+#> ✔ src/rust/lib.rs
+#> ✔ configure.ac
+#> ...
+```
+
+### Comprehensive Health Check
+
+```{r}
+miniextendr_doctor()
+#> ── miniextendr doctor ────────────────────────────────
+#> ── Toolchain ──
+#> ✔ Rust compiler: rustc 1.85.0
+#> ✔ Cargo: cargo 1.85.0
+#> ✔ autoconf: autoconf 2.72
+#> ...
+```
+
+`miniextendr_doctor()` checks:
+
+- Rust toolchain version and availability
+- System compiler (cc/gcc/clang)
+- autoconf installation
+- Vendored crate completeness
+- Generated file freshness (stale vs up-to-date)
+- NAMESPACE configuration
+- Common mistakes (e.g., editing generated files instead of templates)
+
+### Configuration Validation
+
+```{r}
+miniextendr_check()
+#> Checks DESCRIPTION, configure.ac, Rust setup, and vendored crates
+```
+
+## Adding Features
+
+miniextendr supports optional feature flags for additional functionality:
+
+```{r}
+# Add rayon support for parallel iterators
+use_miniextendr_feature("rayon")
+
+# Add serde for JSON serialization
+use_miniextendr_feature("serde_json")
+
+# Add vctrs integration
+use_miniextendr_feature("vctrs")
+```
+
+This updates `Cargo.toml.in` and creates any necessary Rust module stubs.
+
+## Development Tips
+
+### Template Files
+
+Many files in your package are **generated from `.in` templates**. Always
+edit the template, not the generated file:
+
+| Generated File | Edit This Instead |
+|------|------|
+| `src/rust/Cargo.toml` | `src/rust/Cargo.toml.in` |
+| `src/Makevars` | `src/Makevars.in` |
+| `src/entrypoint.c` | `src/entrypoint.c.in` |
+| `configure` | `configure.ac` (then run `miniextendr_autoconf()`) |
+
+### Iteration Cycle
+
+1. Edit Rust code in `src/rust/lib.rs`
+2. Run `devtools::install()` to compile and install
+3. If you added new functions, run `miniextendr_document()` and reinstall
+4. Test in R
+
+### Common Issues
+
+**"could not find function"** -- Ensure the function is:
+1. Marked `pub`
+2. Has `#[miniextendr]` attribute
+3. Listed in `miniextendr_module!`
+4. R wrappers regenerated with `miniextendr_document()`
+
+**"configure: command not found"** -- Run `miniextendr_autoconf()` first.
+
+**Stale build files** -- Run `miniextendr_doctor()` to detect stale generated
+files, then `miniextendr_configure()` to regenerate.
+
+## Next Steps
+
+- See the [miniextendr documentation](https://github.com/CGMossa/miniextendr)
+  for the full API reference, class systems, ALTREP support, and more
+- Run `miniextendr_doctor()` regularly to catch configuration issues early
+- Use `miniextendr_status()` to verify your project setup

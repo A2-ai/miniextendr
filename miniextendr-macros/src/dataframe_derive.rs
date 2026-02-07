@@ -230,9 +230,38 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
 }
 
 /// Parse the dataframe name from attributes, defaulting to `{StructName}DataFrame`.
+///
+/// Supports `#[dataframe(name = "CustomName")]` to override the generated type name.
 fn parse_dataframe_name(input: &DeriveInput) -> syn::Result<syn::Ident> {
-    // TODO: Parse #[dataframe(name = "...")] attribute
-    // For now, use default naming
+    for attr in &input.attrs {
+        if !attr.path().is_ident("dataframe") {
+            continue;
+        }
+
+        let nested = attr.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Meta, syn::Token![,]>::parse_terminated,
+        )?;
+
+        for meta in &nested {
+            if let syn::Meta::NameValue(nv) = meta
+                && nv.path.is_ident("name")
+            {
+                if let syn::Expr::Lit(syn::ExprLit {
+                    lit: syn::Lit::Str(lit_str),
+                    ..
+                }) = &nv.value
+                {
+                    return Ok(format_ident!("{}", lit_str.value(), span = lit_str.span()));
+                } else {
+                    return Err(syn::Error::new_spanned(
+                        &nv.value,
+                        "expected string literal for `name`",
+                    ));
+                }
+            }
+        }
+    }
+
     let default_name = format_ident!("{}DataFrame", input.ident);
     Ok(default_name)
 }

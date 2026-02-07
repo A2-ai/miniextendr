@@ -10,11 +10,11 @@ test_that("force_visible_unit returns visibly", {
   expect_null(res$value)
 })
 
-test_that("with_interrupt_check doubles input", {
+test_that("function with interrupt checking returns correct value", {
   expect_equal(with_interrupt_check(5L), 10L)
 })
 
-test_that("greet_hidden uses default and explicit names", {
+test_that("non-exported function uses default and explicit args", {
   expect_equal(miniextendr:::greet_hidden(), "Hello, World!")
   expect_equal(miniextendr:::greet_hidden("Bob"), "Hello, Bob!")
 })
