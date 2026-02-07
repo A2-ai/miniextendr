@@ -1,16 +1,28 @@
+//! Low-level FFI bindings to R headers.
+//!
+//! This module mirrors R's C API closely and is intentionally thin. Most
+//! downstream code should prefer higher-level wrappers in the crate root.
+
+/// ALTREP-specific C API bindings.
 pub mod altrep;
 
 #[allow(non_camel_case_types)]
+/// R's extended vector length type (`R_xlen_t`).
 pub type R_xlen_t = isize;
+/// R byte element type used by `RAWSXP`.
 pub type Rbyte = ::std::os::raw::c_uchar;
 
+/// R's complex scalar layout (`Rcomplex`).
 #[repr(C)]
 #[derive(Debug, Copy, Clone, PartialEq)]
 pub struct Rcomplex {
+    /// Real part.
     pub r: f64,
+    /// Imaginary part.
     pub i: f64,
 }
 
+/// R S-expression tag values (`SEXPTYPE`).
 #[repr(u32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
@@ -81,6 +93,7 @@ impl SEXPTYPE {
 
 #[repr(transparent)]
 #[derive(Debug)]
+/// Opaque underlying S-expression header type.
 pub struct SEXPREC(::std::os::raw::c_void);
 
 /// R's pointer type for S-expressions.
@@ -444,25 +457,32 @@ pub trait RNativeType: Sized + Copy + 'static {
 pub struct RLogical(i32);
 
 impl RLogical {
+    /// FALSE logical scalar.
     pub const FALSE: Self = Self(0);
+    /// TRUE logical scalar.
     pub const TRUE: Self = Self(1);
+    /// Missing logical scalar (`NA_LOGICAL`).
     pub const NA: Self = Self(i32::MIN);
 
+    /// Construct directly from raw R logical storage.
     #[inline]
     pub const fn from_i32(raw: i32) -> Self {
         Self(raw)
     }
 
+    /// Get raw R logical storage value.
     #[inline]
     pub const fn to_i32(self) -> i32 {
         self.0
     }
 
+    /// Returns whether the value is `NA_LOGICAL`.
     #[inline]
     pub const fn is_na(self) -> bool {
         self.0 == i32::MIN
     }
 
+    /// Convert to Rust `Option<bool>` (`None` for `NA`).
     #[inline]
     pub const fn to_option_bool(self) -> Option<bool> {
         match self.0 {
@@ -569,8 +589,11 @@ impl RNativeType for Rcomplex {
 #[repr(i32)]
 #[non_exhaustive]
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
+/// Binary boolean used by many R C APIs.
 pub enum Rboolean {
+    /// False.
     FALSE = 0,
+    /// True.
     TRUE = 1,
 }
 
@@ -593,17 +616,25 @@ impl From<Rboolean> for bool {
 }
 
 #[allow(non_camel_case_types)]
+/// C finalizer callback signature used by external pointers.
 pub type R_CFinalizer_t = ::std::option::Option<unsafe extern "C-unwind" fn(s: SEXP)>;
 
 #[repr(C)]
 #[derive(Copy, Clone)]
 #[allow(non_camel_case_types)]
+/// Character encoding tag used by CHARSXP constructors.
 pub enum cetype_t {
+    /// Native locale encoding.
     CE_NATIVE = 0,
+    /// UTF-8 encoding.
     CE_UTF8 = 1,
+    /// Latin-1 encoding.
     CE_LATIN1 = 2,
+    /// Raw bytes encoding.
     CE_BYTES = 3,
+    /// Symbol encoding marker.
     CE_SYMBOL = 5,
+    /// Any encoding accepted.
     CE_ANY = 99,
 }
 pub use cetype_t::CE_UTF8;
@@ -648,14 +679,19 @@ use miniextendr_macros::r_ffi_checked;
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
+    /// Unchecked variadic `Rf_error`; call checked wrapper when possible.
     #[link_name = "Rf_error"]
     pub fn Rf_error_unchecked(arg1: *const ::std::os::raw::c_char, ...) -> !;
+    /// Unchecked variadic `Rf_errorcall`; call checked wrapper when possible.
     #[link_name = "Rf_errorcall"]
     pub fn Rf_errorcall_unchecked(arg1: SEXP, arg2: *const ::std::os::raw::c_char, ...) -> !;
+    /// Unchecked variadic `Rf_warning`; call checked wrapper when possible.
     #[link_name = "Rf_warning"]
     pub fn Rf_warning_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+    /// Unchecked variadic `Rprintf`; call checked wrapper when possible.
     #[link_name = "Rprintf"]
     pub fn Rprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
+    /// Unchecked variadic `REprintf`; call checked wrapper when possible.
     #[link_name = "REprintf"]
     pub fn REprintf_unchecked(arg1: *const ::std::os::raw::c_char, ...);
 }
@@ -778,26 +814,40 @@ pub unsafe fn REprintf(fmt: *const ::std::os::raw::c_char, arg1: *const ::std::o
     unsafe { REprintf_unchecked(fmt, arg1) }
 }
 
+// Imported R symbols and functions with runtime thread checks enabled.
+#[allow(missing_docs)]
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
 unsafe extern "C-unwind" {
+    /// The canonical R `NULL` value.
     pub static R_NilValue: SEXP;
 
     #[doc(alias = "NA_STRING")]
+    /// Missing string singleton (`NA_STRING`).
     pub static R_NaString: SEXP;
     /// Empty string CHARSXP (length 0).
     pub static R_BlankString: SEXP;
+    /// Symbol for `names` attribute.
     pub static R_NamesSymbol: SEXP;
+    /// Symbol for `dim` attribute.
     pub static R_DimSymbol: SEXP;
+    /// Symbol for `dimnames` attribute.
     pub static R_DimNamesSymbol: SEXP;
+    /// Symbol for `class` attribute.
     pub static R_ClassSymbol: SEXP;
+    /// Symbol for row names.
     pub static R_RowNamesSymbol: SEXP;
+    /// Symbol for factor levels.
     pub static R_LevelsSymbol: SEXP;
+    /// Symbol for `tsp` attribute.
     pub static R_TspSymbol: SEXP;
 
+    /// Global environment (`.GlobalEnv`).
     pub static R_GlobalEnv: SEXP;
+    /// Base package namespace environment.
     pub static R_BaseEnv: SEXP;
+    /// Empty root environment.
     pub static R_EmptyEnv: SEXP;
 
     /// The "missing argument" sentinel value.
@@ -816,10 +866,13 @@ unsafe extern "C-unwind" {
     // Special logical values (from internal Defn.h, not public API)
     // These are gated behind `nonapi` feature as they may change across R versions.
     #[cfg(feature = "nonapi")]
+    /// Non-API TRUE singleton.
     pub static R_TrueValue: SEXP;
     #[cfg(feature = "nonapi")]
+    /// Non-API FALSE singleton.
     pub static R_FalseValue: SEXP;
     #[cfg(feature = "nonapi")]
+    /// Non-API NA logical singleton.
     pub static R_LogicalNAValue: SEXP;
 
     // Rinternals.h
@@ -1354,6 +1407,8 @@ pub const IDENT_USE_SRCREF: ::std::os::raw::c_int = 32;
 /// Compare external pointers as references (not by address).
 pub const IDENT_EXTPTR_AS_REF: ::std::os::raw::c_int = 64;
 
+// Additional checked R API declarations used by conversion and reflection code.
+#[allow(missing_docs)]
 #[r_ffi_checked]
 unsafe extern "C-unwind" {
     // Type coercion
@@ -1599,6 +1654,7 @@ pub unsafe fn Rf_isS4(arg1: SEXP) -> Rboolean {
 
 #[repr(C)]
 #[derive(Debug)]
+/// Opaque dynamic library descriptor from R.
 pub struct DllInfo(::std::os::raw::c_void);
 
 /// Generic dynamic library function pointer.
@@ -1629,8 +1685,11 @@ pub type R_NativePrimitiveArgType = ::std::os::raw::c_uint;
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 pub struct R_CMethodDef {
+    /// Exported symbol name.
     pub name: *const ::std::os::raw::c_char,
+    /// Function pointer implementing the routine.
     pub fun: DL_FUNC,
+    /// Declared arity.
     pub numArgs: ::std::os::raw::c_int,
     /// Optional array of argument types for type checking. May be null.
     pub types: *const R_NativePrimitiveArgType,
@@ -1651,8 +1710,11 @@ pub type R_FortranMethodDef = R_CMethodDef;
 #[allow(non_camel_case_types)]
 #[allow(non_snake_case)]
 pub struct R_CallMethodDef {
+    /// Exported symbol name.
     pub name: *const ::std::os::raw::c_char,
+    /// Function pointer implementing the routine.
     pub fun: DL_FUNC,
+    /// Declared arity.
     pub numArgs: ::std::os::raw::c_int,
 }
 
@@ -1662,6 +1724,8 @@ pub struct R_CallMethodDef {
 #[allow(non_camel_case_types)]
 pub type R_ExternalMethodDef = R_CallMethodDef;
 
+// Checked routine registration API declarations.
+#[allow(missing_docs)]
 #[r_ffi_checked]
 #[allow(clashing_extern_declarations)]
 #[allow(non_snake_case)]
@@ -1691,9 +1755,11 @@ pub mod legacy_c {
     use super::{Rboolean, SEXP, r_ffi_checked};
 
     #[allow(non_camel_case_types)]
+    /// Legacy C finalizer callback type.
     pub type R_CFinalizer_t_C = ::std::option::Option<unsafe extern "C" fn(s: SEXP)>;
 
     #[allow(non_camel_case_types)]
+    /// Legacy generic function pointer type.
     pub type DL_FUNC_C =
         ::std::option::Option<unsafe extern "C" fn() -> *mut ::std::os::raw::c_void>;
 
@@ -1701,26 +1767,37 @@ pub mod legacy_c {
     #[derive(Debug, Copy, Clone)]
     #[allow(non_camel_case_types)]
     #[allow(non_snake_case)]
+    /// Legacy `.Call` registration descriptor using `extern "C"` ABI.
     pub struct R_CallMethodDef_C {
+        /// Exported symbol name.
         pub name: *const ::std::os::raw::c_char,
+        /// Function pointer implementing the routine.
         pub fun: DL_FUNC_C,
+        /// Declared arity.
         pub numArgs: ::std::os::raw::c_int,
     }
 
+    // Legacy `extern "C"` registration/finalizer declarations.
+    #[allow(missing_docs)]
     #[r_ffi_checked]
     unsafe extern "C" {
+        /// Register a C finalizer callback.
         #[link_name = "R_RegisterCFinalizer"]
         pub fn R_RegisterCFinalizer_C(s: SEXP, fun: R_CFinalizer_t_C);
 
+        /// Register a C finalizer callback with `onexit` behavior.
         #[link_name = "R_RegisterCFinalizerEx"]
         pub fn R_RegisterCFinalizerEx_C(s: SEXP, fun: R_CFinalizer_t_C, onexit: Rboolean);
 
+        /// Create function external pointer (`R_MakeExternalPtrFn`).
         #[link_name = "R_MakeExternalPtrFn"]
         pub fn R_MakeExternalPtrFn_C(p: DL_FUNC_C, tag: SEXP, prot: SEXP) -> SEXP;
 
+        /// Extract function pointer from external pointer.
         #[link_name = "R_ExternalPtrAddrFn"]
         pub fn R_ExternalPtrAddrFn_C(s: SEXP) -> DL_FUNC_C;
 
+        /// Register native routines using legacy ABI types.
         #[link_name = "R_registerRoutines"]
         pub fn R_registerRoutines_C(
             info: *mut super::DllInfo,
@@ -2143,13 +2220,21 @@ pub unsafe fn Rf_lang6(s: SEXP, t: SEXP, u: SEXP, v: SEXP, w: SEXP, x: SEXP) -> 
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum RNGtype {
+    /// Wichmann-Hill generator.
     WICHMANN_HILL = 0,
+    /// Marsaglia-Multicarry generator.
     MARSAGLIA_MULTICARRY = 1,
+    /// Super-Duper generator.
     SUPER_DUPER = 2,
+    /// Mersenne Twister generator.
     MERSENNE_TWISTER = 3,
+    /// Knuth TAOCP generator.
     KNUTH_TAOCP = 4,
+    /// User-supplied uniform generator.
     USER_UNIF = 5,
+    /// Knuth TAOCP 2002 variant.
     KNUTH_TAOCP2 = 6,
+    /// L'Ecuyer-CMRG generator.
     LECUYER_CMRG = 7,
 }
 
@@ -2159,11 +2244,17 @@ pub enum RNGtype {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum N01type {
+    /// Legacy buggy Kinderman-Ramage method.
     BUGGY_KINDERMAN_RAMAGE = 0,
+    /// Ahrens-Dieter method.
     AHRENS_DIETER = 1,
+    /// Box-Muller transform.
     BOX_MULLER = 2,
+    /// User-supplied normal generator.
     USER_NORM = 3,
+    /// Inversion method.
     INVERSION = 4,
+    /// Fixed Kinderman-Ramage method.
     KINDERMAN_RAMAGE = 5,
 }
 
@@ -2173,7 +2264,9 @@ pub enum N01type {
 #[derive(Debug, Copy, Clone, Hash, PartialEq, Eq)]
 #[allow(non_camel_case_types)]
 pub enum Sampletype {
+    /// Rounding method for integer sampling.
     ROUNDING = 0,
+    /// Rejection sampling method.
     REJECTION = 1,
 }
 

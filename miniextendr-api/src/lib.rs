@@ -213,6 +213,9 @@ pub mod altrep_traits;
 pub mod altrep_registration {
     pub use crate::altrep::RegisterAltrep;
 }
+/// Raw R FFI bindings and low-level SEXP utilities.
+///
+/// Most users should prefer safe wrappers from higher-level modules.
 pub mod ffi;
 
 // Re-export high-level ALTREP data traits
@@ -382,6 +385,7 @@ pub use as_coerce::{
 };
 
 pub mod convert;
+/// Support for R `...` arguments represented as a validated list.
 pub mod dots;
 pub mod list;
 pub mod missing;
@@ -516,6 +520,9 @@ pub use vctrs::{
 // Always returns 1 (NotAvailable) so C code can call it unconditionally.
 #[cfg(not(feature = "vctrs"))]
 #[unsafe(no_mangle)]
+/// C entrypoint used by generated registration code when `vctrs` is disabled.
+///
+/// Returns `1` to indicate "not available" while keeping a stable symbol.
 pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
     1 // NotAvailable
 }

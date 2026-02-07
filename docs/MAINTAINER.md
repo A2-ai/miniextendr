@@ -93,6 +93,21 @@ just devtools-test
 just r-cmd-check
 ```
 
+## Rustdoc Maintenance
+
+Public and internal APIs should stay documented as they evolve.
+
+- Run a targeted doc lint snapshot when touching API-heavy modules:
+
+```bash
+RUSTFLAGS='-Wmissing-docs' cargo check -p miniextendr-api --lib
+```
+
+- Prefer documenting internals in-place with rustdoc comments (`///`) near trait
+  constants, enum variants, and error fields so generated docs remain useful.
+- For raw header-mirror FFI declarations, document key types and safety model;
+  avoid duplicating full upstream header docs verbatim.
+
 ## CI Workflow
 
 The GitHub Actions workflow (`.github/workflows/ci.yml`) runs:

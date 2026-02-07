@@ -26,6 +26,7 @@ use std::path::{Path, PathBuf};
 use syn::spanned::Spanned;
 use syn::{Attribute, Item, Macro};
 
+/// Emits a single cargo warning line after normalizing whitespace.
 fn cargo_warning(message: &str) {
     let message = message.replace(['\n', '\r'], " ");
     println!("cargo::warning={}", message.trim());
@@ -79,8 +80,11 @@ pub fn build_script() {
 }
 
 #[derive(Debug, Default)]
+/// Result of running the lint over a crate source tree.
 pub struct LintReport {
+    /// Rust source files that were scanned.
     pub files: Vec<PathBuf>,
+    /// Human-readable lint errors found during the scan.
     pub errors: Vec<String>,
 }
 
@@ -167,6 +171,7 @@ fn extract_module_uses(path: &Path) -> Result<Vec<String>, ()> {
     Ok(uses)
 }
 
+/// Recursively collects `use <mod>;` entries from `miniextendr_module!` blocks.
 fn extract_uses_from_items(items: &[Item], uses: &mut Vec<String>) {
     for item in items {
         match item {
@@ -260,6 +265,7 @@ struct LintItem {
 }
 
 impl PartialEq for LintItem {
+    /// Equality ignores source line and compares semantic item identity only.
     fn eq(&self, other: &Self) -> bool {
         self.kind == other.kind && self.name == other.name && self.label == other.label
     }
@@ -268,6 +274,7 @@ impl PartialEq for LintItem {
 impl Eq for LintItem {}
 
 impl std::hash::Hash for LintItem {
+    /// Hashes semantic identity fields used by `PartialEq`.
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.kind.hash(state);
         self.name.hash(state);
@@ -276,6 +283,7 @@ impl std::hash::Hash for LintItem {
 }
 
 impl LintItem {
+    /// Creates a lint item without a label.
     fn new(kind: LintKind, name: String, line: usize) -> Self {
         Self {
             kind,
@@ -285,6 +293,7 @@ impl LintItem {
         }
     }
 
+    /// Creates a lint item with an optional impl label.
     fn with_label(kind: LintKind, name: String, label: Option<String>, line: usize) -> Self {
         Self {
             kind,
@@ -294,6 +303,7 @@ impl LintItem {
         }
     }
 
+    /// Renders the item in module-declaration syntax for diagnostics.
     fn display(&self) -> String {
         match self.kind {
             LintKind::Function => format!("fn {}", self.name),
@@ -310,6 +320,7 @@ impl LintItem {
     }
 }
 
+/// Recursively collects `.rs` files under `dir`, skipping known build/vendor folders.
 fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     for entry in fs::read_dir(dir)? {
         let entry = entry?;
@@ -326,6 +337,7 @@ fn collect_rs_files(dir: &Path, out: &mut Vec<PathBuf>) -> std::io::Result<()> {
     Ok(())
 }
 
+/// Returns whether a directory should be skipped during lint tree traversal.
 fn should_skip_dir(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
         return false;
@@ -333,6 +345,7 @@ fn should_skip_dir(path: &Path) -> bool {
     matches!(name, "target" | "ra_target" | ".cargo" | ".git" | "vendor")
 }
 
+/// Lints one Rust source file and returns all diagnostics found.
 fn lint_file(path: &Path) -> Result<(), Vec<String>> {
     let src = match fs::read_to_string(path) {
         Ok(src) => src,
@@ -547,6 +560,7 @@ fn parse_class_system(attrs: &[Attribute]) -> Option<String> {
     parse_miniextendr_impl_attrs(attrs).class_system
 }
 
+/// Walks parsed items and records `#[miniextendr]` / `miniextendr_module!` entries.
 fn collect_items(
     items: &[Item],
     path: &Path,
@@ -799,6 +813,7 @@ fn collect_items(
     }
 }
 
+/// Returns true when the attribute list contains `#[miniextendr]`.
 fn has_miniextendr_attr(attrs: &[Attribute]) -> bool {
     attrs.iter().any(|attr| {
         attr.path()
@@ -808,6 +823,7 @@ fn has_miniextendr_attr(attrs: &[Attribute]) -> bool {
     })
 }
 
+/// Extracts a displayable type name from an impl self type.
 fn impl_type_name(ty: &syn::Type) -> Option<String> {
     match ty {
         syn::Type::Path(type_path) => type_path
@@ -820,6 +836,7 @@ fn impl_type_name(ty: &syn::Type) -> Option<String> {
     }
 }
 
+/// Returns true when `mac` is the `miniextendr_module!` macro.
 fn is_miniextendr_module_macro(mac: &Macro) -> bool {
     mac.path
         .segments
@@ -827,6 +844,7 @@ fn is_miniextendr_module_macro(mac: &Macro) -> bool {
         .is_some_and(|seg| seg.ident == "miniextendr_module")
 }
 
+/// Parses `miniextendr_module!` entries into normalized lint items.
 fn parse_miniextendr_module_items(mac: &Macro) -> syn::Result<Vec<LintItem>> {
     let parsed = syn::parse2::<miniextendr_module::MiniextendrModule>(mac.tokens.clone())?;
     let mut items = Vec::new();

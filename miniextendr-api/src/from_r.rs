@@ -78,8 +78,11 @@ unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Error describing an unexpected R `SEXPTYPE`.
 pub struct SexpTypeError {
+    /// Expected R type.
     pub expected: SEXPTYPE,
+    /// Actual R type encountered.
     pub actual: SEXPTYPE,
 }
 
@@ -96,8 +99,11 @@ impl std::fmt::Display for SexpTypeError {
 impl std::error::Error for SexpTypeError {}
 
 #[derive(Debug, Clone, Copy)]
+/// Error describing an unexpected R object length.
 pub struct SexpLengthError {
+    /// Required length.
     pub expected: usize,
+    /// Actual length encountered.
     pub actual: usize,
 }
 
@@ -114,7 +120,9 @@ impl std::fmt::Display for SexpLengthError {
 impl std::error::Error for SexpLengthError {}
 
 #[derive(Debug, Clone, Copy)]
+/// Error for NA values in conversions that require non-missing values.
 pub struct SexpNaError {
+    /// R type where an NA was found.
     pub sexp_type: SEXPTYPE,
 }
 
@@ -127,9 +135,13 @@ impl std::fmt::Display for SexpNaError {
 impl std::error::Error for SexpNaError {}
 
 #[derive(Debug, Clone)]
+/// Unified conversion error when decoding an R `SEXP`.
 pub enum SexpError {
+    /// `SEXPTYPE` did not match the expected one.
     Type(SexpTypeError),
+    /// Length did not match the expected one.
     Length(SexpLengthError),
+    /// Missing value encountered where disallowed.
     Na(SexpNaError),
     /// Value is syntactically valid but semantically invalid (e.g. parse error).
     InvalidValue(String),

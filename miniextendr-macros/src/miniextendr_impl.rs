@@ -669,6 +669,7 @@ pub struct ImplAttrs {
 }
 
 impl syn::parse::Parse for ImplAttrs {
+    /// Parses `#[miniextendr(...)]` impl-level options.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut class_system = ClassSystem::Env;
         let mut class_name = None;
@@ -1816,6 +1817,7 @@ pub fn generate_method_c_wrapper(
     builder.build().generate()
 }
 
+/// Returns true when the return type is syntactically `Result<_, _>`.
 fn output_is_result(output: &syn::ReturnType) -> bool {
     match output {
         syn::ReturnType::Type(_, ty) => matches!(
@@ -3771,10 +3773,17 @@ pub fn expand_impl(
         "See [`{}`] for the generated R wrapper code.",
         r_wrappers_const
     );
+    let source_loc_doc = crate::source_location_doc(type_ident.span());
+    let source_start = type_ident.span().start();
+    let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());
+    let source_col_lit =
+        syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
 
     let expanded = quote! {
         // Original impl block with doc link to R wrapper
         #[doc = #r_wrapper_doc]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #original_impl
 
         // C wrappers and call method defs
@@ -3782,10 +3791,34 @@ pub fn expand_impl(
 
         // R wrapper constant
         #(#cfg_attrs)*
-        const #r_wrappers_const: &str = #r_wrapper_str;
+        #[doc = concat!(
+            "R wrapper code for impl block on `",
+            stringify!(#type_ident),
+            "`."
+        )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        const #r_wrappers_const: &str =
+            concat!(
+                "# Generated from Rust source file: ",
+                file!(),
+                ":",
+                #source_line_lit,
+                ":",
+                #source_col_lit,
+                "\n",
+                #r_wrapper_str
+            );
 
         // Call method def array for module registration
         #(#cfg_attrs)*
+        #[doc = concat!(
+            "Call method definition array for impl block on `",
+            stringify!(#type_ident),
+            "`."
+        )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
             [#(#call_def_idents),*];

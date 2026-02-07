@@ -16,6 +16,9 @@ use crate::typed_list::{TypedList, TypedListError, TypedListSpec, validate_list}
 pub struct Dots {
     // Dots is always passed to us, they need no protection.
     // The R wrapper passes list(...), so this is typically a VECSXP.
+    /// Raw list backing this `...` capture.
+    ///
+    /// This is usually a `VECSXP` built from `list(...)` by generated wrappers.
     pub inner: SEXP,
 }
 

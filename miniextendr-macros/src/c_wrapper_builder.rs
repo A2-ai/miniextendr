@@ -258,11 +258,14 @@ impl CWrapperContext {
         let return_handling = self.generate_return_handling(call_expr);
 
         let doc = self.generate_doc_comment("main thread");
+        let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         if self.rng {
             // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
             quote! {
                 #[doc = #doc]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                     unsafe { ::miniextendr_api::ffi::GetRNGstate(); }
@@ -289,6 +292,8 @@ impl CWrapperContext {
             // Non-RNG variant: direct call to with_r_unwind_protect
             quote! {
                 #[doc = #doc]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                     ::miniextendr_api::unwind_protect::with_r_unwind_protect(
@@ -324,6 +329,7 @@ impl CWrapperContext {
         let (worker_body, return_conversion) = self.generate_worker_return_handling(call_expr);
 
         let doc = self.generate_doc_comment("worker thread");
+        let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         // RNG state management: GetRNGstate at start, PutRNGstate before returning/error handling
         let (rng_get, rng_put) = if self.rng {
@@ -337,6 +343,8 @@ impl CWrapperContext {
 
         quote! {
             #[doc = #doc]
+            #[doc = #source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[unsafe(no_mangle)]
             extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                 #rng_get
@@ -656,10 +664,13 @@ impl CWrapperContext {
             "Value: `R_CallMethodDef {{ name: \"{}\", numArgs: {}, fun: <DL_FUNC> }}`",
             c_ident, num_args
         );
+        let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
         quote! {
             #[doc = #doc]
             #[doc = #doc_example]
+            #[doc = #source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[allow(non_upper_case_globals)]
             #[allow(non_snake_case)]
             const #call_method_def_ident: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
@@ -863,6 +874,7 @@ pub fn detect_return_handling(output: &syn::ReturnType) -> ReturnHandling {
     }
 }
 
+/// Detect return handling from a concrete return type.
 fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     match ty {
         // Unit tuple ()
@@ -951,6 +963,7 @@ fn detect_return_handling_from_type(ty: &syn::Type) -> ReturnHandling {
     }
 }
 
+/// Returns the first generic type argument from a path segment, if any.
 fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
         for arg in ab.args.iter() {

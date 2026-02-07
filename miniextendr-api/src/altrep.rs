@@ -17,12 +17,19 @@ use crate::ffi::{R_xlen_t, SEXP};
 /// Base type for ALTREP vectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RBase {
+    /// Integer vectors (`INTSXP`).
     Int,
+    /// Double vectors (`REALSXP`).
     Real,
+    /// Logical vectors (`LGLSXP`).
     Logical,
+    /// Raw byte vectors (`RAWSXP`).
     Raw,
+    /// Character vectors (`STRSXP`).
     String,
+    /// Generic list vectors (`VECSXP`).
     List,
+    /// Complex vectors (`CPLXSXP`).
     Complex,
 }
 

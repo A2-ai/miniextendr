@@ -17,6 +17,7 @@
 //! pub struct MyInts(Vec<i32>);
 //! ```
 
+/// Expands `#[miniextendr]` on a one-field wrapper struct into ALTREP plumbing.
 pub fn expand_altrep_struct(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -384,6 +385,7 @@ pub fn expand_altrep_struct(
         ident, class_name, base_doc
     );
     let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
+    let source_loc_doc = crate::source_location_doc(ident.span());
 
     let method_registrar_install_body: proc_macro2::TokenStream = if base_name.is_some() {
         quote::quote! {
@@ -417,6 +419,8 @@ pub fn expand_altrep_struct(
         #data_helper_impl
 
         #[doc = #altrep_class_doc]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
@@ -427,6 +431,8 @@ pub fn expand_altrep_struct(
         }
 
         #[doc = #register_altrep_doc]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
             fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
                 use std::sync::OnceLock;

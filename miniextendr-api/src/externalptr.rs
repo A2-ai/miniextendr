@@ -1075,7 +1075,9 @@ pub enum TypeMismatchError {
     InvalidTypeId,
     /// The stored type doesn't match the expected type.
     Mismatch {
+        /// Expected Rust type name from this pointer wrapper.
         expected: &'static str,
+        /// Actual stored Rust type name found in pointer metadata.
         found: &'static str,
     },
 }

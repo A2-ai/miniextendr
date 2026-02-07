@@ -68,6 +68,7 @@
 ## Project Status
 
 - [GAPS.md](GAPS.md) -- **Known gaps and limitations** (760+ lines of valuable context on what's missing, what's broken, and why)
+- [FEATURE_BACKLOG.md](FEATURE_BACKLOG.md) -- Proposed next features and maintenance sequencing
 - [MAINTAINER.md](MAINTAINER.md) -- Maintainer guide
 - [docs.md](docs.md) -- Documentation meta-notes
 
