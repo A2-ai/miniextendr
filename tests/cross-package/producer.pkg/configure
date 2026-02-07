@@ -608,11 +608,8 @@ PACKAGE_URL=''
 ac_unique_file="src/entrypoint.c.in"
 ac_subst_vars='LTLIBOBJS
 LIBOBJS
-CARGO_SOURCE_REPLACE
-FORCE_VENDOR
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
-RUST_SOURCES
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
 CARGO_LIBDIR
@@ -620,13 +617,14 @@ CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
 CARGO_STATICLIB_NAME
 CARGO_PROFILE
+CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
 CARGO_CMD
 RUST_TOOLCHAIN
 SED
-RSYNC
 RUSTC
 CARGO
+ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURE_CPPFLAGS
@@ -694,8 +692,7 @@ RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
 ENV_RUSTFLAGS
-CARGO_BUILD_TARGET
-FORCE_VENDOR'
+CARGO_BUILD_TARGET'
 
 
 # Initialize some variables set by options.
@@ -1320,15 +1317,13 @@ Some influential environment variables:
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
   CARGO_TARGET_DIR
-              Cargo target directory (default: src/rust/target)
+              Cargo target directory (default: rust-target, outside src/)
   CARGO_PROFILE
-              Cargo build profile (debug or release)
+              Cargo build profile (dev or release)
   ENV_RUSTFLAGS
               Rust compiler flags passed as RUSTFLAGS
   CARGO_BUILD_TARGET
               Cargo build target triple (e.g. aarch64-apple-darwin)
-  FORCE_VENDOR
-              Set to 1 to force `cargo vendor` refresh in dev mode
 
 Use these variables to override the choices made by 'configure' or to help
 it to find libraries and programs with nonstandard names/locations.
@@ -1954,7 +1949,7 @@ case $host_os in *\ *) host_os=`echo "$host_os" | sed 's/ /-/g'`;; esac
 
 
 if test -z "$R_HOME"; then
-  R_HOME=`R RHOME 2>/dev/null`
+  R_HOME="$(R RHOME 2>/dev/null)"
   if test $? -ne 0 || test -z "$R_HOME"; then
     as_fn_error $? "R not found. Please ensure R is installed and on PATH, or set R_HOME." "$LINENO" 5
   fi
@@ -1963,12 +1958,16 @@ if test ! -d "$R_HOME"; then
   as_fn_error $? "R_HOME directory does not exist: $R_HOME" "$LINENO" 5
 fi
 
-: ${NOT_CRAN="true"}
+: ${NOT_CRAN:=true}
+case "$NOT_CRAN" in
+  true|TRUE|1) NOT_CRAN=true ;;
+  *)           NOT_CRAN=false ;;
+esac
 export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  CARGO_LOCKED_FLAG="--locked"
+  CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
   CARGO_LOCKED_FLAG=""
@@ -1982,7 +1981,6 @@ fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
-  # Set C preprocessor flags based on enabled features
   CARGO_FEATURE_CPPFLAGS=""
   case ",$MINIEXTENDR_FEATURES," in
     *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
@@ -2000,11 +1998,16 @@ fi
 
 
 
-abs_top_srcdir=`(cd "$srcdir" && pwd)`
+abs_top_srcdir="$(cd "$srcdir" && pwd)"
 ABS_TOP_SRCDIR="$abs_top_srcdir"
 
 abs_rpkg_src="$abs_top_srcdir/src"
 ABS_RPKG_SRCDIR="$abs_rpkg_src"
+
+RUST_SRC_DIR="$abs_rpkg_src/rust"
+
+root_miniextendr_repo="$(cd "$abs_top_srcdir/../../.." && pwd)"
+ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo"
 
 
 if test -n "$ac_tool_prefix"; then
@@ -2227,53 +2230,6 @@ else
   RUSTC="$ac_cv_path_RUSTC"
 fi
 
-# Extract the first word of "rsync", so it can be a program name with args.
-set dummy rsync; ac_word=$2
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
-printf %s "checking for $ac_word... " >&6; }
-if test ${ac_cv_path_RSYNC+y}
-then :
-  printf %s "(cached) " >&6
-else case e in #(
-  e) case $RSYNC in
-  [\\/]* | ?:[\\/]*)
-  ac_cv_path_RSYNC="$RSYNC" # Let the user override the test with a path.
-  ;;
-  *)
-  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
-for as_dir in $PATH
-do
-  IFS=$as_save_IFS
-  case $as_dir in #(((
-    '') as_dir=./ ;;
-    */) ;;
-    *) as_dir=$as_dir/ ;;
-  esac
-    for ac_exec_ext in '' $ac_executable_extensions; do
-  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
-    ac_cv_path_RSYNC="$as_dir$ac_word$ac_exec_ext"
-    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
-    break 2
-  fi
-done
-  done
-IFS=$as_save_IFS
-
-  test -z "$ac_cv_path_RSYNC" && ac_cv_path_RSYNC="no"
-  ;;
-esac ;;
-esac
-fi
-RSYNC=$ac_cv_path_RSYNC
-if test -n "$RSYNC"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $RSYNC" >&5
-printf "%s\n" "$RSYNC" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
-printf "%s\n" "no" >&6; }
-fi
-
-
 # Extract the first word of "sed", so it can be a program name with args.
 set dummy sed; ac_word=$2
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
@@ -2329,10 +2285,6 @@ if test "x$RUSTC" = "xno"
 then :
   as_fn_error $? "\`rustc\` not found" "$LINENO" 5
 fi
-if test "x$RSYNC" = "xno"
-then :
-  as_fn_error $? "\`rsync\` not found (required for vendor sync)" "$LINENO" 5
-fi
 if test "x$SED" = "xno"
 then :
   as_fn_error $? "\`sed\` not found" "$LINENO" 5
@@ -2341,12 +2293,11 @@ fi
 
 
 
-
-RUSTC_VERSION=`$RUSTC --version`
+RUSTC_VERSION="$($RUSTC --version)"
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: using $RUSTC_VERSION" >&5
 printf "%s\n" "$as_me: using $RUSTC_VERSION" >&6;}
 
-RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | sed 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'`
+RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'`
 RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
 RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
 MIN_RUSTC_MAJOR=1
@@ -2364,12 +2315,26 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 
 
-: ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
+: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
+
+
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
 
 
 
 : ${CARGO_PROFILE="release"}
+if test "$CARGO_PROFILE" = "debug"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead" >&5
+printf "%s\n" "$as_me: WARNING: CARGO_PROFILE=debug is invalid for cargo; using 'dev' instead" >&2;}
+  CARGO_PROFILE="dev"
+fi
 
+
+if test "$CARGO_PROFILE" = "dev"; then
+  CARGO_PROFILE_DIR="debug"
+else
+  CARGO_PROFILE_DIR="$CARGO_PROFILE"
+fi
 
 CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 
@@ -2391,14 +2356,16 @@ fi
 
 
 if test -n "$CARGO_BUILD_TARGET"; then
-  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE"
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
 else
-  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
+  CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE_DIR"
 fi
 
 
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: R_HOME                = $R_HOME" >&5
 printf "%s\n" "$as_me: R_HOME                = $R_HOME" >&6;}
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: NOT_CRAN              = $NOT_CRAN" >&5
+printf "%s\n" "$as_me: NOT_CRAN              = $NOT_CRAN" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&5
 printf "%s\n" "$as_me: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_PROFILE         = $CARGO_PROFILE" >&5
@@ -2411,11 +2378,13 @@ printf "%s\n" "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
 printf "%s\n" "$as_me: CARGO_LIBDIR          = $CARGO_LIBDIR" >&6;}
 if test -n "$RUST_TOOLCHAIN"
 then :
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&5
-printf "%s\n" "$as_me: RUST_TOOLCHAIN       = $RUST_TOOLCHAIN" >&6;}
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN        = $RUST_TOOLCHAIN" >&5
+printf "%s\n" "$as_me: RUST_TOOLCHAIN        = $RUST_TOOLCHAIN" >&6;}
 fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
+printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
 
-pkg_rs=`echo "$PACKAGE_TARNAME" | sed 's/-/_/g'`
+pkg_rs="$(echo "$PACKAGE_TARNAME" | "$SED" 's/-/_/g')"
 PACKAGE_TARNAME_RS=$pkg_rs
 
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
@@ -2423,15 +2392,6 @@ PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
 
 ac_config_files="$ac_config_files src/rust/document.rs"
-
-
-RUST_SRC_DIR="$abs_rpkg_src/rust"
-RUST_SOURCES=
-if test -d "$RUST_SRC_DIR"; then
-  RUST_SOURCES=`(cd "$RUST_SRC_DIR" && find . -type f -name '*.rs' -print \
-    | sed "s|^.|$RUST_SRC_DIR|" \
-    | tr '\012' ' ')`
-fi
 
 
 OPTIONAL_CARGO_DEPS=
@@ -2445,144 +2405,21 @@ do
 done
 
 
-SHARED_VENDOR=0
-_repo_root=`(cd "$abs_top_srcdir/../../.." && pwd)`
-if test -d "$_repo_root/rpkg"; then
-  VENDOR_OUT="$_repo_root/rpkg/src/vendor"
-  SHARED_VENDOR=1
-  if test ! -d "$VENDOR_OUT/miniextendr-api"; then
-    as_fn_error $? "shared vendor dir missing: $VENDOR_OUT/miniextendr-api
-Run from repo root:
-  just configure
-Or:
-  cd rpkg && NOT_CRAN=true ./configure" "$LINENO" 5
-  fi
-else
-  VENDOR_OUT="$abs_rpkg_src/vendor"
-fi
-
-
-
-: ${FORCE_VENDOR="0"}
-
-
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for vendored miniextendr crates" >&5
-printf %s "checking for vendored miniextendr crates... " >&6; }
-if test -d "$VENDOR_OUT/miniextendr-api"; then
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: found" >&5
-printf "%s\n" "found" >&6; }
-else
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: not found" >&5
-printf "%s\n" "not found" >&6; }
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: vendor/miniextendr-api not found - run minirextendr::vendor_miniextendr() first" >&5
-printf "%s\n" "$as_me: WARNING: vendor/miniextendr-api not found - run minirextendr::vendor_miniextendr() first" >&2;}
-fi
-
-LOCKFILE="$abs_rpkg_src/rust/Cargo.lock"
-STAMP="$VENDOR_OUT/.vendor.lock.cksum"
-MANIFEST="$abs_rpkg_src/rust/Cargo.toml"
-
-if test "$NOT_CRAN" = "true"
-then :
-
-      if test "$SHARED_VENDOR" = "1" || test -L "$VENDOR_OUT"
-then :
-
-    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: skipping cargo vendor (shared vendor dir)" >&5
-printf "%s\n" "$as_me: skipping cargo vendor (shared vendor dir)" >&6;}
-
-else case e in #(
-  e)
-        if test ! -f "$LOCKFILE"
-then :
-
-      if test -f "$MANIFEST"
-then :
-
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: generating Cargo.lock" >&5
-printf "%s\n" "$as_me: generating Cargo.lock" >&6;}
-        $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST" || \
-          as_fn_error $? "cargo generate-lockfile failed" "$LINENO" 5
-
-else case e in #(
-  e)
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: no Cargo.toml yet; skipping cargo vendor" >&5
-printf "%s\n" "$as_me: no Cargo.toml yet; skipping cargo vendor" >&6;}
-       ;;
-esac
-fi
-
-fi
-
-        if test -f "$LOCKFILE"
-then :
-
-            _new=`cksum < "$LOCKFILE" | awk '{print $1":"$2}'`
-      _old=`cat "$STAMP" 2>/dev/null || true`
-
-      _need=0
-      if test "$FORCE_VENDOR" = "1"; then
-        _need=1
-      elif test ! -d "$VENDOR_OUT"; then
-        _need=1
-      elif test ! -f "$STAMP"; then
-                _need=1
-      elif test "x$_new" != "x$_old"; then
-        _need=1
-      fi
-
-      if test $_need -eq 1
-then :
-
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: cargo vendor (Cargo.lock changed or vendor missing)" >&5
-printf "%s\n" "$as_me: cargo vendor (Cargo.lock changed or vendor missing)" >&6;}
-        as_dir="$VENDOR_OUT"; as_fn_mkdir_p
-        $CARGO_CMD vendor \
-          --sync "$MANIFEST" \
-          "$VENDOR_OUT" > /dev/null || as_fn_error $? "\`cargo vendor\` failed" "$LINENO" 5
-        echo "$_new" > "$STAMP" || as_fn_error $? "failed to write vendor stamp" "$LINENO" 5
-
-else case e in #(
-  e)
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: skipping cargo vendor (Cargo.lock unchanged)" >&5
-printf "%s\n" "$as_me: skipping cargo vendor (Cargo.lock unchanged)" >&6;}
-       ;;
-esac
-fi
-
-fi
-   ;;
-esac
-fi
-
-fi
-
-if test "$NOT_CRAN" = "true"
-then :
-
-  CARGO_SOURCE_REPLACE=""
-
-else case e in #(
-  e)
-  CARGO_SOURCE_REPLACE='source.crates-io
-replace-with = "vendored-sources"
-
-source.vendored-sources
-directory = "'"$VENDOR_OUT"'"'
- ;;
-esac
-fi
+VENDOR_OUT=""
 
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/Cargo.toml src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars src/entrypoint.c"
+ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/entrypoint.c:src/entrypoint.c.in"
 
 
-ac_config_commands="$ac_config_commands patch-staticlib-name"
+ac_config_commands="$ac_config_commands dev-cargo-config"
 
 
 ac_config_commands="$ac_config_commands cargo-lockfile-compat"
+
+
+ac_config_commands="$ac_config_commands patch-staticlib-name"
 
 
 cat >confcache <<\_ACEOF
@@ -3285,8 +3122,9 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN"
-CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG"
+NOT_CRAN="$NOT_CRAN"
+CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"
+CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
 
 _ACEOF
 
@@ -3297,12 +3135,12 @@ for ac_config_target in $ac_config_targets
 do
   case $ac_config_target in
     "src/rust/document.rs") CONFIG_FILES="$CONFIG_FILES src/rust/document.rs" ;;
-    "src/rust/Cargo.toml") CONFIG_FILES="$CONFIG_FILES src/rust/Cargo.toml" ;;
     "src/rust/.cargo/config.toml") CONFIG_FILES="$CONFIG_FILES src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in" ;;
-    "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars" ;;
-    "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c" ;;
-    "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
+    "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
+    "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c:src/entrypoint.c.in" ;;
+    "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
+    "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -3721,42 +3559,25 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
 
 
   case $ac_file$ac_mode in
-    "patch-staticlib-name":C)
-          if test "$NOT_CRAN" = "true"; then
-    _pkgid_flags="--color=never"
-  else
-    _pkgid_flags="--offline --color=never"
-  fi
-  _pkgid_output=`$CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml`
-  _pkgid_status=$?
-  if test $_pkgid_status -ne 0; then
-    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    echo "configure: cargo pkgid output: $_pkgid_output" >&2
-    exit 1
-  fi
-  REAL_STATICLIB_NAME=`echo "$_pkgid_output" | sed 's/.*#\([^@]*\)@.*/\1/' | tr '-' '_'`
-  if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output: $_pkgid_output" >&2
-    exit 1
-  fi
-  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
+    "dev-cargo-config":C)
+  RPKG_CFG="src/rust/.cargo/config.toml"
 
-    for f in src/Makevars src/rust/document.rs; do
-    if test -f "$f"; then
-      sed -i.bak "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f"
-      rm -f "$f.bak"
+  if test "$NOT_CRAN" = "true"; then
+    if test -f "$RPKG_CFG"; then
+      rm "$RPKG_CFG"
+      echo "configure: removed cargo config (dev mode - using direct path deps)"
     fi
-  done
+  fi
  ;;
     "cargo-lockfile-compat":C)
   LOCKFILE_PATH="src/rust/Cargo.lock"
   if test -f "$LOCKFILE_PATH"; then
-    LOCKFILE_VERSION=`sed -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1`
+    LOCKFILE_VERSION="$("$SED" -n 's/^version = //p' "$LOCKFILE_PATH" | head -n1)"
   else
     LOCKFILE_VERSION=""
   fi
 
-  CARGO_VERSION=`$CARGO_CMD --version | sed 's/cargo \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/'`
+  CARGO_VERSION="$( $CARGO_CMD --version | "$SED" 's/cargo \([0-9]*\.[0-9]*\.[0-9]*\).*/\1/' )"
   CARGO_MAJOR=`echo "$CARGO_VERSION" | cut -d. -f1`
   CARGO_MINOR=`echo "$CARGO_VERSION" | cut -d. -f2`
 
@@ -3773,6 +3594,31 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       fi
     fi
   fi
+ ;;
+    "patch-staticlib-name":C)
+  if test "$NOT_CRAN" = "true"; then
+    _pkgid_flags="--color=never"
+  else
+    _pkgid_flags="--offline --color=never"
+  fi
+  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
+  _pkgid_status=$?
+  if test $_pkgid_status -ne 0; then
+    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
+    exit 1
+  fi
+  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\([^@]*\)@.*/\1/' | tr '-' '_')"
+  if test -z "$REAL_STATICLIB_NAME"; then
+    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
+    exit 1
+  fi
+  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
+
+    for f in src/Makevars src/rust/document.rs; do
+    if test -f "$f"; then
+      "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
+    fi
+  done
  ;;
 
   esac
