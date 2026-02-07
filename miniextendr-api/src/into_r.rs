@@ -625,7 +625,8 @@ macro_rules! impl_vec_smart_i64_into_r {
 // i32::MIN is NA_integer_ in R, so exclude it
 impl_vec_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
 impl_vec_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
-impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize && x <= i32::MAX as isize);
+impl_vec_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
+    && x <= i32::MAX as isize);
 impl_vec_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 
 // =============================================================================
@@ -1796,7 +1797,13 @@ where
         let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
         let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
         let data1 = ext_ptr.as_sexp();
-        unsafe { crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null()) }
+        // Protect data1 across R_new_altrep — it may allocate and trigger GC.
+        unsafe {
+            crate::ffi::Rf_protect_unchecked(data1);
+            let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null());
+            crate::ffi::Rf_unprotect_unchecked(1);
+            out
+        }
     }
 }
 
@@ -1859,8 +1866,10 @@ where
     fn into_sexp(self) -> crate::ffi::SEXP {
         unsafe {
             let len = self.len();
-            let list =
-                crate::ffi::Rf_allocVector(crate::ffi::SEXPTYPE::VECSXP, len as crate::ffi::R_xlen_t);
+            let list = crate::ffi::Rf_allocVector(
+                crate::ffi::SEXPTYPE::VECSXP,
+                len as crate::ffi::R_xlen_t,
+            );
             crate::ffi::Rf_protect(list);
 
             for (i, array) in self.into_iter().enumerate() {

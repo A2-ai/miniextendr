@@ -8,6 +8,7 @@ extern void R_init_@PACKAGE_TARNAME_RS@_miniextendr(DllInfo *dll);
 // references non-API symbols (utf8locale, etc.) that aren't exported from libR.
 // It only works when embedding R via miniextendr-engine.
 // extern void miniextendr_encoding_init(void);
+extern void miniextendr_assert_utf8_locale(void);
 extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 extern void miniextendr_init_ccallables(void);
@@ -18,6 +19,7 @@ extern void miniextendr_init_ccallables(void);
 extern int miniextendr_init_vctrs(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
+    miniextendr_assert_utf8_locale();
     miniextendr_panic_hook();
     miniextendr_worker_init();
 

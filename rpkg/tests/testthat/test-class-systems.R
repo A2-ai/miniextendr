@@ -177,6 +177,20 @@ test_that("S7Strict describe_any method works", {
   expect_equal(describe_any(strict), "S7Strict with value 123")
 })
 
+test_that("S7 fallback does not fail with slot-access error on ordinary objects", {
+  # describe_any is registered for class_any (fallback). Calling it on a
+
+  # non-S7Strict object should produce a type-conversion error from Rust,
+  # NOT a raw slot-access failure like "no applicable method for `@`".
+  msg <- tryCatch(
+    { describe_any(1L); NA_character_ },
+    error = function(e) conditionMessage(e)
+  )
+
+  # Must NOT be a slot-access error
+  expect_false(grepl("no applicable method for `@`", msg, fixed = TRUE))
+})
+
 # =============================================================================
 # S7 Phase 4: convert() methods - type coercion
 # =============================================================================

@@ -181,6 +181,8 @@ pub use miniextendr_macros::ExternalPtr;
 #[doc(inline)]
 pub use miniextendr_macros::RNativeType;
 #[doc(inline)]
+pub use miniextendr_macros::list;
+#[doc(inline)]
 pub use miniextendr_macros::miniextendr;
 #[doc(inline)]
 pub use miniextendr_macros::miniextendr_module;
@@ -188,19 +190,17 @@ pub use miniextendr_macros::miniextendr_module;
 pub use miniextendr_macros::r_ffi_checked;
 #[doc(inline)]
 pub use miniextendr_macros::typed_list;
-#[doc(inline)]
-pub use miniextendr_macros::list;
 // Note: RFactor derive macro is re-exported - it shares the name with the RFactor trait
 // but they're in different namespaces (derive macros vs types/traits)
+#[cfg(feature = "vctrs")]
+#[doc(inline)]
+pub use miniextendr_macros::Vctrs;
 #[doc(inline)]
 pub use miniextendr_macros::{
     AltrepComplex, AltrepInteger, AltrepList, AltrepLogical, AltrepRaw, AltrepReal, AltrepString,
     DataFrameRow, IntoList, PreferDataFrame, PreferExternalPtr, PreferList, PreferRNativeType,
     RFactor, TryFromList,
 };
-#[cfg(feature = "vctrs")]
-#[doc(inline)]
-pub use miniextendr_macros::Vctrs;
 
 pub mod altrep;
 pub mod altrep_bridge;
@@ -290,7 +290,7 @@ pub mod unwind_protect;
 pub mod worker;
 
 // Re-export commonly used worker items at root for convenience
-pub use worker::{is_r_main_thread, with_r_thread, Sendable};
+pub use worker::{Sendable, is_r_main_thread, with_r_thread};
 
 // Required exports for generated code and initialization
 pub use worker::miniextendr_worker_init;
@@ -356,21 +356,35 @@ pub use coerce::{Coerce, CoerceError, Coerced, TryCoerce};
 /// See the [`as_coerce`] module documentation for usage examples.
 pub mod as_coerce;
 pub use as_coerce::{
+    // Core coercion traits
+    AsCharacter,
     // Error type
     AsCoerceError,
     // Marker trait
     AsCoercible,
-    // Core coercion traits
-    AsCharacter, AsComplex, AsDataFrame, AsDate, AsEnvironment, AsFactor, AsFunction, AsInteger,
-    AsList as AsListCoerce, AsLogical, AsMatrix, AsNumeric, AsPOSIXct, AsRaw, AsVector,
+    AsComplex,
+    AsDataFrame,
+    AsDate,
+    AsEnvironment,
+    AsFactor,
+    AsFunction,
+    AsInteger,
+    AsList as AsListCoerce,
+    AsLogical,
+    AsMatrix,
+    AsNumeric,
+    AsPOSIXct,
+    AsRaw,
+    AsVector,
     // Helpers
-    SUPPORTED_AS_GENERICS, is_supported_as_generic,
+    SUPPORTED_AS_GENERICS,
+    is_supported_as_generic,
 };
 
 pub mod convert;
 pub mod dots;
-pub mod missing;
 pub mod list;
+pub mod missing;
 pub mod strvec;
 pub mod typed_list;
 pub use convert::{
@@ -564,6 +578,7 @@ pub use adapter_traits::{
 #[doc(hidden)]
 extern crate self as miniextendr_api;
 
+#[cfg(feature = "macro-coverage")]
 #[doc(hidden)]
 pub mod macro_coverage;
 
@@ -675,14 +690,14 @@ pub use optionals::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 
 #[cfg(feature = "serde_json")]
 pub use optionals::serde_impl;
+#[cfg(feature = "toml")]
+pub use optionals::toml_impl;
 #[cfg(feature = "serde_json")]
 pub use optionals::{
     FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
     SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
     json_from_sexp_with, json_into_sexp,
 };
-#[cfg(feature = "toml")]
-pub use optionals::toml_impl;
 #[cfg(feature = "toml")]
 pub use optionals::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty};
 

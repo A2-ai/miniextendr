@@ -912,7 +912,8 @@ impl TryCoerce<isize> for f64 {
         if self.is_infinite() {
             return Err(CoerceError::Overflow);
         }
-        if self < isize::MIN as f64 || self > isize::MAX as f64 {
+        // Upper check uses >= because isize::MAX as f64 rounds up on 64-bit
+        if self < isize::MIN as f64 || self >= isize::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
         if self.fract() != 0.0 {
@@ -933,7 +934,8 @@ impl TryCoerce<usize> for f64 {
         if self.is_infinite() {
             return Err(CoerceError::Overflow);
         }
-        if self < 0.0 || self > usize::MAX as f64 {
+        // Upper check uses >= because usize::MAX as f64 rounds up on 64-bit
+        if self < 0.0 || self >= usize::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
         if self.fract() != 0.0 {

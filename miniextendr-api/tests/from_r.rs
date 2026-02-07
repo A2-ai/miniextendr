@@ -629,16 +629,14 @@ fn slice_arbitrary_lifetime_i32() {
 
 #[test]
 fn slice_arbitrary_lifetime_f64() {
-    r_test_utils::with_r_thread(|| {
-        unsafe {
-            let sexp = make_real_vec(&[1.5, 2.5, 3.5], &mut ProtectCount::default());
+    r_test_utils::with_r_thread(|| unsafe {
+        let sexp = make_real_vec(&[1.5, 2.5, 3.5], &mut ProtectCount::default());
 
-            let slice: &[f64] = TryFromSexp::try_from_sexp(sexp).unwrap();
-            assert_eq!(slice.len(), 3);
-            assert_eq!(slice[0], 1.5);
-            assert_eq!(slice[1], 2.5);
-            assert_eq!(slice[2], 3.5);
-        }
+        let slice: &[f64] = TryFromSexp::try_from_sexp(sexp).unwrap();
+        assert_eq!(slice.len(), 3);
+        assert_eq!(slice[0], 1.5);
+        assert_eq!(slice[1], 2.5);
+        assert_eq!(slice[2], 3.5);
     });
 }
 

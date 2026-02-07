@@ -42,14 +42,14 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
                 return Err(syn::Error::new_spanned(
                     input,
                     "DataFrameRow only supports structs with named fields",
-                ))
+                ));
             }
         },
         _ => {
             return Err(syn::Error::new_spanned(
                 input,
                 "DataFrameRow only supports structs",
-            ))
+            ));
         }
     };
 
@@ -265,4 +265,3 @@ fn parse_dataframe_name(input: &DeriveInput) -> syn::Result<syn::Ident> {
     let default_name = format_ident!("{}DataFrame", input.ident);
     Ok(default_name)
 }
-

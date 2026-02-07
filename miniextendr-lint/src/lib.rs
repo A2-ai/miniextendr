@@ -174,9 +174,9 @@ fn extract_uses_from_items(items: &[Item], uses: &mut Vec<String>) {
     for item in items {
         match item {
             Item::Macro(item_macro) if is_miniextendr_module_macro(&item_macro.mac) => {
-                if let Ok(parsed) =
-                    syn::parse2::<miniextendr_module::MiniextendrModule>(item_macro.mac.tokens.clone())
-                {
+                if let Ok(parsed) = syn::parse2::<miniextendr_module::MiniextendrModule>(
+                    item_macro.mac.tokens.clone(),
+                ) {
                     for use_entry in &parsed.uses {
                         uses.push(use_entry.use_name.ident.to_string());
                     }
@@ -222,10 +222,8 @@ fn check_missing_use_submodule(
             None => continue,
         };
 
-        let potential_parents: Vec<PathBuf> = vec![
-            parent_dir.join("lib.rs"),
-            parent_dir.join("mod.rs"),
-        ];
+        let potential_parents: Vec<PathBuf> =
+            vec![parent_dir.join("lib.rs"), parent_dir.join("mod.rs")];
 
         for parent_path in &potential_parents {
             if let Some(parent_uses) = module_uses.get(parent_path) {

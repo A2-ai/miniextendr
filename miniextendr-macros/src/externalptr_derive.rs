@@ -745,7 +745,7 @@ fn generate_class_integration_r_code(
                 type = type_name,
             ));
             code.push_str(
-                "# These are applied when `r_data_accessors` is set on the impl block.\n"
+                "# These are applied when `r_data_accessors` is set on the impl block.\n",
             );
             code.push_str(&format!(
                 ".rdata_active_bindings_{type} <- function(cls) {{\n",

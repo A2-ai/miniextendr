@@ -9,7 +9,8 @@
 #     just lint               - Run miniextendr-lint on rpkg
 #
 #   rpkg (example R package):
-#     just configure          - Configure R package build
+#     just configure          - Configure R package build (dev mode, no vendoring)
+#     just vendor             - Vendor deps for CRAN release prep
 #     just devtools-test      - Run R package tests
 #     just devtools-document  - Generate R documentation
 #     just rcmdinstall        - Build and install R package
@@ -221,17 +222,14 @@ expand *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run ./configure and vendor rpkg dependencies
+# Run ./configure for dev mode
 #
-# This prepares the R package for building by:
-# 1. Running autoconf + configure script
-#    - Syncs miniextendr crates to rpkg/src/vendor/ (via cargo package)
-#    - Generates build configuration files
-# 2. Vendoring crates.io dependencies to rpkg/src/vendor/
-#    - proc-macro2, quote, syn, unicode-ident
+# In dev mode (NOT_CRAN=true), this:
+# 1. Generates build configuration files (Makevars, cargo config, etc.)
+# 2. Cleans up stale vendor artifacts (vendor/, vendor.tar.xz)
+# 3. Does NOT vendor — cargo resolves deps via [patch] in Cargo.toml
 #
-# This is the only vendoring needed - R packages must be self-contained for CRAN.
-# Workspace crates use normal cargo dependency resolution (no vendoring needed).
+# For CRAN release prep, use `just vendor` to create the vendor tarball.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
@@ -242,6 +240,79 @@ configure-cran:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     ./configure
+
+# Vendor dependencies for CRAN release preparation
+#
+# This packages workspace crates, vendors external deps from crates.io,
+# and compresses everything into inst/vendor.tar.xz for the CRAN tarball.
+# Only needed when preparing a CRAN submission — not for day-to-day dev.
+vendor:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    rpkg_src="$root/rpkg/src"
+    vendor_out="$rpkg_src/vendor"
+    manifest="$rpkg_src/rust/Cargo.toml"
+    lockfile="$rpkg_src/rust/Cargo.lock"
+
+    echo "=== CRAN vendor prep ==="
+
+    # 1. Package workspace crates
+    staging="$rpkg_src/.vendor-tarball-staging"
+    rm -rf "$staging"
+    mkdir -p "$staging" "$vendor_out"
+
+    echo "Packaging workspace crates..."
+    for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
+        if [ -d "$root/$crate" ]; then
+            echo "  $crate"
+            cargo package --manifest-path "$root/$crate/Cargo.toml" \
+                --target-dir "$staging/target" --allow-dirty --no-verify 2>&1 | \
+                grep -v "warning: manifest has no" || true
+        fi
+    done
+
+    # 2. Extract .crate files to vendor/
+    echo "Extracting packaged crates..."
+    for crate_file in "$staging/target/package/"*.crate; do
+        [ -f "$crate_file" ] || continue
+        basename=$(basename "$crate_file" .crate)
+        echo "  $basename"
+        mkdir -p "$vendor_out/$basename"
+        tar -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
+    done
+
+    # 3. Vendor external deps from crates.io
+    echo "Vendoring external dependencies..."
+    cargo vendor --manifest-path "$manifest" "$vendor_out"
+
+    # 4. Strip checksums from Cargo.lock
+    if [ -f "$lockfile" ]; then
+        sed -i.bak '/^checksum = /d' "$lockfile" && rm -f "$lockfile.bak"
+    fi
+
+    # 5. Compress for CRAN tarball
+    echo "Compressing vendor.tar.xz..."
+    compress_staging="$rpkg_src/.vendor-compress-staging"
+    rm -rf "$compress_staging"
+    mkdir -p "$compress_staging"
+    cp -R "$vendor_out" "$compress_staging/vendor"
+
+    # Clear checksums and strip unneeded files
+    for d in "$compress_staging/vendor"/*/; do
+        [ -d "$d" ] && echo '{"files":{}}' > "${d}.cargo-checksum.json"
+    done
+    find "$compress_staging/vendor" -type d \( -name tests -o -name benches -o -name examples -o -name .github -o -name docs \) -exec rm -rf {} + 2>/dev/null || true
+    find "$compress_staging/vendor" -name '*.md' -type f -exec truncate -s 0 {} \; 2>/dev/null || true
+
+    mkdir -p "$root/rpkg/inst"
+    tar -cJf "$root/rpkg/inst/vendor.tar.xz" -C "$compress_staging" vendor
+
+    # Clean up staging
+    rm -rf "$staging" "$compress_staging"
+
+    echo "=== Done: rpkg/inst/vendor.tar.xz ready for CRAN ==="
 
 # Load and test rpkg with devtools
 devtools-test FILTER="": devtools-document

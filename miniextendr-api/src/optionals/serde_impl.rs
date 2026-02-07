@@ -490,7 +490,11 @@ fn sexp_to_json_value(sexp: SEXP, opts: &JsonOptions) -> Result<JsonValue, SexpE
     }
 }
 
-fn real_to_json(val: f64, opts: &JsonOptions, context: Option<usize>) -> Result<JsonValue, SexpError> {
+fn real_to_json(
+    val: f64,
+    opts: &JsonOptions,
+    context: Option<usize>,
+) -> Result<JsonValue, SexpError> {
     // Check for NA (NA_REAL is a specific NaN bit pattern)
     if val.to_bits() == NA_REAL.to_bits() {
         return handle_na(opts, context);
@@ -1035,14 +1039,20 @@ mod tests {
 
     #[test]
     fn real_to_json_nan_strict() {
-        let opts = JsonOptions { nan: SpecialFloatHandling::Error, ..Default::default() };
+        let opts = JsonOptions {
+            nan: SpecialFloatHandling::Error,
+            ..Default::default()
+        };
         let result = real_to_json(f64::NAN, &opts, None);
         assert!(result.is_err());
     }
 
     #[test]
     fn real_to_json_nan_permissive() {
-        let opts = JsonOptions { nan: SpecialFloatHandling::Null, ..Default::default() };
+        let opts = JsonOptions {
+            nan: SpecialFloatHandling::Null,
+            ..Default::default()
+        };
         let result = real_to_json(f64::NAN, &opts, None);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
@@ -1050,7 +1060,10 @@ mod tests {
 
     #[test]
     fn real_to_json_inf_permissive() {
-        let opts = JsonOptions { inf: SpecialFloatHandling::Null, ..Default::default() };
+        let opts = JsonOptions {
+            inf: SpecialFloatHandling::Null,
+            ..Default::default()
+        };
         let result = real_to_json(f64::INFINITY, &opts, None);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));

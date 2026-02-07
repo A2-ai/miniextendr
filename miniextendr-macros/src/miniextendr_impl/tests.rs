@@ -392,9 +392,11 @@ fn s4_wrapper_full_snapshot() {
     assert!(wrapper.contains("methods::new(\"Counter\", ptr = .Call(C_Counter__new"));
 
     // Verify S4 generics (unconditional - setGeneric is idempotent)
-    assert!(wrapper.contains(
-        "methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
-    ));
+    assert!(
+        wrapper.contains(
+            "methods::setGeneric(\"s4_get\", function(x, ...) standardGeneric(\"s4_get\"))"
+        )
+    );
     assert!(wrapper.contains(
         "methods::setGeneric(\"s4_increment\", function(x, ...) standardGeneric(\"s4_increment\"))"
     ));
@@ -867,15 +869,36 @@ fn s7_property_class_types() {
     eprintln!("Generated S7 wrapper:\n{}", wrapper);
 
     // Verify class types are included in property definitions
-    assert!(wrapper.contains("length = S7::new_property(class = S7::class_double, getter ="), "length property missing class type");
-    assert!(wrapper.contains("midpoint = S7::new_property(class = S7::class_double, getter ="), "midpoint property missing class type");
-    assert!(wrapper.contains("is_valid = S7::new_property(class = S7::class_logical, getter ="), "is_valid property missing class type");
-    assert!(wrapper.contains("name = S7::new_property(class = S7::class_character, getter ="), "name property missing class type");
+    assert!(
+        wrapper.contains("length = S7::new_property(class = S7::class_double, getter ="),
+        "length property missing class type"
+    );
+    assert!(
+        wrapper.contains("midpoint = S7::new_property(class = S7::class_double, getter ="),
+        "midpoint property missing class type"
+    );
+    assert!(
+        wrapper.contains("is_valid = S7::new_property(class = S7::class_logical, getter ="),
+        "is_valid property missing class type"
+    );
+    assert!(
+        wrapper.contains("name = S7::new_property(class = S7::class_character, getter ="),
+        "name property missing class type"
+    );
 
     // Verify imports include the class types
-    assert!(wrapper.contains("class_double"), "missing class_double import");
-    assert!(wrapper.contains("class_logical"), "missing class_logical import");
-    assert!(wrapper.contains("class_character"), "missing class_character import");
+    assert!(
+        wrapper.contains("class_double"),
+        "missing class_double import"
+    );
+    assert!(
+        wrapper.contains("class_logical"),
+        "missing class_logical import"
+    );
+    assert!(
+        wrapper.contains("class_character"),
+        "missing class_character import"
+    );
 }
 
 #[test]
@@ -893,7 +916,10 @@ fn s7_property_option_class_type() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Option<i32> should map to NULL | S7::class_integer
-    assert!(wrapper.contains("maybe_value = S7::new_property(class = NULL | S7::class_integer, getter ="));
+    assert!(
+        wrapper
+            .contains("maybe_value = S7::new_property(class = NULL | S7::class_integer, getter =")
+    );
 }
 
 #[test]
@@ -933,8 +959,10 @@ fn s7_property_mirrors_s7_tests_rs() {
     // Debug: check method attributes
     for method in &parsed.methods {
         if method.ident == "length" {
-            eprintln!("length method attrs: s7_getter={}, s7_setter={}",
-                     method.method_attrs.s7_getter, method.method_attrs.s7_setter);
+            eprintln!(
+                "length method attrs: s7_getter={}, s7_setter={}",
+                method.method_attrs.s7_getter, method.method_attrs.s7_setter
+            );
             eprintln!("length return type: {:?}", method.sig.output);
         }
     }
@@ -943,8 +971,10 @@ fn s7_property_mirrors_s7_tests_rs() {
     eprintln!("Generated wrapper for S7Range:\n{}", wrapper);
 
     // Should have class type for length property
-    assert!(wrapper.contains("length = S7::new_property(class = S7::class_double"),
-            "length property should have class = S7::class_double");
+    assert!(
+        wrapper.contains("length = S7::new_property(class = S7::class_double"),
+        "length property should have class = S7::class_double"
+    );
 }
 
 // =============================================================================
@@ -957,29 +987,50 @@ fn s7_type_mapping_scalars() {
 
     // Integer types
     let ty: syn::Type = syn::parse_quote!(i32);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
 
     let ty: syn::Type = syn::parse_quote!(i16);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
 
     // Float types
     let ty: syn::Type = syn::parse_quote!(f64);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_double".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_double".to_string())
+    );
 
     let ty: syn::Type = syn::parse_quote!(f32);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_double".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_double".to_string())
+    );
 
     // Logical
     let ty: syn::Type = syn::parse_quote!(bool);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_logical".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_logical".to_string())
+    );
 
     // Raw
     let ty: syn::Type = syn::parse_quote!(u8);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_raw".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_raw".to_string())
+    );
 
     // Character
     let ty: syn::Type = syn::parse_quote!(String);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_character".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_character".to_string())
+    );
 }
 
 #[test]
@@ -988,7 +1039,10 @@ fn s7_type_mapping_references() {
 
     // &str maps to character
     let ty: syn::Type = syn::parse_quote!(&str);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_character".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_character".to_string())
+    );
 }
 
 #[test]
@@ -997,15 +1051,24 @@ fn s7_type_mapping_vec() {
 
     // Vec<i32> -> class_integer
     let ty: syn::Type = syn::parse_quote!(Vec<i32>);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
 
     // Vec<f64> -> class_double
     let ty: syn::Type = syn::parse_quote!(Vec<f64>);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_double".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_double".to_string())
+    );
 
     // Vec<String> -> class_character
     let ty: syn::Type = syn::parse_quote!(Vec<String>);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_character".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_character".to_string())
+    );
 }
 
 #[test]
@@ -1014,11 +1077,17 @@ fn s7_type_mapping_option() {
 
     // Option<i32> -> NULL | class_integer
     let ty: syn::Type = syn::parse_quote!(Option<i32>);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("NULL | S7::class_integer".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("NULL | S7::class_integer".to_string())
+    );
 
     // Option<String> -> NULL | class_character
     let ty: syn::Type = syn::parse_quote!(Option<String>);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("NULL | S7::class_character".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("NULL | S7::class_character".to_string())
+    );
 }
 
 #[test]
@@ -1027,7 +1096,10 @@ fn s7_type_mapping_result() {
 
     // Result<i32, E> -> class_integer (from Ok type)
     let ty: syn::Type = syn::parse_quote!(Result<i32, String>);
-    assert_eq!(rust_type_to_s7_class(&ty), Some("S7::class_integer".to_string()));
+    assert_eq!(
+        rust_type_to_s7_class(&ty),
+        Some("S7::class_integer".to_string())
+    );
 }
 
 #[test]
@@ -1058,7 +1130,11 @@ fn s7_property_default_value() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should include default = 0.0 in property definition
-    assert!(wrapper.contains("default = 0.0"), "Expected default value in property, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("default = 0.0"),
+        "Expected default value in property, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1073,8 +1149,16 @@ fn s7_property_required() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should include error message for required property
-    assert!(wrapper.contains("@id is required"), "Expected required error in property, got:\n{}", wrapper);
-    assert!(wrapper.contains("stop("), "Expected stop() call for required property, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("@id is required"),
+        "Expected required error in property, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("stop("),
+        "Expected stop() call for required property, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1092,8 +1176,16 @@ fn s7_property_frozen() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should include frozen check in setter
-    assert!(wrapper.contains("is frozen"), "Expected frozen error message in setter, got:\n{}", wrapper);
-    assert!(wrapper.contains("cannot be modified"), "Expected frozen check in setter, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("is frozen"),
+        "Expected frozen error message in setter, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("cannot be modified"),
+        "Expected frozen check in setter, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1108,9 +1200,21 @@ fn s7_property_deprecated() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should include deprecation warning in getter
-    assert!(wrapper.contains("is deprecated"), "Expected deprecation warning in getter, got:\n{}", wrapper);
-    assert!(wrapper.contains("Use 'value' instead"), "Expected deprecation message in getter, got:\n{}", wrapper);
-    assert!(wrapper.contains("warning("), "Expected warning() call for deprecated property, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("is deprecated"),
+        "Expected deprecation warning in getter, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("Use 'value' instead"),
+        "Expected deprecation message in getter, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("warning("),
+        "Expected warning() call for deprecated property, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1134,8 +1238,16 @@ fn s7_property_validator() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should include validator function in property
-    assert!(wrapper.contains("validator = function(value)"), "Expected validator in property, got:\n{}", wrapper);
-    assert!(wrapper.contains("C_Score__validate_score"), "Expected validator C function call, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("validator = function(value)"),
+        "Expected validator in property, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("C_Score__validate_score"),
+        "Expected validator C function call, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1151,8 +1263,16 @@ fn s7_property_combined_patterns() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should have both default and deprecation
-    assert!(wrapper.contains("default = \"default\""), "Expected default value, got:\n{}", wrapper);
-    assert!(wrapper.contains("Will be removed"), "Expected deprecation message, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("default = \"default\""),
+        "Expected default value, got:\n{}",
+        wrapper
+    );
+    assert!(
+        wrapper.contains("Will be removed"),
+        "Expected deprecation message, got:\n{}",
+        wrapper
+    );
 }
 
 // =============================================================================
@@ -1171,9 +1291,17 @@ fn s7_generic_no_dots() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should have generic without ... in signature
-    assert!(wrapper.contains("function(x) S7::S7_dispatch()"), "Expected no_dots generic, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("function(x) S7::S7_dispatch()"),
+        "Expected no_dots generic, got:\n{}",
+        wrapper
+    );
     // Should NOT have ... in the generic definition
-    assert!(!wrapper.contains("function(x, ...) S7::S7_dispatch()"), "Expected no_dots to remove ..., got:\n{}", wrapper);
+    assert!(
+        !wrapper.contains("function(x, ...) S7::S7_dispatch()"),
+        "Expected no_dots to remove ..., got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1188,9 +1316,17 @@ fn s7_generic_multi_dispatch() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should have c("x", "y") dispatch args
-    assert!(wrapper.contains(r#"c("x", "y")"#), "Expected multi-dispatch args, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains(r#"c("x", "y")"#),
+        "Expected multi-dispatch args, got:\n{}",
+        wrapper
+    );
     // Should have function(x, y, ...) signature
-    assert!(wrapper.contains("function(x, y, ...) S7::S7_dispatch()"), "Expected multi-dispatch signature, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("function(x, y, ...) S7::S7_dispatch()"),
+        "Expected multi-dispatch signature, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1205,9 +1341,17 @@ fn s7_generic_multi_dispatch_no_dots() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should have c("x", "y") dispatch args
-    assert!(wrapper.contains(r#"c("x", "y")"#), "Expected multi-dispatch args, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains(r#"c("x", "y")"#),
+        "Expected multi-dispatch args, got:\n{}",
+        wrapper
+    );
     // Should have function(x, y) signature without ...
-    assert!(wrapper.contains("function(x, y) S7::S7_dispatch()"), "Expected strict multi-dispatch signature, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("function(x, y) S7::S7_dispatch()"),
+        "Expected strict multi-dispatch signature, got:\n{}",
+        wrapper
+    );
 }
 
 #[test]
@@ -1222,7 +1366,47 @@ fn s7_generic_fallback() {
     let wrapper = generate_s7_r_wrapper(&parsed);
 
     // Should register method for class_any instead of Printer
-    assert!(wrapper.contains("S7::method(describe, S7::class_any)"), "Expected fallback to class_any, got:\n{}", wrapper);
+    assert!(
+        wrapper.contains("S7::method(describe, S7::class_any)"),
+        "Expected fallback to class_any, got:\n{}",
+        wrapper
+    );
+    // Fallback should use safe self extraction (tryCatch), not raw x@.ptr
+    assert!(
+        wrapper.contains("tryCatch(x@.ptr"),
+        "Expected safe self extraction with tryCatch, got:\n{}",
+        wrapper
+    );
+    assert!(
+        !wrapper.contains(".Call(wrap__Printer__describe, x@.ptr,"),
+        "Fallback should NOT use raw x@.ptr in .Call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_generic_override_fallback() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Printer {
+            #[miniextendr(s7(generic = "base::print", fallback))]
+            pub fn print_it(&self) -> String { "printed".to_string() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Generic-override + fallback should use class_any, not Printer
+    assert!(
+        wrapper.contains("S7::method(print, S7::class_any)"),
+        "Expected generic-override fallback to class_any, got:\n{}",
+        wrapper
+    );
+    // Should also use safe self extraction
+    assert!(
+        wrapper.contains("tryCatch(x@.ptr"),
+        "Expected safe self extraction in generic-override fallback, got:\n{}",
+        wrapper
+    );
 }
 
 // =============================================================================
@@ -1331,9 +1515,7 @@ fn s7_convert_from_and_to_mutually_exclusive() {
     };
 
     // This should fail during parsing/validation
-    let result = std::panic::catch_unwind(|| {
-        parse_impl(ClassSystem::S7, impl_code)
-    });
+    let result = std::panic::catch_unwind(|| parse_impl(ClassSystem::S7, impl_code));
 
     // The parse_impl function should panic or return an error for this invalid config
     // If it doesn't panic, we need to check the behavior differently
@@ -1453,8 +1635,7 @@ fn parse_r6_with_r_data_accessors() {
 
 #[test]
 fn parse_r6_with_r_data_accessors_and_options() {
-    let attrs: ImplAttrs =
-        syn::parse_str("r6(cloneable, lock_class, r_data_accessors)").unwrap();
+    let attrs: ImplAttrs = syn::parse_str("r6(cloneable, lock_class, r_data_accessors)").unwrap();
     assert_eq!(attrs.class_system, ClassSystem::R6);
     assert!(attrs.r_data_accessors);
     assert_eq!(attrs.r6_cloneable, Some(true));

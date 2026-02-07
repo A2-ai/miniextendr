@@ -62,15 +62,20 @@ just lint               # Run miniextendr-lint (checks macro/module consistency)
 just fmt                # Format Rust code
 
 # R package development (rpkg)
-just configure          # REQUIRED before any R CMD operations
+just configure          # REQUIRED before any R CMD operations (dev mode, no vendoring)
+just vendor             # Vendor deps for CRAN release prep (creates inst/vendor.tar.xz)
 just rcmdinstall        # Build and install `library(miniextendr)` package in `rpkg` directory
 just devtools-test      # Run R tests
 just devtools-document  # Regenerate R wrappers
 
 # Full R CMD check workflow
-just configure          # 1. Configure (generates vendor/, Makevars, etc.)
+just configure          # 1. Configure (generates Makevars, etc.)
 just r-cmd-build        # 2. Build tarball (R CMD build)
 just r-cmd-check        # 3. Check the built tarball (R CMD check)
+
+# CRAN release prep (vendors deps into tarball)
+just vendor             # Package workspace crates + vendor external deps
+just configure-cran     # Configure in CRAN/offline mode (unpacks vendor.tar.xz)
 # IMPORTANT: Always check the built tarball, not the source directory.
 # R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.
 
@@ -94,11 +99,13 @@ just minirextendr-test      # Run tests
 
 **ALWAYS run `./configure` (or `just configure`) before any R CMD operation.**
 
-The configure script:
+The configure script (dev mode):
 
-1. Syncs `miniextendr-api/`, `miniextendr-macros/`, `miniextendr-macros-core/`, `miniextendr-lint/`, `miniextendr-engine/` to `rpkg/src/vendor/`
-2. Vendors crates.io dependencies (proc-macro2, quote, syn, unicode-ident)
-3. Generates `Makevars` from `Makevars.in`
+1. Generates `Makevars` from `Makevars.in` and other build config files
+2. Cleans up stale vendor artifacts (`src/vendor/`, `inst/vendor.tar.xz`)
+3. Does NOT vendor — cargo resolves deps via `[patch]` in `Cargo.toml`
+
+For CRAN release prep, use `just vendor` to create the vendor tarball.
 
 ```bash
 # WRONG - will fail or use stale code
@@ -125,7 +132,8 @@ This builds and checks a package called `miniextendr`,  i.e. you load it with
 
 **What NOT_CRAN does:**
 
-- Preserves the `src/vendor/` directory during `R CMD build` (CRAN strips it)
+- Skips vendoring entirely (cargo resolves deps via `[patch]` in Cargo.toml)
+- Cleans up stale `src/vendor/` and `inst/vendor.tar.xz`
 - Enables symlinks for faster iteration (CRAN requires copies)
 - Skips certain checks that only apply to CRAN submissions
 - Should ALWAYS be set for local development/testing
@@ -145,7 +153,7 @@ just rcmdinstall        # 4. Rebuild with updated R wrappers
 
 **Why this order matters:**
 
-- `just configure` syncs workspace crates to vendored copies
+- `just configure` generates build config files
 - First build compiles the new macros
 - `devtools-document` runs the macros to regenerate `rpkg/R/miniextendr_wrappers.R`
 - Second build incorporates the regenerated R code
@@ -335,11 +343,11 @@ Key paths in R source:
 
 ### Vendor Sync
 
-After modifying workspace crates, ensure vendored copies are updated:
+After `just vendor`, verify vendored copies match workspace sources:
 
 ```bash
 just vendor-sync-check  # Verify vendored crates match workspace
-just configure          # Refresh if drift detected
+just vendor             # Refresh if drift detected
 ```
 
 ### Template Sync

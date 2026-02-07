@@ -212,14 +212,15 @@ impl<T: RNativeType + Copy> TryFromSexp for Array4<T> {
             .into());
         }
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec())
-            .map_err(|_| {
+        Array4::from_shape_vec((dims[0], dims[1], dims[2], dims[3]).f(), slice.to_vec()).map_err(
+            |_| {
                 SexpLengthError {
                     expected: dims.iter().product(),
                     actual: slice.len(),
                 }
                 .into()
-            })
+            },
+        )
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {
@@ -244,14 +245,17 @@ impl<T: RNativeType + Copy> TryFromSexp for Array5<T> {
             .into());
         }
         let slice: &[T] = TryFromSexp::try_from_sexp(sexp)?;
-        Array5::from_shape_vec((dims[0], dims[1], dims[2], dims[3], dims[4]).f(), slice.to_vec())
-            .map_err(|_| {
-                SexpLengthError {
-                    expected: dims.iter().product(),
-                    actual: slice.len(),
-                }
-                .into()
-            })
+        Array5::from_shape_vec(
+            (dims[0], dims[1], dims[2], dims[3], dims[4]).f(),
+            slice.to_vec(),
+        )
+        .map_err(|_| {
+            SexpLengthError {
+                expected: dims.iter().product(),
+                actual: slice.len(),
+            }
+            .into()
+        })
     }
 
     unsafe fn try_from_sexp_unchecked(sexp: SEXP) -> Result<Self, Self::Error> {

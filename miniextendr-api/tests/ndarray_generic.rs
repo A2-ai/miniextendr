@@ -12,7 +12,7 @@ use miniextendr_api::{Array0, Array1, Array2, Array3, ArrayD};
 fn array1_i32_blanket_impl() {
     // Verify blanket impl works for i32
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 4));
@@ -39,7 +39,7 @@ fn array1_i32_blanket_impl() {
 fn array1_u8_blanket_impl() {
     // Verify blanket impl works for u8 (raw)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, RAW, SEXPTYPE};
+        use miniextendr_api::ffi::{RAW, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::RAWSXP, 3));
@@ -64,7 +64,7 @@ fn array1_u8_blanket_impl() {
 fn array2_i32_blanket_impl() {
     // Verify blanket impl works for i32 matrices
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+        use miniextendr_api::ffi::{INTEGER, Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             // Create 2x3 matrix
@@ -93,7 +93,7 @@ fn array2_i32_blanket_impl() {
 fn array0_scalar_blanket_impl() {
     // Verify Array0 (scalar) blanket impl works
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_ScalarInteger};
+        use miniextendr_api::ffi::Rf_ScalarInteger;
 
         unsafe {
             let sexp = Rf_ScalarInteger(42);
@@ -126,8 +126,8 @@ fn arrayd_dynamic_dims() {
     // Test ArrayD with dynamic number of dimensions
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            Rf_allocArray, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE, SETCAR, Rf_allocVector,
-            R_DimSymbol, Rf_setAttrib
+            INTEGER, R_DimSymbol, Rf_allocArray, Rf_allocVector, Rf_protect, Rf_setAttrib,
+            Rf_unprotect, SETCAR, SEXPTYPE,
         };
 
         unsafe {
@@ -141,9 +141,9 @@ fn arrayd_dynamic_dims() {
             // Set dimensions
             let dims = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
             let dims_ptr = INTEGER(dims);
-            *dims_ptr.add(0) = 2;  // dim[0]
-            *dims_ptr.add(1) = 3;  // dim[1]
-            *dims_ptr.add(2) = 2;  // dim[2]
+            *dims_ptr.add(0) = 2; // dim[0]
+            *dims_ptr.add(1) = 3; // dim[1]
+            *dims_ptr.add(2) = 2; // dim[2]
 
             Rf_setAttrib(sexp, R_DimSymbol, dims);
 
@@ -164,7 +164,8 @@ fn array_blanket_coverage_all_rnative_types() {
     // Verify blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, REAL, RAW, LOGICAL, SEXPTYPE, RLogical
+            INTEGER, LOGICAL, RAW, REAL, RLogical, Rf_allocVector, Rf_protect, Rf_unprotect,
+            SEXPTYPE,
         };
         use ndarray::Array1;
 

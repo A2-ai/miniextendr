@@ -13,7 +13,8 @@ fn array1_all_rnative_types() {
     // Verify Array1 blanket impl works for all RNativeType: i32, f64, u8, RLogical
     r_test_utils::with_r_thread(|| {
         use miniextendr_api::ffi::{
-            Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, REAL, RAW, LOGICAL, SEXPTYPE, RLogical
+            INTEGER, LOGICAL, RAW, REAL, RLogical, Rf_allocVector, Rf_protect, Rf_unprotect,
+            SEXPTYPE,
         };
 
         unsafe {
@@ -53,9 +54,9 @@ fn array1_all_rnative_types() {
             // RLogical
             let sexp_lgl = Rf_protect(Rf_allocVector(SEXPTYPE::LGLSXP, 3));
             let ptr_lgl = LOGICAL(sexp_lgl);
-            *ptr_lgl.add(0) = 1;  // TRUE
-            *ptr_lgl.add(1) = 0;  // FALSE
-            *ptr_lgl.add(2) = 1;  // TRUE
+            *ptr_lgl.add(0) = 1; // TRUE
+            *ptr_lgl.add(1) = 0; // FALSE
+            *ptr_lgl.add(2) = 1; // TRUE
             let arr_lgl: Array1<RLogical> = TryFromSexp::try_from_sexp(sexp_lgl).unwrap();
             assert_eq!(arr_lgl[0], RLogical::from(true));
             assert_eq!(arr_lgl[1], RLogical::from(false));
@@ -71,8 +72,8 @@ fn array1_all_rnative_types() {
 fn array0_scalar_all_types() {
     // Verify Array0 (scalar) works for all types
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_ScalarReal, Rf_ScalarLogical};
         use miniextendr_api::ffi::RLogical;
+        use miniextendr_api::ffi::{Rf_ScalarInteger, Rf_ScalarLogical, Rf_ScalarReal};
 
         unsafe {
             // i32 scalar
@@ -98,7 +99,7 @@ fn array0_scalar_all_types() {
 fn array2_u8_blanket_impl() {
     // Verify Array2 works for u8 (raw matrices)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocMatrix, Rf_protect, Rf_unprotect, RAW, SEXPTYPE};
+        use miniextendr_api::ffi::{RAW, Rf_allocMatrix, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             // Create 2x2 raw matrix
@@ -127,7 +128,7 @@ fn array2_u8_blanket_impl() {
 fn arrayd_i32_from_vector() {
     // Test ArrayD created from R vector (1D)
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
         use ndarray::ArrayD;
 
         unsafe {

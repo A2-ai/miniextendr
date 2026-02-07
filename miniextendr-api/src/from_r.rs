@@ -47,35 +47,33 @@ fn is_na_real(value: f64) -> bool {
 /// Modern R (4.2+) with UTF-8 locale support typically ensures this, but R can
 /// store strings in other encodings (latin1, native, bytes).
 ///
-/// **If you receive data from external sources that may not be UTF-8**, consider:
-/// - Using `Rf_translateCharUTF8()` to convert to UTF-8 first
-/// - Validating with `std::str::from_utf8()` instead of `from_utf8_unchecked()`
-///
 /// # Safety
 ///
 /// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
-/// - The CHARSXP must contain valid UTF-8 bytes (CE_UTF8, CE_ASCII, or compatible).
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
+///
+/// # Panics
+///
+/// Panics if the CHARSXP bytes are not valid UTF-8. The R session's UTF-8 locale
+/// is validated once at package init (see entrypoint), so this should never fire.
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR(charsxp);
         let len = crate::ffi::LENGTH(charsxp) as usize;
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
-        // R's CE_UTF8 strings are guaranteed valid UTF-8, so skip validation
-        std::str::from_utf8_unchecked(bytes)
+        std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
 }
 
-/// Unchecked version of [`charsxp_to_str`].
+/// Unchecked version of [`charsxp_to_str`] (skips R thread checks, still validates UTF-8).
 #[inline]
 unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR_unchecked(charsxp);
-        // LENGTH is a simple macro, no thread check needed
         let len = crate::ffi::LENGTH(charsxp) as usize;
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
-        std::str::from_utf8_unchecked(bytes)
+        std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
 }
 
@@ -1413,6 +1411,11 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
+        /// # Safety note (aliasing)
+        ///
+        /// This impl can produce aliased `&mut` references if the same R object
+        /// is passed to multiple mutable parameters. The caller (generated wrapper)
+        /// is responsible for ensuring no two `&mut` borrows alias the same SEXP.
         impl TryFromSexp for &'static mut $t {
             type Error = SexpError;
 
@@ -1460,8 +1463,6 @@ macro_rules! impl_ref_conversions_for {
                 Ok(unsafe { &mut *ptr })
             }
         }
-
-        // Slice impls removed - now use blanket impls for &[T] and &mut [T]
 
         impl TryFromSexp for Option<&'static $t> {
             type Error = SexpError;
@@ -1827,6 +1828,12 @@ where
 }
 
 /// Blanket impl for `&mut [T]` where T: RNativeType
+///
+/// # Safety note (aliasing)
+///
+/// This impl can produce aliased `&mut` slices if the same R vector is passed
+/// to multiple mutable slice parameters. The caller is responsible for ensuring
+/// no two `&mut` borrows alias the same SEXP.
 impl<T> TryFromSexp for &mut [T]
 where
     T: crate::ffi::RNativeType + Copy,
@@ -1883,9 +1890,8 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let slice: &[T] = unsafe {
-            TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
-        };
+        let slice: &[T] =
+            unsafe { TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)? };
         Ok(Some(slice))
     }
 }
@@ -1911,9 +1917,8 @@ where
         if sexp.type_of() == SEXPTYPE::NILSXP {
             return Ok(None);
         }
-        let slice: &mut [T] = unsafe {
-            TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)?
-        };
+        let slice: &mut [T] =
+            unsafe { TryFromSexp::try_from_sexp_unchecked(sexp).map_err(SexpError::from)? };
         Ok(Some(slice))
     }
 }
@@ -2901,11 +2906,7 @@ where
         // Safe because T: Copy and length is verified
         let mut arr = std::mem::MaybeUninit::<[T; N]>::uninit();
         unsafe {
-            std::ptr::copy_nonoverlapping(
-                slice.as_ptr(),
-                arr.as_mut_ptr() as *mut T,
-                N,
-            );
+            std::ptr::copy_nonoverlapping(slice.as_ptr(), arr.as_mut_ptr() as *mut T, N);
             Ok(arr.assume_init())
         }
     }

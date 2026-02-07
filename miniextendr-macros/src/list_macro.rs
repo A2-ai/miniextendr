@@ -59,8 +59,7 @@ impl Parse for ListInput {
             });
         }
 
-        let entries_punct: Punctuated<ListEntry, Token![,]> =
-            Punctuated::parse_terminated(input)?;
+        let entries_punct: Punctuated<ListEntry, Token![,]> = Punctuated::parse_terminated(input)?;
         let entries: Vec<ListEntry> = entries_punct.into_iter().collect();
 
         Ok(ListInput { entries })
@@ -134,10 +133,7 @@ pub fn expand_list(input: ListInput) -> TokenStream {
             .entries
             .into_iter()
             .map(|entry| {
-                let name = entry
-                    .name
-                    .map(|n| n.to_string_value())
-                    .unwrap_or_default(); // Empty string for unnamed
+                let name = entry.name.map(|n| n.to_string_value()).unwrap_or_default(); // Empty string for unnamed
                 let value = entry.value;
                 quote! {
                     (#name, ::miniextendr_api::into_r::IntoR::into_sexp(#value))

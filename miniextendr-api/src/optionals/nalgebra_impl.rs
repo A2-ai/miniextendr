@@ -1140,8 +1140,7 @@ mod tests {
     #[test]
     fn smatrix_can_be_created() {
         // 2x3 matrix in column-major order
-        let m: SMatrix<f64, 2, 3> =
-            SMatrix::from_column_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
+        let m: SMatrix<f64, 2, 3> = SMatrix::from_column_slice(&[1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         assert_eq!(m.nrows(), 2);
         assert_eq!(m.ncols(), 3);
         // Column-major: m = [[1, 3, 5], [2, 4, 6]]

@@ -197,13 +197,13 @@
 mod altrep;
 mod altrep_module;
 mod c_wrapper_builder;
+mod list_macro;
 mod miniextendr_fn;
 mod typed_list;
-mod list_macro;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
-pub(crate) use miniextendr_macros_core::miniextendr_module;
 use crate::miniextendr_module::MiniextendrModule;
+pub(crate) use miniextendr_macros_core::miniextendr_module;
 mod r_wrapper_builder;
 /// Builder utilities for formatting R wrapper arguments and calls.
 pub(crate) use r_wrapper_builder::RArgumentBuilder;
@@ -215,11 +215,11 @@ mod method_return_builder;
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
 mod dataframe_derive;
+mod lifecycle;
 mod list_derive;
 mod r_class_formatter;
 mod return_type_analysis;
 mod roxygen;
-mod lifecycle;
 
 // Trait ABI support modules
 mod externalptr_derive;
@@ -508,7 +508,11 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// - `#[miniextendr(s7(no_dots))]` - Create strict generic without `...`
 /// - `#[miniextendr(s7(dispatch = "x,y"))]` - Multi-dispatch on multiple arguments
-/// - `#[miniextendr(s7(fallback))]` - Register method for `class_any` (catch-all)
+/// - `#[miniextendr(s7(fallback))]` - Register method for `class_any` (catch-all).
+///   The generated R wrapper uses `tryCatch(x@.ptr, error = function(e) x)` to
+///   safely extract the self argument, so non-miniextendr objects won't crash with
+///   a slot-access error. Instead, incompatible objects produce a Rust type-conversion
+///   error when the method tries to interpret the argument as `&Self`.
 ///
 /// ```ignore
 /// #[miniextendr(s7)]
@@ -517,7 +521,9 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///     #[miniextendr(s7(no_dots))]
 ///     pub fn strict_method(&self) -> i32 { 42 }
 ///
-///     /// Fallback method for any S7 object
+///     /// Fallback method dispatched on class_any.
+///     /// Calling this on a non-MyClass object produces a type-conversion error,
+///     /// not a slot-access crash.
 ///     #[miniextendr(s7(fallback))]
 ///     pub fn describe(&self) -> String { "generic description".into() }
 /// }
@@ -2263,22 +2269,18 @@ pub fn r_ffi_checked(
                             }
                         }
                     } else if returns_raw_pointer {
-                        // Pointer-returning functions are routed to main thread.
-                        // SAFETY: Caller must ensure the pointer is used/copied before
-                        // returning to worker thread, as R's GC may invalidate it.
-                        // The pointer is valid during the with_r_thread callback.
+                        // Pointer-returning functions must stay on the main thread.
+                        // Raw pointers can't be safely routed because the pointed-to
+                        // memory could be GC'd on the main thread.
+                        let fn_name_str = fn_name.to_string();
                         quote::quote! {
                             #(#attrs)*
                             #[doc = #checked_doc_lit]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
-                                let result = ::miniextendr_api::worker::with_r_thread(move || {
-                                    ::miniextendr_api::worker::Sendable(unsafe {
-                                        #unchecked_name(#(#arg_names),*)
-                                    })
-                                });
-                                result.0
+                                ::miniextendr_api::worker::assert_r_main_thread_for_pointer_api(#fn_name_str);
+                                unsafe { #unchecked_name(#(#arg_names),*) }
                             }
                         }
                     } else {

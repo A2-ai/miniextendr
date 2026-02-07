@@ -443,8 +443,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         // Get column names from the first row
         let first_names_sexp = lists[0].names();
         if first_names_sexp.is_none() {
-            // Row has no names - can't create a data frame from unnamed lists
-            panic!("Cannot create data frame from unnamed list elements");
+            crate::r_error!("cannot create data frame from unnamed list elements");
         }
 
         // Extract column names as Vec<String>
@@ -464,7 +463,8 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
 
         // Transpose: collect values by column
         use std::collections::HashMap;
-        let mut columns: HashMap<String, Vec<crate::ffi::SEXP>> = HashMap::with_capacity(col_names.len());
+        let mut columns: HashMap<String, Vec<crate::ffi::SEXP>> =
+            HashMap::with_capacity(col_names.len());
         for name in &col_names {
             columns.insert(name.clone(), Vec::with_capacity(n_rows as usize));
         }
@@ -473,7 +473,8 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         for list in &lists {
             for name in &col_names {
                 // Get the named element from this row
-                let value = list.get_named::<crate::ffi::SEXP>(name)
+                let value = list
+                    .get_named::<crate::ffi::SEXP>(name)
                     .unwrap_or(unsafe { crate::ffi::R_NilValue });
                 columns.get_mut(name).unwrap().push(value);
             }

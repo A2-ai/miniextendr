@@ -673,7 +673,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         }
                     } else if nv.path.is_ident("lifecycle") {
                         // lifecycle = "stage"
-                        if let Some(spec) = crate::lifecycle::parse_lifecycle_attr(&syn::Meta::NameValue(nv.clone()))? {
+                        if let Some(spec) = crate::lifecycle::parse_lifecycle_attr(
+                            &syn::Meta::NameValue(nv.clone()),
+                        )? {
                             out.lifecycle = Some(spec);
                         }
                     } else {
@@ -710,7 +712,9 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         // This allows #[miniextendr(defaults(...))] on impl methods
                     } else if list.path.is_ident("lifecycle") {
                         // lifecycle(stage = "deprecated", when = "0.4.0", ...)
-                        if let Some(spec) = crate::lifecycle::parse_lifecycle_attr(&syn::Meta::List(list.clone()))? {
+                        if let Some(spec) =
+                            crate::lifecycle::parse_lifecycle_attr(&syn::Meta::List(list.clone()))?
+                        {
                             out.lifecycle = Some(spec);
                         }
                     } else if list.path.is_ident("s3") {

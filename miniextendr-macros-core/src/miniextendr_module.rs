@@ -610,7 +610,7 @@ impl syn::parse::Parse for MiniextendrModule {
         let module_name = name.ok_or_else(|| {
             syn::Error::new(
                 first_item_span.unwrap_or_else(|| input.span()),
-                "missing `mod <name>;` declaration (required as first item in miniextendr_module!)",
+                "missing `mod <name>;` declaration in miniextendr_module!",
             )
         })?;
 
@@ -623,5 +623,42 @@ impl syn::parse::Parse for MiniextendrModule {
             trait_impls,
             vctrs: vctrs_items,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mod_not_first_item() {
+        // mod can appear at any position, not just first
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            fn f;
+            mod mypkg;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens);
+        assert!(parsed.is_ok(), "mod at non-first position should parse");
+        assert_eq!(parsed.unwrap().module_name.ident, "mypkg");
+    }
+
+    #[test]
+    fn missing_mod_errors() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            fn f;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens);
+        let err = match parsed {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error for missing mod"),
+        };
+        assert!(
+            err.contains("missing `mod <name>;`"),
+            "error message should mention missing mod: {err}"
+        );
+        assert!(
+            !err.contains("first item"),
+            "error message should not say 'first item': {err}"
+        );
     }
 }

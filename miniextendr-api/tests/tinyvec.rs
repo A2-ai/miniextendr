@@ -122,7 +122,7 @@ fn arrayvec_capacity_ok() {
 #[test]
 fn arrayvec_capacity_error() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         // Create R vector with 10 elements
         let sexp = unsafe {

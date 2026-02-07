@@ -272,13 +272,12 @@ pub(crate) fn collect_param_idents(
 /// Check if a type is `Missing<T>`.
 fn is_missing_type(ty: &syn::Type) -> bool {
     match ty {
-        syn::Type::Path(tp) => {
-            tp.path
-                .segments
-                .last()
-                .map(|s| s.ident == "Missing")
-                .unwrap_or(false)
-        }
+        syn::Type::Path(tp) => tp
+            .path
+            .segments
+            .last()
+            .map(|s| s.ident == "Missing")
+            .unwrap_or(false),
         _ => false,
     }
 }
@@ -320,7 +319,9 @@ pub fn merge_missing_defaults(
 
     for param in collect_missing_params(inputs) {
         // Only add default if user hasn't already specified one
-        merged.entry(param).or_insert_with(|| "quote(expr=)".to_string());
+        merged
+            .entry(param)
+            .or_insert_with(|| "quote(expr=)".to_string());
     }
 
     merged

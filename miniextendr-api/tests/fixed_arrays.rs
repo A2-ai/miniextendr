@@ -8,9 +8,7 @@ fn fixed_array_u8_32_roundtrip() {
     // Test [u8; 32] for SHA256-like use cases
     r_test_utils::with_r_thread(|| {
         let arr: [u8; 32] = [
-            1, 2, 3, 4, 5, 6, 7, 8,
-            9, 10, 11, 12, 13, 14, 15, 16,
-            17, 18, 19, 20, 21, 22, 23, 24,
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
             25, 26, 27, 28, 29, 30, 31, 32,
         ];
 
@@ -48,7 +46,7 @@ fn fixed_array_f64_roundtrip() {
 #[test]
 fn fixed_array_length_mismatch_error() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             // Create R vector with 5 elements

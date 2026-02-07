@@ -196,7 +196,10 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
     let printname = unsafe { crate::ffi::PRINTNAME(sym) };
     let cstr = unsafe { crate::ffi::R_CHAR(printname) };
     let len = unsafe { crate::ffi::Rf_xlength(printname) as usize };
-    unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(cstr.cast(), len)) }
+    unsafe {
+        std::str::from_utf8(std::slice::from_raw_parts(cstr.cast(), len))
+            .expect("R SYMSXP PRINTNAME is not valid UTF-8")
+    }
 }
 
 // =============================================================================

@@ -173,10 +173,7 @@ impl LifecycleSpec {
         match self.stage {
             LifecycleStage::Experimental | LifecycleStage::Superseded => {
                 // lifecycle::signal_stage("experimental", "fn_name()")
-                Some(format!(
-                    "{}(\"{}\", \"{}()\")",
-                    signal_fn, self.stage, what
-                ))
+                Some(format!("{}(\"{}\", \"{}()\")", signal_fn, self.stage, what))
             }
             LifecycleStage::SoftDeprecated
             | LifecycleStage::Deprecated
@@ -241,7 +238,11 @@ pub fn parse_lifecycle_attr(meta: &syn::Meta) -> syn::Result<Option<LifecycleSpe
     match meta {
         syn::Meta::NameValue(nv) if nv.path.is_ident("lifecycle") => {
             // lifecycle = "stage"
-            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &nv.value {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(lit),
+                ..
+            }) = &nv.value
+            {
                 let stage = LifecycleStage::from_str(&lit.value()).ok_or_else(|| {
                     syn::Error::new_spanned(
                         lit,
@@ -280,16 +281,15 @@ pub fn parse_lifecycle_attr(meta: &syn::Meta) -> syn::Result<Option<LifecycleSpe
                             return Err(syn::Error::new_spanned(
                                 &nv.value,
                                 "expected string literal",
-                            ))
+                            ));
                         }
                     };
 
                     match key.as_deref() {
                         Some("stage") => {
-                            spec.stage =
-                                LifecycleStage::from_str(&value).ok_or_else(|| {
-                                    syn::Error::new(nv.value.span(), "invalid lifecycle stage")
-                                })?;
+                            spec.stage = LifecycleStage::from_str(&value).ok_or_else(|| {
+                                syn::Error::new(nv.value.span(), "invalid lifecycle stage")
+                            })?;
                         }
                         Some("when") => spec.when = Some(value),
                         Some("what") => spec.what = Some(value),
@@ -327,7 +327,11 @@ pub fn parse_rust_deprecated(attr: &syn::Attribute) -> Option<LifecycleSpec> {
         }
         syn::Meta::NameValue(nv) => {
             // #[deprecated = "message"]
-            if let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &nv.value {
+            if let syn::Expr::Lit(syn::ExprLit {
+                lit: syn::Lit::Str(lit),
+                ..
+            }) = &nv.value
+            {
                 note = Some(lit.value());
             }
         }
@@ -338,7 +342,10 @@ pub fn parse_rust_deprecated(attr: &syn::Attribute) -> Option<LifecycleSpec> {
             ) {
                 for meta in nested {
                     if let syn::Meta::NameValue(nv) = meta
-                        && let syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(lit), .. }) = &nv.value
+                        && let syn::Expr::Lit(syn::ExprLit {
+                            lit: syn::Lit::Str(lit),
+                            ..
+                        }) = &nv.value
                     {
                         if nv.path.is_ident("since") {
                             since = Some(lit.value());

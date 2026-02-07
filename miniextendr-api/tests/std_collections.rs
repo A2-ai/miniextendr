@@ -2,8 +2,8 @@ mod r_test_utils;
 
 use miniextendr_api::from_r::TryFromSexp;
 use miniextendr_api::into_r::IntoR;
-use std::collections::BinaryHeap;
 use std::borrow::Cow;
+use std::collections::BinaryHeap;
 
 // =============================================================================
 // BinaryHeap tests
@@ -90,7 +90,7 @@ fn cow_slice_owned() {
 #[test]
 fn cow_slice_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_allocVector, Rf_protect, Rf_unprotect, INTEGER, SEXPTYPE};
+        use miniextendr_api::ffi::{INTEGER, Rf_allocVector, Rf_protect, Rf_unprotect, SEXPTYPE};
 
         unsafe {
             let sexp = Rf_protect(Rf_allocVector(SEXPTYPE::INTSXP, 3));
@@ -138,7 +138,7 @@ fn cow_str_owned() {
 #[test]
 fn cow_str_from_r() {
     r_test_utils::with_r_thread(|| {
-        use miniextendr_api::ffi::{Rf_mkString};
+        use miniextendr_api::ffi::Rf_mkString;
         use std::ffi::CString;
 
         unsafe {

@@ -1622,11 +1622,9 @@ impl ParsedImpl {
 
     /// Get active binding setter methods for R6 (have env, marked as r6_setter).
     pub fn active_setter_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
-        self.methods.iter().filter(|m| {
-            m.should_include()
-                && m.env.is_instance()
-                && m.method_attrs.r6_setter
-        })
+        self.methods
+            .iter()
+            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6_setter)
     }
 
     /// Find the setter method for a given property name.
@@ -2212,7 +2210,10 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
 
             // Determine the property name (from r6_prop or method name)
-            let prop_name = ctx.method.method_attrs.r6_prop
+            let prop_name = ctx
+                .method
+                .method_attrs
+                .r6_prop
                 .clone()
                 .unwrap_or_else(|| ctx.method.ident.to_string());
 
@@ -2232,8 +2233,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push("            } else {".to_string());
 
                 // Setter call - construct directly
-                let setter_c_ident = setter_method.c_wrapper_ident(type_ident, parsed_impl.label.as_deref());
-                let setter_call = format!(".Call({}, .call = match.call(), private$.ptr, value)", setter_c_ident);
+                let setter_c_ident =
+                    setter_method.c_wrapper_ident(type_ident, parsed_impl.label.as_deref());
+                let setter_call = format!(
+                    ".Call({}, .call = match.call(), private$.ptr, value)",
+                    setter_c_ident
+                );
                 lines.push(format!("                {}", setter_call));
                 lines.push("                invisible(self)".to_string());
 
@@ -2564,7 +2569,9 @@ fn rust_type_to_s7_class(ty: &syn::Type) -> Option<String> {
 /// - S7::new_property for computed/dynamic properties (from #[s7(getter)]/setter)
 /// - S7::new_generic + S7::method for each instance method
 pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
-    use crate::r_class_formatter::{ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt};
+    use crate::r_class_formatter::{
+        ClassDocBuilder, MethodContext, MethodDocBuilder, ParsedImplExt,
+    };
 
     let class_name = parsed_impl.class_name();
     let type_ident = &parsed_impl.type_ident;
@@ -2660,10 +2667,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Helper to find method by ident
     let find_method = |ident: &str| -> Option<&ParsedMethod> {
-        parsed_impl
-            .methods
-            .iter()
-            .find(|m| m.ident == ident)
+        parsed_impl.methods.iter().find(|m| m.ident == ident)
     };
 
     // Constructor - check if .ptr param will be added (for static methods returning Self)
@@ -2849,10 +2853,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         if prop_parts.is_empty() {
             // This shouldn't happen, but handle gracefully
-            lines.push(format!(
-                "        {} = S7::new_property()",
-                prop.name
-            ));
+            lines.push(format!("        {} = S7::new_property()", prop.name));
         } else {
             lines.push(format!(
                 "        {} = S7::new_property({})",
@@ -2865,10 +2866,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Close the properties list (or merge with sidecar properties)
     if parsed_impl.r_data_accessors {
         let type_name = type_ident.to_string();
-        lines.push(format!(
-            "    ), .rdata_properties_{}),",
-            type_name
-        ));
+        lines.push(format!("    ), .rdata_properties_{}),", type_name));
     } else {
         lines.push("    ),".to_string());
     }
@@ -2916,7 +2914,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         let generic_name = ctx.generic_name();
         let full_params = ctx.instance_formals(true); // adds x, ..., params
-        let call = ctx.instance_call("x@.ptr");
+        let method_attrs = &ctx.method.method_attrs;
+
+        // For fallback methods, use tryCatch to avoid slot-access errors on non-S7 objects
+        let self_expr = if method_attrs.s7_fallback {
+            "tryCatch(x@.ptr, error = function(e) x)"
+        } else {
+            "x@.ptr"
+        };
+        let call = ctx.instance_call(self_expr);
+
+        // Determine dispatch class (fallback -> class_any, normal -> class_name)
+        let method_class = if method_attrs.s7_fallback {
+            "S7::class_any".to_string()
+        } else {
+            class_name.clone()
+        };
 
         // Documentation - skip if class has @noRd
         if !class_has_no_rd {
@@ -2950,11 +2963,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let what = format!("{}.{}", generic_name, class_name);
             if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
                 lines.push(format!(
-                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {{ {prelude}; {return_expr} }}"
+                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {{ {prelude}; {return_expr} }}"
                 ));
             } else {
                 lines.push(format!(
-                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {return_expr}"
+                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {return_expr}"
                 ));
             }
         } else {
@@ -2964,9 +2977,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 lines.push("#' @export".to_string());
             }
 
-            // Phase 3: Handle dispatch control attributes
-            let method_attrs = &ctx.method.method_attrs;
-
             // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
             let dispatch_args = if let Some(ref dispatch) = method_attrs.s7_dispatch {
                 // Multiple dispatch: "x,y" -> c("x", "y")
@@ -2974,7 +2984,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 if args.len() == 1 {
                     format!("\"{}\"", args[0])
                 } else {
-                    format!("c({})", args.iter().map(|a| format!("\"{}\"", a)).collect::<Vec<_>>().join(", "))
+                    format!(
+                        "c({})",
+                        args.iter()
+                            .map(|a| format!("\"{}\"", a))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    )
                 }
             } else {
                 "\"x\"".to_string()
@@ -3010,14 +3026,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
 
-            // Phase 3: Handle fallback (class_any) dispatch
-            let method_class = if method_attrs.s7_fallback {
-                "S7::class_any".to_string()
-            } else {
-                class_name.clone()
-            };
-
-            // Phase 3: Use matching formals for method (with or without ...)
+            // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
             // Inject lifecycle prelude if present
@@ -3095,15 +3104,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {
-                lines.push(format!(
-                    "#' @name convert-{}-to-{}",
-                    from_type, class_name
-                ));
+                lines.push(format!("#' @name convert-{}-to-{}", from_type, class_name));
                 lines.push(format!("#' @rdname {}", class_name));
                 lines.push(format!(
                     "#' @source Generated by miniextendr from `{}::{}`",
-                    type_ident,
-                    method.ident
+                    type_ident, method.ident
                 ));
             }
 
@@ -3133,15 +3138,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Documentation for convert method (skip if class has @noRd)
             if !class_has_no_rd {
-                lines.push(format!(
-                    "#' @name convert-{}-to-{}",
-                    class_name, to_type
-                ));
+                lines.push(format!("#' @name convert-{}-to-{}", class_name, to_type));
                 lines.push(format!("#' @rdname {}", class_name));
                 lines.push(format!(
                     "#' @source Generated by miniextendr from `{}::{}`",
-                    type_ident,
-                    method.ident
+                    type_ident, method.ident
                 ));
             }
 
@@ -3661,10 +3662,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
 
         // Function signature: always takes x and ... for S3 method compatibility
         // Additional parameters from the method are included
-        let method_params = crate::r_wrapper_builder::build_r_formals_from_sig(
-            &method.sig,
-            &method.param_defaults,
-        );
+        let method_params =
+            crate::r_wrapper_builder::build_r_formals_from_sig(&method.sig, &method.param_defaults);
         let formals = if method_params.is_empty() {
             "x, ...".to_string()
         } else {

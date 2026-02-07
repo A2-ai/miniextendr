@@ -29,9 +29,7 @@ static MATERIALIZATION_COUNT: AtomicUsize = AtomicUsize::new(0);
 #[inline]
 pub fn record_materialization(type_name: &str, writable: bool) {
     let n = MATERIALIZATION_COUNT.fetch_add(1, Ordering::Relaxed) + 1;
-    eprintln!(
-        "[ALTREP materialization #{n}] {type_name}, writable={writable}"
-    );
+    eprintln!("[ALTREP materialization #{n}] {type_name}, writable={writable}");
 }
 
 /// Get the total number of materializations since last reset.
