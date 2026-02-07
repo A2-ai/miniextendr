@@ -748,3 +748,109 @@ test_that("json_to_pretty produces formatted JSON", {
   # Pretty-printed JSON has newlines
   expect_true(grepl("\n", result))
 })
+
+# =============================================================================
+# num-complex feature tests
+# =============================================================================
+
+test_that("complex_roundtrip preserves complex number", {
+  skip_if_missing_feature("num-complex")
+  z <- 3+4i
+  expect_equal(complex_roundtrip(z), z)
+})
+
+test_that("complex_add adds complex numbers", {
+  skip_if_missing_feature("num-complex")
+  expect_equal(complex_add(1+2i, 3+4i), 4+6i)
+})
+
+test_that("complex_norm computes magnitude", {
+  skip_if_missing_feature("num-complex")
+  # |3+4i| = 5
+  expect_equal(complex_norm(3+4i), 5.0)
+})
+
+test_that("complex_conj returns conjugate", {
+  skip_if_missing_feature("num-complex")
+  expect_equal(complex_conj(3+4i), 3-4i)
+})
+
+test_that("complex_re/im extract parts", {
+  skip_if_missing_feature("num-complex")
+  expect_equal(complex_re(3+4i), 3.0)
+  expect_equal(complex_im(3+4i), 4.0)
+})
+
+test_that("complex_roundtrip_vec preserves vector", {
+  skip_if_missing_feature("num-complex")
+  v <- c(1+2i, 3+4i, 5+6i)
+  expect_equal(complex_roundtrip_vec(v), v)
+})
+
+test_that("complex_is_finite checks finiteness", {
+  skip_if_missing_feature("num-complex")
+  expect_true(complex_is_finite(1+2i))
+})
+
+test_that("complex_from_parts constructs complex", {
+  skip_if_missing_feature("num-complex")
+  expect_equal(complex_from_parts(3, 4), 3+4i)
+})
+
+# =============================================================================
+# num-traits feature tests
+# =============================================================================
+
+test_that("num_is_zero/num_is_one check identity values", {
+  skip_if_missing_feature("num-traits")
+  expect_true(num_is_zero(0))
+  expect_false(num_is_zero(1))
+  expect_true(num_is_one(1))
+  expect_false(num_is_one(0))
+})
+
+test_that("signed_abs computes absolute value", {
+  skip_if_missing_feature("num-traits")
+  expect_equal(signed_abs(-3.5), 3.5)
+  expect_equal(signed_abs(3.5), 3.5)
+})
+
+test_that("signed_signum returns sign", {
+  skip_if_missing_feature("num-traits")
+  expect_equal(signed_signum(-5), -1)
+  expect_equal(signed_signum(5), 1)
+})
+
+test_that("signed_is_positive/negative classify sign", {
+  skip_if_missing_feature("num-traits")
+  expect_true(signed_is_positive(1))
+  expect_false(signed_is_positive(-1))
+  expect_true(signed_is_negative(-1))
+  expect_false(signed_is_negative(1))
+})
+
+test_that("float_floor/ceil round correctly", {
+  skip_if_missing_feature("num-traits")
+  expect_equal(float_floor(3.7), 3)
+  expect_equal(float_ceil(3.2), 4)
+})
+
+test_that("float_sqrt computes square root", {
+  skip_if_missing_feature("num-traits")
+  expect_equal(float_sqrt(4), 2)
+  expect_equal(float_sqrt(9), 3)
+})
+
+test_that("float_is_finite/is_nan classify values", {
+  skip_if_missing_feature("num-traits")
+  expect_true(float_is_finite(1))
+  expect_false(float_is_finite(Inf))
+  expect_true(float_is_nan(NaN))
+  expect_false(float_is_nan(1))
+})
+
+test_that("float_powi computes integer power", {
+  skip_if_missing_feature("num-traits")
+  expect_equal(float_powi(2, 3L), 8)
+  expect_equal(float_powi(3, 2L), 9)
+})

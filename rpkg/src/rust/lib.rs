@@ -268,6 +268,20 @@ mod serde_json_adapter_tests;
 #[path = "serde_json_adapter_tests_disabled.rs"]
 mod serde_json_adapter_tests;
 
+#[cfg(feature = "num-complex")]
+#[path = "num_complex_adapter_tests.rs"]
+mod num_complex_adapter_tests;
+#[cfg(not(feature = "num-complex"))]
+#[path = "num_complex_adapter_tests_disabled.rs"]
+mod num_complex_adapter_tests;
+
+#[cfg(feature = "num-traits")]
+#[path = "num_traits_adapter_tests.rs"]
+mod num_traits_adapter_tests;
+#[cfg(not(feature = "num-traits"))]
+#[path = "num_traits_adapter_tests_disabled.rs"]
+mod num_traits_adapter_tests;
+
 // Connection tests - requires connections feature
 #[cfg(feature = "connections")]
 #[path = "connection_tests.rs"]
@@ -1922,6 +1936,8 @@ miniextendr_module! {
     use nalgebra_adapter_tests;
     use either_adapter_tests;
     use serde_json_adapter_tests;
+    use num_complex_adapter_tests;
+    use num_traits_adapter_tests;
     use connection_tests;
     use nonapi;
     use factor_tests;
