@@ -2573,7 +2573,7 @@ VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
 
 as_dir=src/rust/.cargo; as_fn_mkdir_p
 
-ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/entrypoint.c:src/entrypoint.c.in src/mx_abi.c:src/mx_abi.c.in"
+ac_config_files="$ac_config_files src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in src/Makevars:src/Makevars.in src/entrypoint.c:src/entrypoint.c.in src/mx_abi.c:src/mx_abi.c.in src/miniextendr-win.def:src/win.def.in"
 
 
 ac_config_commands="$ac_config_commands dev-cargo-config"
@@ -3315,6 +3315,7 @@ do
     "src/Makevars") CONFIG_FILES="$CONFIG_FILES src/Makevars:src/Makevars.in" ;;
     "src/entrypoint.c") CONFIG_FILES="$CONFIG_FILES src/entrypoint.c:src/entrypoint.c.in" ;;
     "src/mx_abi.c") CONFIG_FILES="$CONFIG_FILES src/mx_abi.c:src/mx_abi.c.in" ;;
+    "src/miniextendr-win.def") CONFIG_FILES="$CONFIG_FILES src/miniextendr-win.def:src/win.def.in" ;;
     "dev-cargo-config") CONFIG_COMMANDS="$CONFIG_COMMANDS dev-cargo-config" ;;
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;

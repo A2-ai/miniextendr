@@ -306,6 +306,7 @@ AC_CONFIG_FILES([
   src/Makevars:src/Makevars.in
   src/entrypoint.c:src/entrypoint.c.in
   src/mx_abi.c:src/mx_abi.c.in
+  src/miniextendr-win.def:src/win.def.in
 ])
 
 dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)

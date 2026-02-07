@@ -14,6 +14,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
   - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
   - `rpkg/src/entrypoint.c` → edit `rpkg/src/entrypoint.c.in`
   - `rpkg/src/mx_abi.c` → edit `rpkg/src/mx_abi.c.in`
+  - `rpkg/src/miniextendr-win.def` → edit `rpkg/src/win.def.in`
   - `rpkg/configure` → edit `rpkg/configure.ac` (then run `autoconf`)
 
 ## Sandbox Restrictions
