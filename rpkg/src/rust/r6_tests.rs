@@ -138,6 +138,70 @@ impl R6Rectangle {
     }
 }
 
+/// An R6 class demonstrating active bindings with both getters and setters.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6Temperature {
+    celsius: f64,
+}
+
+/// @noRd
+#[miniextendr(r6)]
+impl R6Temperature {
+    /// Creates a new temperature in Celsius.
+    pub fn new(celsius: f64) -> Self {
+        R6Temperature { celsius }
+    }
+
+    /// Get the temperature in Celsius (active binding getter).
+    #[miniextendr(r6(active))]
+    pub fn celsius(&self) -> f64 {
+        self.celsius
+    }
+
+    /// Set the temperature in Celsius (active binding setter).
+    #[miniextendr(r6(setter, prop = "celsius"))]
+    pub fn set_celsius(&mut self, value: f64) {
+        self.celsius = value;
+    }
+
+    /// Get the temperature in Fahrenheit (active binding with getter+setter).
+    #[miniextendr(r6(active, prop = "fahrenheit"))]
+    pub fn fahrenheit(&self) -> f64 {
+        self.celsius * 9.0 / 5.0 + 32.0
+    }
+
+    /// Set the temperature via Fahrenheit (active binding setter).
+    #[miniextendr(r6(setter, prop = "fahrenheit"))]
+    pub fn set_fahrenheit(&mut self, value: f64) {
+        self.celsius = (value - 32.0) * 5.0 / 9.0;
+    }
+}
+
+/// An R6 class demonstrating cloneable support.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6Cloneable {
+    value: i32,
+}
+
+/// @noRd
+#[miniextendr(r6(cloneable, lock_class))]
+impl R6Cloneable {
+    /// Creates a new instance.
+    pub fn new(value: i32) -> Self {
+        R6Cloneable { value }
+    }
+
+    /// Returns the value.
+    pub fn get_value(&self) -> i32 {
+        self.value
+    }
+
+    /// Sets the value.
+    pub fn set_value(&mut self, value: i32) {
+        self.value = value;
+    }
+}
+
 miniextendr_module! {
     mod r6_tests;
 
@@ -148,4 +212,6 @@ miniextendr_module! {
     impl R6Counter;
     impl R6Accumulator;
     impl R6Rectangle;
+    impl R6Temperature;
+    impl R6Cloneable;
 }

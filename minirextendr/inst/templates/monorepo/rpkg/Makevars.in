@@ -21,8 +21,8 @@ OPTIONAL_CARGO_DEPS = @OPTIONAL_CARGO_DEPS@
 CARGO_AR = $(CARGO_LIBDIR)/lib$(CARGO_STATICLIB_NAME).a
 PKG_LIBS = -L$(CARGO_LIBDIR) -l$(CARGO_STATICLIB_NAME)
 
-R_WRAPPERS_GENERATED = $(ABS_RPKG_SRCDIR)/miniextendr_wrappers.R
-R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/miniextendr_wrappers.R
+R_WRAPPERS_GENERATED = $(ABS_RPKG_SRCDIR)/@PACKAGE_TARNAME@-wrappers.R
+R_WRAPPERS_CURRENT   = $(ABS_RPKG_SRCDIR)/../R/@PACKAGE_TARNAME@-wrappers.R
 
 CARGO_LOCK = $(ABS_RPKG_SRCDIR)/rust/Cargo.lock
 CARGO_TOML = $(ABS_RPKG_SRCDIR)/rust/Cargo.toml
@@ -45,11 +45,10 @@ all: $(SHLIB)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
-	  case "$(CARGO_TARGET_DIR)" in \
-	    "$(ABS_RPKG_SRCDIR)"/*) if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi ;; \
-	    *) echo "Skipping cleanup of CARGO_TARGET_DIR (outside package): $(CARGO_TARGET_DIR)" ;; \
-	  esac; \
+	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
+	  if [ -d "$(ABS_TOP_SRCDIR)/rust-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/rust-target"; fi; \
+	  if [ -d "$(ABS_TOP_SRCDIR)/ra-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/ra-target"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/target"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/ra_target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/ra_target"; fi; \
 	fi

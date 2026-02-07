@@ -292,8 +292,29 @@ pub struct MethodAttrs {
     pub finalize: bool,
     /// Mark as private (R6)
     pub private: bool,
-    /// Mark as active binding (R6)
+    /// Mark as active binding getter (R6)
     pub active: bool,
+    /// R6 active binding setter marker.
+    ///
+    /// Use `#[miniextendr(r6(setter, prop = "name"))]` to mark a method as an R6 active
+    /// binding setter. The property name must match a getter to create a combined binding.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(r6(active))]  // or r6(active, prop = "len")
+    /// fn length(&self) -> i32 { self.data.len() as i32 }
+    ///
+    /// #[miniextendr(r6(setter, prop = "length"))]
+    /// fn set_length(&mut self, value: i32) { self.data.resize(value as usize, 0); }
+    /// // Generates combined active binding:
+    /// // length = function(value) { if (missing(value)) get_length() else set_length(value) }
+    /// ```
+    pub r6_setter: bool,
+    /// R6 property name for active bindings (defaults to method name).
+    ///
+    /// When specified via `#[miniextendr(r6(active, prop = "name"))]`, overrides the
+    /// default property name which is derived from the method name.
+    pub r6_prop: Option<String>,
     /// Generate as `as.<class>()` S3 method (e.g., "data.frame", "list", "character").
     ///
     /// When set, generates an S3 method for R's `as.<class>()` generic:
@@ -527,6 +548,38 @@ pub struct MethodAttrs {
     /// // Generates: S7::method(convert, list(Point3D, Point2D)) <- function(from, to) ...
     /// ```
     pub s7_convert_to: Option<String>,
+    // =========================================================================
+    // Lifecycle support
+    // =========================================================================
+    /// Lifecycle specification for deprecation/experimental status on methods.
+    ///
+    /// Use `#[miniextendr(lifecycle = "deprecated")]` or
+    /// `#[miniextendr(lifecycle(stage = "deprecated", when = "0.4.0", with = "new_method()"))]`
+    /// on methods in impl blocks.
+    ///
+    /// # Example
+    /// ```ignore
+    /// #[miniextendr(r6)]
+    /// impl MyType {
+    ///     #[miniextendr(lifecycle = "deprecated")]
+    ///     pub fn old_method(&self) -> i32 { 0 }
+    /// }
+    /// ```
+    pub lifecycle: Option<crate::lifecycle::LifecycleSpec>,
+    /// Mark as R6 deep_clone method.
+    ///
+    /// Use `#[miniextendr(r6(deep_clone))]` to mark a method as the R6 deep clone handler.
+    /// This method will be wired into `private$deep_clone` in the R6Class definition.
+    pub deep_clone: bool,
+    /// vctrs protocol method override.
+    ///
+    /// Use `#[miniextendr(vctrs(format))]` to mark a method as implementing a vctrs
+    /// protocol S3 generic. The method will be generated as `format.<class>` instead
+    /// of the default Rust method name.
+    ///
+    /// Supported protocols: format, vec_proxy, vec_proxy_equal, vec_proxy_compare,
+    /// vec_proxy_order, vec_restore, obj_print_data, obj_print_header, obj_print_footer.
+    pub vctrs_protocol: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -553,6 +606,19 @@ pub struct ParsedImpl {
     pub cfg_attrs: Vec<syn::Attribute>,
     /// vctrs-specific attributes (only used when class_system is Vctrs)
     pub vctrs_attrs: VctrsAttrs,
+    // R6-specific configuration (propagated from ImplAttrs)
+    pub r6_inherit: Option<String>,
+    pub r6_portable: Option<bool>,
+    pub r6_cloneable: Option<bool>,
+    pub r6_lock_objects: Option<bool>,
+    pub r6_lock_class: Option<bool>,
+    // S7-specific configuration (propagated from ImplAttrs)
+    pub s7_parent: Option<String>,
+    pub s7_abstract: bool,
+    /// When true, auto-include sidecar `#[r_data]` field accessors in the class definition.
+    /// For R6: active bindings are added via `$set("active", ...)` after class creation.
+    /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
+    pub r_data_accessors: bool,
 }
 
 /// Attributes on the impl block itself.
@@ -571,6 +637,35 @@ pub struct ImplAttrs {
     pub label: Option<String>,
     /// vctrs-specific attributes (only used when class_system is Vctrs)
     pub vctrs_attrs: VctrsAttrs,
+    // =========================================================================
+    // R6-specific configuration
+    // =========================================================================
+    /// R6 parent class for inheritance.
+    /// Use `#[miniextendr(r6(inherit = "ParentClass"))]` to specify the parent.
+    pub r6_inherit: Option<String>,
+    /// R6 portable flag. Default TRUE. Set to false for non-portable R6 classes.
+    pub r6_portable: Option<bool>,
+    /// R6 cloneable flag. Controls whether `$clone()` is available.
+    pub r6_cloneable: Option<bool>,
+    /// R6 lock_objects flag. Controls whether fields can be added after creation.
+    pub r6_lock_objects: Option<bool>,
+    /// R6 lock_class flag. Controls whether the class definition can be modified.
+    pub r6_lock_class: Option<bool>,
+    // =========================================================================
+    // S7-specific configuration
+    // =========================================================================
+    /// S7 parent class for inheritance.
+    /// Use `#[miniextendr(s7(parent = "ParentClass"))]` to specify the parent.
+    pub s7_parent: Option<String>,
+    /// S7 abstract class flag. Abstract classes cannot be instantiated.
+    pub s7_abstract: bool,
+    // =========================================================================
+    // Sidecar integration
+    // =========================================================================
+    /// When true, auto-include `#[r_data]` field accessors in the class definition.
+    /// For R6: active bindings via `$set("active", ...)` post-creation.
+    /// For S7: properties spliced from `.rdata_properties_{Type}`.
+    pub r_data_accessors: bool,
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -579,6 +674,14 @@ impl syn::parse::Parse for ImplAttrs {
         let mut class_name = None;
         let mut label = None;
         let mut vctrs_attrs = VctrsAttrs::default();
+        let mut r6_inherit = None;
+        let mut r6_portable = None;
+        let mut r6_cloneable = None;
+        let mut r6_lock_objects = None;
+        let mut r6_lock_class = None;
+        let mut s7_parent = None;
+        let mut s7_abstract = false;
+        let mut r_data_accessors = false;
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
@@ -670,6 +773,131 @@ impl syn::parse::Parse for ImplAttrs {
                         }
                     }
                 }
+            } else if ident_str == "r6" {
+                // R6 class system with optional nested attributes
+                // r6 or r6(inherit = "Parent", portable = false, cloneable, lock_class)
+                class_system = ClassSystem::R6;
+
+                if input.peek(syn::token::Paren) {
+                    let content;
+                    syn::parenthesized!(content in input);
+
+                    while !content.is_empty() {
+                        let key: syn::Ident = content.parse()?;
+                        let key_str = key.to_string();
+
+                        match key_str.as_str() {
+                            "inherit" => {
+                                let _: syn::Token![=] = content.parse()?;
+                                let value: syn::LitStr = content.parse()?;
+                                r6_inherit = Some(value.value());
+                            }
+                            "portable" => {
+                                if content.peek(syn::Token![=]) {
+                                    let _: syn::Token![=] = content.parse()?;
+                                    let value: syn::LitBool = content.parse()?;
+                                    r6_portable = Some(value.value());
+                                } else {
+                                    r6_portable = Some(true);
+                                }
+                            }
+                            "cloneable" => {
+                                if content.peek(syn::Token![=]) {
+                                    let _: syn::Token![=] = content.parse()?;
+                                    let value: syn::LitBool = content.parse()?;
+                                    r6_cloneable = Some(value.value());
+                                } else {
+                                    r6_cloneable = Some(true);
+                                }
+                            }
+                            "lock_objects" => {
+                                if content.peek(syn::Token![=]) {
+                                    let _: syn::Token![=] = content.parse()?;
+                                    let value: syn::LitBool = content.parse()?;
+                                    r6_lock_objects = Some(value.value());
+                                } else {
+                                    r6_lock_objects = Some(true);
+                                }
+                            }
+                            "lock_class" => {
+                                if content.peek(syn::Token![=]) {
+                                    let _: syn::Token![=] = content.parse()?;
+                                    let value: syn::LitBool = content.parse()?;
+                                    r6_lock_class = Some(value.value());
+                                } else {
+                                    r6_lock_class = Some(true);
+                                }
+                            }
+                            "r_data_accessors" => {
+                                r_data_accessors = true;
+                            }
+                            _ => {
+                                return Err(syn::Error::new(
+                                    key.span(),
+                                    format!(
+                                        "unknown r6 option: {} (expected inherit, portable, cloneable, lock_objects, lock_class, r_data_accessors)",
+                                        key_str
+                                    ),
+                                ));
+                            }
+                        }
+
+                        // Consume trailing comma if present
+                        if content.peek(syn::Token![,]) {
+                            let _: syn::Token![,] = content.parse()?;
+                        }
+                    }
+                }
+            } else if ident_str == "s7" {
+                // S7 class system with optional nested attributes
+                // s7 or s7(parent = "Parent", abstract)
+                class_system = ClassSystem::S7;
+
+                if input.peek(syn::token::Paren) {
+                    let content;
+                    syn::parenthesized!(content in input);
+
+                    while !content.is_empty() {
+                        // Use parse_any to accept `abstract` (a reserved keyword)
+                        use syn::ext::IdentExt;
+                        let key = syn::Ident::parse_any(&content)?;
+                        let key_str = key.to_string();
+
+                        match key_str.as_str() {
+                            "parent" => {
+                                let _: syn::Token![=] = content.parse()?;
+                                let value: syn::LitStr = content.parse()?;
+                                s7_parent = Some(value.value());
+                            }
+                            "abstract" => {
+                                if content.peek(syn::Token![=]) {
+                                    let _: syn::Token![=] = content.parse()?;
+                                    let value: syn::LitBool = content.parse()?;
+                                    s7_abstract = value.value();
+                                } else {
+                                    s7_abstract = true;
+                                }
+                            }
+                            "r_data_accessors" => {
+                                r_data_accessors = true;
+                            }
+                            _ => {
+                                return Err(syn::Error::new(
+                                    key.span(),
+                                    format!(
+                                        "unknown s7 option: {} (expected parent, abstract, r_data_accessors)",
+                                        key_str
+                                    ),
+                                ));
+                            }
+                        }
+
+                        // Consume trailing comma if present
+                        if content.peek(syn::Token![,]) {
+                            let _: syn::Token![,] = content.parse()?;
+                        }
+                    }
+                }
             } else {
                 // This is a class system identifier
                 class_system = ident_str
@@ -688,6 +916,14 @@ impl syn::parse::Parse for ImplAttrs {
             class_name,
             label,
             vctrs_attrs,
+            r6_inherit,
+            r6_portable,
+            r6_cloneable,
+            r6_lock_objects,
+            r6_lock_class,
+            s7_parent,
+            s7_abstract,
+            r_data_accessors,
         })
     }
 }
@@ -743,12 +979,12 @@ impl ParsedMethod {
 
             // Parse the nested content: miniextendr(class_system(options...)) or miniextendr(defaults(...))
             attr.parse_nested_meta(|meta| {
+                // Note: "vctrs" is handled separately below for protocol method overrides
                 let is_class_meta = meta.path.is_ident("env")
                     || meta.path.is_ident("r6")
                     || meta.path.is_ident("s7")
                     || meta.path.is_ident("s3")
-                    || meta.path.is_ident("s4")
-                    || meta.path.is_ident("vctrs");
+                    || meta.path.is_ident("s4");
 
                 if is_class_meta {
                     // Parse the inner options: r6(ignore, constructor, ...)
@@ -765,6 +1001,10 @@ impl ParsedMethod {
                             use syn::spanned::Spanned;
                             method_attrs.active = true;
                             method_attrs.active_span = Some(inner.path.span());
+                        } else if inner.path.is_ident("setter") {
+                            // Active binding setter: works for both R6 and S7
+                            method_attrs.r6_setter = true;
+                            method_attrs.s7_setter = true;
                         } else if inner.path.is_ident("worker") {
                             method_attrs.worker = true;
                         } else if inner.path.is_ident("main_thread") {
@@ -787,14 +1027,15 @@ impl ParsedMethod {
                             method_attrs.class = Some(value.value());
                         } else if inner.path.is_ident("getter") {
                             method_attrs.s7_getter = true;
-                        } else if inner.path.is_ident("setter") {
-                            method_attrs.s7_setter = true;
                         } else if inner.path.is_ident("validate") {
                             method_attrs.s7_validate = true;
                         } else if inner.path.is_ident("prop") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
-                            method_attrs.s7_prop = Some(value.value());
+                            let prop_value = value.value();
+                            // Set both S7 and R6 prop - the class system will use the appropriate one
+                            method_attrs.s7_prop = Some(prop_value.clone());
+                            method_attrs.r6_prop = Some(prop_value);
                         } else if inner.path.is_ident("default") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -823,9 +1064,11 @@ impl ParsedMethod {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
                             method_attrs.s7_convert_to = Some(value.value());
+                        } else if inner.path.is_ident("deep_clone") {
+                            method_attrs.deep_clone = true;
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
                             ));
                         }
                         Ok(())
@@ -908,9 +1151,71 @@ impl ParsedMethod {
                     }
 
                     method_attrs.as_coercion = Some(coercion_type);
+                } else if meta.path.is_ident("lifecycle") {
+                    // lifecycle = "stage" or lifecycle(stage = "deprecated", when = "0.4.0", ...)
+                    if meta.input.peek(syn::Token![=]) {
+                        // lifecycle = "stage"
+                        let _: syn::Token![=] = meta.input.parse()?;
+                        let value: syn::LitStr = meta.input.parse()?;
+                        let stage = crate::lifecycle::LifecycleStage::from_str(&value.value())
+                            .ok_or_else(|| {
+                                syn::Error::new(
+                                    value.span(),
+                                    "invalid lifecycle stage; expected one of: experimental, stable, superseded, soft-deprecated, deprecated, defunct",
+                                )
+                            })?;
+                        method_attrs.lifecycle = Some(crate::lifecycle::LifecycleSpec::new(stage));
+                    } else {
+                        // lifecycle(stage = "deprecated", when = "0.4.0", ...)
+                        let mut spec = crate::lifecycle::LifecycleSpec::default();
+                        meta.parse_nested_meta(|inner| {
+                            let key = inner.path.get_ident()
+                                .ok_or_else(|| inner.error("expected identifier"))?
+                                .to_string();
+                            let _: syn::Token![=] = inner.input.parse()?;
+                            let value: syn::LitStr = inner.input.parse()?;
+                            match key.as_str() {
+                                "stage" => {
+                                    spec.stage = crate::lifecycle::LifecycleStage::from_str(&value.value())
+                                        .ok_or_else(|| syn::Error::new(value.span(), "invalid lifecycle stage"))?;
+                                }
+                                "when" => spec.when = Some(value.value()),
+                                "what" => spec.what = Some(value.value()),
+                                "with" => spec.with = Some(value.value()),
+                                "details" => spec.details = Some(value.value()),
+                                "id" => spec.id = Some(value.value()),
+                                _ => return Err(inner.error(
+                                    "unknown lifecycle option; expected: stage, when, what, with, details, id"
+                                )),
+                            }
+                            Ok(())
+                        })?;
+                        method_attrs.lifecycle = Some(spec);
+                    }
+                } else if meta.path.is_ident("vctrs") {
+                    // vctrs protocol method: vctrs(format), vctrs(vec_proxy), etc.
+                    meta.parse_nested_meta(|inner| {
+                        let protocol = inner.path.get_ident()
+                            .ok_or_else(|| inner.error("expected protocol name"))?
+                            .to_string();
+                        const VALID_PROTOCOLS: &[&str] = &[
+                            "format", "vec_proxy", "vec_proxy_equal", "vec_proxy_compare",
+                            "vec_proxy_order", "vec_restore", "obj_print_data",
+                            "obj_print_header", "obj_print_footer",
+                        ];
+                        if !VALID_PROTOCOLS.contains(&protocol.as_str()) {
+                            return Err(inner.error(format!(
+                                "unknown vctrs protocol: {}; expected one of: {}",
+                                protocol,
+                                VALID_PROTOCOLS.join(", ")
+                            )));
+                        }
+                        method_attrs.vctrs_protocol = Some(protocol);
+                        Ok(())
+                    })?;
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r, as"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r, as, lifecycle"
                     ));
                 }
                 Ok(())
@@ -967,7 +1272,7 @@ impl ParsedMethod {
     /// Regular doc comments are auto-converted to `@description` for all class systems.
     pub fn from_impl_item(item: syn::ImplItemFn, _class_system: ClassSystem) -> syn::Result<Self> {
         let env = Self::detect_env(&item.sig);
-        let method_attrs = Self::parse_method_attrs(&item.attrs)?;
+        let mut method_attrs = Self::parse_method_attrs(&item.attrs)?;
 
         // Validate: no defaults on self parameter (any kind: &self, &mut self, self)
         if env != ReceiverKind::None && method_attrs.defaults.contains_key("self") {
@@ -1015,8 +1320,21 @@ impl ParsedMethod {
             ));
         }
 
+        // Extract lifecycle from #[deprecated] attribute if not already set via #[miniextendr(lifecycle = ...)]
+        if method_attrs.lifecycle.is_none() {
+            method_attrs.lifecycle = item
+                .attrs
+                .iter()
+                .find_map(crate::lifecycle::parse_rust_deprecated);
+        }
+
         // Auto-convert regular doc comments to @description for all class systems
-        let doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
+        let mut doc_tags = crate::roxygen::roxygen_tags_from_attrs_for_r6_method(&item.attrs);
+
+        // Inject lifecycle badge into method roxygen tags if present
+        if let Some(ref spec) = method_attrs.lifecycle {
+            crate::lifecycle::inject_lifecycle_badge(&mut doc_tags, spec);
+        }
 
         // Get parameter defaults from method-level #[miniextendr(defaults(...))] attribute
         let param_defaults = method_attrs.defaults.clone();
@@ -1124,6 +1442,19 @@ impl ParsedMethod {
         }
     }
 
+    /// Generate lifecycle prelude R code for this method, if lifecycle is specified.
+    ///
+    /// The `what` parameter describes the method in the format appropriate for the class system:
+    /// - Env/R6: `"Type$method()"`
+    /// - S3: `"method.Type()"`
+    /// - S7: `"method()`" (dispatched generics)
+    pub fn lifecycle_prelude(&self, what: &str) -> Option<String> {
+        self.method_attrs
+            .lifecycle
+            .as_ref()
+            .and_then(|spec| spec.r_prelude(what))
+    }
+
     /// Returns true if this method returns Self.
     pub fn returns_self(&self) -> bool {
         matches!(&self.sig.output, syn::ReturnType::Type(_, ty)
@@ -1221,6 +1552,14 @@ impl ParsedImpl {
             original_impl: strip_miniextendr_attrs_from_impl(item_impl),
             cfg_attrs,
             vctrs_attrs: attrs.vctrs_attrs,
+            r6_inherit: attrs.r6_inherit,
+            r6_portable: attrs.r6_portable,
+            r6_cloneable: attrs.r6_cloneable,
+            r6_lock_objects: attrs.r6_lock_objects,
+            r6_lock_class: attrs.r6_lock_class,
+            s7_parent: attrs.s7_parent,
+            s7_abstract: attrs.s7_abstract,
+            r_data_accessors: attrs.r_data_accessors,
         })
     }
 
@@ -1268,7 +1607,7 @@ impl ParsedImpl {
         })
     }
 
-    /// Get active binding methods for R6 (have env, marked active).
+    /// Get active binding getter methods for R6 (have env, marked active, not setter).
     /// Active bindings provide property-like access (obj$name instead of obj$name()).
     pub fn active_instance_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
         self.methods.iter().filter(|m| {
@@ -1277,6 +1616,28 @@ impl ParsedImpl {
                 && !m.is_constructor()
                 && !m.is_finalizer()
                 && m.is_active()
+                && !m.method_attrs.r6_setter // Exclude setters
+        })
+    }
+
+    /// Get active binding setter methods for R6 (have env, marked as r6_setter).
+    pub fn active_setter_methods(&self) -> impl Iterator<Item = &ParsedMethod> {
+        self.methods
+            .iter()
+            .filter(|m| m.should_include() && m.env.is_instance() && m.method_attrs.r6_setter)
+    }
+
+    /// Find the setter method for a given property name.
+    pub fn find_setter_for_prop(&self, prop_name: &str) -> Option<&ParsedMethod> {
+        self.active_setter_methods().find(|m| {
+            // Match by explicit prop name or by method name with "set_" prefix removed
+            if let Some(ref explicit_prop) = m.method_attrs.r6_prop {
+                explicit_prop == prop_name
+            } else {
+                // Try to match by stripping "set_" prefix from method name
+                let method_name = m.ident.to_string();
+                method_name.strip_prefix("set_").unwrap_or(&method_name) == prop_name
+            }
         })
     }
 
@@ -1519,6 +1880,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             class_name, method_name, ctx.params
         ));
 
+        // Inject lifecycle prelude if present
+        let what = format!("{}${}", class_name, method_name);
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            lines.push(format!("    {}", prelude));
+        }
+
         let call = ctx.instance_call("self");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
@@ -1545,6 +1912,12 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             "{}${} <- function({}) {{",
             class_name, method_name, ctx.params
         ));
+
+        // Inject lifecycle prelude if present
+        let what = format!("{}${}", class_name, method_name);
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            lines.push(format!("    {}", prelude));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -1644,7 +2017,20 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .to_string(),
         );
     }
-    lines.push(format!("{} <- R6::R6Class(\"{}\",", class_name, class_name));
+    // R6Class definition — optionally include inherit
+    if let Some(ref parent) = parsed_impl.r6_inherit {
+        lines.push(format!(
+            "{} <- R6::R6Class(\"{}\", inherit = {},",
+            class_name, class_name, parent
+        ));
+    } else {
+        lines.push(format!("{} <- R6::R6Class(\"{}\",", class_name, class_name));
+    }
+
+    // Portable flag (only emit if explicitly set to FALSE, since TRUE is default)
+    if parsed_impl.r6_portable == Some(false) {
+        lines.push("    portable = FALSE,".to_string());
+    }
 
     // Public list
     lines.push("    public = list(".to_string());
@@ -1720,6 +2106,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             ctx.method.ident, ctx.params
         ));
 
+        // Inject lifecycle prelude if present
+        let what = format!("{}${}", class_name, ctx.method.ident);
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            lines.push(format!("            {}", prelude));
+        }
+
         let call = ctx.instance_call("private$.ptr");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
@@ -1759,6 +2151,19 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let c_ident = finalizer.c_wrapper_ident(type_ident, parsed_impl.label());
         lines.push(format!(
             "        finalize = function() .Call({}, .call = match.call(), private$.ptr),",
+            c_ident
+        ));
+    }
+
+    // deep_clone (if any method marked with #[miniextendr(r6(deep_clone))])
+    if let Some(dc_method) = parsed_impl
+        .methods
+        .iter()
+        .find(|m| m.method_attrs.deep_clone && m.should_include())
+    {
+        let c_ident = dc_method.c_wrapper_ident(type_ident, parsed_impl.label());
+        lines.push(format!(
+            "        deep_clone = function(name, value) .Call({}, .call = match.call(), private$.ptr, name, value),",
             c_ident
         ));
     }
@@ -1804,29 +2209,87 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 }
             }
 
-            // Active bindings are getter-only (no parameters besides self)
-            // Format: name = function() { ... }
-            lines.push(format!("        {} = function() {{", ctx.method.ident));
+            // Determine the property name (from r6_prop or method name)
+            let prop_name = ctx
+                .method
+                .method_attrs
+                .r6_prop
+                .clone()
+                .unwrap_or_else(|| ctx.method.ident.to_string());
 
-            let call = ctx.instance_call("private$.ptr");
-            let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let return_builder = crate::MethodReturnBuilder::new(call)
-                .with_strategy(strategy)
-                .with_class_name(class_name.clone())
-                .with_indent(12); // R6 active bindings have 12-space indent
-            lines.extend(return_builder.build_r6_body());
+            // Check if there's a matching setter for this property
+            let setter = parsed_impl.find_setter_for_prop(&prop_name);
 
-            lines.push(format!("        }}{}", comma));
+            if let Some(setter_method) = setter {
+                // Combined getter/setter active binding
+                // Format: name = function(value) { if (missing(value)) getter else setter }
+                lines.push(format!("        {} = function(value) {{", prop_name));
+                lines.push("            if (missing(value)) {".to_string());
+
+                // Getter call
+                let getter_call = ctx.instance_call("private$.ptr");
+                lines.push(format!("                {}", getter_call));
+
+                lines.push("            } else {".to_string());
+
+                // Setter call - construct directly
+                let setter_c_ident =
+                    setter_method.c_wrapper_ident(type_ident, parsed_impl.label.as_deref());
+                let setter_call = format!(
+                    ".Call({}, .call = match.call(), private$.ptr, value)",
+                    setter_c_ident
+                );
+                lines.push(format!("                {}", setter_call));
+                lines.push("                invisible(self)".to_string());
+
+                lines.push("            }".to_string());
+                lines.push(format!("        }}{}", comma));
+            } else {
+                // Getter-only active binding (no parameters besides self)
+                // Format: name = function() { ... }
+                lines.push(format!("        {} = function() {{", prop_name));
+
+                let call = ctx.instance_call("private$.ptr");
+                let strategy = crate::ReturnStrategy::for_method(ctx.method);
+                let return_builder = crate::MethodReturnBuilder::new(call)
+                    .with_strategy(strategy)
+                    .with_class_name(class_name.clone())
+                    .with_indent(12); // R6 active bindings have 12-space indent
+                lines.extend(return_builder.build_r6_body());
+
+                lines.push(format!("        }}{}", comma));
+            }
         }
 
         lines.push("    ),".to_string());
     }
 
     // Class options
-    lines.push("    lock_objects = TRUE,".to_string());
-    lines.push("    lock_class = FALSE,".to_string());
-    lines.push("    cloneable = FALSE".to_string());
+    let lock_objects = parsed_impl.r6_lock_objects.unwrap_or(true);
+    let lock_class = parsed_impl.r6_lock_class.unwrap_or(false);
+    let cloneable = parsed_impl.r6_cloneable.unwrap_or(false);
+    lines.push(format!(
+        "    lock_objects = {},",
+        if lock_objects { "TRUE" } else { "FALSE" }
+    ));
+    lines.push(format!(
+        "    lock_class = {},",
+        if lock_class { "TRUE" } else { "FALSE" }
+    ));
+    lines.push(format!(
+        "    cloneable = {}",
+        if cloneable { "TRUE" } else { "FALSE" }
+    ));
     lines.push(")".to_string());
+
+    // If r_data_accessors is set, apply sidecar active bindings from #[derive(ExternalPtr)]
+    if parsed_impl.r_data_accessors {
+        let type_name = type_ident.to_string();
+        lines.push(format!(
+            ".rdata_active_bindings_{}({})",
+            type_name, class_name
+        ));
+    }
 
     // Check if class has @noRd
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
@@ -1847,6 +2310,12 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             "{} <- function({}) {{",
             static_method_name, ctx.params
         ));
+
+        // Inject lifecycle prelude if present
+        let what = format!("{}${}", class_name, method_name);
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            lines.push(format!("    {}", prelude));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -1938,6 +2407,12 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             s3_method_name, full_params
         ));
 
+        // Inject lifecycle prelude if present
+        let what = format!("{}.{}", generic_name, class_name);
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            lines.push(format!("    {}", prelude));
+        }
+
         let call = ctx.instance_call("x");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
@@ -1964,6 +2439,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.push("#' @export".to_string());
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        // Inject lifecycle prelude if present
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
+            lines.push(format!("    {}", prelude));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -2253,14 +2733,32 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         );
     }
 
-    lines.push(format!(
-        "{} <- S7::new_class(\"{}\",",
-        class_name, class_name
-    ));
+    // S7::new_class — optionally include parent and abstract
+    if let Some(ref parent) = parsed_impl.s7_parent {
+        lines.push(format!(
+            "{} <- S7::new_class(\"{}\", parent = {},",
+            class_name, class_name, parent
+        ));
+    } else {
+        lines.push(format!(
+            "{} <- S7::new_class(\"{}\",",
+            class_name, class_name
+        ));
+    }
+
+    if parsed_impl.s7_abstract {
+        lines.push("    abstract = TRUE,".to_string());
+    }
 
     // Properties - .ptr holds the ExternalPtr, plus computed/dynamic properties
-    lines.push("    properties = list(".to_string());
-    lines.push("        .ptr = S7::class_any".to_string());
+    // When r_data_accessors is set, merge with sidecar properties from #[derive(ExternalPtr)]
+    if parsed_impl.r_data_accessors {
+        lines.push("    properties = c(list(".to_string());
+        lines.push("        .ptr = S7::class_any".to_string());
+    } else {
+        lines.push("    properties = list(".to_string());
+        lines.push("        .ptr = S7::class_any".to_string());
+    }
 
     // Generate computed/dynamic properties
     for prop in properties.values() {
@@ -2365,7 +2863,13 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
 
-    lines.push("    ),".to_string());
+    // Close the properties list (or merge with sidecar properties)
+    if parsed_impl.r_data_accessors {
+        let type_name = type_ident.to_string();
+        lines.push(format!("    ), .rdata_properties_{}),", type_name));
+    } else {
+        lines.push("    ),".to_string());
+    }
 
     if let Some(ctx) = parsed_impl.constructor_context() {
         if has_self_returning_methods {
@@ -2435,13 +2939,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Define method using the resolved generic name
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
-            let return_expr = crate::MethodReturnBuilder::new(call)
+            let return_expr = crate::MethodReturnBuilder::new(call.clone())
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
-            lines.push(format!(
-                "S7::method({gen_name}, {class_name}) <- function({full_params}) {return_expr}"
-            ));
+
+            // Inject lifecycle prelude if present
+            let what = format!("{}.{}", generic_name, class_name);
+            if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+                lines.push(format!(
+                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {{ {prelude}; {return_expr} }}"
+                ));
+            } else {
+                lines.push(format!(
+                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {return_expr}"
+                ));
+            }
         } else {
             // Create new S7 generic if it doesn't exist
             // Add @export so roxygen generates export() in NAMESPACE (if class should be exported)
@@ -2511,9 +3024,17 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             // Phase 3: Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
-            lines.push(format!(
-                "S7::method({generic_name}, {method_class}) <- function({method_formals}) {return_expr}"
-            ));
+            // Inject lifecycle prelude if present
+            let what = format!("{}.{}", generic_name, class_name);
+            if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+                lines.push(format!(
+                    "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{ {prelude}; {return_expr} }}"
+                ));
+            } else {
+                lines.push(format!(
+                    "S7::method({generic_name}, {method_class}) <- function({method_formals}) {return_expr}"
+                ));
+            }
         }
         lines.push(String::new());
     }
@@ -2536,6 +3057,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        // Inject lifecycle prelude if present
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
+            lines.push(format!("    {}", prelude));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -2592,7 +3118,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
 
-            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            // Use imported `convert` - requires `@importFrom S7 convert` in package
             lines.push(format!(
                 "S7::method(convert, list({}, {})) <- function(from, to) {}",
                 from_type, class_name, return_expr
@@ -2615,7 +3141,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 ));
             }
 
-            // Generate: S7::method(S7::convert, list(ThisClass, ToType)) <- function(from, to) ...
+            // Generate: S7::method(convert, list(ThisClass, ToType)) <- function(from, to) ...
             // The convert_to method is an instance method where self is mapped to from@.ptr
             let call = format!(".Call({}, .call = match.call(), from@.ptr)", ctx.c_ident);
 
@@ -2626,7 +3152,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_class_name(to_type.clone())
                 .build_s7_inline();
 
-            // Use 'convert' - must be imported from S7 in the package NAMESPACE
+            // Use imported `convert` - requires `@importFrom S7 convert` in package
             lines.push(format!(
                 "S7::method(convert, list({}, {})) <- function(from, to) {}",
                 class_name, to_type, return_expr
@@ -2661,7 +3187,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let has_export = crate::roxygen::has_roxygen_tag(class_doc_tags, "export");
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S4")
-            .with_imports("@importFrom methods setClass setGeneric setMethod new isGeneric")
+            .with_imports("@importFrom methods setClass setGeneric setMethod new")
             .build(),
     );
     // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
@@ -2736,10 +3262,13 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
 
-        // Define generic if needed
+        // Define generic unconditionally - setGeneric() is idempotent and handles
+        // re-definition correctly. The conditional `if (!isGeneric())` pattern fails
+        // during package reload because isGeneric() can return TRUE from stale cache
+        // entries while the actual generic no longer exists in the namespace.
         lines.push(format!(
-            "if (!methods::isGeneric(\"{}\")) methods::setGeneric(\"{}\", function(x, ...) standardGeneric(\"{}\"))",
-            method_name, method_name, method_name
+            "methods::setGeneric(\"{}\", function(x, ...) standardGeneric(\"{}\"))",
+            method_name, method_name
         ));
 
         // Define method with @exportMethod for proper S4 dispatch (if class should be exported)
@@ -2752,10 +3281,20 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
             .build_s4_inline();
-        lines.push(format!(
-            "methods::setMethod(\"{}\", \"{}\", function({}) {})",
-            method_name, class_name, full_params, return_expr
-        ));
+
+        // Inject lifecycle prelude if present
+        let what = format!("{}.{}", method_name, class_name);
+        if let Some(prelude) = method.lifecycle_prelude(&what) {
+            lines.push(format!(
+                "methods::setMethod(\"{}\", \"{}\", function({}) {{ {}; {} }})",
+                method_name, class_name, full_params, prelude, return_expr
+            ));
+        } else {
+            lines.push(format!(
+                "methods::setMethod(\"{}\", \"{}\", function({}) {})",
+                method_name, class_name, full_params, return_expr
+            ));
+        }
         lines.push(String::new());
     }
 
@@ -2777,6 +3316,11 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        // Inject lifecycle prelude if present
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
+            lines.push(format!("    {}", prelude));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
@@ -2944,7 +3488,13 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods as S3 generics + methods
     for ctx in parsed_impl.instance_method_contexts() {
-        let generic_name = ctx.generic_name();
+        // vctrs protocol override: use the protocol name as the S3 generic
+        let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
+        let generic_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
+            proto.clone()
+        } else {
+            ctx.generic_name()
+        };
         // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
         let method_class_suffix = ctx
             .class_suffix()
@@ -2954,8 +3504,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let full_params = ctx.instance_formals(true); // adds x, ..., params
 
         // Only create the S3 generic if no generic/class override was provided
-        // (custom class suffix implies using an existing generic)
-        if !ctx.has_generic_override() && !ctx.has_class_override() {
+        // vctrs protocol methods use existing generics from the vctrs package
+        if !is_protocol && !ctx.has_generic_override() && !ctx.has_class_override() {
             lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
             lines.push(format!("#' @rdname {}", class_name));
@@ -2988,6 +3538,12 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             s3_method_name, full_params
         ));
 
+        // Inject lifecycle prelude if present
+        let what = format!("{}.{}", generic_name, class_name);
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
+            lines.push(format!("    {}", prelude));
+        }
+
         let call = ctx.instance_call("x");
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
@@ -3011,6 +3567,11 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.extend(method_doc.build());
 
         lines.push(format!("{} <- function({}) {{", fn_name, ctx.params));
+
+        // Inject lifecycle prelude if present
+        if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
+            lines.push(format!("    {}", prelude));
+        }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())

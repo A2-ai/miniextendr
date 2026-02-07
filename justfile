@@ -35,10 +35,6 @@
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
 #
-#   Lint sync:
-#     just lint-sync-check    - Check lint parser vs macros parser
-#     just lint-sync-diff     - Show diff between parsers
-
 # All optional features for testing (excluding nonapi which causes CRAN warnings).
 # This mirrors the list in rpkg/configure.ac for NOT_CRAN=true mode.
 all_features := "rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_r,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
@@ -64,12 +60,13 @@ clean:
 cargo-clean *cargo_flags:
     cargo clean -p miniextendr-api {{cargo_flags}}
     cargo clean -p miniextendr-macros {{cargo_flags}}
+    cargo clean -p miniextendr-macros-core {{cargo_flags}}
     cargo clean -p miniextendr-bench {{cargo_flags}}
     cargo clean -p miniextendr-lint {{cargo_flags}}
     cargo clean -p miniextendr-engine {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo clean --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo clean --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clean --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clean --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Check all crates
 alias cargo-check := check
@@ -77,7 +74,7 @@ check *cargo_flags:
     cargo check --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo check --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Build all crates
 alias cargo-build := build
@@ -86,7 +83,7 @@ build *cargo_flags:
     cargo build --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run clippy on all crates
 alias cargo-clippy := clippy
@@ -94,7 +91,7 @@ clippy *cargo_flags:
     cargo clippy --benches --tests --examples --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo clippy --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run miniextendr-lint on rpkg (checks #[miniextendr] ↔ miniextendr_module! consistency)
 # The lint runs as a build script; this command triggers it via cargo check.
@@ -128,7 +125,7 @@ doc-check *cargo_flags: configure-all
     cargo doc --no-deps --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --no-deps --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Build and open documentation
 alias cargo-doc := doc
@@ -136,7 +133,7 @@ doc *cargo_flags: configure-all
     cargo doc --document-private-items --workspace {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo doc --document-private-items --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
     if command -v open >/dev/null 2>&1; then \
       open rpkg/src/rust/target/doc/rpkg/index.html >/dev/null 2>&1 || \
         echo "doc: unable to open generated docs (skipping)"; \
@@ -173,11 +170,33 @@ test *args:
     && cargo test --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/src/rust/target" cargo test --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
     && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/src/rust/target" cargo test --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags -- --no-capture $test_args) \
-    && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --manifest-path="$root/rpkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
+    && root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo test --manifest-path="$root/rpkg/src/rust/Cargo.toml" --workspace --no-fail-fast $cargo_flags --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" -- --no-capture $test_args)
 
 # Run benchmarks (miniextendr-bench)
 alias cargo-bench := bench
 bench *cargo_flags:
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
+
+# Save benchmark baseline (JSON output for regression comparison)
+bench-save *cargo_flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p miniextendr-bench/baselines
+    timestamp=$(date +%Y%m%d-%H%M%S)
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}} 2>&1 | tee "miniextendr-bench/baselines/bench-${timestamp}.txt"
+    echo "Baseline saved to miniextendr-bench/baselines/bench-${timestamp}.txt"
+
+# Compare current benchmarks against most recent baseline
+bench-compare *cargo_flags:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    baseline=$(ls -t miniextendr-bench/baselines/bench-*.txt 2>/dev/null | head -1)
+    if [[ -z "$baseline" ]]; then
+      echo "No baseline found. Run 'just bench-save' first."
+      exit 1
+    fi
+    echo "Comparing against baseline: $baseline"
+    echo "---"
     cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
 
 # Check benchmark crate
@@ -191,7 +210,7 @@ tree *cargo_flags:
     cargo tree --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo tree --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Expand macros for rpkg (requires cargo-expand)
 alias cargo-expand := expand
@@ -200,13 +219,13 @@ expand *cargo_flags:
     cargo expand --lib -p miniextendr-macros {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
-    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
+    root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
 # Run ./configure and vendor rpkg dependencies
 #
 # This prepares the R package for building by:
 # 1. Running autoconf + configure script
-#    - Syncs miniextendr-api and miniextendr-macros to rpkg/src/vendor/ (via rsync)
+#    - Syncs miniextendr crates to rpkg/src/vendor/ (via cargo package)
 #    - Generates build configuration files
 # 2. Vendoring crates.io dependencies to rpkg/src/vendor/
 #    - proc-macro2, quote, syn, unicode-ident
@@ -591,6 +610,7 @@ templates-check-ci:
 # After `just configure`, rpkg/src/vendor/ should contain synced copies of:
 #   - miniextendr-api
 #   - miniextendr-macros
+#   - miniextendr-macros-core
 #   - miniextendr-lint
 #   - miniextendr-engine
 #
@@ -605,7 +625,7 @@ vendor-sync-check:
     vendor_dir="rpkg/src/vendor"
     drift_found=0
 
-    for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+    for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
       if [[ ! -d "$vendor_dir/$crate" ]]; then
         echo "WARNING: $vendor_dir/$crate not found (run 'just configure' first)"
         continue
@@ -634,7 +654,7 @@ vendor-sync-diff:
 
     vendor_dir="rpkg/src/vendor"
 
-    for crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+    for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
       if [[ -d "$vendor_dir/$crate" ]]; then
         echo "=== $crate ==="
         diff -ruN "$crate/src" "$vendor_dir/$crate/src" || true
@@ -642,35 +662,3 @@ vendor-sync-diff:
       fi
     done
 
-# ==============================================================================
-# Lint file sync check (ensure lint crate parser matches macros)
-# ==============================================================================
-# The miniextendr-lint crate has a similar miniextendr_module.rs from miniextendr-macros.
-# The lint version omits codegen helpers (call_method_def_ident, r_wrapper_const_ident)
-# that depend on macros-only functions. This check helps identify parser changes that
-# need manual porting.
-
-# Check for significant drift between macros and lint parsers (informational)
-lint-sync-check:
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    macros_file="miniextendr-macros/src/miniextendr_module.rs"
-    lint_file="miniextendr-lint/src/miniextendr_module.rs"
-
-    # Count differing lines (excluding known differences)
-    diff_lines=$(diff "$macros_file" "$lint_file" 2>/dev/null | grep -c "^[<>]" || echo "0")
-
-    if [[ "$diff_lines" -gt 30 ]]; then
-      echo "WARNING: $lint_file differs significantly from $macros_file ($diff_lines lines)"
-      echo ""
-      echo "The lint crate parser may have drifted from the macros parser."
-      echo "Review 'just lint-sync-diff' and manually port any parsing changes."
-      exit 1
-    else
-      echo "Lint sync check passed: parsers are in sync (minor expected differences)."
-    fi
-
-# Show diff between macros and lint parsers
-lint-sync-diff:
-    diff -u miniextendr-macros/src/miniextendr_module.rs miniextendr-lint/src/miniextendr_module.rs || true

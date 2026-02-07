@@ -88,8 +88,9 @@ download_miniextendr_archive <- function(version, dest_path) {
 
 #' Download and vendor miniextendr crates
 #'
-#' Downloads miniextendr-api, miniextendr-macros, miniextendr-lint, and
-#' miniextendr-engine from GitHub and vendors them into src/vendor/. Also
+#' Downloads miniextendr-api, miniextendr-macros, miniextendr-macros-core,
+#' miniextendr-lint, and miniextendr-engine from GitHub and vendors them
+#' into src/vendor/. Also
 #' patches Cargo.toml files to remove workspace inheritance.
 #'
 #' Downloaded archives are cached in `rappdirs::user_cache_dir("minirextendr")`
@@ -138,19 +139,24 @@ vendor_miniextendr <- function(version = "main",
   cli::cli_alert("Extracting archive...")
   utils::untar(archive_path, exdir = tmp_dir)
 
-  # Find extracted directory (github archives as repo-branch/)
+  # Find extracted directory (GitHub archives always extract to exactly one top-level directory)
   extracted_dirs <- fs::dir_ls(tmp_dir, type = "directory")
-  extracted_dir <- extracted_dirs[grepl("miniextendr", extracted_dirs)][1]
 
-  if (is.na(extracted_dir) || !fs::dir_exists(extracted_dir)) {
-    abort("Failed to find extracted miniextendr directory")
+  if (length(extracted_dirs) != 1) {
+    abort(c(
+      "Unexpected archive structure",
+      "i" = "Expected exactly 1 top-level directory, found {length(extracted_dirs)}"
+    ))
   }
+
+  extracted_dir <- extracted_dirs[[1]]
 
   # Create vendor directory
   ensure_dir(dest)
 
   # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint", "miniextendr-engine")
+  failed_crates <- character()
 
   for (crate in crates) {
     src_path <- fs::path(extracted_dir, crate)
@@ -158,6 +164,7 @@ vendor_miniextendr <- function(version = "main",
 
     if (!fs::dir_exists(src_path)) {
       warn("Crate {crate} not found in downloaded archive")
+      failed_crates <- c(failed_crates, crate)
       next
     }
 
@@ -187,6 +194,14 @@ vendor_miniextendr <- function(version = "main",
     }
 
     cli::cli_alert_success("Vendored {crate}")
+  }
+
+  if (length(failed_crates) > 0) {
+    abort(c(
+      "Failed to vendor {length(failed_crates)} required crate(s)",
+      "x" = "Missing: {paste(failed_crates, collapse = ', ')}",
+      "i" = "The downloaded archive may be from an incompatible version"
+    ))
   }
 
   cli::cli_alert_success("miniextendr crates vendored to {.path {dest}}")
@@ -220,6 +235,8 @@ patch_cargo_toml <- function(path, crate_name) {
   dep_replacements <- list(
     'miniextendr-macros = \\{ workspace = true \\}' =
       'miniextendr-macros = { version = "0.1.0", path = "../miniextendr-macros" }',
+    'miniextendr-macros-core = \\{ workspace = true \\}' =
+      'miniextendr-macros-core = { version = "0.1.0", path = "../miniextendr-macros-core" }',
     'miniextendr-engine = \\{ workspace = true \\}' =
       'miniextendr-engine = { version = "0.1.0", path = "../miniextendr-engine" }',
     'proc-macro2 = \\{ workspace = true \\}' =
@@ -237,6 +254,16 @@ patch_cargo_toml <- function(path, crate_name) {
   # Remove dev-dependencies that create circular references when vendored
   # miniextendr-api in miniextendr-macros dev-deps is only for workspace testing
   content <- content[!grepl("^miniextendr-api = \\{ workspace = true \\}", content)]
+
+  # Validate: warn if any workspace = true entries remain unhandled
+  remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
+  if (length(remaining) > 0) {
+    warn(c(
+      "Unhandled workspace inheritance in {.path {path}}",
+      "i" = "The following lines still reference workspace:",
+      paste("  ", trimws(remaining))
+    ))
+  }
 
   writeLines(content, path)
 }
@@ -259,7 +286,8 @@ vendor_miniextendr_local <- function(local_path, dest) {
   ensure_dir(dest)
 
   # Copy crates
-  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint", "miniextendr-engine")
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint", "miniextendr-engine")
+  failed_crates <- character()
 
   for (crate in crates) {
     src_path <- fs::path(local_path, crate)
@@ -267,6 +295,7 @@ vendor_miniextendr_local <- function(local_path, dest) {
 
     if (!fs::dir_exists(src_path)) {
       warn("Crate {crate} not found at {.path {src_path}}")
+      failed_crates <- c(failed_crates, crate)
       next
     }
 
@@ -301,6 +330,14 @@ vendor_miniextendr_local <- function(local_path, dest) {
     writeLines('{"files": {}, "package": null}', checksum_file)
 
     cli::cli_alert_success("Vendored {crate}")
+  }
+
+  if (length(failed_crates) > 0) {
+    abort(c(
+      "Failed to vendor {length(failed_crates)} required crate(s)",
+      "x" = "Missing: {paste(failed_crates, collapse = ', ')}",
+      "i" = "Check that {.path {local_path}} is a valid miniextendr repository"
+    ))
   }
 
   cli::cli_alert_success("miniextendr crates vendored from local path to {.path {dest}}")

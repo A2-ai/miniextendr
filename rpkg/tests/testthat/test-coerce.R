@@ -1,12 +1,12 @@
 # Test coercion system (Coerce/TryCoerce traits and #[miniextendr(coerce)] attribute)
 
-test_that("Coerce trait identity works", {
+test_that("identity coercion preserves value", {
   expect_equal(test_coerce_identity(42L), 42L)
   expect_equal(test_coerce_identity(-100L), -100L)
   expect_equal(test_coerce_identity(0L), 0L)
 })
 
-test_that("Coerce trait widening works", {
+test_that("integer-to-double widening coercion works", {
   # i32 -> f64 widening
   expect_equal(test_coerce_widen(42L), 42.0)
   expect_equal(test_coerce_widen(-100L), -100.0)
@@ -17,7 +17,7 @@ test_that("Coerce Rboolean to i32 works", {
   expect_equal(test_coerce_bool_to_int(FALSE), 0L)
 })
 
-test_that("Coerce via helper function works", {
+test_that("coercion via internal helper preserves value", {
   expect_equal(test_coerce_via_helper(42L), 42L)
 })
 
@@ -79,7 +79,7 @@ test_that("coerce attribute works for f32", {
   expect_equal(test_coerce_attr_f32(0.0), 0.0)
 })
 
-test_that("coerce attribute combined with invisible works", {
+test_that("coerced functions can return invisibly", {
   # Should work the same but return invisibly
   result <- withVisible(test_coerce_attr_with_invisible(42L))
   expect_equal(result$value, 42L)

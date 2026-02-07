@@ -3,11 +3,13 @@
     "Makefile.in": "makefile",
     "Makefile.win": "makefile",
     "Makevars.in": "makefile",
+    "Makevars.win.in": "makefile",
     "Makeconf.in": "makefile",
     "configure.ac": "m4",
     "*.ac": "m4",
     "NAMESPACE": "r",
-    "DESCRIPTION": "yaml"
+    "DESCRIPTION": "yaml",
+    "Cargo.toml.in": "toml"
   },
   "rust-analyzer.linkedProjects": [
     "Cargo.toml",
@@ -48,18 +50,45 @@
     "nonapi",
     "raw_conversions"
   ],
-  // "rust-analyzer.check.command": "check",
   "rust-analyzer.check.command": "clippy",
-  "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/src/rust/ra_target",
+  // IMPORTANT: target directories MUST be outside rpkg/src/ to avoid pkgbuild
+  // scanning generated .rs files in target/build/.../out/ which causes
+  // unnecessary recompilation on every devtools::load_all()
+  "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/ra-target",
+  "rust-analyzer.files.excludeDirs": [
+    "rpkg/src/vendor",
+    "rpkg/src/rust/target",
+    "rpkg/rust-target",
+    "rpkg/ra-target"
+  ],
   "terminal.integrated.env.osx": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/rust-target"
   },
   "terminal.integrated.env.linux": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/rust-target"
   },
   "terminal.integrated.env.windows": {
-    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/src/rust/target"
+    "CARGO_TARGET_DIR": "${workspaceFolder}/rpkg/rust-target"
   },
-  // R_LIBS_USER="${workspaceFolder}/dev_lib" // this is helpful to ai tools
+  "[rust]": {
+    "editor.formatOnSave": true,
+    "editor.defaultFormatter": "rust-lang.rust-analyzer"
+  },
+  "files.exclude": {
+    "**/target": true,
+    "**/rust-target": true,
+    "**/ra-target": true,
+    "**/autom4te.cache": true,
+    "**/*.o": true,
+    "**/*.so": true,
+    "**/*.a": true
+  },
+  "search.exclude": {
+    "**/target": true,
+    "**/rust-target": true,
+    "**/ra-target": true,
+    "**/rpkg/src/vendor": true,
+    "**/Cargo.lock": true
+  },
   "tinymist.formatterMode": "typstyle"
 }

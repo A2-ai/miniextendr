@@ -4,6 +4,7 @@
 ## usethis namespace: start
 #' @useDynLib miniextendr, .registration = TRUE
 #' @importFrom R6 R6Class
+#' @importFrom S7 convert
 ## usethis namespace: end
 NULL
 

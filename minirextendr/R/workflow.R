@@ -48,6 +48,13 @@ miniextendr_configure <- function() {
     ))
   }
 
+  # Ensure configure is executable
+  perms <- fs::file_info(configure_path)$permissions
+  if (!grepl("x", as.character(perms))) {
+    cli::cli_alert_info("Making {.path configure} executable")
+    fs::file_chmod(configure_path, "755")
+  }
+
   cli::cli_alert("Running ./configure...")
 
   result <- run_with_logging(

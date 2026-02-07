@@ -136,6 +136,145 @@ pub fn derived_rational_class_info() -> Vec<String> {
 }
 
 // =============================================================================
+// List-of type: IntegerLists (list of integer vectors)
+// =============================================================================
+
+/// A list of integer vectors as a vctrs list_of type.
+///
+/// list_of types ensure all elements have a consistent prototype.
+#[derive(Vctrs)]
+#[vctrs(class = "derived_int_lists", base = "list", ptype = "integer()")]
+pub struct DerivedIntLists {
+    #[vctrs(data)]
+    lists: Vec<Vec<i32>>,
+}
+
+impl DerivedIntLists {
+    pub fn new(lists: Vec<Vec<i32>>) -> Self {
+        Self { lists }
+    }
+}
+
+/// Create a new derived_int_lists vector (list_of<integer>).
+///
+/// @param x A list of integer vectors.
+/// @return A derived_int_lists list_of vector.
+#[miniextendr]
+pub fn new_derived_int_lists(
+    x: miniextendr_api::ffi::SEXP,
+) -> Result<miniextendr_api::ffi::SEXP, String> {
+    use miniextendr_api::from_r::TryFromSexp;
+    let lists: Vec<Vec<i32>> = TryFromSexp::try_from_sexp(x).map_err(|e| format!("{:?}", e))?;
+    let int_lists = DerivedIntLists::new(lists);
+    int_lists.into_vctrs().map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Type with proxy methods: ComparablePoint
+// =============================================================================
+
+/// A 2D point with custom equality and comparison behavior.
+///
+/// Demonstrates `proxy_equal`, `proxy_compare`, and `proxy_order`.
+#[derive(Vctrs)]
+#[vctrs(
+    class = "derived_point",
+    base = "record",
+    proxy_equal,
+    proxy_compare,
+    proxy_order
+)]
+pub struct DerivedPoint {
+    #[vctrs(data)]
+    x: Vec<f64>,
+    y: Vec<f64>,
+}
+
+impl DerivedPoint {
+    pub fn new(x: Vec<f64>, y: Vec<f64>) -> Result<Self, String> {
+        if x.len() != y.len() {
+            return Err("x and y must have the same length".to_string());
+        }
+        Ok(Self { x, y })
+    }
+}
+
+/// Create a new derived_point record vector.
+///
+/// @param x X coordinates.
+/// @param y Y coordinates.
+/// @return A derived_point record vector with proxy methods.
+#[miniextendr]
+pub fn new_derived_point(x: Vec<f64>, y: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, String> {
+    let point = DerivedPoint::new(x, y)?;
+    point.into_vctrs().map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Type with arithmetic: Temperature
+// =============================================================================
+
+/// A temperature type with arithmetic and math support.
+///
+/// Demonstrates `arith` and `math` attributes for numeric vctrs.
+#[derive(Vctrs)]
+#[vctrs(class = "derived_temp", base = "double", abbr = "°", arith, math)]
+pub struct DerivedTemp {
+    #[vctrs(data)]
+    values: Vec<f64>,
+}
+
+impl DerivedTemp {
+    pub fn new(values: Vec<f64>) -> Self {
+        Self { values }
+    }
+}
+
+/// Create a new derived_temp vector with arithmetic/math support.
+///
+/// @param x Temperature values.
+/// @return A derived_temp vector.
+#[miniextendr]
+pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, String> {
+    let temp = DerivedTemp::new(x);
+    temp.into_vctrs().map_err(|e| e.to_string())
+}
+
+// =============================================================================
+// Vctrs impl block with protocol method override: Currency
+// =============================================================================
+
+/// A currency type demonstrating Rust-backed vctrs protocol methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct DerivedCurrency {
+    symbol: String,
+    amounts: Vec<f64>,
+}
+
+/// @noRd
+#[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "$"))]
+impl DerivedCurrency {
+    /// Creates a new currency value.
+    pub fn new(symbol: String, amounts: Vec<f64>) -> Self {
+        DerivedCurrency { symbol, amounts }
+    }
+
+    /// Returns the currency symbol.
+    pub fn symbol(&self) -> String {
+        self.symbol.clone()
+    }
+
+    /// Rust-backed format method override.
+    #[miniextendr(vctrs(format))]
+    pub fn format_currency(&self) -> Vec<String> {
+        self.amounts
+            .iter()
+            .map(|a| format!("{}{:.2}", self.symbol, a))
+            .collect()
+    }
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -145,6 +284,13 @@ miniextendr_module! {
     fn derived_percent_class_info;
     fn new_derived_rational;
     fn derived_rational_class_info;
+    fn new_derived_int_lists;
+    fn new_derived_point;
+    fn new_derived_temp;
     vctrs DerivedPercent;
     vctrs DerivedRational;
+    vctrs DerivedIntLists;
+    vctrs DerivedPoint;
+    vctrs DerivedTemp;
+    impl DerivedCurrency;
 }

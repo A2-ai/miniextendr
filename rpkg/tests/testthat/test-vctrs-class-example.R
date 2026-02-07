@@ -85,7 +85,7 @@ test_that("percent coerces to double", {
   expect_equal(as_double, 0.25)
 })
 
-test_that("percent vctrs helpers expose direct S3 functions", {
+test_that("percent S3 method implementations are registered correctly", {
   skip_if_vctrs_disabled()
 
   x <- new_percent(c(0.25, 0.5))
