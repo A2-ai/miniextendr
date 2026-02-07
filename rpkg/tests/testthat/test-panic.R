@@ -16,7 +16,7 @@ test_that("drop_message_on_success() returns value", {
 test_that("drop_on_panic() converts panic to R error", {
   # Drop messages are printed to stdout but can't be reliably captured in testthat.
   # Visual verification: you should see "[Rust] Dropped `MsgOnDrop`!" in test output.
-  expect_error(drop_on_panic())
+  expect_error(drop_on_panic(), "explicit panic")
 })
 
 # Note: unsafe_C_just_panic() and unsafe_C_panic_and_catch() are not tested here

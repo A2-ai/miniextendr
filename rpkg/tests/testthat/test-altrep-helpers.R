@@ -34,12 +34,11 @@ test_that("into_altrep wrapper works", {
   expect_equal(x, 0:4)
 })
 
-test_that("ALTREP and copy produce identical results", {
-  # Different data, but should work identically in R
+test_that("ALTREP and copy both behave as normal R vectors", {
   copy <- small_vec_copy()  # vec![1,2,3,4,5]
   altrep <- large_vec_altrep()[1:5]  # vec![0; 100_000], first 5 elements
 
-  # Both should work as normal R vectors
+  # Both should work as normal R vectors (different data, same vector semantics)
   expect_equal(length(copy), 5L)
   expect_equal(length(altrep), 5L)
   expect_equal(sum(copy), 15)  # 1+2+3+4+5

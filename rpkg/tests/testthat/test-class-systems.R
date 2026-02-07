@@ -116,12 +116,11 @@ test_that("S7Range dynamic property (midpoint) read/write works", {
   expect_equal(r@length, 10)
 })
 
-test_that("S7Range property methods are not exposed as generics", {
-  # get_midpoint and set_midpoint should NOT be exposed as S7 generics
-  # (they're internal to the property, accessed via @midpoint)
-  # Note: We can't test for 'length' since base::length exists
-  expect_false(exists("get_midpoint", mode = "function", envir = globalenv()))
-  expect_false(exists("set_midpoint", mode = "function", envir = globalenv()))
+test_that("S7Range property helpers are not user-facing generics", {
+  # get_midpoint and set_midpoint are internal to the property, accessed via @midpoint.
+  # They should not be exported as user-facing functions in the package namespace.
+  expect_false(exists("get_midpoint", mode = "function", envir = asNamespace("miniextendr")))
+  expect_false(exists("set_midpoint", mode = "function", envir = asNamespace("miniextendr")))
 })
 
 # =============================================================================
@@ -138,16 +137,11 @@ test_that("S7Config property with default value works", {
   expect_equal(config@score, 90.0)
 })
 
-test_that("S7Config required property errors when missing", {
-  # The 'name' property is marked as required
-
-  # Accessing it on a valid config should work
+test_that("S7Config required property is accessible", {
+  # The 'name' property is marked as required (no default).
+  # Construction error cannot be tested from R because Rust always provides the value.
   config <- S7Config("test", 50.0, 1L)
   expect_equal(config@name, "test")
-
-  # Note: We can't easily test the "required" error at construction time
-  # because Rust provides the value. The 'required' pattern is primarily
-  # for when S7 constructs objects with properties that have no default.
 })
 
 test_that("S7Config deprecated property emits warning", {
@@ -178,14 +172,9 @@ test_that("S7Strict no_dots generic works", {
   # This means extra arguments would cause an error (in strict S7)
 })
 
-test_that("S7Strict fallback method works for class_any", {
+test_that("S7Strict describe_any method works", {
   strict <- S7Strict(123L)
-
-  # describe_any should work on S7Strict
   expect_equal(describe_any(strict), "S7Strict with value 123")
-
-  # Since it's registered for class_any, it might work on other types too
-  # (though in this case the C function expects S7Strict specifically)
 })
 
 # =============================================================================

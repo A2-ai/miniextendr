@@ -191,7 +191,7 @@ test_that("Box<[i32]> ALTREP works", {
   expect_equal(sum(boxed), 15L)
 })
 
-test_that("Box<[i32]> has dataptr support", {
+test_that("Box<[i32]> ALTREP supports element-wise arithmetic", {
   boxed <- boxed_ints(10L)
 
   # Arithmetic should work via dataptr
@@ -365,7 +365,7 @@ test_that("iterator real coercion ALTREP works", {
 # Vec-backed ALTREP tests
 # =============================================================================
 
-test_that("Vec<i32> ALTREP works with dataptr", {
+test_that("Vec<i32> ALTREP supports element access and arithmetic", {
   x <- vec_int_altrep(10L)
 
   expect_equal(length(x), 10L)
@@ -378,7 +378,7 @@ test_that("Vec<i32> ALTREP works with dataptr", {
   expect_equal(y, seq(2L, 20L, 2L))
 })
 
-test_that("Vec<f64> ALTREP works with dataptr", {
+test_that("Vec<f64> ALTREP supports element access and arithmetic", {
   x <- vec_real_altrep(5L)
 
   expect_equal(length(x), 5L)
@@ -495,18 +495,16 @@ test_that("ALTREP vectors work with R subsetting", {
 # Optimization hint tests (is_sorted, no_na)
 # =============================================================================
 
-test_that("ArithSeq reports sortedness correctly", {
-  # Increasing sequence should be sorted
+test_that("ArithSeq is recognized as sorted by R", {
   x <- arith_seq(0, 1, 10L)
 
-  # R doesn't expose is.unsorted.altrep() or similar, so we test indirectly
-  # sorted vectors enable optimizations in operations like unique(), sort(), etc.
   expect_equal(length(x), 10L)
   expect_equal(x[1], 0)
   expect_equal(x[10], 9)
 
-  # Verify it's actually sorted
-  expect_true(is.unsorted(x) == FALSE)
+  # is.unsorted() may or may not call the ALTREP Is_sorted method,
+  # but it verifies the result is sorted from R's perspective
+  expect_false(is.unsorted(x))
 })
 
 test_that("Range ALTREP implies no NA values", {
@@ -529,18 +527,16 @@ test_that("Constant vectors are sorted (all elements equal)", {
   expect_equal(length(unique(x)), 1L)
 })
 
-test_that("Iterator-backed ALTREP can report sortedness", {
-  # Sequential iterator produces sorted output
+test_that("Iterator-backed ALTREP is recognized as sorted by R", {
   x <- iter_int_range(1L, 101L)
 
   expect_equal(length(x), 100L)
-  expect_true(is.unsorted(x) == FALSE)
+  expect_false(is.unsorted(x))
   expect_equal(x[1], 1L)
   expect_equal(x[100], 100L)
 })
 
-test_that("Sortedness hints affect performance", {
-  # This is hard to test directly, but we can verify behavior is correct
+test_that("Sorted ALTREP works correctly with unique() and sort()", {
   # Create a large sorted ALTREP
   x <- range_int_altrep(1L, 10001L)
 

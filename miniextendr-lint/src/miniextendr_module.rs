@@ -416,7 +416,6 @@ impl MiniextendrModuleImpl {
 /// ```
 pub(crate) struct MiniextendrModuleVctrs {
     /// Attributes on the vctrs entry (for cfg propagation).
-    #[cfg_attr(not(feature = "vctrs"), allow(dead_code))]
     pub attrs: Vec<syn::Attribute>,
     /// Identifier for the custom `vctrs` keyword.
     pub _vctrs_ident: syn::Ident,
@@ -443,7 +442,6 @@ impl MiniextendrModuleVctrs {
     /// Returns the identifier for the R wrappers const.
     ///
     /// Format: `R_WRAPPERS_VCTRS_{TYPE}`
-    #[cfg(feature = "vctrs")]
     pub(crate) fn r_wrappers_const_ident(&self) -> syn::Ident {
         let type_upper = self.ident.to_string().to_uppercase();
         quote::format_ident!("R_WRAPPERS_VCTRS_{}", type_upper)
@@ -514,7 +512,6 @@ pub(crate) struct MiniextendrModule {
     /// Trait impls registered via `impl Trait for Type;`.
     pub(crate) trait_impls: Vec<MiniextendrModuleTraitImpl>,
     /// Vctrs types registered via `vctrs Type;`.
-    #[cfg_attr(not(feature = "vctrs"), allow(dead_code))]
     pub(crate) vctrs: Vec<MiniextendrModuleVctrs>,
 }
 

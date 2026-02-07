@@ -250,10 +250,10 @@ lint-sync:
       echo "lint-sync: $src not found, skipping"
       exit 0
     fi
-    # Copy and remove vctrs feature-gate attributes
+    # Copy and remove vctrs feature-gate attributes (allow leading whitespace)
     sed \
-      -e '/^#\[cfg_attr(not(feature = "vctrs")/d' \
-      -e '/^#\[cfg(feature = "vctrs")\]/d' \
+      -e '/^[[:space:]]*#\[cfg_attr(not(feature = "vctrs")/d' \
+      -e '/^[[:space:]]*#\[cfg(feature = "vctrs")\]/d' \
       "$src" > "$dst"
     echo "lint-sync: synced $src -> $dst"
 

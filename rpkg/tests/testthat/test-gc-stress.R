@@ -49,7 +49,7 @@ test_that("temporary ExternalPtr objects are collected without crashing", {
   gc()
 
   # Should not crash - if we get here, finalizers ran successfully
-  expect_true(TRUE)
+  succeed()
 })
 
 # =============================================================================

@@ -8,14 +8,14 @@
 # thread are forwarded to the main R thread and executed there. This is tracked
 # in docs/GAPS.md under "Incomplete Features > Main-thread dispatch".
 # Once resolved, these tests should be updated to expect successful results.
-test_that("add_r_error signals clear thread error (pending main-thread dispatch fix)", {
+test_that("add_r_error signals clear thread error (worker thread rejects R API calls)", {
   expect_error(add_r_error(1L, 2L), "non-main thread")
 })
 
-test_that("add_r_error_heap signals clear thread error (pending main-thread dispatch fix)", {
+test_that("add_r_error_heap signals clear thread error (worker thread rejects R API calls)", {
   expect_error(add_r_error_heap(1L, 2L), "non-main thread")
 })
 
-test_that("drop_on_panic_with_move signals clear thread error (pending main-thread dispatch fix)", {
+test_that("drop_on_panic_with_move signals clear thread error (worker thread rejects R API calls)", {
   expect_error(drop_on_panic_with_move(), "non-main thread")
 })

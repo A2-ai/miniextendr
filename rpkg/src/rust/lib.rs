@@ -93,6 +93,7 @@ mod gc_protect_tests;
 mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
+#[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
 #[cfg(feature = "ndarray")]
 #[path = "ndarray_tests.rs"]

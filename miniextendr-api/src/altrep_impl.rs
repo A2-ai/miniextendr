@@ -172,7 +172,8 @@ macro_rules! __impl_altrep_base_with_serialize {
 #[doc(hidden)]
 macro_rules! __impl_altvec_dataptr {
     ($ty:ty, $elem:ty) => {
-        #[allow(clippy::not_unsafe_ptr_arg_deref)]
+        // Allow: materialization-tracking cfg expands in downstream crate context
+        #[allow(clippy::not_unsafe_ptr_arg_deref, unexpected_cfgs)]
         impl $crate::altrep_traits::AltVec for $ty {
             const HAS_DATAPTR: bool = true;
 
