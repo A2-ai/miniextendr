@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! rpkg: Example R package demonstrating miniextendr features.
 //!
 //! This crate is organized into focused modules for different test categories.
