@@ -37,8 +37,9 @@ R CMD check rpkg          # Checks include compilation
 miniextendr/
 ├── miniextendr-api/      # Runtime library (FFI, ExternalPtr, ALTREP, worker thread)
 ├── miniextendr-macros/   # Proc macros (#[miniextendr], miniextendr_module!)
+├── miniextendr-macros-core/ # Shared parser types (used by macros + lint)
 ├── miniextendr-bench/    # Benchmarks (separate workspace member)
-├── miniextendr-lint/     # Static analysis tool (copy of macros parser)
+├── miniextendr-lint/     # Static analysis tool
 ├── miniextendr-engine/   # Code generation engine
 ├── rpkg/                 # Example R package demonstrating all features (named `miniextendr`)
 ├── minirextendr/         # Helper R package for scaffolding new projects
@@ -95,7 +96,7 @@ just minirextendr-test      # Run tests
 
 The configure script:
 
-1. Syncs `miniextendr-api/`, `miniextendr-macros/`, `miniextendr-lint/`, `miniextendr-engine/` to `rpkg/src/vendor/`
+1. Syncs `miniextendr-api/`, `miniextendr-macros/`, `miniextendr-macros-core/`, `miniextendr-lint/`, `miniextendr-engine/` to `rpkg/src/vendor/`
 2. Vendors crates.io dependencies (proc-macro2, quote, syn, unicode-ident)
 3. Generates `Makevars` from `Makevars.in`
 
@@ -358,15 +359,6 @@ Templates in `minirextendr/inst/templates/` are **derived from rpkg** (the maste
 ```bash
 just templates-check    # Verify templates haven't drifted unexpectedly
 just templates-approve  # Accept current delta as approved (after intentional changes)
-```
-
-### Lint Sync
-
-The lint crate parser should track the macros parser:
-
-```bash
-just lint-sync-check    # Check for significant drift
-just lint-sync-diff     # Show differences
 ```
 
 ## miniextendr-lint

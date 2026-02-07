@@ -63,4 +63,5 @@ miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
 [patch."https://github.com/CGMossa/miniextendr"]
 miniextendr-api = { path = "../../../miniextendr-api" }
 miniextendr-macros = { path = "../../../miniextendr-macros" }
+miniextendr-macros-core = { path = "../../../miniextendr-macros-core" }
 miniextendr-lint = { path = "../../../miniextendr-lint" }

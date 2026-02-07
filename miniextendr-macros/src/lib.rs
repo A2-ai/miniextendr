@@ -202,7 +202,7 @@ mod typed_list;
 mod list_macro;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
-mod miniextendr_module;
+pub(crate) use miniextendr_macros_core::miniextendr_module;
 use crate::miniextendr_module::MiniextendrModule;
 mod r_wrapper_builder;
 /// Builder utilities for formatting R wrapper arguments and calls.
@@ -233,22 +233,7 @@ mod factor_derive;
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
 
-/// Identifier for the generated `const` `R_CallMethodDef` value.
-///
-/// This must remain consistent between the attribute macro (which defines the symbol)
-/// and the module macro (which references it).
-pub(crate) fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    quote::format_ident!("call_method_def_{rust_ident}")
-}
-
-/// Identifier for the generated `const &str` holding the R wrapper source code.
-///
-/// This must remain consistent between the attribute macro (which defines the symbol)
-/// and the module macro (which references it).
-pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    let rust_ident_upper = rust_ident.to_string().to_uppercase();
-    quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
-}
+pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 // normalize_r_arg_ident is now provided by r_wrapper_builder module
 

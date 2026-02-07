@@ -15,41 +15,8 @@
 //! ## Configuration
 //! - Controlled by the `MINIEXTENDR_LINT` env var (enabled by default).
 //! - Set it to `0`, `false`, `no`, or `off` to disable.
-//!
-//! ## Architecture note: parser duplication
-//!
-//! This crate contains a **copy** of `miniextendr_module.rs` from
-//! `miniextendr-macros` so it can be published independently.
-//!
-//! - **Source**: `miniextendr-macros/src/miniextendr_module.rs`
-//! - **Copy**: `miniextendr-lint/src/miniextendr_module.rs` (this file)
-//! - **Requirement**: the parser imports `call_method_def_ident_for` and
-//!   `r_wrapper_const_ident_for` from `crate::`, so we define stubs below
-//!
-//! **Why duplicate instead of sharing?**
-//! - Allows `miniextendr-lint` to be published independently to crates.io
-//! - `#[path = "../../"]` includes do not work in published packages
-//!
-//! **Keeping in sync:**
-//! When `miniextendr-macros/src/miniextendr_module.rs` changes, manually copy to
-//! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
-// Parser module (copied from miniextendr-macros for independent publishing).
-// Allow dead_code since we only use parsing, not code generation helpers.
-#[allow(dead_code)]
-mod miniextendr_module;
-
-// Stubs required by miniextendr_module.rs (which imports these from crate::)
-// The lint only uses parsing, not code generation, so these return dummy idents.
-#[allow(dead_code)]
-pub(crate) fn call_method_def_ident_for(_ident: &syn::Ident) -> syn::Ident {
-    syn::Ident::new("__stub", proc_macro2::Span::call_site())
-}
-
-#[allow(dead_code)]
-pub(crate) fn r_wrapper_const_ident_for(_ident: &syn::Ident) -> syn::Ident {
-    syn::Ident::new("__stub", proc_macro2::Span::call_site())
-}
+use miniextendr_macros_core::miniextendr_module;
 
 // TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
 // is it altrep? is it too much?

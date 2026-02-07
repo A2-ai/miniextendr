@@ -68,7 +68,7 @@ miniextendr_doctor <- function() {
   if (is.null(vendor_dir)) {
     cli::cli_alert_info("Not in a project context, skipping vendor checks")
   } else {
-    required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-lint")
+    required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint")
     for (crate in required_crates) {
       crate_path <- file.path(vendor_dir, crate)
       if (dir.exists(crate_path)) {

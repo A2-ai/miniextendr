@@ -110,6 +110,7 @@ AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 dnl Miniextendr crate source paths (in monorepo)
 MINIEXTENDR_API_SRC="$root_miniextendr_repo/miniextendr-api"
 MINIEXTENDR_MACROS_SRC="$root_miniextendr_repo/miniextendr-macros"
+MINIEXTENDR_MACROS_CORE_SRC="$root_miniextendr_repo/miniextendr-macros-core"
 MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
 MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
 
@@ -445,7 +446,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 
 	        dnl Package workspace crates using cargo package
 	        echo "configure: packaging workspace crates..."
-	        for _crate_dir in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+	        for _crate_dir in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
 	          if test -d "$ROOT_MINIEXTENDR_REPO/$_crate_dir"; then
 	            echo "configure:   packaging $_crate_dir"
 	            $CARGO_CMD package --manifest-path "$ROOT_MINIEXTENDR_REPO/$_crate_dir/Cargo.toml" \

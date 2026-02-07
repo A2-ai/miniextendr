@@ -46,6 +46,7 @@ miniextendr_status <- function() {
     "Vendored Crates" = c(
       "src/vendor/miniextendr-api",
       "src/vendor/miniextendr-macros",
+      "src/vendor/miniextendr-macros-core",
       "src/vendor/miniextendr-lint"
     ),
     "Generated Files" = c(
