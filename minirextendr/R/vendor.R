@@ -176,16 +176,8 @@ vendor_miniextendr <- function(version = "main",
     # Copy crate (excluding target, .git)
     fs::dir_copy(src_path, dest_path)
 
-    # Remove unwanted files and directories
-    unwanted <- c("target", ".git", ".gitignore", ".DS_Store")
-    for (u in unwanted) {
-      u_path <- fs::path(dest_path, u)
-      if (fs::dir_exists(u_path)) {
-        fs::dir_delete(u_path)
-      } else if (fs::file_exists(u_path)) {
-        fs::file_delete(u_path)
-      }
-    }
+    # Strip build artifacts, tests, benchmarks, and hidden files
+    strip_vendored_crate(dest_path)
 
     # Patch Cargo.toml to remove workspace inheritance
     cargo_toml <- fs::path(dest_path, "Cargo.toml")
@@ -307,16 +299,8 @@ vendor_miniextendr_local <- function(local_path, dest) {
     # Copy crate (excluding target, .git, etc.)
     fs::dir_copy(src_path, dest_path)
 
-    # Remove unwanted files and directories
-    unwanted <- c("target", ".git", ".gitignore", ".DS_Store")
-    for (u in unwanted) {
-      u_path <- fs::path(dest_path, u)
-      if (fs::dir_exists(u_path)) {
-        fs::dir_delete(u_path)
-      } else if (fs::file_exists(u_path)) {
-        fs::file_delete(u_path)
-      }
-    }
+    # Strip build artifacts, tests, benchmarks, and hidden files
+    strip_vendored_crate(dest_path)
 
     # Patch Cargo.toml to remove workspace inheritance
     cargo_toml <- fs::path(dest_path, "Cargo.toml")
@@ -388,8 +372,65 @@ vendor_crates_io <- function() {
 
   check_result(result, "cargo vendor")
 
+  # Strip CRAN-unfriendly content from vendored crates
+  strip_vendored_dir(vendor_dir)
+
   cli::cli_alert_success("External dependencies vendored")
   invisible(TRUE)
+}
+
+#' Strip CRAN-unfriendly content from a single vendored crate
+#'
+#' Removes build artifacts, tests, benchmarks, examples, hidden files,
+#' and other content that causes CRAN NOTEs (portable filenames,
+#' hidden files, long paths).
+#'
+#' @param crate_path Path to the vendored crate directory
+#' @noRd
+strip_vendored_crate <- function(crate_path) {
+  # Directories to remove entirely
+  unwanted_dirs <- c("target", ".git", ".github", "tests", "benches",
+                     "examples", "docs", "ci", ".circleci")
+  for (d in unwanted_dirs) {
+    d_path <- fs::path(crate_path, d)
+    if (fs::dir_exists(d_path)) {
+      fs::dir_delete(d_path)
+    }
+  }
+
+  # Remove hidden dotfiles (except .cargo-checksum.json which cargo needs)
+  all_files <- fs::dir_ls(crate_path, all = TRUE, recurse = FALSE)
+  dotfiles <- all_files[grepl("^\\.", basename(all_files))]
+  dotfiles <- dotfiles[basename(dotfiles) != ".cargo-checksum.json"]
+  for (f in dotfiles) {
+    if (fs::is_dir(f)) {
+      fs::dir_delete(f)
+    } else {
+      fs::file_delete(f)
+    }
+  }
+}
+
+#' Strip CRAN-unfriendly content from an entire vendor directory
+#'
+#' Walks all crates in a cargo vendor output directory and strips
+#' tests, benchmarks, examples, hidden files, and other content that
+#' causes CRAN NOTEs.
+#'
+#' @param vendor_path Path to the vendor directory
+#' @noRd
+strip_vendored_dir <- function(vendor_path) {
+  if (!fs::dir_exists(vendor_path)) return(invisible())
+
+  crate_dirs <- fs::dir_ls(vendor_path, type = "directory")
+  for (crate_dir in crate_dirs) {
+    strip_vendored_crate(crate_dir)
+
+    # Clear checksums (content was modified by stripping)
+    checksum_file <- fs::path(crate_dir, ".cargo-checksum.json")
+    writeLines('{"files":{}}', checksum_file)
+  }
+  invisible()
 }
 
 #' Clear miniextendr download cache

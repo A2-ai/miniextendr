@@ -36,6 +36,15 @@ use_miniextendr_cleanup <- function() {
   use_template("cleanup")
   use_template("cleanup.win")
   use_template("cleanup.ucrt")
+
+  # Ensure cleanup scripts are executable (R CMD build warns otherwise)
+  for (script in c("cleanup", "cleanup.win", "cleanup.ucrt")) {
+    script_path <- usethis::proj_path(script)
+    if (fs::file_exists(script_path)) {
+      fs::file_chmod(script_path, "755")
+    }
+  }
+
   invisible(TRUE)
 }
 

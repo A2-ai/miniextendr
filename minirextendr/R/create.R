@@ -137,6 +137,13 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   writeLines(desc_content, desc_path)
   bullet_created(file.path(rpkg_name, "DESCRIPTION"))
 
+  # Create LICENSE file (required by License: MIT + file LICENSE)
+  license_path <- usethis::proj_path(rpkg_name, "LICENSE")
+  license_content <- sprintf("YEAR: %s\nCOPYRIGHT HOLDER: %s authors\n",
+                             format(Sys.Date(), "%Y"), data$package)
+  writeLines(license_content, license_path)
+  bullet_created(file.path(rpkg_name, "LICENSE"))
+
   # Create minimal NAMESPACE (required for configure.ac check)
   # devtools::document() will regenerate this with proper exports
   namespace_path <- usethis::proj_path(rpkg_name, "NAMESPACE")
@@ -156,6 +163,14 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("cleanup.ucrt", save_as = file.path(rpkg_name, "cleanup.ucrt"), subdir = "rpkg")
   use_template("configure.win", save_as = file.path(rpkg_name, "configure.win"), subdir = "rpkg")
   use_template("configure.ucrt", save_as = file.path(rpkg_name, "configure.ucrt"), subdir = "rpkg")
+
+  # Ensure cleanup and configure scripts are executable
+  for (script in c("cleanup", "cleanup.win", "cleanup.ucrt", "configure.win", "configure.ucrt")) {
+    script_path <- usethis::proj_path(rpkg_name, script)
+    if (fs::file_exists(script_path)) {
+      fs::file_chmod(script_path, "755")
+    }
+  }
 
   # src/ files
   use_template("Makevars.in", save_as = file.path(rpkg_name, "src", "Makevars.in"), subdir = "rpkg")

@@ -33,7 +33,7 @@ fi
 rm -rf .cargo
 rm -rf src/.cargo
 rm -rf src/rust/target
-rm -rf src/rust/.cargo
+rm -f src/rust/.cargo/config.toml
 
 # Remove generated files (configure recreates them from .in templates)
 rm -f src/Makevars

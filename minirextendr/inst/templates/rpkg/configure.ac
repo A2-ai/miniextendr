@@ -435,6 +435,21 @@ AC_CONFIG_COMMANDS([cargo-vendor],
         exit 1
       fi
 
+      dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
+      for _crate_dir in "$VENDOR_OUT"/*/; do
+        if test -d "$_crate_dir"; then
+          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+          for _dotfile in "$_crate_dir"/.*; do
+            case "$(basename "$_dotfile")" in
+              .|..|.cargo-checksum.json) ;;
+              *) rm -rf "$_dotfile" ;;
+            esac
+          done
+          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+        fi
+      done
+
       dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
       if test -f "$LOCKFILE"; then
         $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
