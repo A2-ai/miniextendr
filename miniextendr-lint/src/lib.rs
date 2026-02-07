@@ -18,8 +18,6 @@
 
 use miniextendr_macros_core::miniextendr_module;
 
-// TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
-// is it altrep? is it too much?
 
 use std::collections::HashSet;
 use std::env;
