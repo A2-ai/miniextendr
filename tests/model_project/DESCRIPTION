@@ -1,0 +1,19 @@
+Package: pigworld
+Title: Agent-Based Ecological Model of Pigs on an Infinite 2D Plane
+Version: 0.1.0
+Authors@R:
+    person("miniextendr", "authors", , "miniextendr@example.com", role = c("aut", "cre"))
+Description: An agent-based ecological simulation of pigs roaming an infinite
+    2D plane. Features birth and death processes, Gaussian random-walk movement,
+    pairwise interaction within a configurable radius, and energy-based
+    reproduction. Implemented in Rust via miniextendr for performance, using
+    rand/rand_distr for stochastic processes, rayon for parallel computation,
+    and itertools for data aggregation.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Config/build/bootstrap: TRUE
+Config/build/never-clean: true
+Config/build/extra-sources: src/rust/Cargo.lock
+SystemRequirements: Rust (>= 1.85)
