@@ -13,15 +13,21 @@ extern void miniextendr_panic_hook(void);
 extern void miniextendr_worker_init(void);
 extern void miniextendr_init_ccallables(void);
 
+// Set ALTREP package name before ALTREP registration
+extern void miniextendr_set_altrep_pkg_name(const char* name);
+
 // Optional vctrs support initialization
 // Returns: 0=success, 1=not available, 2=not main thread, 3=already initialized
 // When vctrs feature is disabled, always returns 1 (not available)
 extern int miniextendr_init_vctrs(void);
 
 void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
-    miniextendr_assert_utf8_locale();
     miniextendr_panic_hook();
     miniextendr_worker_init();
+    miniextendr_assert_utf8_locale();
+
+    // Set ALTREP package name before ALTREP registration
+    miniextendr_set_altrep_pkg_name("@PACKAGE_TARNAME_RS@");
 
     // Load trait ABI C-callables from miniextendr package
     // This loads mx_wrap, mx_get, mx_query function pointers
@@ -31,7 +37,6 @@ void R_init_@PACKAGE_TARNAME_RS@(DllInfo *dll) {
     // Status 1 (not available) is fine - vctrs is optional
     (void)miniextendr_init_vctrs();
 
-    // Main module's R_init calls nonapi's R_init via "use nonapi;" statement
     R_init_@PACKAGE_TARNAME_RS@_miniextendr(dll);
 
     R_useDynamicSymbols(dll, FALSE);
