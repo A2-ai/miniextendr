@@ -2251,10 +2251,6 @@ pub fn r_ffi_checked(
 
                     let is_never = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Never(_)));
 
-                    // Check if return type is a raw pointer (*const T or *mut T)
-                    // These MUST NOT be routed - the pointer would be invalid on the worker thread
-                    let returns_raw_pointer = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Ptr(_)));
-
                     let wrapper = if is_never {
                         // Never-returning functions (like Rf_error)
                         quote::quote! {
@@ -2266,21 +2262,6 @@ pub fn r_ffi_checked(
                                 ::miniextendr_api::worker::with_r_thread(move || unsafe {
                                     #unchecked_name(#(#arg_names),*)
                                 })
-                            }
-                        }
-                    } else if returns_raw_pointer {
-                        // Pointer-returning functions must stay on the main thread.
-                        // Raw pointers can't be safely routed because the pointed-to
-                        // memory could be GC'd on the main thread.
-                        let fn_name_str = fn_name.to_string();
-                        quote::quote! {
-                            #(#attrs)*
-                            #[doc = #checked_doc_lit]
-                            #[inline(always)]
-                            #[allow(non_snake_case)]
-                            #vis unsafe fn #fn_name(#inputs) #output {
-                                ::miniextendr_api::worker::assert_r_main_thread_for_pointer_api(#fn_name_str);
-                                unsafe { #unchecked_name(#(#arg_names),*) }
                             }
                         }
                     } else {

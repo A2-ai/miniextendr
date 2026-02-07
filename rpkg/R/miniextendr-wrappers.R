@@ -5257,7 +5257,7 @@ if (!exists("strict_length", mode = "function")) strict_length <- S7::new_generi
 S7::method(strict_length, S7Strict) <- function(x) .Call(C_S7Strict__strict_length, .call = match.call(), x@.ptr)
 
 if (!exists("describe_any", mode = "function")) describe_any <- S7::new_generic("describe_any", "x", function(x, ...) S7::S7_dispatch())
-S7::method(describe_any, S7::class_any) <- function(x, ...) .Call(C_S7Strict__describe_any, .call = match.call(), x@.ptr)
+S7::method(describe_any, S7::class_any) <- function(x, ...) .Call(C_S7Strict__describe_any, .call = match.call(), tryCatch(x@.ptr, error = function(e) x))
 
 #' @noRd
 S7Celsius <- S7::new_class("S7Celsius",
