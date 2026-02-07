@@ -45,11 +45,10 @@ all: $(SHLIB)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
-	  case "$(CARGO_TARGET_DIR)" in \
-	    "$(ABS_RPKG_SRCDIR)"/*) if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi ;; \
-	    *) echo "Skipping cleanup of CARGO_TARGET_DIR (outside package): $(CARGO_TARGET_DIR)" ;; \
-	  esac; \
+	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
+	  if [ -d "$(ABS_TOP_SRCDIR)/rust-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/rust-target"; fi; \
+	  if [ -d "$(ABS_TOP_SRCDIR)/ra-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/ra-target"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/target"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/ra_target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/ra_target"; fi; \
 	fi

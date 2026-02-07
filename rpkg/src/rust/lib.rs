@@ -92,6 +92,8 @@ mod factor_tests;
 mod gc_protect_tests;
 mod identical_tests;
 mod interrupt_tests;
+#[allow(deprecated)] // Intentional: tests #[deprecated] integration
+mod lifecycle_tests;
 mod misc_tests;
 #[cfg(feature = "ndarray")]
 #[path = "ndarray_tests.rs"]
@@ -681,6 +683,83 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
     ListDataClass(ListData { list: x, len })
 }
 
+// =============================================================================
+// ALTREP Convenience Helpers Examples
+// =============================================================================
+
+/// Example: Small data - regular copy is fine
+///
+/// @export
+#[miniextendr]
+pub fn small_vec_copy() -> Vec<i32> {
+    vec![1, 2, 3, 4, 5] // Uses IntoR, copies to R
+}
+
+/// Example: Large data - ALTREP avoids copy
+///
+/// @export
+#[miniextendr]
+pub fn large_vec_altrep() -> SEXP {
+    use miniextendr_api::IntoRAltrep;
+    let data = vec![0; 100_000];
+    data.into_sexp_altrep() // Zero-copy via IntoRAltrep
+}
+
+/// Example: Lazy computation - compute on demand
+///
+/// @export
+#[miniextendr]
+pub fn lazy_squares(n: i32) -> SEXP {
+    use miniextendr_api::IntoRAltrep;
+    if n < 0 {
+        miniextendr_api::r_error!("lazy_squares: n must be >= 0");
+    }
+    (0..n)
+        .map(|i| i * i)
+        .collect::<Vec<i32>>()
+        .into_sexp_altrep()
+}
+
+/// Example: Using into_altrep() to store wrapper
+///
+/// @export
+#[miniextendr]
+pub fn boxed_data_altrep(n: i32) -> SEXP {
+    use miniextendr_api::IntoRAltrep;
+    if n < 0 {
+        miniextendr_api::r_error!("boxed_data_altrep: n must be >= 0");
+    }
+    let data = (0..n).collect::<Vec<i32>>().into_boxed_slice();
+    data.into_altrep().into_sexp()
+}
+
+// =============================================================================
+// Benchmark Functions - Direct Comparison
+// =============================================================================
+
+/// Create a vector of given size using regular copy (IntoR)
+///
+/// @export
+#[miniextendr]
+pub fn bench_vec_copy(n: i32) -> Vec<i32> {
+    if n < 0 {
+        miniextendr_api::r_error!("n must be >= 0");
+    }
+    vec![0; n as usize] // Uses IntoR - copies to R
+}
+
+/// Create a vector of given size using ALTREP zero-copy
+///
+/// @export
+#[miniextendr]
+pub fn bench_vec_altrep(n: i32) -> SEXP {
+    use miniextendr_api::IntoRAltrep;
+    if n < 0 {
+        miniextendr_api::r_error!("n must be >= 0");
+    }
+    vec![0; n as usize].into_sexp_altrep() // Zero-copy
+}
+
 // -----------------------------------------------------------------------------
 // ConstantLogical: All TRUE or all FALSE
 // -----------------------------------------------------------------------------
@@ -948,6 +1027,57 @@ pub struct UnitCircleClass(pub UnitCircleData);
 pub fn unit_circle(n: i32) -> SEXP {
     let data = UnitCircleData { n: n as usize };
     UnitCircleClass(data).into_sexp()
+}
+
+// -----------------------------------------------------------------------------
+// IntegerSequenceList: List where each element is an integer vector 1:i
+// This demonstrates ALTREP for list vectors (VECSXP)
+// -----------------------------------------------------------------------------
+
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct IntegerSequenceListData {
+    /// Number of elements in the list
+    n: usize,
+}
+
+impl AltrepLen for IntegerSequenceListData {
+    fn len(&self) -> usize {
+        self.n
+    }
+}
+
+impl AltListData for IntegerSequenceListData {
+    fn elt(&self, i: usize) -> SEXP {
+        // Each element is an integer vector from 1 to (i+1)
+        // Element 1: c(1L)
+        // Element 2: c(1L, 2L)
+        // Element 3: c(1L, 2L, 3L)
+        // etc.
+        let seq: Vec<i32> = (1..=((i + 1) as i32)).collect();
+        seq.into_sexp()
+    }
+}
+
+miniextendr_api::impl_altlist_from_data!(IntegerSequenceListData);
+
+/// @noRd
+#[miniextendr(class = "IntegerSequenceList")]
+pub struct IntegerSequenceListClass(pub IntegerSequenceListData);
+
+/// Create a list ALTREP where each element is an integer sequence.
+///
+/// @param n Number of elements in the list.
+/// @return A list where element i contains the vector 1:i.
+/// @examples
+/// lst <- integer_sequence_list(3L)
+/// lst[[1]]  # c(1L)
+/// lst[[2]]  # c(1L, 2L)
+/// lst[[3]]  # c(1L, 2L, 3L)
+/// @export
+#[miniextendr]
+pub fn integer_sequence_list(n: i32) -> SEXP {
+    let data = IntegerSequenceListData { n: n as usize };
+    IntegerSequenceListClass(data).into_sexp()
 }
 
 // -----------------------------------------------------------------------------
@@ -1628,6 +1758,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
         features.push("vctrs");
     }
 
+    // Class systems (always available, not feature-gated)
+    features.push("s7");
+
     features
 }
 
@@ -1661,6 +1794,7 @@ miniextendr_module! {
     use visibility_tests;
     use thread_tests;
     use misc_tests;
+    use lifecycle_tests;
     use trait_abi_tests;
     use class_system_matrix;
     use shared_trait_test;
@@ -1692,6 +1826,16 @@ miniextendr_module! {
     fn altrep_from_raw;
     fn altrep_from_integers;
     fn altrep_from_list;
+
+    // ALTREP convenience helpers examples
+    fn small_vec_copy;
+    fn large_vec_altrep;
+    fn lazy_squares;
+    fn boxed_data_altrep;
+
+    // Benchmark functions
+    fn bench_vec_copy;
+    fn bench_vec_altrep;
 
     // ALTREP test fixtures
     struct ConstantIntClass;
@@ -1735,6 +1879,8 @@ miniextendr_module! {
 
     // List ALTREP
     struct ListDataClass;
+    struct IntegerSequenceListClass;
+    fn integer_sequence_list;
 
     // Box<[T]> ALTREP example
     struct BoxedIntsClass;

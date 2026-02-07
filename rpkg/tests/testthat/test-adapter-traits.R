@@ -57,7 +57,7 @@ test_that("Point - ROrd works", {
   expect_true(p2$is_greater_than(p1))
 })
 
-test_that("Point - RClone works", {
+test_that("Point - clone produces equal values", {
   p1 <- Point$new(5L, 10L)
   p2_ptr <- p1$clone_point()
   # Wrap the raw pointer as a Point
@@ -68,7 +68,7 @@ test_that("Point - RClone works", {
   expect_equal(p1$y(), p2_ptr$y())
 })
 
-test_that("Point - RDefault works", {
+test_that("Point - default creates (0, 0)", {
   p_ptr <- Point$default_point()
   # Wrap the raw pointer as a Point
   class(p_ptr) <- "Point"
@@ -78,7 +78,7 @@ test_that("Point - RDefault works", {
   expect_equal(p_ptr$y(), 0L)
 })
 
-test_that("Point - RFromStr works with &str parameter", {
+test_that("Point - from_str parses string to Point", {
   # Valid string parses correctly - tests &str parameter on worker thread
   p_ptr <- Point$from_str("(10, 20)")
   expect_false(is.null(p_ptr))

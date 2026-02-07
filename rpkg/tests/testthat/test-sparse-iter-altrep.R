@@ -148,16 +148,18 @@ test_that("sparse raw iterator works for basic access", {
   expect_equal(x[10], as.raw(9))
 })
 
-test_that("sparse raw iterator skips elements correctly", {
+test_that("sparse raw iterator returns correct values for accessed and skipped elements", {
   x <- sparse_iter_raw(20L)
 
   # Access element 15 first
   expect_equal(x[15], as.raw(14))
 
-  # Elements 1-14 were skipped and should return 0 (raw doesn't have NA)
-  expect_equal(x[1], as.raw(0))  # Note: raw(0) is the default, same as actual value here
+  # Elements 1-14 were skipped and return as.raw(0) (raw's default).
+  # Note: element 1's actual value is also as.raw(0), so this doesn't
+  # distinguish skip-default from real value for small indices.
+  expect_equal(x[1], as.raw(0))
 
-  # Let's use a different test with clearly different values
+  # Use a larger vector where values wrap around 256 to get clearer test
   y <- sparse_iter_raw(300L)
 
   # Access element 260 first (value = 259 % 256 = 3)

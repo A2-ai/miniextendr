@@ -14,10 +14,10 @@ test_that("with_flag() defaults to FALSE and passes TRUE", {
   expect_true(with_flag(TRUE))
 })
 
-test_that("underscore_it_all() accepts wildcard args", {
+test_that("underscore_it_all() accepts discarded parameters", {
   expect_null(underscore_it_all(1L, 2))
 })
 
-test_that("do_nothing() returns a scalar", {
+test_that("do_nothing() returns raw SEXP integer directly", {
   expect_identical(do_nothing(), 42L)
 })

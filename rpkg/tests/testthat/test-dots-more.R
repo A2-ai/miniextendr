@@ -1,4 +1,4 @@
-test_that("greetings variants handle dots correctly", {
+test_that("greetings variants with dots run without error", {
   # All named/unnamed dots variants now work correctly after macro fix
   expect_null(greetings_with_named_dots(a = 1, b = 2))
   expect_null(greetings_with_named_and_unused_dots(a = 1))

@@ -2,7 +2,7 @@ configure~
 autom4te.cache
 .cargo/config.toml
 src/Makevars
-src/Makevars.win
+# Note: Makevars.win is a static file (uses `include Makevars`), tracked in git
 src/*-wrappers.R
 src/rust/document.rs
 src/entrypoint.c
@@ -12,9 +12,13 @@ src/*.o
 src/*.so
 src/*.dll
 
-# rust
-src/rust/ra_target
-src/rust/target
+# Cargo target directories
+# These MUST be outside src/ to avoid pkgbuild scanning generated .rs files
+rust-target/
+ra-target/
+# Legacy locations (inside src/, causes pkgbuild issues)
+src/rust/ra_target/
+src/rust/target/
 
 # Vendor compression stamp file
 inst/.vendor.tar.xz.cksum

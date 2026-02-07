@@ -122,7 +122,7 @@ test_that("short_vec_recycle matches vctrs behavior", {
   expect_equal(our_result, vctrs_result)
 })
 
-test_that("vctrs error messages are informative", {
+test_that("vctrs error enum variants format correctly", {
   skip_if_vctrs_disabled()
 
   # Test error message formatting
@@ -314,7 +314,7 @@ test_that("new_list_of with custom class", {
   expect_equal(class(result), c("my_list_of", "vctrs_list_of", "vctrs_vctr", "list"))
 })
 
-test_that("VctrsBuildError messages are informative", {
+test_that("VctrsBuildError variants format correctly", {
   skip_if_vctrs_disabled()
 
   expect_match(

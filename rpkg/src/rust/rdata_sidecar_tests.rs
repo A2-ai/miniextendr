@@ -90,8 +90,17 @@ pub struct SidecarR6 {
 }
 
 /// @noRd
-#[miniextendr(r6)]
-impl SidecarR6 {}
+#[miniextendr(r6(r_data_accessors))]
+impl SidecarR6 {
+    /// Create a new SidecarR6 with initial values.
+    pub fn new(value: i32, label: String) -> Self {
+        SidecarR6 {
+            _r: RSidecar,
+            value,
+            label,
+        }
+    }
+}
 
 /// @noRd
 #[miniextendr]
@@ -193,8 +202,18 @@ pub struct SidecarS7 {
 }
 
 /// @noRd
-#[miniextendr(s7)]
-impl SidecarS7 {}
+#[miniextendr(s7(r_data_accessors))]
+impl SidecarS7 {
+    /// Create a new SidecarS7 with initial values.
+    pub fn new(prop_int: i32, prop_flag: bool, prop_name: String) -> Self {
+        SidecarS7 {
+            _r: RSidecar,
+            prop_int,
+            prop_flag,
+            prop_name,
+        }
+    }
+}
 
 /// @noRd
 #[miniextendr]

@@ -283,7 +283,7 @@ pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::
 // Note: SexpExt is pub(crate), imported directly in modules that need it
 pub mod from_r;
 pub mod into_r;
-pub use into_r::{Altrep, IntoR};
+pub use into_r::{Altrep, IntoR, IntoRAltrep};
 pub mod into_r_as;
 pub use into_r_as::{IntoRAs, StorageCoerceError};
 pub mod unwind_protect;
@@ -305,6 +305,10 @@ pub use worker::miniextendr_worker_init;
 
 // Thread safety utilities for calling R from non-main threads
 pub mod thread;
+
+// ALTREP materialization tracking (diagnostics)
+#[cfg(feature = "materialization-tracking")]
+pub mod altrep_tracking;
 
 // `indicatif` progress integration (R console)
 #[cfg(feature = "indicatif")]

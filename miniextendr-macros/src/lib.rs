@@ -202,8 +202,8 @@ mod miniextendr_fn;
 mod typed_list;
 use crate::miniextendr_fn::{MiniextendrFnAttrs, MiniextendrFunctionParsed};
 mod miniextendr_impl;
-mod miniextendr_module;
 use crate::miniextendr_module::MiniextendrModule;
+pub(crate) use miniextendr_macros_core::miniextendr_module;
 mod r_wrapper_builder;
 /// Builder utilities for formatting R wrapper arguments and calls.
 pub(crate) use r_wrapper_builder::RArgumentBuilder;
@@ -215,6 +215,7 @@ mod method_return_builder;
 pub(crate) use method_return_builder::{MethodReturnBuilder, ReturnStrategy};
 mod altrep_derive;
 mod dataframe_derive;
+mod lifecycle;
 mod list_derive;
 mod r_class_formatter;
 mod return_type_analysis;
@@ -232,22 +233,7 @@ mod factor_derive;
 #[cfg(feature = "vctrs")]
 mod vctrs_derive;
 
-/// Identifier for the generated `const` `R_CallMethodDef` value.
-///
-/// This must remain consistent between the attribute macro (which defines the symbol)
-/// and the module macro (which references it).
-pub(crate) fn call_method_def_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    quote::format_ident!("call_method_def_{rust_ident}")
-}
-
-/// Identifier for the generated `const &str` holding the R wrapper source code.
-///
-/// This must remain consistent between the attribute macro (which defines the symbol)
-/// and the module macro (which references it).
-pub(crate) fn r_wrapper_const_ident_for(rust_ident: &syn::Ident) -> syn::Ident {
-    let rust_ident_upper = rust_ident.to_string().to_uppercase();
-    quote::format_ident!("R_WRAPPER_{rust_ident_upper}")
-}
+pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
 // normalize_r_arg_ident is now provided by r_wrapper_builder module
 
@@ -622,6 +608,7 @@ pub fn miniextendr(
         s3_class,
         dots_spec,
         dots_span,
+        lifecycle,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -1173,7 +1160,20 @@ pub fn miniextendr(
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
     // r_formals is already a joined string from build_formals()
     let formals_joined = r_formals;
-    let roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
+    let mut roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
+
+    // Determine lifecycle: explicit attr > #[deprecated] extraction
+    let lifecycle_spec = lifecycle.or_else(|| {
+        attrs
+            .iter()
+            .find_map(crate::lifecycle::parse_rust_deprecated)
+    });
+
+    // Inject lifecycle badge into roxygen tags if present
+    if let Some(ref spec) = lifecycle_spec {
+        crate::lifecycle::inject_lifecycle_badge(&mut roxygen_tags, spec);
+    }
+
     let roxygen_tags_str = crate::roxygen::format_roxygen_tags(&roxygen_tags);
     let has_export_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "export");
     let has_no_rd_tag = crate::roxygen::has_roxygen_tag(&roxygen_tags, "noRd");
@@ -1194,14 +1194,22 @@ pub fn miniextendr(
     } else {
         String::new()
     };
+    // Generate lifecycle prelude if needed
+    let lifecycle_prelude = lifecycle_spec
+        .as_ref()
+        .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str))
+        .map(|prelude| format!("{}; ", prelude))
+        .unwrap_or_default();
+
     let r_wrapper_string = format!(
-        "{}{}{}{}{} <- function({}) {{\n    {}\n}}",
+        "{}{}{}{}{} <- function({}) {{\n    {}{}\n}}",
         roxygen_tags_str,
         source_comment,
         s3_method_comment,
         export_comment,
         r_wrapper_ident_str,
         formals_joined,
+        lifecycle_prelude,
         r_wrapper_return_str
     );
     // Use a raw string literal for better readability in macro expansion
@@ -1889,14 +1897,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Generate R wrapper impls constant - includes impl, trait impl, sidecar, and vctrs wrappers
     // Combine all with cfg info and generate conditional array elements
     let mut all_impl_r_wrappers_with_cfg: Vec<(Vec<syn::Attribute>, syn::Expr)> = Vec::new();
-    all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
-    all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
-    // Add sidecar R wrappers (from #[derive(ExternalPtr)] with #[r_data])
+    // Sidecar R wrappers FIRST (from #[derive(ExternalPtr)] with #[r_data])
+    // These must come before impl wrappers because R6/S7 class definitions
+    // may reference .rdata_active_bindings_* / .rdata_properties_* helpers.
     all_impl_r_wrappers_with_cfg.extend(
         rdata_r_wrappers
             .iter()
             .map(|expr| (Vec::new(), expr.clone())),
     );
+    all_impl_r_wrappers_with_cfg.extend(impl_r_wrappers_with_cfg.iter().cloned());
+    all_impl_r_wrappers_with_cfg.extend(trait_impl_r_wrappers_with_cfg.iter().cloned());
     // Add vctrs R wrappers (from #[derive(Vctrs)])
     all_impl_r_wrappers_with_cfg.extend(vctrs_r_wrappers_with_cfg.iter().cloned());
 

@@ -46,6 +46,7 @@ miniextendr_status <- function() {
     "Vendored Crates" = c(
       "src/vendor/miniextendr-api",
       "src/vendor/miniextendr-macros",
+      "src/vendor/miniextendr-macros-core",
       "src/vendor/miniextendr-lint"
     ),
     "Generated Files" = c(
@@ -81,6 +82,35 @@ miniextendr_status <- function() {
     missing[[category]] <- cat_missing
   }
 
+  # Staleness check: compare .in templates vs generated files
+  cli::cli_h2("Staleness")
+
+  template_pairs <- list(
+    c("src/Makevars.in", "src/Makevars"),
+    c("src/rust/Cargo.toml.in", "src/rust/Cargo.toml"),
+    c("src/entrypoint.c.in", "src/entrypoint.c"),
+    c("src/rust/document.rs.in", "src/rust/document.rs"),
+    c("src/rust/cargo-config.toml.in", "src/rust/.cargo/config.toml")
+  )
+
+  stale <- character()
+  for (pair in template_pairs) {
+    tmpl_path <- usethis::proj_path(pair[1])
+    gen_path <- usethis::proj_path(pair[2])
+    if (fs::file_exists(tmpl_path) && fs::file_exists(gen_path)) {
+      if (file.mtime(tmpl_path) > file.mtime(gen_path)) {
+        cli::cli_alert_warning("{.path {pair[2]}} is stale (template {.path {pair[1]}} is newer)")
+        stale <- c(stale, pair[2])
+      }
+    }
+  }
+
+  if (length(stale) == 0) {
+    cli::cli_alert_success("All generated files up to date")
+  } else {
+    cli::cli_alert_info("Run {.code ./configure} to regenerate stale files")
+  }
+
   # Summary
   total_present <- sum(lengths(present))
   total_missing <- sum(lengths(missing))
@@ -93,7 +123,11 @@ miniextendr_status <- function() {
     cli::cli_alert_warning("{total_missing} files missing")
   }
 
-  invisible(list(present = present, missing = missing))
+  if (length(stale) > 0) {
+    cli::cli_alert_warning("{length(stale)} stale generated file(s)")
+  }
+
+  invisible(list(present = present, missing = missing, stale = stale))
 }
 
 #' Validate miniextendr configuration

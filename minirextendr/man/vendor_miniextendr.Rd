@@ -26,8 +26,9 @@ copies crates from local path instead of downloading from GitHub.}
 Invisibly returns TRUE on success
 }
 \description{
-Downloads miniextendr-api, miniextendr-macros, miniextendr-lint, and
-miniextendr-engine from GitHub and vendors them into src/vendor/. Also
+Downloads miniextendr-api, miniextendr-macros, miniextendr-macros-core,
+miniextendr-lint, and miniextendr-engine from GitHub and vendors them
+into src/vendor/. Also
 patches Cargo.toml files to remove workspace inheritance.
 }
 \details{

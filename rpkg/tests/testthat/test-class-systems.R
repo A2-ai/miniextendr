@@ -68,6 +68,28 @@ test_that("r6_standalone_add sums", {
   expect_equal(r6_standalone_add(2L, 3L), 5L)
 })
 
+test_that("R6Temperature active binding getters work", {
+  t <- R6Temperature$new(100)  # Boiling point in Celsius
+  expect_equal(t$celsius, 100)
+  expect_equal(t$fahrenheit, 212)  # 100 C = 212 F
+})
+
+test_that("R6Temperature active binding setters work", {
+  t <- R6Temperature$new(0)  # Freezing point in Celsius
+  expect_equal(t$celsius, 0)
+  expect_equal(t$fahrenheit, 32)  # 0 C = 32 F
+
+  # Set via Celsius setter
+  t$celsius <- 100
+  expect_equal(t$celsius, 100)
+  expect_equal(t$fahrenheit, 212)
+
+  # Set via Fahrenheit setter
+  t$fahrenheit <- 32
+  expect_equal(t$fahrenheit, 32)
+  expect_equal(t$celsius, 0)  # Should be back to 0 C
+})
+
 test_that("S7Range computed property (length) works", {
   r <- S7Range(0, 10)
   # Computed property - read-only via @
@@ -94,12 +116,11 @@ test_that("S7Range dynamic property (midpoint) read/write works", {
   expect_equal(r@length, 10)
 })
 
-test_that("S7Range property methods are not exposed as generics", {
-  # get_midpoint and set_midpoint should NOT be exposed as S7 generics
-  # (they're internal to the property, accessed via @midpoint)
-  # Note: We can't test for 'length' since base::length exists
-  expect_false(exists("get_midpoint", mode = "function", envir = globalenv()))
-  expect_false(exists("set_midpoint", mode = "function", envir = globalenv()))
+test_that("S7Range property helpers are not user-facing generics", {
+  # get_midpoint and set_midpoint are internal to the property, accessed via @midpoint.
+  # They should not be exported as user-facing functions in the package namespace.
+  expect_false(exists("get_midpoint", mode = "function", envir = asNamespace("miniextendr")))
+  expect_false(exists("set_midpoint", mode = "function", envir = asNamespace("miniextendr")))
 })
 
 # =============================================================================
@@ -116,16 +137,11 @@ test_that("S7Config property with default value works", {
   expect_equal(config@score, 90.0)
 })
 
-test_that("S7Config required property errors when missing", {
-  # The 'name' property is marked as required
-
-  # Accessing it on a valid config should work
+test_that("S7Config required property is accessible", {
+  # The 'name' property is marked as required (no default).
+  # Construction error cannot be tested from R because Rust always provides the value.
   config <- S7Config("test", 50.0, 1L)
   expect_equal(config@name, "test")
-
-  # Note: We can't easily test the "required" error at construction time
-  # because Rust provides the value. The 'required' pattern is primarily
-  # for when S7 constructs objects with properties that have no default.
 })
 
 test_that("S7Config deprecated property emits warning", {
@@ -156,14 +172,9 @@ test_that("S7Strict no_dots generic works", {
   # This means extra arguments would cause an error (in strict S7)
 })
 
-test_that("S7Strict fallback method works for class_any", {
+test_that("S7Strict describe_any method works", {
   strict <- S7Strict(123L)
-
-  # describe_any should work on S7Strict
   expect_equal(describe_any(strict), "S7Strict with value 123")
-
-  # Since it's registered for class_any, it might work on other types too
-  # (though in this case the C function expects S7Strict specifically)
 })
 
 # =============================================================================
@@ -198,4 +209,41 @@ test_that("S7 bidirectional conversion works", {
   # Convert back to Celsius (uses convert_to on S7Fahrenheit)
   c2 <- S7::convert(f, S7Celsius)
   expect_equal(value(c2), 25.0, tolerance = 1e-10)
+})
+
+# =============================================================================
+# R6 cloneable tests
+# =============================================================================
+
+test_that("R6Cloneable supports $clone()", {
+  obj <- R6Cloneable$new(42L)
+  expect_equal(obj$get_value(), 42L)
+
+  # Clone the object (shallow clone - shares the same ExternalPtr)
+  cloned <- obj$clone()
+  expect_equal(cloned$get_value(), 42L)
+
+  # Shallow clone shares the underlying pointer, so mutations are visible in both
+  cloned$set_value(99L)
+  expect_equal(cloned$get_value(), 99L)
+  expect_equal(obj$get_value(), 99L)  # Same pointer, same value
+})
+
+test_that("R6Cloneable has lock_class = TRUE", {
+  # With lock_class = TRUE, we cannot add new methods/fields to the class
+  expect_error(R6Cloneable$set("public", "extra", function() "nope"))
+})
+
+# =============================================================================
+# S7 abstract/parent tests
+# =============================================================================
+
+test_that("S7Shape is abstract and cannot be instantiated", {
+  expect_error(S7Shape())
+})
+
+test_that("S7Circle has parent S7Shape", {
+  c <- S7Circle(3.0)
+  # Check area computation
+  expect_equal(circle_area(c), pi * 9.0, tolerance = 1e-10)
 })

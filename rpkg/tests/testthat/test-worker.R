@@ -16,7 +16,7 @@ test_that("worker with multiple R calls works", {
   expect_equal(result, c(10L, 30L, 60L))
 })
 
-test_that("worker drops run on success", {
+test_that("worker with RAII resources returns correct value", {
   result <- miniextendr:::unsafe_C_worker_drop_on_success()
   expect_equal(result, 42L)
 })
@@ -60,7 +60,7 @@ test_that("R error inside with_r_thread is propagated", {
   )
 })
 
-test_that("R error with RAII resources drops worker resources", {
+test_that("R error with RAII resources propagates error", {
   expect_error(
     miniextendr:::unsafe_C_test_worker_r_error_with_drops(),
     "R error"
@@ -177,14 +177,14 @@ test_that("nested worker calls work", {
   expect_equal(result, 400L)
 })
 
-test_that("nested with_r_thread with error drops outer resources", {
+test_that("nested with_r_thread with error propagates error", {
   expect_error(
     miniextendr:::unsafe_C_test_nested_with_error(),
     "Error"
   )
 })
 
-test_that("nested with_r_thread with panic drops all resources", {
+test_that("nested with_r_thread with panic propagates panic", {
   expect_error(
     miniextendr:::unsafe_C_test_nested_with_panic(),
     "Panic in nested with_r_thread"

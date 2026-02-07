@@ -70,6 +70,26 @@ test_that("SidecarR6 setters update values correctly", {
 })
 
 # =============================================================================
+# SidecarR6 class-integrated access (r_data_accessors) tests
+# =============================================================================
+
+test_that("SidecarR6 active bindings work via R6 class", {
+  # Create via R6 class constructor
+  obj <- SidecarR6$new(value = 42L, label = "test")
+
+  # Active bindings should provide getter access
+  expect_equal(obj$value, 42L)
+  expect_equal(obj$label, "test")
+
+  # Active bindings should provide setter access
+  obj$value <- 99L
+  expect_equal(obj$value, 99L)
+
+  obj$label <- "updated"
+  expect_equal(obj$label, "updated")
+})
+
+# =============================================================================
 # SidecarS3 tests
 # =============================================================================
 
@@ -149,6 +169,32 @@ test_that("SidecarS7 setters update values correctly", {
 
   SidecarS7_set_prop_name(obj, "updated")
   expect_equal(SidecarS7_get_prop_name(obj), "updated")
+})
+
+# =============================================================================
+# SidecarS7 class-integrated access (r_data_accessors) tests
+# =============================================================================
+
+test_that("SidecarS7 properties work via S7 class", {
+  skip_if_not("s7" %in% rpkg_enabled_features(), "S7 feature not enabled")
+
+  # Create via S7 class constructor
+  obj <- SidecarS7(prop_int = 42L, prop_flag = TRUE, prop_name = "s7test")
+
+  # S7 properties should provide getter access
+  expect_equal(obj@prop_int, 42L)
+  expect_equal(obj@prop_flag, TRUE)
+  expect_equal(obj@prop_name, "s7test")
+
+  # S7 properties should provide setter access
+  obj@prop_int <- 99L
+  expect_equal(obj@prop_int, 99L)
+
+  obj@prop_flag <- FALSE
+  expect_equal(obj@prop_flag, FALSE)
+
+  obj@prop_name <- "updated"
+  expect_equal(obj@prop_name, "updated")
 })
 
 # =============================================================================

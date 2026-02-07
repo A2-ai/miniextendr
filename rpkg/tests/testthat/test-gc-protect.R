@@ -30,7 +30,7 @@ test_that("test_list_builder_set creates list with typed elements", {
   expect_equal(length(result[[3]]), 3L)
 })
 
-test_that("test_list_set_elt creates list with unprotected children", {
+test_that("test_list_set_elt creates list with correct element types and lengths", {
   result <- test_list_set_elt()
 
   expect_true(is.list(result))
@@ -112,8 +112,8 @@ test_that("test_reprotect_slot_accumulate replaces vectors without leaking", {
   expect_equal(test_reprotect_slot_accumulate(10L), 10L)
 })
 
-test_that("test_reprotect_slot_count tracks protection count correctly", {
-  # Returns 1 on success (correct protection counts), 0 on failure
+test_that("test_reprotect_slot_count passes Rust-level protection checks", {
+  # Returns 1 if Rust-side protection count assertions pass, 0 on failure
   expect_equal(test_reprotect_slot_count(), 1L)
 })
 
