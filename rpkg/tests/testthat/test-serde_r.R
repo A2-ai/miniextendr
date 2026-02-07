@@ -62,8 +62,8 @@ test_that("serde_r serializes Option::None to NULL", {
   result <- serde_r_serialize_option_i32(NULL)
   expect_null(result)
 })
-test_that("serde_r deserializes NA to Option::None for i32", {
-  # NA_integer_ correctly triggers an error (serde_r doesn't auto-convert NA to None for i32)
+test_that("serde_r rejects NA_integer_ with clear error", {
+  # serde_r doesn't auto-convert NA to None for i32 - it raises an error
   expect_error(serde_r_deserialize_wrong_type(NA_integer_), "NA")
 })
 
@@ -472,14 +472,10 @@ test_that("Deserialization missing field returns error", {
 # 12. Integration with R Object Systems
 # =============================================================================
 
-test_that("serde_r works with data.frame (list internally)", {
-  # data.frame is a named list with class attribute
-  df <- data.frame(a = 1:3, b = c("x", "y", "z"))
-
-  # Can't directly deserialize df to our types, but the structure is compatible
-  # This tests that named lists work
-  # Note: from_r returns raw ExternalPtr, not S3 object
+test_that("serde_r deserializes from named list", {
+  # Named lists are the primary input format for serde_r deserialization
   p <- SerdeRPoint$from_r(list(x = 1.0, y = 2.0))
+  # from_r returns raw ExternalPtr, not S3 object
   expect_type(p, "externalptr")
 })
 

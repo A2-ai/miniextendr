@@ -15,41 +15,8 @@
 //! ## Configuration
 //! - Controlled by the `MINIEXTENDR_LINT` env var (enabled by default).
 //! - Set it to `0`, `false`, `no`, or `off` to disable.
-//!
-//! ## Architecture note: parser duplication
-//!
-//! This crate contains a **copy** of `miniextendr_module.rs` from
-//! `miniextendr-macros` so it can be published independently.
-//!
-//! - **Source**: `miniextendr-macros/src/miniextendr_module.rs`
-//! - **Copy**: `miniextendr-lint/src/miniextendr_module.rs` (this file)
-//! - **Requirement**: the parser imports `call_method_def_ident_for` and
-//!   `r_wrapper_const_ident_for` from `crate::`, so we define stubs below
-//!
-//! **Why duplicate instead of sharing?**
-//! - Allows `miniextendr-lint` to be published independently to crates.io
-//! - `#[path = "../../"]` includes do not work in published packages
-//!
-//! **Keeping in sync:**
-//! When `miniextendr-macros/src/miniextendr_module.rs` changes, manually copy to
-//! `miniextendr-lint/src/miniextendr_module.rs`. Changes are infrequent.
 
-// Parser module (copied from miniextendr-macros for independent publishing).
-// Allow dead_code since we only use parsing, not code generation helpers.
-#[allow(dead_code)]
-mod miniextendr_module;
-
-// Stubs required by miniextendr_module.rs (which imports these from crate::)
-// The lint only uses parsing, not code generation, so these return dummy idents.
-#[allow(dead_code)]
-pub(crate) fn call_method_def_ident_for(_ident: &syn::Ident) -> syn::Ident {
-    syn::Ident::new("__stub", proc_macro2::Span::call_site())
-}
-
-#[allow(dead_code)]
-pub(crate) fn r_wrapper_const_ident_for(_ident: &syn::Ident) -> syn::Ident {
-    syn::Ident::new("__stub", proc_macro2::Span::call_site())
-}
+use miniextendr_macros_core::miniextendr_module;
 
 // TODO: check how many reflections a type has; is it externalptr? is it an impl-block?
 // is it altrep? is it too much?
@@ -164,16 +131,118 @@ pub fn run(root: impl AsRef<Path>) -> Result<LintReport, String> {
     rs_files.sort();
 
     let mut errors = Vec::new();
+    // Track which files have miniextendr_module! and what `use` entries they contain
+    let mut module_uses: std::collections::HashMap<PathBuf, Vec<String>> =
+        std::collections::HashMap::new();
+
     for path in &rs_files {
         if let Err(mut file_errors) = lint_file(path) {
             errors.append(&mut file_errors);
         }
+
+        // Also extract module-level `use` entries for cross-file checking
+        if let Ok(uses) = extract_module_uses(path)
+            && !uses.is_empty()
+        {
+            module_uses.insert(path.clone(), uses);
+        }
     }
+
+    // Cross-file check: for each file that has a miniextendr_module!, check
+    // that child modules (files with their own miniextendr_module!) are wired
+    // into the parent via `use child_name;`.
+    check_missing_use_submodule(&rs_files, &module_uses, &mut errors);
 
     Ok(LintReport {
         files: rs_files,
         errors,
     })
+}
+
+/// Extract `use` entries from a file's `miniextendr_module!` macro, if present.
+/// Returns the list of module names referenced by `use` entries.
+fn extract_module_uses(path: &Path) -> Result<Vec<String>, ()> {
+    let src = fs::read_to_string(path).map_err(|_| ())?;
+    let parsed = syn::parse_file(&src).map_err(|_| ())?;
+
+    let mut uses = Vec::new();
+    extract_uses_from_items(&parsed.items, &mut uses);
+    Ok(uses)
+}
+
+fn extract_uses_from_items(items: &[Item], uses: &mut Vec<String>) {
+    for item in items {
+        match item {
+            Item::Macro(item_macro) if is_miniextendr_module_macro(&item_macro.mac) => {
+                if let Ok(parsed) = syn::parse2::<miniextendr_module::MiniextendrModule>(
+                    item_macro.mac.tokens.clone(),
+                ) {
+                    for use_entry in &parsed.uses {
+                        uses.push(use_entry.use_name.ident.to_string());
+                    }
+                }
+            }
+            Item::Mod(item_mod) => {
+                if let Some((_, child_items)) = &item_mod.content {
+                    extract_uses_from_items(child_items, uses);
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Check that child modules with their own `miniextendr_module!` are referenced
+/// via `use child;` in the parent module's `miniextendr_module!`.
+fn check_missing_use_submodule(
+    _rs_files: &[PathBuf],
+    module_uses: &std::collections::HashMap<PathBuf, Vec<String>>,
+    errors: &mut Vec<String>,
+) {
+    // Find files that have a miniextendr_module! (they are "module files")
+    let files_with_module: HashSet<&PathBuf> = module_uses.keys().collect();
+
+    // For each file with a module, check if it's a child module that should
+    // be `use`d in a parent
+    for child_path in &files_with_module {
+        let child_stem = match child_path.file_stem().and_then(|s| s.to_str()) {
+            Some(stem) => stem.to_string(),
+            None => continue,
+        };
+
+        // Skip lib.rs and mod.rs -- these are root/directory modules, not children
+        if child_stem == "lib" || child_stem == "mod" {
+            continue;
+        }
+
+        // Find potential parent files that could contain `mod child;`
+        // Parent is either sibling lib.rs/mod.rs, or sibling of the directory
+        let parent_dir = match child_path.parent() {
+            Some(dir) => dir,
+            None => continue,
+        };
+
+        let potential_parents: Vec<PathBuf> =
+            vec![parent_dir.join("lib.rs"), parent_dir.join("mod.rs")];
+
+        for parent_path in &potential_parents {
+            if let Some(parent_uses) = module_uses.get(parent_path) {
+                // Parent has a miniextendr_module! -- check if it has `use child;`
+                if !parent_uses.contains(&child_stem) {
+                    errors.push(format!(
+                        "{}: module `{}` has its own miniextendr_module! but is not \
+                         referenced via `use {};` in {}'s miniextendr_module!. \
+                         Functions in {} will be invisible to R.",
+                        child_path.display(),
+                        child_stem,
+                        child_stem,
+                        parent_path.display(),
+                        child_stem,
+                    ));
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]

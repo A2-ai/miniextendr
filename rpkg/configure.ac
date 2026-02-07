@@ -110,6 +110,7 @@ AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 dnl Miniextendr crate source paths (in monorepo)
 MINIEXTENDR_API_SRC="$root_miniextendr_repo/miniextendr-api"
 MINIEXTENDR_MACROS_SRC="$root_miniextendr_repo/miniextendr-macros"
+MINIEXTENDR_MACROS_CORE_SRC="$root_miniextendr_repo/miniextendr-macros-core"
 MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
 MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
 
@@ -171,13 +172,24 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
-AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: src/rust/target)])
-: ${CARGO_TARGET_DIR="$abs_rpkg_src/rust/target"}
+dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
+dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
+dnl pkgbuild's sources() function recursively finds .rs files in src/, and
+dnl if any generated file has a newer mtime than the DLL, it triggers rebuild.
+AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
+: ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
 AC_SUBST([CARGO_TARGET_DIR])
 
 dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
 dnl These are used in .cargo/config.toml which Cargo reads directly
-CARGO_TARGET_DIR_CARGO="$abs_rpkg_src_cargo/rust/target"
+CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
+    fi
+    ;;
+esac
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (debug or release)])
@@ -273,110 +285,38 @@ AC_ARG_VAR([VENDOR_SYNC_EXTRA],[Set to 1 to include extra `cargo vendor --sync` 
 : ${VENDOR_SYNC_EXTRA="0"}
 AC_SUBST([VENDOR_SYNC_EXTRA])
 
-dnl Syncing miniextendr-* crates and patching their Cargo.toml is done in an
-dnl AC_CONFIG_COMMANDS step (after Cargo.toml generation and optional cargo vendor).
-
-dnl Source replacement config: only use vendored sources on CRAN (offline builds)
-dnl Dev mode uses local path overrides for miniextendr-*
-AS_IF([test "$NOT_CRAN" = "true"], [
-  dnl Dev mode: use local path overrides for miniextendr crates
-  CARGO_SOURCE_REPLACE="$(cat <<EOF
-@<:@patch.crates-io@:>@
-miniextendr-api = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-api" }
-miniextendr-macros = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-macros" }
-miniextendr-lint = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-lint" }
-miniextendr-engine = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-engine" }
-miniextendr-bench = { path = "$ROOT_MINIEXTENDR_REPO_CARGO/miniextendr-bench" }
-EOF
-)"
-], [
-  dnl CRAN/offline mode: use vendored sources only
-  CARGO_SOURCE_REPLACE="$(cat <<EOF
-@<:@source.crates-io@:>@
-replace-with = "vendored-sources"
-
-@<:@source.vendored-sources@:>@
-directory = "$VENDOR_OUT_CARGO"
-EOF
-)"
-])
-
-dnl Sanity check CARGO_SOURCE_REPLACE before AC_SUBST
-if test -z "$CARGO_SOURCE_REPLACE"; then
-  AC_MSG_ERROR([CARGO_SOURCE_REPLACE is empty; Cargo config templates will be missing source/patch directives])
-fi
-case "$CARGO_SOURCE_REPLACE" in
-  *patch.crates-io*|*source.crates-io*) ;;
-  *)
-    AC_MSG_ERROR([CARGO_SOURCE_REPLACE does not contain expected [patch.crates-io] or [source.crates-io] header; check bracket escaping and quoting])
-    ;;
-esac
-AC_SUBST([CARGO_SOURCE_REPLACE])
+dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
+dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
+dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
+dnl the [patch] section in Cargo.toml.
 
 dnl ---- output files ----
 dnl Create .cargo directory (it's a hidden dir not included in tarball)
-AS_MKDIR_P([.cargo])
 AS_MKDIR_P([src/rust/.cargo])
 
-
 AC_CONFIG_FILES([
-  .cargo/config.toml:src/rust/cargo-config.toml.in
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
   src/entrypoint.c:src/entrypoint.c.in
   src/mx_abi.c:src/mx_abi.c.in
 ])
 
-dnl 2a) Ensure the monorepo root has a cargo config (needed for workspace resolution)
-AC_CONFIG_COMMANDS([sync-root-cargo-config],
+dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
+dnl    In dev mode, Cargo.toml's [patch."https://..."] redirects to local paths
+AC_CONFIG_COMMANDS([dev-cargo-config],
 [
-  ROOT_CFG_SRC=".cargo/config.toml"
-  ROOT_CFG_DIR="$ROOT_MINIEXTENDR_REPO/.cargo"
-  ROOT_CFG_DST="$ROOT_CFG_DIR/config.toml"
+  RPKG_CFG="src/rust/.cargo/config.toml"
 
-  if test -f "$ROOT_CFG_SRC" && test "$NOT_CRAN" = "true" && \
-     test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
-    mkdir -p "$ROOT_CFG_DIR"
-    _cfg_diff=0
-    _cfg_exists=0
-    if test -f "$ROOT_CFG_DST"; then
-      _cfg_exists=1
-      if command -v cmp >/dev/null 2>&1; then
-        cmp -s "$ROOT_CFG_SRC" "$ROOT_CFG_DST" || _cfg_diff=1
-      elif command -v diff >/dev/null 2>&1; then
-        diff -q "$ROOT_CFG_SRC" "$ROOT_CFG_DST" >/dev/null 2>&1 || _cfg_diff=1
-      else
-        dnl No comparison tool available - assume different to be safe
-        _cfg_diff=1
-      fi
-    fi
-
-    if test "$_cfg_diff" -eq 1; then
-      echo "======================================================================" >&2
-      echo "configure: WARNING: Monorepo root cargo config differs from rpkg" >&2
-      echo "configure:   Existing: $ROOT_CFG_DST" >&2
-      echo "configure:   New:      $ROOT_CFG_SRC" >&2
-      echo "configure:" >&2
-      echo "configure:   This will OVERWRITE your existing cargo config." >&2
-      echo "configure:   If you have custom settings, back them up first." >&2
-      echo "configure:" >&2
-      echo "configure:   To prevent this, remove the monorepo from the parent" >&2
-      echo "configure:   directory or run configure from outside the monorepo." >&2
-      echo "======================================================================" >&2
-      dnl Give user 3 seconds to read the warning
-      sleep 3
-    fi
-
-    cp "$ROOT_CFG_SRC" "$ROOT_CFG_DST"
-
-    if test "$_cfg_exists" -eq 0; then
-      echo "configure: created $ROOT_CFG_DST" >&2
-    elif test "$_cfg_diff" -eq 1; then
-      echo "configure: overwrote $ROOT_CFG_DST" >&2
+  if test "$NOT_CRAN" = "true"; then
+    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
+    dnl with the [patch."https://github.com/CGMossa/miniextendr"] section in Cargo.toml
+    if test -f "$RPKG_CFG"; then
+      rm "$RPKG_CFG"
+      echo "configure: removed cargo config (dev mode - using git deps with local patches)"
     fi
   fi
 ],
-[ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" NOT_CRAN="$NOT_CRAN"])
+[NOT_CRAN="$NOT_CRAN"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
 dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
@@ -506,7 +446,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 
 	        dnl Package workspace crates using cargo package
 	        echo "configure: packaging workspace crates..."
-	        for _crate_dir in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
+	        for _crate_dir in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
 	          if test -d "$ROOT_MINIEXTENDR_REPO/$_crate_dir"; then
 	            echo "configure:   packaging $_crate_dir"
 	            $CARGO_CMD package --manifest-path "$ROOT_MINIEXTENDR_REPO/$_crate_dir/Cargo.toml" \
@@ -626,372 +566,90 @@ AC_CONFIG_COMMANDS([cargo-vendor],
 ],
 [CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
 
-dnl 2b) Sync miniextendr crates from monorepo to vendor and patch Cargo.toml
-
-dnl This must run after Cargo.toml generation (AC_CONFIG_FILES) and after the
-dnl optional cargo-vendor step, so the vendor directory is populated first.
-AC_CONFIG_COMMANDS([sync-miniextendr-crates],
+dnl 2b) Post-vendor tasks: touch Cargo.toml and update Cargo.lock for patched sources
+AC_CONFIG_COMMANDS([post-vendor],
 [
-  dnl Sync miniextendr crates from monorepo to vendor (if sources exist)
-  echo "configure: checking for miniextendr source crates" >&2
-
-  if test -d "$MINIEXTENDR_API_SRC" && test -d "$MINIEXTENDR_MACROS_SRC" && \
-     test -d "$MINIEXTENDR_LINT_SRC" && test -d "$MINIEXTENDR_ENGINE_SRC"; then
-
-    dnl rsync is required when syncing from monorepo
-    if test "x$RSYNC" = "xno"; then
-      echo "configure: error: rsync not found (required for syncing miniextendr crates from monorepo)" >&2
-      exit 1
-    fi
-
-    echo "configure: found miniextendr crates; syncing to $VENDOR_OUT" >&2
-
-    dnl Extract workspace.package values from root Cargo.toml
-    ROOT_CARGO_TOML="$ROOT_MINIEXTENDR_REPO/Cargo.toml"
-
-    dnl Extract simple string values from [workspace.package]
-    WS_VERSION="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^version = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_EDITION="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^edition = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_LICENSE="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^license = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_REPOSITORY="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^repository = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_HOMEPAGE="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^homepage = "\(.*\)"/\1/p; }' "$ROOT_CARGO_TOML" | head -1)"
-
-    dnl For arrays, extract the whole value (keep brackets)
-    WS_KEYWORDS="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^keywords = //p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_CATEGORIES="$($SED -n '/\@<:@workspace\.package\@:>@/,/^\@<:@/{ s/^categories = //p; }' "$ROOT_CARGO_TOML" | head -1)"
-
-    dnl Extract workspace.dependencies
-    WS_DEP_PROC_MACRO2="$($SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^proc-macro2 = //p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_DEP_QUOTE="$($SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^quote = //p; }' "$ROOT_CARGO_TOML" | head -1)"
-    WS_DEP_SYN="$($SED -n '/\@<:@workspace\.dependencies\@:>@/,/^\@<:@/{ s/^syn = //p; }' "$ROOT_CARGO_TOML" | head -1)"
-
-    echo "configure: workspace.package: version=$WS_VERSION edition=$WS_EDITION" >&2
-
-    dnl Create vendor directories
-    mkdir -p "$VENDOR_OUT/miniextendr-api" \
-             "$VENDOR_OUT/miniextendr-macros" \
-             "$VENDOR_OUT/miniextendr-lint" \
-             "$VENDOR_OUT/miniextendr-engine"
-
-    dnl Sync crates (excluding target, .git, Cargo.toml, and CRAN-unfriendly files)
-    _rsync_exclude="--exclude=target --exclude=.git --exclude=Cargo.toml --exclude=.DS_Store --exclude=.gitignore --exclude=.github"
-
-    $RSYNC -a --delete $_rsync_exclude \
-      "$MINIEXTENDR_API_SRC/" "$VENDOR_OUT/miniextendr-api/"
-
-    $RSYNC -a --delete $_rsync_exclude \
-      "$MINIEXTENDR_MACROS_SRC/" "$VENDOR_OUT/miniextendr-macros/"
-
-    $RSYNC -a --delete $_rsync_exclude \
-      "$MINIEXTENDR_LINT_SRC/" "$VENDOR_OUT/miniextendr-lint/"
-
-    $RSYNC -a --delete $_rsync_exclude \
-      "$MINIEXTENDR_ENGINE_SRC/" "$VENDOR_OUT/miniextendr-engine/"
-
-    dnl Escape special chars for `sed` replacement using | delimiter (handles URLs with /)
-    dnl Escape & and | characters
-    dnl Note: @S|@1 is m4 quadrigraph for $1
-    escape_sed_repl () {
-      printf '%s' "@S|@1" | $SED 's/@<:@&|@:>@/\\&/g'
-    }
-    WS_REPOSITORY_ESC="$(escape_sed_repl "$WS_REPOSITORY")"
-    WS_HOMEPAGE_ESC="$(escape_sed_repl "$WS_HOMEPAGE")"
-    WS_KEYWORDS_ESC="$(escape_sed_repl "$WS_KEYWORDS")"
-    WS_CATEGORIES_ESC="$(escape_sed_repl "$WS_CATEGORIES")"
-    WS_DEP_PROC_MACRO2_ESC="$(escape_sed_repl "$WS_DEP_PROC_MACRO2")"
-    WS_DEP_QUOTE_ESC="$(escape_sed_repl "$WS_DEP_QUOTE")"
-    WS_DEP_SYN_ESC="$(escape_sed_repl "$WS_DEP_SYN")"
-
-    dnl If keywords/categories are empty, set to empty array to avoid TOML parse error
-    test -z "$WS_KEYWORDS_ESC" && WS_KEYWORDS_ESC="@<:@@:>@"
-    test -z "$WS_CATEGORIES_ESC" && WS_CATEGORIES_ESC="@<:@@:>@"
-
-    dnl Patch Cargo.toml to remove workspace inheritance
-    dnl Use | as delimiter to handle URLs with /
-    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-         -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
-         -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
-         -e "s|miniextendr-macros = { workspace = true }|miniextendr-macros = { version = \"$WS_VERSION\", path = \"../miniextendr-macros\" }|" \
-         -e "s|miniextendr-engine = { workspace = true }|miniextendr-engine = { version = \"$WS_VERSION\", path = \"../miniextendr-engine\" }|" \
-         "$MINIEXTENDR_API_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-api/Cargo.toml"
-
-    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-         -e "s|keywords\.workspace = true|keywords = $WS_KEYWORDS_ESC|" \
-         -e "s|categories\.workspace = true|categories = $WS_CATEGORIES_ESC|" \
-         -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
-         -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
-         -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
-         -e "/miniextendr-api = { workspace = true }/d" \
-         "$MINIEXTENDR_MACROS_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-macros/Cargo.toml"
-
-    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-         -e "s|proc-macro2 = { workspace = true }|proc-macro2 = $WS_DEP_PROC_MACRO2_ESC|" \
-         -e "s|quote = { workspace = true }|quote = $WS_DEP_QUOTE_ESC|" \
-         -e "s|syn = { workspace = true }|syn = $WS_DEP_SYN_ESC|" \
-         "$MINIEXTENDR_LINT_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-lint/Cargo.toml"
-
-    dnl miniextendr-engine: simple crate, just edition/version/license
-    $SED -e "s|edition\.workspace = true|edition = \"$WS_EDITION\"|" \
-         -e "s|version\.workspace = true|version = \"$WS_VERSION\"|" \
-         -e "s|license\.workspace = true|license = \"$WS_LICENSE\"|" \
-         -e "s|repository\.workspace = true|repository = \"$WS_REPOSITORY_ESC\"|" \
-         -e "s|homepage\.workspace = true|homepage = \"$WS_HOMEPAGE_ESC\"|" \
-         "$MINIEXTENDR_ENGINE_SRC/Cargo.toml" > "$VENDOR_OUT/miniextendr-engine/Cargo.toml"
-
-    dnl Verify patching was complete - fail if any .workspace = true remains
-    for _crate in miniextendr-api miniextendr-macros miniextendr-lint miniextendr-engine; do
-      _cargo_toml="$VENDOR_OUT/$_crate/Cargo.toml"
-      if grep -q '\.workspace = true' "$_cargo_toml" 2>/dev/null; then
-        echo "configure: error: $_crate/Cargo.toml still contains '.workspace = true' after patching" >&2
-        exit 1
-      fi
-      dnl Miniextendr crates are synced from monorepo, not cargo vendor, so they need checksums
-      echo '{"files":{}}' > "$VENDOR_OUT/$_crate/.cargo-checksum.json"
-    done
-
-    dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
-    dnl These are vendored crate build files not used by the R package
-    rm -f "$VENDOR_OUT/r-efi/Makefile"
-
-    echo "configure: miniextendr crates synced to $VENDOR_OUT" >&2
-
-    dnl Strip checksums from Cargo.lock when using vendored sources
-    dnl (miniextendr crates are synced/modified, so checksums don't match)
-    if test -f "src/rust/Cargo.lock"; then
-      $SED -i.bak '/^checksum = /d' src/rust/Cargo.lock && rm -f src/rust/Cargo.lock.bak
-      echo "configure: stripped checksums from Cargo.lock (vendored sources)" >&2
-    fi
-  else
-    echo "configure: miniextendr source crates not found; switching to vendored sources or crates.io" >&2
-
-    _have_vendor=0
-    if test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      _have_vendor=1
-    elif test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-      echo "configure: monorepo not found, unpacking inst/vendor.tar.xz" >&2
-      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-      if test $? -ne 0; then
-        echo "configure: error: failed to unpack vendor.tar.xz" >&2
-        exit 1
-      fi
-      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-      fi
-      _have_vendor=1
-    fi
-
-    if test $_have_vendor -eq 1; then
-      dnl Force CARGO_TARGET_DIR to be local when source crates aren't found.
-      dnl This prevents using a stale target directory from a previous build.
-      CARGO_TARGET_DIR="$ABS_RPKG_SRC/rust/target"
-      CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_PROFILE"
-      echo "configure: forcing local CARGO_TARGET_DIR=$CARGO_TARGET_DIR" >&2
-
-      dnl Update Makevars with the new paths (it was generated before we knew crates were missing)
-      dnl Also clear CARGO_LOCKED_FLAG since we need to regenerate lockfile with vendored paths
-      $SED -i.bak \
-        -e "s|^CARGO_TARGET_DIR = .*|CARGO_TARGET_DIR = $CARGO_TARGET_DIR|" \
-        -e "s|^CARGO_LIBDIR = .*|CARGO_LIBDIR = $CARGO_LIBDIR|" \
-        -e "s|^CARGO_LOCKED_FLAG = .*|CARGO_LOCKED_FLAG = |" \
-        src/Makevars && rm -f src/Makevars.bak
-      echo "configure: updated src/Makevars with local target dir and cleared CARGO_LOCKED_FLAG" >&2
-      echo "configure: CARGO_TARGET_DIR in Makevars: $(grep '^CARGO_TARGET_DIR' src/Makevars | head -1)" >&2
-      echo "configure: CARGO_LIBDIR in Makevars: $(grep '^CARGO_LIBDIR' src/Makevars | head -1)" >&2
-      echo "configure: CARGO_AR would be: $CARGO_LIBDIR/librpkg.a" >&2
-      echo "configure: checking if $CARGO_LIBDIR exists: $(test -d "$CARGO_LIBDIR" && echo yes || echo no)" >&2
-
-      dnl NOTE: Do NOT clear checksum files here. When building from a tarball,
-      dnl the vendor directory comes from inst/vendor.tar.xz which was created
-      dnl by `cargo vendor` with valid checksums. Clearing them breaks the build.
-      dnl
-      dnl The checksum clearing that used to be here was intended to handle files
-      dnl excluded by R CMD build (.gitignore etc), but this is now handled by
-      dnl the compress-vendor step which clears checksums BEFORE creating the tarball.
-
-      dnl Remove files that cause R CMD check warnings (GNU extensions in Makefiles)
-      rm -f "$VENDOR_OUT/r-efi/Makefile"
-
-      dnl Rewrite cargo config to use vendored sources (both locations)
-      dnl Use _CARGO paths for Windows-native path format
-      for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
-        mkdir -p "$(dirname "$_cfg")"
-        cat > "$_cfg" <<VENDORED_CONFIG_EOF
-# Autogenerated by configure -- DO NOT EDIT
-
-@<:@source.crates-io@:>@
-replace-with = "vendored-sources"
-
-@<:@source.vendored-sources@:>@
-directory = "$VENDOR_OUT_CARGO"
-
-@<:@build@:>@
-target-dir = "$CARGO_TARGET_DIR_CARGO"
-VENDORED_CONFIG_EOF
-        echo "configure: rewrote $_cfg for vendored sources" >&2
-      done
-    else
-      echo "configure: WARNING: vendor missing and no vendor.tar.xz; falling back to crates.io" >&2
-      dnl Rewrite cargo config to use crates.io (no source replacement)
-      for _cfg in "src/rust/.cargo/config.toml" ".cargo/config.toml"; do
-        mkdir -p "$(dirname "$_cfg")"
-        cat > "$_cfg" <<CRATESIO_CONFIG_EOF
-# Autogenerated by configure -- DO NOT EDIT
-
-@<:@build@:>@
-target-dir = "$CARGO_TARGET_DIR_CARGO"
-CRATESIO_CONFIG_EOF
-        echo "configure: rewrote $_cfg for crates.io sources" >&2
-      done
-      dnl Regenerate Cargo.lock to clear any stale path/vendored sources.
-      _lockfile="$ABS_RPKG_SRC/rust/Cargo.lock"
-      echo "configure: regenerating Cargo.lock (crates.io fallback)" >&2
-      rm -f "$_lockfile"
-      $CARGO_CMD generate-lockfile --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml"
-      if test $? -ne 0; then
-        echo "configure: error: cargo generate-lockfile failed" >&2
-        exit 1
-      fi
-    fi
-  fi
-
   dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
   dnl This is necessary because CARGO_TARGET_DIR may point to a shared location
   dnl where the staticlib already exists (e.g., during R CMD check).
   touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
-  dnl Update Cargo.lock after touching Cargo.toml (required when using --locked)
-  dnl This prevents "lock file needs to be updated" errors during compilation
+  dnl Update Cargo.lock to reflect patched sources.
+  dnl When [patch."https://..."] redirects miniextendr-* to local paths, the lock file
+  dnl needs updating so cargo --locked doesn't complain about source mismatches.
+  dnl This doesn't change versions, just updates source locations.
   if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" >&2
-    echo "configure: updated Cargo.lock after touching Cargo.toml" >&2
+    $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" 2>/dev/null || true
+    echo "configure: updated Cargo.lock for patched sources" >&2
   fi
 ],
-[RSYNC="$RSYNC" SED="$SED" VENDOR_OUT="$VENDOR_OUT" VENDOR_OUT_CARGO="$VENDOR_OUT_CARGO" \
- ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" \
- MINIEXTENDR_API_SRC="$MINIEXTENDR_API_SRC" MINIEXTENDR_MACROS_SRC="$MINIEXTENDR_MACROS_SRC" \
- MINIEXTENDR_LINT_SRC="$MINIEXTENDR_LINT_SRC" MINIEXTENDR_ENGINE_SRC="$MINIEXTENDR_ENGINE_SRC" \
- CARGO_CMD="$CARGO_CMD" CARGO_TARGET_DIR="$CARGO_TARGET_DIR" CARGO_TARGET_DIR_CARGO="$CARGO_TARGET_DIR_CARGO" \
- CARGO_PROFILE="$CARGO_PROFILE" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+[CARGO_CMD="$CARGO_CMD" ABS_RPKG_SRC="$abs_rpkg_src"])
 
-dnl 2c) Compress vendor directory for CRAN tarballs (after sync-miniextendr-crates)
-dnl This must run after both cargo-vendor and sync-miniextendr-crates so the
-dnl compressed archive includes all vendored dependencies including miniextendr crates.
-dnl Only recompress if vendor contents have changed (based on Cargo.lock + miniextendr sources).
+dnl 2c) Compress vendor directory for CRAN tarballs
+dnl In NOT_CRAN mode: always create/update the vendor tarball
+dnl In CRAN mode: tarball is already bundled, don't compress
 AC_CONFIG_COMMANDS([compress-vendor],
 [
-  dnl Only compress in dev mode (NOT_CRAN=true) when vendor directory exists
-  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-    VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
-    VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
+  VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
+  VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
 
-    dnl Calculate fingerprint based on inputs that affect vendor contents:
-    dnl - Cargo.lock checksum (third-party deps)
-    dnl - miniextendr crate directory checksums (ALL files, not just Cargo.toml)
+  dnl Only compress in dev mode when vendor directory exists
+  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    dnl Calculate fingerprint from Cargo.lock
     _lock_ck=""
     if test -f "src/rust/Cargo.lock"; then
-      _lock_ck="$(cksum < "src/rust/Cargo.lock" | awk '{print [$]1":"[$]2}')"
-    fi
-    dnl Checksum all source files in each miniextendr crate (excluding target dirs)
-    _api_ck=""
-    if test -d "$VENDOR_OUT/miniextendr-api"; then
-      _api_ck="$(find "$VENDOR_OUT/miniextendr-api" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
-    fi
-    _macros_ck=""
-    if test -d "$VENDOR_OUT/miniextendr-macros"; then
-      _macros_ck="$(find "$VENDOR_OUT/miniextendr-macros" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
-    fi
-    _lint_ck=""
-    if test -d "$VENDOR_OUT/miniextendr-lint"; then
-      _lint_ck="$(find "$VENDOR_OUT/miniextendr-lint" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
-    fi
-    _engine_ck=""
-    if test -d "$VENDOR_OUT/miniextendr-engine"; then
-      _engine_ck="$(find "$VENDOR_OUT/miniextendr-engine" -path '*/target' -prune -o -type f -print | LC_ALL=C sort | xargs cat 2>/dev/null | cksum | awk '{print [$]1":"[$]2}')"
+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | cut -d' ' -f1,2 | tr ' ' ':')"
     fi
 
-    _new_fingerprint="lock:$_lock_ck;api:$_api_ck;macros:$_macros_ck;lint:$_lint_ck;engine:$_engine_ck"
+    _new_fingerprint="lock:$_lock_ck"
     _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
 
     _need_compress=0
     if test ! -f "$VENDOR_TARBALL"; then
       _need_compress=1
-      echo "configure: vendor.tar.xz does not exist"
+      echo "configure: creating vendor.tar.xz"
     elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
       _need_compress=1
-      echo "configure: vendor contents changed (fingerprint mismatch)"
+      echo "configure: recompressing vendor.tar.xz (Cargo.lock changed)"
     fi
 
     if test $_need_compress -eq 1; then
-      echo "configure: compressing vendor directory to inst/vendor.tar.xz"
       mkdir -p "$abs_rpkg_dir/inst"
 
-      dnl Create temp staging area with vendor/ subdirectory to preserve correct archive structure
+      dnl Create temp staging area
       _staging_tmp="$ABS_RPKG_SRC/.vendor-tarball-staging"
       rm -rf "$_staging_tmp"
       mkdir -p "$_staging_tmp"
       cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
 
-      dnl Note: We cannot strip /// doc comments because displaydoc crate uses them
-      dnl to generate Display impls. Stripping them would break error types.
-      dnl However, we CAN strip #@<:@doc = include_str! lines since we delete examples/docs dirs
-      find "$_staging_tmp/vendor" -name '*.rs' -type f -exec $SED -i.bak -e '/^#\@<:@doc = include_str!/d' -e '/^#!\@<:@doc = include_str!/d' {} \; 2>/dev/null || true
-      find "$_staging_tmp/vendor" -name '*.rs.bak' -type f -delete 2>/dev/null || true
-
-      dnl Clear checksums for ALL crates in temp copy.
-      dnl Required because we exclude tests/, benches/, examples/, .github/ etc. which are in the checksums.
+      dnl Clear checksums (we exclude tests/benches/examples which are in checksums)
       for _crate_dir in "$_staging_tmp/vendor"/*/; do
         test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
       done
 
-      dnl Remove directories we're excluding (faster than tar --exclude for many files)
-      find "$_staging_tmp/vendor" -type d -name 'tests' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name 'benches' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name 'examples' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name '.github' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name '.vim' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name 'ci' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name 'scripts' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name 'testdata' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -type d -name 'docs' -exec rm -rf {} + 2>/dev/null || true
-      find "$_staging_tmp/vendor" -name '.travis.yml' -type f -delete 2>/dev/null || true
-      find "$_staging_tmp/vendor" -name '.gitlab-ci.yml' -type f -delete 2>/dev/null || true
-      find "$_staging_tmp/vendor" -name '*.a' -type f -delete 2>/dev/null || true
-      find "$_staging_tmp/vendor" -name '*.lib' -type f -delete 2>/dev/null || true
-      dnl Truncate all .md files (keeps file existing for include_str! but removes content)
-      find "$_staging_tmp/vendor" -name '*.md' -type f -exec sh -c 'printf "" > "$1"' sh {} \;
+      dnl Remove unneeded directories
+      find "$_staging_tmp/vendor" -type d \( -name 'tests' -o -name 'benches' -o -name 'examples' -o -name '.github' -o -name 'docs' \) -exec rm -rf {} + 2>/dev/null || true
+      find "$_staging_tmp/vendor" -name '*.md' -type f -exec truncate -s 0 {} \; 2>/dev/null || true
 
-      dnl Create tarball from staging area
+      dnl Create tarball
       tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
       _tar_status=$?
-
-      dnl Clean up staging area
       rm -rf "$_staging_tmp"
 
-      if test $_tar_status -ne 0; then
-        echo "configure: warning: failed to compress vendor directory" >&2
-      else
+      if test $_tar_status -eq 0; then
         echo "$_new_fingerprint" > "$VENDOR_STAMP"
+      else
+        echo "configure: warning: failed to compress vendor directory" >&2
       fi
     else
       echo "configure: skipping vendor compression (unchanged)"
     fi
+  else
+    echo "configure: skipping vendor compression (CRAN mode or no vendor)"
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
 
 dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
 AC_CONFIG_COMMANDS([patch-staticlib-name],

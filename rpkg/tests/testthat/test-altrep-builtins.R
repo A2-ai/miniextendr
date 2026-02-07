@@ -91,22 +91,22 @@ test_that("Range<i32> NA sentinel handling - normal ranges", {
   expect_equal(max(r_neg), -1L)
 })
 
-test_that("Range<i32> detects NA when range starts at NA_INTEGER", {
-  # NA_INTEGER is -2147483648 (i32::MIN), which is NA_integer_ in R
-  # This cannot be tested via R API because R coerces NA_integer_ before Rust.
+test_that("Range<i32> NA sentinel handling is tested at Rust level", {
 
-  # However, this IS tested at the Rust level in:
-  #   miniextendr-api/src/altrep_data/tests.rs
+  # NA_INTEGER is -2147483648 (i32::MIN), which is NA_integer_ in R.
+  # This cannot be tested via R API because R coerces NA_integer_ before Rust sees it.
+  #
+  # Tested at the Rust level in miniextendr-api/src/altrep_data/tests.rs:
   #   - range_i32_no_na_normal
   #   - range_i32_no_na_at_min
   #   - range_i32_sum_with_na
   #   - range_i32_min_with_na
   #
   # Run `cargo test range_i32` to verify.
-  expect_true(TRUE) # Placeholder - real tests are in Rust
+  succeed("R-level test not possible; see Rust tests above")
 })
 
-test_that("LazyIntSeq NA handling - normal sequences", {
+test_that("LazyIntSeq works for normal sequences", {
   # Normal sequence - no NA
   seq <- altrep_compact_int(5L, 1L, 2L)  # 1, 3, 5, 7, 9
   expect_equal(length(seq), 5L)

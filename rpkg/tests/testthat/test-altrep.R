@@ -191,7 +191,7 @@ test_that("Box<[i32]> ALTREP works", {
   expect_equal(sum(boxed), 15L)
 })
 
-test_that("Box<[i32]> has dataptr support", {
+test_that("Box<[i32]> ALTREP supports element-wise arithmetic", {
   boxed <- boxed_ints(10L)
 
   # Arithmetic should work via dataptr
@@ -276,6 +276,71 @@ test_that("complex ALTREP works (unit circle)", {
   }
 })
 
+# =============================================================================
+# List ALTREP tests
+# =============================================================================
+
+test_that("list ALTREP (IntegerSequenceList) works", {
+  lst <- integer_sequence_list(5L)
+
+  expect_equal(length(lst), 5L)
+  expect_true(is.list(lst))
+
+  # First element is c(1L)
+  expect_equal(lst[[1]], 1L)
+  expect_equal(length(lst[[1]]), 1L)
+
+  # Second element is c(1L, 2L)
+  expect_equal(lst[[2]], c(1L, 2L))
+  expect_equal(length(lst[[2]]), 2L)
+
+  # Third element is c(1L, 2L, 3L)
+  expect_equal(lst[[3]], c(1L, 2L, 3L))
+  expect_equal(length(lst[[3]]), 3L)
+
+  # Fifth element is c(1L, 2L, 3L, 4L, 5L)
+  expect_equal(lst[[5]], 1:5)
+  expect_equal(length(lst[[5]]), 5L)
+})
+
+test_that("list ALTREP handles empty list", {
+  lst <- integer_sequence_list(0L)
+  expect_equal(length(lst), 0L)
+  expect_true(is.list(lst))
+})
+
+test_that("list ALTREP handles single element", {
+  lst <- integer_sequence_list(1L)
+  expect_equal(length(lst), 1L)
+  expect_equal(lst[[1]], 1L)
+})
+
+test_that("list ALTREP element access via [[", {
+  lst <- integer_sequence_list(3L)
+
+  # Test double-bracket access
+  expect_equal(lst[[1]], 1L)
+  expect_equal(lst[[2]], c(1L, 2L))
+  expect_equal(lst[[3]], c(1L, 2L, 3L))
+})
+
+test_that("list ALTREP subsetting works", {
+  lst <- integer_sequence_list(5L)
+
+  # Single element subsetting
+  sub1 <- lst[1]
+  expect_true(is.list(sub1))
+  expect_equal(length(sub1), 1L)
+  expect_equal(sub1[[1]], 1L)
+
+  # Multi-element subsetting
+  sub2 <- lst[c(1, 3, 5)]
+  expect_equal(length(sub2), 3L)
+  expect_equal(sub2[[1]], 1L)
+  expect_equal(sub2[[2]], c(1L, 2L, 3L))
+  expect_equal(sub2[[3]], 1:5)
+})
+
 test_that("iterator integer coercion ALTREP works", {
   x <- iter_int_from_u16(5L)
 
@@ -300,7 +365,7 @@ test_that("iterator real coercion ALTREP works", {
 # Vec-backed ALTREP tests
 # =============================================================================
 
-test_that("Vec<i32> ALTREP works with dataptr", {
+test_that("Vec<i32> ALTREP supports element access and arithmetic", {
   x <- vec_int_altrep(10L)
 
   expect_equal(length(x), 10L)
@@ -313,7 +378,7 @@ test_that("Vec<i32> ALTREP works with dataptr", {
   expect_equal(y, seq(2L, 20L, 2L))
 })
 
-test_that("Vec<f64> ALTREP works with dataptr", {
+test_that("Vec<f64> ALTREP supports element access and arithmetic", {
   x <- vec_real_altrep(5L)
 
   expect_equal(length(x), 5L)
@@ -424,6 +489,103 @@ test_that("ALTREP vectors work with R subsetting", {
   # head/tail
   expect_equal(head(x, 3), 1:3)
   expect_equal(tail(x, 3), 8:10)
+})
+
+# =============================================================================
+# Optimization hint tests (is_sorted, no_na)
+# =============================================================================
+
+test_that("ArithSeq is recognized as sorted by R", {
+  x <- arith_seq(0, 1, 10L)
+
+  expect_equal(length(x), 10L)
+  expect_equal(x[1], 0)
+  expect_equal(x[10], 9)
+
+  # is.unsorted() may or may not call the ALTREP Is_sorted method,
+  # but it verifies the result is sorted from R's perspective
+  expect_false(is.unsorted(x))
+})
+
+test_that("Range ALTREP implies no NA values", {
+  # Ranges can't contain NA by construction
+  x <- range_int_altrep(1L, 100L)
+
+  # Test that operations work correctly (R optimizations should apply)
+  expect_equal(sum(x), sum(1:99))
+  expect_equal(length(x), 99L)
+
+  # anyNA should return FALSE (though R might not call our no_na() method)
+  expect_false(anyNA(x))
+})
+
+test_that("Constant vectors are sorted (all elements equal)", {
+  x <- constant_int()
+
+  # All elements equal means technically sorted in all directions
+  expect_true(is.unsorted(x) == FALSE)
+  expect_equal(length(unique(x)), 1L)
+})
+
+test_that("Iterator-backed ALTREP is recognized as sorted by R", {
+  x <- iter_int_range(1L, 101L)
+
+  expect_equal(length(x), 100L)
+  expect_false(is.unsorted(x))
+  expect_equal(x[1], 1L)
+  expect_equal(x[100], 100L)
+})
+
+test_that("Sorted ALTREP works correctly with unique() and sort()", {
+  # Create a large sorted ALTREP
+  x <- range_int_altrep(1L, 10001L)
+
+  # Operations that benefit from sortedness
+  result1 <- unique(x)
+  expect_equal(length(result1), 10000L)
+
+  result2 <- sort(x)
+  expect_equal(length(result2), 10000L)
+  expect_equal(result2[1], 1L)
+})
+
+# =============================================================================
+# Min/Max optimization tests
+# =============================================================================
+
+test_that("ArithSeq provides optimized min/max", {
+  # ArithSeq should provide O(1) min/max instead of O(n) scan
+  x <- arith_seq(5, 2, 100L)  # 5, 7, 9, ..., 203
+
+  expect_equal(min(x), 5)
+  expect_equal(max(x), 203)
+
+  # Negative step
+  y <- arith_seq(100, -3, 50L)  # 100, 97, 94, ..., -47
+  expect_equal(max(y), 100)
+  expect_equal(min(y), -47)
+})
+
+test_that("Range ALTREP provides optimized min/max", {
+  x <- range_int_altrep(10L, 1000L)
+
+  expect_equal(min(x), 10L)
+  expect_equal(max(x), 999L)
+})
+
+test_that("Constant vectors have trivial min/max", {
+  x <- constant_int()  # All elements are 42
+
+  expect_equal(min(x), 42L)
+  expect_equal(max(x), 42L)
+  expect_equal(min(x), max(x))
+})
+
+test_that("Real ALTREP provides min/max optimizations", {
+  x <- arith_seq(1.5, 0.5, 20L)  # 1.5, 2.0, 2.5, ..., 11.0
+
+  expect_equal(min(x), 1.5)
+  expect_equal(max(x), 11.0)
 })
 
 test_that("ALTREP vectors work with R aggregate functions", {

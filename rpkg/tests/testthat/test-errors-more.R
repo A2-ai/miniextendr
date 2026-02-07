@@ -26,13 +26,13 @@ test_that("unsafe_C_r_print_in_thread panics cleanly on wrong thread", {
   expect_error(miniextendr:::unsafe_C_r_print_in_thread(), "non-main thread")
 })
 
-test_that("unsafe_C_check_interupt_* return", {
+test_that("check_interrupt functions complete without error when no interrupt is pending", {
   skip_on_cran()
   expect_null(miniextendr:::unsafe_C_check_interupt_after())
   expect_null(miniextendr:::unsafe_C_check_interupt_unwind())
 })
 
-test_that("unsafe_C_test_sexp_equality reports pointer vs semantic", {
+test_that("SEXP equality distinguishes pointer identity from value equality", {
   x <- c(1L, 2L)
   res1 <- miniextendr:::unsafe_C_test_sexp_equality(x, x)
   expect_true(res1$pointer_eq)
@@ -43,6 +43,6 @@ test_that("unsafe_C_test_sexp_equality reports pointer vs semantic", {
   expect_true(res2$semantic_eq)
 })
 
-test_that("unsafe_C_worker_drop_on_panic signals error", {
-  expect_error(miniextendr:::unsafe_C_worker_drop_on_panic())
+test_that("worker drop-on-panic signals error", {
+  expect_error(miniextendr:::unsafe_C_worker_drop_on_panic(), "intentional panic")
 })

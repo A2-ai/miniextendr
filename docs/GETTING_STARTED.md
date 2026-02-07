@@ -466,3 +466,10 @@ Check `src/rust/Cargo.toml` for dependency issues. Run:
 ```bash
 cd src/rust && cargo check
 ```
+
+## Next Steps
+
+- [Documentation Index](INDEX.md) -- Browse all available documentation
+- [Known Gaps & Limitations](GAPS.md) -- Important context on what's missing or limited
+- [Troubleshooting](TROUBLESHOOTING.md) -- Common issues and solutions
+- [Architecture Overview](ARCHITECTURE.md) -- How miniextendr works under the hood

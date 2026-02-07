@@ -57,55 +57,33 @@ test_that("Same trait methods work for different implementations", {
   expect_equal(AtomicCounter$Counter$value(atomic), 101L)
 })
 
-test_that("Cross-package pattern: objects created in producer used via trait in consumer", {
-  # Simulate cross-package workflow:
-
-  # Step 1: producer.pkg creates object
+test_that("Trait methods and inherent methods can be mixed on the same object", {
   counter <- SharedSimpleCounter$new(0L)
 
-  # Step 2: Object passed through R to consumer.pkg
-  # Consumer imports Counter trait but doesn't need SimpleCounter type definition
-
-  # Step 3: Consumer uses trait methods (Type$Trait$method available in both packages)
+  # Use trait methods (Type$Trait$method pattern)
   SharedSimpleCounter$Counter$increment(counter)
   SharedSimpleCounter$Counter$increment(counter)
-  result <- SharedSimpleCounter$Counter$value(counter)
-  expect_equal(result, 2L)
+  expect_equal(SharedSimpleCounter$Counter$value(counter), 2L)
 
-  # Step 4: Can still use producer's inherent methods
+  # Inherent methods also see the updated state
   expect_equal(counter$get_value(), 2L)
 })
 
-test_that("Multiple Counter implementations can be used interchangeably", {
-  # Create instances of different Counter implementations
-  counters <- list(
-    simple = SharedSimpleCounter$new(1L),
-    atomic = AtomicCounter$new_atomic(1L)
-  )
+test_that("Counter trait interface works for each implementation", {
+  # Both implementations follow the same trait interface (Type$Trait$method),
+  # though R requires type-specific dispatch at the call site.
+  simple <- SharedSimpleCounter$new(1L)
+  atomic <- AtomicCounter$new_atomic(1L)
 
-  # Apply same operation to all via trait interface
-  for (counter in counters) {
-    # In consumer.pkg, this would be a single generic function
-    # Here we show the R-level pattern works for both types
-    if (inherits(counter, "SharedSimpleCounter")) {
-      SharedSimpleCounter$Counter$add(counter, 5L)
-      result <- SharedSimpleCounter$Counter$value(counter)
-    } else {
-      AtomicCounter$Counter$add(counter, 5L)
-      result <- AtomicCounter$Counter$value(counter)
-    }
-    expect_equal(result, 6L)
-  }
+  SharedSimpleCounter$Counter$add(simple, 5L)
+  expect_equal(SharedSimpleCounter$Counter$value(simple), 6L)
+
+  AtomicCounter$Counter$add(atomic, 5L)
+  expect_equal(AtomicCounter$Counter$value(atomic), 6L)
 })
 
-test_that("Plain ExternalPtr passing works across package boundaries", {
-  # Even without trait dispatch, ExternalPtr objects can cross packages
+test_that("ExternalPtr objects retain values after creation", {
   counter <- SharedSimpleCounter$new(42L)
-
-  # In consumer.pkg, if it has SimpleCounter type definition,
-  # it can receive as: fn process(counter: &mut SimpleCounter)
-  # ExternalPtr handles the FFI marshaling
-
   expect_equal(counter$get_value(), 42L)
 })
 
