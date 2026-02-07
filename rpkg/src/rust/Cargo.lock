@@ -1099,6 +1099,7 @@ dependencies = [
 name = "rpkg"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "miniextendr-api",
  "miniextendr-lint",
  "serde",
