@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-07 06:33:31
-+++ b/monorepo/rpkg/configure.ac	2026-02-01 14:45:34
+--- a/monorepo/rpkg/configure.ac	2026-02-07 13:36:45
++++ b/monorepo/rpkg/configure.ac	2026-02-07 14:02:29
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -71,15 +71,9 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
  AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
  
-@@ -280,14 +266,7 @@
- AC_SUBST([FORCE_VENDOR])
+@@ -293,8 +279,7 @@
+ AC_SUBST([VENDOR_OUT_CARGO])
  
--dnl Include extra manifests in `cargo vendor` (pulls in bench/tooling deps).
--dnl Default is minimal vendoring based on rpkg/src/rust/Cargo.toml only.
--AC_ARG_VAR([VENDOR_SYNC_EXTRA],[Set to 1 to include extra `cargo vendor --sync` manifests (workspace/bench)])
--: ${VENDOR_SYNC_EXTRA="0"}
--AC_SUBST([VENDOR_SYNC_EXTRA])
--
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
 +dnl Note: Cargo.toml now uses git dependencies.
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
@@ -88,14 +82,19 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -303,5 +282,5 @@
+@@ -307,9 +292,9 @@
+   src/entrypoint.c:src/entrypoint.c.in
+   src/mx_abi.c:src/mx_abi.c.in
+-  src/miniextendr-win.def:src/win.def.in
++  src/{{package}}-win.def:src/win.def.in
+ ])
  
  dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
 -dnl    In dev mode, Cargo.toml's [patch."https://..."] redirects to local paths
 +dnl    In dev mode, Cargo.toml uses git deps directly
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -310,8 +289,7 @@
+@@ -318,8 +303,7 @@
    if test "$NOT_CRAN" = "true"; then
      dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
 -    dnl with the [patch."https://github.com/CGMossa/miniextendr"] section in Cargo.toml
@@ -105,21 +104,21 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      echo "configure: removed cargo config (dev mode - using git deps)"
      fi
    fi
-@@ -322,5 +300,5 @@
+@@ -330,5 +314,5 @@
  dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
  
 -dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -374,5 +352,5 @@
+@@ -382,5 +366,5 @@
  [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
  
 -dnl 2) Handle vendor directory (CRAN: unpack tarball; dev: clean up stale artifacts)
 +dnl 3) Run cargo vendor (dev mode only, after Cargo.toml is generated)
  AC_CONFIG_COMMANDS([cargo-vendor],
  [
-@@ -396,41 +374,67 @@
+@@ -404,41 +388,65 @@
        else
          dnl No vendor available - fall back to network (e.g., GitHub installs)
 -        echo "configure: no cached vendor found, vendoring from network" >&2
@@ -175,9 +174,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    _old="$(cat "$STAMP" 2>/dev/null || true)"
 +
 +    _need=0
-+    if test "$FORCE_VENDOR" = "1"; then
-+      _need=1
-+    elif test ! -f "$STAMP"; then
++    if test ! -f "$STAMP"; then
 +      _need=1
 +    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +      _need=1
@@ -207,28 +204,15 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +    fi
    fi
  ],
--[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
-+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
++[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
  
--dnl 2b) Post-vendor tasks: touch Cargo.toml and update Cargo.lock for patched sources
-+dnl 4) Post-vendor tasks: touch Cargo.toml and update Cargo.lock for patched sources
+-dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
++dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -441,25 +445,78 @@
-   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
- 
--  dnl Update Cargo.lock to reflect patched sources.
--  dnl When [patch."https://..."] redirects miniextendr-* to local paths, the lock file
--  dnl needs updating so cargo --locked doesn't complain about source mismatches.
--  dnl This doesn't change versions, just updates source locations.
-+  dnl Update Cargo.lock to reflect current sources.
-   if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-     $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" 2>/dev/null || true
--    echo "configure: updated Cargo.lock for patched sources" >&2
-+    echo "configure: updated Cargo.lock" >&2
-   fi
- ],
- [CARGO_CMD="$CARGO_CMD" ABS_RPKG_SRC="$abs_rpkg_src"])
+@@ -454,14 +462,70 @@
+ [ABS_RPKG_SRC="$abs_rpkg_src"])
  
 -dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).
 -dnl configure no longer compresses vendor — dev mode doesn't need it,
@@ -305,8 +289,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  AC_CONFIG_COMMANDS([patch-staticlib-name],
  [
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-07 06:33:31
-+++ b/rpkg/configure.ac	2026-02-01 14:42:12
+--- a/rpkg/configure.ac	2026-02-07 13:36:45
++++ b/rpkg/configure.ac	2026-02-07 14:01:43
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -377,15 +361,9 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
  AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
  
-@@ -280,14 +266,7 @@
- AC_SUBST([FORCE_VENDOR])
+@@ -293,8 +279,7 @@
+ AC_SUBST([VENDOR_OUT_CARGO])
  
--dnl Include extra manifests in `cargo vendor` (pulls in bench/tooling deps).
--dnl Default is minimal vendoring based on rpkg/src/rust/Cargo.toml only.
--AC_ARG_VAR([VENDOR_SYNC_EXTRA],[Set to 1 to include extra `cargo vendor --sync` manifests (workspace/bench)])
--: ${VENDOR_SYNC_EXTRA="0"}
--AC_SUBST([VENDOR_SYNC_EXTRA])
--
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
 +dnl Note: Cargo.toml now uses git dependencies.
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
@@ -394,14 +372,19 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -303,5 +282,5 @@
+@@ -307,9 +292,9 @@
+   src/entrypoint.c:src/entrypoint.c.in
+   src/mx_abi.c:src/mx_abi.c.in
+-  src/miniextendr-win.def:src/win.def.in
++  src/{{package}}-win.def:src/win.def.in
+ ])
  
  dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
 -dnl    In dev mode, Cargo.toml's [patch."https://..."] redirects to local paths
 +dnl    In dev mode, Cargo.toml uses git deps directly
  AC_CONFIG_COMMANDS([dev-cargo-config],
  [
-@@ -310,8 +289,7 @@
+@@ -318,8 +303,7 @@
    if test "$NOT_CRAN" = "true"; then
      dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
 -    dnl with the [patch."https://github.com/CGMossa/miniextendr"] section in Cargo.toml
@@ -411,21 +394,21 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      echo "configure: removed cargo config (dev mode - using git deps)"
      fi
    fi
-@@ -322,5 +300,5 @@
+@@ -330,5 +314,5 @@
  dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
  
 -dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -374,5 +352,5 @@
+@@ -382,5 +366,5 @@
  [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
  
 -dnl 2) Handle vendor directory (CRAN: unpack tarball; dev: clean up stale artifacts)
 +dnl 3) Run cargo vendor (dev mode only, after Cargo.toml is generated)
  AC_CONFIG_COMMANDS([cargo-vendor],
  [
-@@ -396,41 +374,67 @@
+@@ -404,41 +388,65 @@
        else
          dnl No vendor available - fall back to network (e.g., GitHub installs)
 -        echo "configure: no cached vendor found, vendoring from network" >&2
@@ -481,9 +464,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    _old="$(cat "$STAMP" 2>/dev/null || true)"
 +
 +    _need=0
-+    if test "$FORCE_VENDOR" = "1"; then
-+      _need=1
-+    elif test ! -f "$STAMP"; then
++    if test ! -f "$STAMP"; then
 +      _need=1
 +    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
 +      _need=1
@@ -513,28 +494,15 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +    fi
    fi
  ],
--[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_SYNC_EXTRA="$VENDOR_SYNC_EXTRA" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
-+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" FORCE_VENDOR="$FORCE_VENDOR" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+-[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
++[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
  
--dnl 2b) Post-vendor tasks: touch Cargo.toml and update Cargo.lock for patched sources
-+dnl 4) Post-vendor tasks: touch Cargo.toml and update Cargo.lock for patched sources
+-dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
++dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -441,25 +445,78 @@
-   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
- 
--  dnl Update Cargo.lock to reflect patched sources.
--  dnl When [patch."https://..."] redirects miniextendr-* to local paths, the lock file
--  dnl needs updating so cargo --locked doesn't complain about source mismatches.
--  dnl This doesn't change versions, just updates source locations.
-+  dnl Update Cargo.lock to reflect current sources.
-   if test -f "$ABS_RPKG_SRC/rust/Cargo.lock"; then
-     $CARGO_CMD update --workspace --manifest-path "$ABS_RPKG_SRC/rust/Cargo.toml" 2>/dev/null || true
--    echo "configure: updated Cargo.lock for patched sources" >&2
-+    echo "configure: updated Cargo.lock" >&2
-   fi
- ],
- [CARGO_CMD="$CARGO_CMD" ABS_RPKG_SRC="$abs_rpkg_src"])
+@@ -454,14 +462,70 @@
+ [ABS_RPKG_SRC="$abs_rpkg_src"])
  
 -dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).
 -dnl configure no longer compresses vendor — dev mode doesn't need it,

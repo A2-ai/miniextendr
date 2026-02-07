@@ -181,6 +181,35 @@ use_template <- function(template, save_as = template, data = list(),
   invisible(new)
 }
 
+#' Copy a template with simple string replacements
+#'
+#' Unlike `use_template()`, this does NOT use mustache rendering.
+#' It performs literal `{{{key}}}` replacements only, preserving
+#' `{{just_variables}}` and other double-brace syntax.
+#'
+#' @param template Template file name
+#' @param save_as Target file path (relative to project root)
+#' @param data Named list of replacements (keys are matched as `{{{key}}}`)
+#' @param subdir Optional subdirectory within template type
+#' @noRd
+copy_template <- function(template, save_as = template, data = list(),
+                          subdir = NULL) {
+  src <- template_path(template, subdir = subdir)
+  content <- readLines(src, warn = FALSE)
+  text <- paste(content, collapse = "\n")
+
+  for (key in names(data)) {
+    text <- gsub(paste0("{{{", key, "}}}"), data[[key]], text, fixed = TRUE)
+  }
+
+  target_path <- usethis::proj_path(save_as)
+  ensure_dir(dirname(target_path))
+  writeLines(text, target_path)
+  bullet_created(save_as)
+
+  invisible(TRUE)
+}
+
 #' Check if a system command is available
 #'
 #' @param cmd Command name to check

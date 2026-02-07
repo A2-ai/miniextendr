@@ -79,7 +79,9 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   # Root workspace files
   cli::cli_h2("Creating workspace root")
   use_template("Cargo.toml", data = data)
-  use_template("justfile", data = data)
+  # justfile uses {{variable}} syntax (just's interpolation) which collides
+  # with mustache. Use copy_template for literal {{{key}}} substitution only.
+  copy_template("justfile", data = data)
   use_template("gitignore", save_as = ".gitignore", data = data)
 
   # Create main Rust crate
@@ -159,6 +161,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("Makevars.in", save_as = file.path(rpkg_name, "src", "Makevars.in"), subdir = "rpkg")
   use_template("entrypoint.c.in", save_as = file.path(rpkg_name, "src", "entrypoint.c.in"), subdir = "rpkg")
   use_template("mx_abi.c.in", save_as = file.path(rpkg_name, "src", "mx_abi.c.in"), subdir = "rpkg")
+  use_template("win.def.in", save_as = file.path(rpkg_name, "src", "win.def.in"), subdir = "rpkg")
 
   # inst/include/ for cross-package header
   ensure_dir(usethis::proj_path(rpkg_name, "inst", "include"))
@@ -166,7 +169,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
                subdir = file.path("rpkg", "inst_include"), data = data)
 
   # Rust project files
-  use_template("Cargo.toml.in", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml.in"), subdir = "rpkg", data = data)
+  use_template("Cargo.toml", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml"), subdir = "rpkg", data = data)
   use_template("build.rs", save_as = file.path(rpkg_name, "src", "rust", "build.rs"), subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
   use_template("document.rs.in", save_as = file.path(rpkg_name, "src", "rust", "document.rs.in"), subdir = "rpkg")

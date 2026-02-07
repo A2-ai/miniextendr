@@ -85,5 +85,6 @@ use_miniextendr_config_scripts <- function() {
 use_miniextendr_makevars <- function() {
   ensure_dir(usethis::proj_path("src"))
   use_template("Makevars.in", save_as = "src/Makevars.in")
+  use_template("win.def.in", save_as = "src/win.def.in")
   invisible(TRUE)
 }

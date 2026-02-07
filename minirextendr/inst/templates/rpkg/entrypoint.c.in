@@ -24,9 +24,9 @@ extern void mx_abi_register(void);
 // package name in DESCRIPTION and NAMESPACE useDynLib(). The internal Rust
 // module uses @PACKAGE_TARNAME_RS@ (lowercase with underscores).
 void R_init_@PACKAGE_NAME@(DllInfo *dll) {
-    miniextendr_assert_utf8_locale();
     miniextendr_panic_hook();
     miniextendr_worker_init();
+    miniextendr_assert_utf8_locale();
 
     // Optional: initialize vctrs C API support
     // Status 1 (not available) is fine - vctrs is optional
