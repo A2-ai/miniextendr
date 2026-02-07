@@ -571,6 +571,15 @@ pub struct MethodAttrs {
     /// Use `#[miniextendr(r6(deep_clone))]` to mark a method as the R6 deep clone handler.
     /// This method will be wired into `private$deep_clone` in the R6Class definition.
     pub deep_clone: bool,
+    /// vctrs protocol method override.
+    ///
+    /// Use `#[miniextendr(vctrs(format))]` to mark a method as implementing a vctrs
+    /// protocol S3 generic. The method will be generated as `format.<class>` instead
+    /// of the default Rust method name.
+    ///
+    /// Supported protocols: format, vec_proxy, vec_proxy_equal, vec_proxy_compare,
+    /// vec_proxy_order, vec_restore, obj_print_data, obj_print_header, obj_print_footer.
+    pub vctrs_protocol: Option<String>,
 }
 
 /// Parsed impl block with all methods.
@@ -951,12 +960,12 @@ impl ParsedMethod {
 
             // Parse the nested content: miniextendr(class_system(options...)) or miniextendr(defaults(...))
             attr.parse_nested_meta(|meta| {
+                // Note: "vctrs" is handled separately below for protocol method overrides
                 let is_class_meta = meta.path.is_ident("env")
                     || meta.path.is_ident("r6")
                     || meta.path.is_ident("s7")
                     || meta.path.is_ident("s3")
-                    || meta.path.is_ident("s4")
-                    || meta.path.is_ident("vctrs");
+                    || meta.path.is_ident("s4");
 
                 if is_class_meta {
                     // Parse the inner options: r6(ignore, constructor, ...)
@@ -1164,6 +1173,27 @@ impl ParsedMethod {
                         })?;
                         method_attrs.lifecycle = Some(spec);
                     }
+                } else if meta.path.is_ident("vctrs") {
+                    // vctrs protocol method: vctrs(format), vctrs(vec_proxy), etc.
+                    meta.parse_nested_meta(|inner| {
+                        let protocol = inner.path.get_ident()
+                            .ok_or_else(|| inner.error("expected protocol name"))?
+                            .to_string();
+                        const VALID_PROTOCOLS: &[&str] = &[
+                            "format", "vec_proxy", "vec_proxy_equal", "vec_proxy_compare",
+                            "vec_proxy_order", "vec_restore", "obj_print_data",
+                            "obj_print_header", "obj_print_footer",
+                        ];
+                        if !VALID_PROTOCOLS.contains(&protocol.as_str()) {
+                            return Err(inner.error(format!(
+                                "unknown vctrs protocol: {}; expected one of: {}",
+                                protocol,
+                                VALID_PROTOCOLS.join(", ")
+                            )));
+                        }
+                        method_attrs.vctrs_protocol = Some(protocol);
+                        Ok(())
+                    })?;
                 } else {
                     return Err(meta.error(
                         "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r, as, lifecycle"
@@ -3418,7 +3448,13 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Instance methods as S3 generics + methods
     for ctx in parsed_impl.instance_method_contexts() {
-        let generic_name = ctx.generic_name();
+        // vctrs protocol override: use the protocol name as the S3 generic
+        let is_protocol = ctx.method.method_attrs.vctrs_protocol.is_some();
+        let generic_name = if let Some(ref proto) = ctx.method.method_attrs.vctrs_protocol {
+            proto.clone()
+        } else {
+            ctx.generic_name()
+        };
         // Use custom class suffix if provided (for double-dispatch patterns like vec_ptype2.a.b)
         let method_class_suffix = ctx
             .class_suffix()
@@ -3428,8 +3464,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let full_params = ctx.instance_formals(true); // adds x, ..., params
 
         // Only create the S3 generic if no generic/class override was provided
-        // (custom class suffix implies using an existing generic)
-        if !ctx.has_generic_override() && !ctx.has_class_override() {
+        // vctrs protocol methods use existing generics from the vctrs package
+        if !is_protocol && !ctx.has_generic_override() && !ctx.has_class_override() {
             lines.push(format!("#' @title S3 generic for `{}`", generic_name));
             lines.push(format!("#' S3 generic for `{}`", generic_name));
             lines.push(format!("#' @rdname {}", class_name));

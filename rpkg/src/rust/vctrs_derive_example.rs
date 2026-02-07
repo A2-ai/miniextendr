@@ -233,6 +233,40 @@ pub fn new_derived_temp(x: Vec<f64>) -> Result<miniextendr_api::ffi::SEXP, Strin
 }
 
 // =============================================================================
+// Vctrs impl block with protocol method override: Currency
+// =============================================================================
+
+/// A currency type demonstrating Rust-backed vctrs protocol methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct DerivedCurrency {
+    symbol: String,
+    amounts: Vec<f64>,
+}
+
+/// @noRd
+#[miniextendr(vctrs(kind = "vctr", base = "double", abbr = "$"))]
+impl DerivedCurrency {
+    /// Creates a new currency value.
+    pub fn new(symbol: String, amounts: Vec<f64>) -> Self {
+        DerivedCurrency { symbol, amounts }
+    }
+
+    /// Returns the currency symbol.
+    pub fn symbol(&self) -> String {
+        self.symbol.clone()
+    }
+
+    /// Rust-backed format method override.
+    #[miniextendr(vctrs(format))]
+    pub fn format_currency(&self) -> Vec<String> {
+        self.amounts
+            .iter()
+            .map(|a| format!("{}{:.2}", self.symbol, a))
+            .collect()
+    }
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -250,4 +284,5 @@ miniextendr_module! {
     vctrs DerivedIntLists;
     vctrs DerivedPoint;
     vctrs DerivedTemp;
+    impl DerivedCurrency;
 }

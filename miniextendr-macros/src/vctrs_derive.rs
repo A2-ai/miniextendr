@@ -994,6 +994,23 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         TokenStream::new()
     };
 
+    // Generate VctrsListOf implementation if base is "list" and ptype is specified
+    let listof_impl = if base == "list" {
+        if let Some(ptype) = &attrs.ptype {
+            quote! {
+                impl #impl_generics ::miniextendr_api::vctrs::VctrsListOf for #name #ty_generics #where_clause {
+                    fn ptype_expr() -> &'static str {
+                        #ptype
+                    }
+                }
+            }
+        } else {
+            TokenStream::new()
+        }
+    } else {
+        TokenStream::new()
+    };
+
     // Generate R wrapper code for vctrs S3 methods
     let record_field_names: Vec<String> = if base == "record" {
         fields
@@ -1029,6 +1046,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     Ok(quote! {
         #vctrs_class_impl
         #record_impl
+        #listof_impl
         #into_vctrs_impl
 
         /// Generated R wrapper code for vctrs S3 methods.

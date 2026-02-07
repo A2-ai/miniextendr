@@ -797,6 +797,41 @@ fn vctrs_wrapper_no_abbr() {
     assert!(wrapper.contains("vec_cast.Simple.Simple"));
 }
 
+#[test]
+fn vctrs_protocol_method_override() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Currency {
+            pub fn new(amounts: Vec<f64>) -> Self { unimplemented!() }
+            pub fn symbol(&self) -> String { unimplemented!() }
+
+            #[miniextendr(vctrs(format))]
+            pub fn format_currency(&self) -> Vec<String> { unimplemented!() }
+        }
+    };
+
+    let vctrs_attrs = VctrsAttrs {
+        kind: VctrsKind::Vctr,
+        base: Some("double".to_string()),
+        inherit_base_type: None,
+        ptype: None,
+        abbr: Some("$".to_string()),
+    };
+
+    let parsed = parse_impl_vctrs(vctrs_attrs, item_impl);
+    let wrapper = generate_vctrs_r_wrapper(&parsed);
+
+    // format_currency method should be generated as format.Currency, not format_currency.Currency
+    assert!(wrapper.contains("#' @method format Currency"));
+    assert!(wrapper.contains("format.Currency <- function(x, ...)"));
+
+    // Should NOT create a new S3 generic for "format" (it's a base R function)
+    assert!(!wrapper.contains("format <- function(x, ...) UseMethod(\"format\")"));
+
+    // symbol method should still get its own S3 generic
+    assert!(wrapper.contains("symbol <- function(x, ...) UseMethod(\"symbol\")"));
+    assert!(wrapper.contains("symbol.Currency <- function(x, ...)"));
+}
+
 // =============================================================================
 // S7 property class type tests
 // =============================================================================
