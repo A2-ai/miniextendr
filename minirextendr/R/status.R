@@ -47,7 +47,8 @@ miniextendr_status <- function() {
       "src/vendor/miniextendr-api",
       "src/vendor/miniextendr-macros",
       "src/vendor/miniextendr-macros-core",
-      "src/vendor/miniextendr-lint"
+      "src/vendor/miniextendr-lint",
+      "src/vendor/miniextendr-engine"
     ),
     "Generated Files" = c(
       "src/Makevars",
@@ -203,12 +204,21 @@ miniextendr_check <- function() {
 
   # Check vendored crates
   cli::cli_h2("Vendored crates")
-  vendor_path <- usethis::proj_path("src", "vendor", "miniextendr-api")
-  if (!fs::dir_exists(vendor_path)) {
-    warnings <- c(warnings, "miniextendr crates not vendored")
-    cli::cli_alert_warning("miniextendr crates not vendored - run vendor_miniextendr()")
+  required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core",
+                        "miniextendr-lint", "miniextendr-engine")
+  missing_crates <- character()
+  for (crate in required_crates) {
+    crate_path <- usethis::proj_path("src", "vendor", crate)
+    if (!fs::dir_exists(crate_path)) {
+      missing_crates <- c(missing_crates, crate)
+    }
+  }
+  if (length(missing_crates) > 0) {
+    warnings <- c(warnings, paste("Missing vendored crates:", paste(missing_crates, collapse = ", ")))
+    cli::cli_alert_warning("Missing vendored crates: {paste(missing_crates, collapse = ', ')}")
+    cli::cli_alert_info("Run {.code vendor_miniextendr()} to vendor missing crates")
   } else {
-    cli::cli_alert_success("miniextendr crates vendored")
+    cli::cli_alert_success("All required crates vendored")
   }
 
   # Summary

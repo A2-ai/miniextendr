@@ -210,7 +210,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #'   Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.
 #' @param rpkg_name Name of the R package subdirectory for monorepo template (default: "rpkg").
 #'   Only used when template_type is "monorepo".
-#' @param miniextendr_version Version of miniextendr to vendor (default: "latest").
+#' @param miniextendr_version Version of miniextendr to vendor (default: "main").
 #'   For monorepo projects, vendoring is only needed for CRAN submission.
 #' @param local_path Optional path to local miniextendr repository. If provided,
 #'   vendors from local path instead of downloading from GitHub. Useful for
@@ -218,7 +218,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @return Invisibly returns TRUE
 #' @export
 use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
-                            miniextendr_version = "latest", local_path = NULL) {
+                            miniextendr_version = "main", local_path = NULL) {
   cli::cli_h1("Setting up miniextendr")
 
   # Auto-detect template type if requested
@@ -253,7 +253,11 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
 
     # Vendor miniextendr crates
     cli::cli_h2("Vendoring miniextendr crates")
-    vendor_miniextendr(version = miniextendr_version, local_path = local_path)
+    vendor_miniextendr(
+      version = miniextendr_version,
+      dest = usethis::proj_path(rpkg_name, "src", "vendor"),
+      local_path = local_path
+    )
 
     cli::cli_h1("Setup complete!")
     cli::cli_alert_info("Next steps:")

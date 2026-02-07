@@ -499,10 +499,3 @@ skip_if_missing_feature <- function(name) {
   code
 }
 
-#' Ensure directory exists
-#' @noRd
-ensure_dir <- function(path) {
-  if (!fs::dir_exists(path)) {
-    fs::dir_create(path, recurse = TRUE)
-  }
-}

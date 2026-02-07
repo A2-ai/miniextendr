@@ -1237,19 +1237,45 @@ add_crate_to_workspace <- function(workspace_toml, crate_name) {
     return(FALSE)
   }
 
-  # Find the closing ] of members array
-  in_members <- FALSE
+  # Handle one-line array: members = ["a", "b"]
+  # If the opening [ and closing ] are on the same line, expand to multiline first
+  line_text <- content[members_line]
+  if (grepl("\\[.*\\]", line_text)) {
+    # Extract the array content between [ and ]
+    inner <- sub("^members\\s*=\\s*\\[(.*)\\]\\s*$", "\\1", line_text)
+    items <- trimws(strsplit(inner, ",")[[1]])
+    items <- items[nzchar(items)]
+
+    # Rebuild as multiline
+    new_lines <- "members = ["
+    for (item in items) {
+      # Ensure item has trailing comma
+      item <- sub(",\\s*$", "", item)
+      new_lines <- c(new_lines, sprintf('    %s,', item))
+    }
+    new_lines <- c(new_lines, sprintf('    "%s",', crate_name))
+    new_lines <- c(new_lines, "]")
+
+    content <- c(
+      content[seq_len(members_line - 1)],
+      new_lines,
+      content[seq_len(length(content) - members_line) + members_line]
+    )
+
+    writeLines(content, workspace_toml)
+    return(TRUE)
+  }
+
+  # Multiline array: find the closing ]
   bracket_depth <- 0
   insert_line <- NULL
 
   for (i in members_line:length(content)) {
     line <- content[i]
-    # Count brackets
     bracket_depth <- bracket_depth + lengths(regmatches(line, gregexpr("\\[", line)))
     bracket_depth <- bracket_depth - lengths(regmatches(line, gregexpr("\\]", line)))
 
     if (bracket_depth == 0) {
-      # Found the closing bracket
       insert_line <- i
       break
     }
@@ -1260,7 +1286,6 @@ add_crate_to_workspace <- function(workspace_toml, crate_name) {
     return(FALSE)
   }
 
-  # Insert the new member before the closing bracket
   # Try to match the indentation of existing members
   indent <- "    "  # Default 4 spaces
   for (j in (members_line + 1):(insert_line - 1)) {
