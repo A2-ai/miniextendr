@@ -69,6 +69,48 @@ pub fn defunct_fn(_x: i32) -> i32 {
 }
 
 // =============================================================================
+// Method-level lifecycle tests (R6)
+// =============================================================================
+
+/// An R6 class demonstrating lifecycle on methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct LifecycleDemo {
+    value: i32,
+}
+
+/// @noRd
+#[miniextendr(r6)]
+impl LifecycleDemo {
+    /// Creates a new LifecycleDemo.
+    pub fn new(value: i32) -> Self {
+        LifecycleDemo { value }
+    }
+
+    /// Returns the value.
+    pub fn get_value(&self) -> i32 {
+        self.value
+    }
+
+    /// A deprecated method using lifecycle attribute.
+    #[miniextendr(lifecycle(stage = "deprecated", when = "0.3.0", with = "LifecycleDemo$get_value()"))]
+    pub fn old_value(&self) -> i32 {
+        self.value
+    }
+
+    /// An experimental method.
+    #[miniextendr(lifecycle = "experimental")]
+    pub fn experimental_method(&self) -> i32 {
+        self.value * 2
+    }
+
+    /// A method deprecated via Rust's #[deprecated] attribute.
+    #[deprecated(since = "0.2.0", note = "Use get_value() instead")]
+    pub fn legacy_value(&self) -> i32 {
+        self.value
+    }
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -81,4 +123,5 @@ miniextendr_module! {
     fn soft_deprecated_fn;
     fn fully_deprecated;
     fn defunct_fn;
+    impl LifecycleDemo;
 }

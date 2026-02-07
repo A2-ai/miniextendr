@@ -221,3 +221,40 @@ test_that("S7 bidirectional conversion works", {
   c2 <- S7::convert(f, S7Celsius)
   expect_equal(value(c2), 25.0, tolerance = 1e-10)
 })
+
+# =============================================================================
+# R6 cloneable tests
+# =============================================================================
+
+test_that("R6Cloneable supports $clone()", {
+  obj <- R6Cloneable$new(42L)
+  expect_equal(obj$get_value(), 42L)
+
+  # Clone the object (shallow clone - shares the same ExternalPtr)
+  cloned <- obj$clone()
+  expect_equal(cloned$get_value(), 42L)
+
+  # Shallow clone shares the underlying pointer, so mutations are visible in both
+  cloned$set_value(99L)
+  expect_equal(cloned$get_value(), 99L)
+  expect_equal(obj$get_value(), 99L)  # Same pointer, same value
+})
+
+test_that("R6Cloneable has lock_class = TRUE", {
+  # With lock_class = TRUE, we cannot add new methods/fields to the class
+  expect_error(R6Cloneable$set("public", "extra", function() "nope"))
+})
+
+# =============================================================================
+# S7 abstract/parent tests
+# =============================================================================
+
+test_that("S7Shape is abstract and cannot be instantiated", {
+  expect_error(S7Shape())
+})
+
+test_that("S7Circle has parent S7Shape", {
+  c <- S7Circle(3.0)
+  # Check area computation
+  expect_equal(circle_area(c), pi * 9.0, tolerance = 1e-10)
+})

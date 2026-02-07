@@ -4966,6 +4966,36 @@ R6Temperature <- R6::R6Class("R6Temperature",
 
 #' @param .ptr Internal pointer (used by static methods, not for direct use).
 #' @noRd
+R6Cloneable <- R6::R6Class("R6Cloneable",
+    public = list(
+        #' @description Creates a new instance.
+        initialize = function(value, .ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_R6Cloneable__new, .call = match.call(), value)
+            }
+        },
+        #' @description Returns the value.
+        get_value = function() {
+            .Call(C_R6Cloneable__get_value, .call = match.call(), private$.ptr)
+        },
+        #' @description Sets the value.
+        set_value = function(value) {
+            .Call(C_R6Cloneable__set_value, .call = match.call(), private$.ptr, value)
+            invisible(self)
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = TRUE,
+    cloneable = TRUE
+)
+
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @noRd
 Calculator <- R6::R6Class("Calculator",
     public = list(
         #' @description Creates a new calculator
@@ -5145,11 +5175,11 @@ S7Config <- S7::new_class("S7Config",
     properties = list(
         .ptr = S7::class_any
 ,
-        score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self })
-,
         name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
 ,
         old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
+,
+        score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self })
     ),
     constructor = function(name, score, version, .ptr = NULL) {
         if (!is.null(.ptr)) {
@@ -5228,6 +5258,41 @@ S7::method(convert, list(S7Celsius, S7Fahrenheit)) <- function(from, to) S7Fahre
 
 S7::method(convert, list(S7Fahrenheit, S7Celsius)) <- function(from, to) S7Celsius(.ptr = .Call(C_S7Fahrenheit__to_celsius, .call = match.call(), from@.ptr))
 
+#' @noRd
+S7Shape <- S7::new_class("S7Shape",
+    abstract = TRUE,
+    properties = list(
+        .ptr = S7::class_any
+    ),
+    constructor = function(name, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Shape__new, .call = match.call(), name))
+        }
+    }
+)
+
+if (!exists("shape_name", mode = "function")) shape_name <- S7::new_generic("shape_name", "x", function(x, ...) S7::S7_dispatch())
+S7::method(shape_name, S7Shape) <- function(x, ...) .Call(C_S7Shape__shape_name, .call = match.call(), x@.ptr)
+
+#' @noRd
+S7Circle <- S7::new_class("S7Circle", parent = S7Shape,
+    properties = list(
+        .ptr = S7::class_any
+    ),
+    constructor = function(radius, .ptr = NULL) {
+        if (!is.null(.ptr)) {
+            S7::new_object(S7::S7_object(), .ptr = .ptr)
+        } else {
+            S7::new_object(S7::S7_object(), .ptr = .Call(C_S7Circle__new, .call = match.call(), radius))
+        }
+    }
+)
+
+if (!exists("circle_area", mode = "function")) circle_area <- S7::new_generic("circle_area", "x", function(x, ...) S7::S7_dispatch())
+S7::method(circle_area, S7Circle) <- function(x, ...) .Call(C_S7Circle__circle_area, .call = match.call(), x@.ptr)
+
 methods::setClass("S4Counter", slots = c(ptr = "externalptr"))
 
 S4Counter <- function(initial) {
@@ -5246,6 +5311,47 @@ methods::setMethod("s4_add", "S4Counter", function(x, amount, ...) .Call(C_S4Cou
 S4Counter_default_counter <- function() {
     methods::new("S4Counter", ptr = .Call(C_S4Counter__default_counter, .call = match.call()))
 }
+
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @noRd
+LifecycleDemo <- R6::R6Class("LifecycleDemo",
+    public = list(
+        #' @description Creates a new LifecycleDemo.
+        initialize = function(value, .ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_LifecycleDemo__new, .call = match.call(), value)
+            }
+        },
+        #' @description Returns the value.
+        get_value = function() {
+            .Call(C_LifecycleDemo__get_value, .call = match.call(), private$.ptr)
+        },
+        #' @description `r lifecycle::badge("deprecated")` A deprecated method using lifecycle attribute.
+        old_value = function() {
+            lifecycle::deprecate_warn("0.3.0", "LifecycleDemo$old_value()", "LifecycleDemo$get_value()")
+            .Call(C_LifecycleDemo__old_value, .call = match.call(), private$.ptr)
+        },
+        #' @description `r lifecycle::badge("experimental")` An experimental method.
+        #' @keywords internal
+        experimental_method = function() {
+            lifecycle::signal_stage("experimental", "LifecycleDemo$experimental_method()")
+            .Call(C_LifecycleDemo__experimental_method, .call = match.call(), private$.ptr)
+        },
+        #' @description `r lifecycle::badge("deprecated")` A method deprecated via Rust's #[deprecated] attribute.
+        legacy_value = function() {
+            lifecycle::deprecate_warn("0.2.0", "LifecycleDemo$legacy_value()", "get_value()", details = "Use get_value() instead")
+            .Call(C_LifecycleDemo__legacy_value, .call = match.call(), private$.ptr)
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = FALSE,
+    cloneable = FALSE
+)
 
 #' @title SimpleCounter  Class
 #' @name SimpleCounter

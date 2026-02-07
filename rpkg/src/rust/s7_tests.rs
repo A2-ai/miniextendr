@@ -235,6 +235,46 @@ impl S7Fahrenheit {
     }
 }
 
+/// An abstract S7 base class.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Shape {
+    name: String,
+}
+
+/// @noRd
+#[miniextendr(s7(abstract))]
+impl S7Shape {
+    /// Creates a new shape.
+    pub fn new(name: String) -> Self {
+        S7Shape { name }
+    }
+
+    /// Returns the shape name.
+    pub fn shape_name(&self) -> String {
+        self.name.clone()
+    }
+}
+
+/// A concrete S7 class inheriting from S7Shape.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Circle {
+    radius: f64,
+}
+
+/// @noRd
+#[miniextendr(s7(parent = "S7Shape"))]
+impl S7Circle {
+    /// Creates a new circle.
+    pub fn new(radius: f64) -> Self {
+        S7Circle { radius }
+    }
+
+    /// Returns the area.
+    pub fn circle_area(&self) -> f64 {
+        std::f64::consts::PI * self.radius * self.radius
+    }
+}
+
 miniextendr_module! {
     mod s7_tests;
 
@@ -244,4 +284,6 @@ miniextendr_module! {
     impl S7Strict;
     impl S7Celsius;
     impl S7Fahrenheit;
+    impl S7Shape;
+    impl S7Circle;
 }

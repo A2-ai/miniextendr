@@ -4,13 +4,24 @@ use super::*;
 // Helper function for parsing impl blocks
 // =============================================================================
 
-fn parse_impl(class_system: ClassSystem, code: syn::ItemImpl) -> ParsedImpl {
-    let attrs = ImplAttrs {
+fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
+    ImplAttrs {
         class_system,
         class_name: None,
         label: None,
         vctrs_attrs: VctrsAttrs::default(),
-    };
+        r6_inherit: None,
+        r6_portable: None,
+        r6_cloneable: None,
+        r6_lock_objects: None,
+        r6_lock_class: None,
+        s7_parent: None,
+        s7_abstract: false,
+    }
+}
+
+fn parse_impl(class_system: ClassSystem, code: syn::ItemImpl) -> ParsedImpl {
+    let attrs = default_impl_attrs(class_system);
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
 
@@ -19,12 +30,8 @@ fn parse_impl_with_class_name(
     class_name: &str,
     code: syn::ItemImpl,
 ) -> ParsedImpl {
-    let attrs = ImplAttrs {
-        class_system,
-        class_name: Some(class_name.to_string()),
-        label: None,
-        vctrs_attrs: VctrsAttrs::default(),
-    };
+    let mut attrs = default_impl_attrs(class_system);
+    attrs.class_name = Some(class_name.to_string());
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
 
@@ -33,12 +40,8 @@ fn parse_impl_with_label(
     label: &str,
     code: syn::ItemImpl,
 ) -> ParsedImpl {
-    let attrs = ImplAttrs {
-        class_system,
-        class_name: None,
-        label: Some(label.to_string()),
-        vctrs_attrs: VctrsAttrs::default(),
-    };
+    let mut attrs = default_impl_attrs(class_system);
+    attrs.label = Some(label.to_string());
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
 
@@ -210,6 +213,80 @@ fn r6_wrapper_roxygen_imports() {
     let wrapper = generate_r6_r_wrapper(&parsed);
 
     assert!(wrapper.contains("@importFrom R6 R6Class"));
+}
+
+#[test]
+fn r6_wrapper_inherit() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Child {
+            pub fn new() -> Self { unimplemented!() }
+            pub fn child_method(&self) -> i32 { unimplemented!() }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.r6_inherit = Some("ParentClass".to_string());
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("Child <- R6::R6Class(\"Child\", inherit = ParentClass,"));
+}
+
+#[test]
+fn r6_wrapper_cloneable_and_locks() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl MyClass {
+            pub fn new() -> Self { unimplemented!() }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.r6_cloneable = Some(true);
+    attrs.r6_lock_objects = Some(false);
+    attrs.r6_lock_class = Some(true);
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("cloneable = TRUE"));
+    assert!(wrapper.contains("lock_objects = FALSE,"));
+    assert!(wrapper.contains("lock_class = TRUE,"));
+}
+
+#[test]
+fn r6_wrapper_non_portable() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl MyClass {
+            pub fn new() -> Self { unimplemented!() }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::R6);
+    attrs.r6_portable = Some(false);
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("portable = FALSE,"));
+}
+
+#[test]
+fn r6_wrapper_defaults_unchanged() {
+    // Verify that default R6 options match the old hardcoded values
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl MyClass {
+            pub fn new() -> Self { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::R6, item_impl);
+    let wrapper = generate_r6_r_wrapper(&parsed);
+
+    // Defaults: lock_objects=TRUE, lock_class=FALSE, cloneable=FALSE
+    assert!(wrapper.contains("lock_objects = TRUE,"));
+    assert!(wrapper.contains("lock_class = FALSE,"));
+    assert!(wrapper.contains("cloneable = FALSE"));
+    // No inherit or portable=FALSE by default
+    assert!(!wrapper.contains("inherit ="));
+    assert!(!wrapper.contains("portable = FALSE"));
 }
 
 // =============================================================================
@@ -566,12 +643,8 @@ fn returns_unit_method_in_r6() {
 // =============================================================================
 
 fn parse_impl_vctrs(vctrs_attrs: VctrsAttrs, code: syn::ItemImpl) -> ParsedImpl {
-    let attrs = ImplAttrs {
-        class_system: ClassSystem::Vctrs,
-        class_name: None,
-        label: None,
-        vctrs_attrs,
-    };
+    let mut attrs = default_impl_attrs(ClassSystem::Vctrs);
+    attrs.vctrs_attrs = vctrs_attrs;
     ParsedImpl::parse(attrs, code).expect("failed to parse impl")
 }
 
@@ -1233,4 +1306,100 @@ fn s7_convert_from_and_to_mutually_exclusive() {
         // The current implementation validates during parse_impl
         panic!("Expected error when both convert_from and convert_to are specified on same method");
     }
+}
+
+#[test]
+fn s7_wrapper_parent() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Circle {
+            pub fn new(radius: f64) -> Self { unimplemented!() }
+            pub fn area(&self) -> f64 { unimplemented!() }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.s7_parent = Some("Shape".to_string());
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("Circle <- S7::new_class(\"Circle\", parent = Shape,"));
+}
+
+#[test]
+fn s7_wrapper_abstract() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl Shape {
+            pub fn new() -> Self { unimplemented!() }
+        }
+    };
+
+    let mut attrs = default_impl_attrs(ClassSystem::S7);
+    attrs.s7_abstract = true;
+    let parsed = ParsedImpl::parse(attrs, item_impl).unwrap();
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    assert!(wrapper.contains("abstract = TRUE,"));
+}
+
+#[test]
+fn s7_wrapper_defaults_no_parent_no_abstract() {
+    let item_impl: syn::ItemImpl = syn::parse_quote! {
+        impl MyClass {
+            pub fn new() -> Self { unimplemented!() }
+        }
+    };
+
+    let parsed = parse_impl(ClassSystem::S7, item_impl);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // No parent or abstract by default
+    assert!(!wrapper.contains("parent ="));
+    assert!(!wrapper.contains("abstract = TRUE"));
+}
+
+// =============================================================================
+// ImplAttrs parsing tests
+// =============================================================================
+
+#[test]
+fn parse_r6_with_options() {
+    let attrs: ImplAttrs =
+        syn::parse_str("r6(inherit = \"ParentClass\", cloneable, lock_class = true)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::R6);
+    assert_eq!(attrs.r6_inherit, Some("ParentClass".to_string()));
+    assert_eq!(attrs.r6_cloneable, Some(true));
+    assert_eq!(attrs.r6_lock_class, Some(true));
+    assert_eq!(attrs.r6_portable, None);
+    assert_eq!(attrs.r6_lock_objects, None);
+}
+
+#[test]
+fn parse_r6_plain() {
+    let attrs: ImplAttrs = syn::parse_str("r6").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::R6);
+    assert_eq!(attrs.r6_inherit, None);
+    assert_eq!(attrs.r6_cloneable, None);
+}
+
+#[test]
+fn parse_s7_with_parent() {
+    let attrs: ImplAttrs = syn::parse_str("s7(parent = \"Shape\")").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::S7);
+    assert_eq!(attrs.s7_parent, Some("Shape".to_string()));
+    assert!(!attrs.s7_abstract);
+}
+
+#[test]
+fn parse_s7_abstract() {
+    let attrs: ImplAttrs = syn::parse_str("s7(abstract)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::S7);
+    assert!(attrs.s7_abstract);
+}
+
+#[test]
+fn parse_s7_parent_and_abstract() {
+    let attrs: ImplAttrs = syn::parse_str("s7(parent = \"Base\", abstract)").unwrap();
+    assert_eq!(attrs.class_system, ClassSystem::S7);
+    assert_eq!(attrs.s7_parent, Some("Base".to_string()));
+    assert!(attrs.s7_abstract);
 }

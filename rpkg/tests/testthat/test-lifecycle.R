@@ -59,3 +59,41 @@ test_that("superseded functions work without errors", {
   result <- superseded_fn(5L)
   expect_equal(result, 6L)
 })
+
+# =============================================================================
+# Method-level lifecycle tests
+# =============================================================================
+
+test_that("R6 deprecated method generates lifecycle warning", {
+  skip_if_not_installed("lifecycle")
+
+  obj <- LifecycleDemo$new(42L)
+  # Non-deprecated method should work fine
+  expect_equal(obj$get_value(), 42L)
+
+  # Deprecated method should produce a lifecycle warning
+  expect_warning(
+    obj$old_value(),
+    class = "lifecycle_warning_deprecated"
+  )
+})
+
+test_that("R6 experimental method works", {
+  skip_if_not_installed("lifecycle")
+
+  obj <- LifecycleDemo$new(5L)
+  # experimental_method should work (signal_stage may not throw)
+  result <- obj$experimental_method()
+  expect_equal(result, 10L)
+})
+
+test_that("R6 method with #[deprecated] generates lifecycle warning", {
+  skip_if_not_installed("lifecycle")
+
+  obj <- LifecycleDemo$new(7L)
+  # legacy_value uses Rust's #[deprecated] attribute
+  expect_warning(
+    obj$legacy_value(),
+    class = "lifecycle_warning_deprecated"
+  )
+})
