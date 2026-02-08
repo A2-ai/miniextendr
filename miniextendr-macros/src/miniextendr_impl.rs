@@ -619,6 +619,8 @@ pub struct ParsedImpl {
     /// For R6: active bindings are added via `$set("active", ...)` after class creation.
     /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
     pub r_data_accessors: bool,
+    /// Strict conversion mode: methods returning lossy types use checked conversions.
+    pub strict: bool,
 }
 
 /// Attributes on the impl block itself.
@@ -666,6 +668,12 @@ pub struct ImplAttrs {
     /// For R6: active bindings via `$set("active", ...)` post-creation.
     /// For S7: properties spliced from `.rdata_properties_{Type}`.
     pub r_data_accessors: bool,
+    // =========================================================================
+    // Strict conversion mode
+    // =========================================================================
+    /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
+    /// use `strict::checked_*()` instead of `IntoR::into_sexp()`, panicking on overflow.
+    pub strict: bool,
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -683,6 +691,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_parent = None;
         let mut s7_abstract = false;
         let mut r_data_accessors = false;
+        let mut strict = false;
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
@@ -899,6 +908,8 @@ impl syn::parse::Parse for ImplAttrs {
                         }
                     }
                 }
+            } else if ident_str == "strict" {
+                strict = true;
             } else {
                 // This is a class system identifier
                 class_system = ident_str
@@ -925,6 +936,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_parent,
             s7_abstract,
             r_data_accessors,
+            strict,
         })
     }
 }
@@ -1561,6 +1573,7 @@ impl ParsedImpl {
             s7_parent: attrs.s7_parent,
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
+            strict: attrs.strict,
         })
     }
 
@@ -1812,6 +1825,10 @@ pub fn generate_method_c_wrapper(
 
     if method.method_attrs.rng {
         builder = builder.rng();
+    }
+
+    if parsed_impl.strict {
+        builder = builder.strict();
     }
 
     builder.build().generate()

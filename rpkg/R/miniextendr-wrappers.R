@@ -5938,6 +5938,34 @@ as.character.AsCoerceErrorTest <- function(x, ...) {
     .Call(C_AsCoerceErrorTest__as_character, .call = match.call(), x)
 }
 
+# Generated from Rust source file: conversion_tests.rs:238:6
+
+#' @param .ptr Internal pointer (used by static methods, not for direct use).
+#' @noRd
+StrictCounter <- R6::R6Class("StrictCounter",
+    public = list(
+        initialize = function(value, .ptr = NULL) {
+            if (!is.null(.ptr)) {
+                private$.ptr <- .ptr
+            } else {
+                private$.ptr <- .Call(C_StrictCounter__new, .call = match.call(), value)
+            }
+        },
+        get_value = function() {
+            .Call(C_StrictCounter__get_value, .call = match.call(), private$.ptr)
+        },
+        add = function(x) {
+            .Call(C_StrictCounter__add, .call = match.call(), private$.ptr, x)
+        }
+    ),
+    private = list(
+        .ptr = NULL
+    ),
+    lock_objects = TRUE,
+    lock_class = FALSE,
+    cloneable = FALSE
+)
+
 #' @title SidecarEnv Sidecar Accessors
 #' @name SidecarEnv
 #' @description Getter and setter functions for `#[r_data]` fields on `SidecarEnv`.
@@ -7111,9 +7139,9 @@ S7Config <- S7::new_class("S7Config",
 ,
         score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self })
 ,
-        old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
-,
         name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
+,
+        old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
     ),
     constructor = function(name, score, version, .ptr = NULL) {
         if (!is.null(.ptr)) {

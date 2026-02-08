@@ -92,8 +92,7 @@ pub struct CWrapperContext {
     pub r_wrapper_const: syn::Ident,
     /// Function inputs (without self receiver)
     pub inputs: syn::punctuated::Punctuated<syn::FnArg, syn::Token![,]>,
-    /// Return type (stored for builder pattern but read via detect_return_handling)
-    #[allow(dead_code)]
+    /// Return type (used for strict-mode type inspection)
     pub output: syn::ReturnType,
     /// Pre-call statements (e.g., self extraction for methods)
     pub pre_call: Vec<TokenStream>,
@@ -119,6 +118,8 @@ pub struct CWrapperContext {
     pub has_self: bool,
     /// Custom call_method_def identifier (if None, uses default naming)
     pub call_method_def_ident: Option<syn::Ident>,
+    /// Strict conversion mode: use checked conversions for lossy return types.
+    pub strict: bool,
 }
 
 impl CWrapperContext {
@@ -142,6 +143,7 @@ impl CWrapperContext {
             type_context: None,
             has_self: false,
             call_method_def_ident: None,
+            strict: false,
         }
     }
 
@@ -400,9 +402,11 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::IntoR => {
+                let result_ident = format_ident!("__result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
                 quote! {
-                    let __result = #call_expr;
-                    ::miniextendr_api::into_r::IntoR::into_sexp(__result)
+                    let #result_ident = #call_expr;
+                    #conversion
                 }
             }
             ReturnHandling::OptionUnit => {
@@ -433,13 +437,15 @@ impl CWrapperContext {
                 let error_msg = quote! {
                     concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
                 };
+                let result_ident = format_ident!("__result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
                 quote! {
                     let __result = #call_expr;
-                    let __result = match __result {
+                    let #result_ident = match __result {
                         Some(v) => v,
                         None => panic!(#error_msg),
                     };
-                    ::miniextendr_api::into_r::IntoR::into_sexp(__result)
+                    #conversion
                 }
             }
             ReturnHandling::ResultUnit => {
@@ -461,13 +467,15 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::ResultIntoR => {
+                let result_ident = format_ident!("__result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
                 quote! {
                     let __result = #call_expr;
-                    let __result = match __result {
+                    let #result_ident = match __result {
                         Ok(v) => v,
                         Err(e) => panic!("{:?}", e),
                     };
-                    ::miniextendr_api::into_r::IntoR::into_sexp(__result)
+                    #conversion
                 }
             }
         }
@@ -520,9 +528,11 @@ impl CWrapperContext {
                 let worker = quote! {
                     #call_expr
                 };
+                let result_ident = format_ident!("__miniextendr_result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
                 let convert = quote! {
                     ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(__miniextendr_result),
+                        || #conversion,
                         None,
                     )
                 };
@@ -570,9 +580,11 @@ impl CWrapperContext {
                         None => panic!(#error_msg),
                     }
                 };
+                let result_ident = format_ident!("__miniextendr_result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
                 let convert = quote! {
                     ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(__miniextendr_result),
+                        || #conversion,
                         None,
                     )
                 };
@@ -611,15 +623,55 @@ impl CWrapperContext {
                         Err(e) => panic!("{:?}", e),
                     }
                 };
+                let result_ident = format_ident!("__miniextendr_result");
+                let conversion = self.sexp_conversion_expr(&result_ident);
                 let convert = quote! {
                     ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || ::miniextendr_api::into_r::IntoR::into_sexp(__miniextendr_result),
+                        || #conversion,
                         None,
                     )
                 };
                 (worker, convert)
             }
         }
+    }
+
+    /// Returns the SEXP conversion expression for `result_ident`, using strict
+    /// checked conversion if strict mode is on and the inner return type is lossy,
+    /// otherwise falling back to `IntoR::into_sexp()`.
+    fn sexp_conversion_expr(&self, result_ident: &syn::Ident) -> TokenStream {
+        if self.strict {
+            // Extract effective inner type from output
+            let inner_ty = match &self.output {
+                syn::ReturnType::Type(_, ty) => {
+                    let ty = ty.as_ref();
+                    // Check for Option<T> or Result<T, E> wrappers
+                    if let syn::Type::Path(p) = ty
+                        && let Some(seg) = p.path.segments.last()
+                    {
+                        let name = seg.ident.to_string();
+                        if (name == "Option" || name == "Result")
+                            && let Some(inner) = first_type_argument(seg)
+                        {
+                            Some(inner)
+                        } else {
+                            Some(ty)
+                        }
+                    } else {
+                        Some(ty)
+                    }
+                }
+                syn::ReturnType::Default => None,
+            };
+
+            if let Some(inner_ty) =
+                inner_ty.and_then(|ty| crate::return_type_analysis::strict_conversion_for_type(ty, result_ident))
+            {
+                return inner_ty;
+            }
+        }
+
+        quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#result_ident) }
     }
 
     /// Generate call_method_def constant.
@@ -722,6 +774,8 @@ pub struct CWrapperContextBuilder {
     has_self: bool,
     /// Custom call_method_def identifier (if not set, uses default naming)
     call_method_def_ident: Option<syn::Ident>,
+    /// Strict conversion mode.
+    strict: bool,
 }
 
 impl CWrapperContextBuilder {
@@ -813,6 +867,12 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Enable strict conversion mode for lossy return types.
+    pub fn strict(mut self) -> Self {
+        self.strict = true;
+        self
+    }
+
     /// Set a custom call_method_def identifier.
     ///
     /// If not set, the default naming is used:
@@ -862,6 +922,7 @@ impl CWrapperContextBuilder {
             type_context: self.type_context,
             has_self: self.has_self,
             call_method_def_ident: self.call_method_def_ident,
+            strict: self.strict,
         }
     }
 }

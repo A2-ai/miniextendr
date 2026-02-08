@@ -57,3 +57,16 @@ test_that("strict Vec<i64> conversion succeeds for in-range values", {
 test_that("strict Vec<i64> conversion errors for out-of-range values", {
   expect_error(strict_echo_vec_i64(c(1, 2^31)), "strict conversion failed")
 })
+
+# Strict mode on impl methods (R6)
+test_that("strict R6 method succeeds for in-range i64", {
+  counter <- StrictCounter$new(42L)
+  expect_equal(counter$get_value(), 42L)
+  expect_equal(counter$add(1L), 43L)
+})
+
+test_that("strict R6 method errors for out-of-range i64", {
+  counter <- StrictCounter$new(0L)
+  # 2^31 as double can't fit in i32, so strict conversion should error
+  expect_error(counter$add(2^31), "strict conversion failed")
+})

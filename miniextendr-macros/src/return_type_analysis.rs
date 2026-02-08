@@ -277,13 +277,13 @@ fn analyze_result_type(
 }
 
 /// Lossy scalar types that have strict conversion helpers.
-const LOSSY_SCALARS: &[&str] = &["i64", "u64", "isize", "usize"];
+pub(crate) const LOSSY_SCALARS: &[&str] = &["i64", "u64", "isize", "usize"];
 
 /// Try to generate a strict conversion expression for a lossy return type.
 ///
 /// Returns `Some(TokenStream)` if the type is a lossy scalar or `Vec<lossy>`,
 /// otherwise `None` (falls through to standard `IntoR::into_sexp`).
-fn strict_conversion_for_type(
+pub(crate) fn strict_conversion_for_type(
     ty: &syn::Type,
     result_ident: &syn::Ident,
 ) -> Option<proc_macro2::TokenStream> {
@@ -315,7 +315,7 @@ fn strict_conversion_for_type(
 }
 
 /// Extract the last path segment identifier from a type.
-fn last_segment_ident(ty: &syn::Type) -> Option<&syn::Ident> {
+pub(crate) fn last_segment_ident(ty: &syn::Type) -> Option<&syn::Ident> {
     if let syn::Type::Path(p) = ty {
         p.path.segments.last().map(|s| &s.ident)
     } else {
@@ -324,7 +324,7 @@ fn last_segment_ident(ty: &syn::Type) -> Option<&syn::Ident> {
 }
 
 /// Extract the first generic type argument from a type (e.g., `T` from `Vec<T>`).
-fn first_type_arg_from_type(ty: &syn::Type) -> Option<&syn::Type> {
+pub(crate) fn first_type_arg_from_type(ty: &syn::Type) -> Option<&syn::Type> {
     if let syn::Type::Path(p) = ty {
         crate::first_type_argument(p.path.segments.last()?)
     } else {

@@ -18,6 +18,7 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_parent: None,
         s7_abstract: false,
         r_data_accessors: false,
+        strict: false,
     }
 }
 
