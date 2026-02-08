@@ -112,6 +112,13 @@ Items are scoped to be incremental and compatible with the current architecture.
 - CLASS_SYSTEMS.md: added "Field Access via Sidecar" subsection.
 - GAPS.md section 2.3: `Vec<Option<T>>` updated to "Works (all scalar types)".
 
+### 17. Fix String ALTREP NA serialization ✓
+
+- `into_sexp_altrep` STRSXP branch now uses `Vec<Option<String>>` instead of `Vec<String>`,
+  preserving `NA_character_` through `saveRDS`/`readRDS` roundtrips.
+- Added `RegisterAltrep` + `InferBase` for `Vec<Option<String>>`.
+- Test suite: 0 FAIL, 2868 PASS (previously 2 FAIL).
+
 ## Active: Next Up
 
 ## Parked: Needs Evidence
