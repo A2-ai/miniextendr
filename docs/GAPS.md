@@ -140,20 +140,15 @@ miniextendr_module! {
 
 ---
 
-### 1.4 No Documentation Override Attributes
+### ~~1.4 No Documentation Override Attributes~~ PARTIALLY RESOLVED
 
-**Status:** Not implemented
-**Impact:** Low
-**Location:** `miniextendr-macros/src/r_wrapper_builder.rs`
+**Status:** `internal` and `noexport` implemented; `doc` override not implemented
+**Resolution:** `#[miniextendr(internal)]` injects `@keywords internal` and suppresses `@export`.
+`#[miniextendr(noexport)]` suppresses `@export` only. Both work on standalone functions
+and all 6 class system impl blocks via `ClassDocBuilder::with_export_control()`.
 
-Cannot override roxygen documentation extraction or mark functions as internal.
-
-**Missing features:**
-- `#[miniextendr(doc = "Custom documentation")]`
-- `#[miniextendr(internal)]` for `@keywords internal`
-- `#[miniextendr(noexport)]` to skip `@export`
-
-**Current behavior:** All `pub` functions get `@export`. Documentation is extracted from Rust doc comments only.
+**Still missing:**
+- `#[miniextendr(doc = "Custom documentation")]` — custom roxygen override
 
 ---
 
@@ -374,42 +369,24 @@ check_connections_version();  // Expects R_CONNECTIONS_VERSION == 1
 
 ---
 
-### 4.2 vctrs Integration (Partial)
+### ~~4.2 vctrs Integration (Partial)~~ MOSTLY RESOLVED
 
-**Status:** C API only, no high-level wrappers
+**Status:** Comprehensive — derive macros, impl blocks, coercion chains all implemented
 **Feature flag:** `vctrs`
-**Location:** `miniextendr-api/src/vctrs.rs`
+**Location:** `miniextendr-api/src/vctrs.rs`, `miniextendr-macros/src/vctrs_derive.rs`
 
 **What's implemented:**
-- `init_vctrs()` - Load vctrs C callables
-- `obj_is_vector()`, `short_vec_size()`, `short_vec_recycle()` - C API wrappers
-- `new_vctr()`, `new_rcrd()`, `new_list_of()` - Construction helpers
-- `VctrsClass`, `IntoVctrs` traits - Type definition patterns
+- `#[derive(Vctrs)]` macro with `Vctr`, `Rcrd`, `ListOf` kinds
+- `#[miniextendr(vctrs)]` impl block support for methods
+- `coerce = "type"` attribute generates `vec_ptype2`/`vec_cast` methods
+- `vec_proxy`, `vec_restore`, `format` protocol methods
+- Advanced features: `proxy_equal`, `proxy_compare`, `proxy_order`, `arith`, `math`
+- C API wrappers: `init_vctrs()`, `obj_is_vector()`, `short_vec_size()`, etc.
+- Construction helpers: `new_vctr()`, `new_rcrd()`, `new_list_of()`
 
-**What's missing:**
-- No derive macros (`#[derive(VctrsVctr)]`)
-- No `vec_ptype2`, `vec_cast`, `vec_restore` helpers
-- No coercion chain support
-- No cross-package vctrs type export
-
-**Example usage:**
-```rust
-use miniextendr_api::vctrs::*;
-
-struct Percent(Vec<f64>);
-
-impl VctrsClass for Percent {
-    const CLASS_NAME: &'static str = "vctrs_percent";
-    const KIND: VctrsKind = VctrsKind::Vctr;
-    const BASE_TYPE: Option<SEXPTYPE> = Some(SEXPTYPE::REALSXP);
-}
-
-impl IntoVctrs for Percent {
-    fn into_vctrs(self) -> Result<SEXP, VctrsBuildError> {
-        new_vctr(self.0.into_r(), &[Self::CLASS_NAME], &[], None)
-    }
-}
-```
+**What's still missing:**
+- Cross-package vctrs type export (no mechanism to share class defs across packages)
+- vctrs inheritance (`extends = "parent_type"` pattern)
 
 ---
 
