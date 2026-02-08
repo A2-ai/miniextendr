@@ -418,7 +418,13 @@ where
                     Ok(boxed) => *boxed
                         .downcast::<T>()
                         .expect("type mismatch in run_on_worker result"),
-                    Err(msg) => panic_message_to_r_error(msg),
+                    Err(msg) => {
+                        crate::panic_telemetry::fire(
+                            &msg,
+                            crate::panic_telemetry::PanicSource::Worker,
+                        );
+                        panic_message_to_r_error(msg)
+                    }
                 };
             }
         }

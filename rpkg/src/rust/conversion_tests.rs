@@ -213,6 +213,22 @@ pub fn test_logical_slice_all_true(
 
 // endregion
 
+// region: strict conversion tests
+
+/// @noRd
+#[miniextendr(strict)]
+pub fn strict_echo_i64(x: i64) -> i64 {
+    x
+}
+
+/// @noRd
+#[miniextendr(strict)]
+pub fn strict_echo_vec_i64(x: Vec<i64>) -> Vec<i64> {
+    x
+}
+
+// endregion
+
 miniextendr_module! {
     mod conversion_tests;
 
@@ -244,4 +260,8 @@ miniextendr_module! {
     fn test_logical_slice_len;
     fn test_logical_slice_any_true;
     fn test_logical_slice_all_true;
+
+    // Strict conversion tests
+    fn strict_echo_i64;
+    fn strict_echo_vec_i64;
 }

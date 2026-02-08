@@ -326,6 +326,12 @@ pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
 #[cfg(feature = "nonapi")]
 pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
 
+// Panic telemetry hook for structured panic→R-error diagnostics
+pub mod panic_telemetry;
+
+// Strict conversion helpers for #[miniextendr(strict)]
+pub mod strict;
+
 // Error handling helpers (r_stop, r_warning, r_error!, r_print!, r_println! macros)
 pub mod error;
 pub use error::{r_stop, r_warning};

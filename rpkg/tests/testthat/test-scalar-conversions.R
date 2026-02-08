@@ -37,3 +37,23 @@ test_that("mixed type conversions work", {
   expect_equal(test_f64_to_i32(42.9), 42L)
   expect_equal(test_f64_to_i32(-3.7), -3L)
 })
+
+test_that("strict i64 conversion succeeds for in-range values", {
+  expect_equal(strict_echo_i64(42L), 42L)
+  expect_equal(strict_echo_i64(0L), 0L)
+  expect_equal(strict_echo_i64(-1L), -1L)
+})
+
+test_that("strict i64 conversion errors for out-of-range values", {
+  # i64 value outside i32 range should produce R error
+  expect_error(strict_echo_i64(2^31), "strict conversion failed")
+  expect_error(strict_echo_i64(-2^31), "strict conversion failed")
+})
+
+test_that("strict Vec<i64> conversion succeeds for in-range values", {
+  expect_equal(strict_echo_vec_i64(c(1L, 2L, 3L)), c(1L, 2L, 3L))
+})
+
+test_that("strict Vec<i64> conversion errors for out-of-range values", {
+  expect_error(strict_echo_vec_i64(c(1, 2^31)), "strict conversion failed")
+})

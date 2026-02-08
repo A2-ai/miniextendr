@@ -631,6 +631,7 @@ pub fn miniextendr(
         dots_spec,
         dots_span,
         lifecycle,
+        strict,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -835,6 +836,7 @@ pub fn miniextendr(
         rust_ident,
         return_pref,
         unwrap_in_r,
+        strict,
     );
 
     let returns_sexp = return_analysis.returns_sexp;

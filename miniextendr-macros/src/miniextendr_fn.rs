@@ -565,6 +565,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) dots_span: Option<proc_macro2::Span>,
     /// Lifecycle specification for deprecation/experimental status.
     pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
+    /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
+    pub(crate) strict: bool,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -611,10 +613,12 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.unwrap_in_r = true;
                         } else if ident == "worker" {
                             out.force_worker = true;
+                        } else if ident == "strict" {
+                            out.strict = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, strict",
                             ));
                         }
                     }

@@ -103,6 +103,7 @@ mod dots_tests;
 mod externalptr_tests;
 mod factor_tests;
 mod gc_protect_tests;
+mod gc_stress_fixtures;
 mod identical_tests;
 mod interrupt_tests;
 mod misc_tests;
@@ -448,13 +449,8 @@ miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 pub struct ArithSeqClass(pub ArithSeqData);
 
 #[miniextendr]
-fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
+fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
     let len = length_out as usize;
-    let step = if len > 1 {
-        (to - from) / (len - 1) as f64
-    } else {
-        0.0
-    };
     let data = ArithSeqData {
         start: from,
         step,
@@ -1896,6 +1892,7 @@ miniextendr_module! {
     use externalptr_tests;
     use rdata_sidecar_tests;
     use gc_protect_tests;
+    use gc_stress_fixtures;
     use identical_tests;
     use receiver_tests;
     use r6_tests;

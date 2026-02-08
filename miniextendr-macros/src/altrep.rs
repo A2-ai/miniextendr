@@ -167,47 +167,69 @@ pub fn expand_altrep_struct(
                 },
                 _ => quote::quote! {},
             };
-            let make = match base_name.as_str() {
-                "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "Logical" => {
-                    quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+            // For explicit base, generate the R_make_alt*_class call then validate.
+            // The validation is done via validate_altrep_class which panics on null.
+            let make = {
+                let base_variant_for_validate: proc_macro2::TokenStream = match base_name.as_str() {
+                    "Int" => quote::quote!(::miniextendr_api::altrep::RBase::Int),
+                    "Real" => quote::quote!(::miniextendr_api::altrep::RBase::Real),
+                    "Logical" => quote::quote!(::miniextendr_api::altrep::RBase::Logical),
+                    "Raw" => quote::quote!(::miniextendr_api::altrep::RBase::Raw),
+                    "String" => quote::quote!(::miniextendr_api::altrep::RBase::String),
+                    "List" => quote::quote!(::miniextendr_api::altrep::RBase::List),
+                    "Complex" => quote::quote!(::miniextendr_api::altrep::RBase::Complex),
+                    _ => quote::quote!(unreachable!()),
+                };
+                let make_call = match base_name.as_str() {
+                    "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                         ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
-                    ) }
-                }
-                "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "Complex" => {
-                    quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
+                    ) },
+                    "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                         ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
-                    ) }
-                }
-                _ => quote::quote! { unreachable!() },
+                    ) },
+                    "Logical" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
+                    "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                        ::miniextendr_api::AltrepPkgName::as_ptr(),
+                        core::ptr::null_mut(),
+                    ) },
+                    "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                        ::miniextendr_api::AltrepPkgName::as_ptr(),
+                        core::ptr::null_mut(),
+                    ) },
+                    "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                        ::miniextendr_api::AltrepPkgName::as_ptr(),
+                        core::ptr::null_mut(),
+                    ) },
+                    "Complex" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
+                    _ => quote::quote! { unreachable!() },
+                };
+                quote::quote! {{
+                    let __cls = #make_call;
+                    ::miniextendr_api::altrep::validate_altrep_class(
+                        __cls,
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME,
+                        #base_variant_for_validate,
+                    )
+                }}
             };
             (setters, make)
         } else {

@@ -13,6 +13,7 @@
 
 use crate::ffi::altrep::*;
 use crate::ffi::{R_xlen_t, SEXP};
+use std::ffi::CStr;
 
 /// Base type for ALTREP vectors.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -71,7 +72,33 @@ pub trait RegisterAltrep {
 // Runtime dispatch helper for class creation
 // =============================================================================
 
+/// Validate that an ALTREP class handle was successfully created.
+///
+/// Panics with a descriptive message if the class handle is null, indicating
+/// that `R_make_alt*_class()` failed during registration.
+///
+/// # Arguments
+/// * `cls` - The class handle returned by `R_make_alt*_class()`
+/// * `class_name` - The name of the ALTREP class (for diagnostics)
+/// * `base` - The base R type (for diagnostics)
+pub fn validate_altrep_class(
+    cls: R_altrep_class_t,
+    class_name: &CStr,
+    base: RBase,
+) -> R_altrep_class_t {
+    if cls.ptr.is_null() {
+        panic!(
+            "ALTREP class registration failed: R_make_alt{base:?}_class() returned NULL \
+             for class {:?}",
+            class_name
+        );
+    }
+    cls
+}
+
 /// Create an ALTREP class handle based on the runtime base type.
+///
+/// Validates the returned handle and panics if registration fails.
 ///
 /// # Safety
 /// Must be called during R initialization.
@@ -80,7 +107,7 @@ pub unsafe fn make_class_by_base(
     pkg_name: *const i8,
     base: RBase,
 ) -> R_altrep_class_t {
-    unsafe {
+    let cls = unsafe {
         match base {
             RBase::Int => R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut()),
             RBase::Real => R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut()),
@@ -90,5 +117,8 @@ pub unsafe fn make_class_by_base(
             RBase::List => R_make_altlist_class(class_name, pkg_name, core::ptr::null_mut()),
             RBase::Complex => R_make_altcomplex_class(class_name, pkg_name, core::ptr::null_mut()),
         }
-    }
+    };
+    // SAFETY: class_name was passed to R, so it's still a valid C string
+    let name_cstr = unsafe { CStr::from_ptr(class_name) };
+    validate_altrep_class(cls, name_cstr, base)
 }
