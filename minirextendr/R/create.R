@@ -234,6 +234,26 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @export
 use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
                             miniextendr_version = "main", local_path = NULL) {
+  # Warn if not at git workspace root
+  git_available <- nzchar(Sys.which("git"))
+  if (git_available) {
+    git_root <- tryCatch(
+      trimws(system2("git", c("rev-parse", "--show-toplevel"),
+                     stdout = TRUE, stderr = TRUE)),
+      warning = function(w) NULL,
+      error = function(e) NULL
+    )
+    if (!is.null(git_root) &&
+        normalizePath(git_root) != normalizePath(getwd())) {
+      warning(
+        "use_miniextendr() is not being called from the git workspace root. ",
+        "Current directory: ", getwd(), "\n",
+        "Git workspace root: ", git_root,
+        call. = FALSE
+      )
+    }
+  }
+
   cli::cli_h1("Setting up miniextendr")
 
   # Auto-detect template type if requested
