@@ -23,17 +23,17 @@ Items are scoped to be incremental and compatible with the current architecture.
   widening i64/u64/isize/usize to f64.
 - `strict` module with `checked_into_sexp_*` helpers.
 - Codegen wired via `return_type_analysis.rs` for lossy scalar and `Vec` return types.
-- Impl method support deferred (uses separate `CWrapperContext` codegen path).
+
+### 4. Strict conversion mode — impl methods ✓
+
+- `#[miniextendr(r6, strict)]` (or any class system + `strict`) extends strict
+  output conversion to impl block methods.
+- `strict` field added to `ImplAttrs`, `ParsedImpl`, `CWrapperContext`, and builder.
+- `sexp_conversion_expr()` helper on `CWrapperContext` handles bare, `Option<T>`,
+  and `Result<T, E>` return types — delegates to `strict_conversion_for_type()`.
+- All 6 `IntoR` return handling branches (3 main thread + 3 worker thread) updated.
 
 ## Active: Next Up
-
-### 4. Strict conversion mode — impl methods
-
-- **Goal:** extend `#[miniextendr(strict)]` to impl block methods.
-- **Scope:** add `strict` field to `CWrapperContext`/builder, modify
-  `generate_return_handling` and `generate_worker_return_handling` to emit
-  `strict::checked_*()` for lossy return types when strict is set.
-- **Effort:** Medium — mirrors standalone fn approach but in the builder path.
 
 ### 5. Strict conversion mode — inputs (TryCoerce)
 
