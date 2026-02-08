@@ -154,6 +154,10 @@ pub fn run(root: impl AsRef<Path>) -> Result<LintReport, String> {
     // into the parent via `use child_name;`.
     check_missing_use_submodule(&rs_files, &module_uses, &mut errors);
 
+    // Cross-file check: for each `impl Type;` in miniextendr_module!, check
+    // that Type has #[derive(ExternalPtr)] or `impl TypedExternal for Type`.
+    check_missing_external_ptr_derive(&rs_files, &mut errors);
+
     Ok(LintReport {
         files: rs_files,
         errors,
@@ -245,6 +249,143 @@ fn check_missing_use_submodule(
             }
         }
     }
+}
+
+/// Check that types used in `impl Type;` entries have `#[derive(ExternalPtr)]`
+/// or a manual `impl TypedExternal for Type`.
+///
+/// Without ExternalPtr derive (or manual TypedExternal impl), the user gets
+/// confusing trait-bound errors like "the trait bound 'Type: TypedExternal' is
+/// not satisfied" at compile time. This lint catches the issue early.
+fn check_missing_external_ptr_derive(rs_files: &[PathBuf], errors: &mut Vec<String>) {
+    // Collect all `impl Type;` entries from miniextendr_module! across all files
+    // Maps type_name -> (file_path, line) of the module entry
+    let mut impl_types: Vec<(String, PathBuf, usize)> = Vec::new();
+    // Collect all types that have #[derive(ExternalPtr)]
+    let mut types_with_derive: HashSet<String> = HashSet::new();
+    // Collect all types that have `impl TypedExternal for Type`
+    let mut types_with_typed_external: HashSet<String> = HashSet::new();
+
+    for path in rs_files {
+        let src = match fs::read_to_string(path) {
+            Ok(s) => s,
+            Err(_) => continue,
+        };
+        let parsed = match syn::parse_file(&src) {
+            Ok(p) => p,
+            Err(_) => continue,
+        };
+        extract_external_ptr_info(
+            &parsed.items,
+            path,
+            &mut impl_types,
+            &mut types_with_derive,
+            &mut types_with_typed_external,
+        );
+    }
+
+    for (type_name, path, line) in &impl_types {
+        if !types_with_derive.contains(type_name)
+            && !types_with_typed_external.contains(type_name)
+        {
+            errors.push(format!(
+                "{}:{}: struct `{}` is used in `impl {};` but does not derive \
+                 ExternalPtr or implement TypedExternal. Add \
+                 `#[derive(ExternalPtr)]` to the struct definition.",
+                path.display(),
+                line,
+                type_name,
+                type_name,
+            ));
+        }
+    }
+}
+
+/// Recursively extract ExternalPtr-related info from items.
+///
+/// Collects:
+/// - Type names from `impl Type;` entries in `miniextendr_module!`
+/// - Struct names that have `#[derive(ExternalPtr)]` or `#[derive(miniextendr_api::ExternalPtr)]`
+/// - Type names from `impl TypedExternal for Type` blocks
+fn extract_external_ptr_info(
+    items: &[Item],
+    path: &Path,
+    impl_types: &mut Vec<(String, PathBuf, usize)>,
+    types_with_derive: &mut HashSet<String>,
+    types_with_typed_external: &mut HashSet<String>,
+) {
+    for item in items {
+        match item {
+            Item::Struct(item_struct) => {
+                if has_external_ptr_derive(&item_struct.attrs) {
+                    types_with_derive.insert(item_struct.ident.to_string());
+                }
+            }
+            Item::Impl(item_impl) => {
+                // Check for `impl TypedExternal for Type`
+                if let Some((_, trait_path, _)) = &item_impl.trait_
+                    && let Some(last_seg) = trait_path.segments.last()
+                    && last_seg.ident == "TypedExternal"
+                    && let Some(type_name) = impl_type_name(&item_impl.self_ty)
+                {
+                    types_with_typed_external.insert(type_name);
+                }
+            }
+            Item::Macro(item_macro) if is_miniextendr_module_macro(&item_macro.mac) => {
+                if let Ok(parsed) = syn::parse2::<miniextendr_module::MiniextendrModule>(
+                    item_macro.mac.tokens.clone(),
+                ) {
+                    for impl_block in &parsed.impls {
+                        let line = impl_block.ident.span().start().line;
+                        impl_types.push((
+                            impl_block.ident.to_string(),
+                            path.to_path_buf(),
+                            line,
+                        ));
+                    }
+                }
+            }
+            Item::Mod(item_mod) => {
+                if let Some((_, child_items)) = &item_mod.content {
+                    extract_external_ptr_info(
+                        child_items,
+                        path,
+                        impl_types,
+                        types_with_derive,
+                        types_with_typed_external,
+                    );
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// Returns true if the attribute list contains `#[derive(ExternalPtr)]`
+/// or `#[derive(miniextendr_api::ExternalPtr)]`.
+fn has_external_ptr_derive(attrs: &[Attribute]) -> bool {
+    attrs.iter().any(|attr| {
+        if !attr.path().is_ident("derive") {
+            return false;
+        }
+        let syn::Meta::List(meta_list) = &attr.meta else {
+            return false;
+        };
+        // Parse the derive arguments as a comma-separated list of paths
+        let Ok(paths) =
+            meta_list.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
+        else {
+            return false;
+        };
+        paths.iter().any(|p| {
+            // Check for `ExternalPtr` (bare) or `miniextendr_api::ExternalPtr` (qualified)
+            if let Some(last_seg) = p.segments.last() {
+                last_seg.ident == "ExternalPtr"
+            } else {
+                false
+            }
+        })
+    })
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
