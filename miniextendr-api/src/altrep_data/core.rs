@@ -43,8 +43,11 @@ pub trait AltrepLen {
 /// Logical value: TRUE, FALSE, or NA.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Logical {
+    /// Logical false.
     False,
+    /// Logical true.
     True,
+    /// Missing logical value.
     Na,
 }
 

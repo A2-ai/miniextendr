@@ -432,18 +432,19 @@ test_that("Range ALTREP handles empty and single-element cases", {
 # =============================================================================
 
 test_that("arithmetic sequence ALTREP works", {
-  seq5 <- arith_seq(0, 1, 5L)
+  # arith_seq(from, step, length_out): elements = from + (0..n-1) * step
+  seq5 <- arith_seq(0, 1, 5L)  # 0, 1, 2, 3, 4
 
   expect_equal(length(seq5), 5L)
   expect_equal(seq5[1], 0.0)
-  expect_equal(seq5[5], 1.0)
-  expect_equal(seq5[3], 0.5)
+  expect_equal(seq5[5], 4.0)
+  expect_equal(seq5[3], 2.0)
 
-  # Non-integer endpoints
-  seq_neg <- arith_seq(-1, 1, 3L)
-  expect_equal(seq_neg[1], -1.0)
-  expect_equal(seq_neg[2], 0.0)
-  expect_equal(seq_neg[3], 1.0)
+  # Fractional step
+  seq_frac <- arith_seq(-1, 1, 3L)  # -1, 0, 1
+  expect_equal(seq_frac[1], -1.0)
+  expect_equal(seq_frac[2], 0.0)
+  expect_equal(seq_frac[3], 1.0)
 })
 
 # =============================================================================

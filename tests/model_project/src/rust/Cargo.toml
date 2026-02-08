@@ -1,0 +1,40 @@
+[package]
+name = "pigworld"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
+[[bin]]
+name = "document"
+path = "document.rs"
+bench = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+nonapi = ["miniextendr-api/nonapi"]
+connections = ["miniextendr-api/connections"]
+
+[dependencies]
+miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
+rand = "0.9"
+rand_distr = "0.5"
+rayon = "1.10"
+itertools = "0.14"
+
+[build-dependencies]
+miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
+
+# Development: use absolute paths to local monorepo crates instead of git.
+# Absolute paths survive R CMD check (which copies the source to a temp dir).
+[patch."https://github.com/CGMossa/miniextendr"]
+miniextendr-api = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-api" }
+miniextendr-macros = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-macros" }
+miniextendr-macros-core = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-macros-core" }
+miniextendr-lint = { path = "/Users/elea/Documents/GitHub/miniextendr/miniextendr-lint" }

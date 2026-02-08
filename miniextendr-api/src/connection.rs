@@ -61,6 +61,15 @@ pub const EXPECTED_CONNECTIONS_VERSION: c_int = 1;
 /// # Panics
 ///
 /// Panics if `R_CONNECTIONS_VERSION` doesn't match `EXPECTED_CONNECTIONS_VERSION`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::check_connections_version;
+///
+/// // Call early, e.g. in R_init_<pkg>, to fail fast on version mismatch
+/// check_connections_version();
+/// ```
 #[inline]
 pub fn check_connections_version() {
     assert_eq!(
@@ -238,6 +247,38 @@ pub struct Rconn {
 /// Your type will be boxed and stored in the connection's `private` field.
 /// It will be automatically dropped when the connection is destroyed.
 /// You don't need to implement `destroy` unless you have additional cleanup.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{RConnectionImpl, RCustomConnection};
+///
+/// struct MemorySource {
+///     data: Vec<u8>,
+///     pos: usize,
+/// }
+///
+/// impl RConnectionImpl for MemorySource {
+///     fn open(&mut self) -> bool {
+///         self.pos = 0;
+///         true
+///     }
+///
+///     fn read(&mut self, buf: &mut [u8]) -> usize {
+///         let remaining = self.data.len() - self.pos;
+///         let n = buf.len().min(remaining);
+///         buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+///         self.pos += n;
+///         n
+///     }
+/// }
+///
+/// let conn = RCustomConnection::new()
+///     .description("memory source")
+///     .mode("rb")
+///     .can_read(true)
+///     .build(MemorySource { data: vec![1, 2, 3], pos: 0 });
+/// ```
 pub trait RConnectionImpl: Sized + 'static {
     /// Called when the connection is opened.
     ///
@@ -481,6 +522,23 @@ impl Default for RCustomConnection {
 
 impl RCustomConnection {
     /// Create a new connection builder with defaults.
+    ///
+    /// Returns a builder with sensible defaults:
+    /// - description: `"custom connection"`
+    /// - mode: `"r"` (read text)
+    /// - class_name: `"customConnection"`
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::RCustomConnection;
+    ///
+    /// let conn = RCustomConnection::new()
+    ///     .description("my source")
+    ///     .mode("rb")
+    ///     .can_read(true)
+    ///     .build(MyState::new());
+    /// ```
     pub fn new() -> Self {
         Self {
             description: CString::new("custom connection").unwrap(),
@@ -675,6 +733,18 @@ impl RCustomConnection {
 ///
 /// - `conn` must be a valid, open connection handle
 /// - `buf` must be a valid buffer with at least `n` bytes
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{get_connection, read_connection};
+///
+/// // Given an R connection SEXP:
+/// let conn = unsafe { get_connection(conn_sexp) };
+/// let mut buf = [0u8; 1024];
+/// let n = unsafe { read_connection(conn, &mut buf) };
+/// let data = &buf[..n];
+/// ```
 #[inline]
 pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
     unsafe { crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr() as *mut c_void, buf.len()) }
@@ -685,6 +755,16 @@ pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
 /// # Safety
 ///
 /// - `conn` must be a valid, open connection handle
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{get_connection, write_connection};
+///
+/// let conn = unsafe { get_connection(conn_sexp) };
+/// let data = b"hello, world\n";
+/// let written = unsafe { write_connection(conn, data) };
+/// ```
 #[inline]
 pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
     unsafe { crate::ffi::R_WriteConnection(conn, buf.as_ptr() as *const c_void, buf.len()) }
@@ -695,6 +775,17 @@ pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
 /// # Safety
 ///
 /// - `sexp` must be a valid R connection object
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{get_connection, read_connection};
+///
+/// // Convert an R connection SEXP to a handle, then read from it
+/// let conn = unsafe { get_connection(conn_sexp) };
+/// let mut buf = [0u8; 256];
+/// let n = unsafe { read_connection(conn, &mut buf) };
+/// ```
 #[inline]
 pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
     unsafe { crate::ffi::R_GetConnection(sexp) }
@@ -708,6 +799,16 @@ pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
 ///
 /// Used by adapter types to declare which operations they support,
 /// enabling automatic configuration of R connection flags.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{IoCaps, IoRead};
+///
+/// // IoRead<T> automatically declares read capability
+/// assert!(IoRead::<std::io::Cursor<Vec<u8>>>::HAS_READ);
+/// assert!(!IoRead::<std::io::Cursor<Vec<u8>>>::HAS_WRITE);
+/// ```
 pub trait IoCaps {
     /// True if the connection supports reading.
     const HAS_READ: bool = false;
@@ -790,6 +891,20 @@ define_io_adapter! {
     /// Adapter for types implementing `std::io::Read`.
     ///
     /// Provides read-only connection with automatic capability detection.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::{IoRead, RCustomConnection};
+    ///
+    /// let data = std::io::Cursor::new(vec![1u8, 2, 3]);
+    /// let adapter = IoRead::new(data);
+    /// let conn = RCustomConnection::new()
+    ///     .description("byte reader")
+    ///     .mode("rb")
+    ///     .can_read(true)
+    ///     .build(adapter);
+    /// ```
     IoRead<T: std::io::Read> {
         caps: { HAS_READ = true },
         methods: {
@@ -804,6 +919,20 @@ define_io_adapter! {
     /// Adapter for types implementing `std::io::Write`.
     ///
     /// Provides write-only connection with automatic capability detection.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::{IoWrite, RCustomConnection};
+    ///
+    /// let sink = Vec::<u8>::new();
+    /// let adapter = IoWrite::new(sink);
+    /// let conn = RCustomConnection::new()
+    ///     .description("byte writer")
+    ///     .mode("wb")
+    ///     .can_write(true)
+    ///     .build(adapter);
+    /// ```
     IoWrite<T: std::io::Write> {
         caps: { HAS_WRITE = true },
         methods: {
@@ -880,6 +1009,22 @@ define_io_adapter! {
     /// Adapter for types implementing `Read + Write + Seek`.
     ///
     /// Provides full bidirectional seekable connection with automatic capability detection.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::{IoReadWriteSeek, RCustomConnection};
+    ///
+    /// let cursor = std::io::Cursor::new(Vec::<u8>::new());
+    /// let adapter = IoReadWriteSeek::new(cursor);
+    /// let conn = RCustomConnection::new()
+    ///     .description("memory buffer")
+    ///     .mode("r+b")
+    ///     .can_read(true)
+    ///     .can_write(true)
+    ///     .can_seek(true)
+    ///     .build(adapter);
+    /// ```
     IoReadWriteSeek<T: std::io::Read, std::io::Write, std::io::Seek> {
         caps: { HAS_READ = true, HAS_WRITE = true, HAS_SEEK = true },
         methods: {
@@ -960,6 +1105,19 @@ pub struct RConnectionIo<T> {
 
 impl<T> RConnectionIo<T> {
     /// Create a new connection builder from an I/O type.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::RConnectionIo;
+    /// use std::io::Cursor;
+    ///
+    /// let cursor = Cursor::new(vec![1u8, 2, 3]);
+    /// let conn = RConnectionIo::new(cursor)
+    ///     .description("in-memory data")
+    ///     .mode("rb")
+    ///     .build_read();
+    /// ```
     pub fn new(inner: T) -> Self {
         Self {
             inner,
@@ -1091,6 +1249,19 @@ impl<T: std::io::Read + 'static> RConnectionIo<T> {
     /// Build a read-only connection.
     ///
     /// Automatically detects `Read` capability and configures the connection accordingly.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::RConnectionIo;
+    /// use std::fs::File;
+    ///
+    /// let file = File::open("/path/to/data.bin").unwrap();
+    /// let conn = RConnectionIo::new(file)
+    ///     .description("data file")
+    ///     .mode("rb")
+    ///     .build_read();
+    /// ```
     pub fn build_read(self) -> SEXP {
         let adapter = IoRead::new(self.inner);
         build_io_connection!(
@@ -1112,6 +1283,18 @@ impl<T: std::io::Write + 'static> RConnectionIo<T> {
     /// Build a write-only connection.
     ///
     /// Automatically detects `Write` capability and configures the connection accordingly.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::RConnectionIo;
+    ///
+    /// let output = Vec::<u8>::new();
+    /// let conn = RConnectionIo::new(output)
+    ///     .description("output buffer")
+    ///     .mode("wb")
+    ///     .build_write();
+    /// ```
     pub fn build_write(self) -> SEXP {
         let adapter = IoWrite::new(self.inner);
         build_io_connection!(
@@ -1196,6 +1379,20 @@ impl<T: std::io::Read + std::io::Write + std::io::Seek + 'static> RConnectionIo<
     /// Build a read+write+seek connection (full capabilities).
     ///
     /// Automatically detects all capabilities and configures the connection accordingly.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::RConnectionIo;
+    /// use std::io::Cursor;
+    ///
+    /// let buffer = Cursor::new(Vec::<u8>::new());
+    /// let conn = RConnectionIo::new(buffer)
+    ///     .description("seekable buffer")
+    ///     .mode("r+b")
+    ///     .class_name("memoryConn")
+    ///     .build_read_write_seek();
+    /// ```
     pub fn build_read_write_seek(self) -> SEXP {
         let adapter = IoReadWriteSeek::new(self.inner);
         build_io_connection!(
@@ -1217,6 +1414,22 @@ impl<T: std::io::BufRead + 'static> RConnectionIo<T> {
     /// Build a buffered read connection with optimized character reading.
     ///
     /// Uses `BufRead::fill_buf` for efficient `fgetc` implementation.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::connection::RConnectionIo;
+    /// use std::io::BufReader;
+    /// use std::fs::File;
+    ///
+    /// let file = File::open("/path/to/text.csv").unwrap();
+    /// let reader = BufReader::new(file);
+    /// let conn = RConnectionIo::new(reader)
+    ///     .description("CSV reader")
+    ///     .mode("r")
+    ///     .text(true)
+    ///     .build_bufread();
+    /// ```
     pub fn build_bufread(self) -> SEXP {
         let adapter = IoBufRead::new(self.inner);
         build_io_connection!(

@@ -163,3 +163,146 @@ test_that("is_external_ptr works correctly", {
   expect_false(is_external_ptr("hello"))
   expect_false(is_external_ptr(list(a = 1)))
 })
+
+# =============================================================================
+# TAG consistency across packages (critical ABI invariant)
+# =============================================================================
+
+test_that("TAG_COUNTER is identical across producer and consumer", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  producer_tag <- debug_tag_counter()
+  consumer_tag <- debug_consumer_tag_counter()
+
+  expect_equal(producer_tag, consumer_tag)
+  expect_equal(nchar(producer_tag), 32L)
+})
+
+# =============================================================================
+# Cross-package class checking (consumer_get_class, has_class)
+# =============================================================================
+
+test_that("consumer_get_class reads producer class attributes", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  env_pt <- EnvPoint$new(1, 2)
+  expect_true("EnvPoint" %in% consumer_get_class(env_pt))
+
+  s3_pt <- new_s3point(1, 2)
+  expect_true("S3Point" %in% consumer_get_class(s3_pt))
+
+  data <- SharedData$create(0, 0, "x")
+  expect_true("SharedData" %in% consumer_get_class(data))
+})
+
+test_that("has_class works on producer objects", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  env_pt <- EnvPoint$new(1, 2)
+  expect_true(has_class(env_pt, "EnvPoint"))
+  expect_false(has_class(env_pt, "S3Point"))
+
+  r6_pt <- R6Point$new(1, 2)
+  expect_true(has_class(r6_pt, "R6Point"))
+  expect_true(has_class(r6_pt, "R6"))
+
+  s4_pt <- S4Point(1, 2)
+  expect_true(has_class(s4_pt, "S4Point"))
+
+  # Non-classed objects
+  expect_false(has_class(42L, "integer"))
+})
+
+# =============================================================================
+# is_counter rejects non-Counter ExternalPtrs
+# =============================================================================
+
+test_that("is_counter distinguishes Counter from non-Counter ExternalPtrs", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # Counter ExternalPtrs
+  simple <- new_counter(0L)
+  double <- new_double_counter(0L)
+  expect_true(is_counter(simple))
+  expect_true(is_counter(double))
+
+  # Non-Counter ExternalPtrs
+  data <- SharedData$create(0, 0, "x")
+  expect_true(is_external_ptr(data))
+  expect_false(is_counter(data))
+
+  env_pt <- EnvPoint$new(0, 0)
+  expect_true(is_external_ptr(env_pt))
+  expect_false(is_counter(env_pt))
+})
+
+# =============================================================================
+# Independent counter instances (no aliasing)
+# =============================================================================
+
+test_that("counter instances are independent (no shared state)", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  c1 <- new_counter(10L)
+  c2 <- new_counter(20L)
+  c3 <- new_double_counter(30L)
+
+  # Mutate c1 only
+  increment_twice(c1)
+
+  # c2 and c3 are unaffected
+  expect_equal(peek_value(c1), 12L)
+  expect_equal(peek_value(c2), 20L)
+  expect_equal(peek_value(c3), 30L)
+
+  # Mutate c3 only
+  add_and_get(c3, 100L)
+
+  expect_equal(peek_value(c1), 12L)
+  expect_equal(peek_value(c2), 20L)
+  expect_equal(peek_value(c3), 130L)
+})
+
+# =============================================================================
+# DoubleCounter inherent method
+# =============================================================================
+
+test_that("DoubleCounter$get_value inherent method works", {
+  dc <- DoubleCounter$create(99L)
+  expect_equal(dc$get_value(), 99L)
+})
+
+# =============================================================================
+# Cross-package class system pass-through
+# =============================================================================
+
+test_that("all producer class system objects pass through consumer", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # Env-style
+  env_pt <- EnvPoint$new(3, 4)
+  returned <- passthrough_ptr(env_pt)
+  expect_equal(returned$x(), 3.0)
+  expect_equal(returned$distance_from_origin(), 5.0)
+
+  # R6-style: R6 wraps the ExternalPtr in private$.ptr, so the R6
+  # object itself is an environment, not an ExternalPtr. Skip passthrough
+  # for R6 (it would need unwrapping first).
+
+  # S3-style
+  s3_pt <- new_s3point(8, 15)
+  returned_s3 <- passthrough_ptr(s3_pt)
+  expect_equal(s3point_x(returned_s3), 8.0)
+  expect_equal(s3point_y(returned_s3), 15.0)
+
+  # SharedData
+  data <- SharedData$create(1, 2, "roundtrip")
+  returned_data <- passthrough_ptr(data)
+  expect_equal(returned_data$get_label(), "roundtrip")
+})

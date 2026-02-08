@@ -1035,6 +1035,9 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         arith: attrs.arith,
         math: attrs.math,
     });
+    let type_start = name.span().start();
+    let source_line_lit = syn::LitInt::new(&type_start.line.to_string(), name.span());
+    let source_col_lit = syn::LitInt::new(&(type_start.column + 1).to_string(), name.span());
 
     // Generate the R_WRAPPERS_VCTRS_{TYPE} const
     let name_upper = name.to_string().to_uppercase();
@@ -1042,6 +1045,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         &format!("R_WRAPPERS_VCTRS_{}", name_upper),
         Span::call_site(),
     );
+    let source_location_doc = crate::source_location_doc(name.span());
 
     Ok(quote! {
         #vctrs_class_impl
@@ -1050,8 +1054,22 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #into_vctrs_impl
 
         /// Generated R wrapper code for vctrs S3 methods.
+        #[doc = #source_location_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
-        pub const #r_wrappers_const_ident: &str = #r_wrappers;
+        pub const #r_wrappers_const_ident: &str =
+            concat!(
+                "# Generated from Rust source file: ",
+                file!(),
+                ":",
+                #source_line_lit,
+                ":",
+                #source_col_lit,
+                "\n# Wraps Rust type `",
+                stringify!(#name),
+                "` via `#[derive(Vctrs)]`.\n",
+                #r_wrappers
+            );
     })
 }
 

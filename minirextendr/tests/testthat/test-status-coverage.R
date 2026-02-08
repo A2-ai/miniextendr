@@ -42,7 +42,7 @@ test_that("miniextendr_status returns list with present and missing", {
   result <- suppressMessages(miniextendr_status())
 
   expect_type(result, "list")
-  expect_named(result, c("present", "missing"))
+  expect_named(result, c("present", "missing", "stale"))
   expect_type(result$present, "list")
   expect_type(result$missing, "list")
 

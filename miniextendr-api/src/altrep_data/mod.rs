@@ -37,6 +37,7 @@
 mod builtins;
 mod core;
 mod iter;
+/// Helper macros for implementing ALTREP data traits.
 pub mod macros;
 mod traits;
 

@@ -16,7 +16,7 @@ use_feature_detection(
 \item{package_name}{Package name (default: derived from DESCRIPTION)}
 
 \item{features}{Character vector of feature names to include. Default NULL
-scans Cargo.toml.in automatically.}
+scans Cargo.toml automatically.}
 
 \item{rust_file}{Path for generated Rust code (default: "src/rust/feature_detection.rs")}
 
@@ -32,7 +32,7 @@ Generates Rust code that exposes enabled Cargo features to R, and R helper
 functions to query them. This allows tests to skip when features are missing.
 }
 \details{
-This function scans your \code{src/rust/Cargo.toml.in} for features and generates:
+This function scans your \code{src/rust/Cargo.toml} for features and generates:
 \enumerate{
 \item \strong{Rust code} (\verb{<package>_enabled_features()}) - Returns a vector of enabled feature names
 \item \strong{R helpers} (\code{has_feature()}, \code{skip_if_missing_feature()}) - For runtime feature checks
@@ -48,7 +48,7 @@ a list of enabled features. This is useful for:
 }
 \examples{
 \dontrun{
-# Auto-detect features from Cargo.toml.in
+# Auto-detect features from Cargo.toml
 use_feature_detection()
 
 # Manually specify features

@@ -26,3 +26,4 @@ syn = { workspace = true }
 [dev-dependencies]
 trybuild = "1.0"
 miniextendr-api = { workspace = true }
+expect-test = "1.4"

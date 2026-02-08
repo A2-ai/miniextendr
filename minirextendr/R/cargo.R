@@ -97,7 +97,7 @@ cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
 
   cli::cli_alert("Running cargo init in {.path {rust_dir}}...")
 
-  result <- system2("cargo", args, stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", args)
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -289,7 +289,7 @@ cargo_add <- function(dep,
   }
 
   # Run cargo add
-  result <- system2("cargo", c("add", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("add", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -371,7 +371,7 @@ cargo_rm <- function(dep,
   dep_str <- paste(dep, collapse = ", ")
   cli::cli_alert("Removing: {.val {dep_str}}")
 
-  result <- system2("cargo", c("remove", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("remove", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -448,7 +448,7 @@ cargo_update <- function(dep = NULL,
     cli::cli_alert("Updating: {.val {paste(dep, collapse = ', ')}}")
   }
 
-  result <- system2("cargo", c("update", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("update", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -537,7 +537,7 @@ cargo_build <- function(release = FALSE,
 
   cli::cli_alert("Running cargo build...")
 
-  result <- system2("cargo", c("build", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("build", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -616,7 +616,7 @@ cargo_check <- function(release = FALSE,
 
   cli::cli_alert("Running cargo check...")
 
-  result <- system2("cargo", c("check", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("check", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -701,7 +701,7 @@ cargo_test <- function(release = FALSE,
 
   cli::cli_alert("Running cargo test...")
 
-  result <- system2("cargo", c("test", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("test", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -786,7 +786,7 @@ cargo_clippy <- function(release = FALSE,
 
   cli::cli_alert("Running cargo clippy...")
 
-  result <- system2("cargo", c("clippy", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("clippy", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -845,7 +845,7 @@ cargo_fmt <- function(check = FALSE,
     cli::cli_alert("Formatting Rust sources...")
   }
 
-  result <- system2("cargo", c("fmt", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("fmt", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -930,7 +930,7 @@ cargo_doc <- function(open = FALSE,
 
   cli::cli_alert("Building cargo docs...")
 
-  result <- system2("cargo", c("doc", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("doc", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -978,7 +978,7 @@ cargo_search <- function(query, limit = 10, registry = NULL) {
 
   cli::cli_alert("Searching crates.io for: {.val {query}}")
 
-  result <- system2("cargo", c("search", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("search", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -1036,7 +1036,7 @@ cargo_deps <- function(depth = 1, duplicates = FALSE, invert = NULL) {
     args <- c(args, "--invert", invert)
   }
 
-  result <- system2("cargo", c("tree", args), stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", c("tree", args))
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -1156,13 +1156,7 @@ cargo_new <- function(name,
   # Run cargo new from the appropriate directory
   cli::cli_alert("Running {.code cargo new {name}} in {.path {run_dir}}...")
 
-  # Save current directory and change to run_dir
-
-  old_wd <- getwd()
-  on.exit(setwd(old_wd), add = TRUE)
-  setwd(run_dir)
-
-  result <- system2("cargo", args, stdout = TRUE, stderr = TRUE)
+  result <- run_command("cargo", args, wd = run_dir)
 
   status <- attr(result, "status")
   if (!is.null(status) && status != 0) {
@@ -1237,19 +1231,45 @@ add_crate_to_workspace <- function(workspace_toml, crate_name) {
     return(FALSE)
   }
 
-  # Find the closing ] of members array
-  in_members <- FALSE
+  # Handle one-line array: members = ["a", "b"]
+  # If the opening [ and closing ] are on the same line, expand to multiline first
+  line_text <- content[members_line]
+  if (grepl("\\[.*\\]", line_text)) {
+    # Extract the array content between [ and ]
+    inner <- sub("^members\\s*=\\s*\\[(.*)\\]\\s*$", "\\1", line_text)
+    items <- trimws(strsplit(inner, ",")[[1]])
+    items <- items[nzchar(items)]
+
+    # Rebuild as multiline
+    new_lines <- "members = ["
+    for (item in items) {
+      # Ensure item has trailing comma
+      item <- sub(",\\s*$", "", item)
+      new_lines <- c(new_lines, sprintf('    %s,', item))
+    }
+    new_lines <- c(new_lines, sprintf('    "%s",', crate_name))
+    new_lines <- c(new_lines, "]")
+
+    content <- c(
+      content[seq_len(members_line - 1)],
+      new_lines,
+      content[seq_len(length(content) - members_line) + members_line]
+    )
+
+    writeLines(content, workspace_toml)
+    return(TRUE)
+  }
+
+  # Multiline array: find the closing ]
   bracket_depth <- 0
   insert_line <- NULL
 
   for (i in members_line:length(content)) {
     line <- content[i]
-    # Count brackets
     bracket_depth <- bracket_depth + lengths(regmatches(line, gregexpr("\\[", line)))
     bracket_depth <- bracket_depth - lengths(regmatches(line, gregexpr("\\]", line)))
 
     if (bracket_depth == 0) {
-      # Found the closing bracket
       insert_line <- i
       break
     }
@@ -1260,7 +1280,6 @@ add_crate_to_workspace <- function(workspace_toml, crate_name) {
     return(FALSE)
   }
 
-  # Insert the new member before the closing bracket
   # Try to match the indentation of existing members
   indent <- "    "  # Default 4 spaces
   for (j in (members_line + 1):(insert_line - 1)) {

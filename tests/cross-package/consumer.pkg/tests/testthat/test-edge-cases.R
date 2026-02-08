@@ -119,3 +119,54 @@ test_that("is_external_ptr rejects NULL and NA", {
   expect_false(is_external_ptr(NA_real_))
   expect_false(is_external_ptr(NA_character_))
 })
+
+# =============================================================================
+# i32 boundary values
+# =============================================================================
+
+test_that("counter handles near-max i32 values", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # i32::MAX - 2 = 2147483645
+  counter <- new_counter(2147483645L)
+  result <- increment_twice(counter)
+  expect_equal(result, 2147483647L) # i32::MAX
+})
+
+test_that("counter handles large negative values", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  # Near i32::MIN (but not NA_integer_ which is i32::MIN itself)
+  counter <- new_counter(-2147483647L) # i32::MIN + 1
+  expect_equal(peek_value(counter), -2147483647L)
+})
+
+test_that("add_and_get works with large values", {
+  skip_if_not_installed("producer.pkg")
+  library(producer.pkg)
+
+  counter <- new_counter(0L)
+  result <- add_and_get(counter, 2147483647L) # i32::MAX
+  expect_equal(result, 2147483647L)
+})
+
+# =============================================================================
+# DoubleCounter trait namespace methods
+# =============================================================================
+
+test_that("DoubleCounter Counter trait methods via trait namespace", {
+  dc <- DoubleCounter$create(10L)
+
+  # Trait namespace: DoubleCounter$Counter$value
+  expect_equal(dc$Counter$value(dc), 10L)
+
+  # Trait namespace: DoubleCounter$Counter$increment (adds 2)
+  dc$Counter$increment(dc)
+  expect_equal(dc$Counter$value(dc), 12L)
+
+  # Trait namespace: DoubleCounter$Counter$add
+  dc$Counter$add(dc, 100L)
+  expect_equal(dc$Counter$value(dc), 112L)
+})

@@ -45,6 +45,9 @@ use crate::ffi::{Rboolean, Rcomplex};
 /// }
 /// ```
 pub trait Coerce<R> {
+    /// Convert `self` into `R`.
+    ///
+    /// This conversion must not fail.
     fn coerce(self) -> R;
 }
 
@@ -52,16 +55,22 @@ pub trait Coerce<R> {
 ///
 /// Implement this trait for narrowing conversions that may overflow or lose precision.
 pub trait TryCoerce<R> {
+    /// Error returned when coercion fails.
     type Error;
+    /// Attempt to convert `self` into `R`.
     fn try_coerce(self) -> Result<R, Self::Error>;
 }
 
 /// Error type for coercion failures.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CoerceError {
+    /// The value cannot fit in the destination range.
     Overflow,
+    /// The destination type cannot represent this value exactly.
     PrecisionLoss,
+    /// The input was NaN and destination disallows it.
     NaN,
+    /// Zero is not allowed by the conversion rule.
     Zero,
 }
 
@@ -126,7 +135,7 @@ impl_identity!(Rcomplex);
 /// Blanket impl: Any type that widens to i32 can be coerced to i32.
 ///
 /// This replaces individual macro invocations with a single blanket impl.
-/// Covers: i8, i16, u8, u16 (all types where T: Into<i32>).
+/// Covers: i8, i16, u8, u16 (all types where T: `Into<i32>`).
 impl<T: crate::markers::WidensToI32> Coerce<i32> for T {
     #[inline(always)]
     fn coerce(self) -> i32 {
@@ -137,7 +146,7 @@ impl<T: crate::markers::WidensToI32> Coerce<i32> for T {
 /// Blanket impl: Any type that widens to f64 can be coerced to f64.
 ///
 /// This replaces individual macro invocations with a single blanket impl.
-/// Covers: f32, i8, i16, i32, u8, u16, u32 (all types where T: Into<f64>).
+/// Covers: f32, i8, i16, i32, u8, u16, u32 (all types where T: `Into<f64>`).
 impl<T: crate::markers::WidensToF64> Coerce<f64> for T {
     #[inline(always)]
     fn coerce(self) -> f64 {
@@ -912,7 +921,8 @@ impl TryCoerce<isize> for f64 {
         if self.is_infinite() {
             return Err(CoerceError::Overflow);
         }
-        if self < isize::MIN as f64 || self > isize::MAX as f64 {
+        // Upper check uses >= because isize::MAX as f64 rounds up on 64-bit
+        if self < isize::MIN as f64 || self >= isize::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
         if self.fract() != 0.0 {
@@ -933,7 +943,8 @@ impl TryCoerce<usize> for f64 {
         if self.is_infinite() {
             return Err(CoerceError::Overflow);
         }
-        if self < 0.0 || self > usize::MAX as f64 {
+        // Upper check uses >= because usize::MAX as f64 rounds up on 64-bit
+        if self < 0.0 || self >= usize::MAX as f64 {
             return Err(CoerceError::Overflow);
         }
         if self.fract() != 0.0 {

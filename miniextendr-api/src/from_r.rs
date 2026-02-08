@@ -47,41 +47,42 @@ fn is_na_real(value: f64) -> bool {
 /// Modern R (4.2+) with UTF-8 locale support typically ensures this, but R can
 /// store strings in other encodings (latin1, native, bytes).
 ///
-/// **If you receive data from external sources that may not be UTF-8**, consider:
-/// - Using `Rf_translateCharUTF8()` to convert to UTF-8 first
-/// - Validating with `std::str::from_utf8()` instead of `from_utf8_unchecked()`
-///
 /// # Safety
 ///
 /// - `charsxp` must be a valid CHARSXP (not NA_STRING, not null).
-/// - The CHARSXP must contain valid UTF-8 bytes (CE_UTF8, CE_ASCII, or compatible).
 /// - The returned `&str` is only valid as long as R doesn't GC the CHARSXP.
+///
+/// # Panics
+///
+/// Panics if the CHARSXP bytes are not valid UTF-8. The R session's UTF-8 locale
+/// is validated once at package init (see entrypoint), so this should never fire.
 #[inline]
 pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR(charsxp);
         let len = crate::ffi::LENGTH(charsxp) as usize;
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
-        // R's CE_UTF8 strings are guaranteed valid UTF-8, so skip validation
-        std::str::from_utf8_unchecked(bytes)
+        std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
 }
 
-/// Unchecked version of [`charsxp_to_str`].
+/// Unchecked version of [`charsxp_to_str`] (skips R thread checks, still validates UTF-8).
 #[inline]
 unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR_unchecked(charsxp);
-        // LENGTH is a simple macro, no thread check needed
         let len = crate::ffi::LENGTH(charsxp) as usize;
         let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
-        std::str::from_utf8_unchecked(bytes)
+        std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
 }
 
 #[derive(Debug, Clone, Copy)]
+/// Error describing an unexpected R `SEXPTYPE`.
 pub struct SexpTypeError {
+    /// Expected R type.
     pub expected: SEXPTYPE,
+    /// Actual R type encountered.
     pub actual: SEXPTYPE,
 }
 
@@ -98,8 +99,11 @@ impl std::fmt::Display for SexpTypeError {
 impl std::error::Error for SexpTypeError {}
 
 #[derive(Debug, Clone, Copy)]
+/// Error describing an unexpected R object length.
 pub struct SexpLengthError {
+    /// Required length.
     pub expected: usize,
+    /// Actual length encountered.
     pub actual: usize,
 }
 
@@ -116,7 +120,9 @@ impl std::fmt::Display for SexpLengthError {
 impl std::error::Error for SexpLengthError {}
 
 #[derive(Debug, Clone, Copy)]
+/// Error for NA values in conversions that require non-missing values.
 pub struct SexpNaError {
+    /// R type where an NA was found.
     pub sexp_type: SEXPTYPE,
 }
 
@@ -129,9 +135,13 @@ impl std::fmt::Display for SexpNaError {
 impl std::error::Error for SexpNaError {}
 
 #[derive(Debug, Clone)]
+/// Unified conversion error when decoding an R `SEXP`.
 pub enum SexpError {
+    /// `SEXPTYPE` did not match the expected one.
     Type(SexpTypeError),
+    /// Length did not match the expected one.
     Length(SexpLengthError),
+    /// Missing value encountered where disallowed.
     Na(SexpNaError),
     /// Value is syntactically valid but semantically invalid (e.g. parse error).
     InvalidValue(String),
@@ -1413,6 +1423,11 @@ macro_rules! impl_ref_conversions_for {
             }
         }
 
+        /// # Safety note (aliasing)
+        ///
+        /// This impl can produce aliased `&mut` references if the same R object
+        /// is passed to multiple mutable parameters. The caller (generated wrapper)
+        /// is responsible for ensuring no two `&mut` borrows alias the same SEXP.
         impl TryFromSexp for &'static mut $t {
             type Error = SexpError;
 
@@ -1460,8 +1475,6 @@ macro_rules! impl_ref_conversions_for {
                 Ok(unsafe { &mut *ptr })
             }
         }
-
-        // Slice impls removed - now use blanket impls for &[T] and &mut [T]
 
         impl TryFromSexp for Option<&'static $t> {
             type Error = SexpError;
@@ -1827,6 +1840,12 @@ where
 }
 
 /// Blanket impl for `&mut [T]` where T: RNativeType
+///
+/// # Safety note (aliasing)
+///
+/// This impl can produce aliased `&mut` slices if the same R vector is passed
+/// to multiple mutable slice parameters. The caller is responsible for ensuring
+/// no two `&mut` borrows alias the same SEXP.
 impl<T> TryFromSexp for &mut [T]
 where
     T: crate::ffi::RNativeType + Copy,

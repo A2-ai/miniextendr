@@ -47,37 +47,53 @@ use std::fmt;
 pub enum StorageCoerceError {
     /// Conversion between these types is not supported.
     Unsupported {
+        /// Source Rust type name.
         from: &'static str,
+        /// Target storage type name.
         to: &'static str,
     },
     /// Value is out of range for the target type.
     OutOfRange {
+        /// Source Rust type name.
         from: &'static str,
+        /// Target storage type name.
         to: &'static str,
+        /// Failing element index for vector conversions.
         index: Option<usize>,
     },
     /// Value is non-finite (NaN or Inf) but target requires finite.
     NonFinite {
+        /// Target storage type name.
         to: &'static str,
+        /// Failing element index for vector conversions.
         index: Option<usize>,
     },
     /// Conversion would lose precision.
     PrecisionLoss {
+        /// Target storage type name.
         to: &'static str,
+        /// Failing element index for vector conversions.
         index: Option<usize>,
     },
     /// Float value is not integral but target is integer type.
     NotIntegral {
+        /// Target storage type name.
         to: &'static str,
+        /// Failing element index for vector conversions.
         index: Option<usize>,
     },
     /// Missing value (NA) cannot be represented in target type.
     MissingValue {
+        /// Target storage type name.
         to: &'static str,
+        /// Failing element index for vector conversions.
         index: Option<usize>,
     },
     /// Invalid UTF-8 in string conversion.
-    InvalidUtf8 { index: Option<usize> },
+    InvalidUtf8 {
+        /// Failing element index for vector conversions.
+        index: Option<usize>,
+    },
 }
 
 impl fmt::Display for StorageCoerceError {

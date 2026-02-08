@@ -619,6 +619,12 @@ pub struct ParsedImpl {
     /// For R6: active bindings are added via `$set("active", ...)` after class creation.
     /// For S7: properties are spliced from `.rdata_properties_{Type}` into `new_class()`.
     pub r_data_accessors: bool,
+    /// Strict conversion mode: methods returning lossy types use checked conversions.
+    pub strict: bool,
+    /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
+    pub internal: bool,
+    /// Suppress `@export` without adding `@keywords internal`.
+    pub noexport: bool,
 }
 
 /// Attributes on the impl block itself.
@@ -666,9 +672,20 @@ pub struct ImplAttrs {
     /// For R6: active bindings via `$set("active", ...)` post-creation.
     /// For S7: properties spliced from `.rdata_properties_{Type}`.
     pub r_data_accessors: bool,
+    // =========================================================================
+    // Strict conversion mode
+    // =========================================================================
+    /// When true, methods returning lossy types (i64/u64/isize/usize + Vec variants)
+    /// use `strict::checked_*()` instead of `IntoR::into_sexp()`, panicking on overflow.
+    pub strict: bool,
+    /// Mark class as internal: adds `@keywords internal`, suppresses `@export`.
+    pub internal: bool,
+    /// Suppress `@export` without adding `@keywords internal`.
+    pub noexport: bool,
 }
 
 impl syn::parse::Parse for ImplAttrs {
+    /// Parses `#[miniextendr(...)]` impl-level options.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let mut class_system = ClassSystem::Env;
         let mut class_name = None;
@@ -682,6 +699,9 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_parent = None;
         let mut s7_abstract = false;
         let mut r_data_accessors = false;
+        let mut strict = false;
+        let mut internal = false;
+        let mut noexport = false;
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
@@ -898,6 +918,12 @@ impl syn::parse::Parse for ImplAttrs {
                         }
                     }
                 }
+            } else if ident_str == "strict" {
+                strict = true;
+            } else if ident_str == "internal" {
+                internal = true;
+            } else if ident_str == "noexport" {
+                noexport = true;
             } else {
                 // This is a class system identifier
                 class_system = ident_str
@@ -924,6 +950,9 @@ impl syn::parse::Parse for ImplAttrs {
             s7_parent,
             s7_abstract,
             r_data_accessors,
+            strict,
+            internal,
+            noexport,
         })
     }
 }
@@ -1560,6 +1589,9 @@ impl ParsedImpl {
             s7_parent: attrs.s7_parent,
             s7_abstract: attrs.s7_abstract,
             r_data_accessors: attrs.r_data_accessors,
+            strict: attrs.strict,
+            internal: attrs.internal,
+            noexport: attrs.noexport,
         })
     }
 
@@ -1813,9 +1845,14 @@ pub fn generate_method_c_wrapper(
         builder = builder.rng();
     }
 
+    if parsed_impl.strict {
+        builder = builder.strict();
+    }
+
     builder.build().generate()
 }
 
+/// Returns true when the return type is syntactically `Result<_, _>`.
 fn output_is_result(output: &syn::ReturnType) -> bool {
     match output {
         syn::ReturnType::Type(_, ty) => matches!(
@@ -1843,7 +1880,11 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let mut lines = Vec::new();
 
     // Class environment documentation and definition
-    lines.extend(ClassDocBuilder::new(&class_name, type_ident, &parsed_impl.doc_tags, "").build());
+    lines.extend(
+        ClassDocBuilder::new(&class_name, type_ident, &parsed_impl.doc_tags, "")
+            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
+            .build(),
+    );
     lines.push(format!("{} <- new.env(parent = emptyenv())", class_name));
     lines.push(String::new());
 
@@ -1931,8 +1972,9 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // $ dispatch - export as S3 methods
     // Handles both functions (inherent methods) and environments (trait namespaces)
-    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal");
-    let should_export = !class_has_no_rd && !has_internal;
+    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let should_export = !class_has_no_rd && !has_internal && !parsed_impl.noexport;
 
     // Generate roxygen tags for dispatch methods
     if class_has_no_rd {
@@ -2003,6 +2045,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "R6")
             .with_imports("@importFrom R6 R6Class")
+            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
 
@@ -2342,6 +2385,10 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // S3 convention: lowercase constructor name
     let ctor_name = format!("new_{}", class_name.to_lowercase());
     let class_doc_tags = &parsed_impl.doc_tags;
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
 
     let mut lines = Vec::new();
 
@@ -2351,7 +2398,11 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         ctor_doc_tags.extend(class_doc_tags.iter().cloned());
         ctor_doc_tags.extend(ctx.method.doc_tags.iter().cloned());
 
-        lines.extend(ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "S3").build());
+        lines.extend(
+            ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "S3")
+                .with_export_control(parsed_impl.internal, parsed_impl.noexport)
+                .build(),
+        );
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
         lines.push(format!(
             "    structure({}, class = \"{}\")",
@@ -2387,7 +2438,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 "#' @source Generated by miniextendr from `{}::{}`",
                 type_ident, ctx.method.ident
             ));
-            lines.push("#' @export".to_string());
+            if should_export {
+                lines.push("#' @export".to_string());
+            }
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {{
     {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
@@ -2401,7 +2454,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             MethodDocBuilder::new(&class_name, &generic_name, type_ident, &ctx.method.doc_tags);
         lines.extend(method_doc.build());
         lines.push(format!("#' @method {} {}", generic_name, class_name));
-        lines.push("#' @export".to_string());
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
         lines.push(format!(
             "{} <- function({}) {{",
             s3_method_name, full_params
@@ -2458,8 +2513,9 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     // Create class environment for static methods and trait namespace compatibility
     // Check if class should be exported
     let has_no_rd = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "noRd");
-    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal");
-    let export_line = if !has_no_rd && !has_internal {
+    let has_internal = crate::roxygen::has_roxygen_tag(&parsed_impl.doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let export_line = if !has_no_rd && !has_internal && !parsed_impl.noexport {
         "#' @export\n"
     } else {
         ""
@@ -2578,8 +2634,9 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_doc_tags = &parsed_impl.doc_tags;
     // Check if class has @noRd - if so, skip method documentation and exports
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
-    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal");
-    let should_export = !class_has_no_rd && !class_has_internal;
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
 
     let mut lines = Vec::new();
 
@@ -2720,6 +2777,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S7")
             .with_imports(&imports)
+            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
 
@@ -2914,7 +2972,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         let generic_name = ctx.generic_name();
         let full_params = ctx.instance_formals(true); // adds x, ..., params
-        let call = ctx.instance_call("x@.ptr");
+        let method_attrs = &ctx.method.method_attrs;
+
+        // For fallback methods, use tryCatch to avoid slot-access errors on non-S7 objects
+        let self_expr = if method_attrs.s7_fallback {
+            "tryCatch(x@.ptr, error = function(e) x)"
+        } else {
+            "x@.ptr"
+        };
+        let call = ctx.instance_call(self_expr);
+
+        // Determine dispatch class (fallback -> class_any, normal -> class_name)
+        let method_class = if method_attrs.s7_fallback {
+            "S7::class_any".to_string()
+        } else {
+            class_name.clone()
+        };
 
         // Documentation - skip if class has @noRd
         if !class_has_no_rd {
@@ -2948,11 +3021,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let what = format!("{}.{}", generic_name, class_name);
             if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
                 lines.push(format!(
-                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {{ {prelude}; {return_expr} }}"
+                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {{ {prelude}; {return_expr} }}"
                 ));
             } else {
                 lines.push(format!(
-                    "S7::method({gen_name}, {class_name}) <- function({full_params}) {return_expr}"
+                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {return_expr}"
                 ));
             }
         } else {
@@ -2961,9 +3034,6 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             if should_export {
                 lines.push("#' @export".to_string());
             }
-
-            // Phase 3: Handle dispatch control attributes
-            let method_attrs = &ctx.method.method_attrs;
 
             // Determine dispatch arguments (default: "x", or custom via dispatch = "x,y")
             let dispatch_args = if let Some(ref dispatch) = method_attrs.s7_dispatch {
@@ -3014,14 +3084,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 .with_class_name(class_name.clone())
                 .build_s7_inline();
 
-            // Phase 3: Handle fallback (class_any) dispatch
-            let method_class = if method_attrs.s7_fallback {
-                "S7::class_any".to_string()
-            } else {
-                class_name.clone()
-            };
-
-            // Phase 3: Use matching formals for method (with or without ...)
+            // Use matching formals for method (with or without ...)
             let method_formals = ctx.instance_formals_with_dots(true, !method_attrs.s7_no_dots);
 
             // Inject lifecycle prelude if present
@@ -3178,8 +3241,9 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let class_doc_tags = &parsed_impl.doc_tags;
     // Check if class has @noRd - if so, skip method documentation and exports
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
-    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal");
-    let should_export = !class_has_no_rd && !class_has_internal;
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
 
     let mut lines = Vec::new();
 
@@ -3188,6 +3252,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.extend(
         ClassDocBuilder::new(&class_name, type_ident, class_doc_tags, "S4")
             .with_imports("@importFrom methods setClass setGeneric setMethod new")
+            .with_export_control(parsed_impl.internal, parsed_impl.noexport)
             .build(),
     );
     // Remove the @export that ClassDocBuilder adds (S4 doesn't export the class definition)
@@ -3350,6 +3415,10 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let type_ident = &parsed_impl.type_ident;
     let class_doc_tags = &parsed_impl.doc_tags;
     let vctrs_attrs = &parsed_impl.vctrs_attrs;
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
 
     // Constructor name follows vctrs convention: new_<class>
     let ctor_name = format!("new_{}", class_name.to_lowercase());
@@ -3365,6 +3434,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         lines.extend(
             ClassDocBuilder::new(&class_name, type_ident, &ctor_doc_tags, "vctrs S3")
                 .with_imports("@importFrom vctrs new_vctr new_rcrd new_list_of vec_ptype2 vec_cast vec_ptype_abbr")
+                .with_export_control(parsed_impl.internal, parsed_impl.noexport)
                 .build(),
         );
 
@@ -3413,7 +3483,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     if let Some(abbr) = &vctrs_attrs.abbr {
         lines.push(format!("#' @rdname {}", class_name));
         lines.push(format!("#' @method vec_ptype_abbr {}", class_name));
-        lines.push("#' @export".to_string());
+        if should_export {
+            lines.push("#' @export".to_string());
+        }
         lines.push(format!(
             "vec_ptype_abbr.{} <- function(x, ...) \"{}\"",
             class_name, abbr
@@ -3431,7 +3503,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(format!("#' @param x A {} vector.", class_name));
     lines.push(format!("#' @param y A {} vector.", class_name));
     lines.push("#' @param ... Additional arguments (unused).".to_string());
-    lines.push("#' @export".to_string());
+    if should_export {
+        lines.push("#' @export".to_string());
+    }
     match vctrs_attrs.kind {
         VctrsKind::Vctr => {
             let base_type = vctrs_attrs
@@ -3479,7 +3553,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(format!("#' @param x A {} vector to cast.", class_name));
     lines.push(format!("#' @param to A {} prototype.", class_name));
     lines.push("#' @param ... Additional arguments (unused).".to_string());
-    lines.push("#' @export".to_string());
+    if should_export {
+        lines.push("#' @export".to_string());
+    }
     lines.push(format!(
         "vec_cast.{c}.{c} <- function(x, to, ...) x",
         c = class_name
@@ -3516,7 +3592,9 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 "#' @source Generated by miniextendr from `{}::{}`",
                 type_ident, ctx.method.ident
             ));
-            lines.push("#' @export".to_string());
+            if should_export {
+                lines.push("#' @export".to_string());
+            }
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {{
     {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
@@ -3609,8 +3687,9 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
     // Check if class has @noRd - if so, skip documentation
     let class_doc_tags = &parsed_impl.doc_tags;
     let class_has_no_rd = crate::roxygen::has_roxygen_tag(class_doc_tags, "noRd");
-    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal");
-    let should_export = !class_has_no_rd && !class_has_internal;
+    let class_has_internal = crate::roxygen::has_roxygen_tag(class_doc_tags, "keywords internal")
+        || parsed_impl.internal;
+    let should_export = !class_has_no_rd && !class_has_internal && !parsed_impl.noexport;
 
     let mut lines = Vec::new();
 
@@ -3766,10 +3845,17 @@ pub fn expand_impl(
         "See [`{}`] for the generated R wrapper code.",
         r_wrappers_const
     );
+    let source_loc_doc = crate::source_location_doc(type_ident.span());
+    let source_start = type_ident.span().start();
+    let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), type_ident.span());
+    let source_col_lit =
+        syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
 
     let expanded = quote! {
         // Original impl block with doc link to R wrapper
         #[doc = #r_wrapper_doc]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #original_impl
 
         // C wrappers and call method defs
@@ -3777,10 +3863,34 @@ pub fn expand_impl(
 
         // R wrapper constant
         #(#cfg_attrs)*
-        const #r_wrappers_const: &str = #r_wrapper_str;
+        #[doc = concat!(
+            "R wrapper code for impl block on `",
+            stringify!(#type_ident),
+            "`."
+        )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        const #r_wrappers_const: &str =
+            concat!(
+                "# Generated from Rust source file: ",
+                file!(),
+                ":",
+                #source_line_lit,
+                ":",
+                #source_col_lit,
+                "\n",
+                #r_wrapper_str
+            );
 
         // Call method def array for module registration
         #(#cfg_attrs)*
+        #[doc = concat!(
+            "Call method definition array for impl block on `",
+            stringify!(#type_ident),
+            "`."
+        )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         const #call_defs_const: [::miniextendr_api::ffi::R_CallMethodDef; #call_defs_len_lit] =
             [#(#call_def_idents),*];

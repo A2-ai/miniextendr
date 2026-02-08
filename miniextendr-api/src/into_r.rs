@@ -329,6 +329,48 @@ impl IntoR for Option<bool> {
     }
 }
 
+/// Macro for NA-aware `Option<T> → R` smart scalar conversion.
+/// Checks if value fits i32 → INTSXP with NA_INTEGER for None,
+/// otherwise REALSXP with NA_REAL for None.
+macro_rules! impl_option_smart_i64_into_r {
+    ($t:ty, $fits_i32:expr) => {
+        impl IntoR for Option<$t> {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                match self {
+                    Some(x) if $fits_i32(x) => (x as i32).into_sexp(),
+                    Some(x) => (x as f64).into_sexp(),
+                    None => unsafe { crate::ffi::Rf_ScalarInteger(NA_INTEGER) },
+                }
+            }
+        }
+    };
+}
+
+impl_option_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
+impl_option_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
+impl_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
+    && x <= i32::MAX as isize);
+impl_option_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
+
+/// Macro for `Option<T>` where `T` coerces to a type with existing Option impl.
+macro_rules! impl_option_coerce_into_r {
+    ($from:ty => $to:ty) => {
+        impl IntoR for Option<$from> {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                self.map(|x| x as $to).into_sexp()
+            }
+        }
+    };
+}
+
+impl_option_coerce_into_r!(i8 => i32);
+impl_option_coerce_into_r!(i16 => i32);
+impl_option_coerce_into_r!(u16 => i32);
+impl_option_coerce_into_r!(u32 => i64); // delegates to smart i64 path
+impl_option_coerce_into_r!(f32 => f64);
+
 impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -1311,6 +1353,57 @@ macro_rules! impl_vec_option_into_r {
 impl_vec_option_into_r!(f64, REALSXP, REAL, NA_REAL); // NA_real_
 impl_vec_option_into_r!(i32, INTSXP, INTEGER, NA_INTEGER); // NA_integer_
 
+/// Macro for NA-aware `Vec<Option<T>> → R` smart vector conversion.
+/// Checks if all non-None values fit i32 → INTSXP, otherwise REALSXP.
+macro_rules! impl_vec_option_smart_i64_into_r {
+    ($t:ty, $fits_i32:expr) => {
+        impl IntoR for Vec<Option<$t>> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                if self.iter().all(|opt| match opt {
+                    Some(x) => $fits_i32(*x),
+                    None => true,
+                }) {
+                    // All values fit i32 — emit INTSXP with NA_INTEGER for None
+                    let coerced: Vec<Option<i32>> =
+                        self.into_iter().map(|opt| opt.map(|x| x as i32)).collect();
+                    coerced.into_sexp()
+                } else {
+                    // Some values overflow — emit REALSXP with NA_REAL for None
+                    let coerced: Vec<Option<f64>> =
+                        self.into_iter().map(|opt| opt.map(|x| x as f64)).collect();
+                    coerced.into_sexp()
+                }
+            }
+        }
+    };
+}
+
+// i32::MIN is NA_integer_ in R, so exclude it
+impl_vec_option_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
+impl_vec_option_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
+impl_vec_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
+    && x <= i32::MAX as isize);
+impl_vec_option_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
+
+/// Macro for `Vec<Option<T>>` where `T` coerces to a type with existing Option impl.
+macro_rules! impl_vec_option_coerce_into_r {
+    ($from:ty => $to:ty) => {
+        impl IntoR for Vec<Option<$from>> {
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                let coerced: Vec<Option<$to>> =
+                    self.into_iter().map(|opt| opt.map(|x| x as $to)).collect();
+                coerced.into_sexp()
+            }
+        }
+    };
+}
+
+impl_vec_option_coerce_into_r!(i8 => i32);
+impl_vec_option_coerce_into_r!(i16 => i32);
+impl_vec_option_coerce_into_r!(u16 => i32);
+impl_vec_option_coerce_into_r!(u32 => i64); // delegates to smart i64 path
+impl_vec_option_coerce_into_r!(f32 => f64);
+
 /// Convert `Vec<bool>` to R logical vector.
 impl IntoR for Vec<bool> {
     fn into_sexp(self) -> crate::ffi::SEXP {
@@ -1797,7 +1890,13 @@ where
         let cls = <T as crate::altrep::RegisterAltrep>::get_or_init_class();
         let ext_ptr = crate::externalptr::ExternalPtr::new(self.0);
         let data1 = ext_ptr.as_sexp();
-        unsafe { crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null()) }
+        // Protect data1 across R_new_altrep — it may allocate and trigger GC.
+        unsafe {
+            crate::ffi::Rf_protect_unchecked(data1);
+            let out = crate::ffi::altrep::R_new_altrep(cls, data1, crate::ffi::SEXP::null());
+            crate::ffi::Rf_unprotect_unchecked(1);
+            out
+        }
     }
 }
 

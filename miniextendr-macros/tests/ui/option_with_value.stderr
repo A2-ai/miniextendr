@@ -1,4 +1,4 @@
-error: unknown option; expected `return`, `dots`, or `lifecycle`
+error: unknown option; expected `return`, `dots`, `lifecycle`, or `doc`
  --> tests/ui/option_with_value.rs:5:15
   |
 5 | #[miniextendr(invisible = true)]

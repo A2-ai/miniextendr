@@ -565,6 +565,17 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) dots_span: Option<proc_macro2::Span>,
     /// Lifecycle specification for deprecation/experimental status.
     pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
+    /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
+    pub(crate) strict: bool,
+    /// Mark as internal: adds `@keywords internal`, suppresses `@export`.
+    pub(crate) internal: bool,
+    /// Suppress `@export` without adding `@keywords internal`.
+    pub(crate) noexport: bool,
+    /// Custom roxygen documentation override.
+    ///
+    /// When set, replaces auto-extracted roxygen from Rust doc comments.
+    /// Each `\n` in the string becomes a separate `#'` line.
+    pub(crate) doc: Option<String>,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -611,10 +622,16 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.unwrap_in_r = true;
                         } else if ident == "worker" {
                             out.force_worker = true;
+                        } else if ident == "strict" {
+                            out.strict = true;
+                        } else if ident == "internal" {
+                            out.internal = true;
+                        } else if ident == "noexport" {
+                            out.noexport = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, strict, internal, noexport",
                             ));
                         }
                     }
@@ -678,10 +695,30 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         )? {
                             out.lifecycle = Some(spec);
                         }
+                    } else if nv.path.is_ident("doc") {
+                        // doc = "custom roxygen documentation"
+                        match &nv.value {
+                            syn::Expr::Lit(expr_lit) => {
+                                if let syn::Lit::Str(lit) = &expr_lit.lit {
+                                    out.doc = Some(lit.value());
+                                } else {
+                                    return Err(syn::Error::new_spanned(
+                                        &expr_lit.lit,
+                                        "doc expects a string literal",
+                                    ));
+                                }
+                            }
+                            other => {
+                                return Err(syn::Error::new_spanned(
+                                    other,
+                                    "doc expects a string literal",
+                                ));
+                            }
+                        }
                     } else {
                         return Err(syn::Error::new_spanned(
                             nv,
-                            "unknown option; expected `return`, `dots`, or `lifecycle`",
+                            "unknown option; expected `return`, `dots`, `lifecycle`, or `doc`",
                         ));
                     }
                 }

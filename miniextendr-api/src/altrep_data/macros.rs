@@ -11,13 +11,15 @@ macro_rules! impl_inferbase_integer {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altinteger_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::Int)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
@@ -40,13 +42,15 @@ macro_rules! impl_inferbase_real {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altreal_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::Real)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
@@ -69,13 +73,15 @@ macro_rules! impl_inferbase_logical {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altlogical_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::Logical)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
@@ -98,13 +104,15 @@ macro_rules! impl_inferbase_raw {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altraw_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::Raw)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
@@ -127,13 +135,15 @@ macro_rules! impl_inferbase_string {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altstring_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::String)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
@@ -156,13 +166,15 @@ macro_rules! impl_inferbase_complex {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altcomplex_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::Complex)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
@@ -185,13 +197,15 @@ macro_rules! impl_inferbase_list {
                 class_name: *const i8,
                 pkg_name: *const i8,
             ) -> $crate::ffi::altrep::R_altrep_class_t {
-                unsafe {
+                let cls = unsafe {
                     $crate::ffi::altrep::R_make_altlist_class(
                         class_name,
                         pkg_name,
                         core::ptr::null_mut(),
                     )
-                }
+                };
+                let name = unsafe { ::core::ffi::CStr::from_ptr(class_name) };
+                $crate::altrep::validate_altrep_class(cls, name, $crate::altrep::RBase::List)
             }
 
             unsafe fn install_methods(cls: $crate::ffi::altrep::R_altrep_class_t) {
