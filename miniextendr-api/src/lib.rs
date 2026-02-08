@@ -724,6 +724,11 @@ pub use optionals::sha2_impl;
 #[cfg(feature = "sha2")]
 pub use optionals::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
 
+#[cfg(feature = "borsh")]
+pub use optionals::borsh_impl;
+#[cfg(feature = "borsh")]
+pub use optionals::{Borsh, RBorshOps, borsh_from_raw, borsh_to_raw};
+
 #[cfg(feature = "bitflags")]
 pub use optionals::bitflags_impl;
 #[cfg(feature = "bitflags")]
