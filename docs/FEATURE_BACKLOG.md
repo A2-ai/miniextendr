@@ -3,29 +3,44 @@
 This document lists practical feature candidates for upcoming maintenance cycles.
 Items are scoped to be incremental and compatible with the current architecture.
 
+## Completed
+
+### 1. Harden ALTREP registration diagnostics ✓
+
+- `validate_altrep_class()` checks for null handles after `R_make_alt*_class()`.
+- Wired into `make_class_by_base()`, all 7 `impl_inferbase_*` macros, and
+  explicit-base codegen path.
+
+### 2. Structured panic telemetry hook ✓
+
+- `panic_telemetry` module with `PanicSource` enum and optional hook via `AtomicPtr`.
+- `fire()` called at all 3 panic→R-error sites (worker, altrep_bridge, unwind_protect).
+- Zero overhead when no hook is set (single atomic load).
+
+### 3. Strict conversion mode (outputs, standalone fns) ✓
+
+- `#[miniextendr(strict)]` on standalone functions panics instead of silently
+  widening i64/u64/isize/usize to f64.
+- `strict` module with `checked_into_sexp_*` helpers.
+- Codegen wired via `return_type_analysis.rs` for lossy scalar and `Vec` return types.
+- Impl method support deferred (uses separate `CWrapperContext` codegen path).
+
 ## Active: Next Up
 
-### 1. Harden ALTREP registration diagnostics
+### 4. Strict conversion mode — impl methods
 
-- **Goal:** make class-registration failures actionable in package init logs.
-- **Scope:** validate `R_make_alt*` return values; include class name, base type, and
-  missing required callbacks in error output.
-- **Effort:** Low — add validation in `altrep_bridge.rs` install methods.
+- **Goal:** extend `#[miniextendr(strict)]` to impl block methods.
+- **Scope:** add `strict` field to `CWrapperContext`/builder, modify
+  `generate_return_handling` and `generate_worker_return_handling` to emit
+  `strict::checked_*()` for lossy return types when strict is set.
+- **Effort:** Medium — mirrors standalone fn approach but in the builder path.
 
-### 2. Strict conversion mode
+### 5. Strict conversion mode — inputs (TryCoerce)
 
-- **Goal:** fail fast on lossy numeric coercions at wrapper boundaries.
-- **Scope:** `#[miniextendr(strict)]` attribute that toggles conversion policy.
-  Infrastructure already exists (`StorageCoerceError`, `into_r_as`).
-- **Effort:** Medium — wrapper generation in macros + conversion path selection.
-- **Open questions:** inputs only, outputs only, or both?
-
-### 3. Structured panic telemetry hook
-
-- **Goal:** capture panic class (`panic`, `r_error`, `thread_violation`) and function id.
-- **Scope:** optional callback in `worker` between `catch_unwind` and error-raise.
-  Worker already captures panics; this adds a structured hook point.
-- **Effort:** Low — hook sits between panic capture and `panic_message_to_r_error()`.
+- **Goal:** opt-in strict input coercion that rejects lossy narrowing.
+- **Scope:** `#[miniextendr(strict)]` also affects parameter conversion,
+  using `TryCoerce` or a similar mechanism to reject widening inputs.
+- **Effort:** Medium — needs design for how strict inputs interact with coerce.
 
 ## Parked: Needs Evidence
 
