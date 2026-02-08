@@ -35,6 +35,35 @@ pub fn bytes_slice(data: Bytes, start: i32, end: i32) -> Bytes {
     data.slice(start as usize..end as usize)
 }
 
+/// Empty bytes roundtrip
+/// @noRd
+#[miniextendr]
+pub fn bytes_empty() -> Bytes {
+    Bytes::new()
+}
+
+/// Empty bytes length
+/// @noRd
+#[miniextendr]
+pub fn bytes_empty_len() -> i32 {
+    Bytes::new().len() as i32
+}
+
+/// Large buffer roundtrip (1000 bytes)
+/// @noRd
+#[miniextendr]
+pub fn bytes_large() -> Bytes {
+    Bytes::from(vec![0xABu8; 1000])
+}
+
+/// Binary roundtrip: all byte values 0x00..0xFF
+/// @noRd
+#[miniextendr]
+pub fn bytes_all_values() -> Bytes {
+    let data: Vec<u8> = (0..=255).collect();
+    Bytes::from(data)
+}
+
 miniextendr_module! {
     mod bytes_adapter_tests;
     fn bytes_roundtrip;
@@ -42,4 +71,8 @@ miniextendr_module! {
     fn bytes_mut_roundtrip;
     fn bytes_concat;
     fn bytes_slice;
+    fn bytes_empty;
+    fn bytes_empty_len;
+    fn bytes_large;
+    fn bytes_all_values;
 }

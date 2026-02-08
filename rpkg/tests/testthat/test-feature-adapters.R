@@ -123,6 +123,31 @@ test_that("time_get_day extracts day", {
   expect_equal(time_get_day(date), 15L)
 })
 
+test_that("time_epoch_date returns 1970-01-01", {
+  skip_if_missing_feature("time")
+  result <- time_epoch_date()
+  expect_equal(result, as.Date("1970-01-01"))
+})
+
+test_that("time_epoch_posixct returns epoch datetime", {
+  skip_if_missing_feature("time")
+  result <- time_epoch_posixct()
+  expect_equal(as.numeric(result), 0, tolerance = 1)
+})
+
+test_that("time_distant_past handles 1900-01-01", {
+  skip_if_missing_feature("time")
+  result <- time_distant_past()
+  expect_equal(time_get_year(result), 1900L)
+})
+
+test_that("time_format_date formats with custom pattern", {
+  skip_if_missing_feature("time")
+  date <- as.Date("2024-12-25")
+  result <- time_format_date(date)
+  expect_equal(result, "2024-12-25")
+})
+
 # =============================================================================
 # OrderedFloat feature tests
 # =============================================================================
@@ -160,6 +185,31 @@ test_that("ordered_float_is_finite works", {
   expect_true(ordered_float_is_finite(3.14))
   expect_false(ordered_float_is_finite(Inf))
   expect_false(ordered_float_is_finite(NaN))
+})
+
+test_that("ordered_float_inf returns Inf", {
+  skip_if_missing_feature("ordered-float")
+  expect_equal(ordered_float_inf(), Inf)
+})
+
+test_that("ordered_float_neg_inf returns -Inf", {
+  skip_if_missing_feature("ordered-float")
+  expect_equal(ordered_float_neg_inf(), -Inf)
+})
+
+test_that("ordered_float_neg_zero equals positive zero", {
+  skip_if_missing_feature("ordered-float")
+  expect_equal(ordered_float_neg_zero(), 0)
+})
+
+test_that("ordered_float_sort_special orders -Inf < normal < Inf < NaN", {
+  skip_if_missing_feature("ordered-float")
+  result <- ordered_float_sort_special(c(3.0, -Inf, NaN, 1.0, Inf))
+  expect_equal(result[1], -Inf)
+  expect_equal(result[2], 1.0)
+  expect_equal(result[3], 3.0)
+  expect_equal(result[4], Inf)
+  expect_true(is.nan(result[5]))
 })
 
 # =============================================================================
@@ -284,6 +334,32 @@ test_that("indexmap_len returns correct length", {
   expect_equal(indexmap_len(list()), 0L)
 })
 
+test_that("indexmap_empty returns empty named list", {
+  skip_if_missing_feature("indexmap")
+  result <- indexmap_empty()
+  expect_equal(length(result), 0L)
+})
+
+test_that("indexmap_duplicate_key keeps last value", {
+  skip_if_missing_feature("indexmap")
+  result <- indexmap_duplicate_key()
+  expect_equal(result$key, 2L)
+  expect_equal(length(result), 1L)
+})
+
+test_that("indexmap_order_preserved returns keys in insertion order", {
+  skip_if_missing_feature("indexmap")
+  result <- indexmap_order_preserved()
+  expect_equal(result, c("z", "a", "m", "b"))
+})
+
+test_that("indexmap_single handles single entry", {
+  skip_if_missing_feature("indexmap")
+  result <- indexmap_single()
+  expect_equal(result$only, "value")
+  expect_equal(length(result), 1L)
+})
+
 # =============================================================================
 # Bytes feature tests
 # =============================================================================
@@ -321,6 +397,32 @@ test_that("bytes_slice extracts subrange", {
   data <- as.raw(c(10, 20, 30, 40, 50))
   result <- bytes_slice(data, 1L, 4L)
   expect_equal(result, as.raw(c(20, 30, 40)))
+})
+
+test_that("bytes_empty returns empty raw vector", {
+  skip_if_missing_feature("bytes")
+  result <- bytes_empty()
+  expect_equal(result, raw(0))
+})
+
+test_that("bytes_empty_len returns 0", {
+  skip_if_missing_feature("bytes")
+  expect_equal(bytes_empty_len(), 0L)
+})
+
+test_that("bytes_large handles 1000-byte buffer", {
+  skip_if_missing_feature("bytes")
+  result <- bytes_large()
+  expect_equal(length(result), 1000L)
+  expect_true(all(result == as.raw(0xAB)))
+})
+
+test_that("bytes_all_values roundtrips 0x00..0xFF", {
+  skip_if_missing_feature("bytes")
+  result <- bytes_all_values()
+  expect_equal(length(result), 256L)
+  expect_equal(result[1], as.raw(0x00))
+  expect_equal(result[256], as.raw(0xFF))
 })
 
 # =============================================================================
@@ -366,6 +468,32 @@ test_that("bitflags_union combines flags", {
   expect_equal(bitflags_union(4L, 1L), 5L)
 })
 
+test_that("bitflags_intersect computes AND", {
+  skip_if_missing_feature("bitflags")
+  # READ|WRITE (3) & READ (1) = READ (1)
+  expect_equal(bitflags_intersect(3L, 1L), 1L)
+  # READ (1) & WRITE (2) = 0 (empty)
+  expect_equal(bitflags_intersect(1L, 2L), 0L)
+})
+
+test_that("bitflags_empty returns 0", {
+  skip_if_missing_feature("bitflags")
+  expect_equal(bitflags_empty(), 0L)
+})
+
+test_that("bitflags_all returns all flags combined", {
+  skip_if_missing_feature("bitflags")
+  # READ|WRITE|EXECUTE = 7
+  expect_equal(bitflags_all(), 7L)
+})
+
+test_that("bitflags_has_execute checks EXECUTE flag", {
+  skip_if_missing_feature("bitflags")
+  expect_true(bitflags_has_execute(4L))   # EXECUTE
+  expect_true(bitflags_has_execute(7L))   # ALL
+  expect_false(bitflags_has_execute(3L))  # READ|WRITE
+})
+
 # =============================================================================
 # Bitvec feature tests
 # =============================================================================
@@ -402,6 +530,31 @@ test_that("bitvec_len returns correct length", {
   expect_equal(bitvec_len(logical(0)), 0L)
 })
 
+test_that("bitvec_empty returns empty logical", {
+  skip_if_missing_feature("bitvec")
+  result <- bitvec_empty()
+  expect_equal(length(result), 0L)
+})
+
+test_that("bitvec_all_ones creates all-TRUE vector", {
+  skip_if_missing_feature("bitvec")
+  result <- bitvec_all_ones(5L)
+  expect_equal(result, rep(TRUE, 5))
+})
+
+test_that("bitvec_all_zeros creates all-FALSE vector", {
+  skip_if_missing_feature("bitvec")
+  result <- bitvec_all_zeros(4L)
+  expect_equal(result, rep(FALSE, 4))
+})
+
+test_that("bitvec_toggle flips all bits", {
+  skip_if_missing_feature("bitvec")
+  input <- c(TRUE, FALSE, TRUE, FALSE)
+  result <- bitvec_toggle(input)
+  expect_equal(result, c(FALSE, TRUE, FALSE, TRUE))
+})
+
 # =============================================================================
 # TinyVec feature tests
 # =============================================================================
@@ -434,6 +587,30 @@ test_that("arrayvec_roundtrip_dbl preserves double vector", {
   skip_if_missing_feature("tinyvec")
   x <- c(1.5, 2.5, 3.5)
   expect_equal(arrayvec_roundtrip_dbl(x), x)
+})
+
+test_that("tinyvec_empty returns empty integer vector", {
+  skip_if_missing_feature("tinyvec")
+  result <- tinyvec_empty()
+  expect_equal(result, integer(0))
+})
+
+test_that("tinyvec_at_capacity returns 8 elements (inline)", {
+  skip_if_missing_feature("tinyvec")
+  result <- tinyvec_at_capacity()
+  expect_equal(result, 1:8)
+})
+
+test_that("tinyvec_over_capacity handles heap spillover", {
+  skip_if_missing_feature("tinyvec")
+  result <- tinyvec_over_capacity()
+  expect_equal(result, 1:20)
+})
+
+test_that("arrayvec_empty returns empty integer vector", {
+  skip_if_missing_feature("tinyvec")
+  result <- arrayvec_empty()
+  expect_equal(result, integer(0))
 })
 
 # =============================================================================
@@ -472,6 +649,31 @@ test_that("sha2_sha256 is deterministic", {
   skip_if_missing_feature("sha2")
   expect_equal(sha2_sha256("hello"), sha2_sha256("hello"))
   expect_false(sha2_sha256("hello") == sha2_sha256("world"))
+})
+
+test_that("sha2_sha256_hello returns known hash", {
+  skip_if_missing_feature("sha2")
+  expect_equal(
+    sha2_sha256_hello(),
+    "b94d27b9934d3e08a52e52d7da7dabfac484efe37a5380ee9088f7ace2efcde9"
+  )
+})
+
+test_that("sha2_sha256_large handles large input", {
+  skip_if_missing_feature("sha2")
+  result <- sha2_sha256_large()
+  expect_equal(nchar(result), 64L)
+})
+
+test_that("sha2_sha256_binary_content handles special chars", {
+  skip_if_missing_feature("sha2")
+  result <- sha2_sha256_binary_content()
+  expect_equal(nchar(result), 64L)
+})
+
+test_that("sha2_different_inputs_differ returns TRUE", {
+  skip_if_missing_feature("sha2")
+  expect_true(sha2_different_inputs_differ())
 })
 
 # =============================================================================
@@ -513,6 +715,34 @@ test_that("url_is_valid checks URL validity", {
   expect_false(url_is_valid("not a url"))
 })
 
+test_that("url_query extracts query params", {
+  skip_if_missing_feature("url")
+  expect_equal(url_query("https://example.com/path?key=value"), "key=value")
+  expect_true(is.na(url_query("https://example.com/path")))
+})
+
+test_that("url_fragment extracts fragment", {
+  skip_if_missing_feature("url")
+  expect_equal(url_fragment("https://example.com/path#section"), "section")
+  expect_true(is.na(url_fragment("https://example.com/path")))
+})
+
+test_that("url_port_or_default returns known defaults", {
+  skip_if_missing_feature("url")
+  expect_equal(url_port_or_default("https://example.com"), 443L)
+  expect_equal(url_port_or_default("http://example.com"), 80L)
+})
+
+test_that("url_full_components extracts all parts", {
+  skip_if_missing_feature("url")
+  parts <- url_full_components()
+  expect_equal(parts[1], "https")
+  expect_equal(parts[2], "example.com")
+  expect_equal(parts[3], "/path")
+  expect_equal(parts[4], "q=1")
+  expect_equal(parts[5], "frag")
+})
+
 # =============================================================================
 # Aho-Corasick feature tests
 # =============================================================================
@@ -547,6 +777,30 @@ test_that("aho_test_count handles multiple patterns", {
   skip_if_missing_feature("aho-corasick")
   # "she" matches twice in "she sells seashells" (non-overlapping)
   expect_equal(aho_test_count(c("he", "she"), "she sells seashells"), 2L)
+})
+
+test_that("aho_test_no_match returns 0 for no matches", {
+  skip_if_missing_feature("aho-corasick")
+  expect_equal(aho_test_no_match(c("xyz"), "hello world"), 0L)
+})
+
+test_that("aho_test_overlapping handles overlapping patterns", {
+  skip_if_missing_feature("aho-corasick")
+  # "she" contains "he" in standard semantics
+  result <- aho_test_overlapping("she")
+  expect_true(result >= 1L)
+})
+
+test_that("aho_test_unicode matches unicode patterns", {
+  skip_if_missing_feature("aho-corasick")
+  expect_true(aho_test_unicode(c("\u00e9"), "caf\u00e9"))
+  expect_false(aho_test_unicode(c("\u00e9"), "cafe"))
+})
+
+test_that("aho_test_replace_empty deletes matched patterns", {
+  skip_if_missing_feature("aho-corasick")
+  result <- aho_test_replace_empty(c("world"), "hello world")
+  expect_equal(result, "hello ")
 })
 
 # =============================================================================
@@ -586,6 +840,35 @@ test_that("toml_table_keys extracts keys", {
   expect_true("beta" %in% keys)
 })
 
+test_that("toml_nested_keys extracts top-level keys from nested TOML", {
+  skip_if_missing_feature("toml")
+  input <- '[server]\nhost = "localhost"\nport = 8080'
+  keys <- toml_nested_keys(input)
+  expect_true("server" %in% keys)
+})
+
+test_that("toml_array_of_tables serializes array of tables", {
+  skip_if_missing_feature("toml")
+  result <- toml_array_of_tables()
+  expect_type(result, "character")
+  expect_true(grepl("items", result))
+})
+
+test_that("toml_parse_invalid returns error for bad TOML", {
+  skip_if_missing_feature("toml")
+  result <- toml_parse_invalid("invalid toml [")
+  expect_true(grepl("error:", result))
+})
+
+test_that("toml_mixed_types handles bool, int, and string", {
+  skip_if_missing_feature("toml")
+  result <- toml_mixed_types()
+  expect_type(result, "character")
+  expect_true(grepl("flag", result))
+  expect_true(grepl("count", result))
+  expect_true(grepl("name", result))
+})
+
 # =============================================================================
 # Tabled feature tests
 # =============================================================================
@@ -605,6 +888,39 @@ test_that("tabled_from_vecs creates table from vectors", {
   expect_type(result, "character")
   expect_true(grepl("Col1", result))
   expect_true(grepl("Col2", result))
+})
+
+test_that("tabled_empty_rows returns headers-only table", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_empty_rows()
+  expect_type(result, "character")
+  expect_true(grepl("Name", result))
+  expect_true(grepl("Value", result))
+})
+
+test_that("tabled_many_columns handles wide tables", {
+  skip_if_missing_feature("tabled")
+  headers <- c("A", "B", "C", "D", "E", "F", "G", "H")
+  result <- tabled_many_columns(headers)
+  expect_type(result, "character")
+  for (h in headers) {
+    expect_true(grepl(h, result))
+  }
+})
+
+test_that("tabled_special_chars handles pipes and unicode", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_special_chars()
+  expect_type(result, "character")
+  expect_true(nchar(result) > 0)
+})
+
+test_that("tabled_single_cell creates minimal table", {
+  skip_if_missing_feature("tabled")
+  result <- tabled_single_cell()
+  expect_type(result, "character")
+  expect_true(grepl("Only", result))
+  expect_true(grepl("cell", result))
 })
 
 # =============================================================================
@@ -699,6 +1015,30 @@ test_that("either_make_left returns integer", {
 test_that("either_make_right returns string", {
   skip_if_missing_feature("either")
   expect_equal(either_make_right("test"), "test")
+})
+
+test_that("either_is_left detects integer variant", {
+  skip_if_missing_feature("either")
+  expect_true(either_is_left(42L))
+  expect_false(either_is_left("hello"))
+})
+
+test_that("either_is_right detects string variant", {
+  skip_if_missing_feature("either")
+  expect_true(either_is_right("hello"))
+  expect_false(either_is_right(42L))
+})
+
+test_that("either_nested handles bool/int/string", {
+  skip_if_missing_feature("either")
+  expect_equal(either_nested(TRUE), "bool:true")
+  expect_equal(either_nested(42L), "int:42")
+  expect_equal(either_nested("hello"), "str:hello")
+})
+
+test_that("either_zero returns 0 as Left variant", {
+  skip_if_missing_feature("either")
+  expect_equal(either_zero(), 0L)
 })
 
 # =============================================================================

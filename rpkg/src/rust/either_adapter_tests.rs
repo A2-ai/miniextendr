@@ -36,10 +36,48 @@ pub fn either_make_right(s: String) -> Either<i32, String> {
     Either::Right(s)
 }
 
+/// Check if the value was parsed as Left (integer)
+/// @noRd
+#[miniextendr]
+pub fn either_is_left(value: Either<i32, String>) -> bool {
+    value.is_left()
+}
+
+/// Check if the value was parsed as Right (string)
+/// @noRd
+#[miniextendr]
+pub fn either_is_right(value: Either<i32, String>) -> bool {
+    value.is_right()
+}
+
+/// Nested either: Either<bool, Either<i32, String>>
+/// @noRd
+#[miniextendr]
+pub fn either_nested(value: Either<bool, Either<i32, String>>) -> String {
+    match value {
+        Either::Left(b) => format!("bool:{b}"),
+        Either::Right(inner) => match inner {
+            Either::Left(n) => format!("int:{n}"),
+            Either::Right(s) => format!("str:{s}"),
+        },
+    }
+}
+
+/// Either with zero value (edge case for i32)
+/// @noRd
+#[miniextendr]
+pub fn either_zero() -> Either<i32, String> {
+    Either::Left(0)
+}
+
 miniextendr_module! {
     mod either_adapter_tests;
     fn either_int_or_str;
     fn either_dbl_or_vec;
     fn either_make_left;
     fn either_make_right;
+    fn either_is_left;
+    fn either_is_right;
+    fn either_nested;
+    fn either_zero;
 }

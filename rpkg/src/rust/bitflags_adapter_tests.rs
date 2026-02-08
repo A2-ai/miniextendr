@@ -49,6 +49,34 @@ pub fn bitflags_union(a: RFlags<Perms>, b: RFlags<Perms>) -> RFlags<Perms> {
     RFlags::from(*a | *b)
 }
 
+/// Intersect two flags (bitwise AND)
+/// @noRd
+#[miniextendr]
+pub fn bitflags_intersect(a: RFlags<Perms>, b: RFlags<Perms>) -> RFlags<Perms> {
+    RFlags::from(*a & *b)
+}
+
+/// Empty flags (no bits set)
+/// @noRd
+#[miniextendr]
+pub fn bitflags_empty() -> i32 {
+    flags_to_i32(Perms::empty()).unwrap()
+}
+
+/// All flags combined
+/// @noRd
+#[miniextendr]
+pub fn bitflags_all() -> i32 {
+    flags_to_i32(Perms::all()).unwrap()
+}
+
+/// Check EXECUTE flag
+/// @noRd
+#[miniextendr]
+pub fn bitflags_has_execute(flags: RFlags<Perms>) -> bool {
+    flags.contains(Perms::EXECUTE)
+}
+
 miniextendr_module! {
     mod bitflags_adapter_tests;
     fn bitflags_roundtrip;
@@ -57,4 +85,8 @@ miniextendr_module! {
     fn bitflags_has_read;
     fn bitflags_has_write;
     fn bitflags_union;
+    fn bitflags_intersect;
+    fn bitflags_empty;
+    fn bitflags_all;
+    fn bitflags_has_execute;
 }

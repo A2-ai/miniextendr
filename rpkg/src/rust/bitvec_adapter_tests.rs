@@ -38,6 +38,38 @@ pub fn bitvec_len(bits: RBitVec) -> i32 {
     bits.len() as i32
 }
 
+/// Empty bitvec roundtrip
+/// @noRd
+#[miniextendr]
+pub fn bitvec_empty() -> RBitVec {
+    RBitVec::new()
+}
+
+/// All-ones bitvec
+/// @noRd
+#[miniextendr]
+pub fn bitvec_all_ones(n: i32) -> RBitVec {
+    RBitVec::repeat(true, n as usize)
+}
+
+/// All-zeros bitvec
+/// @noRd
+#[miniextendr]
+pub fn bitvec_all_zeros(n: i32) -> RBitVec {
+    RBitVec::repeat(false, n as usize)
+}
+
+/// Toggle bits: flip all bits in a bitvec
+/// @noRd
+#[miniextendr]
+pub fn bitvec_toggle(bits: RBitVec) -> RBitVec {
+    let mut result = bits;
+    for mut bit in result.iter_mut() {
+        *bit = !*bit;
+    }
+    result
+}
+
 miniextendr_module! {
     mod bitvec_adapter_tests;
     fn bitvec_roundtrip;
@@ -46,4 +78,8 @@ miniextendr_module! {
     fn bitvec_from_vec;
     fn bitvec_to_vec;
     fn bitvec_len;
+    fn bitvec_empty;
+    fn bitvec_all_ones;
+    fn bitvec_all_zeros;
+    fn bitvec_toggle;
 }
