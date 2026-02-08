@@ -707,9 +707,9 @@ pub use optionals::serde_impl;
 pub use optionals::toml_impl;
 #[cfg(feature = "serde_json")]
 pub use optionals::{
-    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
-    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
-    json_from_sexp_with, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonBridge, RJsonValueOps,
+    RSerialize, SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive,
+    json_from_sexp_strict, json_from_sexp_with, json_into_sexp,
 };
 #[cfg(feature = "toml")]
 pub use optionals::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty};
