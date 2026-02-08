@@ -135,3 +135,4 @@ borsh = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }
+proptest = "1.6"
