@@ -87,6 +87,31 @@ Items are scoped to be incremental and compatible with the current architecture.
   first word after `@`. Added multi-word branch matching full content after `@`.
 - Added comprehensive unit tests for `has_roxygen_tag`, `tag_names`, `find_tag_value`.
 
+### 13. `Vec<Option<T>>` IntoR for extended numeric types ✓
+
+- Smart i32/f64 conversion for `Vec<Option<i64/u64/isize/usize>>` — checks if all
+  non-None values fit i32 → INTSXP, otherwise REALSXP with NA_REAL for None.
+- Simple coercion for `Vec<Option<i8/i16/u16/u32/f32>>` via widening macro.
+- Strict mode: `checked_vec_option_{i64,u64,isize,usize}_into_sexp()` helpers.
+- Proc-macro detection: `strict_conversion_for_type()` handles `Vec<Option<lossy>>`.
+
+### 14. S7 multi-level inheritance tests ✓
+
+- 3-level chain: `S7Animal` (abstract) → `S7Dog` → `S7GoldenRetriever`.
+- R tests verify `S7::S7_inherits()` through full chain, abstract rejection.
+- GAPS.md section 3.1 updated: inheritance chains marked as implemented.
+
+### 15. Rustdoc examples for feature-gated modules ✓
+
+- Added `/// # Examples` blocks (ignore-marked) to `progress.rs`, `vctrs.rs`,
+  `connection.rs` for key public items.
+
+### 16. Field access documentation ✓
+
+- GAPS.md section 3.3 marked RESOLVED via `#[r_data]` + `RSidecar` sidecar pattern.
+- CLASS_SYSTEMS.md: added "Field Access via Sidecar" subsection.
+- GAPS.md section 2.3: `Vec<Option<T>>` updated to "Works (all scalar types)".
+
 ## Active: Next Up
 
 ## Parked: Needs Evidence
@@ -108,6 +133,3 @@ These items are plausible but lack a demonstrated need or clear design.
   `.Call()` functions; a dedicated diff tool adds complexity for no real gain.
 
 ## Backlog: Nice to Have
-
-- **Rustdoc examples for feature-gated modules** — one example per feature module
-  (vctrs, rayon, serde, connections). Lowers discovery cost.
