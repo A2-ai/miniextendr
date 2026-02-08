@@ -3,18 +3,22 @@
 
 #set page(numbering: "1 of 1", paper: "a5", margin: (top: 2em, left: 1em, right: 2em, bottom: 2.2em))
 
-== R6 Deep Integration (Recommended Next Target)
+== R6 Deep Integration
 
 Basic R6 support exists (`#[miniextendr(r6)]`, active bindings, public/private).
 See `plans/r6-deep-integration-plan.md` for full spec.
 
-- [ ] Inheritance (`inherit = ParentType`)
-- [ ] `portable` / `non_portable` flags
-- [ ] `lock_objects` / `lock_class` flags
-- [ ] `cloneable` flag with deep clone hook
-- [ ] Finalizer as private member
-- [ ] Active binding getter+setter pairs
-- [ ] Field-level `#[r6(public|private|skip)]` annotations
+- [x] `lock_objects` / `lock_class` flags — fully working + tested
+- [x] `cloneable` flag with deep clone hook — `#[miniextendr(r6(deep_clone))]` works
+- [x] Finalizer as private member — `#[miniextendr(r6(finalize))]` works
+- [x] Active binding getter+setter pairs — `#[miniextendr(r6(active))]` + `setter` works
+- [ ] Inheritance (`inherit = "ParentType"`) — parsed + generated, needs tests
+  - Single parent works; multi-level (A → B → C) untested
+  - No method override examples
+- [ ] `portable` flag — parsed, never tested
+- [~] Field-level `#[r6(public|private|skip)]` annotations
+  - Architecturally impossible: proc macros can't access struct field definitions
+  - Workaround: use `#[r_data]` sidecar pattern (documented in CLASS_SYSTEMS.md)
 
 == Testing
 
@@ -37,9 +41,11 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 - [ ] `borsh` optional feature for binary serialization
   - `Borsh<T>` wrapper: `IntoR` → RAWSXP, `TryFromSexp` → decode RAWSXP
+  - Follows standard pattern (like sha2_impl, toml_impl)
 
-- [ ] `rkyv` optional feature for zero-copy serialization
-  - `Rkyv<T>` wrapper with bytecheck validation
+- [ ] `rkyv` optional feature for zero-copy serialization (DEFERRED)
+  - Complex: lifetime/validation issues with R's GC model
+  - Revisit after borsh is in place
 
 === Adapter Traits
 
