@@ -634,7 +634,7 @@ pub fn miniextendr(
         strict,
         internal,
         noexport,
-        doc: _doc,
+        doc,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -673,7 +673,12 @@ pub fn miniextendr(
     let named_dots = parsed.named_dots().cloned();
 
     // Check for @title/@description conflicts with implicit values (doc-lint feature)
-    let doc_lint_warnings = crate::roxygen::doc_conflict_warnings(attrs, rust_ident.span());
+    // Skip when `doc` attribute overrides the roxygen — implicit docs are irrelevant then.
+    let doc_lint_warnings = if doc.is_some() {
+        proc_macro2::TokenStream::new()
+    } else {
+        crate::roxygen::doc_conflict_warnings(attrs, rust_ident.span())
+    };
 
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
@@ -1200,7 +1205,12 @@ pub fn miniextendr(
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
     // r_formals is already a joined string from build_formals()
     let formals_joined = r_formals;
-    let mut roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
+    let mut roxygen_tags = if let Some(ref doc_text) = doc {
+        // Custom doc override: each line becomes a separate roxygen tag entry
+        doc_text.lines().map(|l| l.to_string()).collect()
+    } else {
+        crate::roxygen::roxygen_tags_from_attrs(attrs)
+    };
 
     // Determine lifecycle: explicit attr > #[deprecated] extraction
     let lifecycle_spec = lifecycle.or_else(|| {

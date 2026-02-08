@@ -295,6 +295,7 @@ mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
+mod doc_attr_tests;
 mod export_control_tests;
 mod visibility_tests;
 mod worker_tests;
@@ -1904,6 +1905,7 @@ miniextendr_module! {
     use worker_tests;
     use coerce_tests;
     use visibility_tests;
+    use doc_attr_tests;
     use export_control_tests;
     use thread_tests;
     use misc_tests;
