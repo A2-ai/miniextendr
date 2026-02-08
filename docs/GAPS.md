@@ -661,17 +661,20 @@ pub fn safe_threaded_work() -> Result<i32, String> {
 
 ## 6. Testing Gaps
 
-### 6.1 No Property-Based Testing
+### ~~6.1 No Property-Based Testing~~ RESOLVED
 
-**Status:** Not present
-**Impact:** Medium
+**Status:** Implemented (24 tests)
+**Location:** `miniextendr-api/tests/roundtrip_properties.rs`
 
-No quickcheck or proptest usage. All tests are deterministic.
+Property-based roundtrip tests using `proptest` verify `val → SEXP → val` preservation for:
+- Scalar types: i32, f64, bool, String, u8
+- Option types: Option<i32>, Option<f64>, Option<bool>, Option<String>
+- Vector types: Vec<i32>, Vec<f64>, Vec<bool>, Vec<String>, Vec<u8>
+- NA-aware vectors: Vec<Option<i32>>, Vec<Option<f64>>, Vec<Option<bool>>, Vec<Option<String>>
+- i64 safe-range ([-2^53, 2^53])
+- Edge cases: i32 boundaries, f64 special values, empty vectors, all-NA vectors, unicode strings
 
-**Recommendation:** Add property-based tests for:
-- Type conversions (roundtrip properties)
-- ALTREP implementations (length invariants)
-- Coercion chains (transitivity)
+Run with: `cargo test -p miniextendr-api --test roundtrip_properties`
 
 ---
 
@@ -692,18 +695,19 @@ Run with: `cargo test --test ui -p miniextendr-macros`
 
 ---
 
-### 6.3 Snapshot Testing Underutilized
+### ~~6.3 Snapshot Testing Underutilized~~ RESOLVED
 
-**Status:** Minimal usage
+**Status:** Implemented (12 tests)
 **Location:** `miniextendr-macros/tests/snapshots.rs`
 
-`expect-test` is used but only for a few cases.
+`expect-test` inline snapshot tests cover:
+- Standalone function R wrappers: simple, greeting, void return, private (no @export),
+  roxygen-documented, Option return, Result return, strict mode
+- Export control: `#[miniextendr(internal)]` (@keywords internal), `#[miniextendr(noexport)]`
+- Class systems: env class (constructor + methods + dispatch), R6 class
 
-**Recommendation:** Add snapshot tests for:
-- Generated R wrapper functions
-- Generated roxygen documentation
-- NAMESPACE entries
-- Class system boilerplate (R6, S3, S4, S7)
+Run with: `cargo test -p miniextendr-macros --test snapshots`
+Update snapshots: `UPDATE_EXPECT=1 cargo test -p miniextendr-macros --test snapshots`
 
 ---
 

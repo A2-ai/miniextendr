@@ -20,6 +20,8 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == Testing
 
+- [x] Property-based roundtrip tests — 24 proptest tests for all scalar/vector/option types
+- [x] Macro codegen snapshot tests — 12 expect-test snapshots for R wrappers and class systems
 - [ ] Thread-safety assertions not covered by tests
   - Note: Would require embedded R runtime for meaningful tests.
 - [ ] String ALTREP NA serialization — `saveRDS`/`readRDS` loses NA (becomes empty string)
