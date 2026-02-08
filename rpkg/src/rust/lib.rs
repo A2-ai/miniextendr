@@ -295,6 +295,7 @@ mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
+mod export_control_tests;
 mod visibility_tests;
 mod worker_tests;
 
@@ -1216,7 +1217,7 @@ impl AltStringData for StringVecData {
     }
 }
 
-miniextendr_api::impl_altstring_from_data!(StringVecData);
+miniextendr_api::impl_altstring_from_data!(StringVecData, dataptr);
 
 #[miniextendr(class = "SimpleVecString")]
 pub struct SimpleVecStringClass(pub StringVecData);
@@ -1903,6 +1904,7 @@ miniextendr_module! {
     use worker_tests;
     use coerce_tests;
     use visibility_tests;
+    use export_control_tests;
     use thread_tests;
     use misc_tests;
     use lifecycle_tests;
