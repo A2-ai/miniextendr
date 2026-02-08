@@ -728,6 +728,7 @@ dependencies = [
  "aho-corasick",
  "bitflags",
  "bitvec",
+ "borsh",
  "bytemuck",
  "bytes",
  "either",
