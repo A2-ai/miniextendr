@@ -201,6 +201,9 @@ impl CWrapperContext {
     /// Generate conversion statements for parameters.
     fn build_conversion_stmts(&self, sexp_idents: &[syn::Ident]) -> Vec<TokenStream> {
         let mut builder = crate::RustConversionBuilder::new();
+        if self.strict {
+            builder = builder.with_strict();
+        }
         if self.coerce_all {
             builder = builder.with_coerce_all();
         }
@@ -220,6 +223,9 @@ impl CWrapperContext {
         sexp_idents: &[syn::Ident],
     ) -> (Vec<TokenStream>, Vec<TokenStream>) {
         let mut builder = crate::RustConversionBuilder::new();
+        if self.strict {
+            builder = builder.with_strict();
+        }
         if self.coerce_all {
             builder = builder.with_coerce_all();
         }

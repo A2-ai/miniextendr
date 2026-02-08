@@ -777,6 +777,9 @@ pub fn miniextendr(
 
     // Build conversion builder with coercion settings
     let mut conversion_builder = RustConversionBuilder::new();
+    if strict {
+        conversion_builder = conversion_builder.with_strict();
+    }
     if coerce_all {
         conversion_builder = conversion_builder.with_coerce_all();
     }

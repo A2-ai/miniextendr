@@ -33,14 +33,18 @@ Items are scoped to be incremental and compatible with the current architecture.
   and `Result<T, E>` return types — delegates to `strict_conversion_for_type()`.
 - All 6 `IntoR` return handling branches (3 main thread + 3 worker thread) updated.
 
+### 5. Strict conversion mode — inputs (TryCoerce) ✓
+
+- `#[miniextendr(strict)]` now also validates input parameters for lossy types
+  (i64/u64/isize/usize + Vec variants).
+- Only INTSXP and REALSXP accepted; RAWSXP and LGLSXP rejected with
+  "strict conversion failed for parameter '{name}'" error.
+- REALSXP values go through `TryCoerce` to catch fractional, NaN, and overflow.
+- Strict takes priority over `coerce` for lossy types.
+- Wired through both standalone functions (`lib.rs`) and impl methods
+  (`c_wrapper_builder.rs`) via `RustConversionBuilder::with_strict()`.
+
 ## Active: Next Up
-
-### 5. Strict conversion mode — inputs (TryCoerce)
-
-- **Goal:** opt-in strict input coercion that rejects lossy narrowing.
-- **Scope:** `#[miniextendr(strict)]` also affects parameter conversion,
-  using `TryCoerce` or a similar mechanism to reject widening inputs.
-- **Effort:** Medium — needs design for how strict inputs interact with coerce.
 
 ## Parked: Needs Evidence
 

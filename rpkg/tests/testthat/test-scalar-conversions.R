@@ -58,6 +58,48 @@ test_that("strict Vec<i64> conversion errors for out-of-range values", {
   expect_error(strict_echo_vec_i64(c(1, 2^31)), "strict conversion failed")
 })
 
+# Strict input validation - rejects RAWSXP and LGLSXP
+test_that("strict input rejects logical for i64", {
+  expect_error(strict_echo_i64(TRUE), "strict conversion failed")
+})
+
+test_that("strict input rejects raw for i64", {
+  expect_error(strict_echo_i64(as.raw(1)), "strict conversion failed")
+})
+
+test_that("strict input accepts integer for i64", {
+  expect_equal(strict_echo_i64(42L), 42L)
+})
+
+test_that("strict input accepts whole double for i64", {
+  expect_equal(strict_echo_i64(42), 42L)
+})
+
+test_that("strict input rejects fractional double for i64", {
+  expect_error(strict_echo_i64(3.14), "strict conversion failed")
+})
+
+test_that("strict input Vec rejects logical vector", {
+  expect_error(strict_echo_vec_i64(c(TRUE, FALSE)), "strict conversion failed")
+})
+
+test_that("strict input Vec accepts integer vector", {
+  expect_equal(strict_echo_vec_i64(c(1L, 2L, 3L)), c(1L, 2L, 3L))
+})
+
+test_that("strict input Vec rejects fractional double vector", {
+  expect_error(strict_echo_vec_i64(c(1.5, 2.5)), "strict conversion failed")
+})
+
+test_that("strict R6 constructor rejects logical for i64 param", {
+  expect_error(StrictCounter$new(TRUE), "strict conversion failed")
+})
+
+test_that("strict R6 method rejects logical for i64 param", {
+  counter <- StrictCounter$new(0L)
+  expect_error(counter$add(TRUE), "strict conversion failed")
+})
+
 # Strict mode on impl methods (R6)
 test_that("strict R6 method succeeds for in-range i64", {
   counter <- StrictCounter$new(42L)

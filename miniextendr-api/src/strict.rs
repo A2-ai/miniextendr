@@ -13,7 +13,9 @@
 //! the macro generates calls to these helpers instead, which panic (→ R error)
 //! if the value doesn't fit in i32.
 
-use crate::ffi::SEXP;
+use crate::coerce::TryCoerce;
+use crate::ffi::{SexpExt, SEXP, SEXPTYPE};
+use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 
 /// Convert `i64` to R integer, panicking if outside i32 range.
@@ -109,6 +111,148 @@ pub fn checked_vec_isize_into_sexp(val: Vec<isize>) -> SEXP {
 /// Convert `Vec<usize>` to R integer vector, panicking if any element > i32::MAX.
 pub fn checked_vec_usize_into_sexp(val: Vec<usize>) -> SEXP {
     checked_vec_u64_into_sexp(val.into_iter().map(|x| x as u64).collect())
+}
+
+// =============================================================================
+// Strict INPUT helpers — only accept INTSXP and REALSXP, reject RAWSXP/LGLSXP
+// =============================================================================
+
+/// Convert R SEXP to `i64` in strict mode.
+///
+/// Only INTSXP and REALSXP are accepted. RAWSXP and LGLSXP are rejected.
+/// For REALSXP, uses `TryCoerce` to reject fractional, NaN, and out-of-range values.
+#[inline]
+pub fn checked_try_from_sexp_i64(sexp: SEXP, param: &str) -> i64 {
+    checked_try_from_sexp_numeric_scalar::<i64>(sexp, param)
+}
+
+/// Convert R SEXP to `u64` in strict mode.
+#[inline]
+pub fn checked_try_from_sexp_u64(sexp: SEXP, param: &str) -> u64 {
+    checked_try_from_sexp_numeric_scalar::<u64>(sexp, param)
+}
+
+/// Convert R SEXP to `isize` in strict mode.
+#[inline]
+pub fn checked_try_from_sexp_isize(sexp: SEXP, param: &str) -> isize {
+    checked_try_from_sexp_i64(sexp, param) as isize
+}
+
+/// Convert R SEXP to `usize` in strict mode.
+#[inline]
+pub fn checked_try_from_sexp_usize(sexp: SEXP, param: &str) -> usize {
+    checked_try_from_sexp_u64(sexp, param) as usize
+}
+
+/// Convert R SEXP to `Vec<i64>` in strict mode.
+pub fn checked_vec_try_from_sexp_i64(sexp: SEXP, param: &str) -> Vec<i64> {
+    checked_vec_try_from_sexp_numeric::<i64>(sexp, param)
+}
+
+/// Convert R SEXP to `Vec<u64>` in strict mode.
+pub fn checked_vec_try_from_sexp_u64(sexp: SEXP, param: &str) -> Vec<u64> {
+    checked_vec_try_from_sexp_numeric::<u64>(sexp, param)
+}
+
+/// Convert R SEXP to `Vec<isize>` in strict mode.
+pub fn checked_vec_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<isize> {
+    checked_vec_try_from_sexp_i64(sexp, param)
+        .into_iter()
+        .map(|x| x as isize)
+        .collect()
+}
+
+/// Convert R SEXP to `Vec<usize>` in strict mode.
+pub fn checked_vec_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<usize> {
+    checked_vec_try_from_sexp_u64(sexp, param)
+        .into_iter()
+        .map(|x| x as usize)
+        .collect()
+}
+
+/// Generic strict scalar conversion: only INTSXP and REALSXP allowed.
+#[inline]
+fn checked_try_from_sexp_numeric_scalar<T>(sexp: SEXP, param: &str) -> T
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let value: i32 = TryFromSexp::try_from_sexp(sexp)
+                .unwrap_or_else(|e| panic!("strict conversion failed for parameter '{}': {:?}", param, e));
+            TryCoerce::<T>::try_coerce(value).unwrap_or_else(|e| {
+                panic!(
+                    "strict conversion failed for parameter '{}': {:?}",
+                    param, e
+                )
+            })
+        }
+        SEXPTYPE::REALSXP => {
+            let value: f64 = TryFromSexp::try_from_sexp(sexp)
+                .unwrap_or_else(|e| panic!("strict conversion failed for parameter '{}': {:?}", param, e));
+            TryCoerce::<T>::try_coerce(value).unwrap_or_else(|e| {
+                panic!(
+                    "strict conversion failed for parameter '{}': {:?}",
+                    param, e
+                )
+            })
+        }
+        _ => panic!(
+            "strict conversion failed for parameter '{}': expected integer or double, got {:?}",
+            param, actual
+        ),
+    }
+}
+
+/// Generic strict vector conversion: only INTSXP and REALSXP allowed.
+fn checked_vec_try_from_sexp_numeric<T>(sexp: SEXP, param: &str) -> Vec<T>
+where
+    i32: TryCoerce<T>,
+    f64: TryCoerce<T>,
+    <i32 as TryCoerce<T>>::Error: std::fmt::Debug,
+    <f64 as TryCoerce<T>>::Error: std::fmt::Debug,
+{
+    let actual = sexp.type_of();
+    match actual {
+        SEXPTYPE::INTSXP => {
+            let slice: &[i32] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .copied()
+                .map(|v| {
+                    TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
+                        panic!(
+                            "strict conversion failed for parameter '{}': {:?}",
+                            param, e
+                        )
+                    })
+                })
+                .collect()
+        }
+        SEXPTYPE::REALSXP => {
+            let slice: &[f64] = unsafe { sexp.as_slice() };
+            slice
+                .iter()
+                .copied()
+                .map(|v| {
+                    TryCoerce::<T>::try_coerce(v).unwrap_or_else(|e| {
+                        panic!(
+                            "strict conversion failed for parameter '{}': {:?}",
+                            param, e
+                        )
+                    })
+                })
+                .collect()
+        }
+        _ => panic!(
+            "strict conversion failed for parameter '{}': expected integer or double vector, got {:?}",
+            param, actual
+        ),
+    }
 }
 
 #[cfg(test)]

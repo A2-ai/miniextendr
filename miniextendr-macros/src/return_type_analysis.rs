@@ -314,6 +314,42 @@ pub(crate) fn strict_conversion_for_type(
     None
 }
 
+/// Try to generate a strict conversion expression for a lossy input parameter type.
+///
+/// Returns `Some(TokenStream)` if the type is a lossy scalar or `Vec<lossy>`,
+/// otherwise `None` (falls through to standard `TryFromSexp`).
+pub(crate) fn strict_input_conversion_for_type(
+    ty: &syn::Type,
+    sexp_ident: &syn::Ident,
+    param_name: &str,
+) -> Option<proc_macro2::TokenStream> {
+    let type_name = last_segment_ident(ty)?;
+    let name = type_name.to_string();
+
+    // Check for scalar lossy types: i64, u64, isize, usize
+    if LOSSY_SCALARS.contains(&name.as_str()) {
+        let helper = quote::format_ident!("checked_try_from_sexp_{}", name);
+        return Some(quote::quote! {
+            ::miniextendr_api::strict::#helper(#sexp_ident, #param_name)
+        });
+    }
+
+    // Check for Vec<lossy>
+    if name == "Vec"
+        && let Some(inner) = first_type_arg_from_type(ty)
+    {
+        let inner_name = last_segment_ident(inner)?.to_string();
+        if LOSSY_SCALARS.contains(&inner_name.as_str()) {
+            let helper = quote::format_ident!("checked_vec_try_from_sexp_{}", inner_name);
+            return Some(quote::quote! {
+                ::miniextendr_api::strict::#helper(#sexp_ident, #param_name)
+            });
+        }
+    }
+
+    None
+}
+
 /// Extract the last path segment identifier from a type.
 pub(crate) fn last_segment_ident(ty: &syn::Type) -> Option<&syn::Ident> {
     if let syn::Type::Path(p) = ty {
