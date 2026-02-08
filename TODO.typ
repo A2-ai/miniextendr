@@ -61,4 +61,6 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 - [ ] `miniextendr.yml` config file support for user defaults (yaml package)
 - [ ] `lifecycle` package for deprecation warnings and API evolution
-- [ ] `num-traits` as internal helper for generic numeric implementations
+- [x] `num-traits` as internal helper for generic numeric implementations
+  - `RNum`, `RFloat`, `RSigned` adapter traits with blanket impls
+  - Feature-gated: `miniextendr-api = { features = ["num-traits"] }`
