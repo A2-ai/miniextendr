@@ -652,6 +652,28 @@ pub fn json_into_sexp(value: &JsonValue) -> SEXP {
     json_value_to_sexp(value)
 }
 
+/// Check if a JSON number fits in an R integer (i32, excluding NA_integer_).
+fn json_number_fits_i32(n: &serde_json::Number) -> bool {
+    if let Some(i) = n.as_i64() {
+        // i32::MIN is NA_integer_ in R, so exclude it from integer range
+        i > i32::MIN as i64 && i <= i32::MAX as i64
+    } else {
+        false
+    }
+}
+
+/// Discriminant for JSON value type, used for homogeneous array detection.
+fn json_discriminant(v: &JsonValue) -> u8 {
+    match v {
+        JsonValue::Null => 0,
+        JsonValue::Bool(_) => 1,
+        JsonValue::Number(_) => 2,
+        JsonValue::String(_) => 3,
+        JsonValue::Array(_) => 4,
+        JsonValue::Object(_) => 5,
+    }
+}
+
 fn json_value_to_sexp(value: &JsonValue) -> SEXP {
     match value {
         JsonValue::Null => unsafe { crate::ffi::R_NilValue },
@@ -661,12 +683,10 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             sexp
         }
         JsonValue::Number(n) => {
-            if let Some(i) = n.as_i64() {
-                if i >= i32::MIN as i64 && i <= i32::MAX as i64 {
-                    let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 1) };
-                    unsafe { SET_INTEGER_ELT(sexp, 0, i as i32) };
-                    return sexp;
-                }
+            if json_number_fits_i32(n) {
+                let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, 1) };
+                unsafe { SET_INTEGER_ELT(sexp, 0, n.as_i64().unwrap() as i32) };
+                return sexp;
             }
             // Fall back to f64
             let f = n.as_f64().unwrap_or(f64::NAN);
@@ -681,16 +701,7 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             unsafe { SET_STRING_ELT(sexp, 0, charsxp) };
             sexp
         }
-        JsonValue::Array(arr) => {
-            let len = arr.len();
-            // Protect sexp before recursive calls that may trigger GC
-            let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, len as isize)) };
-            for (i, elem) in arr.iter().enumerate() {
-                unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(elem)) };
-            }
-            // Return the SEXP - guard drops and unprotects
-            sexp.get()
-        }
+        JsonValue::Array(arr) => json_array_to_sexp(arr),
         JsonValue::Object(map) => {
             let len = map.len();
             // Protect both sexp and names before recursive calls that may trigger GC
@@ -713,6 +724,98 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
             sexp.get()
         }
     }
+}
+
+/// Convert a JSON array to an R object, using homogeneous native vectors when possible.
+///
+/// If all elements share the same JSON type, produces a native R vector:
+/// - All bools -> LGLSXP (logical vector)
+/// - All integers (fitting i32) -> INTSXP (integer vector)
+/// - All numbers -> REALSXP (numeric vector)
+/// - All strings -> STRSXP (character vector)
+///
+/// Mixed-type or nested arrays fall back to VECSXP (R list).
+fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
+    if arr.is_empty() {
+        return unsafe { Rf_allocVector(SEXPTYPE::VECSXP, 0) };
+    }
+
+    let first_disc = json_discriminant(&arr[0]);
+    let all_same = arr.iter().all(|v| json_discriminant(v) == first_disc);
+
+    if all_same {
+        match &arr[0] {
+            JsonValue::Bool(_) => {
+                let sexp = unsafe { Rf_allocVector(SEXPTYPE::LGLSXP, arr.len() as isize) };
+                for (i, v) in arr.iter().enumerate() {
+                    if let JsonValue::Bool(b) = v {
+                        unsafe { SET_LOGICAL_ELT(sexp, i as isize, if *b { 1 } else { 0 }) };
+                    }
+                }
+                return sexp;
+            }
+            JsonValue::Number(_) => {
+                // Check if all fit in i32 (excluding NA_integer_)
+                let all_i32 = arr.iter().all(|v| {
+                    if let JsonValue::Number(n) = v {
+                        json_number_fits_i32(n)
+                    } else {
+                        false
+                    }
+                });
+
+                if all_i32 {
+                    let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
+                    for (i, v) in arr.iter().enumerate() {
+                        if let JsonValue::Number(n) = v {
+                            unsafe {
+                                SET_INTEGER_ELT(sexp, i as isize, n.as_i64().unwrap() as i32)
+                            };
+                        }
+                    }
+                    return sexp;
+                }
+
+                // Fall back to f64
+                let sexp = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, arr.len() as isize) };
+                for (i, v) in arr.iter().enumerate() {
+                    if let JsonValue::Number(n) = v {
+                        unsafe { SET_REAL_ELT(sexp, i as isize, n.as_f64().unwrap_or(f64::NAN)) };
+                    }
+                }
+                return sexp;
+            }
+            JsonValue::String(_) => {
+                // Protect sexp before Rf_mkCharLenCE calls which can trigger GC
+                let sexp = unsafe {
+                    OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, arr.len() as isize))
+                };
+                for (i, v) in arr.iter().enumerate() {
+                    if let JsonValue::String(s) = v {
+                        unsafe {
+                            let charsxp = Rf_mkCharLenCE(
+                                s.as_ptr().cast(),
+                                s.len() as i32,
+                                cetype_t::CE_UTF8,
+                            );
+                            SET_STRING_ELT(sexp.get(), i as isize, charsxp);
+                        }
+                    }
+                }
+                return sexp.get();
+            }
+            _ => {
+                // Null, Array, Object - fall through to generic list
+            }
+        }
+    }
+
+    // Heterogeneous or complex types -> list
+    let sexp = unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::VECSXP, arr.len() as isize)) };
+    for (i, elem) in arr.iter().enumerate() {
+        unsafe { SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(elem)) };
+    }
+    sexp.get()
 }
 
 /// Adapter trait for JSON value inspection.
@@ -814,6 +917,76 @@ impl RJsonValueOps for JsonValue {
         JsonValue::as_object(self)
             .map(|map| map.keys().cloned().collect())
             .unwrap_or_default()
+    }
+}
+
+// =============================================================================
+// RJsonBridge: Direct struct <-> R list via serde_json::Value
+// =============================================================================
+
+/// Bridge trait for direct Rust struct to R list conversion via `serde_json::Value`.
+///
+/// This converts Rust types to/from native R lists without going through
+/// a JSON string intermediate. The path is: `Rust struct -> serde_json::Value -> R SEXP`
+/// (and vice versa), which avoids the overhead of serializing to and parsing
+/// from a JSON string.
+///
+/// # Example
+///
+/// ```rust,ignore
+/// use serde::{Serialize, Deserialize};
+/// use miniextendr_api::serde_impl::RJsonBridge;
+///
+/// #[derive(Serialize, Deserialize)]
+/// struct Config {
+///     name: String,
+///     value: i32,
+///     tags: Vec<String>,
+/// }
+///
+/// // The blanket impl provides to_r_list() and from_r_list() automatically.
+/// fn export_config(cfg: &Config) -> SEXP {
+///     cfg.to_r_list()
+/// }
+///
+/// fn import_config(sexp: SEXP) -> Result<Config, String> {
+///     Config::from_r_list(sexp)
+/// }
+/// ```
+///
+/// In R, the result is a native named list:
+/// ```r
+/// cfg <- export_config(cfg_ptr)
+/// cfg$name   # "my-app"
+/// cfg$value  # 42L
+/// cfg$tags   # c("alpha", "beta")
+/// ```
+pub trait RJsonBridge: Serialize + for<'de> Deserialize<'de> {
+    /// Convert this value to a native R list/vector via `serde_json::Value`.
+    ///
+    /// The struct is first serialized to a `serde_json::Value` (no string
+    /// intermediate), then that value is converted to the appropriate R type.
+    fn to_r_list(&self) -> SEXP;
+
+    /// Create a value of this type from an R object via `serde_json::Value`.
+    ///
+    /// The R object is first converted to a `serde_json::Value`, then
+    /// deserialized into the target type.
+    fn from_r_list(sexp: SEXP) -> Result<Self, String>;
+}
+
+impl<T: Serialize + for<'de> Deserialize<'de>> RJsonBridge for T {
+    fn to_r_list(&self) -> SEXP {
+        // Serialize to serde_json::Value (in-memory, no string intermediate)
+        let value = serde_json::to_value(self).expect("serde_json::to_value failed");
+        json_value_to_sexp(&value)
+    }
+
+    fn from_r_list(sexp: SEXP) -> Result<Self, String> {
+        // Convert R SEXP to serde_json::Value
+        let value = json_from_sexp(sexp).map_err(|e| format!("{}", e))?;
+        // Deserialize from the Value (no string intermediate)
+        serde_json::from_value(value).map_err(|e| e.to_string())
     }
 }
 
@@ -1067,5 +1240,164 @@ mod tests {
         let result = real_to_json(f64::INFINITY, &opts, None);
         assert!(result.is_ok());
         assert!(RJsonValueOps::is_null(&result.unwrap()));
+    }
+
+    // =========================================================================
+    // NA_integer_ exclusion
+    // =========================================================================
+
+    #[test]
+    fn json_number_fits_i32_excludes_na_integer() {
+        // i32::MIN is NA_integer_ in R - must not be treated as integer
+        let n = serde_json::Number::from(i32::MIN as i64);
+        assert!(!json_number_fits_i32(&n));
+
+        // i32::MIN + 1 should still work
+        let n = serde_json::Number::from(i32::MIN as i64 + 1);
+        assert!(json_number_fits_i32(&n));
+
+        // i32::MAX should work
+        let n = serde_json::Number::from(i32::MAX as i64);
+        assert!(json_number_fits_i32(&n));
+
+        // i32::MAX + 1 should not fit
+        let n = serde_json::Number::from(i32::MAX as i64 + 1);
+        assert!(!json_number_fits_i32(&n));
+    }
+
+    // =========================================================================
+    // json_discriminant
+    // =========================================================================
+
+    #[test]
+    fn discriminant_coverage() {
+        assert_eq!(json_discriminant(&JsonValue::Null), 0);
+        assert_eq!(json_discriminant(&JsonValue::Bool(true)), 1);
+        assert_eq!(json_discriminant(&serde_json::json!(42)), 2);
+        assert_eq!(json_discriminant(&serde_json::json!("hi")), 3);
+        assert_eq!(json_discriminant(&serde_json::json!([1])), 4);
+        assert_eq!(json_discriminant(&serde_json::json!({"a": 1})), 5);
+    }
+
+    // =========================================================================
+    // RJsonBridge roundtrip tests (pure Rust, no R runtime)
+    // =========================================================================
+
+    #[test]
+    fn bridge_to_value_roundtrip() {
+        // Test that struct -> Value -> struct roundtrips correctly
+        let original = TestStruct {
+            name: "bridge".to_string(),
+            value: 42,
+            enabled: true,
+        };
+
+        // Serialize to serde_json::Value
+        let value = serde_json::to_value(&original).unwrap();
+        assert!(value.is_object());
+        let obj = value.as_object().unwrap();
+        assert_eq!(obj.get("name").unwrap().as_str().unwrap(), "bridge");
+        assert_eq!(obj.get("value").unwrap().as_i64().unwrap(), 42);
+        assert!(obj.get("enabled").unwrap().as_bool().unwrap());
+
+        // Deserialize back
+        let parsed: TestStruct = serde_json::from_value(value).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn bridge_nested_struct() {
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        struct Outer {
+            label: String,
+            inner: Inner,
+            items: Vec<i32>,
+        }
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        struct Inner {
+            x: f64,
+            y: f64,
+        }
+
+        let original = Outer {
+            label: "point".into(),
+            inner: Inner { x: 1.5, y: 2.5 },
+            items: vec![10, 20, 30],
+        };
+
+        let value = serde_json::to_value(&original).unwrap();
+        let parsed: Outer = serde_json::from_value(value).unwrap();
+        assert_eq!(original, parsed);
+    }
+
+    #[test]
+    fn bridge_with_options() {
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        struct Config {
+            name: String,
+            debug: Option<bool>,
+            max_retries: Option<u32>,
+        }
+
+        let cfg = Config {
+            name: "app".into(),
+            debug: Some(true),
+            max_retries: None,
+        };
+
+        let value = serde_json::to_value(&cfg).unwrap();
+        let obj = value.as_object().unwrap();
+        assert_eq!(obj.get("debug").unwrap(), &serde_json::json!(true));
+        assert_eq!(obj.get("max_retries").unwrap(), &JsonValue::Null);
+
+        let parsed: Config = serde_json::from_value(value).unwrap();
+        assert_eq!(cfg, parsed);
+    }
+
+    #[test]
+    fn bridge_enum_variants() {
+        #[derive(Serialize, Deserialize, Debug, PartialEq)]
+        #[serde(tag = "type")]
+        enum Shape {
+            Circle { radius: f64 },
+            Rect { width: f64, height: f64 },
+        }
+
+        let circle = Shape::Circle { radius: 5.0 };
+        let value = serde_json::to_value(&circle).unwrap();
+        let parsed: Shape = serde_json::from_value(value).unwrap();
+        assert_eq!(circle, parsed);
+
+        let rect = Shape::Rect {
+            width: 3.0,
+            height: 4.0,
+        };
+        let value = serde_json::to_value(&rect).unwrap();
+        let parsed: Shape = serde_json::from_value(value).unwrap();
+        assert_eq!(rect, parsed);
+    }
+
+    #[test]
+    fn bridge_vec_of_structs() {
+        let items = vec![
+            TestStruct {
+                name: "a".into(),
+                value: 1,
+                enabled: true,
+            },
+            TestStruct {
+                name: "b".into(),
+                value: 2,
+                enabled: false,
+            },
+        ];
+
+        let value = serde_json::to_value(&items).unwrap();
+        assert!(value.is_array());
+        let arr = value.as_array().unwrap();
+        assert_eq!(arr.len(), 2);
+
+        let parsed: Vec<TestStruct> = serde_json::from_value(value).unwrap();
+        assert_eq!(items, parsed);
     }
 }

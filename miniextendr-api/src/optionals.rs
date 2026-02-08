@@ -314,9 +314,9 @@ pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 pub mod serde_impl;
 #[cfg(feature = "serde_json")]
 pub use serde_impl::{
-    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
-    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
-    json_from_sexp_with, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonBridge, RJsonValueOps,
+    RSerialize, SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive,
+    json_from_sexp_strict, json_from_sexp_with, json_into_sexp,
 };
 
 /// Integration with the `borsh` crate for binary serialization.
