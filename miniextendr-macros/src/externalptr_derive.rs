@@ -824,6 +824,7 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
     let pub_slots: Vec<_> = info.slots.iter().filter(|s| s.is_public).collect();
     if !info.has_selector || pub_slots.is_empty() {
         let name = &input.ident;
+        let source_location_doc = crate::source_location_doc(name.span());
         let const_name_defs = Ident::new(
             &format!("RDATA_CALL_DEFS_{}", name.to_string().to_uppercase()),
             Span::call_site(),
@@ -835,10 +836,14 @@ fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::R
 
         return Ok(quote::quote! {
             /// Empty sidecar call definitions (no pub #[r_data] fields).
+            #[doc = #source_location_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[doc(hidden)]
             pub const #const_name_defs: &[::miniextendr_api::ffi::R_CallMethodDef] = &[];
 
             /// Empty sidecar R wrappers (no pub #[r_data] fields).
+            #[doc = #source_location_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[doc(hidden)]
             pub const #const_name_wrappers: &str = "";
         });
@@ -883,6 +888,17 @@ NULL
         let setter_c_name = format!("C__mx_rdata_set_{}_{}", name_str, field_name_str);
         let getter_fn_name = Ident::new(&getter_c_name, Span::call_site());
         let setter_fn_name = Ident::new(&setter_c_name, Span::call_site());
+        let source_location_doc = crate::source_location_doc(field_name.span());
+        let getter_doc = format!(
+            "Generated sidecar getter for `{}` field on Rust type `{}`.",
+            field_name_str, name_str
+        );
+        let setter_doc = format!(
+            "Generated sidecar setter for `{}` field on Rust type `{}`.",
+            field_name_str, name_str
+        );
+        let getter_doc_lit = syn::LitStr::new(&getter_doc, field_name.span());
+        let setter_doc_lit = syn::LitStr::new(&setter_doc, field_name.span());
 
         let prot_index_lit = syn::LitInt::new(&prot_index.to_string(), Span::call_site());
 
@@ -892,6 +908,9 @@ NULL
 
         // Generate C getter function
         c_functions.push(quote::quote! {
+            #[doc = #getter_doc_lit]
+            #[doc = #source_location_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #getter_fn_name(
@@ -903,6 +922,9 @@ NULL
 
         // Generate C setter function
         c_functions.push(quote::quote! {
+            #[doc = #setter_doc_lit]
+            #[doc = #source_location_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[doc(hidden)]
             #[unsafe(no_mangle)]
             pub unsafe extern "C-unwind" fn #setter_fn_name(
@@ -937,6 +959,16 @@ NULL
         });
 
         // Generate R wrapper code based on class system
+        let field_start = field_name.span().start();
+        r_wrappers.push_str(&format!(
+            "# Generated from Rust source line {}:{}\n# Wraps sidecar field `{}` on Rust type `{}` via `{}` and `{}`.\n",
+            field_start.line,
+            field_start.column + 1,
+            field_name_str,
+            name_str,
+            getter_c_name,
+            setter_c_name,
+        ));
         r_wrappers.push_str(&generate_r_wrapper_for_slot(
             info.class_system,
             &name_str,
@@ -963,17 +995,22 @@ NULL
         &format!("R_WRAPPERS_RDATA_{}", name_upper),
         Span::call_site(),
     );
+    let source_location_doc = crate::source_location_doc(name.span());
 
     Ok(quote::quote! {
         #(#c_functions)*
 
         /// Sidecar accessor call definitions for registration.
+        #[doc = #source_location_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         pub const #const_name_defs: &[::miniextendr_api::ffi::R_CallMethodDef] = &[
             #(#call_defs),*
         ];
 
         /// Sidecar accessor R wrapper code.
+        #[doc = #source_location_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         pub const #const_name_wrappers: &str = #r_wrappers;
     })

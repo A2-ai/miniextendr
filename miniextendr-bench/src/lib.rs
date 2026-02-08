@@ -49,6 +49,7 @@ pub const MATRIX_DIM_LABELS: &[&str] = &["64x64", "256x256"];
 // =============================================================================
 
 #[derive(Clone, Copy)]
+/// Pre-allocated R values used by benchmark cases.
 pub struct Fixtures {
     utf8_charsxp: SEXP,
     latin1_charsxp: SEXP,
@@ -68,21 +69,25 @@ pub struct Fixtures {
 }
 
 impl Fixtures {
+    /// Returns a cached UTF-8 `CHARSXP`.
     #[inline(always)]
     pub fn utf8_charsxp(self) -> SEXP {
         self.utf8_charsxp
     }
 
+    /// Returns a cached Latin-1 `CHARSXP`.
     #[inline(always)]
     pub fn latin1_charsxp(self) -> SEXP {
         self.latin1_charsxp
     }
 
+    /// Returns a cached UTF-8 `STRSXP(1)`.
     #[inline(always)]
     pub fn utf8_strsxp(self) -> SEXP {
         self.utf8_strsxp
     }
 
+    /// Returns a cached Latin-1 `STRSXP(1)`.
     #[inline(always)]
     pub fn latin1_strsxp(self) -> SEXP {
         self.latin1_strsxp
@@ -147,6 +152,7 @@ pub fn init() {
 }
 
 #[inline(always)]
+/// Asserts the caller is running on the thread that initialized embedded R.
 pub fn assert_on_init_thread() {
     let init = INIT_THREAD
         .get()
@@ -159,11 +165,13 @@ pub fn assert_on_init_thread() {
 }
 
 #[inline(always)]
+/// Returns globally initialized benchmark fixtures.
 pub fn fixtures() -> Fixtures {
     assert_on_init_thread();
     *FIXTURES.get().expect("fixtures not initialized")
 }
 
+/// Initializes embedded R exactly once for the benchmark process.
 unsafe fn init_r_once() {
     static INIT: std::sync::Once = std::sync::Once::new();
     INIT.call_once(|| unsafe {
@@ -186,6 +194,7 @@ unsafe fn init_r_once() {
     });
 }
 
+/// Builds and caches all benchmark fixtures exactly once.
 unsafe fn init_fixtures_once() {
     let _ = FIXTURES.get_or_init(|| unsafe {
         use miniextendr_api::ffi::{

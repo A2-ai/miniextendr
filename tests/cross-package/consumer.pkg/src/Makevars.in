@@ -1,6 +1,7 @@
 ## --- filled by configure ----------------------------------------------
 ABS_TOP_SRCDIR = @ABS_TOP_SRCDIR@
 ABS_RPKG_SRCDIR = @ABS_RPKG_SRCDIR@
+ROOT_MINIEXTENDR_REPO = @ROOT_MINIEXTENDR_REPO@
 CARGO = @CARGO@
 RUSTC = @RUSTC@
 RUST_TOOLCHAIN = @RUST_TOOLCHAIN@
@@ -44,11 +45,10 @@ all: $(SHLIB)
 	@if [ "$(NOT_CRAN_FLAG)" != "true" ]; then \
 	  set -e; \
 	  if [ -n "$(VENDOR_OUT)" ] && [ -d "$(VENDOR_OUT)" ]; then rm -rf "$(VENDOR_OUT)"; fi; \
-	  case "$(CARGO_TARGET_DIR)" in \
-	    "$(ABS_RPKG_SRCDIR)"/*) if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi ;; \
-	    *) echo "Skipping cleanup of CARGO_TARGET_DIR (outside package): $(CARGO_TARGET_DIR)" ;; \
-	  esac; \
+	  if [ -d "$(CARGO_TARGET_DIR)" ]; then rm -rf "$(CARGO_TARGET_DIR)"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/.cargo" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/.cargo"; fi; \
+	  if [ -d "$(ABS_TOP_SRCDIR)/rust-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/rust-target"; fi; \
+	  if [ -d "$(ABS_TOP_SRCDIR)/ra-target" ]; then rm -rf "$(ABS_TOP_SRCDIR)/ra-target"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/target"; fi; \
 	  if [ -d "$(ABS_RPKG_SRCDIR)/rust/ra_target" ]; then rm -rf "$(ABS_RPKG_SRCDIR)/rust/ra_target"; fi; \
 	fi
@@ -60,19 +60,9 @@ $(SHLIB): $(OBJECTS) $(CARGO_AR) $(R_WRAPPERS_CURRENT)
 
 # Build the Rust static library
 # FORCE_CARGO ensures Cargo is always invoked; Cargo handles incremental builds.
-# Note: Dependencies are vendored by configure script, not by this Makefile.
-# You must run `./configure` (or minirextendr::miniextendr_configure()) before building.
-#
-# CRAN tarball handling: R CMD build compresses vendor/ into vendor.tar.xz
-# to avoid NOTEs about hidden files and long paths. We unpack it here.
-VENDOR_TARBALL = $(ABS_TOP_SRCDIR)/inst/vendor.tar.xz
-
+# Note: Dependencies are resolved via direct path deps in Cargo.toml.
+# You must run `./configure` (or `just cross-configure`) before building.
 $(CARGO_AR): FORCE_CARGO $(CARGO_TOML) $(CARGO_LOCK) $(ABS_RPKG_SRCDIR)/rust/document.rs $(OPTIONAL_CARGO_DEPS)
-	@# Unpack vendor.tar.xz if vendor/ is missing (CRAN tarball case)
-	@if [ ! -d "$(VENDOR_OUT)" ] && [ -f "$(VENDOR_TARBALL)" ]; then \
-	  echo "Unpacking vendor.tar.xz from inst/..."; \
-	  tar -xJf "$(VENDOR_TARBALL)" -C "$(ABS_RPKG_SRCDIR)"; \
-	fi
 	@set -e; \
 	TARGET_OPT=""; \
 	if [ -n "$(CARGO_BUILD_TARGET)" ]; then TARGET_OPT="--target $(CARGO_BUILD_TARGET)"; fi; \

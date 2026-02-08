@@ -59,8 +59,8 @@ use std::fmt;
 use std::mem;
 
 use crate::ffi::{
-    RAW, Rf_ScalarString, Rf_allocVector, Rf_install, Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength,
-    SEXP, SEXPTYPE, SexpExt, cetype_t,
+    RAW, Rf_ScalarString, Rf_allocVector, Rf_getAttrib, Rf_install, Rf_mkCharLenCE, Rf_setAttrib,
+    Rf_xlength, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -297,6 +297,48 @@ impl<T: Pod> RawSliceTagged<T> {
 // Helper: get raw bytes from SEXP
 // =============================================================================
 
+/// Validate the `mx_raw_type` attribute matches the expected type `T`.
+fn validate_raw_type_tag<T>(sexp: SEXP) -> Result<(), SexpError> {
+    let expected = std::any::type_name::<T>();
+    let attr_sym = unsafe { Rf_install(c"mx_raw_type".as_ptr()) };
+    let attr = unsafe { Rf_getAttrib(sexp, attr_sym) };
+
+    if attr.type_of() == SEXPTYPE::NILSXP {
+        return Err(SexpError::InvalidValue(format!(
+            "{}",
+            RawError::TypeMismatch {
+                expected: expected.to_string(),
+                actual: None,
+            }
+        )));
+    }
+
+    if attr.type_of() != SEXPTYPE::STRSXP || attr.len() != 1 {
+        return Err(SexpError::InvalidValue(format!(
+            "{}",
+            RawError::TypeMismatch {
+                expected: expected.to_string(),
+                actual: Some("<invalid attribute>".to_string()),
+            }
+        )));
+    }
+
+    let charsxp = unsafe { STRING_ELT(attr, 0) };
+    let actual = unsafe { crate::from_r::charsxp_to_str(charsxp) };
+
+    if actual != expected {
+        return Err(SexpError::InvalidValue(format!(
+            "{}",
+            RawError::TypeMismatch {
+                expected: expected.to_string(),
+                actual: Some(actual.to_string()),
+            }
+        )));
+    }
+
+    Ok(())
+}
+
 /// Get raw bytes from a RAWSXP.
 fn get_raw_bytes(sexp: SEXP) -> Result<&'static [u8], SexpError> {
     if sexp.type_of() != SEXPTYPE::RAWSXP {
@@ -486,6 +528,9 @@ impl<T: Pod> TryFromSexp for RawTagged<T> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        // Validate type tag attribute
+        validate_raw_type_tag::<T>(sexp)?;
+
         let bytes = get_raw_bytes(sexp)?;
 
         // Check minimum length
@@ -519,6 +564,9 @@ impl<T: Pod> TryFromSexp for RawSliceTagged<T> {
     type Error = SexpError;
 
     fn try_from_sexp(sexp: SEXP) -> Result<Self, SexpError> {
+        // Validate type tag attribute
+        validate_raw_type_tag::<T>(sexp)?;
+
         let bytes = get_raw_bytes(sexp)?;
 
         // Check minimum length

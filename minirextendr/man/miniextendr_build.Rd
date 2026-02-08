@@ -4,21 +4,21 @@
 \alias{miniextendr_build}
 \title{Full miniextendr build workflow}
 \usage{
-miniextendr_build(install = TRUE)
+miniextendr_build(install = TRUE, not_cran = TRUE)
 }
 \arguments{
-\item{install}{Whether to run \code{devtools::install()} after configure}
+\item{install}{Whether to run \verb{R CMD INSTALL} steps. If \code{FALSE}, only
+runs autoconf + configure + document.}
+
+\item{not_cran}{Logical. If \code{TRUE} (the default), sets \code{NOT_CRAN=true}
+for configure and install steps.}
 }
 \value{
 Invisibly returns TRUE on success
 }
 \description{
-Runs the complete workflow: autoconf -> configure -> build -> document.
-This is equivalent to running the following in sequence:
-\enumerate{
-\item \code{miniextendr_autoconf()}
-\item \code{miniextendr_configure()}
-\item \code{devtools::install()} (optional)
-\item \code{miniextendr_document()}
-}
+Runs the complete two-pass install: autoconf -> configure -> install
+(compiles Rust) -> document (generates R wrappers) -> install again
+(incorporates wrappers). The two installs are needed because R wrapper
+generation requires the compiled Rust \code{document} binary.
 }

@@ -67,7 +67,7 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "Makevars.in")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "entrypoint.c.in")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "lib.rs")))
-  expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "Cargo.toml.in")))
+  expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "Cargo.toml")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "build.rs")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "document.rs.in")))
   expect_true(dir.exists(file.path(tmp, "rpkg", "src", "vendor")))
@@ -408,10 +408,9 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     miniextendr_configure()
   })
 
-  # Add itertools dependency by editing Cargo.toml.in directly
-  # (cargo_add would modify Cargo.toml, but configure regenerates it from .in)
-  cargo_toml_in <- file.path(pkg_path, "src", "rust", "Cargo.toml.in")
-  cargo_content <- readLines(cargo_toml_in)
+  # Add itertools dependency to Cargo.toml
+  cargo_toml <- file.path(pkg_path, "src", "rust", "Cargo.toml")
+  cargo_content <- readLines(cargo_toml)
   deps_idx <- grep("^\\[dependencies\\]", cargo_content)[1]
   if (!is.na(deps_idx)) {
     # Insert itertools right after [dependencies] header
@@ -420,7 +419,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
       "itertools = \"0.13\"",
       cargo_content[(deps_idx + 1):length(cargo_content)]
     )
-    writeLines(cargo_content, cargo_toml_in)
+    writeLines(cargo_content, cargo_toml)
   }
 
   # Update lib.rs to use itertools
@@ -604,15 +603,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   })
 
   # Pre-vendor crates.io dependencies manually
-  # (needed before autoconf/configure can run)
-  cargo_toml_in <- file.path(rpkg_path, "src", "rust", "Cargo.toml.in")
-  cargo_toml <- file.path(rpkg_path, "src", "rust", "Cargo.toml")
-  if (file.exists(cargo_toml_in)) {
-    content <- readLines(cargo_toml_in)
-    content <- gsub("@PACKAGE_TARNAME_RS@", "testpkg", content)
-    content <- gsub("@CARGO_FEATURE_CPPFLAGS@", "", content)
-    writeLines(content, cargo_toml)
-  }
+  # (Cargo.toml already has correct values from mustache substitution at scaffolding time)
 
   # Run cargo vendor to fetch crates.io deps (proc-macro2, syn, quote, etc.)
   suppressWarnings({

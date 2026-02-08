@@ -60,6 +60,8 @@ clean:
     cd consumer.pkg && ./cleanup
     rm -rf producer.pkg/src/rust/target
     rm -rf consumer.pkg/src/rust/target
+    rm -rf producer.pkg/rust-target
+    rm -rf consumer.pkg/rust-target
 
 # Alias for clean
 clean-all: clean

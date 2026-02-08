@@ -249,14 +249,29 @@ fn extract_cfg_attrs(attrs: &[syn::Attribute]) -> Vec<syn::Attribute> {
         .collect()
 }
 
+/// Format a human-readable source location note from a syntax span.
+///
+/// Column is reported as 1-based for consistency with editor displays.
+pub(crate) fn source_location_doc(span: proc_macro2::Span) -> String {
+    let start = span.start();
+    format!(
+        "Generated from source location line {}, column {}.",
+        start.line,
+        start.column + 1
+    )
+}
+
+/// Returns the first generic type argument from a path segment.
 fn first_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     nth_type_argument(seg, 0)
 }
 
+/// Returns the second generic type argument from a path segment.
 fn second_type_argument(seg: &syn::PathSegment) -> Option<&syn::Type> {
     nth_type_argument(seg, 1)
 }
 
+/// Returns the `n`-th generic type argument from a path segment.
 fn nth_type_argument(seg: &syn::PathSegment, n: usize) -> Option<&syn::Type> {
     if let syn::PathArguments::AngleBracketed(ab) = &seg.arguments {
         let mut count = 0;
@@ -273,6 +288,7 @@ fn nth_type_argument(seg: &syn::PathSegment, n: usize) -> Option<&syn::Type> {
 }
 
 #[inline]
+/// Returns true if `ty` is syntactically `SEXP`.
 fn is_sexp_type(ty: &syn::Type) -> bool {
     matches!(ty, syn::Type::Path(p) if p
         .path
@@ -508,7 +524,11 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///
 /// - `#[miniextendr(s7(no_dots))]` - Create strict generic without `...`
 /// - `#[miniextendr(s7(dispatch = "x,y"))]` - Multi-dispatch on multiple arguments
-/// - `#[miniextendr(s7(fallback))]` - Register method for `class_any` (catch-all)
+/// - `#[miniextendr(s7(fallback))]` - Register method for `class_any` (catch-all).
+///   The generated R wrapper uses `tryCatch(x@.ptr, error = function(e) x)` to
+///   safely extract the self argument, so non-miniextendr objects won't crash with
+///   a slot-access error. Instead, incompatible objects produce a Rust type-conversion
+///   error when the method tries to interpret the argument as `&Self`.
 ///
 /// ```ignore
 /// #[miniextendr(s7)]
@@ -517,7 +537,9 @@ fn is_vctrs_generic(generic: &str) -> bool {
 ///     #[miniextendr(s7(no_dots))]
 ///     pub fn strict_method(&self) -> i32 { 42 }
 ///
-///     /// Fallback method for any S7 object
+///     /// Fallback method dispatched on class_any.
+///     /// Calling this on a non-MyClass object produces a type-conversion error,
+///     /// not a slot-access crash.
 ///     #[miniextendr(s7(fallback))]
 ///     pub fn describe(&self) -> String { "generic description".into() }
 /// }
@@ -609,6 +631,10 @@ pub fn miniextendr(
         dots_spec,
         dots_span,
         lifecycle,
+        strict,
+        internal,
+        noexport,
+        doc,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -647,7 +673,12 @@ pub fn miniextendr(
     let named_dots = parsed.named_dots().cloned();
 
     // Check for @title/@description conflicts with implicit values (doc-lint feature)
-    let doc_lint_warnings = crate::roxygen::doc_conflict_warnings(attrs, rust_ident.span());
+    // Skip when `doc` attribute overrides the roxygen — implicit docs are irrelevant then.
+    let doc_lint_warnings = if doc.is_some() {
+        proc_macro2::TokenStream::new()
+    } else {
+        crate::roxygen::doc_conflict_warnings(attrs, rust_ident.span())
+    };
 
     let rust_arg_count = inputs.len();
     let registered_arg_count = if uses_internal_c_wrapper {
@@ -754,6 +785,9 @@ pub fn miniextendr(
 
     // Build conversion builder with coercion settings
     let mut conversion_builder = RustConversionBuilder::new();
+    if strict {
+        conversion_builder = conversion_builder.with_strict();
+    }
     if coerce_all {
         conversion_builder = conversion_builder.with_coerce_all();
     }
@@ -813,6 +847,7 @@ pub fn miniextendr(
         rust_ident,
         return_pref,
         unwrap_in_r,
+        strict,
     );
 
     let returns_sexp = return_analysis.returns_sexp;
@@ -889,6 +924,7 @@ pub fn miniextendr(
             proc_macro2::TokenStream::new(),
         )
     };
+    let source_loc_doc = source_location_doc(rust_ident.span());
 
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
@@ -902,6 +938,9 @@ pub fn miniextendr(
             // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
             quote::quote! {
                 #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                     #rng_get
@@ -928,6 +967,9 @@ pub fn miniextendr(
             // Non-RNG variant: direct call to with_r_unwind_protect
             quote::quote! {
                 #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                     #(#pre_call_statements)*
@@ -960,6 +1002,9 @@ pub fn miniextendr(
         );
         quote::quote! {
             #[doc = #c_wrapper_doc]
+            #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+            #[doc = #source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             #[unsafe(no_mangle)]
             #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                 #rng_get
@@ -1160,7 +1205,12 @@ pub fn miniextendr(
     // Stable, consistent R formatting style: brace on same line, body indented, closing brace on its own line
     // r_formals is already a joined string from build_formals()
     let formals_joined = r_formals;
-    let mut roxygen_tags = crate::roxygen::roxygen_tags_from_attrs(attrs);
+    let mut roxygen_tags = if let Some(ref doc_text) = doc {
+        // Custom doc override: each line becomes a separate roxygen tag entry
+        doc_text.lines().map(|l| l.to_string()).collect()
+    } else {
+        crate::roxygen::roxygen_tags_from_attrs(attrs)
+    };
 
     // Determine lifecycle: explicit attr > #[deprecated] extraction
     let lifecycle_spec = lifecycle.or_else(|| {
@@ -1183,12 +1233,20 @@ pub fn miniextendr(
         "#' @source Generated by miniextendr from Rust fn `{}`\n",
         rust_ident
     );
+    // Inject @keywords internal if #[miniextendr(internal)] and not already present
+    let internal_comment = if internal && !has_internal_tag {
+        "#' @keywords internal\n"
+    } else {
+        ""
+    };
     // S3 methods need both @method (for registration) AND @export (for NAMESPACE)
-    // Don't auto-export functions marked with @noRd or @keywords internal
+    // Don't auto-export functions marked with @noRd, @keywords internal, or attr flags
     let export_comment = if matches!(vis, syn::Visibility::Public(_))
         && !has_export_tag
         && !has_no_rd_tag
         && !has_internal_tag
+        && !internal
+        && !noexport
     {
         "#' @export\n".to_string()
     } else {
@@ -1202,10 +1260,11 @@ pub fn miniextendr(
         .unwrap_or_default();
 
     let r_wrapper_string = format!(
-        "{}{}{}{}{} <- function({}) {{\n    {}{}\n}}",
+        "{}{}{}{}{}{} <- function({}) {{\n    {}{}\n}}",
         roxygen_tags_str,
         source_comment,
         s3_method_comment,
+        internal_comment,
         export_comment,
         r_wrapper_ident_str,
         formals_joined,
@@ -1243,6 +1302,10 @@ pub fn miniextendr(
         "Value: `R_CallMethodDef {{ name: \"{}\", numArgs: {}, fun: <DL_FUNC> }}`",
         c_ident, num_args
     );
+    let source_start = rust_ident.span().start();
+    let source_line_lit = syn::LitInt::new(&source_start.line.to_string(), rust_ident.span());
+    let source_col_lit =
+        syn::LitInt::new(&(source_start.column + 1).to_string(), rust_ident.span());
 
     // Get the normalized item for output, with roxygen tags stripped from docs.
     // Roxygen tags are for R documentation and shouldn't appear in rustdoc.
@@ -1284,12 +1347,28 @@ pub fn miniextendr(
         // R wrapper
         #(#cfg_attrs)*
         #[doc = #r_wrapper_doc]
-        const #r_wrapper_generator: &str = #r_wrapper_str;
+        #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
+        const #r_wrapper_generator: &str =
+            concat!(
+                "# Generated from Rust source file: ",
+                file!(),
+                ":",
+                #source_line_lit,
+                ":",
+                #source_col_lit,
+                "\n",
+                #r_wrapper_str
+            );
 
         // registration of C wrapper in R
         #(#cfg_attrs)*
         #[doc = #call_method_def_doc]
         #[doc = #call_method_def_example]
+        #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[allow(non_upper_case_globals)]
         #[allow(non_snake_case)]
         const #call_method_def: ::miniextendr_api::ffi::R_CallMethodDef = unsafe {
@@ -1397,6 +1476,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     let module = &parsed_module.module_name.ident;
     let module_entrypoint_ident = quote::format_ident!("R_init_{module}_miniextendr");
+    let module_source_loc_doc = source_location_doc(module.span());
     // Build call entries with their cfg attributes preserved
     let call_entries_with_attrs: Vec<(Vec<syn::Attribute>, syn::Expr)> = parsed_module
         .functions
@@ -1924,10 +2004,16 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
 
     let r_wrappers_impls_const = if all_impl_r_wrapper_elements.is_empty() {
         quote::quote! {
+            #[doc(hidden)]
+            #[doc = #module_source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             pub const #r_wrappers_impls_ident: &[&str] = &[];
         }
     } else {
         quote::quote! {
+            #[doc(hidden)]
+            #[doc = #module_source_loc_doc]
+            #[doc = concat!("Generated from source file `", file!(), "`.")]
             pub const #r_wrappers_impls_ident: &[&str] = &[#(#all_impl_r_wrapper_elements),*];
         }
     };
@@ -1935,12 +2021,17 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
     // Generate the module - common structure for both cases
     quote::quote! {
         #[doc(hidden)]
+        #[doc = #module_source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         pub const #r_wrappers_parts_ident: &[&str] = &[#(#r_wrapper_generators),*];
-        #[doc(hidden)]
         #r_wrappers_impls_const
         #[doc(hidden)]
+        #[doc = #module_source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         pub const #r_wrappers_deps_ident: &[&[&str]] = &[#(#r_wrappers_use_other_modules),*];
         #[doc(hidden)]
+        #[doc = #module_source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         pub const #r_wrappers_impl_deps_ident: &[&[&str]] = &[#(#r_wrappers_impl_use_other_modules),*];
 
         // Conditional length constants for feature-gated function entries
@@ -1956,6 +2047,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         #altrep_generated_code
 
         /// Register ALTREP classes declared in this module.
+        #[doc = #module_source_loc_doc]
         pub(crate) fn #altrep_reg_fn_ident() {
             // From `struct Type;` declarations (old style)
             #(#altrep_regs;)*
@@ -1964,6 +2056,7 @@ pub fn miniextendr_module(item: proc_macro::TokenStream) -> proc_macro::TokenStr
         }
 
         #[doc = #module_doc]
+        #[doc = #module_source_loc_doc]
         #[unsafe(no_mangle)]
         #[allow(non_snake_case)]
         extern "C-unwind" fn #module_entrypoint_ident(dll: *mut ::miniextendr_api::ffi::DllInfo) {
@@ -2011,6 +2104,7 @@ fn generate_trait_impl_wrapper(
     let drop_fn_name = quote::format_ident!("__mx_drop_{}", type_lower);
     let query_fn_name = quote::format_ident!("__mx_query_{}", type_lower);
     let wrap_fn_name = quote::format_ident!("__mx_wrap_{}", type_lower);
+    let source_loc_doc = source_location_doc(type_ident.span());
 
     // Generate tag path string for hashing
     let tag_path = format!("::{}", type_ident);
@@ -2051,6 +2145,8 @@ fn generate_trait_impl_wrapper(
             "` with trait dispatch support."
         )]
         #[doc = "Generated by `miniextendr_module!`."]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[repr(C)]
         #[doc(hidden)]
         struct #wrapper_name {
@@ -2065,6 +2161,8 @@ fn generate_trait_impl_wrapper(
             stringify!(#type_ident),
             "`."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         const #concrete_tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(concat!(module_path!(), #tag_path));
@@ -2074,6 +2172,8 @@ fn generate_trait_impl_wrapper(
             stringify!(#type_ident),
             "` wrapper."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         unsafe extern "C" fn #drop_fn_name(ptr: *mut ::miniextendr_api::abi::mx_erased) {
             if ptr.is_null() {
@@ -2088,6 +2188,8 @@ fn generate_trait_impl_wrapper(
             stringify!(#type_ident),
             "` trait dispatch."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         unsafe extern "C" fn #query_fn_name(
             _ptr: *mut ::miniextendr_api::abi::mx_erased,
@@ -2102,6 +2204,8 @@ fn generate_trait_impl_wrapper(
             stringify!(#type_ident),
             "`."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         static #base_vtable_name: ::miniextendr_api::abi::mx_base_vtable =
             ::miniextendr_api::abi::mx_base_vtable {
@@ -2115,6 +2219,8 @@ fn generate_trait_impl_wrapper(
             stringify!(#type_ident),
             "`."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[doc(hidden)]
         fn #wrap_fn_name(data: #type_ident) -> *mut ::miniextendr_api::abi::mx_erased {
             let wrapper = Box::new(#wrapper_name {
@@ -2181,6 +2287,7 @@ pub fn r_ffi_checked(
 ) -> proc_macro::TokenStream {
     let foreign_mod = syn::parse_macro_input!(item as syn::ItemForeignMod);
 
+    let foreign_mod_attrs = &foreign_mod.attrs;
     let abi = &foreign_mod.abi;
     let mut unchecked_items = Vec::new();
     let mut checked_wrappers = Vec::new();
@@ -2219,11 +2326,16 @@ pub fn r_ffi_checked(
                         fn_name_str, unchecked_name_str
                     );
                     let checked_doc_lit = syn::LitStr::new(&checked_doc, fn_name.span());
+                    let source_loc_doc = crate::source_location_doc(fn_name.span());
+                    let source_loc_doc_lit = syn::LitStr::new(&source_loc_doc, fn_name.span());
 
                     // Generate the unchecked FFI binding with #[link_name]
                     let link_name = syn::LitStr::new(&fn_name_str, fn_name.span());
                     let unchecked_fn: syn::ForeignItem = syn::parse_quote! {
                         #(#attrs)*
+                        #[doc = concat!("Unchecked FFI binding for `", stringify!(#fn_name), "`.")]
+                        #[doc = #source_loc_doc_lit]
+                        #[doc = concat!("Generated from source file `", file!(), "`.")]
                         #[link_name = #link_name]
                         #vis fn #unchecked_name(#inputs) #output;
                     };
@@ -2245,15 +2357,13 @@ pub fn r_ffi_checked(
 
                     let is_never = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Never(_)));
 
-                    // Check if return type is a raw pointer (*const T or *mut T)
-                    // These MUST NOT be routed - the pointer would be invalid on the worker thread
-                    let returns_raw_pointer = matches!(output, syn::ReturnType::Type(_, ty) if matches!(**ty, syn::Type::Ptr(_)));
-
                     let wrapper = if is_never {
                         // Never-returning functions (like Rf_error)
                         quote::quote! {
                             #(#attrs)*
                             #[doc = #checked_doc_lit]
+                            #[doc = #source_loc_doc_lit]
+                            #[doc = concat!("Generated from source file `", file!(), "`.")]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2262,30 +2372,13 @@ pub fn r_ffi_checked(
                                 })
                             }
                         }
-                    } else if returns_raw_pointer {
-                        // Pointer-returning functions are routed to main thread.
-                        // SAFETY: Caller must ensure the pointer is used/copied before
-                        // returning to worker thread, as R's GC may invalidate it.
-                        // The pointer is valid during the with_r_thread callback.
-                        quote::quote! {
-                            #(#attrs)*
-                            #[doc = #checked_doc_lit]
-                            #[inline(always)]
-                            #[allow(non_snake_case)]
-                            #vis unsafe fn #fn_name(#inputs) #output {
-                                let result = ::miniextendr_api::worker::with_r_thread(move || {
-                                    ::miniextendr_api::worker::Sendable(unsafe {
-                                        #unchecked_name(#(#arg_names),*)
-                                    })
-                                });
-                                result.0
-                            }
-                        }
                     } else {
                         // Normal functions - route via with_r_thread
                         quote::quote! {
                             #(#attrs)*
                             #[doc = #checked_doc_lit]
+                            #[doc = #source_loc_doc_lit]
+                            #[doc = concat!("Generated from source file `", file!(), "`.")]
                             #[inline(always)]
                             #[allow(non_snake_case)]
                             #vis unsafe fn #fn_name(#inputs) #output {
@@ -2309,6 +2402,7 @@ pub fn r_ffi_checked(
     }
 
     let expanded = quote::quote! {
+        #(#foreign_mod_attrs)*
         unsafe #abi {
             #(#unchecked_items)*
         }

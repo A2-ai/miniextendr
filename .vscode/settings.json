@@ -45,10 +45,11 @@
     "sha2",
     "bitflags",
     "bitvec",
-    "indicatif",
+    "tinyvec",
     "vctrs",
-    "nonapi",
-    "raw_conversions"
+    "raw_conversions",
+    "macro-coverage",
+    "materialization-tracking"
   ],
   "rust-analyzer.check.command": "clippy",
   // IMPORTANT: target directories MUST be outside rpkg/src/ to avoid pkgbuild

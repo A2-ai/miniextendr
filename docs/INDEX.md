@@ -22,6 +22,7 @@
 - [ALTREP.md](ALTREP.md) -- ALTREP overview and proc-macro usage
 - [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md) -- Practical ALTREP examples
 - [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md) -- ALTREP quick reference card
+- [FEATURES.md](FEATURES.md) -- Feature flags reference (all 31 optional features)
 - [RAYON.md](RAYON.md) -- Parallel iteration with rayon
 - [VCTRS.md](VCTRS.md) -- vctrs integration with `#[derive(Vctrs)]`
 - [serde_r.md](serde_r.md) -- Direct Rust-R serialization via serde
@@ -51,6 +52,8 @@
 - [COERCE.md](COERCE.md) -- Type coercion in miniextendr
 - [CONVERSION_SEMANTICS.md](CONVERSION_SEMANTICS.md) -- Storage-directed conversion semantics
 - [as_coerce.md](as_coerce.md) -- `as.<class>()` coercion methods
+- [trait-patterns-review.md](trait-patterns-review.md) -- Blanket impl patterns and marker traits
+- [extending-miniextendr.md](extending-miniextendr.md) -- Guide: adding custom types to miniextendr
 
 ## Internals
 
@@ -66,6 +69,7 @@
 ## Project Status
 
 - [GAPS.md](GAPS.md) -- **Known gaps and limitations** (760+ lines of valuable context on what's missing, what's broken, and why)
+- [FEATURE_BACKLOG.md](FEATURE_BACKLOG.md) -- Proposed next features and maintenance sequencing
 - [MAINTAINER.md](MAINTAINER.md) -- Maintainer guide
 - [docs.md](docs.md) -- Documentation meta-notes
 

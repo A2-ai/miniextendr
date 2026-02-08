@@ -205,6 +205,77 @@ macro_rules! __impl_altvec_dataptr {
     };
 }
 
+/// Internal macro: impl AltVec with dataptr support for string ALTREP.
+///
+/// String vectors (STRSXP) store CHARSXP pointers, not contiguous data. This macro
+/// materializes the Rust strings into a native R STRSXP cached in the ALTREP data2 slot.
+/// Subsequent calls return the cached STRSXP's data pointer directly.
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __impl_altvec_string_dataptr {
+    ($ty:ty) => {
+        // Allow: materialization-tracking cfg expands in downstream crate context
+        #[allow(clippy::not_unsafe_ptr_arg_deref, unexpected_cfgs)]
+        impl $crate::altrep_traits::AltVec for $ty {
+            const HAS_DATAPTR: bool = true;
+
+            fn dataptr(x: $crate::ffi::SEXP, _writable: bool) -> *mut core::ffi::c_void {
+                #[cfg(feature = "materialization-tracking")]
+                $crate::altrep_tracking::record_materialization(
+                    core::any::type_name::<$ty>(),
+                    _writable,
+                );
+
+                unsafe {
+                    // Check for cached materialized STRSXP in data2 slot
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                    {
+                        // DATAPTR_RO on a standard (non-ALTREP) STRSXP gives the SEXP* array.
+                        // Cast to mutable: safe because we own the materialized vector.
+                        return $crate::ffi::DATAPTR_RO(data2) as *mut core::ffi::c_void;
+                    }
+
+                    // Materialize: create a native STRSXP from the Rust strings
+                    let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
+                    let strsxp = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                        $crate::ffi::SEXPTYPE::STRSXP,
+                        n,
+                    ));
+
+                    // Populate using the AltString::elt method (which handles Option→NA)
+                    for i in 0..n {
+                        let elt = <$ty as $crate::altrep_traits::AltString>::elt(x, i);
+                        $crate::ffi::SET_STRING_ELT(strsxp, i, elt);
+                    }
+
+                    // Cache in data2 slot (R will GC-protect it as part of the ALTREP object)
+                    $crate::ffi::R_set_altrep_data2(x, strsxp);
+                    $crate::ffi::Rf_unprotect(1);
+
+                    $crate::ffi::DATAPTR_RO(strsxp) as *mut core::ffi::c_void
+                }
+            }
+
+            const HAS_DATAPTR_OR_NULL: bool = true;
+
+            fn dataptr_or_null(x: $crate::ffi::SEXP) -> *const core::ffi::c_void {
+                unsafe {
+                    let data2 = $crate::ffi::R_altrep_data2(x);
+                    if !data2.is_null()
+                        && $crate::ffi::TYPEOF(data2) == $crate::ffi::SEXPTYPE::STRSXP
+                    {
+                        $crate::ffi::DATAPTR_RO(data2)
+                    } else {
+                        core::ptr::null()
+                    }
+                }
+            }
+        }
+    };
+}
+
 /// Internal macro: impl AltVec with extract_subset support
 #[macro_export]
 #[doc(hidden)]
@@ -693,9 +764,21 @@ macro_rules! impl_altstring_from_data {
         $crate::__impl_altstring_methods!($ty);
         $crate::impl_inferbase_string!($ty);
     };
+    ($ty:ty, dataptr) => {
+        $crate::__impl_altrep_base!($ty);
+        $crate::__impl_altvec_string_dataptr!($ty);
+        $crate::__impl_altstring_methods!($ty);
+        $crate::impl_inferbase_string!($ty);
+    };
     ($ty:ty, serialize) => {
         $crate::__impl_altrep_base_with_serialize!($ty);
         impl $crate::altrep_traits::AltVec for $ty {}
+        $crate::__impl_altstring_methods!($ty);
+        $crate::impl_inferbase_string!($ty);
+    };
+    ($ty:ty, dataptr, serialize) => {
+        $crate::__impl_altrep_base_with_serialize!($ty);
+        $crate::__impl_altvec_string_dataptr!($ty);
         $crate::__impl_altstring_methods!($ty);
         $crate::impl_inferbase_string!($ty);
     };
@@ -896,8 +979,10 @@ impl_altlogical_from_data!(Vec<bool>, serialize);
 // Raw types
 impl_altraw_from_data!(Vec<u8>, serialize);
 
-// String types
-impl_altstring_from_data!(Vec<String>, serialize);
+// String types - Vec<String> supports dataptr via materialization into STRSXP
+impl_altstring_from_data!(Vec<String>, dataptr, serialize);
+// Vec<Option<String>> preserves NA_character_ through serialization roundtrips
+impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
 
 // Complex types - Vec<Rcomplex> supports dataptr
 impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
@@ -913,7 +998,7 @@ impl_altinteger_from_data!(Box<[i32]>, dataptr, serialize);
 impl_altreal_from_data!(Box<[f64]>, dataptr, serialize);
 impl_altlogical_from_data!(Box<[bool]>, serialize);
 impl_altraw_from_data!(Box<[u8]>, serialize);
-impl_altstring_from_data!(Box<[String]>, serialize);
+impl_altstring_from_data!(Box<[String]>, dataptr, serialize);
 impl_altcomplex_from_data!(Box<[crate::ffi::Rcomplex]>, dataptr, serialize);
 
 // =============================================================================
@@ -1812,6 +1897,7 @@ impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");
 impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
 impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
 impl_register_altrep_builtin!(Vec<String>, "Vec_String");
+impl_register_altrep_builtin!(Vec<Option<String>>, "Vec_Option_String");
 impl_register_altrep_builtin!(Vec<crate::ffi::Rcomplex>, "Vec_Rcomplex");
 
 // Range types - RegisterAltrep only

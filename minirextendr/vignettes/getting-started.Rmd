@@ -64,7 +64,7 @@ mypackage/
 ├── R/
 ├── src/
 │   ├── rust/
-│   │   ├── Cargo.toml.in    # Rust project config (template)
+│   │   ├── Cargo.toml       # Rust project config
 │   │   ├── lib.rs           # Your Rust code goes here
 │   │   ├── build.rs         # Build script (runs lint)
 │   │   └── vendor/          # Vendored miniextendr crates
@@ -242,7 +242,7 @@ miniextendr_clear_cache(version = "main")
 miniextendr_status()
 #> miniextendr status for: mypackage
 #> ── Required Files ────────────────────────────────────
-#> ✔ src/rust/Cargo.toml.in
+#> ✔ src/rust/Cargo.toml
 #> ✔ src/rust/lib.rs
 #> ✔ configure.ac
 #> ...
@@ -292,7 +292,7 @@ use_miniextendr_feature("serde_json")
 use_miniextendr_feature("vctrs")
 ```
 
-This updates `Cargo.toml.in` and creates any necessary Rust module stubs.
+This updates `Cargo.toml` and creates any necessary Rust module stubs.
 
 ## Development Tips
 
@@ -303,7 +303,6 @@ edit the template, not the generated file:
 
 | Generated File | Edit This Instead |
 |------|------|
-| `src/rust/Cargo.toml` | `src/rust/Cargo.toml.in` |
 | `src/Makevars` | `src/Makevars.in` |
 | `src/entrypoint.c` | `src/entrypoint.c.in` |
 | `configure` | `configure.ac` (then run `miniextendr_autoconf()`) |

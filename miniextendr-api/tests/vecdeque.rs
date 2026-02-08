@@ -16,7 +16,7 @@ fn vecdeque_i32_roundtrip() {
         let back: VecDeque<i32> = TryFromSexp::try_from_sexp(sexp).unwrap();
 
         assert_eq!(back.len(), 3);
-        assert_eq!(back.get(0), Some(&1));
+        assert_eq!(back.front(), Some(&1));
         assert_eq!(back.get(1), Some(&2));
         assert_eq!(back.get(2), Some(&3));
     });
@@ -34,7 +34,7 @@ fn vecdeque_f64_roundtrip() {
         let back: VecDeque<f64> = TryFromSexp::try_from_sexp(sexp).unwrap();
 
         assert_eq!(back.len(), 3);
-        assert_eq!(back.get(0), Some(&1.5));
+        assert_eq!(back.front(), Some(&1.5));
         assert_eq!(back.get(1), Some(&2.5));
         assert_eq!(back.get(2), Some(&3.5));
     });
@@ -52,7 +52,7 @@ fn vecdeque_u8_roundtrip() {
         let back: VecDeque<u8> = TryFromSexp::try_from_sexp(sexp).unwrap();
 
         assert_eq!(back.len(), 3);
-        assert_eq!(back.get(0), Some(&10));
+        assert_eq!(back.front(), Some(&10));
         assert_eq!(back.get(1), Some(&20));
         assert_eq!(back.get(2), Some(&30));
     });

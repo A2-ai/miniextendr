@@ -1,110 +1,96 @@
 # bootstrap.R - Run before package build (Config/build/bootstrap: TRUE)
-# Mimics R's internal configure handling from src/library/tools/R/install.R
+# Simply runs configure to sync vendor and generate build files
 
 message("Running bootstrap.R...")
 
 pkg_root <- getwd()
+is_windows <- .Platform$OS.type == "windows"
 
-# Get R CMD config value for an environment variable
-get_r_config <- function(var) {
-  if (.Platform$OS.type == "windows") {
-    system2(file.path(R.home("bin"), "Rcmd.exe"),
-            c("config", var), stdout = TRUE)
-  } else {
-    system2(file.path(R.home("bin"), "R"),
-            c("CMD", "config", var), stdout = TRUE)
-  }
+# Find bash executable on Windows (relies on Rtools being in PATH)
+find_bash <- function() {
+  bash_in_path <- Sys.which("bash")
+  if (nzchar(bash_in_path)) return(bash_in_path)
+  NULL
 }
 
-# Run configure with proper environment setup (matching R's install.R)
-run_configure <- function() {
-  # Environment variables to set from R CMD config
-  ev <- c("CC", "CFLAGS", "CXX", "CXXFLAGS", "CPPFLAGS",
-          "LDFLAGS", "FC", "FCFLAGS")
+# Helper to run a command and check exit status
+run_cmd <- function(cmd, args = character()) {
+  message(sprintf("Running: %s %s", cmd, paste(args, collapse = " ")))
+  # Use stdout/stderr = TRUE to inherit from parent (visible in logs)
+  result <- system2(cmd, args, stdout = TRUE, stderr = TRUE)
+  exit_status <- attr(result, "status")
+  if (!is.null(exit_status) && exit_status != 0) {
+    # Print captured output for debugging
+    if (length(result) > 0) {
+      message("Command output:")
+      message(paste(result, collapse = "\n"))
+    }
+    stop(sprintf("Command failed with exit code %d: %s %s",
+                 exit_status, cmd, paste(args, collapse = " ")))
+  }
+  invisible(0)
+}
 
-  # Skip any which are already set
-  ev <- ev[!nzchar(Sys.getenv(ev))]
-
-  # Get values from R CMD config
-  ev_values <- sapply(ev, get_r_config, USE.NAMES = TRUE)
-
-  # Filter out empty values (possible for CXX on some systems)
-  ev_values <- ev_values[nzchar(ev_values)]
-
-  # Set environment variables
-  if (length(ev_values) > 0) {
-    do.call(Sys.setenv, as.list(ev_values))
+# Choose configure script based on platform
+if (is_windows) {
+  # On Windows, use configure.win via bash
+  configure_script <- file.path(pkg_root, "configure.win")
+  if (!file.exists(configure_script)) {
+    stop("configure.win not found")
   }
 
-  on.exit({
-    # Unset environment variables we set (safe since we skipped already-set ones)
-    if (length(ev_values) > 0) {
-      Sys.unsetenv(names(ev_values))
-    }
-  })
+  bash_exe <- find_bash()
+  if (is.null(bash_exe)) {
+    stop("Could not find bash.exe. Please install Rtools.")
+  }
 
-  if (.Platform$OS.type == "windows") {
-    # Windows: try configure.ucrt, then configure.win
-    if (file.exists("configure.ucrt")) {
-      f <- "configure.ucrt"
-    } else if (file.exists("configure.win")) {
-      f <- "configure.win"
-    } else if (file.exists("configure")) {
-      message("\n",
-              "   **********************************************\n",
-              "   WARNING: this package has a configure script\n",
-              "         It probably needs manual configuration\n",
-              "   **********************************************\n\n")
-      return(invisible(FALSE))
-    } else {
-      stop("No configure script found")
-    }
+  message(sprintf("Running %s via bash...", basename(configure_script)))
+  message(sprintf("Package root: %s", pkg_root))
+  message(sprintf("Bash executable: %s", bash_exe))
 
-    message(sprintf("Running: sh %s", f))
-    res <- system(paste("sh", f))
-    if (res != 0) {
-      stop(sprintf("configuration failed (exit code %d)", res))
-    }
+  # Run configure.win through bash with login shell
+  # Capture output to show in error messages
+  cmd_str <- sprintf("cd '%s' && ./configure.win", pkg_root)
+  message(sprintf("Bash command: %s", cmd_str))
 
+  output <- system2(bash_exe,
+                    args = c("-l", "-c", cmd_str),
+                    stdout = TRUE, stderr = TRUE)
+  exit_status <- attr(output, "status")
+
+  # Always print output for debugging
+  if (length(output) > 0) {
+    message("configure.win output:")
+    message(paste(output, collapse = "\n"))
+  }
+
+  if (!is.null(exit_status) && exit_status != 0) {
+    stop(sprintf("configure.win failed with exit code %d", exit_status))
+  }
+  message("bootstrap.R completed successfully")
+} else {
+  # Unix: run configure directly
+  configure_script <- file.path(pkg_root, "configure")
+
+  # Set NOT_CRAN=true for dev builds if not already set
+  # This ensures configure runs in dev mode during devtools workflows
+  if (!nzchar(Sys.getenv("NOT_CRAN"))) {
+    Sys.setenv(NOT_CRAN = "true")
+    message("Setting NOT_CRAN=true for dev build")
+  }
+
+  if (file.exists(configure_script)) {
+    message("Running ./configure...")
+    run_cmd(configure_script)
+    message("bootstrap.R completed successfully")
   } else {
-    # Unix: run ./configure
-    configure_script <- file.path(pkg_root, "configure")
-
-    if (!file.exists(configure_script)) {
-      # Try running autoconf first
-      message("configure script not found - running autoconf first")
-      res <- system2("autoconf", stdout = "", stderr = "")
-      if (res != 0) {
-        stop("autoconf failed")
-      }
-    }
-
-    if (!file.exists(configure_script)) {
+    message("configure script not found - running autoconf first")
+    run_cmd("autoconf")
+    if (file.exists(configure_script)) {
+      run_cmd(configure_script)
+      message("bootstrap.R completed successfully")
+    } else {
       stop("Failed to generate configure script")
     }
-
-    # Check if configure is executable
-    if (!file_test("-x", configure_script)) {
-      stop("'configure' exists but is not executable -- see the 'R Installation and Administration Manual'")
-    }
-
-    # Build command with env vars (matching R's approach)
-    # _R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_=false in case configure calls SHLIB
-    ev_args <- paste0(names(ev_values), "=", shQuote(ev_values))
-    cmd <- paste(c("_R_SHLIB_BUILD_OBJECTS_SYMBOL_TABLES_=false",
-                   ev_args,
-                   "./configure"),
-                 collapse = " ")
-
-    message(sprintf("Running: %s", cmd))
-    res <- system(cmd)
-    if (res != 0) {
-      stop(sprintf("configuration failed (exit code %d)", res))
-    }
   }
-
-  invisible(TRUE)
 }
-
-run_configure()
-message("bootstrap.R completed successfully")

@@ -213,6 +213,51 @@ pub fn test_logical_slice_all_true(
 
 // endregion
 
+// region: strict conversion tests
+
+/// @noRd
+#[miniextendr(strict)]
+pub fn strict_echo_i64(x: i64) -> i64 {
+    x
+}
+
+/// @noRd
+#[miniextendr(strict)]
+pub fn strict_echo_vec_i64(x: Vec<i64>) -> Vec<i64> {
+    x
+}
+
+/// @noRd
+#[miniextendr(strict)]
+pub fn strict_echo_vec_option_i64(x: Vec<Option<i64>>) -> Vec<Option<i64>> {
+    x
+}
+
+/// R6 class for testing strict conversion on impl methods.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct StrictCounter {
+    value: i64,
+}
+
+/// @noRd
+#[miniextendr(r6, strict)]
+impl StrictCounter {
+    pub fn new(value: i64) -> Self {
+        StrictCounter { value }
+    }
+
+    pub fn get_value(&self) -> i64 {
+        self.value
+    }
+
+    pub fn add(&mut self, x: i64) -> i64 {
+        self.value += x;
+        self.value
+    }
+}
+
+// endregion
+
 miniextendr_module! {
     mod conversion_tests;
 
@@ -244,4 +289,10 @@ miniextendr_module! {
     fn test_logical_slice_len;
     fn test_logical_slice_any_true;
     fn test_logical_slice_all_true;
+
+    // Strict conversion tests
+    fn strict_echo_i64;
+    fn strict_echo_vec_i64;
+    fn strict_echo_vec_option_i64;
+    impl StrictCounter;
 }

@@ -13,7 +13,7 @@ test_that("many ExternalPtr objects survive GC", {
 
   for (batch in 1:10) {
     for (i in ((batch - 1) * 10 + 1):(batch * 10)) {
-      ptrs[[i]] <- SharedData$create(as.double(i), as.double(i * 2), paste("item", i))
+      ptrs[[i]] <- SharedData$new(as.double(i), as.double(i * 2), paste("item", i))
     }
     gc()
   }
@@ -26,7 +26,7 @@ test_that("many ExternalPtr objects survive GC", {
 })
 
 test_that("ExternalPtr survives repeated GC cycles", {
-  data <- SharedData$create(1.0, 2.0, "gc-test")
+  data <- SharedData$new(1.0, 2.0, "gc-test")
 
   # Hammer GC multiple times
   for (i in 1:20) {
@@ -43,7 +43,7 @@ test_that("ExternalPtr survives repeated GC cycles", {
 test_that("temporary ExternalPtr objects are collected without crashing", {
   # Create and immediately drop many ExternalPtr objects
   for (i in 1:200) {
-    SharedData$create(as.double(i), as.double(i), "temp")
+    SharedData$new(as.double(i), as.double(i), "temp")
   }
 
   gc()
@@ -94,7 +94,7 @@ test_that("ExternalPtr and ALTREP interleaved with GC", {
   vecs <- vector("list", 20)
 
   for (i in 1:20) {
-    ptrs[[i]] <- SharedData$create(as.double(i), 0.0, paste0("p", i))
+    ptrs[[i]] <- SharedData$new(as.double(i), 0.0, paste0("p", i))
     vecs[[i]] <- into_sexp_altrep(seq_len(i))
     gc()
   }

@@ -161,7 +161,7 @@ The following files in rpkg/ have corresponding template versions:
 | `src/Makevars.in` | `inst/templates/*/Makevars.in` |
 | `src/mx_abi.c.in` | `inst/templates/*/mx_abi.c.in` |
 | `src/rust/build.rs` | `inst/templates/*/build.rs` |
-| `src/rust/Cargo.toml.in` | `inst/templates/*/Cargo.toml.in` |
+| `src/rust/Cargo.toml` | `inst/templates/*/Cargo.toml` |
 | `src/rust/cargo-config.toml.in` | `inst/templates/*/cargo-config.toml.in` |
 | `src/rust/document.rs.in` | `inst/templates/*/document.rs.in` |
 | `src/rust/lib.rs` | `inst/templates/*/lib.rs` (with `{{package_rs}}` substitution) |

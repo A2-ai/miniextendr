@@ -144,7 +144,6 @@ Many files in rpkg are generated from `.in` templates. Always edit the template:
 
 | Generated file | Edit this instead |
 |---|---|
-| `rpkg/src/rust/Cargo.toml` | `rpkg/src/rust/Cargo.toml.in` |
 | `rpkg/src/rust/.cargo/config.toml` | `rpkg/src/rust/cargo-config.toml.in` |
 | `rpkg/src/rust/document.rs` | `rpkg/src/rust/document.rs.in` |
 | `rpkg/src/Makevars` | `rpkg/src/Makevars.in` |

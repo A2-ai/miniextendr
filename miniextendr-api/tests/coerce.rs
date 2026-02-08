@@ -121,7 +121,7 @@ fn vecdeque_element_coerce() {
     deque.push_back(3i8);
 
     let coerced: VecDeque<i32> = deque.coerce();
-    assert_eq!(coerced.get(0), Some(&1i32));
+    assert_eq!(coerced.front(), Some(&1i32));
     assert_eq!(coerced.get(1), Some(&2i32));
     assert_eq!(coerced.get(2), Some(&3i32));
 }

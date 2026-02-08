@@ -1,0 +1,502 @@
+# Feature Flags Reference
+
+miniextendr-api uses Cargo feature flags to enable optional integrations.
+Only `default` features are enabled automatically.
+
+## Quick Reference
+
+| Feature | What it enables | Dependencies added |
+|---------|----------------|-------------------|
+| **Default** | | |
+| `doc-lint` | Build-time lint checking `#[miniextendr]` vs `miniextendr_module!` | (forwarded to miniextendr-macros) |
+| `refcount-fast-hash` | Fast hasher for refcount protect arenas | ahash |
+| **Core / R Integration** | | |
+| `nonapi` | Non-API R symbols (stack controls, mutable `DATAPTR`) | (none) |
+| `rayon` | Parallel iterators via Rayon | rayon |
+| `connections` | Experimental custom R connection framework | (none) |
+| `indicatif` | Progress bars via R console | indicatif (implies `nonapi`) |
+| `vctrs` | vctrs C API + `#[derive(Vctrs)]` macro | (forwarded to miniextendr-macros) |
+| **Serialization** | | |
+| `serde` | Direct Rust-R serialization (`RSerializeNative`, `RDeserializeNative`) | serde |
+| `serde_json` | JSON string serialization (`RSerialize`, `RDeserialize`) | serde, serde_json |
+| `toml` | TOML value conversions | toml |
+| **Matrix / Array** | | |
+| `ndarray` | N-dimensional array conversions (`Array1`..`Array6`, views) | ndarray |
+| `nalgebra` | Linear algebra types (`DVector`, `DMatrix`, `SVector`, `SMatrix`) | nalgebra |
+| **Numeric Types** | | |
+| `num-bigint` | Arbitrary-precision integers (`BigInt`, `BigUint`) | num-bigint, num-integer |
+| `rust_decimal` | Fixed-point decimals (`Decimal`) | rust_decimal |
+| `ordered-float` | NaN-orderable floats (`OrderedFloat<f64>`) | ordered-float |
+| `num-complex` | Complex numbers (`Complex<f64>`) | num-complex |
+| **Adapter Traits** | | |
+| `num-traits` | Generic numeric operations (`RNum`, `RSigned`, `RFloat`) | num-traits |
+| `bytes` | Byte buffer operations (`RBuf`, `RBufMut`) | bytes |
+| **String / Text** | | |
+| `uuid` | UUID conversions (`Uuid`, `Vec<Uuid>`) | uuid (with `v4` feature) |
+| `regex` | Compiled regex from R patterns (`Regex`) | regex |
+| `url` | Validated URL conversions (`Url`, `Vec<Url>`) | url |
+| `aho-corasick` | Fast multi-pattern string search | aho-corasick |
+| **Date / Time** | | |
+| `time` | `OffsetDateTime`, `Date`, `Duration` conversions | time (with formatting/parsing/macros) |
+| **Random Number Generation** | | |
+| `rand` | Wraps R's RNG with `rand` traits (`RRng`) | rand |
+| `rand_distr` | Additional distributions (Normal, Exp, etc.) | rand, rand_distr |
+| **Collections** | | |
+| `indexmap` | Order-preserving maps (`IndexMap<String, T>`) | indexmap |
+| `tinyvec` | Small-vector optimization (`TinyVec`, `ArrayVec`) | tinyvec (with `alloc`) |
+| **Bit Manipulation** | | |
+| `bitflags` | Bitflags-integer conversions (`RFlags<T>`) | bitflags |
+| `bitvec` | Bit vector-logical conversions (`RBitVec`) | bitvec |
+| **Binary Data** | | |
+| `raw_conversions` | POD types via bytemuck (`Raw<T>`, `RawSlice<T>`) | bytemuck (with `derive`) |
+| `sha2` | SHA-256/SHA-512 hashing helpers | sha2 |
+| **Formatting** | | |
+| `tabled` | ASCII/Unicode table formatting | tabled |
+| **Diagnostics** | | |
+| `materialization-tracking` | Logs ALTREP materializations for diagnostics | (none) |
+| `macro-coverage` | Macro expansion coverage module for auditing | (none) |
+
+---
+
+## Default Features
+
+### `doc-lint`
+
+Enables the build-time lint that checks consistency between `#[miniextendr]` attributes
+and `miniextendr_module!` declarations. Warns on missing entries in either direction.
+
+Forwarded to `miniextendr-macros/doc-lint`. Disable with `default-features = false` if
+the lint causes issues during development.
+
+### `refcount-fast-hash`
+
+Uses `ahash` instead of the standard `SipHash` for refcount protect arenas, improving
+throughput on large collections of protected R objects. Not DOS-resistant, but this is
+fine for internal arena use.
+
+---
+
+## Core / R Integration Features
+
+### `nonapi`
+
+Enables access to non-API R symbols that are not part of R's public C API. These
+symbols may change between R versions and will cause `R CMD check` warnings.
+
+**What it unlocks:**
+- `DATAPTR` -- mutable data pointer (prefer `DATAPTR_RO` when possible)
+- `R_curErrorBuf` -- current R error message buffer
+- `R_CStackStart`, `R_CStackLimit`, `R_CStackDir` -- stack checking controls
+- `scope_with_r()`, `spawn_with_r()`, `with_stack_checking_disabled()` -- thread safety utilities
+
+See [NONAPI.md](NONAPI.md) for the full tracking list.
+
+### `rayon`
+
+Parallel iterators via the Rayon crate, with R-safe interop.
+
+**Provides:**
+- `RParallelIterator` -- adapter trait for exposing parallel iterators to R
+- `RParallelExtend` -- parallel collection building
+- `with_r_vec()` -- zero-copy parallel fill into R vectors
+- `with_r_matrix()` -- parallel matrix fill
+- `reduce()` -- parallel reductions returning R scalars
+
+See [RAYON.md](RAYON.md) for the full guide.
+
+### `connections`
+
+Experimental R connection framework. Wraps R's internal connection system for
+creating custom readable/writable connections.
+
+**Warning:** R explicitly reserves the right to change the connection ABI without
+a compatibility layer. Always check `R_CONNECTIONS_VERSION` at runtime. Gated behind
+this feature flag to make the instability opt-in.
+
+**Provides:**
+- `RConnectionImpl` trait
+- `RCustomConnection` builder
+- `std::io` adapters (`IoRead`, `IoWrite`, `IoReadWrite`)
+
+### `indicatif`
+
+Progress bars rendered in the R console via the `indicatif` crate. Output is routed
+through `ptr_R_WriteConsoleEx` (a non-API symbol), so this feature implies `nonapi`.
+
+All output is a no-op when called off the R main thread.
+
+**Provides:**
+- `progress::RConsole` -- `TermLike` implementation for R console
+- `progress::RStream` -- stdout/stderr target selection
+
+### `vctrs`
+
+Access to the vctrs R package's maturing C API, plus the `#[derive(Vctrs)]` proc macro
+for defining custom vctrs-compatible classes.
+
+**C API wrappers:**
+- `init_vctrs()` -- load function pointers via `R_GetCCallable`
+- `obj_is_vector()` -- check if object is a vctrs vector
+- `short_vec_size()` -- get vector size
+- `short_vec_recycle()` -- recycle to target size
+
+**Derive macro:**
+- `#[derive(Vctrs)]` with `Vctr`, `Rcrd`, `ListOf` kinds
+- `#[miniextendr(vctrs)]` impl blocks for methods
+- `coerce = "type"` attribute for `vec_ptype2`/`vec_cast` generation
+
+Requires the `vctrs` R package to be installed. See [VCTRS.md](VCTRS.md) for the full guide.
+
+---
+
+## Serialization Features
+
+### `serde`
+
+Direct Rust-R serialization with no JSON intermediate. Converts Rust structs to/from
+native R objects (named lists, atomic vectors, etc.) using serde's `Serialize` and
+`Deserialize` traits.
+
+**Provides:**
+- `RSerializeNative` / `RDeserializeNative` traits
+- `AsSerialize<T>` wrapper for returning `Serialize` types from `#[miniextendr]` functions
+
+**Type mappings:** structs become named lists, `Vec<primitive>` becomes atomic vectors,
+`Option::None` becomes NA or NULL. See [serde_r.md](serde_r.md) for details.
+
+### `serde_json`
+
+JSON string serialization via `serde_json`. Implies `serde`.
+
+**Provides:**
+- `RSerialize` / `RDeserialize` traits (JSON-based)
+- `JsonOptions`, `NaHandling`, `FactorHandling`, `SpecialFloatHandling` configuration
+- `json_from_sexp()`, `json_into_sexp()` and variants (strict, permissive, custom)
+- `JsonValue` / `RJsonValueOps` for working with JSON values
+
+### `toml`
+
+TOML value conversions between R lists/strings and TOML.
+
+**Provides:**
+- `TomlValue` / `RTomlOps` type and adapter trait
+- `toml_from_str()`, `toml_to_string()`, `toml_to_string_pretty()` helpers
+
+---
+
+## Matrix / Array Features
+
+### `ndarray`
+
+N-dimensional array conversions between R vectors/matrices and the `ndarray` crate.
+
+**Supported types:**
+- Owned: `Array0` through `Array6`, `ArrayD` (dynamic dimensions)
+- Views: `ArrayView0`..`ArrayView6`, `ArrayViewD`
+- Mutable views: `ArrayViewMut0`..`ArrayViewMut6`, `ArrayViewMutD`
+- Shared: `ArcArray1`, `ArcArray2`
+
+**Adapter traits:** `RNdArrayOps`, `RNdIndex`, `RNdSlice`, `RNdSlice2D`
+
+### `nalgebra`
+
+Linear algebra type conversions between R vectors/matrices and `nalgebra`.
+
+**Supported types:**
+- Dynamic: `DVector`, `DMatrix`
+- Static: `SVector<T, N>`, `SMatrix<T, R, C>`
+
+**Adapter traits:** `RVectorOps`, `RMatrixOps`
+
+---
+
+## Numeric Type Features
+
+### `num-bigint`
+
+Arbitrary-precision integers via character string representation.
+
+| Rust Type | R Type | Conversion |
+|-----------|--------|------------|
+| `BigInt` | `character(1)` | String parsing (signed) |
+| `BigUint` | `character(1)` | String parsing (unsigned) |
+
+**Adapter traits:** `RBigIntOps`, `RBigIntBitOps`, `RBigUintOps`, `RBigUintBitOps`
+
+### `rust_decimal`
+
+Fixed-point decimal numbers via character string representation.
+
+| Rust Type | R Type | Conversion |
+|-----------|--------|------------|
+| `Decimal` | `character(1)` | String parsing |
+
+**Adapter trait:** `RDecimalOps`
+
+### `ordered-float`
+
+NaN-orderable floating-point wrapper.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `OrderedFloat<f64>` | `numeric` | Panics on NaN |
+
+**Adapter trait:** `ROrderedFloatOps`
+
+### `num-complex`
+
+Complex number support using R's native `CPLXSXP`.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Complex<f64>` | `complex` | Native R complex type |
+
+**Adapter trait:** `RComplexOps`
+
+---
+
+## Adapter Trait Features
+
+### `num-traits`
+
+Generic numeric operations via blanket implementations over `num_traits` traits.
+
+**Provides:**
+- `RNum` -- basic numeric operations (add, sub, mul, div, rem, pow)
+- `RSigned` -- signed number operations (abs, signum)
+- `RFloat` -- floating-point operations (floor, ceil, round, sqrt, etc.)
+
+### `bytes`
+
+Byte buffer operations via the `bytes` crate.
+
+**Provides:**
+- `RBuf` -- read-only buffer adapter (wraps `Bytes`)
+- `RBufMut` -- mutable buffer adapter (wraps `BytesMut`)
+- Re-exports: `Buf`, `BufMut`, `Bytes`, `BytesMut`
+
+---
+
+## String / Text Features
+
+### `uuid`
+
+UUID conversions between R character vectors and the `uuid` crate. Enables UUID v4
+generation.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Uuid` | `character(1)` | Standard UUID format |
+| `Vec<Uuid>` | `character` | Vector of UUIDs |
+
+**Adapter trait:** `RUuidOps`
+**Helpers:** `uuid_helpers` module
+
+### `regex`
+
+Compiled regular expressions from R character patterns.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Regex` | `character(1)` | Compiled on conversion |
+
+**Adapter traits:** `RRegexOps`, `RCaptureGroups`
+**Types:** `CaptureGroups`
+
+### `url`
+
+Validated URL parsing via the `url` crate.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Url` | `character(1)` | Validated on conversion |
+| `Vec<Url>` | `character` | Vector of validated URLs |
+
+**Adapter trait:** `RUrlOps`
+**Helpers:** `url_helpers` module
+
+### `aho-corasick`
+
+Fast multi-pattern string search via the Aho-Corasick algorithm.
+
+**Provides:**
+- `AhoCorasick` type
+- `aho_compile()` -- build automaton from patterns
+- `aho_is_match()`, `aho_find_first()`, `aho_find_all()`, `aho_find_all_flat()`
+- `aho_count_matches()`, `aho_replace_all()`
+
+**Adapter trait:** `RAhoCorasickOps`
+
+---
+
+## Date / Time Features
+
+### `time`
+
+Date and time conversions via the `time` crate. Enables formatting, parsing, and
+macro features.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `OffsetDateTime` | `POSIXct` | Timezone-aware datetime |
+| `Date` | `Date` | Calendar date |
+| `Duration` | `difftime` | Time duration |
+
+**Types:** `RDateTimeFormat`, `RDuration`
+
+---
+
+## Random Number Generation Features
+
+### `rand`
+
+Wraps R's built-in RNG with the `rand` crate's `RngCore` trait, allowing use of
+any `rand`-compatible distribution with R's RNG state.
+
+**Provides:**
+- `RRng` -- R's RNG implementing `rand::RngCore`
+- `RDistributions` -- direct access to R's native distributions (Normal, Uniform, etc.)
+
+**Adapter traits:** `RRngOps`, `RDistributionOps`
+
+### `rand_distr`
+
+Re-exports the `rand_distr` crate for additional probability distributions
+(Normal, Exponential, Gamma, etc.) that work with `RRng`. Implies `rand`.
+
+---
+
+## Collection Features
+
+### `indexmap`
+
+Order-preserving hash map conversions.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `IndexMap<String, T>` | named `list` | Preserves insertion order |
+
+**Adapter trait:** `RIndexMapOps`
+
+### `tinyvec`
+
+Small-vector optimization types that avoid heap allocation for small collections.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `TinyVec<[T; N]>` | vector | Inline up to N, then spills to heap |
+| `ArrayVec<[T; N]>` | vector | Fixed capacity N, never allocates |
+
+---
+
+## Bit Manipulation Features
+
+### `bitflags`
+
+Integer-bitflag conversions via the `bitflags` crate.
+
+**Provides:**
+- `RFlags<T>` -- wrapper for `Flags` types with integer conversion
+- Re-exports `Flags` trait
+
+### `bitvec`
+
+Bit vector to logical vector conversions.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `RBitVec` | `logical` | Backed by `BitVec` |
+
+**Types:** `BitVec`, `Lsb0`, `Msb0`
+
+---
+
+## Binary Data Features
+
+### `raw_conversions`
+
+POD (Plain Old Data) type conversions via the `bytemuck` crate. Provides zero-copy
+(when aligned) conversions between Rust structs and R raw vectors.
+
+**Types:**
+- `Raw<T>` -- single POD value (headerless)
+- `RawSlice<T>` -- sequence of POD values (headerless)
+- `RawTagged<T>` / `RawSliceTagged<T>` -- with header metadata
+
+**Helpers:** `raw_from_bytes()`, `raw_to_bytes()`, `raw_slice_from_bytes()`, `raw_slice_to_bytes()`
+
+**Re-exports:** `Pod`, `Zeroable` derive macros from bytemuck
+
+**Note:** Not portable across architectures (native byte order, no endian conversion).
+
+### `sha2`
+
+Cryptographic hashing helpers.
+
+**Provides:**
+- `sha256_str(data) -> String` -- SHA-256 as hex string
+- `sha256_bytes(data) -> Vec<u8>` -- SHA-256 as bytes
+- `sha512_str(data) -> String` -- SHA-512 as hex string
+- `sha512_bytes(data) -> Vec<u8>` -- SHA-512 as bytes
+
+---
+
+## Formatting Features
+
+### `tabled`
+
+Table formatting for producing ASCII/Unicode tables from data.
+
+**Provides:**
+- `table_to_string()`, `table_to_string_styled()`, `table_to_string_opts()`
+- `table_from_vecs()`, `builder_to_string()`
+- Re-exports: `Table`, `Tabled`, `Builder`
+
+---
+
+## Diagnostic Features
+
+### `materialization-tracking`
+
+Logs every ALTREP `Dataptr` call, which is when R forces a lazy/compact vector to
+materialize into contiguous memory. Useful for diagnosing unexpected materializations
+that negate ALTREP performance benefits.
+
+Zero-cost when disabled (no runtime overhead).
+
+**From R:**
+```r
+miniextendr:::altrep_materialization_count()
+```
+
+### `macro-coverage`
+
+Enables the `macro_coverage` module used for `cargo expand` auditing. This is a
+development/testing feature for verifying macro expansion coverage across all
+supported attribute combinations.
+
+---
+
+## Usage
+
+Enable features in your `Cargo.toml`:
+
+```toml
+[dependencies]
+miniextendr-api = { version = "0.1", features = ["rayon", "serde", "ndarray"] }
+```
+
+To disable default features:
+
+```toml
+[dependencies]
+miniextendr-api = { version = "0.1", default-features = false, features = ["rayon"] }
+```
+
+Feature implications (automatically enabled):
+
+| Feature | Also enables |
+|---------|-------------|
+| `serde_json` | `serde` |
+| `rand_distr` | `rand` |
+| `indicatif` | `nonapi` |

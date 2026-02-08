@@ -1,0 +1,60 @@
+# pigworld justfile
+# Agent-based ecological model of pigs on an infinite 2D plane.
+#
+# Quick reference:
+#   just configure        - Configure for development (NOT_CRAN=true)
+#   just rcmdinstall      - Build and install the R package
+#   just devtools-document - Regenerate R wrappers and documentation
+#   just devtools-test    - Run R tests
+#   just check            - R CMD check
+#   just clippy           - Run Rust lints
+#   just fmt              - Format Rust code
+#   just clean            - Remove build artifacts
+
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+# Absolute path to the miniextendr monorepo root (two levels up from this project)
+monorepo_root := justfile_directory() / "../.."
+
+# Cargo manifest for this project
+manifest := justfile_directory() / "src/rust/Cargo.toml"
+
+default:
+    @just --list
+
+# Run ./configure in development mode (NOT_CRAN=true)
+configure:
+    cd {{justfile_directory()}} && NOT_CRAN=true ./configure
+
+# Build and install the R package
+rcmdinstall: configure
+    NOT_CRAN=true R CMD INSTALL {{justfile_directory()}}
+
+# Regenerate R wrappers and roxygen documentation
+devtools-document: configure
+    NOT_CRAN=true Rscript -e 'devtools::document("{{justfile_directory()}}")'
+
+# Run R package tests
+devtools-test: devtools-document
+    Rscript -e 'testthat::set_max_fails(Inf); devtools::test("{{justfile_directory()}}")'
+
+# Run R CMD check
+check: configure
+    Rscript -e "rcmdcheck::rcmdcheck('{{justfile_directory()}}', args = c('--no-manual'), error_on = 'warning')"
+
+# Run clippy on the Rust source
+clippy:
+    root="{{monorepo_root}}" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="{{justfile_directory()}}/rust-target" cargo clippy --manifest-path="{{manifest}}")
+
+# Format Rust code
+fmt:
+    root="{{monorepo_root}}" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo fmt --all --manifest-path="{{manifest}}")
+
+# Remove build artifacts
+clean:
+    -cd {{justfile_directory()}} && NOT_CRAN=false ./cleanup
+    -rm -rf {{justfile_directory()}}/rust-target
+    -rm -rf {{justfile_directory()}}/src/vendor
+    -rm -f {{justfile_directory()}}/src/pigworld.so
+    -rm -f {{justfile_directory()}}/src/*.o
+    -rm -f {{justfile_directory()}}/config.log {{justfile_directory()}}/config.status
