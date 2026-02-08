@@ -10,6 +10,15 @@ use std::io;
 use std::os::raw::{c_char, c_int};
 
 /// Target stream for R console output.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::RStream;
+///
+/// let stream = RStream::Stderr;
+/// assert_eq!(stream, RStream::Stderr);
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RStream {
     /// Standard output.
@@ -29,6 +38,28 @@ impl RStream {
 }
 
 /// R console-backed terminal for indicatif.
+///
+/// Implements [`TermLike`] to route indicatif progress bar output through
+/// R's console output functions. All output is silently dropped when called
+/// from a non-main thread.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::{RTerm, RStream};
+/// use indicatif::{ProgressBar, ProgressDrawTarget, ProgressStyle};
+///
+/// // Create a terminal targeting R's stderr with 80-column width
+/// let term = RTerm::new(RStream::Stderr, 80);
+/// let target = ProgressDrawTarget::term_like(Box::new(term));
+///
+/// let pb = ProgressBar::with_draw_target(100, target);
+/// pb.set_style(ProgressStyle::with_template("{bar:40} {pos}/{len}").unwrap());
+/// for _ in 0..100 {
+///     pb.inc(1);
+/// }
+/// pb.finish_with_message("done");
+/// ```
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub struct RTerm {
     stream: RStream,
@@ -150,6 +181,17 @@ impl TermLike for RTerm {
 }
 
 /// Construct a term-like draw target with a stream hint.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::{term_like_with_hz_and_stream, RStream};
+/// use indicatif::ProgressBar;
+///
+/// // Draw to stderr at 10 Hz with 80-column width
+/// let target = term_like_with_hz_and_stream(RStream::Stderr, 80, 10);
+/// let pb = ProgressBar::with_draw_target(1000, target);
+/// ```
 pub fn term_like_with_hz_and_stream(
     stream: RStream,
     width: u16,
@@ -159,21 +201,58 @@ pub fn term_like_with_hz_and_stream(
 }
 
 /// Convenience: stdout draw target.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::term_like_stdout;
+/// use indicatif::ProgressBar;
+///
+/// let pb = ProgressBar::with_draw_target(100, term_like_stdout(80));
+/// ```
 pub fn term_like_stdout(width: u16) -> ProgressDrawTarget {
     ProgressDrawTarget::term_like(Box::new(RTerm::new(RStream::Stdout, width)))
 }
 
 /// Convenience: stderr draw target.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::term_like_stderr;
+/// use indicatif::ProgressBar;
+///
+/// let pb = ProgressBar::with_draw_target(100, term_like_stderr(80));
+/// ```
 pub fn term_like_stderr(width: u16) -> ProgressDrawTarget {
     ProgressDrawTarget::term_like(Box::new(RTerm::new(RStream::Stderr, width)))
 }
 
 /// Convenience: stdout draw target with custom refresh rate.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::term_like_stdout_with_hz;
+/// use indicatif::ProgressBar;
+///
+/// // Update at 5 Hz to reduce console overhead on slow connections
+/// let pb = ProgressBar::with_draw_target(1000, term_like_stdout_with_hz(80, 5));
+/// ```
 pub fn term_like_stdout_with_hz(width: u16, refresh_rate: u8) -> ProgressDrawTarget {
     term_like_with_hz_and_stream(RStream::Stdout, width, refresh_rate)
 }
 
 /// Convenience: stderr draw target with custom refresh rate.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::progress::term_like_stderr_with_hz;
+/// use indicatif::ProgressBar;
+///
+/// let pb = ProgressBar::with_draw_target(1000, term_like_stderr_with_hz(80, 10));
+/// ```
 pub fn term_like_stderr_with_hz(width: u16, refresh_rate: u8) -> ProgressDrawTarget {
     term_like_with_hz_and_stream(RStream::Stderr, width, refresh_rate)
 }

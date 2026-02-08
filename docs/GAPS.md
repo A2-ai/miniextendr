@@ -223,7 +223,7 @@ Some nested collection types lack direct conversions:
 | Type | Status |
 |------|--------|
 | `Vec<Vec<T>>` | Works |
-| `Vec<Option<T>>` | Not directly convertible |
+| `Vec<Option<T>>` | Works (all scalar types) |
 | `Vec<HashMap<K, V>>` | Not directly convertible |
 | `HashMap<K, Vec<V>>` | Works via nested conversion |
 
@@ -250,7 +250,7 @@ S7 support covers constructors and methods but lacks advanced features:
 | External generics | Implemented |
 | Property validation | Not implemented |
 | Method combination (before/after) | Not implemented |
-| Inheritance chains | Not implemented |
+| Inheritance chains | Implemented (`parent = "..."`, `abstract`) |
 | `@prop_validator` | Not implemented |
 
 ---
@@ -291,28 +291,49 @@ r$area          # Active binding: 12 (no parentheses!)
 
 ---
 
-### 3.3 No Direct Field Access
+### ~~3.3 No Direct Field Access~~ RESOLVED
 
-**Status:** Not implemented
-**Impact:** Medium
+**Status:** Solved via sidecar pattern
+**Resolution:** The `#[r_data]` attribute + `RSidecar` + `r_data_accessors` macro provides
+automatic field access for R6 and Env class systems.
 
-None of the class systems expose Rust struct fields directly to R. All access must go through getter/setter methods.
-
-**Current pattern:**
+**Working example (R6):**
 ```rust
-#[miniextendr]
-impl MyStruct {
-    pub fn get_value(&self) -> i32 { self.value }
-    pub fn set_value(&mut self, v: i32) { self.value = v; }
+use miniextendr_api::{r_data_accessors, RSidecar};
+
+#[derive(ExternalPtr)]
+pub struct Config {
+    // Rust-only fields (not exposed to R)
+    internal_cache: Vec<u8>,
+}
+
+/// Sidecar: fields accessible from R as active bindings.
+#[r_data]
+pub struct ConfigData {
+    pub name: String,
+    pub score: f64,
+}
+
+r_data_accessors!(Config, ConfigData);
+
+#[miniextendr(r6)]
+impl Config {
+    pub fn new(name: String, score: f64) -> (Self, ConfigData) {
+        (Config { internal_cache: vec![] }, ConfigData { name, score })
+    }
 }
 ```
 
 **In R:**
 ```r
-obj$get_value()      # Must use method
-obj$set_value(42)    # Must use method
-# obj$value          # Would be nice but doesn't work
+cfg <- Config$new("test", 0.95)
+cfg$name         # "test" (active binding, no parentheses)
+cfg$name <- "x"  # Sets the field
+cfg$score        # 0.95
 ```
+
+For users who prefer manual getters on non-sidecar structs, that pattern remains
+straightforward and well-understood.
 
 ---
 

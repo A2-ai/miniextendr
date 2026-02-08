@@ -261,3 +261,41 @@ test_that("S7Circle has parent S7Shape", {
   # Check area computation
   expect_equal(circle_area(c), pi * 9.0, tolerance = 1e-10)
 })
+
+# =============================================================================
+# S7 Multi-Level Inheritance (3-level chain)
+# =============================================================================
+
+test_that("S7 3-level inheritance chain works", {
+  skip_if_not_installed("S7")
+
+  # Grandchild construction
+  goldie <- S7GoldenRetriever("Buddy")
+  expect_s3_class(goldie, "S7GoldenRetriever")
+  expect_equal(retriever_name(goldie), "Buddy")
+
+  # Mid-level construction
+  dog <- S7Dog("Labrador")
+  expect_s3_class(dog, "S7Dog")
+  expect_equal(dog_breed(dog), "Labrador")
+
+  # Abstract class should not be directly constructable
+  # (S7 abstract classes generate a validator that errors)
+  expect_error(S7Animal("cat"))
+})
+
+test_that("S7 multi-level class hierarchy is recognized by S7", {
+  skip_if_not_installed("S7")
+
+  goldie <- S7GoldenRetriever("Max")
+
+  # S7 should recognize the inheritance chain
+  expect_true(S7::S7_inherits(goldie, S7GoldenRetriever))
+  expect_true(S7::S7_inherits(goldie, S7Dog))
+  expect_true(S7::S7_inherits(goldie, S7Animal))
+
+  dog <- S7Dog("Poodle")
+  expect_true(S7::S7_inherits(dog, S7Dog))
+  expect_true(S7::S7_inherits(dog, S7Animal))
+  expect_false(S7::S7_inherits(dog, S7GoldenRetriever))
+})

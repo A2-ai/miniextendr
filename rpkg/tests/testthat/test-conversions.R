@@ -422,3 +422,28 @@ test_that("Vec<Vec<T>> (list of vectors) conversions work", {
   expect_equal(res_str[[1]], c("a", "b"))
   expect_equal(res_str[[2]], "c")
 })
+
+test_that("Vec<Option<T>> extended numeric return types", {
+  # Vec<Option<i64>> with small values → INTSXP
+  v_small <- conv_vec_option_i64_ret_small()
+  expect_true(is.integer(v_small))
+  expect_equal(v_small, c(1L, NA_integer_, 3L))
+
+  # Vec<Option<i64>> with overflow values → REALSXP
+  v_big <- conv_vec_option_i64_ret_big()
+  expect_true(is.double(v_big))
+  expect_true(is.na(v_big[2]))
+  expect_equal(v_big[3], 1.0)
+
+  # Vec<Option<u32>> → delegates to smart i64 path → INTSXP
+  v_u32 <- conv_vec_option_u32_ret()
+  expect_true(is.integer(v_u32))
+  expect_equal(v_u32, c(1L, NA_integer_, 42L))
+
+  # Vec<Option<f32>> → coerces to Vec<Option<f64>> → REALSXP
+  v_f32 <- conv_vec_option_f32_ret()
+  expect_true(is.double(v_f32))
+  expect_equal(v_f32[1], 1.5)
+  expect_true(is.na(v_f32[2]))
+  expect_equal(v_f32[3], 3.0)
+})

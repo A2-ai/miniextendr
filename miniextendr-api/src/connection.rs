@@ -61,6 +61,15 @@ pub const EXPECTED_CONNECTIONS_VERSION: c_int = 1;
 /// # Panics
 ///
 /// Panics if `R_CONNECTIONS_VERSION` doesn't match `EXPECTED_CONNECTIONS_VERSION`.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::check_connections_version;
+///
+/// // Call early, e.g. in R_init_<pkg>, to fail fast on version mismatch
+/// check_connections_version();
+/// ```
 #[inline]
 pub fn check_connections_version() {
     assert_eq!(
@@ -238,6 +247,38 @@ pub struct Rconn {
 /// Your type will be boxed and stored in the connection's `private` field.
 /// It will be automatically dropped when the connection is destroyed.
 /// You don't need to implement `destroy` unless you have additional cleanup.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{RConnectionImpl, RCustomConnection};
+///
+/// struct MemorySource {
+///     data: Vec<u8>,
+///     pos: usize,
+/// }
+///
+/// impl RConnectionImpl for MemorySource {
+///     fn open(&mut self) -> bool {
+///         self.pos = 0;
+///         true
+///     }
+///
+///     fn read(&mut self, buf: &mut [u8]) -> usize {
+///         let remaining = self.data.len() - self.pos;
+///         let n = buf.len().min(remaining);
+///         buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+///         self.pos += n;
+///         n
+///     }
+/// }
+///
+/// let conn = RCustomConnection::new()
+///     .description("memory source")
+///     .mode("rb")
+///     .can_read(true)
+///     .build(MemorySource { data: vec![1, 2, 3], pos: 0 });
+/// ```
 pub trait RConnectionImpl: Sized + 'static {
     /// Called when the connection is opened.
     ///
@@ -675,6 +716,18 @@ impl RCustomConnection {
 ///
 /// - `conn` must be a valid, open connection handle
 /// - `buf` must be a valid buffer with at least `n` bytes
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{get_connection, read_connection};
+///
+/// // Given an R connection SEXP:
+/// let conn = unsafe { get_connection(conn_sexp) };
+/// let mut buf = [0u8; 1024];
+/// let n = unsafe { read_connection(conn, &mut buf) };
+/// let data = &buf[..n];
+/// ```
 #[inline]
 pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
     unsafe { crate::ffi::R_ReadConnection(conn, buf.as_mut_ptr() as *mut c_void, buf.len()) }
@@ -685,6 +738,16 @@ pub unsafe fn read_connection(conn: Rconnection, buf: &mut [u8]) -> usize {
 /// # Safety
 ///
 /// - `conn` must be a valid, open connection handle
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{get_connection, write_connection};
+///
+/// let conn = unsafe { get_connection(conn_sexp) };
+/// let data = b"hello, world\n";
+/// let written = unsafe { write_connection(conn, data) };
+/// ```
 #[inline]
 pub unsafe fn write_connection(conn: Rconnection, buf: &[u8]) -> usize {
     unsafe { crate::ffi::R_WriteConnection(conn, buf.as_ptr() as *const c_void, buf.len()) }
@@ -708,6 +771,16 @@ pub unsafe fn get_connection(sexp: SEXP) -> Rconnection {
 ///
 /// Used by adapter types to declare which operations they support,
 /// enabling automatic configuration of R connection flags.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::connection::{IoCaps, IoRead};
+///
+/// // IoRead<T> automatically declares read capability
+/// assert!(IoRead::<std::io::Cursor<Vec<u8>>>::HAS_READ);
+/// assert!(!IoRead::<std::io::Cursor<Vec<u8>>>::HAS_WRITE);
+/// ```
 pub trait IoCaps {
     /// True if the connection supports reading.
     const HAS_READ: bool = false;

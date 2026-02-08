@@ -240,6 +240,24 @@ s$area           # 25
 - Active bindings (computed properties)
 - Reference semantics (modify in place)
 
+### Field Access via Sidecar
+
+For R6 and Env classes, the sidecar pattern (`#[r_data]` + `RSidecar`) provides
+zero-overhead field access as R6 active bindings:
+
+```rust
+#[r_data]
+pub struct MyData {
+    pub name: String,
+    pub value: f64,
+}
+
+r_data_accessors!(MyStruct, MyData);
+```
+
+This generates `obj$name` and `obj$value` active bindings automatically.
+See the R6 section above for a complete example.
+
 ---
 
 ## S3 Style

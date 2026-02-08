@@ -113,6 +113,63 @@ pub fn checked_vec_usize_into_sexp(val: Vec<usize>) -> SEXP {
     checked_vec_u64_into_sexp(val.into_iter().map(|x| x as u64).collect())
 }
 
+/// Convert `Vec<Option<i64>>` to R integer vector in strict mode.
+/// Panics if any `Some(x)` value is outside i32 range. `None` becomes `NA_INTEGER`.
+pub fn checked_vec_option_i64_into_sexp(val: Vec<Option<i64>>) -> SEXP {
+    let coerced: Vec<Option<i32>> = val
+        .into_iter()
+        .map(|opt| match opt {
+            Some(x) => {
+                if x > i32::MIN as i64 && x <= i32::MAX as i64 {
+                    Some(x as i32)
+                } else {
+                    panic!(
+                        "strict conversion failed: i64 value {} is outside R integer range \
+                         ({}..={}); use a non-strict function to allow lossy f64 widening",
+                        x,
+                        i32::MIN as i64 + 1,
+                        i32::MAX
+                    );
+                }
+            }
+            None => None,
+        })
+        .collect();
+    coerced.into_sexp()
+}
+
+/// Convert `Vec<Option<u64>>` to R integer vector in strict mode.
+pub fn checked_vec_option_u64_into_sexp(val: Vec<Option<u64>>) -> SEXP {
+    let coerced: Vec<Option<i32>> = val
+        .into_iter()
+        .map(|opt| match opt {
+            Some(x) => {
+                if x <= i32::MAX as u64 {
+                    Some(x as i32)
+                } else {
+                    panic!(
+                        "strict conversion failed: u64 value {} exceeds R integer max ({}); \
+                         use a non-strict function to allow lossy f64 widening",
+                        x, i32::MAX
+                    );
+                }
+            }
+            None => None,
+        })
+        .collect();
+    coerced.into_sexp()
+}
+
+/// Convert `Vec<Option<isize>>` to R integer vector in strict mode.
+pub fn checked_vec_option_isize_into_sexp(val: Vec<Option<isize>>) -> SEXP {
+    checked_vec_option_i64_into_sexp(val.into_iter().map(|opt| opt.map(|x| x as i64)).collect())
+}
+
+/// Convert `Vec<Option<usize>>` to R integer vector in strict mode.
+pub fn checked_vec_option_usize_into_sexp(val: Vec<Option<usize>>) -> SEXP {
+    checked_vec_option_u64_into_sexp(val.into_iter().map(|opt| opt.map(|x| x as u64)).collect())
+}
+
 // =============================================================================
 // Strict INPUT helpers — only accept INTSXP and REALSXP, reject RAWSXP/LGLSXP
 // =============================================================================

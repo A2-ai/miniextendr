@@ -106,6 +106,21 @@ static P_SHORT_VEC_RECYCLE: OnceLock<ShortVecRecycleFn> = OnceLock::new();
 // =============================================================================
 
 /// Error type for vctrs operations.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{obj_is_vector, VctrsError};
+///
+/// match obj_is_vector(sexp) {
+///     Ok(true) => println!("It's a vector"),
+///     Ok(false) => println!("Not a vector"),
+///     Err(VctrsError::NotInitialized) => {
+///         eprintln!("Call init_vctrs() first");
+///     }
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VctrsError {
     /// vctrs support has not been initialized.
@@ -237,6 +252,19 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
 /// Check if vctrs support has been initialized.
 ///
 /// Returns `true` if [`init_vctrs`] has been successfully called.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{init_vctrs, is_vctrs_initialized};
+///
+/// // Before initialization
+/// assert!(!is_vctrs_initialized());
+///
+/// // After initialization
+/// init_vctrs().ok();
+/// // is_vctrs_initialized() == true if vctrs is available
+/// ```
 #[inline]
 pub fn is_vctrs_initialized() -> bool {
     P_OBJ_IS_VECTOR.get().is_some()
@@ -480,6 +508,20 @@ use crate::gc_protect::OwnedProtect;
 use crate::list::List;
 
 /// Error type for vctrs object construction.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{new_vctr, VctrsBuildError};
+///
+/// match new_vctr(data, &["my_class"], &[], None) {
+///     Ok(sexp) => { /* use the vctrs object */ }
+///     Err(VctrsBuildError::NotAVector) => {
+///         eprintln!("Data is not a vector");
+///     }
+///     Err(e) => eprintln!("Build error: {}", e),
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VctrsBuildError {
     /// vctrs support has not been initialized.

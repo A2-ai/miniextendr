@@ -1202,6 +1202,32 @@ pub fn conv_vec_vec_string_ret() -> Vec<Vec<String>> {
     ]
 }
 
+// --- Vec<Option<T>> for extended numeric types ---
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_i64_ret_small() -> Vec<Option<i64>> {
+    vec![Some(1), None, Some(3)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_i64_ret_big() -> Vec<Option<i64>> {
+    vec![Some(i64::MAX), None, Some(1)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_u32_ret() -> Vec<Option<u32>> {
+    vec![Some(1), None, Some(42)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_f32_ret() -> Vec<Option<f32>> {
+    vec![Some(1.5), None, Some(3.0)]
+}
+
 miniextendr_module! {
     mod conversions;
 
@@ -1380,4 +1406,10 @@ miniextendr_module! {
     fn conv_vec_vec_i32_arg;
     fn conv_vec_vec_i32_ret;
     fn conv_vec_vec_string_ret;
+
+    // Vec<Option<T>> extended numeric types
+    fn conv_vec_option_i64_ret_small;
+    fn conv_vec_option_i64_ret_big;
+    fn conv_vec_option_u32_ret;
+    fn conv_vec_option_f32_ret;
 }

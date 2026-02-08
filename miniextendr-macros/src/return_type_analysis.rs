@@ -298,7 +298,7 @@ pub(crate) fn strict_conversion_for_type(
         });
     }
 
-    // Check for Vec<lossy>
+    // Check for Vec<lossy> or Vec<Option<lossy>>
     if name == "Vec"
         && let Some(inner) = first_type_arg_from_type(ty)
     {
@@ -308,6 +308,21 @@ pub(crate) fn strict_conversion_for_type(
             return Some(quote::quote! {
                 ::miniextendr_api::strict::#helper(#result_ident)
             });
+        }
+        // Check for Vec<Option<lossy>>
+        if inner_name == "Option"
+            && let Some(option_inner) = first_type_arg_from_type(inner)
+        {
+            let option_inner_name = last_segment_ident(option_inner)?.to_string();
+            if LOSSY_SCALARS.contains(&option_inner_name.as_str()) {
+                let helper = quote::format_ident!(
+                    "checked_vec_option_{}_into_sexp",
+                    option_inner_name
+                );
+                return Some(quote::quote! {
+                    ::miniextendr_api::strict::#helper(#result_ident)
+                });
+            }
         }
     }
 
