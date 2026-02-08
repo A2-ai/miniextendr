@@ -299,3 +299,42 @@ test_that("S7 multi-level class hierarchy is recognized by S7", {
   expect_true(S7::S7_inherits(dog, S7Animal))
   expect_false(S7::S7_inherits(dog, S7GoldenRetriever))
 })
+
+# =============================================================================
+# R6 Inheritance tests
+# =============================================================================
+
+test_that("R6Animal base class works independently", {
+  cat <- R6Animal$new("Whiskers", "meow")
+  expect_equal(cat$name(), "Whiskers")
+  expect_equal(cat$speak(), "Whiskers says meow")
+})
+
+test_that("R6 single inheritance works", {
+  dog <- R6Dog$new("Labrador")
+  expect_equal(dog$breed(), "Labrador")
+  expect_equal(dog$fetch(), "Labrador fetches the ball!")
+  # Inherited method from parent should NOT be accessible via .ptr
+  # (R6 inherit only affects R-level class hierarchy)
+  expect_true(inherits(dog, "R6Dog"))
+})
+
+test_that("R6 multi-level inheritance chain works", {
+  goldie <- R6GoldenRetriever$new("Alice")
+  expect_equal(goldie$owner(), "Alice")
+  expect_true(inherits(goldie, "R6GoldenRetriever"))
+  # R6 inheritance chain
+  expect_true(inherits(goldie, "R6Dog"))
+  expect_true(inherits(goldie, "R6Animal"))
+})
+
+# =============================================================================
+# R6 Portable flag test
+# =============================================================================
+
+test_that("R6 non-portable class works", {
+  np <- R6NonPortable$new(42L)
+  expect_equal(np$get_value(), 42L)
+  # Non-portable classes can access self$... directly (R6 feature)
+  expect_true(inherits(np, "R6NonPortable"))
+})

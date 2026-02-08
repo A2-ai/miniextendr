@@ -202,6 +202,85 @@ impl R6Cloneable {
     }
 }
 
+// === R6 Inheritance ===
+
+/// Base animal class for R6 inheritance testing.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6Animal {
+    name: String,
+    sound: String,
+}
+
+/// @noRd
+#[miniextendr(r6)]
+impl R6Animal {
+    pub fn new(name: String, sound: String) -> Self {
+        R6Animal { name, sound }
+    }
+    pub fn name(&self) -> String {
+        self.name.clone()
+    }
+    pub fn speak(&self) -> String {
+        format!("{} says {}", self.name, self.sound)
+    }
+}
+
+/// Dog inherits from R6Animal.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6Dog {
+    breed: String,
+}
+
+/// @noRd
+#[miniextendr(r6(inherit = "R6Animal"))]
+impl R6Dog {
+    pub fn new(breed: String) -> Self {
+        R6Dog { breed }
+    }
+    pub fn breed(&self) -> String {
+        self.breed.clone()
+    }
+    pub fn fetch(&self) -> String {
+        format!("{} fetches the ball!", self.breed)
+    }
+}
+
+/// GoldenRetriever for 3-level chain: R6Animal -> R6Dog -> R6GoldenRetriever
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6GoldenRetriever {
+    owner: String,
+}
+
+/// @noRd
+#[miniextendr(r6(inherit = "R6Dog"))]
+impl R6GoldenRetriever {
+    pub fn new(owner: String) -> Self {
+        R6GoldenRetriever { owner }
+    }
+    pub fn owner(&self) -> String {
+        self.owner.clone()
+    }
+}
+
+// === R6 Portable Flag ===
+
+/// Non-portable R6 class for testing portable = FALSE flag.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct R6NonPortable {
+    value: i32,
+}
+
+/// @noRd
+#[miniextendr(r6(portable = false))]
+impl R6NonPortable {
+    pub fn new(value: i32) -> Self {
+        R6NonPortable { value }
+    }
+    pub fn get_value(&self) -> i32 {
+        self.value
+    }
+}
+
 miniextendr_module! {
     mod r6_tests;
 
@@ -214,4 +293,12 @@ miniextendr_module! {
     impl R6Rectangle;
     impl R6Temperature;
     impl R6Cloneable;
+
+    // Inheritance tests
+    impl R6Animal;
+    impl R6Dog;
+    impl R6GoldenRetriever;
+
+    // Portable flag test
+    impl R6NonPortable;
 }
