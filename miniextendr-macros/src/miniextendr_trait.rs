@@ -320,6 +320,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let view_methods: Vec<_> = methods.iter().map(generate_view_method).collect();
 
     let trait_name_str = trait_name.to_string();
+    let source_loc_doc = crate::source_location_doc(trait_name.span());
 
     quote::quote! {
         // Pass through the original trait
@@ -330,10 +331,14 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             stringify!(#trait_name),
             "` trait."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #vis const #tag_name: ::miniextendr_api::abi::mx_tag =
             ::miniextendr_api::abi::mx_tag_from_path(#tag_path);
 
         #[doc = concat!("Vtable for the `", stringify!(#trait_name), "` trait.")]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         ///
         /// Contains one `mx_meth` function pointer per trait method.
         #[repr(C)]
@@ -347,6 +352,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             stringify!(#trait_name),
             "`."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         ///
         /// Combines a data pointer with a vtable pointer for method dispatch.
         /// Use `try_from_sexp` to create a view from an R external pointer.
@@ -413,6 +420,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             stringify!(#trait_name),
             "`."
         )]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #vis const fn #build_vtable_fn<T: #trait_name>() -> #vtable_name {
             #vtable_name {
                 #(#vtable_inits),*

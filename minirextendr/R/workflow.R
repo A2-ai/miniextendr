@@ -119,37 +119,51 @@ miniextendr_document <- function() {
 
 #' Full miniextendr build workflow
 #'
-#' Runs the complete workflow: autoconf -> configure -> build -> document.
-#' This is equivalent to running the following in sequence:
-#' 1. `miniextendr_autoconf()`
-#' 2. `miniextendr_configure()`
-#' 3. `devtools::install()` (optional)
-#' 4. `miniextendr_document()`
+#' Runs the complete two-pass install: autoconf -> configure -> install
+#' (compiles Rust) -> document (generates R wrappers) -> install again
+#' (incorporates wrappers). The two installs are needed because R wrapper
+#' generation requires the compiled Rust `document` binary.
 #'
-#' @param install Whether to run `devtools::install()` after configure
+#' @param install Whether to run `R CMD INSTALL` steps. If `FALSE`, only
+#'   runs autoconf + configure + document.
+#' @param not_cran Logical. If `TRUE` (the default), sets `NOT_CRAN=true`
+#'   for configure and install steps.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_build <- function(install = TRUE) {
+miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
   cli::cli_h1("miniextendr build workflow")
+
+  env_vars <- if (not_cran) c(NOT_CRAN = "true") else character()
+  pkg_path <- usethis::proj_get()
 
   cli::cli_h2("Step 1: autoconf")
   miniextendr_autoconf()
 
   cli::cli_h2("Step 2: configure")
-  miniextendr_configure()
+  withr::with_envvar(env_vars, miniextendr_configure())
 
   if (install) {
-    cli::cli_h2("Step 3: install")
+    cli::cli_h2("Step 3: first install (compile Rust)")
     if (!requireNamespace("devtools", quietly = TRUE)) {
       warn("devtools not installed, skipping install step")
     } else {
-      devtools::install(usethis::proj_get(), upgrade = "never", quiet = TRUE)
-      cli::cli_alert_success("Installed package")
+      withr::with_envvar(env_vars, {
+        devtools::install(pkg_path, upgrade = "never", quiet = TRUE)
+      })
+      cli::cli_alert_success("Installed package (first pass)")
     }
   }
 
-  cli::cli_h2("Step 4: document")
+  cli::cli_h2("Step 4: document (generate R wrappers)")
   miniextendr_document()
+
+  if (install) {
+    cli::cli_h2("Step 5: second install (with R wrappers)")
+    withr::with_envvar(env_vars, {
+      devtools::install(pkg_path, upgrade = "never", quiet = TRUE)
+    })
+    cli::cli_alert_success("Installed package (second pass)")
+  }
 
   cli::cli_alert_success("Build complete!")
   invisible(TRUE)

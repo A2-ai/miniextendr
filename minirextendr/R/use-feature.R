@@ -7,9 +7,9 @@
 # Helper functions
 # =============================================================================
 
-#' Add a feature to Cargo.toml.in
+#' Add a feature to Cargo.toml
 #'
-#' Adds a feature line to the [features] section of src/rust/Cargo.toml.in.
+#' Adds a feature line to the [features] section of src/rust/Cargo.toml.
 #'
 #' @param feature_name Name of the feature (e.g., "vctrs")
 #' @param feature_spec Feature specification (e.g., "miniextendr-api/vctrs")
@@ -17,11 +17,11 @@
 #' @noRd
 add_cargo_feature <- function(feature_name, feature_spec)
 {
-  cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml.in")
+  cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml")
 
   if (!fs::file_exists(cargo_in)) {
     abort(c(
-      "Cargo.toml.in not found at {.path {cargo_in}}",
+      "Cargo.toml not found at {.path {cargo_in}}",
       "i" = "Run {.code minirextendr::miniextendr_configure()} first"
     ))
   }
@@ -31,7 +31,7 @@ add_cargo_feature <- function(feature_name, feature_spec)
 
   # Check if feature already exists
   if (any(grepl(sprintf("^%s\\s*=", feature_name), lines))) {
-    cli::cli_alert_info("Feature {.val {feature_name}} already in Cargo.toml.in")
+    cli::cli_alert_info("Feature {.val {feature_name}} already in Cargo.toml")
     return(invisible(FALSE))
   }
 
@@ -39,7 +39,7 @@ add_cargo_feature <- function(feature_name, feature_spec)
   # Find [features] section and add after it
   features_idx <- grep("^\\[features\\]", lines)
   if (length(features_idx) == 0) {
-    abort("No [features] section found in Cargo.toml.in")
+    abort("No [features] section found in Cargo.toml")
   }
 
   # Find end of features section (next section or EOF)
@@ -55,7 +55,7 @@ add_cargo_feature <- function(feature_name, feature_spec)
   lines <- append(lines, feature_line, after = insert_at)
   writeLines(lines, cargo_in)
 
-  cli::cli_alert_success("Added feature {.val {feature_name}} to Cargo.toml.in")
+  cli::cli_alert_success("Added feature {.val {feature_name}} to Cargo.toml")
   invisible(TRUE)
 }
 
@@ -122,7 +122,6 @@ use_vctrs <- function() {
   # Add R package dependency
   add_import("vctrs", ">= 0.6.0")
 
-  cli::cli_alert_info("Run {.code ./configure} to regenerate Cargo.toml")
   cli::cli_alert_info("See {.url https://vctrs.r-lib.org/} for vctrs documentation")
 
   invisible(TRUE)
@@ -204,7 +203,6 @@ use_s4 <- function() {
 use_rayon <- function() {
   add_cargo_feature("rayon", "miniextendr-api/rayon")
 
-  cli::cli_alert_info("Run {.code ./configure} to regenerate Cargo.toml")
   cli::cli_alert_info("Use {.code rayon::prelude::*} for parallel iterators")
 
   invisible(TRUE)
@@ -225,7 +223,6 @@ use_rayon <- function() {
 use_serde <- function() {
   add_cargo_feature("serde", "miniextendr-api/serde")
 
-  cli::cli_alert_info("Run {.code ./configure} to regenerate Cargo.toml")
   cli::cli_alert_info("Derive with {.code #[derive(Serialize, Deserialize)]}")
 
   invisible(TRUE)
@@ -241,7 +238,7 @@ use_serde <- function() {
 #' functions to query them. This allows tests to skip when features are missing.
 #'
 #' @details
-#' This function scans your `src/rust/Cargo.toml.in` for features and generates:
+#' This function scans your `src/rust/Cargo.toml` for features and generates:
 #'
 #' 1. **Rust code** (`<package>_enabled_features()`) - Returns a vector of enabled feature names
 #' 2. **R helpers** (`has_feature()`, `skip_if_missing_feature()`) - For runtime feature checks
@@ -256,7 +253,7 @@ use_serde <- function() {
 #'
 #' @param package_name Package name (default: derived from DESCRIPTION)
 #' @param features Character vector of feature names to include. Default NULL
-#'   scans Cargo.toml.in automatically.
+#'   scans Cargo.toml automatically.
 #' @param rust_file Path for generated Rust code (default: "src/rust/feature_detection.rs")
 #' @param r_file Path for generated R helpers (default: "R/feature_helpers.R")
 #' @param overwrite Logical, whether to overwrite existing files
@@ -266,7 +263,7 @@ use_serde <- function() {
 #'
 #' @examples
 #' \dontrun{
-#' # Auto-detect features from Cargo.toml.in
+#' # Auto-detect features from Cargo.toml
 #' use_feature_detection()
 #'
 #' # Manually specify features
@@ -288,11 +285,11 @@ use_feature_detection <- function(package_name = NULL,
     }
   }
 
-  # Detect features from Cargo.toml.in if not provided
+  # Detect features from Cargo.toml if not provided
   if (is.null(features)) {
     features <- detect_cargo_features()
     if (length(features) == 0) {
-      cli::cli_alert_warning("No features found in Cargo.toml.in")
+      cli::cli_alert_warning("No features found in Cargo.toml")
       cli::cli_alert_info("Add features to [features] section or specify manually")
     }
   }
@@ -331,9 +328,9 @@ use_feature_detection <- function(package_name = NULL,
   invisible(list(rust = rust_path, r = r_path))
 }
 
-#' Update feature detection to match Cargo.toml.in
+#' Update feature detection to match Cargo.toml
 #'
-#' Re-scans Cargo.toml.in and regenerates feature detection code. Use this after
+#' Re-scans Cargo.toml and regenerates feature detection code. Use this after
 #' adding new features to keep the detection code in sync.
 #'
 #' @param overwrite Logical, whether to overwrite existing files (default TRUE)
@@ -349,17 +346,17 @@ update_feature_detection <- function(overwrite = TRUE) {
   use_feature_detection(overwrite = overwrite)
 }
 
-#' Detect features from Cargo.toml.in
+#' Detect features from Cargo.toml
 #'
-#' Parses the [features] section of src/rust/Cargo.toml.in to extract feature names.
+#' Parses the [features] section of src/rust/Cargo.toml to extract feature names.
 #'
 #' @return Character vector of feature names
 #' @noRd
 detect_cargo_features <- function() {
-  cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml.in")
+  cargo_in <- usethis::proj_path("src", "rust", "Cargo.toml")
 
   if (!fs::file_exists(cargo_in)) {
-    cli::cli_warn("Cargo.toml.in not found at {.path {cargo_in}}")
+    cli::cli_warn("Cargo.toml not found at {.path {cargo_in}}")
     return(character())
   }
 
@@ -419,7 +416,7 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// Returns a vector of enabled Cargo features
 ///
-/// This function is auto-generated from Cargo.toml.in features.
+/// This function is auto-generated from Cargo.toml features.
 /// Use `%s_has_feature()` in R to check for specific features.
 #[miniextendr]
 pub fn %s() -> Vec<&\'static str> {
@@ -502,10 +499,3 @@ skip_if_missing_feature <- function(name) {
   code
 }
 
-#' Ensure directory exists
-#' @noRd
-ensure_dir <- function(path) {
-  if (!fs::dir_exists(path)) {
-    fs::dir_create(path, recurse = TRUE)
-  }
-}

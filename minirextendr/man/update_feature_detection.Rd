@@ -2,7 +2,7 @@
 % Please edit documentation in R/use-feature.R
 \name{update_feature_detection}
 \alias{update_feature_detection}
-\title{Update feature detection to match Cargo.toml.in}
+\title{Update feature detection to match Cargo.toml}
 \usage{
 update_feature_detection(overwrite = TRUE)
 }
@@ -13,7 +13,7 @@ update_feature_detection(overwrite = TRUE)
 Invisibly returns list of generated file paths
 }
 \description{
-Re-scans Cargo.toml.in and regenerates feature detection code. Use this after
+Re-scans Cargo.toml and regenerates feature detection code. Use this after
 adding new features to keep the detection code in sync.
 }
 \examples{

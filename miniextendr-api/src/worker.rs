@@ -126,53 +126,6 @@ pub fn is_r_main_thread() -> bool {
         .unwrap_or(false) // Safe default: assume NOT main thread until initialized
 }
 
-/// Assert that the current thread is R's main thread, for pointer-returning APIs.
-///
-/// This is used by `#[r_ffi_checked]` for functions that return raw pointers.
-/// These functions cannot be routed to the main thread because the pointer
-/// could become invalid when R's GC runs.
-///
-/// # Panics
-///
-/// Panics with a descriptive message if:
-/// - The worker system hasn't been initialized yet
-/// - Called from a thread that is not R's main thread
-#[inline(always)]
-#[doc(hidden)]
-pub fn assert_r_main_thread_for_pointer_api(fn_name: &str) {
-    match R_MAIN_THREAD_ID.get() {
-        None => {
-            panic!(
-                "miniextendr_worker_init() must be called before using R FFI APIs.\n\
-                 \n\
-                 {fn_name}() was called before initialization.\n\
-                 \n\
-                 This is typically done in R_init_<pkgname>() via:\n\
-                 \n\
-                 void R_init_pkgname(DllInfo *dll) {{\n\
-                 miniextendr_worker_init();\n\
-                 R_registerRoutines(dll, NULL, CallEntries, NULL, NULL);\n\
-                 }}"
-            );
-        }
-        Some(&main_id) if main_id != std::thread::current().id() => {
-            panic!(
-                "{fn_name}() returns a raw pointer and must be called on R's main thread.\n\
-                 \n\
-                 Raw pointers cannot be safely routed to worker threads because:\n\
-                 - The pointed-to memory could be garbage collected on the main thread\n\
-                 - SEXP objects are not protected outside of R's stack\n\
-                 \n\
-                 Use with_r_thread(|| {{ ... }}) to execute pointer-returning \
-                 operations on the main thread and process results before returning."
-            );
-        }
-        Some(_) => {
-            // On main thread, all good
-        }
-    }
-}
-
 /// Extract a message from a panic payload.
 pub fn panic_payload_to_string(payload: &Box<dyn Any + Send>) -> String {
     if let Some(&s) = payload.downcast_ref::<&str>() {
@@ -465,7 +418,13 @@ where
                     Ok(boxed) => *boxed
                         .downcast::<T>()
                         .expect("type mismatch in run_on_worker result"),
-                    Err(msg) => panic_message_to_r_error(msg),
+                    Err(msg) => {
+                        crate::panic_telemetry::fire(
+                            &msg,
+                            crate::panic_telemetry::PanicSource::Worker,
+                        );
+                        panic_message_to_r_error(msg)
+                    }
                 };
             }
         }

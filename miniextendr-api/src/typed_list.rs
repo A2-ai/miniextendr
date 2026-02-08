@@ -196,23 +196,38 @@ pub enum TypedListError {
     /// The input was not a list.
     NotList(ListFromSexpError),
     /// A required field is missing.
-    Missing { name: String },
+    Missing {
+        /// Name of the missing field.
+        name: String,
+    },
     /// A field has the wrong type.
     WrongType {
+        /// Field name.
         name: String,
+        /// Expected type description.
         expected: String,
+        /// Actual type description.
         actual: String,
     },
     /// A field has the wrong length.
     WrongLen {
+        /// Field name.
         name: String,
+        /// Expected exact length.
         expected: usize,
+        /// Actual length encountered.
         actual: isize,
     },
     /// Extra named fields found when `allow_extra = false`.
-    ExtraFields { names: Vec<String> },
+    ExtraFields {
+        /// Unexpected field names.
+        names: Vec<String>,
+    },
     /// Duplicate non-empty names in the list.
-    DuplicateNames { name: String },
+    DuplicateNames {
+        /// Duplicated field name.
+        name: String,
+    },
 }
 
 impl std::fmt::Display for TypedListError {

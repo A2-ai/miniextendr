@@ -240,6 +240,24 @@ s$area           # 25
 - Active bindings (computed properties)
 - Reference semantics (modify in place)
 
+### Field Access via Sidecar
+
+For R6 and Env classes, the sidecar pattern (`#[r_data]` + `RSidecar`) provides
+zero-overhead field access as R6 active bindings:
+
+```rust
+#[r_data]
+pub struct MyData {
+    pub name: String,
+    pub value: f64,
+}
+
+r_data_accessors!(MyStruct, MyData);
+```
+
+This generates `obj$name` and `obj$value` active bindings automatically.
+See the R6 section above for a complete example.
+
 ---
 
 ## S3 Style
@@ -678,6 +696,64 @@ impl Counter for MyCounter {
 ```
 
 This enables type-erased dispatch across package boundaries.
+
+---
+
+## Direct Field Access via Sidecar
+
+The sidecar pattern (`#[r_data]` + `RSidecar` + `r_data_accessors!`) is the recommended
+approach for exposing struct fields directly to R. It separates R-visible fields from
+Rust-internal state, and generates accessor functions appropriate to each class system.
+
+### How It Works
+
+1. Define a sidecar struct with `#[r_data]` containing the fields you want to expose to R.
+2. Call `r_data_accessors!(MainStruct, SidecarStruct)` to generate accessor trait impls.
+3. The constructor returns `(Self, SidecarData)` instead of just `Self`.
+
+### Rust Code
+
+```rust
+use miniextendr_api::{r_data_accessors, RSidecar};
+
+#[derive(ExternalPtr)]
+pub struct MyConfig {
+    // Rust-only internal state
+    cache: Vec<u8>,
+}
+
+/// Fields exposed to R.
+#[r_data]
+pub struct MyConfigData {
+    pub name: String,
+    pub score: f64,
+}
+
+r_data_accessors!(MyConfig, MyConfigData);
+
+#[miniextendr(r6)]  // Works with r6, env, s3, s4, s7
+impl MyConfig {
+    pub fn new(name: String, score: f64) -> (Self, MyConfigData) {
+        (MyConfig { cache: vec![] }, MyConfigData { name, score })
+    }
+}
+```
+
+### R Behavior by Class System
+
+| System | Get | Set |
+|--------|-----|-----|
+| **R6** | `obj$name` (active binding) | `obj$name <- "new"` |
+| **Env** | `MyConfig_get_name(obj)` | `MyConfig_set_name(obj, "new")` |
+| **S3** | `name(obj)` (generic) | `name<-(obj, "new")` |
+| **S4** | `name(obj)` (S4 method) | `name<-(obj, "new")` |
+| **S7** | `obj@name` (S7 property) | `obj@name <- "new"` |
+
+### When to Use Sidecar vs Manual Getters
+
+- **Use sidecar** when you have multiple fields to expose and want zero-boilerplate accessors.
+- **Use manual getters** when you need computed values, validation, or side effects on access.
+  Manual getters work identically across all class systems and are straightforward to write.
 
 ---
 

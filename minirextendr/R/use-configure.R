@@ -36,6 +36,15 @@ use_miniextendr_cleanup <- function() {
   use_template("cleanup")
   use_template("cleanup.win")
   use_template("cleanup.ucrt")
+
+  # Ensure cleanup scripts are executable (R CMD build warns otherwise)
+  for (script in c("cleanup", "cleanup.win", "cleanup.ucrt")) {
+    script_path <- usethis::proj_path(script)
+    if (fs::file_exists(script_path)) {
+      fs::file_chmod(script_path, "755")
+    }
+  }
+
   invisible(TRUE)
 }
 
@@ -85,5 +94,6 @@ use_miniextendr_config_scripts <- function() {
 use_miniextendr_makevars <- function() {
   ensure_dir(usethis::proj_path("src"))
   use_template("Makevars.in", save_as = "src/Makevars.in")
+  use_template("win.def.in", save_as = "src/win.def.in")
   invisible(TRUE)
 }

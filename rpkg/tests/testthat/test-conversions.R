@@ -422,3 +422,100 @@ test_that("Vec<Vec<T>> (list of vectors) conversions work", {
   expect_equal(res_str[[1]], c("a", "b"))
   expect_equal(res_str[[2]], "c")
 })
+
+test_that("Vec<Option<T>> extended numeric return types", {
+  # Vec<Option<i64>> with small values → INTSXP
+  v_small <- conv_vec_option_i64_ret_small()
+  expect_true(is.integer(v_small))
+  expect_equal(v_small, c(1L, NA_integer_, 3L))
+
+  # Vec<Option<i64>> with overflow values → REALSXP
+  v_big <- conv_vec_option_i64_ret_big()
+  expect_true(is.double(v_big))
+  expect_true(is.na(v_big[2]))
+  expect_equal(v_big[3], 1.0)
+
+  # Vec<Option<u32>> → delegates to smart i64 path → INTSXP
+  v_u32 <- conv_vec_option_u32_ret()
+  expect_true(is.integer(v_u32))
+  expect_equal(v_u32, c(1L, NA_integer_, 42L))
+
+  # Vec<Option<f32>> → coerces to Vec<Option<f64>> → REALSXP
+  v_f32 <- conv_vec_option_f32_ret()
+  expect_true(is.double(v_f32))
+  expect_equal(v_f32[1], 1.5)
+  expect_true(is.na(v_f32[2]))
+  expect_equal(v_f32[3], 3.0)
+
+  # Vec<Option<u64>> with small values → INTSXP
+  v_u64_small <- conv_vec_option_u64_ret_small()
+  expect_true(is.integer(v_u64_small))
+  expect_equal(v_u64_small, c(1L, NA_integer_, 3L))
+
+  # Vec<Option<u64>> with overflow values → REALSXP
+  v_u64_big <- conv_vec_option_u64_ret_big()
+  expect_true(is.double(v_u64_big))
+  expect_true(is.na(v_u64_big[2]))
+  expect_equal(v_u64_big[3], 1.0)
+
+  # Vec<Option<isize>> with small values → INTSXP
+  v_isize <- conv_vec_option_isize_ret_small()
+  expect_true(is.integer(v_isize))
+  expect_equal(v_isize, c(1L, NA_integer_, 3L))
+
+  # Vec<Option<usize>> with small values → INTSXP
+  v_usize <- conv_vec_option_usize_ret_small()
+  expect_true(is.integer(v_usize))
+  expect_equal(v_usize, c(1L, NA_integer_, 3L))
+
+  # Vec<Option<i8>> → coerces to Vec<Option<i32>> → INTSXP
+  v_i8 <- conv_vec_option_i8_ret()
+  expect_true(is.integer(v_i8))
+  expect_equal(v_i8, c(1L, NA_integer_, -1L))
+
+  # Vec<Option<i16>> → coerces to Vec<Option<i32>> → INTSXP
+  v_i16 <- conv_vec_option_i16_ret()
+  expect_true(is.integer(v_i16))
+  expect_equal(v_i16, c(1L, NA_integer_, -1L))
+
+  # Vec<Option<u16>> → coerces to Vec<Option<i32>> → INTSXP
+  v_u16 <- conv_vec_option_u16_ret()
+  expect_true(is.integer(v_u16))
+  expect_equal(v_u16, c(1L, NA_integer_, 100L))
+})
+
+test_that("Vec<Option<i64>> roundtrip preserves NA", {
+  # Small values: roundtrip through INTSXP
+  result <- conv_vec_option_i64_roundtrip(c(1L, NA_integer_, 3L))
+  expect_true(is.integer(result))
+  expect_equal(result, c(1L, NA_integer_, 3L))
+
+  # All NA: roundtrip should work
+  result_na <- conv_vec_option_i64_roundtrip(c(NA_integer_, NA_integer_))
+  expect_true(all(is.na(result_na)))
+  expect_equal(length(result_na), 2L)
+
+  # Empty vector: roundtrip
+  result_empty <- conv_vec_option_i64_roundtrip(integer(0))
+  expect_equal(length(result_empty), 0L)
+})
+
+test_that("Scalar Option<T> extended numeric return types", {
+  # Option<i64> with small value -> integer
+  expect_true(is.integer(conv_option_i64_some_small()))
+  expect_equal(conv_option_i64_some_small(), 42L)
+
+  # Option<i64> with large value -> double
+  expect_true(is.double(conv_option_i64_some_big()))
+
+  # Option<i64> None -> NA (integer)
+  expect_true(is.na(conv_option_i64_none()))
+
+  # Option<f32> -> double
+  expect_true(is.double(conv_option_f32_some()))
+  expect_equal(conv_option_f32_some(), 1.5)
+
+  # Option<u32> -> integer (fits)
+  expect_true(is.integer(conv_option_u32_some()))
+  expect_equal(conv_option_u32_some(), 100L)
+})

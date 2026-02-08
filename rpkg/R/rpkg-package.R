@@ -12,5 +12,8 @@ NULL
 # This is required for S7 method registrations to work properly,
 # especially for methods on generics from other packages (like S7::convert)
 .onLoad <- function(libname, pkgname) {
-  S7::methods_register()
+  # suppressMessages: S7 re-registers methods that were already registered
+  # at source time (from miniextendr-wrappers.R), causing harmless
+  # "Overwriting method" messages. This is expected S7 behavior.
+  suppressMessages(S7::methods_register())
 }

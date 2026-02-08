@@ -21,7 +21,7 @@ my.package/
 │   ├── Makevars.in
 │   ├── entrypoint.c.in
 │   └── rust/
-│       ├── Cargo.toml.in
+│       ├── Cargo.toml
 │       ├── lib.rs
 │       ├── build.rs
 │       └── document.rs.in
@@ -66,7 +66,7 @@ my-project/
     │   ├── Makevars.in
     │   ├── entrypoint.c.in
     │   └── rust/
-    │       ├── Cargo.toml.in
+    │       ├── Cargo.toml
     │       ├── lib.rs
     │       └── build.rs
     └── configure.ac

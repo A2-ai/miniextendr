@@ -25,8 +25,7 @@ use syn::{Data, DeriveInput, Fields};
 ///
 /// # Attributes
 ///
-/// - `#[dataframe(name = "CustomName")]` - Custom name for generated DataFrame type
-/// - `#[dataframe(collection = "Box<[T]>")]` - Collection type (default: `Vec<T>`)
+/// - `#[dataframe(name = "CustomName")]` - Custom name for generated DataFrame type (default: `{StructName}DataFrame`)
 pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();

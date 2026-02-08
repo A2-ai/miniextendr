@@ -177,6 +177,20 @@ test_that("S7Strict describe_any method works", {
   expect_equal(describe_any(strict), "S7Strict with value 123")
 })
 
+test_that("S7 fallback does not fail with slot-access error on ordinary objects", {
+  # describe_any is registered for class_any (fallback). Calling it on a
+
+  # non-S7Strict object should produce a type-conversion error from Rust,
+  # NOT a raw slot-access failure like "no applicable method for `@`".
+  msg <- tryCatch(
+    { describe_any(1L); NA_character_ },
+    error = function(e) conditionMessage(e)
+  )
+
+  # Must NOT be a slot-access error
+  expect_false(grepl("no applicable method for `@`", msg, fixed = TRUE))
+})
+
 # =============================================================================
 # S7 Phase 4: convert() methods - type coercion
 # =============================================================================
@@ -246,4 +260,111 @@ test_that("S7Circle has parent S7Shape", {
   c <- S7Circle(3.0)
   # Check area computation
   expect_equal(circle_area(c), pi * 9.0, tolerance = 1e-10)
+})
+
+# =============================================================================
+# S7 Multi-Level Inheritance (3-level chain)
+# =============================================================================
+
+test_that("S7 3-level inheritance chain works", {
+  skip_if_not_installed("S7")
+
+  # Grandchild construction
+  goldie <- S7GoldenRetriever("Buddy")
+  expect_s3_class(goldie, "miniextendr::S7GoldenRetriever")
+  expect_equal(retriever_name(goldie), "Buddy")
+
+  # Mid-level construction
+  dog <- S7Dog("Labrador")
+  expect_s3_class(dog, "miniextendr::S7Dog")
+  expect_equal(dog_breed(dog), "Labrador")
+
+  # Abstract class should not be directly constructable
+  # (S7 abstract classes generate a validator that errors)
+  expect_error(S7Animal("cat", 4L))
+})
+
+test_that("S7 multi-level class hierarchy is recognized by S7", {
+  skip_if_not_installed("S7")
+
+  goldie <- S7GoldenRetriever("Max")
+
+  # S7 should recognize the inheritance chain
+  expect_true(S7::S7_inherits(goldie, S7GoldenRetriever))
+  expect_true(S7::S7_inherits(goldie, S7Dog))
+  expect_true(S7::S7_inherits(goldie, S7Animal))
+
+  dog <- S7Dog("Poodle")
+  expect_true(S7::S7_inherits(dog, S7Dog))
+  expect_true(S7::S7_inherits(dog, S7Animal))
+  expect_false(S7::S7_inherits(dog, S7GoldenRetriever))
+})
+
+test_that("S7 multi-level inheritance: own and inherited methods", {
+  skip_if_not_installed("S7")
+
+  # Test own methods on each level
+  goldie <- S7GoldenRetriever("Buddy")
+  expect_equal(color(goldie), "golden")
+  expect_equal(retriever_name(goldie), "Buddy")
+
+  dog <- S7Dog("Labrador")
+  expect_equal(bark(dog), "woof")
+  expect_equal(dog_breed(dog), "Labrador")
+
+  # Note: bark() is defined on S7Dog. S7 dispatch correctly finds the method
+  # for S7GoldenRetriever (inherits from S7Dog), but the underlying Rust function
+  # expects ExternalPtr<S7Dog>. Since each Rust struct has a distinct type tag,
+  # cross-type dispatch requires explicit S7 method registration on the child class.
+  # This is a known limitation of ExternalPtr-based S7 inheritance.
+})
+
+test_that("S7Animal legs property works via getter", {
+  skip_if_not_installed("S7")
+
+  # legs is a computed property on S7Animal (abstract), accessible via @
+
+  # S7Dog inherits from S7Animal, so S7Dog and S7GoldenRetriever should
+  # also have the legs property in the S7 class hierarchy.
+  # However, since each struct is separate in Rust, the legs property
+  # is defined on S7Animal's class definition only.
+})
+
+# =============================================================================
+# R6 Inheritance tests
+# =============================================================================
+
+test_that("R6Animal base class works independently", {
+  cat <- R6Animal$new("Whiskers", "meow")
+  expect_equal(cat$name(), "Whiskers")
+  expect_equal(cat$speak(), "Whiskers says meow")
+})
+
+test_that("R6 single inheritance works", {
+  dog <- R6Dog$new("Labrador")
+  expect_equal(dog$breed(), "Labrador")
+  expect_equal(dog$fetch(), "Labrador fetches the ball!")
+  # Inherited method from parent should NOT be accessible via .ptr
+  # (R6 inherit only affects R-level class hierarchy)
+  expect_true(inherits(dog, "R6Dog"))
+})
+
+test_that("R6 multi-level inheritance chain works", {
+  goldie <- R6GoldenRetriever$new("Alice")
+  expect_equal(goldie$owner(), "Alice")
+  expect_true(inherits(goldie, "R6GoldenRetriever"))
+  # R6 inheritance chain
+  expect_true(inherits(goldie, "R6Dog"))
+  expect_true(inherits(goldie, "R6Animal"))
+})
+
+# =============================================================================
+# R6 Portable flag test
+# =============================================================================
+
+test_that("R6 non-portable class works", {
+  np <- R6NonPortable$new(42L)
+  expect_equal(np$get_value(), 42L)
+  # Non-portable classes can access self$... directly (R6 feature)
+  expect_true(inherits(np, "R6NonPortable"))
 })

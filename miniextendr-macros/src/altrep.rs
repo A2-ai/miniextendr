@@ -17,6 +17,7 @@
 //! pub struct MyInts(Vec<i32>);
 //! ```
 
+/// Expands `#[miniextendr]` on a one-field wrapper struct into ALTREP plumbing.
 pub fn expand_altrep_struct(
     attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -166,47 +167,73 @@ pub fn expand_altrep_struct(
                 },
                 _ => quote::quote! {},
             };
-            let make = match base_name.as_str() {
-                "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "Logical" => {
-                    quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+            // For explicit base, generate the R_make_alt*_class call then validate.
+            // The validation is done via validate_altrep_class which panics on null.
+            let make = {
+                let base_variant_for_validate: proc_macro2::TokenStream = match base_name.as_str() {
+                    "Int" => quote::quote!(::miniextendr_api::altrep::RBase::Int),
+                    "Real" => quote::quote!(::miniextendr_api::altrep::RBase::Real),
+                    "Logical" => quote::quote!(::miniextendr_api::altrep::RBase::Logical),
+                    "Raw" => quote::quote!(::miniextendr_api::altrep::RBase::Raw),
+                    "String" => quote::quote!(::miniextendr_api::altrep::RBase::String),
+                    "List" => quote::quote!(::miniextendr_api::altrep::RBase::List),
+                    "Complex" => quote::quote!(::miniextendr_api::altrep::RBase::Complex),
+                    _ => quote::quote!(unreachable!()),
+                };
+                let make_call = match base_name.as_str() {
+                    "Int" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
+                    "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                         ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
-                    ) }
-                }
-                "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
-                    <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                    ::miniextendr_api::AltrepPkgName::as_ptr(),
-                    core::ptr::null_mut(),
-                ) },
-                "Complex" => {
-                    quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
+                    ) },
+                    "Logical" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlogical_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
+                    "Raw" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altraw_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                         ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
-                    ) }
-                }
-                _ => quote::quote! { unreachable!() },
+                    ) },
+                    "String" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
+                    "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                        ::miniextendr_api::AltrepPkgName::as_ptr(),
+                        core::ptr::null_mut(),
+                    ) },
+                    "Complex" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altcomplex_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
+                    _ => quote::quote! { unreachable!() },
+                };
+                quote::quote! {{
+                    let __cls = #make_call;
+                    ::miniextendr_api::altrep::validate_altrep_class(
+                        __cls,
+                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME,
+                        #base_variant_for_validate,
+                    )
+                }}
             };
             (setters, make)
         } else {
@@ -384,6 +411,7 @@ pub fn expand_altrep_struct(
         ident, class_name, base_doc
     );
     let register_altrep_doc = format!("Registration entry point for [`{}`] ALTREP class.", ident);
+    let source_loc_doc = crate::source_location_doc(ident.span());
 
     let method_registrar_install_body: proc_macro2::TokenStream = if base_name.is_some() {
         quote::quote! {
@@ -417,6 +445,8 @@ pub fn expand_altrep_struct(
         #data_helper_impl
 
         #[doc = #altrep_class_doc]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl ::miniextendr_api::altrep::AltrepClass for #ident #ty_generics #where_clause {
             const CLASS_NAME: &'static std::ffi::CStr = #class_cstr;
@@ -427,6 +457,8 @@ pub fn expand_altrep_struct(
         }
 
         #[doc = #register_altrep_doc]
+        #[doc = #source_loc_doc]
+        #[doc = concat!("Generated from source file `", file!(), "`.")]
         impl ::miniextendr_api::altrep_registration::RegisterAltrep for #ident #ty_generics #where_clause {
             fn get_or_init_class() -> ::miniextendr_api::ffi::altrep::R_altrep_class_t {
                 use std::sync::OnceLock;

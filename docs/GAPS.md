@@ -140,20 +140,15 @@ miniextendr_module! {
 
 ---
 
-### 1.4 No Documentation Override Attributes
+### ~~1.4 No Documentation Override Attributes~~ PARTIALLY RESOLVED
 
-**Status:** Not implemented
-**Impact:** Low
-**Location:** `miniextendr-macros/src/r_wrapper_builder.rs`
+**Status:** `internal` and `noexport` implemented; `doc` override not implemented
+**Resolution:** `#[miniextendr(internal)]` injects `@keywords internal` and suppresses `@export`.
+`#[miniextendr(noexport)]` suppresses `@export` only. Both work on standalone functions
+and all 6 class system impl blocks via `ClassDocBuilder::with_export_control()`.
 
-Cannot override roxygen documentation extraction or mark functions as internal.
-
-**Missing features:**
-- `#[miniextendr(doc = "Custom documentation")]`
-- `#[miniextendr(internal)]` for `@keywords internal`
-- `#[miniextendr(noexport)]` to skip `@export`
-
-**Current behavior:** All `pub` functions get `@export`. Documentation is extracted from Rust doc comments only.
+**Still missing:**
+- `#[miniextendr(doc = "Custom documentation")]` — custom roxygen override
 
 ---
 
@@ -228,7 +223,7 @@ Some nested collection types lack direct conversions:
 | Type | Status |
 |------|--------|
 | `Vec<Vec<T>>` | Works |
-| `Vec<Option<T>>` | Not directly convertible |
+| `Vec<Option<T>>` | Works (all scalar types) |
 | `Vec<HashMap<K, V>>` | Not directly convertible |
 | `HashMap<K, Vec<V>>` | Works via nested conversion |
 
@@ -238,13 +233,13 @@ Some nested collection types lack direct conversions:
 
 ## 3. Class System Gaps
 
-### 3.1 S7 Incomplete Features
+### 3.1 S7 Features
 
-**Status:** Partial implementation
-**Impact:** Medium
-**Location:** `miniextendr-macros/src/miniextendr_impl.rs:1546-1693`
+**Status:** Core features implemented; advanced features remain
+**Impact:** Low (remaining items are niche)
+**Location:** `miniextendr-macros/src/miniextendr_impl.rs`
 
-S7 support covers constructors and methods but lacks advanced features:
+S7 support covers constructors, methods, properties, inheritance, and type coercion:
 
 | Feature | Status |
 |---------|--------|
@@ -253,10 +248,20 @@ S7 support covers constructors and methods but lacks advanced features:
 | Instance methods | Implemented |
 | Static methods | Implemented |
 | External generics | Implemented |
-| Property validation | Not implemented |
+| Computed properties (`s7(getter)`) | Implemented |
+| Dynamic properties (`s7(getter)` + `s7(setter)`) | Implemented |
+| Property defaults, required, deprecated | Implemented |
+| Generic dispatch control (`no_dots`, `fallback`) | Implemented |
+| `convert_from` / `convert_to` (type coercion) | Implemented |
+| Abstract classes (`s7(abstract)`) | Implemented |
+| Single inheritance (`s7(parent = "...")`) | Implemented |
+| Multi-level inheritance (3+ level chains) | Implemented |
+| Property validation (`@prop_validator`) | Not implemented |
 | Method combination (before/after) | Not implemented |
-| Inheritance chains | Not implemented |
-| `@prop_validator` | Not implemented |
+
+**Multi-level inheritance example:** `S7Animal` (abstract) -> `S7Dog` -> `S7GoldenRetriever`
+demonstrates a 3-level chain with methods and properties inherited through S7 generic dispatch.
+See `rpkg/src/rust/s7_tests.rs` and `rpkg/tests/testthat/test-class-systems.R`.
 
 ---
 
@@ -296,28 +301,54 @@ r$area          # Active binding: 12 (no parentheses!)
 
 ---
 
-### 3.3 No Direct Field Access
+### ~~3.3 No Direct Field Access~~ RESOLVED
 
-**Status:** Not implemented
-**Impact:** Medium
+**Status:** Solved via sidecar pattern
+**Resolution:** The `#[r_data]` attribute + `RSidecar` + `r_data_accessors` macro provides
+automatic field access for R6 and Env class systems.
 
-None of the class systems expose Rust struct fields directly to R. All access must go through getter/setter methods.
-
-**Current pattern:**
+**Working example (R6):**
 ```rust
-#[miniextendr]
-impl MyStruct {
-    pub fn get_value(&self) -> i32 { self.value }
-    pub fn set_value(&mut self, v: i32) { self.value = v; }
+use miniextendr_api::{r_data_accessors, RSidecar};
+
+#[derive(ExternalPtr)]
+pub struct Config {
+    // Rust-only fields (not exposed to R)
+    internal_cache: Vec<u8>,
+}
+
+/// Sidecar: fields accessible from R as active bindings.
+#[r_data]
+pub struct ConfigData {
+    pub name: String,
+    pub score: f64,
+}
+
+r_data_accessors!(Config, ConfigData);
+
+#[miniextendr(r6)]
+impl Config {
+    pub fn new(name: String, score: f64) -> (Self, ConfigData) {
+        (Config { internal_cache: vec![] }, ConfigData { name, score })
+    }
 }
 ```
 
 **In R:**
 ```r
-obj$get_value()      # Must use method
-obj$set_value(42)    # Must use method
-# obj$value          # Would be nice but doesn't work
+cfg <- Config$new("test", 0.95)
+cfg$name         # "test" (active binding, no parentheses)
+cfg$name <- "x"  # Sets the field
+cfg$score        # 0.95
 ```
+
+**Class system support for sidecar field access:**
+- **R6**: Active bindings (`obj$field` for get, `obj$field <- value` for set)
+- **Env**: Standalone functions (`Type_get_field()` / `Type_set_field()`)
+- **S3, S4, S7**: Sidecar also supported via generated accessor generics/methods
+
+For non-sidecar structs, manual getters are the recommended approach and work well
+across all class systems.
 
 ---
 
@@ -374,42 +405,24 @@ check_connections_version();  // Expects R_CONNECTIONS_VERSION == 1
 
 ---
 
-### 4.2 vctrs Integration (Partial)
+### ~~4.2 vctrs Integration (Partial)~~ MOSTLY RESOLVED
 
-**Status:** C API only, no high-level wrappers
+**Status:** Comprehensive — derive macros, impl blocks, coercion chains all implemented
 **Feature flag:** `vctrs`
-**Location:** `miniextendr-api/src/vctrs.rs`
+**Location:** `miniextendr-api/src/vctrs.rs`, `miniextendr-macros/src/vctrs_derive.rs`
 
 **What's implemented:**
-- `init_vctrs()` - Load vctrs C callables
-- `obj_is_vector()`, `short_vec_size()`, `short_vec_recycle()` - C API wrappers
-- `new_vctr()`, `new_rcrd()`, `new_list_of()` - Construction helpers
-- `VctrsClass`, `IntoVctrs` traits - Type definition patterns
+- `#[derive(Vctrs)]` macro with `Vctr`, `Rcrd`, `ListOf` kinds
+- `#[miniextendr(vctrs)]` impl block support for methods
+- `coerce = "type"` attribute generates `vec_ptype2`/`vec_cast` methods
+- `vec_proxy`, `vec_restore`, `format` protocol methods
+- Advanced features: `proxy_equal`, `proxy_compare`, `proxy_order`, `arith`, `math`
+- C API wrappers: `init_vctrs()`, `obj_is_vector()`, `short_vec_size()`, etc.
+- Construction helpers: `new_vctr()`, `new_rcrd()`, `new_list_of()`
 
-**What's missing:**
-- No derive macros (`#[derive(VctrsVctr)]`)
-- No `vec_ptype2`, `vec_cast`, `vec_restore` helpers
-- No coercion chain support
-- No cross-package vctrs type export
-
-**Example usage:**
-```rust
-use miniextendr_api::vctrs::*;
-
-struct Percent(Vec<f64>);
-
-impl VctrsClass for Percent {
-    const CLASS_NAME: &'static str = "vctrs_percent";
-    const KIND: VctrsKind = VctrsKind::Vctr;
-    const BASE_TYPE: Option<SEXPTYPE> = Some(SEXPTYPE::REALSXP);
-}
-
-impl IntoVctrs for Percent {
-    fn into_vctrs(self) -> Result<SEXP, VctrsBuildError> {
-        new_vctr(self.0.into_r(), &[Self::CLASS_NAME], &[], None)
-    }
-}
-```
+**What's still missing:**
+- Cross-package vctrs type export (no mechanism to share class defs across packages)
+- vctrs inheritance (`extends = "parent_type"` pattern)
 
 ---
 
@@ -715,7 +728,7 @@ Run with: `cargo test --test ui -p miniextendr-macros`
 | Coercion precedence rules | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
 | NA handling for each type | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
 | SEXP lifetime rules | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
-| Feature flag effects | Partial (in crate docs) |
+| Feature flag effects | [docs/FEATURES.md](FEATURES.md) |
 
 ### 7.3 Example Coverage
 

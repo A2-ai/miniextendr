@@ -443,8 +443,7 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
         // Get column names from the first row
         let first_names_sexp = lists[0].names();
         if first_names_sexp.is_none() {
-            // Row has no names - can't create a data frame from unnamed lists
-            panic!("Cannot create data frame from unnamed list elements");
+            crate::r_error!("cannot create data frame from unnamed list elements");
         }
 
         // Extract column names as Vec<String>

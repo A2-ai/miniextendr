@@ -80,10 +80,14 @@ tabled = ["dep:tabled"]
 raw_conversions = ["dep:bytemuck"]
 ## Enable tinyvec integration. Provides TinyVec/ArrayVec ↔ R vector conversions.
 tinyvec = ["dep:tinyvec"]
+## Enable borsh integration. Provides Borsh<T> wrapper for binary serialization ↔ raw vector.
+borsh = ["dep:borsh"]
 ## Enable vctrs integration. Provides access to vctrs' maturing C API (obj_is_vector,
 ## short_vec_size, short_vec_recycle) via R_GetCCallable. Requires vctrs R package.
 ## Also enables the #[derive(Vctrs)] proc-macro.
 vctrs = ["miniextendr-macros/vctrs"]
+## Enable macro expansion coverage module. Used for `cargo expand` auditing.
+macro-coverage = []
 ## Enable ALTREP materialization tracking. Logs when ALTREP vectors materialize
 ## (Dataptr called) and provides a counter for diagnostics. Zero-cost when disabled.
 materialization-tracking = []
@@ -127,6 +131,8 @@ tabled = { version = "0.20.0", optional = true }
 bytemuck = { version = "1.23.0", optional = true, features = ["derive"] }
 ahash = { version = "0.8", optional = true }
 tinyvec = { version = "1.9", optional = true, features = ["alloc"] }
+borsh = { version = "1", optional = true, features = ["derive"] }
 
 [dev-dependencies]
 miniextendr-engine = { workspace = true }
+proptest = "1.6"

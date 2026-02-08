@@ -89,10 +89,10 @@ Key safety properties:
 ```
 .in templates ──[autoconf]──> configure script ──[./configure]──> generated files
 
-Cargo.toml.in ──────────────────────────────────> Cargo.toml
 Makevars.in ────────────────────────────────────> Makevars
 entrypoint.c.in ────────────────────────────────> entrypoint.c
 document.rs.in ─────────────────────────────────> document.rs
+cargo-config.toml.in ──────────────────────────> .cargo/config.toml
 ```
 
 ### Vendor system

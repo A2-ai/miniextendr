@@ -32,6 +32,35 @@ pub fn time_get_day(date: Date) -> i32 {
     date.day() as i32
 }
 
+/// Unix epoch time (1970-01-01) roundtrip
+/// @noRd
+#[miniextendr]
+pub fn time_epoch_date() -> Date {
+    time::macros::date!(1970 - 01 - 01)
+}
+
+/// Epoch datetime (1970-01-01 00:00:00 UTC) roundtrip
+/// @noRd
+#[miniextendr]
+pub fn time_epoch_posixct() -> OffsetDateTime {
+    time::macros::datetime!(1970-01-01 0:00 UTC)
+}
+
+/// Date in distant past (1900-01-01)
+/// @noRd
+#[miniextendr]
+pub fn time_distant_past() -> Date {
+    time::macros::date!(1900 - 01 - 01)
+}
+
+/// Format a date as YYYY-MM-DD
+/// @noRd
+#[miniextendr]
+pub fn time_format_date(date: Date) -> String {
+    let fmt = time::format_description::parse("[year]-[month]-[day]").expect("valid format");
+    date.format(&fmt).unwrap_or_else(|e| e.to_string())
+}
+
 miniextendr_module! {
     mod time_adapter_tests;
     fn time_roundtrip_posixct;
@@ -39,4 +68,8 @@ miniextendr_module! {
     fn time_get_year;
     fn time_get_month;
     fn time_get_day;
+    fn time_epoch_date;
+    fn time_epoch_posixct;
+    fn time_distant_past;
+    fn time_format_date;
 }

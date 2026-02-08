@@ -279,6 +279,84 @@ impl S7Circle {
     }
 }
 
+// =============================================================================
+// S7 Multi-Level Inheritance: S7Animal (abstract) → S7Dog → S7GoldenRetriever
+// =============================================================================
+
+/// Abstract base: all animals have a kind and a number of legs.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Animal {
+    kind: String,
+    legs: i32,
+}
+
+/// @noRd
+#[miniextendr(s7(abstract))]
+impl S7Animal {
+    pub fn new(kind: String, legs: i32) -> Self {
+        S7Animal { kind, legs }
+    }
+
+    /// Returns the animal kind - should be callable on all descendants.
+    pub fn animal_kind(&self) -> String {
+        self.kind.clone()
+    }
+
+    /// Computed property: number of legs.
+    #[miniextendr(s7(getter))]
+    pub fn legs(&self) -> i32 {
+        self.legs
+    }
+}
+
+/// Mid-level: dogs are animals with a breed.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7Dog {
+    breed: String,
+}
+
+/// @noRd
+#[miniextendr(s7(parent = "S7Animal"))]
+impl S7Dog {
+    pub fn new(breed: String) -> Self {
+        S7Dog { breed }
+    }
+
+    /// Returns the dog breed.
+    pub fn dog_breed(&self) -> String {
+        self.breed.clone()
+    }
+
+    /// All dogs bark.
+    pub fn bark(&self) -> String {
+        "woof".to_string()
+    }
+}
+
+/// Leaf-level: golden retrievers are dogs with a name.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct S7GoldenRetriever {
+    name: String,
+}
+
+/// @noRd
+#[miniextendr(s7(parent = "S7Dog"))]
+impl S7GoldenRetriever {
+    pub fn new(name: String) -> Self {
+        S7GoldenRetriever { name }
+    }
+
+    /// Returns the dog's name.
+    pub fn retriever_name(&self) -> String {
+        self.name.clone()
+    }
+
+    /// Returns the coat color.
+    pub fn color(&self) -> String {
+        "golden".to_string()
+    }
+}
+
 miniextendr_module! {
     mod s7_tests;
 
@@ -290,4 +368,7 @@ miniextendr_module! {
     impl S7Fahrenheit;
     impl S7Shape;
     impl S7Circle;
+    impl S7Animal;
+    impl S7Dog;
+    impl S7GoldenRetriever;
 }

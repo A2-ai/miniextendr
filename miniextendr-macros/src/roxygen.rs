@@ -187,8 +187,22 @@ pub(crate) fn push_roxygen_tags(lines: &mut Vec<String>, tags: &[String]) {
 }
 
 /// Return true if the tag list contains a specific roxygen tag.
+///
+/// Supports both single-word tags (e.g., `"export"`, `"noRd"`) and
+/// multi-word tags (e.g., `"keywords internal"`). For single-word tags,
+/// matches the first word after `@`. For multi-word tags, matches the
+/// full content after `@` (trimmed).
 pub(crate) fn has_roxygen_tag(tags: &[String], tag: &str) -> bool {
-    tag_names(tags).contains(tag)
+    if tag.contains(' ') {
+        // Multi-word tag: match the full content after @
+        tags.iter().any(|t| {
+            t.trim_start()
+                .strip_prefix('@')
+                .is_some_and(|rest| rest.trim() == tag)
+        })
+    } else {
+        tag_names(tags).contains(tag)
+    }
 }
 
 fn tag_names(tags: &[String]) -> HashSet<&str> {

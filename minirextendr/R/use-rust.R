@@ -2,7 +2,7 @@
 
 #' Create Rust project structure
 #'
-#' Creates the src/rust/ directory with Cargo.toml.in, lib.rs, and build.rs.
+#' Creates the src/rust/ directory with Cargo.toml, lib.rs, and build.rs.
 #' This sets up a basic miniextendr Rust library with example functions.
 #'
 #' @return Invisibly returns TRUE if files were created
@@ -14,8 +14,8 @@ use_miniextendr_rust <- function() {
   ensure_dir(usethis::proj_path("src", "rust"))
   ensure_dir(usethis::proj_path("src", "vendor"))
 
-  # Cargo.toml.in template
-  use_template("Cargo.toml.in", save_as = "src/rust/Cargo.toml.in", data = data)
+  # Cargo.toml template (mustache-substituted at scaffolding time, not by autoconf)
+  use_template("Cargo.toml.tmpl", save_as = "src/rust/Cargo.toml", data = data)
 
   # build.rs
   use_template("build.rs", save_as = "src/rust/build.rs")

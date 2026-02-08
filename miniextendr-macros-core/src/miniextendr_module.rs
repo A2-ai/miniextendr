@@ -77,6 +77,7 @@ pub struct MiniextendrModuleFunction {
 }
 
 impl syn::parse::Parse for MiniextendrModuleFunction {
+    /// Parses one `fn` (or `extern "C-unwind" fn`) module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
         let _abi = if input.peek(syn::Token![extern]) {
@@ -121,6 +122,7 @@ pub struct MiniextendrModuleStruct {
 }
 
 impl syn::parse::Parse for MiniextendrModuleStruct {
+    /// Parses one `struct Type;` module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(Self {
             _struct_token: input.parse()?,
@@ -139,6 +141,7 @@ pub struct MiniextendrModuleName {
 }
 
 impl syn::parse::Parse for MiniextendrModuleName {
+    /// Parses the required `mod name;` module header.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         Ok(Self {
             _mod_token: input.parse()?,
@@ -169,6 +172,7 @@ pub struct MiniextendrModuleImpl {
 }
 
 impl syn::parse::Parse for MiniextendrModuleImpl {
+    /// Parses one `impl Type;` or `impl Type as "label";` module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
         let _impl_token = input.parse()?;
@@ -221,6 +225,7 @@ pub struct MiniextendrModuleTraitImpl {
 }
 
 impl syn::parse::Parse for MiniextendrModuleTraitImpl {
+    /// Parses one `impl Trait for Type;` module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
         Ok(Self {
@@ -238,12 +243,19 @@ impl syn::parse::Parse for MiniextendrModuleTraitImpl {
 /// Used by `altrep_module.rs` to select which `impl_alt*_from_data!` macro to invoke.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AltrepBase {
+    /// ALTREP class over `INTSXP`.
     Integer,
+    /// ALTREP class over `REALSXP`.
     Real,
+    /// ALTREP class over `LGLSXP`.
     Logical,
+    /// ALTREP class over `RAWSXP`.
     Raw,
+    /// ALTREP class over `STRSXP`.
     String,
+    /// ALTREP class over `CPLXSXP`.
     Complex,
+    /// ALTREP class over `VECSXP`.
     List,
 }
 
@@ -402,6 +414,7 @@ pub struct MiniextendrModuleVctrs {
 }
 
 impl syn::parse::Parse for MiniextendrModuleVctrs {
+    /// Parses one `vctrs Type;` module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let attrs = input.call(syn::Attribute::parse_outer)?;
         let vctrs_ident: syn::Ident = input.parse()?;
@@ -439,6 +452,7 @@ pub struct MiniextendrModuleUse {
 }
 
 impl syn::parse::Parse for MiniextendrModuleUse {
+    /// Parses one restricted `use name;` module entry.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         use syn::spanned::Spanned;
         let _use_token = input.parse()?;
@@ -521,6 +535,7 @@ impl MiniextendrModuleItem {
 }
 
 impl syn::parse::Parse for MiniextendrModuleItem {
+    /// Parses one semicolon-terminated item inside `miniextendr_module!`.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         // Skip past attributes to peek at the actual item keyword
         let fork = input.fork();
@@ -570,6 +585,7 @@ impl syn::parse::Parse for MiniextendrModuleItem {
 }
 
 impl syn::parse::Parse for MiniextendrModule {
+    /// Parses the full `miniextendr_module!` body.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         let items: syn::punctuated::Punctuated<MiniextendrModuleItem, syn::Token![;]> =
             syn::punctuated::Punctuated::parse_terminated_with(
@@ -610,7 +626,7 @@ impl syn::parse::Parse for MiniextendrModule {
         let module_name = name.ok_or_else(|| {
             syn::Error::new(
                 first_item_span.unwrap_or_else(|| input.span()),
-                "missing `mod <name>;` declaration (required as first item in miniextendr_module!)",
+                "missing `mod <name>;` declaration in miniextendr_module!",
             )
         })?;
 
@@ -623,5 +639,42 @@ impl syn::parse::Parse for MiniextendrModule {
             trait_impls,
             vctrs: vctrs_items,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn mod_not_first_item() {
+        // mod can appear at any position, not just first
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            fn f;
+            mod mypkg;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens);
+        assert!(parsed.is_ok(), "mod at non-first position should parse");
+        assert_eq!(parsed.unwrap().module_name.ident, "mypkg");
+    }
+
+    #[test]
+    fn missing_mod_errors() {
+        let tokens: proc_macro2::TokenStream = syn::parse_quote! {
+            fn f;
+        };
+        let parsed = syn::parse2::<MiniextendrModule>(tokens);
+        let err = match parsed {
+            Err(e) => e.to_string(),
+            Ok(_) => panic!("expected parse error for missing mod"),
+        };
+        assert!(
+            err.contains("missing `mod <name>;`"),
+            "error message should mention missing mod: {err}"
+        );
+        assert!(
+            !err.contains("first item"),
+            "error message should not say 'first item': {err}"
+        );
     }
 }

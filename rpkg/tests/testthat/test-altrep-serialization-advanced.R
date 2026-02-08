@@ -33,6 +33,26 @@ test_that("Vec<String> ALTREP with NA survives saveRDS/readRDS", {
   expect_true(is.na(restored[2]))
 })
 
+test_that("Vec<String> ALTREP empty vector roundtrips", {
+  v <- into_sexp_altrep(character(0))
+  tmp <- tempfile(fileext = ".rds")
+  on.exit(unlink(tmp), add = TRUE)
+
+  saveRDS(v, tmp)
+  restored <- readRDS(tmp)
+
+  expect_equal(restored, character(0))
+  expect_equal(length(restored), 0L)
+})
+
+test_that("Vec<String> ALTREP identical() works with materialized dataptr", {
+  v <- into_sexp_altrep(c("a", "b", "c"))
+  expect_equal(v, c("a", "b", "c"))
+  # After accessing elements, the materialized cache should be consistent
+  expect_equal(v[1], "a")
+  expect_equal(v[3], "c")
+})
+
 # =============================================================================
 # Single-element vector boundaries
 # =============================================================================

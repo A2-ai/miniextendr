@@ -52,6 +52,11 @@ pub(crate) unsafe fn panic_payload_to_r_error(
         "panic payload could not be unpacked"
     };
 
+    crate::panic_telemetry::fire(
+        error_message,
+        crate::panic_telemetry::PanicSource::UnwindProtect,
+    );
+
     let c_error_message = std::ffi::CString::new(error_message)
         .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
 

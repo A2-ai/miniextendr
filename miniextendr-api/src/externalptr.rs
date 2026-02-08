@@ -196,7 +196,10 @@ unsafe fn symbol_name(sym: SEXP) -> &'static str {
     let printname = unsafe { crate::ffi::PRINTNAME(sym) };
     let cstr = unsafe { crate::ffi::R_CHAR(printname) };
     let len = unsafe { crate::ffi::Rf_xlength(printname) as usize };
-    unsafe { std::str::from_utf8_unchecked(std::slice::from_raw_parts(cstr.cast(), len)) }
+    unsafe {
+        std::str::from_utf8(std::slice::from_raw_parts(cstr.cast(), len))
+            .expect("R SYMSXP PRINTNAME is not valid UTF-8")
+    }
 }
 
 // =============================================================================
@@ -1072,7 +1075,9 @@ pub enum TypeMismatchError {
     InvalidTypeId,
     /// The stored type doesn't match the expected type.
     Mismatch {
+        /// Expected Rust type name from this pointer wrapper.
         expected: &'static str,
+        /// Actual stored Rust type name found in pointer metadata.
         found: &'static str,
     },
 }

@@ -6,7 +6,7 @@ exported_funs <- c(
   "cargo_test", "cargo_update", "create_miniextendr_package", "miniextendr_autoconf",
   "miniextendr_available_versions", "miniextendr_build", "miniextendr_cache_info",
   "miniextendr_check", "miniextendr_clear_cache", "miniextendr_configure",
-  "miniextendr_document", "miniextendr_update",
+  "miniextendr_doctor", "miniextendr_document", "miniextendr_update",
   "use_miniextendr", "use_miniextendr_bootstrap", "use_miniextendr_cargo_config",
   "use_miniextendr_cleanup", "use_miniextendr_config_scripts", "use_miniextendr_configure",
   "use_miniextendr_configure_win", "use_miniextendr_description", "use_miniextendr_document",
