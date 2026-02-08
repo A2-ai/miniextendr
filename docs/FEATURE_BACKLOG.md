@@ -44,6 +44,49 @@ Items are scoped to be incremental and compatible with the current architecture.
 - Wired through both standalone functions (`lib.rs`) and impl methods
   (`c_wrapper_builder.rs`) via `RustConversionBuilder::with_strict()`.
 
+### 6. `#[miniextendr(internal)]` and `#[miniextendr(noexport)]` attributes ✓
+
+- `internal` injects `@keywords internal` and suppresses `@export`.
+- `noexport` suppresses `@export` only (no `@keywords internal`).
+- Works on standalone functions and all 6 class system impl blocks
+  (env, R6, S3, S4, S7, vctrs) via `ClassDocBuilder::with_export_control()`.
+
+### 7. String ALTREP Dataptr ✓
+
+- Bridge-layer materialization: Rust `Vec<String>`/`Box<[String]>` materialize into
+  native R STRSXP cached in the ALTREP data2 slot.
+- Enables `saveRDS`/`readRDS` roundtrip and `identical()` for string ALTREP vectors.
+- Uses `DATAPTR_RO` with cast (DATAPTR is behind `nonapi` feature gate).
+
+### 8. Adapter test coverage expansion ✓
+
+- Added 3–5 edge-case functions per adapter for 13 thin adapter modules
+  (sha2, aho-corasick, time, tinyvec, indexmap, ordered-float, toml, bytes,
+  either, url, bitvec, bitflags, tabled).
+- Corresponding R test expectations in `test-feature-adapters.R`.
+
+### 9. Conversion behavior matrix ✓
+
+- `docs/CONVERSION_MATRIX.md`: R input type × Rust target type → behavior reference.
+- Covers INTSXP, REALSXP, LGLSXP, RAWSXP, STRSXP against i32, f64, u8, bool,
+  String, i64/u64/isize/usize in normal, coerce, and strict modes.
+
+### 10. Sparse iterator ALTREP guide ✓
+
+- `docs/SPARSE_ITERATOR_ALTREP.md`: compute-on-access pattern, `Iterator::nth()`
+  for efficient skipping, comparison with materialization, usage guidance.
+
+### 11. vctrs documentation expansion ✓
+
+- Expanded `docs/VCTRS.md` with record type example, list-of pattern,
+  advanced coercion, and troubleshooting section.
+
+### 12. Fix `has_roxygen_tag` for multi-word tags ✓
+
+- `has_roxygen_tag("keywords internal")` was broken — `tag_names()` only extracts
+  first word after `@`. Added multi-word branch matching full content after `@`.
+- Added comprehensive unit tests for `has_roxygen_tag`, `tag_names`, `find_tag_value`.
+
 ## Active: Next Up
 
 ## Parked: Needs Evidence
@@ -68,5 +111,3 @@ These items are plausible but lack a demonstrated need or clear design.
 
 - **Rustdoc examples for feature-gated modules** — one example per feature module
   (vctrs, rayon, serde, connections). Lowers discovery cost.
-- **Conversion behavior matrix** — test-driven markdown artifact for edge cases
-  (NA, overflow, UTF-8, class checks). Keeps docs and behavior in sync.
