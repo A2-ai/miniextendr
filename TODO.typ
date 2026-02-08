@@ -22,9 +22,11 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 - [x] Property-based roundtrip tests — 24 proptest tests for all scalar/vector/option types
 - [x] Macro codegen snapshot tests — 12 expect-test snapshots for R wrappers and class systems
-- [ ] Thread-safety assertions not covered by tests
-  - Note: Would require embedded R runtime for meaningful tests.
-- [ ] String ALTREP NA serialization — `saveRDS`/`readRDS` loses NA (becomes empty string)
+- [x] Thread-safety assertions — 198 R-level worker thread tests, checked FFI wrapper
+  panic tests, RAII cleanup across thread boundaries (test-worker.R, panic_tests.rs)
+  - Remaining gap: RThreadBuilder direct tests skipped (crashes R runtime)
+- [x] String ALTREP NA serialization — fixed in cc115a7 (use `Vec<Option<String>>`,
+  register `Vec_Option_String` ALTREP class)
 
 == Build / Infrastructure
 
