@@ -78,14 +78,16 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
 
   # Root workspace files
   cli::cli_h2("Creating workspace root")
-  use_template("Cargo.toml", data = data)
-  use_template("justfile", data = data)
+  use_template("Cargo.toml.tmpl", save_as = "Cargo.toml", data = data)
+  # justfile uses {{variable}} syntax (just's interpolation) which collides
+  # with mustache. Use copy_template for literal {{{key}}} substitution only.
+  copy_template("justfile", data = data)
   use_template("gitignore", save_as = ".gitignore", data = data)
 
   # Create main Rust crate
   cli::cli_h2("Creating main Rust crate")
   ensure_dir(usethis::proj_path(crate_name, "src"))
-  use_template("Cargo.toml", save_as = file.path(crate_name, "Cargo.toml"),
+  use_template("Cargo.toml.tmpl", save_as = file.path(crate_name, "Cargo.toml"),
                subdir = "my-crate", data = data)
   use_template("lib.rs", save_as = file.path(crate_name, "src", "lib.rs"),
                subdir = file.path("my-crate", "src"), data = data)
@@ -135,6 +137,13 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   writeLines(desc_content, desc_path)
   bullet_created(file.path(rpkg_name, "DESCRIPTION"))
 
+  # Create LICENSE file (required by License: MIT + file LICENSE)
+  license_path <- usethis::proj_path(rpkg_name, "LICENSE")
+  license_content <- sprintf("YEAR: %s\nCOPYRIGHT HOLDER: %s authors\n",
+                             format(Sys.Date(), "%Y"), data$package)
+  writeLines(license_content, license_path)
+  bullet_created(file.path(rpkg_name, "LICENSE"))
+
   # Create minimal NAMESPACE (required for configure.ac check)
   # devtools::document() will regenerate this with proper exports
   namespace_path <- usethis::proj_path(rpkg_name, "NAMESPACE")
@@ -155,10 +164,19 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("configure.win", save_as = file.path(rpkg_name, "configure.win"), subdir = "rpkg")
   use_template("configure.ucrt", save_as = file.path(rpkg_name, "configure.ucrt"), subdir = "rpkg")
 
+  # Ensure cleanup and configure scripts are executable
+  for (script in c("cleanup", "cleanup.win", "cleanup.ucrt", "configure.win", "configure.ucrt")) {
+    script_path <- usethis::proj_path(rpkg_name, script)
+    if (fs::file_exists(script_path)) {
+      fs::file_chmod(script_path, "755")
+    }
+  }
+
   # src/ files
   use_template("Makevars.in", save_as = file.path(rpkg_name, "src", "Makevars.in"), subdir = "rpkg")
   use_template("entrypoint.c.in", save_as = file.path(rpkg_name, "src", "entrypoint.c.in"), subdir = "rpkg")
   use_template("mx_abi.c.in", save_as = file.path(rpkg_name, "src", "mx_abi.c.in"), subdir = "rpkg")
+  use_template("win.def.in", save_as = file.path(rpkg_name, "src", "win.def.in"), subdir = "rpkg")
 
   # inst/include/ for cross-package header
   ensure_dir(usethis::proj_path(rpkg_name, "inst", "include"))
@@ -166,7 +184,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
                subdir = file.path("rpkg", "inst_include"), data = data)
 
   # Rust project files
-  use_template("Cargo.toml.in", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml.in"), subdir = "rpkg", data = data)
+  use_template("Cargo.toml.tmpl", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml"), subdir = "rpkg", data = data)
   use_template("build.rs", save_as = file.path(rpkg_name, "src", "rust", "build.rs"), subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
   use_template("document.rs.in", save_as = file.path(rpkg_name, "src", "rust", "document.rs.in"), subdir = "rpkg")
@@ -207,7 +225,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #'   Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.
 #' @param rpkg_name Name of the R package subdirectory for monorepo template (default: "rpkg").
 #'   Only used when template_type is "monorepo".
-#' @param miniextendr_version Version of miniextendr to vendor (default: "latest").
+#' @param miniextendr_version Version of miniextendr to vendor (default: "main").
 #'   For monorepo projects, vendoring is only needed for CRAN submission.
 #' @param local_path Optional path to local miniextendr repository. If provided,
 #'   vendors from local path instead of downloading from GitHub. Useful for
@@ -215,7 +233,29 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @return Invisibly returns TRUE
 #' @export
 use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
-                            miniextendr_version = "latest", local_path = NULL) {
+                            miniextendr_version = "main", local_path = NULL) {
+  # Warn if not at git workspace root
+  git_available <- nzchar(Sys.which("git"))
+  if (git_available) {
+    git_root <- tryCatch(
+      {
+        res <- run_command("git", c("rev-parse", "--show-toplevel"))
+        trimws(res)
+      },
+      warning = function(w) NULL,
+      error = function(e) NULL
+    )
+    if (!is.null(git_root) &&
+        normalizePath(git_root) != normalizePath(getwd())) {
+      warning(
+        "use_miniextendr() is not being called from the git workspace root. ",
+        "Current directory: ", getwd(), "\n",
+        "Git workspace root: ", git_root,
+        call. = FALSE
+      )
+    }
+  }
+
   cli::cli_h1("Setting up miniextendr")
 
   # Auto-detect template type if requested
@@ -250,7 +290,11 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
 
     # Vendor miniextendr crates
     cli::cli_h2("Vendoring miniextendr crates")
-    vendor_miniextendr(version = miniextendr_version, local_path = local_path)
+    vendor_miniextendr(
+      version = miniextendr_version,
+      dest = usethis::proj_path(rpkg_name, "src", "vendor"),
+      local_path = local_path
+    )
 
     cli::cli_h1("Setup complete!")
     cli::cli_alert_info("Next steps:")

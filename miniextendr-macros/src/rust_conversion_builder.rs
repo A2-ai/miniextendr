@@ -23,6 +23,8 @@ pub struct RustConversionBuilder {
     coerce_all: bool,
     /// Parameter names that should use coercion
     coerce_params: Vec<String>,
+    /// Enable strict input conversion for lossy types
+    strict: bool,
 }
 
 impl RustConversionBuilder {
@@ -31,6 +33,7 @@ impl RustConversionBuilder {
         Self {
             coerce_all: false,
             coerce_params: Vec::new(),
+            strict: false,
         }
     }
 
@@ -43,6 +46,12 @@ impl RustConversionBuilder {
     /// Add a parameter name that should use coercion.
     pub fn with_coerce_param(mut self, param_name: String) -> Self {
         self.coerce_params.push(param_name);
+        self
+    }
+
+    /// Enable strict input conversion for lossy types (i64/u64/isize/usize + Vec variants).
+    pub fn with_strict(mut self) -> Self {
+        self.strict = true;
         self
     }
 
@@ -163,6 +172,23 @@ impl RustConversionBuilder {
             // All other types
             _ => {
                 let param_name = ident.to_string();
+
+                // Strict mode: use checked input helpers for lossy types
+                if self.strict
+                    && let Some(strict_expr) =
+                        crate::return_type_analysis::strict_input_conversion_for_type(
+                            ty,
+                            sexp_ident,
+                            &param_name,
+                        )
+                {
+                    let span = ty.span();
+                    let stmt = quote_spanned! {span=>
+                        let #ident: #ty = #strict_expr;
+                    };
+                    return (vec![stmt], vec![]);
+                }
+
                 let should_coerce = self.should_coerce(&param_name);
                 let coercion_mapping = if should_coerce {
                     CoercionMapping::from_type(ty)

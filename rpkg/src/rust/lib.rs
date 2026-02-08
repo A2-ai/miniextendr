@@ -1,3 +1,4 @@
+#![allow(rustdoc::private_intra_doc_links)]
 //! rpkg: Example R package demonstrating miniextendr features.
 //!
 //! This crate is organized into focused modules for different test categories.
@@ -66,6 +67,18 @@
 //! - [`bigint_adapter_tests`]: BigInt type adapter (feature: `num-bigint`)
 //! - [`decimal_adapter_tests`]: Decimal type adapter (feature: `rust_decimal`)
 //! - [`indexmap_adapter_tests`]: IndexMap type adapter (feature: `indexmap`)
+//! - [`bytes_adapter_tests`]: Bytes/BytesMut adapter (feature: `bytes`)
+//! - [`bitflags_adapter_tests`]: Bitflags adapter (feature: `bitflags`)
+//! - [`bitvec_adapter_tests`]: BitVec adapter (feature: `bitvec`)
+//! - [`tinyvec_adapter_tests`]: TinyVec/ArrayVec adapter (feature: `tinyvec`)
+//! - [`sha2_adapter_tests`]: SHA-2 hashing adapter (feature: `sha2`)
+//! - [`url_adapter_tests`]: URL parsing adapter (feature: `url`)
+//! - [`aho_corasick_adapter_tests`]: Aho-Corasick string search adapter (feature: `aho-corasick`)
+//! - [`toml_adapter_tests`]: TOML parsing adapter (feature: `toml`)
+//! - [`tabled_adapter_tests`]: Table formatting adapter (feature: `tabled`)
+//! - [`nalgebra_adapter_tests`]: Linear algebra adapter (feature: `nalgebra`)
+//! - [`either_adapter_tests`]: Either type adapter (feature: `either`)
+//! - [`serde_json_adapter_tests`]: JSON serialization adapter (feature: `serde_json`)
 //!
 //! # Miscellaneous
 //!
@@ -90,6 +103,7 @@ mod dots_tests;
 mod externalptr_tests;
 mod factor_tests;
 mod gc_protect_tests;
+mod gc_stress_fixtures;
 mod identical_tests;
 mod interrupt_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
@@ -172,6 +186,104 @@ mod indexmap_adapter_tests;
 #[path = "indexmap_adapter_tests_disabled.rs"]
 mod indexmap_adapter_tests;
 
+#[cfg(feature = "bytes")]
+#[path = "bytes_adapter_tests.rs"]
+mod bytes_adapter_tests;
+#[cfg(not(feature = "bytes"))]
+#[path = "bytes_adapter_tests_disabled.rs"]
+mod bytes_adapter_tests;
+
+#[cfg(feature = "bitflags")]
+#[path = "bitflags_adapter_tests.rs"]
+mod bitflags_adapter_tests;
+#[cfg(not(feature = "bitflags"))]
+#[path = "bitflags_adapter_tests_disabled.rs"]
+mod bitflags_adapter_tests;
+
+#[cfg(feature = "bitvec")]
+#[path = "bitvec_adapter_tests.rs"]
+mod bitvec_adapter_tests;
+#[cfg(not(feature = "bitvec"))]
+#[path = "bitvec_adapter_tests_disabled.rs"]
+mod bitvec_adapter_tests;
+
+#[cfg(feature = "tinyvec")]
+#[path = "tinyvec_adapter_tests.rs"]
+mod tinyvec_adapter_tests;
+#[cfg(not(feature = "tinyvec"))]
+#[path = "tinyvec_adapter_tests_disabled.rs"]
+mod tinyvec_adapter_tests;
+
+#[cfg(feature = "sha2")]
+#[path = "sha2_adapter_tests.rs"]
+mod sha2_adapter_tests;
+#[cfg(not(feature = "sha2"))]
+#[path = "sha2_adapter_tests_disabled.rs"]
+mod sha2_adapter_tests;
+
+#[cfg(feature = "url")]
+#[path = "url_adapter_tests.rs"]
+mod url_adapter_tests;
+#[cfg(not(feature = "url"))]
+#[path = "url_adapter_tests_disabled.rs"]
+mod url_adapter_tests;
+
+#[cfg(feature = "aho-corasick")]
+#[path = "aho_corasick_adapter_tests.rs"]
+mod aho_corasick_adapter_tests;
+#[cfg(not(feature = "aho-corasick"))]
+#[path = "aho_corasick_adapter_tests_disabled.rs"]
+mod aho_corasick_adapter_tests;
+
+#[cfg(feature = "toml")]
+#[path = "toml_adapter_tests.rs"]
+mod toml_adapter_tests;
+#[cfg(not(feature = "toml"))]
+#[path = "toml_adapter_tests_disabled.rs"]
+mod toml_adapter_tests;
+
+#[cfg(feature = "tabled")]
+#[path = "tabled_adapter_tests.rs"]
+mod tabled_adapter_tests;
+#[cfg(not(feature = "tabled"))]
+#[path = "tabled_adapter_tests_disabled.rs"]
+mod tabled_adapter_tests;
+
+#[cfg(feature = "nalgebra")]
+#[path = "nalgebra_adapter_tests.rs"]
+mod nalgebra_adapter_tests;
+#[cfg(not(feature = "nalgebra"))]
+#[path = "nalgebra_adapter_tests_disabled.rs"]
+mod nalgebra_adapter_tests;
+
+#[cfg(feature = "either")]
+#[path = "either_adapter_tests.rs"]
+mod either_adapter_tests;
+#[cfg(not(feature = "either"))]
+#[path = "either_adapter_tests_disabled.rs"]
+mod either_adapter_tests;
+
+#[cfg(feature = "serde_json")]
+#[path = "serde_json_adapter_tests.rs"]
+mod serde_json_adapter_tests;
+#[cfg(not(feature = "serde_json"))]
+#[path = "serde_json_adapter_tests_disabled.rs"]
+mod serde_json_adapter_tests;
+
+#[cfg(feature = "num-complex")]
+#[path = "num_complex_adapter_tests.rs"]
+mod num_complex_adapter_tests;
+#[cfg(not(feature = "num-complex"))]
+#[path = "num_complex_adapter_tests_disabled.rs"]
+mod num_complex_adapter_tests;
+
+#[cfg(feature = "num-traits")]
+#[path = "num_traits_adapter_tests.rs"]
+mod num_traits_adapter_tests;
+#[cfg(not(feature = "num-traits"))]
+#[path = "num_traits_adapter_tests_disabled.rs"]
+mod num_traits_adapter_tests;
+
 // Connection tests - requires connections feature
 #[cfg(feature = "connections")]
 #[path = "connection_tests.rs"]
@@ -179,6 +291,8 @@ mod connection_tests;
 #[cfg(not(feature = "connections"))]
 #[path = "connection_tests_disabled.rs"]
 mod connection_tests;
+mod doc_attr_tests;
+mod export_control_tests;
 mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
@@ -337,13 +451,8 @@ miniextendr_api::impl_altreal_from_data!(ArithSeqData);
 pub struct ArithSeqClass(pub ArithSeqData);
 
 #[miniextendr]
-fn arith_seq(from: f64, to: f64, length_out: i32) -> SEXP {
+fn arith_seq(from: f64, step: f64, length_out: i32) -> SEXP {
     let len = length_out as usize;
-    let step = if len > 1 {
-        (to - from) / (len - 1) as f64
-    } else {
-        0.0
-    };
     let data = ArithSeqData {
         start: from,
         step,
@@ -1112,7 +1221,7 @@ impl AltStringData for StringVecData {
     }
 }
 
-miniextendr_api::impl_altstring_from_data!(StringVecData);
+miniextendr_api::impl_altstring_from_data!(StringVecData, dataptr);
 
 #[miniextendr(class = "SimpleVecString")]
 pub struct SimpleVecStringClass(pub StringVecData);
@@ -1694,6 +1803,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "serde") {
         features.push("serde");
     }
+    if cfg!(feature = "serde_json") {
+        features.push("serde_json");
+    }
     if cfg!(feature = "num-bigint") {
         features.push("num-bigint");
     }
@@ -1751,6 +1863,9 @@ pub fn rpkg_enabled_features() -> Vec<&'static str> {
     if cfg!(feature = "aho-corasick") {
         features.push("aho-corasick");
     }
+    if cfg!(feature = "tinyvec") {
+        features.push("tinyvec");
+    }
     if cfg!(feature = "raw_conversions") {
         features.push("raw_conversions");
     }
@@ -1782,6 +1897,7 @@ miniextendr_module! {
     use externalptr_tests;
     use rdata_sidecar_tests;
     use gc_protect_tests;
+    use gc_stress_fixtures;
     use identical_tests;
     use receiver_tests;
     use r6_tests;
@@ -1792,6 +1908,8 @@ miniextendr_module! {
     use worker_tests;
     use coerce_tests;
     use visibility_tests;
+    use doc_attr_tests;
+    use export_control_tests;
     use thread_tests;
     use misc_tests;
     use lifecycle_tests;
@@ -1811,6 +1929,20 @@ miniextendr_module! {
     use bigint_adapter_tests;
     use decimal_adapter_tests;
     use indexmap_adapter_tests;
+    use bytes_adapter_tests;
+    use bitflags_adapter_tests;
+    use bitvec_adapter_tests;
+    use tinyvec_adapter_tests;
+    use sha2_adapter_tests;
+    use url_adapter_tests;
+    use aho_corasick_adapter_tests;
+    use toml_adapter_tests;
+    use tabled_adapter_tests;
+    use nalgebra_adapter_tests;
+    use either_adapter_tests;
+    use serde_json_adapter_tests;
+    use num_complex_adapter_tests;
+    use num_traits_adapter_tests;
     use connection_tests;
     use nonapi;
     use factor_tests;

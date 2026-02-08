@@ -106,6 +106,21 @@ static P_SHORT_VEC_RECYCLE: OnceLock<ShortVecRecycleFn> = OnceLock::new();
 // =============================================================================
 
 /// Error type for vctrs operations.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{obj_is_vector, VctrsError};
+///
+/// match obj_is_vector(sexp) {
+///     Ok(true) => println!("It's a vector"),
+///     Ok(false) => println!("Not a vector"),
+///     Err(VctrsError::NotInitialized) => {
+///         eprintln!("Call init_vctrs() first");
+///     }
+///     Err(e) => eprintln!("Error: {}", e),
+/// }
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum VctrsError {
     /// vctrs support has not been initialized.
@@ -237,6 +252,19 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
 /// Check if vctrs support has been initialized.
 ///
 /// Returns `true` if [`init_vctrs`] has been successfully called.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{init_vctrs, is_vctrs_initialized};
+///
+/// // Before initialization
+/// assert!(!is_vctrs_initialized());
+///
+/// // After initialization
+/// init_vctrs().ok();
+/// // is_vctrs_initialized() == true if vctrs is available
+/// ```
 #[inline]
 pub fn is_vctrs_initialized() -> bool {
     P_OBJ_IS_VECTOR.get().is_some()
@@ -393,11 +421,32 @@ pub trait VctrsSexpExt {
     /// Check if this object is a vector according to vctrs.
     ///
     /// See [`obj_is_vector`] for details.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::vctrs::VctrsSexpExt;
+    ///
+    /// let x: SEXP = some_r_object();
+    /// if x.vctrs_is_vector()? {
+    ///     println!("x is a vctrs vector");
+    /// }
+    /// ```
     fn vctrs_is_vector(&self) -> Result<bool, VctrsError>;
 
     /// Get the size of this vector.
     ///
     /// See [`short_vec_size`] for details.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::vctrs::VctrsSexpExt;
+    ///
+    /// let x: SEXP = some_r_integer_vector();
+    /// let n = x.vctrs_size()?;
+    /// println!("vector has {} elements", n);
+    /// ```
     fn vctrs_size(&self) -> Result<R_len_t, VctrsError>;
 
     /// Recycle this vector to a target size.
@@ -408,6 +457,17 @@ pub trait VctrsSexpExt {
     ///
     /// The returned SEXP must be protected by the caller if it will be used
     /// across potential R allocations.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::vctrs::VctrsSexpExt;
+    ///
+    /// // Recycle a scalar to length 5
+    /// let scalar: SEXP = Rf_ScalarInteger(42);
+    /// let recycled = scalar.vctrs_recycle_to(5)?;
+    /// // recycled is now c(42L, 42L, 42L, 42L, 42L)
+    /// ```
     fn vctrs_recycle_to(&self, size: R_len_t) -> Result<SEXP, VctrsError>;
 }
 
@@ -480,6 +540,20 @@ use crate::gc_protect::OwnedProtect;
 use crate::list::List;
 
 /// Error type for vctrs object construction.
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::{new_vctr, VctrsBuildError};
+///
+/// match new_vctr(data, &["my_class"], &[], None) {
+///     Ok(sexp) => { /* use the vctrs object */ }
+///     Err(VctrsBuildError::NotAVector) => {
+///         eprintln!("Data is not a vector");
+///     }
+///     Err(e) => eprintln!("Build error: {}", e),
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum VctrsBuildError {
     /// vctrs support has not been initialized.
@@ -983,6 +1057,19 @@ pub fn new_list_of(
 /// - [`Vctr`](VctrsKind::Vctr): Simple vector backed by a base type (`vctrs::new_vctr`)
 /// - [`Rcrd`](VctrsKind::Rcrd): Record type with named fields (`vctrs::new_rcrd`)
 /// - [`ListOf`](VctrsKind::ListOf): Homogeneous list with prototype (`vctrs::new_list_of`)
+///
+/// # Examples
+///
+/// ```ignore
+/// use miniextendr_api::vctrs::VctrsKind;
+///
+/// // VctrsKind defaults to Vctr
+/// let kind = VctrsKind::default();
+/// assert_eq!(kind, VctrsKind::Vctr);
+///
+/// // Use in a VctrsClass implementation to select the constructor
+/// const KIND: VctrsKind = VctrsKind::Rcrd;
+/// ```
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum VctrsKind {
     /// Simple vctr backed by a base vector (double, integer, character, etc.).

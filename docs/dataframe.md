@@ -183,17 +183,13 @@ The row type must implement `IntoList`:
 - Via `#[derive(Serialize)]` when `serde` feature is enabled
 - Via manual implementation using `List::from_raw_pairs()` (for heterogeneous fields)
 
-### Attributes (TODO)
-
-Future attributes for customization:
+### Attributes
 
 ```rust
 #[derive(DataFrameRow)]
-#[dataframe(name = "Measurements")]  // Custom DataFrame name
+#[dataframe(name = "Measurements")]  // Custom DataFrame name (default: {StructName}DataFrame)
 struct Measurement { /* ... */ }
 ```
-
-Note: Collection type is always `Vec<T>` currently. Future versions may support custom collection types via attributes.
 
 ---
 

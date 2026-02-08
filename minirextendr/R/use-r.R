@@ -43,6 +43,12 @@ use_miniextendr_description <- function() {
   d$set("Config/build/never-clean" = "true")
   d$set("Config/build/extra-sources" = "src/rust/Cargo.lock")
 
+  # Set License if not already set to something meaningful
+  license <- d$get_field("License", default = "")
+  if (!nzchar(license) || license == "use_mit_license()") {
+    d$set("License" = "MIT + file LICENSE")
+  }
+
   # Add SystemRequirements if not present
   sys_req <- d$get_field("SystemRequirements", default = "")
   if (!grepl("Rust", sys_req, ignore.case = TRUE)) {
@@ -55,6 +61,17 @@ use_miniextendr_description <- function() {
   }
 
   d$write()
+
+  # Create LICENSE file if it doesn't exist (required by License: MIT + file LICENSE)
+  license_path <- usethis::proj_path("LICENSE")
+  if (!fs::file_exists(license_path)) {
+    pkg_name <- d$get_field("Package")
+    license_content <- sprintf("YEAR: %s\nCOPYRIGHT HOLDER: %s authors\n",
+                               format(Sys.Date(), "%Y"), pkg_name)
+    writeLines(license_content, license_path)
+    cli::cli_alert_success("Created {.path LICENSE}")
+  }
+
   cli::cli_alert_success("Updated DESCRIPTION with miniextendr config fields")
   invisible(TRUE)
 }

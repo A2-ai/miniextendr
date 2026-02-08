@@ -18,6 +18,9 @@ fn default_impl_attrs(class_system: ClassSystem) -> ImplAttrs {
         s7_parent: None,
         s7_abstract: false,
         r_data_accessors: false,
+        strict: false,
+        internal: false,
+        noexport: false,
     }
 }
 
@@ -1369,6 +1372,42 @@ fn s7_generic_fallback() {
     assert!(
         wrapper.contains("S7::method(describe, S7::class_any)"),
         "Expected fallback to class_any, got:\n{}",
+        wrapper
+    );
+    // Fallback should use safe self extraction (tryCatch), not raw x@.ptr
+    assert!(
+        wrapper.contains("tryCatch(x@.ptr"),
+        "Expected safe self extraction with tryCatch, got:\n{}",
+        wrapper
+    );
+    assert!(
+        !wrapper.contains(".Call(wrap__Printer__describe, x@.ptr,"),
+        "Fallback should NOT use raw x@.ptr in .Call, got:\n{}",
+        wrapper
+    );
+}
+
+#[test]
+fn s7_generic_override_fallback() {
+    let impl_code: syn::ItemImpl = syn::parse_quote! {
+        impl Printer {
+            #[miniextendr(s7(generic = "base::print", fallback))]
+            pub fn print_it(&self) -> String { "printed".to_string() }
+        }
+    };
+    let parsed = parse_impl(ClassSystem::S7, impl_code);
+    let wrapper = generate_s7_r_wrapper(&parsed);
+
+    // Generic-override + fallback should use class_any, not Printer
+    assert!(
+        wrapper.contains("S7::method(print, S7::class_any)"),
+        "Expected generic-override fallback to class_any, got:\n{}",
+        wrapper
+    );
+    // Should also use safe self extraction
+    assert!(
+        wrapper.contains("tryCatch(x@.ptr"),
+        "Expected safe self extraction in generic-override fallback, got:\n{}",
         wrapper
     );
 }

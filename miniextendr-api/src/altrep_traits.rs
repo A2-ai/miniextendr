@@ -34,18 +34,21 @@ pub trait Altrep {
     fn length(x: SEXP) -> R_xlen_t;
 
     // --- OPTIONAL: Serialization ---
+    /// Set to `true` to register [`serialized_state`](Self::serialized_state).
     const HAS_SERIALIZED_STATE: bool = false;
     /// Return serialization state.
     fn serialized_state(_x: SEXP) -> SEXP {
         unreachable!("HAS_SERIALIZED_STATE = false")
     }
 
+    /// Set to `true` to register [`unserialize`](Self::unserialize).
     const HAS_UNSERIALIZE: bool = false;
     /// Reconstruct ALTREP from serialized state.
     fn unserialize(_class: SEXP, _state: SEXP) -> SEXP {
         unreachable!("HAS_UNSERIALIZE = false")
     }
 
+    /// Set to `true` to register [`unserialize_ex`](Self::unserialize_ex).
     const HAS_UNSERIALIZE_EX: bool = false;
     /// Extended unserialization with attributes.
     fn unserialize_ex(_class: SEXP, _state: SEXP, _attr: SEXP, _objf: i32, _levs: i32) -> SEXP {
@@ -53,12 +56,14 @@ pub trait Altrep {
     }
 
     // --- OPTIONAL: Duplication ---
+    /// Set to `true` to register [`duplicate`](Self::duplicate).
     const HAS_DUPLICATE: bool = false;
     /// Duplicate the ALTREP object.
     fn duplicate(_x: SEXP, _deep: bool) -> SEXP {
         unreachable!("HAS_DUPLICATE = false")
     }
 
+    /// Set to `true` to register [`duplicate_ex`](Self::duplicate_ex).
     const HAS_DUPLICATE_EX: bool = false;
     /// Extended duplication.
     fn duplicate_ex(_x: SEXP, _deep: bool) -> SEXP {
@@ -66,6 +71,7 @@ pub trait Altrep {
     }
 
     // --- OPTIONAL: Coercion ---
+    /// Set to `true` to register [`coerce`](Self::coerce).
     const HAS_COERCE: bool = false;
     /// Coerce to another type.
     fn coerce(_x: SEXP, _to_type: SEXPTYPE) -> SEXP {
@@ -73,6 +79,7 @@ pub trait Altrep {
     }
 
     // --- OPTIONAL: Inspection ---
+    /// Set to `true` to register [`inspect`](Self::inspect).
     const HAS_INSPECT: bool = false;
     /// Custom inspection for `.Internal(inspect())`.
     fn inspect(
@@ -94,18 +101,21 @@ pub trait Altrep {
 ///
 /// All methods are optional with HAS_* gating.
 pub trait AltVec: Altrep {
+    /// Set to `true` to register [`dataptr`](Self::dataptr).
     const HAS_DATAPTR: bool = false;
     /// Get raw data pointer.
     fn dataptr(_x: SEXP, _writable: bool) -> *mut c_void {
         unreachable!("HAS_DATAPTR = false")
     }
 
+    /// Set to `true` to register [`dataptr_or_null`](Self::dataptr_or_null).
     const HAS_DATAPTR_OR_NULL: bool = false;
     /// Get data pointer without forcing materialization.
     fn dataptr_or_null(_x: SEXP) -> *const c_void {
         unreachable!("HAS_DATAPTR_OR_NULL = false")
     }
 
+    /// Set to `true` to register [`extract_subset`](Self::extract_subset).
     const HAS_EXTRACT_SUBSET: bool = false;
     /// Optimized subsetting.
     fn extract_subset(_x: SEXP, _indx: SEXP, _call: SEXP) -> SEXP {
@@ -125,42 +135,49 @@ pub trait AltVec: Altrep {
 ///
 /// If neither is provided, R will error at runtime when accessing elements.
 pub trait AltInteger: AltVec {
+    /// Set to `true` to register [`elt`](Self::elt).
     const HAS_ELT: bool = false;
     /// Get element at index.
     fn elt(_x: SEXP, _i: R_xlen_t) -> i32 {
         unreachable!("HAS_ELT = false")
     }
 
+    /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
     /// Bulk read elements into buffer.
     fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut i32) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 
+    /// Set to `true` to register [`is_sorted`](Self::is_sorted).
     const HAS_IS_SORTED: bool = false;
     /// Sortedness hint.
     fn is_sorted(_x: SEXP) -> i32 {
         unreachable!("HAS_IS_SORTED = false")
     }
 
+    /// Set to `true` to register [`no_na`](Self::no_na).
     const HAS_NO_NA: bool = false;
     /// NA-free hint.
     fn no_na(_x: SEXP) -> i32 {
         unreachable!("HAS_NO_NA = false")
     }
 
+    /// Set to `true` to register [`sum`](Self::sum).
     const HAS_SUM: bool = false;
     /// Optimized sum.
     fn sum(_x: SEXP, _narm: bool) -> SEXP {
         unreachable!("HAS_SUM = false")
     }
 
+    /// Set to `true` to register [`min`](Self::min).
     const HAS_MIN: bool = false;
     /// Optimized min.
     fn min(_x: SEXP, _narm: bool) -> SEXP {
         unreachable!("HAS_MIN = false")
     }
 
+    /// Set to `true` to register [`max`](Self::max).
     const HAS_MAX: bool = false;
     /// Optimized max.
     fn max(_x: SEXP, _narm: bool) -> SEXP {
@@ -174,37 +191,51 @@ pub trait AltInteger: AltVec {
 
 /// Real vector methods.
 pub trait AltReal: AltVec {
+    /// Set to `true` to register [`elt`](Self::elt).
     const HAS_ELT: bool = false;
+    /// Get element at index.
     fn elt(_x: SEXP, _i: R_xlen_t) -> f64 {
         unreachable!("HAS_ELT = false")
     }
 
+    /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
+    /// Bulk read elements into buffer.
     fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut f64) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 
+    /// Set to `true` to register [`is_sorted`](Self::is_sorted).
     const HAS_IS_SORTED: bool = false;
+    /// Sortedness hint.
     fn is_sorted(_x: SEXP) -> i32 {
         unreachable!("HAS_IS_SORTED = false")
     }
 
+    /// Set to `true` to register [`no_na`](Self::no_na).
     const HAS_NO_NA: bool = false;
+    /// NA-free hint.
     fn no_na(_x: SEXP) -> i32 {
         unreachable!("HAS_NO_NA = false")
     }
 
+    /// Set to `true` to register [`sum`](Self::sum).
     const HAS_SUM: bool = false;
+    /// Optimized sum.
     fn sum(_x: SEXP, _narm: bool) -> SEXP {
         unreachable!("HAS_SUM = false")
     }
 
+    /// Set to `true` to register [`min`](Self::min).
     const HAS_MIN: bool = false;
+    /// Optimized min.
     fn min(_x: SEXP, _narm: bool) -> SEXP {
         unreachable!("HAS_MIN = false")
     }
 
+    /// Set to `true` to register [`max`](Self::max).
     const HAS_MAX: bool = false;
+    /// Optimized max.
     fn max(_x: SEXP, _narm: bool) -> SEXP {
         unreachable!("HAS_MAX = false")
     }
@@ -216,27 +247,35 @@ pub trait AltReal: AltVec {
 
 /// Logical vector methods.
 pub trait AltLogical: AltVec {
+    /// Set to `true` to register [`elt`](Self::elt).
     const HAS_ELT: bool = false;
     /// Returns i32: 0=FALSE, 1=TRUE, NA_LOGICAL=NA
     fn elt(_x: SEXP, _i: R_xlen_t) -> i32 {
         unreachable!("HAS_ELT = false")
     }
 
+    /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
+    /// Bulk read elements into buffer.
     fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut i32) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
 
+    /// Set to `true` to register [`is_sorted`](Self::is_sorted).
     const HAS_IS_SORTED: bool = false;
+    /// Sortedness hint.
     fn is_sorted(_x: SEXP) -> i32 {
         unreachable!("HAS_IS_SORTED = false")
     }
 
+    /// Set to `true` to register [`no_na`](Self::no_na).
     const HAS_NO_NA: bool = false;
+    /// NA-free hint.
     fn no_na(_x: SEXP) -> i32 {
         unreachable!("HAS_NO_NA = false")
     }
 
+    /// Set to `true` to register [`sum`](Self::sum).
     const HAS_SUM: bool = false;
     /// Sum for logical = count of TRUE values.
     fn sum(_x: SEXP, _narm: bool) -> SEXP {
@@ -251,12 +290,16 @@ pub trait AltLogical: AltVec {
 
 /// Raw vector methods.
 pub trait AltRaw: AltVec {
+    /// Set to `true` to register [`elt`](Self::elt).
     const HAS_ELT: bool = false;
+    /// Get element at index.
     fn elt(_x: SEXP, _i: R_xlen_t) -> u8 {
         unreachable!("HAS_ELT = false")
     }
 
+    /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
+    /// Bulk read elements into buffer.
     fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut u8) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
@@ -268,12 +311,16 @@ pub trait AltRaw: AltVec {
 
 /// Complex vector methods.
 pub trait AltComplex: AltVec {
+    /// Set to `true` to register [`elt`](Self::elt).
     const HAS_ELT: bool = false;
+    /// Get element at index.
     fn elt(_x: SEXP, _i: R_xlen_t) -> Rcomplex {
         unreachable!("HAS_ELT = false")
     }
 
+    /// Set to `true` to register [`get_region`](Self::get_region).
     const HAS_GET_REGION: bool = false;
+    /// Bulk read elements into buffer.
     fn get_region(_x: SEXP, _i: R_xlen_t, _n: R_xlen_t, _buf: *mut Rcomplex) -> R_xlen_t {
         unreachable!("HAS_GET_REGION = false")
     }
@@ -294,18 +341,23 @@ pub trait AltString: AltVec {
     fn elt(x: SEXP, i: R_xlen_t) -> SEXP;
 
     // --- OPTIONAL ---
+    /// Set to `true` to register [`set_elt`](Self::set_elt).
     const HAS_SET_ELT: bool = false;
     /// Set element (for mutable strings).
     fn set_elt(_x: SEXP, _i: R_xlen_t, _v: SEXP) {
         unreachable!("HAS_SET_ELT = false")
     }
 
+    /// Set to `true` to register [`is_sorted`](Self::is_sorted).
     const HAS_IS_SORTED: bool = false;
+    /// Sortedness hint.
     fn is_sorted(_x: SEXP) -> i32 {
         unreachable!("HAS_IS_SORTED = false")
     }
 
+    /// Set to `true` to register [`no_na`](Self::no_na).
     const HAS_NO_NA: bool = false;
+    /// NA-free hint.
     fn no_na(_x: SEXP) -> i32 {
         unreachable!("HAS_NO_NA = false")
     }
@@ -326,6 +378,7 @@ pub trait AltList: AltVec {
     fn elt(x: SEXP, i: R_xlen_t) -> SEXP;
 
     // --- OPTIONAL ---
+    /// Set to `true` to register [`set_elt`](Self::set_elt).
     const HAS_SET_ELT: bool = false;
     /// Set element (for mutable lists).
     fn set_elt(_x: SEXP, _i: R_xlen_t, _v: SEXP) {

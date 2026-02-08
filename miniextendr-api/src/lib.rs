@@ -213,6 +213,9 @@ pub mod altrep_traits;
 pub mod altrep_registration {
     pub use crate::altrep::RegisterAltrep;
 }
+/// Raw R FFI bindings and low-level SEXP utilities.
+///
+/// Most users should prefer safe wrappers from higher-level modules.
 pub mod ffi;
 
 // Re-export high-level ALTREP data traits
@@ -323,6 +326,12 @@ pub use thread::{DEFAULT_R_STACK_SIZE, RThreadBuilder};
 #[cfg(feature = "nonapi")]
 pub use thread::{StackCheckGuard, scope_with_r, spawn_with_r, with_stack_checking_disabled};
 
+// Panic telemetry hook for structured panic→R-error diagnostics
+pub mod panic_telemetry;
+
+// Strict conversion helpers for #[miniextendr(strict)]
+pub mod strict;
+
 // Error handling helpers (r_stop, r_warning, r_error!, r_print!, r_println! macros)
 pub mod error;
 pub use error::{r_stop, r_warning};
@@ -338,7 +347,7 @@ pub use from_r::{SexpError, SexpLengthError, SexpNaError, SexpTypeError, TryFrom
 // NOTE: Disabled because it references non-exported symbols from R's Defn.h
 // (e.g., known_to_be_utf8, utf8locale) that cause dlopen failures at runtime.
 // #[cfg(feature = "nonapi")]
-// pub mod encoding;
+pub mod encoding;
 
 // Note: RNativeType is pub(crate), imported directly in modules that need it
 
@@ -382,6 +391,7 @@ pub use as_coerce::{
 };
 
 pub mod convert;
+/// Support for R `...` arguments represented as a validated list.
 pub mod dots;
 pub mod list;
 pub mod missing;
@@ -516,6 +526,9 @@ pub use vctrs::{
 // Always returns 1 (NotAvailable) so C code can call it unconditionally.
 #[cfg(not(feature = "vctrs"))]
 #[unsafe(no_mangle)]
+/// C entrypoint used by generated registration code when `vctrs` is disabled.
+///
+/// Returns `1` to indicate "not available" while keeping a stable symbol.
 pub extern "C-unwind" fn miniextendr_init_vctrs() -> i32 {
     1 // NotAvailable
 }
@@ -578,6 +591,7 @@ pub use adapter_traits::{
 #[doc(hidden)]
 extern crate self as miniextendr_api;
 
+#[cfg(feature = "macro-coverage")]
 #[doc(hidden)]
 pub mod macro_coverage;
 
@@ -693,9 +707,9 @@ pub use optionals::serde_impl;
 pub use optionals::toml_impl;
 #[cfg(feature = "serde_json")]
 pub use optionals::{
-    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
-    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
-    json_from_sexp_with, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonBridge, RJsonValueOps,
+    RSerialize, SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive,
+    json_from_sexp_strict, json_from_sexp_with, json_into_sexp,
 };
 #[cfg(feature = "toml")]
 pub use optionals::{RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty};
@@ -709,6 +723,11 @@ pub use optionals::{Buf, BufMut, Bytes, BytesMut, RBuf, RBufMut};
 pub use optionals::sha2_impl;
 #[cfg(feature = "sha2")]
 pub use optionals::{sha256_bytes, sha256_str, sha512_bytes, sha512_str};
+
+#[cfg(feature = "borsh")]
+pub use optionals::borsh_impl;
+#[cfg(feature = "borsh")]
+pub use optionals::{Borsh, RBorshOps, borsh_from_raw, borsh_to_raw};
 
 #[cfg(feature = "bitflags")]
 pub use optionals::bitflags_impl;

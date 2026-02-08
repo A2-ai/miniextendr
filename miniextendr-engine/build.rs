@@ -1,14 +1,16 @@
-// Build script: link against R for `miniextendr-engine`.
-//
-// This crate is used by benchmarks / embedding binaries, so we resolve `R_HOME`
-// and emit the appropriate `-L` / `-lR` flags.
+//! Build script for linking `miniextendr-engine` against R.
+//!
+//! Resolves `R_HOME`, emits link search flags, and mirrors key parts of
+//! `R CMD LINK` behavior for runtime library lookup.
 use std::env;
 use std::process::Command;
 
+/// Build-script entrypoint.
 fn main() {
     link_to_r();
 }
 
+/// Resolves `R_HOME` and emits linker flags for libR.
 fn link_to_r() {
     // Resolve R home directory.
     let r_home = if let Ok(val) = env::var("R_HOME") {
@@ -63,6 +65,7 @@ fn link_to_r() {
     }
 }
 
+/// Returns whether this target kind should receive an `rpath` entry.
 fn should_emit_rpath() -> bool {
     // These env vars are set for specific target types.
     if env::var_os("CARGO_BIN_NAME").is_some()

@@ -32,6 +32,7 @@
 //! | `toml` | `toml_impl` | TOML parsing |
 //! | `tabled` | `tabled_impl` | Table formatting |
 //! | `tinyvec` | `tinyvec_impl` | Small-vector optimized types |
+//! | `borsh` | `borsh_impl` | Binary serialization |
 
 // =============================================================================
 // Rayon - Parallel computation
@@ -313,10 +314,20 @@ pub use time_impl::{Date, Duration, OffsetDateTime, RDateTimeFormat, RDuration};
 pub mod serde_impl;
 #[cfg(feature = "serde_json")]
 pub use serde_impl::{
-    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonValueOps, RSerialize,
-    SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive, json_from_sexp_strict,
-    json_from_sexp_with, json_into_sexp,
+    FactorHandling, JsonOptions, JsonValue, NaHandling, RDeserialize, RJsonBridge, RJsonValueOps,
+    RSerialize, SpecialFloatHandling, json_from_sexp, json_from_sexp_permissive,
+    json_from_sexp_strict, json_from_sexp_with, json_into_sexp,
 };
+
+/// Integration with the `borsh` crate for binary serialization.
+///
+/// Provides [`Borsh<T>`][borsh_impl::Borsh] wrapper for borsh to/from raw vector conversions.
+///
+/// Enable with `features = ["borsh"]`.
+#[cfg(feature = "borsh")]
+pub mod borsh_impl;
+#[cfg(feature = "borsh")]
+pub use borsh_impl::{Borsh, RBorshOps, borsh_from_raw, borsh_to_raw};
 
 /// Integration with the `toml` crate for TOML value conversions.
 ///

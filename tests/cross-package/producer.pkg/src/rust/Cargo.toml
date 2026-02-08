@@ -1,0 +1,39 @@
+[package]
+name = "producer-pkg"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+# Make this a standalone workspace (prevents inheriting from parent)
+[workspace]
+
+[[bin]]
+name = "document"
+path = "document.rs"
+bench = false
+
+[lib]
+path = "lib.rs"
+crate-type = ["rlib", "staticlib"]
+
+[features]
+default = []
+nonapi = ["miniextendr-api/nonapi"]
+connections = ["miniextendr-api/connections"]
+
+[dependencies]
+miniextendr-api = { path = "../../../../../miniextendr-api" }
+shared-traits = { path = "../../../shared-traits" }
+
+[build-dependencies]
+miniextendr-lint = { path = "../../../../../miniextendr-lint" }
+
+# Redirect transitive crates.io lookups to local workspace crates.
+# miniextendr-api depends on miniextendr-macros and miniextendr-engine via
+# workspace = true (which resolves to version = "*" from crates.io).
+# These patches redirect those lookups to the local monorepo paths.
+[patch.crates-io]
+miniextendr-api = { path = "../../../../../miniextendr-api" }
+miniextendr-macros = { path = "../../../../../miniextendr-macros" }
+miniextendr-macros-core = { path = "../../../../../miniextendr-macros-core" }
+miniextendr-lint = { path = "../../../../../miniextendr-lint" }

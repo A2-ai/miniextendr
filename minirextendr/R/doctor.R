@@ -20,7 +20,7 @@ miniextendr_doctor <- function() {
   rustc <- Sys.which("rustc")
   if (nzchar(rustc)) {
     version <- tryCatch(
-      system2("rustc", "--version", stdout = TRUE, stderr = TRUE)[1],
+      run_command("rustc", c("--version"))[1],
       error = function(e) "unknown"
     )
     cli::cli_alert_success("Rust: {version}")
@@ -68,7 +68,7 @@ miniextendr_doctor <- function() {
   if (is.null(vendor_dir)) {
     cli::cli_alert_info("Not in a project context, skipping vendor checks")
   } else {
-    required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint")
+    required_crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core", "miniextendr-lint", "miniextendr-engine")
     for (crate in required_crates) {
       crate_path <- file.path(vendor_dir, crate)
       if (dir.exists(crate_path)) {
@@ -86,7 +86,6 @@ miniextendr_doctor <- function() {
 
   template_pairs <- list(
     list(template = "src/Makevars.in", generated = "src/Makevars"),
-    list(template = "src/rust/Cargo.toml.in", generated = "src/rust/Cargo.toml"),
     list(template = "src/entrypoint.c.in", generated = "src/entrypoint.c"),
     list(template = "src/rust/document.rs.in", generated = "src/rust/document.rs")
   )
@@ -127,25 +126,6 @@ miniextendr_doctor <- function() {
     } else {
       cli::cli_alert_danger("NAMESPACE missing useDynLib directive")
       results$fail <- c(results$fail, "NAMESPACE missing useDynLib")
-    }
-  }
-
-  # ── Common mistakes ──
-  cli::cli_h2("Common mistakes")
-
-  # Check if user edited Cargo.toml instead of Cargo.toml.in
-  cargo_toml <- tryCatch(usethis::proj_path("src", "rust", "Cargo.toml"), error = function(e) NULL)
-  cargo_toml_in <- tryCatch(usethis::proj_path("src", "rust", "Cargo.toml.in"), error = function(e) NULL)
-  if (!is.null(cargo_toml) && !is.null(cargo_toml_in) &&
-      file.exists(cargo_toml) && file.exists(cargo_toml_in)) {
-    if (file.mtime(cargo_toml) > file.mtime(cargo_toml_in)) {
-      cli::cli_alert_warning(
-        "Cargo.toml is newer than Cargo.toml.in - did you edit the generated file?"
-      )
-      results$warn <- c(results$warn, "Cargo.toml edited directly (edit .in instead)")
-    } else {
-      cli::cli_alert_success("No direct edits to generated Cargo.toml")
-      results$pass <- c(results$pass, "Cargo.toml not directly edited")
     }
   }
 

@@ -7,7 +7,7 @@
 use_miniextendr(
   template_type = "auto",
   rpkg_name = "rpkg",
-  miniextendr_version = "latest",
+  miniextendr_version = "main",
   local_path = NULL
 )
 }
@@ -19,7 +19,7 @@ Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION 
 \item{rpkg_name}{Name of the R package subdirectory for monorepo template (default: "rpkg").
 Only used when template_type is "monorepo".}
 
-\item{miniextendr_version}{Version of miniextendr to vendor (default: "latest").
+\item{miniextendr_version}{Version of miniextendr to vendor (default: "main").
 For monorepo projects, vendoring is only needed for CRAN submission.}
 
 \item{local_path}{Optional path to local miniextendr repository. If provided,

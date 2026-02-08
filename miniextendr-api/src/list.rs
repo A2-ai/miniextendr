@@ -915,13 +915,16 @@ impl ListMut {
 
 /// Convert things into an R list.
 pub trait IntoList {
+    /// Convert `self` into an R list wrapper.
     fn into_list(self) -> List;
 }
 
 /// Fallible conversion from an R list into a Rust value.
 pub trait TryFromList: Sized {
+    /// Error returned when conversion fails.
     type Error;
 
+    /// Attempt to convert an R list wrapper into `Self`.
     fn try_from_list(list: List) -> Result<Self, Self::Error>;
 }
 
