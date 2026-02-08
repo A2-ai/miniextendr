@@ -53,12 +53,13 @@ pub fn time_distant_past() -> Date {
     time::macros::date!(1900 - 01 - 01)
 }
 
-/// Format a date with custom format string
+/// Format a date as YYYY-MM-DD
 /// @noRd
 #[miniextendr]
 pub fn time_format_date(date: Date) -> String {
-    use miniextendr_api::time_impl::RDateTimeFormat;
-    date.format("[year]-[month]-[day]").unwrap_or_else(|e| e)
+    let fmt = time::format_description::parse("[year]-[month]-[day]")
+        .expect("valid format");
+    date.format(&fmt).unwrap_or_else(|e| e.to_string())
 }
 
 miniextendr_module! {

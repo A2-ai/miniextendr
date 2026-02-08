@@ -271,12 +271,12 @@ test_that("S7 3-level inheritance chain works", {
 
   # Grandchild construction
   goldie <- S7GoldenRetriever("Buddy")
-  expect_s3_class(goldie, "S7GoldenRetriever")
+  expect_s3_class(goldie, "miniextendr::S7GoldenRetriever")
   expect_equal(retriever_name(goldie), "Buddy")
 
   # Mid-level construction
   dog <- S7Dog("Labrador")
-  expect_s3_class(dog, "S7Dog")
+  expect_s3_class(dog, "miniextendr::S7Dog")
   expect_equal(dog_breed(dog), "Labrador")
 
   # Abstract class should not be directly constructable

@@ -35,7 +35,7 @@ ordered-float = ["miniextendr-api/ordered-float"]
 uuid = ["miniextendr-api/uuid"]
 regex = ["miniextendr-api/regex"]
 indexmap = ["miniextendr-api/indexmap"]
-time = ["miniextendr-api/time"]
+time = ["miniextendr-api/time", "dep:time"]
 num-traits = ["miniextendr-api/num-traits"]
 bytes = ["miniextendr-api/bytes"]
 num-complex = ["miniextendr-api/num-complex"]
@@ -54,6 +54,7 @@ tinyvec = ["miniextendr-api/tinyvec"]
 miniextendr-api = { git = "https://github.com/CGMossa/miniextendr" }
 serde = { version = "1", optional = true, features = ["derive"] }
 bitflags = { version = "2", optional = true }
+time = { version = "0.3", optional = true, features = ["macros", "formatting"] }
 
 [build-dependencies]
 miniextendr-lint = { git = "https://github.com/CGMossa/miniextendr" }
