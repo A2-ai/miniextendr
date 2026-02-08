@@ -26,7 +26,7 @@ test_that("template_path returns valid paths for monorepo template type", {
   on.exit(set_template_type("rpkg"))
 
   # Root templates
-  expect_true(file.exists(template_path("Cargo.toml")))
+  expect_true(file.exists(template_path("Cargo.toml.tmpl")))
   expect_true(file.exists(template_path("justfile")))
 
   # Nested rpkg templates
@@ -35,7 +35,7 @@ test_that("template_path returns valid paths for monorepo template type", {
   expect_true(file.exists(template_path("Makevars.in", subdir = "rpkg")))
 
   # my-crate templates
-  expect_true(file.exists(template_path("Cargo.toml", subdir = "my-crate")))
+  expect_true(file.exists(template_path("Cargo.toml.tmpl", subdir = "my-crate")))
   expect_true(file.exists(template_path("lib.rs", subdir = "my-crate/src")))
 })
 

@@ -1,5 +1,5 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-07 13:36:45
+--- a/monorepo/rpkg/configure.ac	2026-02-08 00:08:31
 +++ b/monorepo/rpkg/configure.ac	2026-02-07 14:38:29
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
@@ -25,7 +25,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl Users can set MINIEXTENDR_FEATURES to enable specific features
  if test -z "${MINIEXTENDR_FEATURES+x}"; then
 -  dnl MINIEXTENDR_FEATURES not set - enable all optional features
--  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs"
 +  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
 +  MINIEXTENDR_FEATURES=""
  fi
@@ -118,7 +118,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 3) Run cargo vendor (dev mode only)
  AC_CONFIG_COMMANDS([cargo-vendor],
  [
-@@ -404,41 +388,65 @@
+@@ -404,55 +388,65 @@
        else
          dnl No vendor available - fall back to network (e.g., GitHub installs)
 -        echo "configure: no cached vendor found, vendoring from network" >&2
@@ -130,6 +130,20 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -          echo "configure: error: cargo vendor failed (network required)" >&2
 -          exit 1
 -        fi
+-        dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
+-        for _crate_dir in "$VENDOR_OUT"/*/; do
+-          if test -d "$_crate_dir"; then
+-            rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+-                   "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+-            for _dotfile in "$_crate_dir"/.*; do
+-              case "$(basename "$_dotfile")" in
+-                .|..|.cargo-checksum.json) ;;
+-                *) rm -rf "$_dotfile" ;;
+-              esac
+-            done
+-            echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+-          fi
+-        done
 -        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 -        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
 -          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
@@ -211,7 +225,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -454,14 +462,70 @@
+@@ -468,14 +462,70 @@
  [ABS_RPKG_SRC="$abs_rpkg_src"])
  
 -dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).
@@ -289,8 +303,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  AC_CONFIG_COMMANDS([patch-staticlib-name],
  [
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-07 13:36:45
-+++ b/rpkg/configure.ac	2026-02-07 14:38:23
+--- a/rpkg/configure.ac	2026-02-08 00:08:31
++++ b/rpkg/configure.ac	2026-02-08 00:08:20
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -315,7 +329,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl Users can set MINIEXTENDR_FEATURES to enable specific features
  if test -z "${MINIEXTENDR_FEATURES+x}"; then
 -  dnl MINIEXTENDR_FEATURES not set - enable all optional features
--  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,raw_conversions,vctrs"
+-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs"
 +  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
 +  MINIEXTENDR_FEATURES=""
  fi
@@ -408,7 +422,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 3) Run cargo vendor (dev mode only)
  AC_CONFIG_COMMANDS([cargo-vendor],
  [
-@@ -404,41 +388,65 @@
+@@ -404,55 +388,80 @@
        else
          dnl No vendor available - fall back to network (e.g., GitHub installs)
 -        echo "configure: no cached vendor found, vendoring from network" >&2
@@ -420,6 +434,20 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -          echo "configure: error: cargo vendor failed (network required)" >&2
 -          exit 1
 -        fi
+-        dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
+-        for _crate_dir in "$VENDOR_OUT"/*/; do
+-          if test -d "$_crate_dir"; then
+-            rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+-                   "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+-            for _dotfile in "$_crate_dir"/.*; do
+-              case "$(basename "$_dotfile")" in
+-                .|..|.cargo-checksum.json) ;;
+-                *) rm -rf "$_dotfile" ;;
+-              esac
+-            done
+-            echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+-          fi
+-        done
 -        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 -        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
 -          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
@@ -484,6 +512,21 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +        exit 1
 +      fi
 +
++      dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
++      for _crate_dir in "$VENDOR_OUT"/*/; do
++        if test -d "$_crate_dir"; then
++          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
++                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
++          for _dotfile in "$_crate_dir"/.*; do
++            case "$(basename "$_dotfile")" in
++              .|..|.cargo-checksum.json) ;;
++              *) rm -rf "$_dotfile" ;;
++            esac
++          done
++          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
++        fi
++      done
++
 +      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
 +      if test -f "$LOCKFILE"; then
 +        $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
@@ -501,7 +544,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -454,14 +462,70 @@
+@@ -468,14 +477,70 @@
  [ABS_RPKG_SRC="$abs_rpkg_src"])
  
 -dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).

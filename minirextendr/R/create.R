@@ -78,7 +78,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
 
   # Root workspace files
   cli::cli_h2("Creating workspace root")
-  use_template("Cargo.toml", data = data)
+  use_template("Cargo.toml.tmpl", save_as = "Cargo.toml", data = data)
   # justfile uses {{variable}} syntax (just's interpolation) which collides
   # with mustache. Use copy_template for literal {{{key}}} substitution only.
   copy_template("justfile", data = data)
@@ -87,7 +87,7 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   # Create main Rust crate
   cli::cli_h2("Creating main Rust crate")
   ensure_dir(usethis::proj_path(crate_name, "src"))
-  use_template("Cargo.toml", save_as = file.path(crate_name, "Cargo.toml"),
+  use_template("Cargo.toml.tmpl", save_as = file.path(crate_name, "Cargo.toml"),
                subdir = "my-crate", data = data)
   use_template("lib.rs", save_as = file.path(crate_name, "src", "lib.rs"),
                subdir = file.path("my-crate", "src"), data = data)
@@ -184,7 +184,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
                subdir = file.path("rpkg", "inst_include"), data = data)
 
   # Rust project files
-  use_template("Cargo.toml", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml"), subdir = "rpkg", data = data)
+  use_template("Cargo.toml.tmpl", save_as = file.path(rpkg_name, "src", "rust", "Cargo.toml"), subdir = "rpkg", data = data)
   use_template("build.rs", save_as = file.path(rpkg_name, "src", "rust", "build.rs"), subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
   use_template("document.rs.in", save_as = file.path(rpkg_name, "src", "rust", "document.rs.in"), subdir = "rpkg")

@@ -114,7 +114,11 @@ vendor_miniextendr <- function(version = "main",
   # If local_path is provided, use local vendoring
 
   if (!is.null(local_path)) {
-    return(vendor_miniextendr_local(local_path, dest))
+    vendor_miniextendr_local(local_path, dest)
+    # Add [patch] entries so dev mode (NOT_CRAN=true) resolves from vendor/
+    # instead of fetching from git (which fails if miniextendr-macros isn't on crates.io)
+    add_vendor_patches(dest)
+    return(invisible(TRUE))
   }
 
   # Check cache first
@@ -243,9 +247,11 @@ patch_cargo_toml <- function(path, crate_name) {
     content <- gsub(pattern, dep_replacements[[pattern]], content)
   }
 
-  # Remove dev-dependencies that create circular references when vendored
+  # Remove dev-dependencies that create circular references or dangling paths when vendored
   # miniextendr-api in miniextendr-macros dev-deps is only for workspace testing
   content <- content[!grepl("^miniextendr-api = \\{ workspace = true \\}", content)]
+  # miniextendr-engine in miniextendr-api dev-deps is not used by scaffolded packages
+  content <- content[!grepl("^miniextendr-engine = ", content)]
 
   # Validate: warn if any workspace = true entries remain unhandled
   remaining <- grep("workspace\\s*=\\s*true", content, value = TRUE)
@@ -505,4 +511,46 @@ miniextendr_cache_info <- function() {
   }
 
   invisible(info[, c("version", "size", "modification_time")])
+}
+
+#' Add [patch] entries to Cargo.toml for vendored crates
+#'
+#' After vendoring miniextendr crates to src/vendor/, adds a
+#' `[patch."https://github.com/CGMossa/miniextendr"]` section to
+#' src/rust/Cargo.toml so that dev mode (NOT_CRAN=true) resolves
+#' dependencies from vendor/ instead of fetching from git.
+#'
+#' @param vendor_dir Path to the vendor directory (src/vendor/)
+#' @noRd
+add_vendor_patches <- function(vendor_dir) {
+  # Derive Cargo.toml path: vendor is src/vendor/, Cargo.toml is src/rust/Cargo.toml
+  src_dir <- dirname(vendor_dir)
+  cargo_toml <- file.path(src_dir, "rust", "Cargo.toml")
+
+  if (!file.exists(cargo_toml)) return(invisible())
+
+  content <- readLines(cargo_toml, warn = FALSE)
+
+  # Don't add if already has [patch] section
+  if (any(grepl("^\\[patch\\.", content))) return(invisible())
+
+  # Only patch crates that are actual dependencies (not miniextendr-engine,
+
+  # which is only a dev-dependency of miniextendr-api)
+  crates <- c("miniextendr-api", "miniextendr-macros", "miniextendr-macros-core",
+              "miniextendr-lint")
+
+  patch_lines <- c(
+    "",
+    '[patch."https://github.com/CGMossa/miniextendr"]'
+  )
+  for (crate in crates) {
+    if (dir.exists(file.path(vendor_dir, crate))) {
+      patch_lines <- c(patch_lines,
+        sprintf('%s = { path = "../vendor/%s" }', crate, crate))
+    }
+  }
+
+  writeLines(c(content, patch_lines), cargo_toml)
+  cli::cli_alert_success("Added [patch] entries to {.path Cargo.toml} for vendored crates")
 }
