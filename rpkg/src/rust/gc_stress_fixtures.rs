@@ -51,7 +51,9 @@ pub fn into_sexp_altrep(x: SEXP) -> SEXP {
             v.into_sexp_altrep()
         }
         SEXPTYPE::STRSXP => {
-            let v: Vec<String> = miniextendr_api::from_r::TryFromSexp::try_from_sexp(x).unwrap();
+            // Use Vec<Option<String>> to preserve NA_character_ values
+            let v: Vec<Option<String>> =
+                miniextendr_api::from_r::TryFromSexp::try_from_sexp(x).unwrap();
             v.into_sexp_altrep()
         }
         _ => panic!("into_sexp_altrep: unsupported SEXP type {:?}", sxp_type),

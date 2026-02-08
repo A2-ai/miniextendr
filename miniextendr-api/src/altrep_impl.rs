@@ -981,6 +981,8 @@ impl_altraw_from_data!(Vec<u8>, serialize);
 
 // String types - Vec<String> supports dataptr via materialization into STRSXP
 impl_altstring_from_data!(Vec<String>, dataptr, serialize);
+// Vec<Option<String>> preserves NA_character_ through serialization roundtrips
+impl_altstring_from_data!(Vec<Option<String>>, dataptr, serialize);
 
 // Complex types - Vec<Rcomplex> supports dataptr
 impl_altcomplex_from_data!(Vec<crate::ffi::Rcomplex>, dataptr, serialize);
@@ -1895,6 +1897,7 @@ impl_register_altrep_builtin!(Vec<f64>, "Vec_f64");
 impl_register_altrep_builtin!(Vec<bool>, "Vec_bool");
 impl_register_altrep_builtin!(Vec<u8>, "Vec_u8");
 impl_register_altrep_builtin!(Vec<String>, "Vec_String");
+impl_register_altrep_builtin!(Vec<Option<String>>, "Vec_Option_String");
 impl_register_altrep_builtin!(Vec<crate::ffi::Rcomplex>, "Vec_Rcomplex");
 
 // Range types - RegisterAltrep only
