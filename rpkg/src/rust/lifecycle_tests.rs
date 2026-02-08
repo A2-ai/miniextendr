@@ -63,7 +63,11 @@ pub fn fully_deprecated(x: i32) -> i32 {
 
 /// A defunct function that should error.
 /// @noRd
-#[miniextendr(lifecycle(stage = "defunct", when = "2.0.0", details = "This function has been removed"))]
+#[miniextendr(lifecycle(
+    stage = "defunct",
+    when = "2.0.0",
+    details = "This function has been removed"
+))]
 pub fn defunct_fn(_x: i32) -> i32 {
     panic!("This should never be called")
 }
@@ -92,7 +96,11 @@ impl LifecycleDemo {
     }
 
     /// A deprecated method using lifecycle attribute.
-    #[miniextendr(lifecycle(stage = "deprecated", when = "0.3.0", with = "LifecycleDemo$get_value()"))]
+    #[miniextendr(lifecycle(
+        stage = "deprecated",
+        when = "0.3.0",
+        with = "LifecycleDemo$get_value()"
+    ))]
     pub fn old_value(&self) -> i32 {
         self.value
     }

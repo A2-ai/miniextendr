@@ -1,5 +1,7 @@
 //! Bitvec adapter tests
-use miniextendr_api::bitvec_impl::{bitvec_count_ones, bitvec_count_zeros, bitvec_from_bools, bitvec_to_bools, RBitVec};
+use miniextendr_api::bitvec_impl::{
+    RBitVec, bitvec_count_ones, bitvec_count_zeros, bitvec_from_bools, bitvec_to_bools,
+};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd

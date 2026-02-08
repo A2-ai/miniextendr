@@ -81,8 +81,7 @@ pub(crate) fn fire(message: &str, source: PanicSource) {
     }
     // SAFETY: ptr was produced by Box::into_raw(Box::new(boxed_fn)) and is
     // never deallocated while loaded (only swapped in set_panic_telemetry_hook).
-    let hook =
-        unsafe { &*ptr.cast::<Box<dyn Fn(&PanicReport) + Send + Sync>>() };
+    let hook = unsafe { &*ptr.cast::<Box<dyn Fn(&PanicReport) + Send + Sync>>() };
     let report = PanicReport { message, source };
     hook(&report);
 }

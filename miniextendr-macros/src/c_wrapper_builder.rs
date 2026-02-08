@@ -670,9 +670,9 @@ impl CWrapperContext {
                 syn::ReturnType::Default => None,
             };
 
-            if let Some(inner_ty) =
-                inner_ty.and_then(|ty| crate::return_type_analysis::strict_conversion_for_type(ty, result_ident))
-            {
+            if let Some(inner_ty) = inner_ty.and_then(|ty| {
+                crate::return_type_analysis::strict_conversion_for_type(ty, result_ident)
+            }) {
                 return inner_ty;
             }
         }

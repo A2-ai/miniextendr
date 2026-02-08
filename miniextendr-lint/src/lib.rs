@@ -285,8 +285,7 @@ fn check_missing_external_ptr_derive(rs_files: &[PathBuf], errors: &mut Vec<Stri
     }
 
     for (type_name, path, line) in &impl_types {
-        if !types_with_derive.contains(type_name)
-            && !types_with_typed_external.contains(type_name)
+        if !types_with_derive.contains(type_name) && !types_with_typed_external.contains(type_name)
         {
             errors.push(format!(
                 "{}:{}: struct `{}` is used in `impl {};` but does not derive \
@@ -337,11 +336,7 @@ fn extract_external_ptr_info(
                 ) {
                     for impl_block in &parsed.impls {
                         let line = impl_block.ident.span().start().line;
-                        impl_types.push((
-                            impl_block.ident.to_string(),
-                            path.to_path_buf(),
-                            line,
-                        ));
+                        impl_types.push((impl_block.ident.to_string(), path.to_path_buf(), line));
                     }
                 }
             }
@@ -372,9 +367,9 @@ fn has_external_ptr_derive(attrs: &[Attribute]) -> bool {
             return false;
         };
         // Parse the derive arguments as a comma-separated list of paths
-        let Ok(paths) =
-            meta_list.parse_args_with(syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated)
-        else {
+        let Ok(paths) = meta_list.parse_args_with(
+            syn::punctuated::Punctuated::<syn::Path, syn::Token![,]>::parse_terminated,
+        ) else {
             return false;
         };
         paths.iter().any(|p| {

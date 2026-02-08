@@ -1,5 +1,7 @@
 //! Bitflags adapter tests
-use miniextendr_api::bitflags_impl::{flags_from_i32_strict, flags_from_i32_truncate, flags_to_i32, RFlags};
+use miniextendr_api::bitflags_impl::{
+    RFlags, flags_from_i32_strict, flags_from_i32_truncate, flags_to_i32,
+};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 bitflags::bitflags! {

@@ -1,5 +1,5 @@
 //! URL adapter tests
-use miniextendr_api::url_impl::{Url, RUrlOps};
+use miniextendr_api::url_impl::{RUrlOps, Url};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd

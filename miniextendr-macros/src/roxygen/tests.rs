@@ -216,10 +216,7 @@ fn test_tag_names_extracts_first_word() {
 
 #[test]
 fn test_tag_names_ignores_non_tag_lines() {
-    let tags = vec![
-        "Just a comment".to_string(),
-        "@title Real tag".to_string(),
-    ];
+    let tags = vec!["Just a comment".to_string(), "@title Real tag".to_string()];
     let names = tag_names(&tags);
     assert!(names.contains("title"));
     assert_eq!(names.len(), 1);

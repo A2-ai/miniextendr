@@ -14,7 +14,7 @@
 //! if the value doesn't fit in i32.
 
 use crate::coerce::TryCoerce;
-use crate::ffi::{SexpExt, SEXP, SEXPTYPE};
+use crate::ffi::{SEXP, SEXPTYPE, SexpExt};
 use crate::from_r::TryFromSexp;
 use crate::into_r::IntoR;
 
@@ -46,7 +46,8 @@ pub fn checked_into_sexp_u64(val: u64) -> SEXP {
         panic!(
             "strict conversion failed: u64 value {} exceeds R integer max ({}); \
              use a non-strict function to allow lossy f64 widening",
-            val, i32::MAX
+            val,
+            i32::MAX
         );
     }
 }
@@ -95,7 +96,8 @@ pub fn checked_vec_u64_into_sexp(val: Vec<u64>) -> SEXP {
                 panic!(
                     "strict conversion failed: u64 value {} exceeds R integer max ({}); \
                      use a non-strict function to allow lossy f64 widening",
-                    x, i32::MAX
+                    x,
+                    i32::MAX
                 );
             }
         })
@@ -150,7 +152,8 @@ pub fn checked_vec_option_u64_into_sexp(val: Vec<Option<u64>>) -> SEXP {
                     panic!(
                         "strict conversion failed: u64 value {} exceeds R integer max ({}); \
                          use a non-strict function to allow lossy f64 widening",
-                        x, i32::MAX
+                        x,
+                        i32::MAX
                     );
                 }
             }
@@ -271,8 +274,12 @@ where
     let actual = sexp.type_of();
     match actual {
         SEXPTYPE::INTSXP => {
-            let value: i32 = TryFromSexp::try_from_sexp(sexp)
-                .unwrap_or_else(|e| panic!("strict conversion failed for parameter '{}': {:?}", param, e));
+            let value: i32 = TryFromSexp::try_from_sexp(sexp).unwrap_or_else(|e| {
+                panic!(
+                    "strict conversion failed for parameter '{}': {:?}",
+                    param, e
+                )
+            });
             TryCoerce::<T>::try_coerce(value).unwrap_or_else(|e| {
                 panic!(
                     "strict conversion failed for parameter '{}': {:?}",
@@ -281,8 +288,12 @@ where
             })
         }
         SEXPTYPE::REALSXP => {
-            let value: f64 = TryFromSexp::try_from_sexp(sexp)
-                .unwrap_or_else(|e| panic!("strict conversion failed for parameter '{}': {:?}", param, e));
+            let value: f64 = TryFromSexp::try_from_sexp(sexp).unwrap_or_else(|e| {
+                panic!(
+                    "strict conversion failed for parameter '{}': {:?}",
+                    param, e
+                )
+            });
             TryCoerce::<T>::try_coerce(value).unwrap_or_else(|e| {
                 panic!(
                     "strict conversion failed for parameter '{}': {:?}",

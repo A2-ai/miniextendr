@@ -113,7 +113,11 @@ pub struct S7Config {
 impl S7Config {
     /// Creates a new config.
     pub fn new(name: String, score: f64, version: i32) -> Self {
-        S7Config { name, score, version }
+        S7Config {
+            name,
+            score,
+            version,
+        }
     }
 
     /// Property with default value.
@@ -279,22 +283,29 @@ impl S7Circle {
 // S7 Multi-Level Inheritance: S7Animal (abstract) → S7Dog → S7GoldenRetriever
 // =============================================================================
 
-/// Abstract base: all animals have a kind.
+/// Abstract base: all animals have a kind and a number of legs.
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct S7Animal {
     kind: String,
+    legs: i32,
 }
 
 /// @noRd
 #[miniextendr(s7(abstract))]
 impl S7Animal {
-    pub fn new(kind: String) -> Self {
-        S7Animal { kind }
+    pub fn new(kind: String, legs: i32) -> Self {
+        S7Animal { kind, legs }
     }
 
     /// Returns the animal kind - should be callable on all descendants.
     pub fn animal_kind(&self) -> String {
         self.kind.clone()
+    }
+
+    /// Computed property: number of legs.
+    #[miniextendr(s7(getter))]
+    pub fn legs(&self) -> i32 {
+        self.legs
     }
 }
 
@@ -315,6 +326,11 @@ impl S7Dog {
     pub fn dog_breed(&self) -> String {
         self.breed.clone()
     }
+
+    /// All dogs bark.
+    pub fn bark(&self) -> String {
+        "woof".to_string()
+    }
 }
 
 /// Leaf-level: golden retrievers are dogs with a name.
@@ -333,6 +349,11 @@ impl S7GoldenRetriever {
     /// Returns the dog's name.
     pub fn retriever_name(&self) -> String {
         self.name.clone()
+    }
+
+    /// Returns the coat color.
+    pub fn color(&self) -> String {
+        "golden".to_string()
     }
 }
 

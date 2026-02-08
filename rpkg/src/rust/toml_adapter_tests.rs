@@ -1,5 +1,7 @@
 //! TOML adapter tests
-use miniextendr_api::toml_impl::{toml_from_str, toml_to_string, toml_to_string_pretty, RTomlOps, TomlValue};
+use miniextendr_api::toml_impl::{
+    RTomlOps, TomlValue, toml_from_str, toml_to_string, toml_to_string_pretty,
+};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd

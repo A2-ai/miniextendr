@@ -57,8 +57,7 @@ pub fn time_distant_past() -> Date {
 /// @noRd
 #[miniextendr]
 pub fn time_format_date(date: Date) -> String {
-    let fmt = time::format_description::parse("[year]-[month]-[day]")
-        .expect("valid format");
+    let fmt = time::format_description::parse("[year]-[month]-[day]").expect("valid format");
     date.format(&fmt).unwrap_or_else(|e| e.to_string())
 }
 

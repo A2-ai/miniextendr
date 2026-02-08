@@ -1,7 +1,7 @@
 //! Examples and tests for data frame conversion features.
 
-use miniextendr_api::{miniextendr, DataFrameRow, IntoList};
 use miniextendr_api::convert::ToDataFrame;
+use miniextendr_api::{DataFrameRow, IntoList, miniextendr};
 
 // Test with homogeneous types first
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -15,10 +15,7 @@ pub struct Point {
 /// @export
 #[miniextendr]
 pub fn create_points_df() -> ToDataFrame<PointDataFrame> {
-    let rows = vec![
-        Point { x: 1.0, y: 2.0 },
-        Point { x: 3.0, y: 4.0 },
-    ];
+    let rows = vec![Point { x: 1.0, y: 2.0 }, Point { x: 3.0, y: 4.0 }];
     ToDataFrame(Point::to_dataframe(rows))
 }
 

@@ -36,10 +36,7 @@ where
             } else {
                 "panic in ALTREP callback".to_string()
             };
-            crate::panic_telemetry::fire(
-                &msg,
-                crate::panic_telemetry::PanicSource::Altrep,
-            );
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Altrep);
             crate::error::r_stop(&msg)
         }
     }

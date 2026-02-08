@@ -1228,6 +1228,54 @@ pub fn conv_vec_option_f32_ret() -> Vec<Option<f32>> {
     vec![Some(1.5), None, Some(3.0)]
 }
 
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_i64_roundtrip(x: Vec<Option<i64>>) -> Vec<Option<i64>> {
+    x
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_u64_ret_small() -> Vec<Option<u64>> {
+    vec![Some(1), None, Some(3)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_u64_ret_big() -> Vec<Option<u64>> {
+    vec![Some(u64::MAX), None, Some(1)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_isize_ret_small() -> Vec<Option<isize>> {
+    vec![Some(1), None, Some(3)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_usize_ret_small() -> Vec<Option<usize>> {
+    vec![Some(1), None, Some(3)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_i8_ret() -> Vec<Option<i8>> {
+    vec![Some(1), None, Some(-1)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_i16_ret() -> Vec<Option<i16>> {
+    vec![Some(1), None, Some(-1)]
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_vec_option_u16_ret() -> Vec<Option<u16>> {
+    vec![Some(1), None, Some(100)]
+}
+
 // --- Scalar Option<T> for extended numeric types ---
 
 /// @noRd
@@ -1442,8 +1490,16 @@ miniextendr_module! {
     // Vec<Option<T>> extended numeric types
     fn conv_vec_option_i64_ret_small;
     fn conv_vec_option_i64_ret_big;
+    fn conv_vec_option_i64_roundtrip;
+    fn conv_vec_option_u64_ret_small;
+    fn conv_vec_option_u64_ret_big;
+    fn conv_vec_option_isize_ret_small;
+    fn conv_vec_option_usize_ret_small;
     fn conv_vec_option_u32_ret;
     fn conv_vec_option_f32_ret;
+    fn conv_vec_option_i8_ret;
+    fn conv_vec_option_i16_ret;
+    fn conv_vec_option_u16_ret;
 
     // Scalar Option<T> extended numeric types
     fn conv_option_i64_some_small;

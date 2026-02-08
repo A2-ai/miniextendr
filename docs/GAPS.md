@@ -233,13 +233,13 @@ Some nested collection types lack direct conversions:
 
 ## 3. Class System Gaps
 
-### 3.1 S7 Incomplete Features
+### 3.1 S7 Features
 
-**Status:** Partial implementation
-**Impact:** Medium
-**Location:** `miniextendr-macros/src/miniextendr_impl.rs:1546-1693`
+**Status:** Core features implemented; advanced features remain
+**Impact:** Low (remaining items are niche)
+**Location:** `miniextendr-macros/src/miniextendr_impl.rs`
 
-S7 support covers constructors and methods but lacks advanced features:
+S7 support covers constructors, methods, properties, inheritance, and type coercion:
 
 | Feature | Status |
 |---------|--------|
@@ -248,10 +248,20 @@ S7 support covers constructors and methods but lacks advanced features:
 | Instance methods | Implemented |
 | Static methods | Implemented |
 | External generics | Implemented |
-| Property validation | Not implemented |
+| Computed properties (`s7(getter)`) | Implemented |
+| Dynamic properties (`s7(getter)` + `s7(setter)`) | Implemented |
+| Property defaults, required, deprecated | Implemented |
+| Generic dispatch control (`no_dots`, `fallback`) | Implemented |
+| `convert_from` / `convert_to` (type coercion) | Implemented |
+| Abstract classes (`s7(abstract)`) | Implemented |
+| Single inheritance (`s7(parent = "...")`) | Implemented |
+| Multi-level inheritance (3+ level chains) | Implemented |
+| Property validation (`@prop_validator`) | Not implemented |
 | Method combination (before/after) | Not implemented |
-| Inheritance chains | Implemented (`parent = "..."`, `abstract`) |
-| `@prop_validator` | Not implemented |
+
+**Multi-level inheritance example:** `S7Animal` (abstract) -> `S7Dog` -> `S7GoldenRetriever`
+demonstrates a 3-level chain with methods and properties inherited through S7 generic dispatch.
+See `rpkg/src/rust/s7_tests.rs` and `rpkg/tests/testthat/test-class-systems.R`.
 
 ---
 
@@ -332,8 +342,13 @@ cfg$name <- "x"  # Sets the field
 cfg$score        # 0.95
 ```
 
-For users who prefer manual getters on non-sidecar structs, that pattern remains
-straightforward and well-understood.
+**Class system support for sidecar field access:**
+- **R6**: Active bindings (`obj$field` for get, `obj$field <- value` for set)
+- **Env**: Standalone functions (`Type_get_field()` / `Type_set_field()`)
+- **S3, S4, S7**: Sidecar also supported via generated accessor generics/methods
+
+For non-sidecar structs, manual getters are the recommended approach and work well
+across all class systems.
 
 ---
 

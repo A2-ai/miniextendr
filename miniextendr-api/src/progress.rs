@@ -77,6 +77,19 @@ impl fmt::Debug for RTerm {
 
 impl RTerm {
     /// Create a new R console terminal with a fixed width.
+    ///
+    /// # Examples
+    ///
+    /// ```ignore
+    /// use miniextendr_api::progress::{RTerm, RStream};
+    ///
+    /// // Create an 80-column terminal targeting R's stderr
+    /// let term = RTerm::new(RStream::Stderr, 80);
+    ///
+    /// // Use with indicatif's ProgressDrawTarget
+    /// use indicatif::ProgressDrawTarget;
+    /// let target = ProgressDrawTarget::term_like(Box::new(term));
+    /// ```
     pub fn new(stream: RStream, width: u16) -> Self {
         Self { stream, width }
     }

@@ -1,5 +1,7 @@
 //! Aho-Corasick adapter tests
-use miniextendr_api::aho_corasick_impl::{aho_compile, aho_count_matches, aho_find_all_flat, aho_is_match, aho_replace_all};
+use miniextendr_api::aho_corasick_impl::{
+    aho_compile, aho_count_matches, aho_find_all_flat, aho_is_match, aho_replace_all,
+};
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// @noRd

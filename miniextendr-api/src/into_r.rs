@@ -349,7 +349,8 @@ macro_rules! impl_option_smart_i64_into_r {
 
 impl_option_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
 impl_option_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
-impl_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize && x <= i32::MAX as isize);
+impl_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
+    && x <= i32::MAX as isize);
 impl_option_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 
 /// Macro for `Option<T>` where `T` coerces to a type with existing Option impl.
@@ -1363,17 +1364,13 @@ macro_rules! impl_vec_option_smart_i64_into_r {
                     None => true,
                 }) {
                     // All values fit i32 — emit INTSXP with NA_INTEGER for None
-                    let coerced: Vec<Option<i32>> = self
-                        .into_iter()
-                        .map(|opt| opt.map(|x| x as i32))
-                        .collect();
+                    let coerced: Vec<Option<i32>> =
+                        self.into_iter().map(|opt| opt.map(|x| x as i32)).collect();
                     coerced.into_sexp()
                 } else {
                     // Some values overflow — emit REALSXP with NA_REAL for None
-                    let coerced: Vec<Option<f64>> = self
-                        .into_iter()
-                        .map(|opt| opt.map(|x| x as f64))
-                        .collect();
+                    let coerced: Vec<Option<f64>> =
+                        self.into_iter().map(|opt| opt.map(|x| x as f64)).collect();
                     coerced.into_sexp()
                 }
             }
@@ -1384,7 +1381,8 @@ macro_rules! impl_vec_option_smart_i64_into_r {
 // i32::MIN is NA_integer_ in R, so exclude it
 impl_vec_option_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
 impl_vec_option_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
-impl_vec_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize && x <= i32::MAX as isize);
+impl_vec_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize
+    && x <= i32::MAX as isize);
 impl_vec_option_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
 
 /// Macro for `Vec<Option<T>>` where `T` coerces to a type with existing Option impl.
@@ -1392,10 +1390,8 @@ macro_rules! impl_vec_option_coerce_into_r {
     ($from:ty => $to:ty) => {
         impl IntoR for Vec<Option<$from>> {
             fn into_sexp(self) -> crate::ffi::SEXP {
-                let coerced: Vec<Option<$to>> = self
-                    .into_iter()
-                    .map(|opt| opt.map(|x| x as $to))
-                    .collect();
+                let coerced: Vec<Option<$to>> =
+                    self.into_iter().map(|opt| opt.map(|x| x as $to)).collect();
                 coerced.into_sexp()
             }
         }

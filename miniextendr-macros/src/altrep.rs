@@ -181,11 +181,13 @@ pub fn expand_altrep_struct(
                     _ => quote::quote!(unreachable!()),
                 };
                 let make_call = match base_name.as_str() {
-                    "Int" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        ::miniextendr_api::AltrepPkgName::as_ptr(),
-                        core::ptr::null_mut(),
-                    ) },
+                    "Int" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altinteger_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
                     "Real" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altreal_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                         ::miniextendr_api::AltrepPkgName::as_ptr(),
@@ -203,11 +205,13 @@ pub fn expand_altrep_struct(
                         ::miniextendr_api::AltrepPkgName::as_ptr(),
                         core::ptr::null_mut(),
                     ) },
-                    "String" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
-                        <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
-                        ::miniextendr_api::AltrepPkgName::as_ptr(),
-                        core::ptr::null_mut(),
-                    ) },
+                    "String" => {
+                        quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altstring_class(
+                            <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
+                            ::miniextendr_api::AltrepPkgName::as_ptr(),
+                            core::ptr::null_mut(),
+                        ) }
+                    }
                     "List" => quote::quote! { ::miniextendr_api::ffi::altrep::R_make_altlist_class(
                         <#ident as ::miniextendr_api::altrep::AltrepClass>::CLASS_NAME.as_ptr(),
                         ::miniextendr_api::AltrepPkgName::as_ptr(),

@@ -227,6 +227,12 @@ pub fn strict_echo_vec_i64(x: Vec<i64>) -> Vec<i64> {
     x
 }
 
+/// @noRd
+#[miniextendr(strict)]
+pub fn strict_echo_vec_option_i64(x: Vec<Option<i64>>) -> Vec<Option<i64>> {
+    x
+}
+
 /// R6 class for testing strict conversion on impl methods.
 #[derive(miniextendr_api::ExternalPtr)]
 pub struct StrictCounter {
@@ -287,5 +293,6 @@ miniextendr_module! {
     // Strict conversion tests
     fn strict_echo_i64;
     fn strict_echo_vec_i64;
+    fn strict_echo_vec_option_i64;
     impl StrictCounter;
 }

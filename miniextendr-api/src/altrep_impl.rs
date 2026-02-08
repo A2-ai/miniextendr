@@ -239,9 +239,10 @@ macro_rules! __impl_altvec_string_dataptr {
 
                     // Materialize: create a native STRSXP from the Rust strings
                     let n = <$ty as $crate::altrep_traits::Altrep>::length(x);
-                    let strsxp = $crate::ffi::Rf_protect(
-                        $crate::ffi::Rf_allocVector($crate::ffi::SEXPTYPE::STRSXP, n),
-                    );
+                    let strsxp = $crate::ffi::Rf_protect($crate::ffi::Rf_allocVector(
+                        $crate::ffi::SEXPTYPE::STRSXP,
+                        n,
+                    ));
 
                     // Populate using the AltString::elt method (which handles Option→NA)
                     for i in 0..n {

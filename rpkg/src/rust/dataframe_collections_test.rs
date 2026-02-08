@@ -3,7 +3,7 @@
 #![allow(dead_code)]
 
 use miniextendr_api::{DataFrameRow, IntoList};
-use std::collections::{HashSet, BTreeSet};
+use std::collections::{BTreeSet, HashSet};
 
 // Test with Vec fields
 #[derive(Clone, Debug, IntoList, DataFrameRow)]
@@ -21,9 +21,7 @@ pub struct WithBoxedSlice {
 impl ::miniextendr_api::list::IntoList for WithBoxedSlice {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("data", self.data.into_vec().into_sexp()),
-        ])
+        ::miniextendr_api::List::from_raw_pairs(vec![("data", self.data.into_vec().into_sexp())])
     }
 }
 
@@ -36,9 +34,7 @@ pub struct WithArray {
 impl ::miniextendr_api::list::IntoList for WithArray {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("coords", self.coords.to_vec().into_sexp()),
-        ])
+        ::miniextendr_api::List::from_raw_pairs(vec![("coords", self.coords.to_vec().into_sexp())])
     }
 }
 
@@ -52,9 +48,7 @@ impl ::miniextendr_api::list::IntoList for WithHashSet {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
         let tags_vec: Vec<String> = self.tags.into_iter().collect();
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("tags", tags_vec.into_sexp()),
-        ])
+        ::miniextendr_api::List::from_raw_pairs(vec![("tags", tags_vec.into_sexp())])
     }
 }
 
@@ -68,9 +62,7 @@ impl ::miniextendr_api::list::IntoList for WithBTreeSet {
     fn into_list(self) -> ::miniextendr_api::List {
         use ::miniextendr_api::IntoR;
         let cats_vec: Vec<i32> = self.categories.into_iter().collect();
-        ::miniextendr_api::List::from_raw_pairs(vec![
-            ("categories", cats_vec.into_sexp()),
-        ])
+        ::miniextendr_api::List::from_raw_pairs(vec![("categories", cats_vec.into_sexp())])
     }
 }
 
@@ -102,11 +94,11 @@ mod tests {
         let rows = vec![
             WithVec {
                 ids: vec![1, 2, 3],
-                names: vec!["a".into(), "b".into()]
+                names: vec!["a".into(), "b".into()],
             },
             WithVec {
                 ids: vec![4, 5],
-                names: vec!["c".into()]
+                names: vec!["c".into()],
             },
         ];
 
@@ -123,10 +115,10 @@ mod tests {
     fn test_boxed_slice_dataframe() {
         let rows = vec![
             WithBoxedSlice {
-                data: vec![1.0, 2.0, 3.0].into_boxed_slice()
+                data: vec![1.0, 2.0, 3.0].into_boxed_slice(),
             },
             WithBoxedSlice {
-                data: vec![4.0, 5.0].into_boxed_slice()
+                data: vec![4.0, 5.0].into_boxed_slice(),
             },
         ];
 
@@ -137,8 +129,12 @@ mod tests {
     #[test]
     fn test_array_dataframe() {
         let rows = vec![
-            WithArray { coords: [1.0, 2.0, 3.0] },
-            WithArray { coords: [4.0, 5.0, 6.0] },
+            WithArray {
+                coords: [1.0, 2.0, 3.0],
+            },
+            WithArray {
+                coords: [4.0, 5.0, 6.0],
+            },
         ];
 
         let df = WithArray::to_dataframe(rows);
@@ -155,10 +151,7 @@ mod tests {
         let mut tags2 = HashSet::new();
         tags2.insert("python".to_string());
 
-        let rows = vec![
-            WithHashSet { tags: tags1 },
-            WithHashSet { tags: tags2 },
-        ];
+        let rows = vec![WithHashSet { tags: tags1 }, WithHashSet { tags: tags2 }];
 
         let df = WithHashSet::to_dataframe(rows);
         assert_eq!(df.tags.len(), 2);

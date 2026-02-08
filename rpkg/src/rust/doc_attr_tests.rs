@@ -3,7 +3,9 @@
 use miniextendr_api::{miniextendr, miniextendr_module};
 
 /// This doc comment should be replaced by the custom doc.
-#[miniextendr(doc = "@title Custom title from doc attr\n@description This description was set via the doc attribute.\n@param x A numeric value.\n@return The value doubled.")]
+#[miniextendr(
+    doc = "@title Custom title from doc attr\n@description This description was set via the doc attribute.\n@param x A numeric value.\n@return The value doubled."
+)]
 pub fn doc_attr_basic(x: f64) -> f64 {
     x * 2.0
 }

@@ -106,9 +106,9 @@ mod gc_protect_tests;
 mod gc_stress_fixtures;
 mod identical_tests;
 mod interrupt_tests;
-mod misc_tests;
 #[allow(deprecated)] // Intentional: tests #[deprecated] integration
 mod lifecycle_tests;
+mod misc_tests;
 #[cfg(feature = "ndarray")]
 #[path = "ndarray_tests.rs"]
 mod ndarray_tests;
@@ -291,12 +291,12 @@ mod connection_tests;
 #[cfg(not(feature = "connections"))]
 #[path = "connection_tests_disabled.rs"]
 mod connection_tests;
+mod doc_attr_tests;
+mod export_control_tests;
 mod shared_trait_test;
 mod thread_tests;
 mod trait_abi_tests;
 mod unwind_protect_tests;
-mod doc_attr_tests;
-mod export_control_tests;
 mod visibility_tests;
 mod worker_tests;
 
@@ -801,7 +801,7 @@ pub fn altrep_from_list(x: SEXP) -> ListDataClass {
 /// @export
 #[miniextendr]
 pub fn small_vec_copy() -> Vec<i32> {
-    vec![1, 2, 3, 4, 5]  // Uses IntoR, copies to R
+    vec![1, 2, 3, 4, 5] // Uses IntoR, copies to R
 }
 
 /// Example: Large data - ALTREP avoids copy
@@ -811,7 +811,7 @@ pub fn small_vec_copy() -> Vec<i32> {
 pub fn large_vec_altrep() -> SEXP {
     use miniextendr_api::IntoRAltrep;
     let data = vec![0; 100_000];
-    data.into_sexp_altrep()  // Zero-copy via IntoRAltrep
+    data.into_sexp_altrep() // Zero-copy via IntoRAltrep
 }
 
 /// Example: Lazy computation - compute on demand
@@ -823,7 +823,10 @@ pub fn lazy_squares(n: i32) -> SEXP {
     if n < 0 {
         miniextendr_api::r_error!("lazy_squares: n must be >= 0");
     }
-    (0..n).map(|i| i * i).collect::<Vec<i32>>().into_sexp_altrep()
+    (0..n)
+        .map(|i| i * i)
+        .collect::<Vec<i32>>()
+        .into_sexp_altrep()
 }
 
 /// Example: Using into_altrep() to store wrapper
@@ -851,7 +854,7 @@ pub fn bench_vec_copy(n: i32) -> Vec<i32> {
     if n < 0 {
         miniextendr_api::r_error!("n must be >= 0");
     }
-    vec![0; n as usize]  // Uses IntoR - copies to R
+    vec![0; n as usize] // Uses IntoR - copies to R
 }
 
 /// Create a vector of given size using ALTREP zero-copy
@@ -863,7 +866,7 @@ pub fn bench_vec_altrep(n: i32) -> SEXP {
     if n < 0 {
         miniextendr_api::r_error!("n must be >= 0");
     }
-    vec![0; n as usize].into_sexp_altrep()  // Zero-copy
+    vec![0; n as usize].into_sexp_altrep() // Zero-copy
 }
 
 // -----------------------------------------------------------------------------

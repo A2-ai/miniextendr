@@ -1037,8 +1037,7 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     });
     let type_start = name.span().start();
     let source_line_lit = syn::LitInt::new(&type_start.line.to_string(), name.span());
-    let source_col_lit =
-        syn::LitInt::new(&(type_start.column + 1).to_string(), name.span());
+    let source_col_lit = syn::LitInt::new(&(type_start.column + 1).to_string(), name.span());
 
     // Generate the R_WRAPPERS_VCTRS_{TYPE} const
     let name_upper = name.to_string().to_uppercase();

@@ -112,3 +112,27 @@ test_that("strict R6 method errors for out-of-range i64", {
   # 2^31 as double can't fit in i32, so strict conversion should error
   expect_error(counter$add(2^31), "strict conversion failed")
 })
+
+# Strict Vec<Option<i64>> tests
+test_that("strict Vec<Option<i64>> succeeds for in-range values", {
+  result <- strict_echo_vec_option_i64(c(1L, NA_integer_, 3L))
+  expect_true(is.integer(result))
+  expect_equal(result, c(1L, NA_integer_, 3L))
+})
+
+test_that("strict Vec<Option<i64>> errors for out-of-range values", {
+  expect_error(strict_echo_vec_option_i64(c(1, 2^31)), "strict conversion failed")
+})
+
+test_that("strict Vec<Option<i64>> handles all-NA input", {
+  result <- strict_echo_vec_option_i64(c(NA_integer_, NA_integer_))
+  expect_true(all(is.na(result)))
+  expect_equal(length(result), 2L)
+})
+
+test_that("strict Vec<Option<i64>> coerces logical input (strict only checks output range)", {
+  # Strict mode for Vec<Option<i64>> checks output values fit i32 range.
+  # Input type coercion (LGLSXP → i64) is handled by TryFromSexp, not strict.
+  result <- strict_echo_vec_option_i64(c(TRUE, FALSE))
+  expect_equal(result, c(1L, 0L))
+})

@@ -4,7 +4,7 @@
 //! and ALTREP serialization test suites.
 
 use miniextendr_api::ffi::{self, SEXP, SEXPTYPE};
-use miniextendr_api::{miniextendr, miniextendr_module, IntoRAltrep};
+use miniextendr_api::{IntoRAltrep, miniextendr, miniextendr_module};
 
 /// Simple R6 class for GC stress tests.
 #[derive(miniextendr_api::ExternalPtr)]
@@ -54,10 +54,7 @@ pub fn into_sexp_altrep(x: SEXP) -> SEXP {
             let v: Vec<String> = miniextendr_api::from_r::TryFromSexp::try_from_sexp(x).unwrap();
             v.into_sexp_altrep()
         }
-        _ => panic!(
-            "into_sexp_altrep: unsupported SEXP type {:?}",
-            sxp_type
-        ),
+        _ => panic!("into_sexp_altrep: unsupported SEXP type {:?}", sxp_type),
     }
 }
 

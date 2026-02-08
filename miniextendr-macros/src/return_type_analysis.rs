@@ -108,7 +108,8 @@ pub(crate) fn analyze_return_type(
                 is_invisible = false;
                 // When strict mode is enabled and return type is lossy, use checked conversion
                 if strict
-                    && let Some(strict_expr) = strict_conversion_for_type(ty.as_ref(), rust_result_ident)
+                    && let Some(strict_expr) =
+                        strict_conversion_for_type(ty.as_ref(), rust_result_ident)
                 {
                     return ReturnTypeAnalysis {
                         returns_sexp,
@@ -197,10 +198,8 @@ fn analyze_option_type(
         *is_invisible = false;
         // In strict mode, check if this is Option<lossy> and use checked conversion
         if strict
-            && let Some(strict_expr) = strict_conversion_for_type(
-                &syn::Type::Path(type_path.clone()),
-                rust_result_ident,
-            )
+            && let Some(strict_expr) =
+                strict_conversion_for_type(&syn::Type::Path(type_path.clone()), rust_result_ident)
         {
             return strict_expr;
         }
@@ -339,10 +338,8 @@ pub(crate) fn strict_conversion_for_type(
         {
             let option_inner_name = last_segment_ident(option_inner)?.to_string();
             if LOSSY_SCALARS.contains(&option_inner_name.as_str()) {
-                let helper = quote::format_ident!(
-                    "checked_vec_option_{}_into_sexp",
-                    option_inner_name
-                );
+                let helper =
+                    quote::format_ident!("checked_vec_option_{}_into_sexp", option_inner_name);
                 return Some(quote::quote! {
                     ::miniextendr_api::strict::#helper(#result_ident)
                 });

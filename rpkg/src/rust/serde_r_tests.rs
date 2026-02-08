@@ -11,7 +11,7 @@
 //! - Round-trip conversions
 
 use miniextendr_api::ffi::SEXP;
-use miniextendr_api::serde::{from_r, to_r, RSerdeError};
+use miniextendr_api::serde::{RSerdeError, from_r, to_r};
 use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
