@@ -150,6 +150,88 @@ fn test_has_roxygen_tag_multiline() {
     assert!(!has_roxygen_tag(&tags, "param"));
 }
 
+// =============================================================================
+// has_roxygen_tag: single-word and multi-word matching
+// =============================================================================
+
+#[test]
+fn test_has_roxygen_tag_single_word() {
+    let tags = vec!["@export".to_string(), "@noRd".to_string()];
+    assert!(has_roxygen_tag(&tags, "export"));
+    assert!(has_roxygen_tag(&tags, "noRd"));
+    assert!(!has_roxygen_tag(&tags, "param"));
+}
+
+#[test]
+fn test_has_roxygen_tag_keywords_internal() {
+    let tags = vec!["@keywords internal".to_string()];
+    assert!(has_roxygen_tag(&tags, "keywords internal"));
+    // Single-word "keywords" should also match
+    assert!(has_roxygen_tag(&tags, "keywords"));
+    assert!(!has_roxygen_tag(&tags, "internal"));
+}
+
+#[test]
+fn test_has_roxygen_tag_keywords_internal_with_whitespace() {
+    // Extra whitespace around the tag content
+    let tags = vec!["  @keywords internal  ".to_string()];
+    assert!(has_roxygen_tag(&tags, "keywords internal"));
+}
+
+#[test]
+fn test_has_roxygen_tag_keywords_other() {
+    // @keywords with a different value should not match "keywords internal"
+    let tags = vec!["@keywords datasets".to_string()];
+    assert!(has_roxygen_tag(&tags, "keywords"));
+    assert!(!has_roxygen_tag(&tags, "keywords internal"));
+}
+
+#[test]
+fn test_has_roxygen_tag_param_with_name() {
+    // "param x" is a multi-word search that should match "@param x"
+    let tags = vec!["@param x An input".to_string()];
+    assert!(has_roxygen_tag(&tags, "param"));
+    // Multi-word match: "param x An input" won't match "param x" because
+    // the full content after @ is "param x An input", not "param x"
+    assert!(!has_roxygen_tag(&tags, "param x"));
+}
+
+// =============================================================================
+// tag_names: extraction tests
+// =============================================================================
+
+#[test]
+fn test_tag_names_extracts_first_word() {
+    let tags = vec![
+        "@param x Input".to_string(),
+        "@return Output".to_string(),
+        "@export".to_string(),
+    ];
+    let names = tag_names(&tags);
+    assert!(names.contains("param"));
+    assert!(names.contains("return"));
+    assert!(names.contains("export"));
+    assert!(!names.contains("x"));
+}
+
+#[test]
+fn test_tag_names_ignores_non_tag_lines() {
+    let tags = vec![
+        "Just a comment".to_string(),
+        "@title Real tag".to_string(),
+    ];
+    let names = tag_names(&tags);
+    assert!(names.contains("title"));
+    assert_eq!(names.len(), 1);
+}
+
+#[test]
+fn test_tag_names_handles_leading_whitespace() {
+    let tags = vec!["  @export".to_string()];
+    let names = tag_names(&tags);
+    assert!(names.contains("export"));
+}
+
 #[test]
 fn test_find_tag_value() {
     let tags = vec![
