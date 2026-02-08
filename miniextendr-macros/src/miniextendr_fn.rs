@@ -567,6 +567,10 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
     /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
     pub(crate) strict: bool,
+    /// Mark as internal: adds `@keywords internal`, suppresses `@export`.
+    pub(crate) internal: bool,
+    /// Suppress `@export` without adding `@keywords internal`.
+    pub(crate) noexport: bool,
 }
 
 #[derive(Clone, Copy, Default)]
@@ -615,10 +619,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             out.force_worker = true;
                         } else if ident == "strict" {
                             out.strict = true;
+                        } else if ident == "internal" {
+                            out.internal = true;
+                        } else if ident == "noexport" {
+                            out.noexport = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, strict",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, strict, internal, noexport",
                             ));
                         }
                     }

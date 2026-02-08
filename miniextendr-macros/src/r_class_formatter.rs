@@ -162,6 +162,10 @@ pub struct ClassDocBuilder<'a> {
     doc_tags: &'a [String],
     class_system_label: &'static str,
     imports: Option<String>,
+    /// Attribute-level internal flag (adds @keywords internal, suppresses @export).
+    attr_internal: bool,
+    /// Attribute-level noexport flag (suppresses @export).
+    attr_noexport: bool,
 }
 
 impl<'a> ClassDocBuilder<'a> {
@@ -178,12 +182,21 @@ impl<'a> ClassDocBuilder<'a> {
             doc_tags,
             class_system_label,
             imports: None,
+            attr_internal: false,
+            attr_noexport: false,
         }
     }
 
     /// Set R package imports (e.g., "@importFrom R6 R6Class").
     pub fn with_imports(mut self, imports: impl Into<String>) -> Self {
         self.imports = Some(imports.into());
+        self
+    }
+
+    /// Set attribute-level internal/noexport flags from `ParsedImpl`.
+    pub fn with_export_control(mut self, internal: bool, noexport: bool) -> Self {
+        self.attr_internal = internal;
+        self.attr_noexport = noexport;
         self
     }
 
@@ -222,8 +235,13 @@ impl<'a> ClassDocBuilder<'a> {
         {
             lines.push(format!("#' {}", imports));
         }
-        // Don't auto-export if @noRd or @keywords internal is present
-        if !has_export && !has_no_rd && !has_internal {
+        // Inject @keywords internal if attr flag set and not already present
+        let effective_internal = has_internal || self.attr_internal;
+        if self.attr_internal && !has_internal && !has_no_rd {
+            lines.push("#' @keywords internal".to_string());
+        }
+        // Don't auto-export if @noRd, @keywords internal, or attr flags are present
+        if !has_export && !has_no_rd && !effective_internal && !self.attr_noexport {
             lines.push("#' @export".to_string());
         }
 
