@@ -447,3 +447,23 @@ test_that("Vec<Option<T>> extended numeric return types", {
   expect_true(is.na(v_f32[2]))
   expect_equal(v_f32[3], 3.0)
 })
+
+test_that("Scalar Option<T> extended numeric return types", {
+  # Option<i64> with small value -> integer
+  expect_true(is.integer(conv_option_i64_some_small()))
+  expect_equal(conv_option_i64_some_small(), 42L)
+
+  # Option<i64> with large value -> double
+  expect_true(is.double(conv_option_i64_some_big()))
+
+  # Option<i64> None -> NA (integer)
+  expect_true(is.na(conv_option_i64_none()))
+
+  # Option<f32> -> double
+  expect_true(is.double(conv_option_f32_some()))
+  expect_equal(conv_option_f32_some(), 1.5)
+
+  # Option<u32> -> integer (fits)
+  expect_true(is.integer(conv_option_u32_some()))
+  expect_equal(conv_option_u32_some(), 100L)
+})

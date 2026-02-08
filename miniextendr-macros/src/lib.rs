@@ -634,6 +634,7 @@ pub fn miniextendr(
         strict,
         internal,
         noexport,
+        doc: _doc,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);

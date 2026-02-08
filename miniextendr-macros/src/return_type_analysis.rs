@@ -84,6 +84,7 @@ pub(crate) fn analyze_return_type(
                     &mut returns_sexp,
                     &mut is_invisible,
                     &mut post_call_statements,
+                    strict,
                 )
             }
 
@@ -164,6 +165,7 @@ fn analyze_option_type(
     returns_sexp: &mut bool,
     is_invisible: &mut bool,
     post_call_statements: &mut Vec<proc_macro2::TokenStream>,
+    strict: bool,
 ) -> proc_macro2::TokenStream {
     let seg = type_path.path.segments.last().unwrap();
     let inner_ty = crate::first_type_argument(seg);
@@ -193,6 +195,15 @@ fn analyze_option_type(
     } else {
         // Option<T> - convert via IntoR which handles None → NA appropriately
         *is_invisible = false;
+        // In strict mode, check if this is Option<lossy> and use checked conversion
+        if strict
+            && let Some(strict_expr) = strict_conversion_for_type(
+                &syn::Type::Path(type_path.clone()),
+                rust_result_ident,
+            )
+        {
+            return strict_expr;
+        }
         quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
     }
 }
@@ -296,6 +307,19 @@ pub(crate) fn strict_conversion_for_type(
         return Some(quote::quote! {
             ::miniextendr_api::strict::#helper(#result_ident)
         });
+    }
+
+    // Check for Option<lossy>
+    if name == "Option"
+        && let Some(inner) = first_type_arg_from_type(ty)
+    {
+        let inner_name = last_segment_ident(inner)?.to_string();
+        if LOSSY_SCALARS.contains(&inner_name.as_str()) {
+            let helper = quote::format_ident!("checked_option_{}_into_sexp", inner_name);
+            return Some(quote::quote! {
+                ::miniextendr_api::strict::#helper(#result_ident)
+            });
+        }
     }
 
     // Check for Vec<lossy> or Vec<Option<lossy>>

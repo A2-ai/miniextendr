@@ -3,7 +3,36 @@
 
 #set page(numbering: "1 of 1", paper: "a5", margin: (top: 2em, left: 1em, right: 2em, bottom: 2.2em))
 
+== Misc from the maintainer
 
+- [ ] please read and review `dvs_reviews/` if all recommendations have been resolved, and the documentation have been put in its proper place, such as `docs/`, then delete the `dvs_reviews/`, otherwise, do indeed resolve them. 
+- [ ] There are doc files that live in root, i.e. `*.typ` and `*.md` files. Please resolve if they have to be rewritten and amended to docs/ or if they ought to have their own docs/ entry.
+
+
+=== `{minirextendr}`
+
+- [ ] Ensure that there is a warning when you use `use_miniextendr` in a location that is not the root of the current git workspace. Do not output this warning if we are not in a .git repository at all, or if `git` is not available in the PATH. 
+
+- [ ] Add a 
+      > Configure Cargo.toml for local development
+      function minirextendr, such that we can locally source miniextendr. But also have a function if we are to use crates-io miniextendr, or github miniextendr.
+
+- [ ] add a function that runs `autoconf` e.g.
+      > cd tests/model_project && autoconf
+      as an example of a thing we do not want the user to shill to a shell for.
+      Similarly with
+      > cd tests/model_project && NOT_CRAN=true ./configure
+
+- [ ] We need the miniextendr-lint to also handle entries in miniextendr_module that are not supported by the right derive or proc-macros. Example is 
+      > `#[derive(miniextendr_api::ExternalPtr)]` on the struct is
+      > mandatory. Without it, you get:
+      > - `the trait bound 'World: TypedExternal' is not satisfied`
+      > - `cannot find value 'R_WRAPPERS_RDATA_WORLD' in this scope`
+      > - `cannot find value 'RDATA_CALL_DEFS_WORLD' in this scope`
+      and this should have a better error message, and as such miniextendr-lint
+      could do that. Remember, it is not enough just to take for derive()-attributes,
+      as all traits can be implemented manually.
+- [ ] 
 == Codex Review Findings (2024)
 
 === API/Ergonomics

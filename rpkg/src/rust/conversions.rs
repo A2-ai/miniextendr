@@ -1228,6 +1228,38 @@ pub fn conv_vec_option_f32_ret() -> Vec<Option<f32>> {
     vec![Some(1.5), None, Some(3.0)]
 }
 
+// --- Scalar Option<T> for extended numeric types ---
+
+/// @noRd
+#[miniextendr]
+pub fn conv_option_i64_some_small() -> Option<i64> {
+    Some(42)
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_option_i64_some_big() -> Option<i64> {
+    Some(i64::MAX)
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_option_i64_none() -> Option<i64> {
+    None
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_option_f32_some() -> Option<f32> {
+    Some(1.5)
+}
+
+/// @noRd
+#[miniextendr]
+pub fn conv_option_u32_some() -> Option<u32> {
+    Some(100)
+}
+
 miniextendr_module! {
     mod conversions;
 
@@ -1412,4 +1444,11 @@ miniextendr_module! {
     fn conv_vec_option_i64_ret_big;
     fn conv_vec_option_u32_ret;
     fn conv_vec_option_f32_ret;
+
+    // Scalar Option<T> extended numeric types
+    fn conv_option_i64_some_small;
+    fn conv_option_i64_some_big;
+    fn conv_option_i64_none;
+    fn conv_option_f32_some;
+    fn conv_option_u32_some;
 }

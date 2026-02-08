@@ -713,7 +713,7 @@ Run with: `cargo test --test ui -p miniextendr-macros`
 | Coercion precedence rules | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
 | NA handling for each type | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
 | SEXP lifetime rules | [docs/TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) |
-| Feature flag effects | Partial (in crate docs) |
+| Feature flag effects | [docs/FEATURES.md](FEATURES.md) |
 
 ### 7.3 Example Coverage
 

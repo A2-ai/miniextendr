@@ -329,6 +329,47 @@ impl IntoR for Option<bool> {
     }
 }
 
+/// Macro for NA-aware `Option<T> → R` smart scalar conversion.
+/// Checks if value fits i32 → INTSXP with NA_INTEGER for None,
+/// otherwise REALSXP with NA_REAL for None.
+macro_rules! impl_option_smart_i64_into_r {
+    ($t:ty, $fits_i32:expr) => {
+        impl IntoR for Option<$t> {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                match self {
+                    Some(x) if $fits_i32(x) => (x as i32).into_sexp(),
+                    Some(x) => (x as f64).into_sexp(),
+                    None => unsafe { crate::ffi::Rf_ScalarInteger(NA_INTEGER) },
+                }
+            }
+        }
+    };
+}
+
+impl_option_smart_i64_into_r!(i64, |x: i64| x > i32::MIN as i64 && x <= i32::MAX as i64);
+impl_option_smart_i64_into_r!(u64, |x: u64| x <= i32::MAX as u64);
+impl_option_smart_i64_into_r!(isize, |x: isize| x > i32::MIN as isize && x <= i32::MAX as isize);
+impl_option_smart_i64_into_r!(usize, |x: usize| x <= i32::MAX as usize);
+
+/// Macro for `Option<T>` where `T` coerces to a type with existing Option impl.
+macro_rules! impl_option_coerce_into_r {
+    ($from:ty => $to:ty) => {
+        impl IntoR for Option<$from> {
+            #[inline]
+            fn into_sexp(self) -> crate::ffi::SEXP {
+                self.map(|x| x as $to).into_sexp()
+            }
+        }
+    };
+}
+
+impl_option_coerce_into_r!(i8 => i32);
+impl_option_coerce_into_r!(i16 => i32);
+impl_option_coerce_into_r!(u16 => i32);
+impl_option_coerce_into_r!(u32 => i64); // delegates to smart i64 path
+impl_option_coerce_into_r!(f32 => f64);
+
 impl<T: crate::externalptr::TypedExternal> IntoR for crate::externalptr::ExternalPtr<T> {
     #[inline]
     fn into_sexp(self) -> crate::ffi::SEXP {

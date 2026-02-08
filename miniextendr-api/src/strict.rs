@@ -170,6 +170,38 @@ pub fn checked_vec_option_usize_into_sexp(val: Vec<Option<usize>>) -> SEXP {
     checked_vec_option_u64_into_sexp(val.into_iter().map(|opt| opt.map(|x| x as u64)).collect())
 }
 
+/// Convert `Option<i64>` to R integer in strict mode.
+/// Panics if `Some(x)` is outside i32 range. `None` becomes `NA_integer_`.
+#[inline]
+pub fn checked_option_i64_into_sexp(val: Option<i64>) -> SEXP {
+    match val {
+        Some(x) => checked_into_sexp_i64(x),
+        None => Option::<i32>::None.into_sexp(),
+    }
+}
+
+/// Convert `Option<u64>` to R integer in strict mode.
+/// Panics if `Some(x)` exceeds i32::MAX. `None` becomes `NA_integer_`.
+#[inline]
+pub fn checked_option_u64_into_sexp(val: Option<u64>) -> SEXP {
+    match val {
+        Some(x) => checked_into_sexp_u64(x),
+        None => Option::<i32>::None.into_sexp(),
+    }
+}
+
+/// Convert `Option<isize>` to R integer in strict mode.
+#[inline]
+pub fn checked_option_isize_into_sexp(val: Option<isize>) -> SEXP {
+    checked_option_i64_into_sexp(val.map(|x| x as i64))
+}
+
+/// Convert `Option<usize>` to R integer in strict mode.
+#[inline]
+pub fn checked_option_usize_into_sexp(val: Option<usize>) -> SEXP {
+    checked_option_u64_into_sexp(val.map(|x| x as u64))
+}
+
 // =============================================================================
 // Strict INPUT helpers — only accept INTSXP and REALSXP, reject RAWSXP/LGLSXP
 // =============================================================================
