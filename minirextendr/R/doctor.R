@@ -20,7 +20,7 @@ miniextendr_doctor <- function() {
   rustc <- Sys.which("rustc")
   if (nzchar(rustc)) {
     version <- tryCatch(
-      system2("rustc", "--version", stdout = TRUE, stderr = TRUE)[1],
+      run_command("rustc", c("--version"))[1],
       error = function(e) "unknown"
     )
     cli::cli_alert_success("Rust: {version}")

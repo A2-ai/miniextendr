@@ -193,7 +193,7 @@ miniextendr_check <- function() {
   tryCatch(
     {
       check_rust()
-      rustc_version <- system2("rustc", "--version", stdout = TRUE)
+      rustc_version <- run_command("rustc", "--version")
       cli::cli_alert_success("Rust installed: {rustc_version}")
     },
     error = function(e) {
