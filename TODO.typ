@@ -12,10 +12,8 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 - [x] `cloneable` flag with deep clone hook — `#[miniextendr(r6(deep_clone))]` works
 - [x] Finalizer as private member — `#[miniextendr(r6(finalize))]` works
 - [x] Active binding getter+setter pairs — `#[miniextendr(r6(active))]` + `setter` works
-- [ ] Inheritance (`inherit = "ParentType"`) — parsed + generated, needs tests
-  - Single parent works; multi-level (A → B → C) untested
-  - No method override examples
-- [ ] `portable` flag — parsed, never tested
+- [x] Inheritance (`inherit = "ParentType"`) — 3-level chain tested (R6Animal → R6Dog → R6GoldenRetriever)
+- [x] `portable` flag — tested (`portable = false` works)
 - [~] Field-level `#[r6(public|private|skip)]` annotations
   - Architecturally impossible: proc macros can't access struct field definitions
   - Workaround: use `#[r_data]` sidecar pattern (documented in CLASS_SYSTEMS.md)
@@ -24,13 +22,11 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 - [ ] Thread-safety assertions not covered by tests
   - Note: Would require embedded R runtime for meaningful tests.
+- [ ] String ALTREP NA serialization — `saveRDS`/`readRDS` loses NA (becomes empty string)
 
 == Build / Infrastructure
 
-- [ ] Consider processx-based execution in minirextendr
-  - Purpose: Better cross-platform command execution with proper quoting/output capture
-  - Note: processx is common in R tooling ecosystem
-
+- [x] processx-based execution in minirextendr — migrated from system2()
 - [ ] Windows CI debugging
   - The `-l` (login) flag in bash might change working directory
   - Path format when passing Windows paths to bash
@@ -39,17 +35,18 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 === Serialization
 
-- [ ] `borsh` optional feature for binary serialization
+- [x] `borsh` optional feature for binary serialization
   - `Borsh<T>` wrapper: `IntoR` → RAWSXP, `TryFromSexp` → decode RAWSXP
-  - Follows standard pattern (like sha2_impl, toml_impl)
-
+  - `RBorshOps` adapter trait with blanket impl
 - [ ] `rkyv` optional feature for zero-copy serialization (DEFERRED)
   - Complex: lifetime/validation issues with R's GC model
   - Revisit after borsh is in place
 
 === Adapter Traits
 
-- [ ] serde_json R list bridge (direct SEXP serialization without JSON intermediate)
+- [x] serde_json R list bridge — direct SEXP ↔ JsonValue conversion
+  - `JsonValue` IntoR/TryFromSexp, homogeneous array optimization
+  - NA/NaN/Inf handling via `JsonOptions`, factor support
 
 === Concurrency (POSTPONED)
 
