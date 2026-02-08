@@ -238,8 +238,10 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
   git_available <- nzchar(Sys.which("git"))
   if (git_available) {
     git_root <- tryCatch(
-      trimws(system2("git", c("rev-parse", "--show-toplevel"),
-                     stdout = TRUE, stderr = TRUE)),
+      {
+        res <- run_command("git", c("rev-parse", "--show-toplevel"))
+        trimws(res)
+      },
       warning = function(w) NULL,
       error = function(e) NULL
     )
