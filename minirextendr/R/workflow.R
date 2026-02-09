@@ -232,14 +232,14 @@ miniextendr_vendor <- function() {
   }
 
   # Create xz-compressed tarball
-  px_result <- processx::run(
+  tar_output <- system2(
     "tar", c("-cJf", tarball, "-C", staging, "vendor"),
-    error_on_status = FALSE
+    stdout = TRUE, stderr = TRUE
   )
-  if (px_result$status != 0) {
+  if (!is.null(attr(tar_output, "status"))) {
     abort(c(
       "Failed to create vendor tarball",
-      "i" = px_result$stderr
+      "i" = paste(tar_output, collapse = "\n")
     ))
   }
 

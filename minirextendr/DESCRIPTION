@@ -21,7 +21,6 @@ Imports:
     fs,
     gh,
     glue,
-    processx,
     rappdirs,
     rlang (>= 1.1.0),
     rprojroot,
