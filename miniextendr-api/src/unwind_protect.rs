@@ -41,6 +41,7 @@ pub(crate) fn get_continuation_token() -> SEXP {
 pub(crate) unsafe fn panic_payload_to_r_error(
     payload: Box<dyn Any + Send>,
     call: Option<SEXP>,
+    source: crate::panic_telemetry::PanicSource,
 ) -> ! {
     let error_message: &str = if let Some(&message) = payload.downcast_ref::<&str>() {
         message
@@ -52,10 +53,7 @@ pub(crate) unsafe fn panic_payload_to_r_error(
         "panic payload could not be unpacked"
     };
 
-    crate::panic_telemetry::fire(
-        error_message,
-        crate::panic_telemetry::PanicSource::UnwindProtect,
-    );
+    crate::panic_telemetry::fire(error_message, source);
 
     let c_error_message = std::ffi::CString::new(error_message)
         .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());
@@ -93,6 +91,25 @@ pub(crate) unsafe fn panic_payload_to_r_error(
 /// }, None);
 /// ```
 pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
+where
+    F: FnOnce() -> R,
+{
+    with_r_unwind_protect_sourced(
+        f,
+        call,
+        crate::panic_telemetry::PanicSource::UnwindProtect,
+    )
+}
+
+/// Like [`with_r_unwind_protect`], but reports panics with a custom [`PanicSource`].
+///
+/// Used by `guarded_altrep_call` so that panics inside ALTREP callbacks with
+/// `AltrepGuard::RUnwind` are still attributed to `PanicSource::Altrep`.
+pub(crate) fn with_r_unwind_protect_sourced<F, R>(
+    f: F,
+    call: Option<SEXP>,
+    source: crate::panic_telemetry::PanicSource,
+) -> R
 where
     F: FnOnce() -> R,
 {
@@ -157,7 +174,7 @@ where
                 // Check if trampoline caught a panic
                 if let Some(payload) = data.panic_payload.take() {
                     drop(data);
-                    panic_payload_to_r_error(payload, call);
+                    panic_payload_to_r_error(payload, call, source);
                 }
                 // Normal completion - return the result
                 data.result
@@ -173,7 +190,7 @@ where
                     R_ContinueUnwind(token);
                 } else {
                     // Rust panic - convert to R error
-                    panic_payload_to_r_error(payload, call);
+                    panic_payload_to_r_error(payload, call, source);
                 }
             }
         }

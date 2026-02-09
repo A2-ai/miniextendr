@@ -111,6 +111,36 @@ impl AltrepAttrs {
         }
     }
 
+    /// Validate option combinations for a given ALTREP type family.
+    fn validate_options(&self, family: &str, supports_subset: bool) -> syn::Result<()> {
+        let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
+        let has_subset = self.lowlevel_options.iter().any(|o| o == "subset");
+
+        if has_subset && !supports_subset {
+            return Err(syn::Error::new(
+                self.lowlevel_options
+                    .iter()
+                    .find(|o| *o == "subset")
+                    .unwrap()
+                    .span(),
+                format!("`subset` is not supported for {family}; only `integer` and `complex` support it"),
+            ));
+        }
+
+        if has_dataptr && has_subset {
+            return Err(syn::Error::new(
+                self.lowlevel_options
+                    .iter()
+                    .find(|o| *o == "subset")
+                    .unwrap()
+                    .span(),
+                "`dataptr` and `subset` are mutually exclusive",
+            ));
+        }
+
+        Ok(())
+    }
+
     /// Generate lowlevel impl code for a given ALTREP type family.
     #[allow(clippy::too_many_arguments)]
     fn generate_lowlevel(
@@ -122,23 +152,25 @@ impl AltrepAttrs {
         altvec_subset: bool,
         methods_macro: &str,
         inferbase_macro: &str,
-    ) -> TokenStream {
+    ) -> syn::Result<TokenStream> {
         if !self.generate_lowlevel {
-            return quote! {};
+            return Ok(quote! {});
         }
+
+        self.validate_options(macro_base, altvec_subset)?;
 
         // If no non-default guard, use the simple impl_alt*_from_data! macro
         if !self.has_non_default_guard() {
             let macro_ident = syn::Ident::new(macro_base, proc_macro2::Span::call_site());
             if self.lowlevel_options.is_empty() {
-                return quote! {
+                return Ok(quote! {
                     ::miniextendr_api::#macro_ident!(#name);
-                };
+                });
             } else {
                 let options = &self.lowlevel_options;
-                return quote! {
+                return Ok(quote! {
                     ::miniextendr_api::#macro_ident!(#name, #(#options),*);
-                };
+                });
             }
         }
 
@@ -183,12 +215,12 @@ impl AltrepAttrs {
         let inferbase_ident = syn::Ident::new(inferbase_macro, proc_macro2::Span::call_site());
         let inferbase_impl = quote! { ::miniextendr_api::#inferbase_ident!(#name); };
 
-        quote! {
+        Ok(quote! {
             #base_impl
             #vec_impl
             #methods_impl
             #inferbase_impl
-        }
+        })
     }
 }
 
@@ -250,7 +282,7 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
         true,
         "__impl_altinteger_methods",
         "impl_inferbase_integer",
-    );
+    )?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -297,7 +329,7 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         false,
         "__impl_altreal_methods",
         "impl_inferbase_real",
-    );
+    )?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -344,7 +376,7 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
         false,
         "__impl_altlogical_methods",
         "impl_inferbase_logical",
-    );
+    )?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -391,7 +423,7 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         false,
         "__impl_altraw_methods",
         "impl_inferbase_raw",
-    );
+    )?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -440,7 +472,7 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         false,
         "__impl_altstring_methods",
         "impl_inferbase_string",
-    );
+    )?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -490,7 +522,7 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         true,
         "__impl_altcomplex_methods",
         "impl_inferbase_complex",
-    );
+    )?;
 
     Ok(quote! {
         #altrep_len_impl
@@ -529,6 +561,14 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
             #elt_impl
         }
     };
+
+    // List does not support dataptr, serialize, or subset
+    if let Some(opt) = attrs.lowlevel_options.first() {
+        return Err(syn::Error::new(
+            opt.span(),
+            format!("`{opt}` is not supported for AltrepList"),
+        ));
+    }
 
     let lowlevel_impl = if !attrs.generate_lowlevel {
         quote! {}

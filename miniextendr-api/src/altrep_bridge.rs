@@ -55,7 +55,11 @@ where
     match T::GUARD {
         AltrepGuard::Unsafe => f(),
         AltrepGuard::RustUnwind => catch_altrep_panic(f),
-        AltrepGuard::RUnwind => crate::unwind_protect::with_r_unwind_protect(f, None),
+        AltrepGuard::RUnwind => crate::unwind_protect::with_r_unwind_protect_sourced(
+            f,
+            None,
+            crate::panic_telemetry::PanicSource::Altrep,
+        ),
     }
 }
 
