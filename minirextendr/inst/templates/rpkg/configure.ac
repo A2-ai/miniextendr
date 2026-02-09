@@ -291,7 +291,7 @@ esac
 VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
 
-dnl Note: Cargo.toml now uses git dependencies.
+dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
 dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
 dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
 

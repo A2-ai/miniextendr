@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 --- a/monorepo/rpkg/configure.ac	2026-02-09 09:41:01
-+++ b/monorepo/rpkg/configure.ac	2026-02-09 03:22:41
++++ b/monorepo/rpkg/configure.ac	2026-02-09 13:30:01
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -84,7 +84,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
-+dnl Note: Cargo.toml now uses git dependencies.
++dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
 -dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
 -dnl the [patch] section in Cargo.toml.
@@ -467,7 +467,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
    else
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 --- a/rpkg/configure.ac	2026-02-09 09:41:01
-+++ b/rpkg/configure.ac	2026-02-09 09:29:29
++++ b/rpkg/configure.ac	2026-02-09 13:29:58
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -542,7 +542,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
-+dnl Note: Cargo.toml now uses git dependencies.
++dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
  dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
 -dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
 -dnl the [patch] section in Cargo.toml.
