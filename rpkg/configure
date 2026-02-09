@@ -3303,7 +3303,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-NOT_CRAN="$NOT_CRAN"
+NOT_CRAN="$NOT_CRAN" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" SED="$SED"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
 CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"
 ABS_RPKG_SRC="$abs_rpkg_src"
@@ -3752,9 +3752,25 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   RPKG_CFG="src/rust/.cargo/config.toml"
 
   if test "$NOT_CRAN" = "true"; then
+        if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
             if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps with local patches)"
+        rm "$RPKG_CFG"
+        echo "configure: removed cargo config (dev mode - using git deps with local patches)"
+      fi
+    else
+                  echo "configure: monorepo not found at $ROOT_MINIEXTENDR_REPO"
+      echo "configure: keeping cargo config for vendored source resolution"
+            if grep -q '^.patch\.' src/rust/Cargo.toml 2>/dev/null; then
+        "$SED" '/^.patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        echo "configure: stripped patch section from Cargo.toml (monorepo paths not available)"
+      fi
+            if test -f src/Makevars; then
+        "$SED" 's/^CARGO_OFFLINE_FLAG =.*$/CARGO_OFFLINE_FLAG = --offline/' src/Makevars > src/Makevars.tmp \
+          && mv src/Makevars.tmp src/Makevars
+        echo "configure: patched Makevars with --offline (monorepo not available)"
+      fi
+            echo "vendored-fallback" > .monorepo-fallback
     fi
   fi
  ;;
@@ -3794,7 +3810,9 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       fi
       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
       rm -f "$LOCKFILE_PATH"
-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
+      _compat_offline="$CARGO_OFFLINE_FLAG"
+      if test -f .monorepo-fallback; then _compat_offline="--offline"; fi
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $_compat_offline
       _gen_status=$?
       if test $_gen_status -ne 0; then
         echo "configure: error: cargo generate-lockfile failed with status $_gen_status" >&2
@@ -3848,16 +3866,65 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       echo "configure: CRAN build - vendor ready"
     fi
   else
-                if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
-      rm -rf "$VENDOR_OUT"
-      echo "configure: removed vendor directory (dev mode)"
+        if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
+                        if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+        rm -rf "$VENDOR_OUT"
+        echo "configure: removed vendor directory (dev mode)"
+      fi
+                  rm -f "$VENDOR_OUT/.vendor.lock.cksum"
+      echo "configure: dev mode - using patch paths to monorepo"
+    else
+                  if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+        echo "configure: using vendored sources (monorepo not available)"
+                for _crate in miniextendr-api miniextendr-lint; do
+          _versioned_dir=""
+          for _d in "$VENDOR_OUT/$_crate"-*/; do
+            if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+          done
+          if test -n "$_versioned_dir"; then
+            _dirname="$(basename "$_versioned_dir")"
+            "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
+              src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+            echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
+          else
+            echo "configure: warning: could not find $_crate in vendor directory" >&2
+          fi
+        done
+                                        _patch_lines=""
+        for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
+          _versioned_dir=""
+          for _d in "$VENDOR_OUT/$_crate"-*/; do
+            if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+          done
+          if test -n "$_versioned_dir"; then
+            _dirname="$(basename "$_versioned_dir")"
+            _patch_lines="$_patch_lines
+$_crate = { path = \"../../vendor/$_dirname\" }"
+            echo "configure: patched $_crate to path: vendor/$_dirname"
+          fi
+        done
+        if test -n "$_patch_lines"; then
+          printf '\n[patch.crates-io]%s\n' "$_patch_lines" >> src/rust/Cargo.toml
+          echo "configure: added patch.crates-io for transitive miniextendr deps"
+        fi
+                                RPKG_CFG="src/rust/.cargo/config.toml"
+        if test -f "$RPKG_CFG"; then
+          "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
+          echo "configure: stripped git source replacement from cargo config"
+        fi
+                        rm -f src/rust/Cargo.lock
+        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+        if test $? -ne 0; then
+          echo "configure: error: failed to generate lockfile from vendored sources" >&2
+          exit 1
+        fi
+        echo "configure: generated new Cargo.lock from vendored sources"
+      else
+        echo "configure: error: monorepo not found and no vendor directory available" >&2
+        echo "configure: hint: run 'just vendor' before 'just r-cmd-check'" >&2
+        exit 1
+      fi
     fi
-    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-      rm -f "$abs_rpkg_dir/inst/vendor.tar.xz" "$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
-      echo "configure: removed vendor.tar.xz (dev mode)"
-    fi
-        rm -f "$VENDOR_OUT/.vendor.lock.cksum"
-    echo "configure: dev mode - skipping cargo vendor (use 'just vendor' for CRAN prep)"
   fi
  ;;
     "post-vendor":C)
@@ -3869,7 +3936,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   echo "configure: skipping vendor compression (use 'just vendor' for CRAN prep)"
  ;;
     "patch-staticlib-name":C)
-      if test "$NOT_CRAN" = "true"; then
+        if test "$NOT_CRAN" = "true" && test ! -f .monorepo-fallback; then
     _pkgid_flags="--color=never"
   else
     _pkgid_flags="--offline --color=never"

@@ -252,7 +252,7 @@ vendor:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    root="{{justfile_directory()}}"
     rpkg_src="$root/rpkg/src"
     rpkg_root="$root/rpkg"
     vendor_out="$rpkg_root/vendor"
@@ -261,7 +261,7 @@ vendor:
 
     echo "=== CRAN vendor prep ==="
 
-    # 1. Package workspace crates
+    # 1. Package workspace crates (creates .crate archives)
     staging="$rpkg_root/.vendor-tarball-staging"
     rm -rf "$staging"
     mkdir -p "$staging" "$vendor_out"
@@ -276,19 +276,22 @@ vendor:
         fi
     done
 
-    # 2. Extract .crate files to vendor/
-    echo "Extracting packaged crates..."
+    # 2. Vendor external deps from crates.io FIRST
+    # (cargo vendor creates a clean vendor dir, so workspace crates must go after)
+    echo "Vendoring external dependencies..."
+    cargo vendor --manifest-path "$manifest" "$vendor_out"
+
+    # 3. Extract workspace .crate files ON TOP of vendored external deps
+    echo "Extracting packaged workspace crates..."
     for crate_file in "$staging/target/package/"*.crate; do
         [ -f "$crate_file" ] || continue
         basename=$(basename "$crate_file" .crate)
         echo "  $basename"
         mkdir -p "$vendor_out/$basename"
         tar -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
+        # Add cargo checksum file (required for vendored sources)
+        echo '{"files":{}}' > "$vendor_out/$basename/.cargo-checksum.json"
     done
-
-    # 3. Vendor external deps from crates.io
-    echo "Vendoring external dependencies..."
-    cargo vendor --manifest-path "$manifest" "$vendor_out"
 
     # 4. Strip checksums from Cargo.lock
     if [ -f "$lockfile" ]; then
@@ -376,8 +379,11 @@ r-cmd-build *args: configure
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
+# Depends on vendor to ensure inst/vendor.tar.xz exists in the tarball.
+# R CMD check copies the tarball to a temp dir where monorepo [patch] paths
+# are unavailable — configure detects this and uses vendored sources instead.
 alias rcmdcheck := r-cmd-check
-r-cmd-check *args: configure
+r-cmd-check *args: vendor
     @ERROR_ON="warning" \
     CHECK_DIR="" \
     && for arg in {{args}}; do \

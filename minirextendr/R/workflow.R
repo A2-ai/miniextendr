@@ -184,3 +184,45 @@ miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
   cli::cli_alert_success("Build complete!")
   invisible(TRUE)
 }
+
+#' Run R CMD check on a miniextendr package
+#'
+#' Builds the package tarball and runs R CMD check. Ensures dependencies
+#' are vendored so the check works in the isolated temp directory where
+#' R CMD check unpacks the tarball.
+#'
+#' @param args Character vector of extra arguments passed to `R CMD check`.
+#'   Defaults to `c("--as-cran", "--no-manual")`.
+#' @param error_on Severity level to error on. One of `"error"`, `"warning"`,
+#'   or `"note"`. Passed to [rcmdcheck::rcmdcheck()].
+#' @param build_args Character vector of extra arguments passed to `R CMD build`.
+#' @return The [rcmdcheck::rcmdcheck()] result object, invisibly.
+#' @export
+miniextendr_check <- function(args = c("--as-cran", "--no-manual"),
+                               error_on = "warning",
+                               build_args = character()) {
+  if (!requireNamespace("rcmdcheck", quietly = TRUE)) {
+    abort(c(
+      "rcmdcheck is required for miniextendr_check()",
+      "i" = 'Install it with: install.packages("rcmdcheck")'
+    ))
+  }
+
+  cli::cli_h1("miniextendr check workflow")
+  pkg_path <- usethis::proj_get()
+
+  cli::cli_h2("Step 1: build (autoconf + configure + install + document)")
+  miniextendr_build(install = TRUE, not_cran = TRUE)
+
+  cli::cli_h2("Step 2: R CMD check")
+  cli::cli_alert("Running rcmdcheck with args: {.val {args}}")
+
+  result <- rcmdcheck::rcmdcheck(
+    pkg_path,
+    args = args,
+    build_args = build_args,
+    error_on = error_on
+  )
+
+  invisible(result)
+}
