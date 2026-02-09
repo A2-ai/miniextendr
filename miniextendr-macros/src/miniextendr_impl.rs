@@ -2810,18 +2810,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Properties - .ptr holds the ExternalPtr, plus computed/dynamic properties
     // When r_data_accessors is set, merge with sidecar properties from #[derive(ExternalPtr)]
-    if parsed_impl.r_data_accessors {
-        lines.push("    properties = c(list(".to_string());
-        lines.push("        .ptr = S7::class_any".to_string());
-    } else {
-        lines.push("    properties = list(".to_string());
-        lines.push("        .ptr = S7::class_any".to_string());
-    }
+    // Collect property items into a vec, then join with ",\n" to avoid bare commas on standalone lines
+    let mut prop_items: Vec<String> = Vec::new();
+    prop_items.push("        .ptr = S7::class_any".to_string());
 
     // Generate computed/dynamic properties
     for prop in properties.values() {
-        lines.push(",".to_string());
-
         // Generate property definition
         let mut prop_parts = Vec::new();
 
@@ -2911,15 +2905,22 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         if prop_parts.is_empty() {
             // This shouldn't happen, but handle gracefully
-            lines.push(format!("        {} = S7::new_property()", prop.name));
+            prop_items.push(format!("        {} = S7::new_property()", prop.name));
         } else {
-            lines.push(format!(
+            prop_items.push(format!(
                 "        {} = S7::new_property({})",
                 prop.name,
                 prop_parts.join(", ")
             ));
         }
     }
+
+    if parsed_impl.r_data_accessors {
+        lines.push("    properties = c(list(".to_string());
+    } else {
+        lines.push("    properties = list(".to_string());
+    }
+    lines.push(prop_items.join(",\n"));
 
     // Close the properties list (or merge with sidecar properties)
     if parsed_impl.r_data_accessors {
