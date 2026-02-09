@@ -29,6 +29,8 @@ pub enum PanicSource {
     Altrep,
     /// Panic inside `with_r_unwind_protect` (caught by `panic_payload_to_r_error`).
     UnwindProtect,
+    /// Panic inside a connection callback trampoline.
+    Connection,
 }
 
 /// A structured panic report passed to the telemetry hook.
