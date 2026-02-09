@@ -261,7 +261,9 @@ AS_IF([test -n "$MINIEXTENDR_FEATURES"],
       [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
-pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
+dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g')"
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
@@ -469,6 +471,57 @@ AC_CONFIG_COMMANDS([cargo-vendor],
       fi
     else
       echo "configure: CRAN build - vendor ready"
+      dnl Rewrite git deps to path deps for vendored build.
+      dnl The Cargo.toml has git deps and [patch] entries pointing to monorepo paths
+      dnl that don't exist in the CRAN tarball context.
+      for _crate in miniextendr-api miniextendr-lint; do
+        _versioned_dir=""
+        for _d in "$VENDOR_OUT/$_crate"-*/; do
+          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+        done
+        if test -n "$_versioned_dir"; then
+          _dirname="$(basename "$_versioned_dir")"
+          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
+            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
+        fi
+      done
+      dnl Strip [patch] section (monorepo paths not available in tarball)
+      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        echo "configure: stripped [patch] section from Cargo.toml"
+      fi
+      dnl Add [patch.crates-io] for transitive miniextendr deps
+      _patch_lines=""
+      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
+        _versioned_dir=""
+        for _d in "$VENDOR_OUT/$_crate"-*/; do
+          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+        done
+        if test -n "$_versioned_dir"; then
+          _dirname="$(basename "$_versioned_dir")"
+          _patch_lines="$_patch_lines
+$_crate = { path = \"../../vendor/$_dirname\" }"
+        fi
+      done
+      if test -n "$_patch_lines"; then
+        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
+        echo "configure: added [patch.crates-io] for transitive deps"
+      fi
+      dnl Strip git source replacement from cargo config
+      RPKG_CFG="src/rust/.cargo/config.toml"
+      if test -f "$RPKG_CFG"; then
+        "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
+      fi
+      dnl Regenerate Cargo.lock from vendored sources
+      rm -f src/rust/Cargo.lock
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+      if test $? -ne 0; then
+        echo "configure: error: failed to generate lockfile from vendored sources" >&2
+        exit 1
+      fi
+      echo "configure: regenerated Cargo.lock for CRAN build"
     fi
   else
     dnl Dev mode: behavior depends on whether monorepo is available

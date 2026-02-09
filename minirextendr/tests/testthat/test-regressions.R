@@ -150,16 +150,16 @@ test_that("miniextendr_doctor checks all 5 required crates", {
   )
 })
 
-test_that("miniextendr_check checks all 5 required crates", {
-  # Verify the required_crates vector in miniextendr_check includes all 5
-  body_text <- deparse(body(miniextendr_check))
+test_that("miniextendr_validate checks all 5 required crates", {
+  # Verify the required_crates vector in miniextendr_validate includes all 5
+  body_text <- deparse(body(miniextendr_validate))
   expected_crates <- c("miniextendr-api", "miniextendr-macros",
                         "miniextendr-macros-core", "miniextendr-lint",
                         "miniextendr-engine")
   for (crate in expected_crates) {
     expect_true(
       any(grepl(crate, body_text, fixed = TRUE)),
-      label = sprintf("miniextendr_check should check for %s", crate)
+      label = sprintf("miniextendr_validate should check for %s", crate)
     )
   }
 })

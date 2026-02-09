@@ -7861,9 +7861,9 @@ S7Range <- S7::new_class("S7Range",
     properties = list(
         .ptr = S7::class_any
 ,
-        length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
-,
         midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
+,
+        length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
     ),
     constructor = function(start, end, .ptr = NULL) {
         if (!is.null(.ptr)) {

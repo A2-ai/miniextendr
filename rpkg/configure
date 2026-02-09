@@ -2543,7 +2543,7 @@ then :
 printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
 fi
 
-pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g')"
 PACKAGE_TARNAME_RS=$pkg_rs
 
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
@@ -3864,6 +3864,50 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
       fi
     else
       echo "configure: CRAN build - vendor ready"
+                        for _crate in miniextendr-api miniextendr-lint; do
+        _versioned_dir=""
+        for _d in "$VENDOR_OUT/$_crate"-*/; do
+          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+        done
+        if test -n "$_versioned_dir"; then
+          _dirname="$(basename "$_versioned_dir")"
+          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
+            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
+        fi
+      done
+            if grep -q '^\[patch\.' src/rust/Cargo.toml 2>/dev/null; then
+        "$SED" '/^\[patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        echo "configure: stripped patch section from Cargo.toml"
+      fi
+            _patch_lines=""
+      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
+        _versioned_dir=""
+        for _d in "$VENDOR_OUT/$_crate"-*/; do
+          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+        done
+        if test -n "$_versioned_dir"; then
+          _dirname="$(basename "$_versioned_dir")"
+          _patch_lines="$_patch_lines
+$_crate = { path = \"../../vendor/$_dirname\" }"
+        fi
+      done
+      if test -n "$_patch_lines"; then
+        printf '\n[patch.crates-io]%s\n' "$_patch_lines" >> src/rust/Cargo.toml
+        echo "configure: added patch.crates-io for transitive deps"
+      fi
+            RPKG_CFG="src/rust/.cargo/config.toml"
+      if test -f "$RPKG_CFG"; then
+        "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
+      fi
+            rm -f src/rust/Cargo.lock
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+      if test $? -ne 0; then
+        echo "configure: error: failed to generate lockfile from vendored sources" >&2
+        exit 1
+      fi
+      echo "configure: regenerated Cargo.lock for CRAN build"
     fi
   else
         if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then

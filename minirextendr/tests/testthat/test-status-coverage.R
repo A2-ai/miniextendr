@@ -66,10 +66,10 @@ test_that("miniextendr_status detects generated files as missing", {
 })
 
 # -----------------------------------------------------------------------------
-# miniextendr_check() tests
+# miniextendr_validate() tests
 # -----------------------------------------------------------------------------
 
-test_that("miniextendr_check validates DESCRIPTION config", {
+test_that("miniextendr_validate validates DESCRIPTION config", {
   tmp <- tempfile("check-desc-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
@@ -77,12 +77,12 @@ test_that("miniextendr_check validates DESCRIPTION config", {
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
 
   # Should pass - monorepo template sets up DESCRIPTION correctly
-  result <- suppressMessages(miniextendr_check())
+  result <- suppressMessages(miniextendr_validate())
   # Result depends on whether Rust is installed and crates vendored
   expect_type(result, "logical")
 })
 
-test_that("miniextendr_check warns on missing Config/build/bootstrap", {
+test_that("miniextendr_validate warns on missing Config/build/bootstrap", {
   tmp <- tempfile("check-bootstrap-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
@@ -97,6 +97,6 @@ test_that("miniextendr_check warns on missing Config/build/bootstrap", {
     file.path(tmp, "configure.ac"))
 
   # Should return FALSE or TRUE with warnings (DESCRIPTION missing Config fields)
-  result <- suppressMessages(miniextendr_check())
+  result <- suppressMessages(miniextendr_validate())
   expect_type(result, "logical")
 })
