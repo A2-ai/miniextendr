@@ -13,6 +13,16 @@
 #' @export
 create_miniextendr_package <- function(path, open = rlang::is_interactive(),
                                         rstudio = TRUE) {
+  # Validate package name (derived from directory basename)
+  pkg_name <- basename(normalizePath(path, mustWork = FALSE))
+  if (grepl("-", pkg_name)) {
+    cli::cli_abort(c(
+      "Package name {.val {pkg_name}} contains hyphens, which are not allowed in R package names.",
+      "i" = "Use dots or underscores instead: {.val {gsub('-', '.', pkg_name)}} or {.val {gsub('-', '_', pkg_name)}}",
+      "i" = "Or choose a directory name without hyphens."
+    ))
+  }
+
   # Create basic package
   usethis::create_package(
     path,

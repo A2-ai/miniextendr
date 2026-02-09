@@ -2,6 +2,8 @@
 ^dev$
 
 # Build artifacts and generated files
+^rust-target$
+^ra-target$
 ^src/rust/target$
 ^src/rust/ra_target$
 ^src/rust/\.cargo$
@@ -15,7 +17,7 @@
 ^autom4te\.cache$
 
 # Generated R wrapper (kept in src/, copied to R/)
-^src/miniextendr_wrappers\.R$
+^src/.*-wrappers\.R$
 
 # Development files
 ^bootstrap\.R$

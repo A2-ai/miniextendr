@@ -106,12 +106,20 @@ miniextendr_document <- function() {
   check_result(result, "document binary")
 
   # Copy generated wrappers to R/
-  src_wrappers <- usethis::proj_path("src", "rust", "miniextendr_wrappers.R")
-  r_wrappers <- usethis::proj_path("R", "miniextendr_wrappers.R")
+  # The document binary writes {pkg_name}-wrappers.R in src/rust/
+  pkg_name <- tryCatch(
+    desc::desc_get("Package", file = usethis::proj_path("DESCRIPTION"))[[1]],
+    error = function(e) NULL
+  )
+  if (!is.null(pkg_name)) {
+    wrapper_name <- paste0(pkg_name, "-wrappers.R")
+    src_wrappers <- usethis::proj_path("src", "rust", wrapper_name)
+    r_wrappers <- usethis::proj_path("R", wrapper_name)
 
-  if (fs::file_exists(src_wrappers)) {
-    fs::file_copy(src_wrappers, r_wrappers, overwrite = TRUE)
-    cli::cli_alert_success("Generated {.path R/miniextendr_wrappers.R}")
+    if (fs::file_exists(src_wrappers)) {
+      fs::file_copy(src_wrappers, r_wrappers, overwrite = TRUE)
+      cli::cli_alert_success("Generated {.path {file.path('R', wrapper_name)}}")
+    }
   }
 
   invisible(TRUE)
@@ -157,12 +165,20 @@ miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
   cli::cli_h2("Step 4: document (generate R wrappers)")
   miniextendr_document()
 
+  cli::cli_h2("Step 5: roxygen2 (update NAMESPACE + man pages)")
+  if (!requireNamespace("devtools", quietly = TRUE)) {
+    warn("devtools not installed, skipping roxygen2 step")
+  } else {
+    devtools::document(pkg_path)
+    cli::cli_alert_success("Updated NAMESPACE and documentation")
+  }
+
   if (install) {
-    cli::cli_h2("Step 5: second install (with R wrappers)")
+    cli::cli_h2("Step 6: final install (with R wrappers + NAMESPACE)")
     withr::with_envvar(env_vars, {
       devtools::install(pkg_path, upgrade = "never", quiet = TRUE)
     })
-    cli::cli_alert_success("Installed package (second pass)")
+    cli::cli_alert_success("Installed package (final pass)")
   }
 
   cli::cli_alert_success("Build complete!")

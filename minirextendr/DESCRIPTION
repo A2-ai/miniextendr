@@ -1,6 +1,6 @@
 Package: minirextendr
 Title: Scaffold miniextendr R Packages
-Version: 0.1.0
+Version: 0.2.0
 Authors@R:
     c(
         person("Mossa M.", "Reimert", , "mossa@sund.ku.dk", role = c("aut", "cre")),
