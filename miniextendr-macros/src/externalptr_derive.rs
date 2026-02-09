@@ -400,7 +400,8 @@ fn generate_getter_body(
                     if ptr.is_null() {
                         return R_NilValue;
                     }
-                    // Clone the value and convert to R
+                    // Clone the value and convert to R.
+                    // Note: sidecar field types must implement Clone.
                     let val: #ty = (*ptr).#field_name.clone();
                     <#ty as IntoR>::into_sexp(val)
                 }
@@ -808,16 +809,13 @@ fn generate_class_integration_r_code(
 ///
 /// Generates code for pub #[r_data] fields based on their SlotKind and ClassSystem.
 fn generate_sidecar_accessors(input: &DeriveInput, info: &SidecarInfo) -> syn::Result<TokenStream> {
-    // Check for generics with pub sidecar slots
+    // Reject generic structs — .Call entrypoints cannot be generic
     if !input.generics.params.is_empty() {
-        let has_pub_slots = info.slots.iter().any(|s| s.is_public);
-        if has_pub_slots {
-            return Err(syn::Error::new_spanned(
-                &input.generics,
-                "generic types with pub #[r_data] fields are not supported; \
-                 .Call entrypoints cannot be generic",
-            ));
-        }
+        return Err(syn::Error::new_spanned(
+            &input.generics,
+            "ExternalPtr does not support generic structs; \
+             .Call entrypoints cannot be generic",
+        ));
     }
 
     // If no selector or no public slots, generate empty constants

@@ -835,6 +835,22 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
     // Extract field information
     let fields = extract_fields(&input)?;
 
+    // Reject generic structs — generated R code cannot be generic
+    if !input.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &input.generics,
+            "Vctrs does not support generic structs",
+        ));
+    }
+
+    // Reject empty structs
+    if fields.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &input.ident,
+            "Vctrs requires at least one field",
+        ));
+    }
+
     // Require class attribute
     let class_name = attrs.class.ok_or_else(|| {
         syn::Error::new_spanned(
@@ -1198,6 +1214,42 @@ mod tests {
         let code = result.to_string();
 
         assert!(code.contains("pct"));
+    }
+
+    #[test]
+    fn test_empty_struct_error() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "empty", base = "double")]
+            struct Empty {}
+        };
+
+        let result = derive_vctrs(input);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("requires at least one field")
+        );
+    }
+
+    #[test]
+    fn test_generic_struct_error() {
+        let input: DeriveInput = syn::parse_quote! {
+            #[vctrs(class = "generic", base = "double")]
+            struct Generic<T> {
+                data: Vec<T>,
+            }
+        };
+
+        let result = derive_vctrs(input);
+        assert!(result.is_err());
+        assert!(
+            result
+                .unwrap_err()
+                .to_string()
+                .contains("does not support generic")
+        );
     }
 
     #[test]
