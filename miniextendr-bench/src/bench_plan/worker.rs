@@ -1,11 +1,10 @@
 //! Worker-thread and dispatch benchmarks.
 //!
-//! Planned groups:
-//! - `run_on_worker` overhead vs direct function call
-//! - `with_r_thread` round-trip latency (worker -> main -> worker)
-//! - `channel_saturation` (many small R calls)
-//! - `batching` (send N requests at once)
+//! Implemented groups:
+//! - `run_on_worker`: pure Rust closure overhead
+//! - `with_r_thread`: round-trip latency (worker → main → worker)
+//! - `channel_saturation`: 20 sequential worker round-trips
+//! - `batching`: single worker hop with 10 batched R thread requests
 //!
-//! Parameters:
-//! - payload size (small vs large vectors)
-//! - number of calls per batch
+//! Remaining gap:
+//! - Payload size and batch count are hardcoded, not parameterized via divan

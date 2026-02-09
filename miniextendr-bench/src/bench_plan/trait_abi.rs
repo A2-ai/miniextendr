@@ -1,12 +1,11 @@
 //! Trait ABI (mx_erased) benchmarks.
 //!
-//! Planned groups:
-//! - `query_vtable`: `mx_base_vtable.query` hit and miss paths
-//! - `view_construct`: compute data pointer + `TraitView::from_raw_parts`
-//! - `dispatch`: method calls via `<Trait>View` vs direct concrete calls
-//! - `end_to_end`: query + view + dispatch (represents downcast call sites)
+//! Implemented groups:
+//! - `query_vtable`: hit path + miss path
+//! - `view_construct`: implicit in view_value_only, query_view_value
+//! - `dispatch`: &self (value) vs &mut self (increment), repeated-hot (10x)
+//! - `end_to_end`: query + view + call (query_view_value)
+//! - `baseline`: direct concrete calls for comparison
 //!
-//! Parameters:
-//! - tiny vs medium traits (1 method vs several)
-//! - `&self` vs `&mut self` methods
-//! - repeated dispatch on the same erased object (cache-hot behavior)
+//! Remaining gap:
+//! - Multi-method trait variant (current trait has only 2 methods)
