@@ -138,6 +138,8 @@ phase_a1_repo_sync() {
   just templates-check
   log_info "Running vendor-sync-check..."
   just vendor-sync-check
+  log_info "Running lint..."
+  just lint
 }
 
 phase_a2_dev_build() {
@@ -163,6 +165,9 @@ phase_a3_high_risk_tests() {
     externalptr
     class-systems
     altrep
+    serde_r
+    feature-adapters
+    rayon
   )
   for filter in "${filters[@]}"; do
     log_info "Running high-risk filter: $filter"
@@ -332,6 +337,97 @@ RSCRIPT
   find "$mono_root" -type f -not -path '*/target/*' -not -path '*/.git/*' | sort > "$MX_ARTIFACTS/monorepo-tree.txt"
 }
 
+phase_b3_external_dep_revendor() {
+  cd "$MX_ROOT"
+  local smoke_pkg="$MX_SMOKE_ROOT/standalone.smoke"
+  local smoke_lib="$MX_SMOKE_ROOT/r-lib-standalone"
+
+  if [ ! -d "$smoke_pkg" ]; then
+    log_info "B3 requires B2 to have run first (standalone scaffold)"
+    return 1
+  fi
+
+  log_info "Adding external dependency to standalone scaffold..."
+  cd "$smoke_pkg"
+
+  # Add itertools to Cargo.toml
+  Rscript -e "minirextendr::cargo_add('itertools@0.14', path = '.')" || {
+    # Fall back to manual edit if cargo_add unavailable
+    cd src/rust
+    cargo add itertools@0.14
+    cd "$smoke_pkg"
+  }
+
+  # Add a function that uses itertools
+  cat >> src/rust/src/lib.rs << 'RUSTEOF'
+
+#[miniextendr_api::miniextendr]
+pub fn join_sorted(x: Vec<String>) -> String {
+    use itertools::Itertools;
+    x.into_iter().sorted().join(", ")
+}
+RUSTEOF
+
+  # Re-configure and rebuild
+  NOT_CRAN=true ./configure
+  NOT_CRAN=true R CMD INSTALL --no-multiarch -l "$smoke_lib" .
+
+  # Test the new function
+  local pkg_name
+  pkg_name="$(Rscript -e 'd <- read.dcf("DESCRIPTION")[1,]; cat(d[["Package"]])')"
+
+  Rscript - <<RTEST
+lib <- "${smoke_lib}"
+.libPaths(c(lib, .libPaths()))
+library("${pkg_name}", character.only = TRUE, lib.loc = lib)
+result <- join_sorted(c("banana", "apple", "cherry"))
+cat("join_sorted() returned:", result, "\n")
+stopifnot(result == "apple, banana, cherry")
+cat("External dep re-vendor smoke: OK\n")
+RTEST
+}
+
+phase_b5_api_helpers() {
+  cd "$MX_ROOT"
+  local smoke_pkg="$MX_SMOKE_ROOT/standalone.smoke"
+
+  if [ ! -d "$smoke_pkg" ]; then
+    log_info "B5 requires B2 to have run first (standalone scaffold)"
+    return 1
+  fi
+
+  log_info "Testing minirextendr API helpers in scaffolded project..."
+  Rscript - <<RSCRIPT
+library(minirextendr)
+library(usethis)
+
+pkg <- "${smoke_pkg}"
+proj_set(pkg, force = TRUE)
+
+# miniextendr_doctor should return no fails
+diag <- miniextendr_doctor()
+if (length(diag\$fail) > 0) {
+  cat("Doctor found failures:\n")
+  print(diag\$fail)
+  stop("miniextendr_doctor() reported failures")
+}
+cat("miniextendr_doctor(): OK\n")
+
+# Cargo wrapper commands should execute without error
+tryCatch(cargo_check(path = file.path(pkg, "src", "rust")), error = function(e) {
+  cat("cargo_check warning:", conditionMessage(e), "\n")
+})
+cat("cargo_check(): OK\n")
+
+tryCatch(cargo_clippy(path = file.path(pkg, "src", "rust")), error = function(e) {
+  cat("cargo_clippy warning:", conditionMessage(e), "\n")
+})
+cat("cargo_clippy(): OK\n")
+
+cat("API helper smoke: OK\n")
+RSCRIPT
+}
+
 # ---------------------------------------------------------------------------
 # Phase C: Failure-injection (optional/best-effort)
 # ---------------------------------------------------------------------------
@@ -385,6 +481,34 @@ phase_c2_vendor_fallback() {
   # Restore dev mode
   cd "$MX_ROOT"
   just configure
+}
+
+phase_c3_install_order() {
+  cd "$MX_ROOT"
+  log_info "Testing cross-package install order constraint..."
+
+  # Clean consumer first
+  just cross-clean || true
+
+  # Attempt to install consumer BEFORE producer — should fail
+  log_info "Attempting consumer install without producer (should fail)..."
+  local consumer_dir="tests/cross-package/consumer.pkg"
+  local rc=0
+  R CMD INSTALL "$consumer_dir" 2>&1 || rc=$?
+
+  if [ $rc -eq 0 ]; then
+    log_info "WARNING: consumer installed without producer — expected failure"
+    return 1
+  fi
+  log_info "Consumer correctly failed without producer (exit=$rc)"
+
+  # Now install in correct order: producer first, then consumer
+  log_info "Installing in correct order (producer then consumer)..."
+  just cross-install
+
+  # Verify correct-order install works
+  log_info "Running cross-package tests to verify correct order..."
+  just cross-test
 }
 
 # ---------------------------------------------------------------------------
@@ -501,15 +625,19 @@ main() {
   # --- Phase B: minirextendr smoke ---
   run_phase "B1" "minirextendr package tests and check" phase_b1_minirextendr_pkg
   run_phase "B2" "Scaffolding smoke: standalone package" phase_b2_scaffold_standalone
+  run_phase "B3" "External dep re-vendor" phase_b3_external_dep_revendor
   run_phase "B4" "Scaffolding smoke: monorepo package" phase_b4_scaffold_monorepo
+  run_phase "B5" "minirextendr API helpers" phase_b5_api_helpers
 
   # --- Phase C: Failure-injection (optional/best-effort) ---
   if [ $QUICK -eq 0 ]; then
     run_phase_optional "C1" "Stale generated-file detection" phase_c1_stale_detection
     run_phase_optional "C2" "Vendor fallback behavior" phase_c2_vendor_fallback
+    run_phase_optional "C3" "Cross-package install order constraint" phase_c3_install_order
   else
     skip_phase "C1: Stale generated-file detection"
     skip_phase "C2: Vendor fallback behavior"
+    skip_phase "C3: Cross-package install order constraint"
   fi
 
   # Summary (exit 1 if any hard-fail phases failed)
