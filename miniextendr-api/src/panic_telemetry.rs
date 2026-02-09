@@ -46,13 +46,18 @@ pub struct PanicReport<'a> {
 /// We store a raw pointer to a leaked `Box<dyn Fn(&PanicReport) + Send + Sync>`.
 /// This avoids the overhead of `Arc`/`Mutex` on the hot path — the hook is
 /// set once and read many times.
+///
+/// Old hooks are intentionally leaked on replacement to avoid a use-after-free
+/// race between concurrent `fire()` readers and `set_panic_telemetry_hook()`
+/// writers. In practice hooks are set once at init, so this never leaks.
 static HOOK: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 
 /// Register a panic telemetry hook.
 ///
 /// The hook is called with a [`PanicReport`] each time a Rust panic is about
 /// to be converted into an R error. Only one hook can be active at a time;
-/// calling this again replaces the previous hook.
+/// calling this again replaces the previous hook (the old hook is leaked to
+/// avoid a race with concurrent readers).
 ///
 /// # Thread Safety
 ///
@@ -61,15 +66,10 @@ static HOOK: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
 pub fn set_panic_telemetry_hook(f: impl Fn(&PanicReport) + Send + Sync + 'static) {
     let boxed: Box<dyn Fn(&PanicReport) + Send + Sync> = Box::new(f);
     let leaked = Box::into_raw(Box::new(boxed));
-    let old = HOOK.swap(leaked.cast(), Ordering::Release);
-    if !old.is_null() {
-        // Drop the previous hook
-        unsafe {
-            drop(Box::from_raw(
-                old.cast::<Box<dyn Fn(&PanicReport) + Send + Sync>>(),
-            ));
-        }
-    }
+    // Old pointer is intentionally NOT freed — a concurrent fire() may still
+    // be reading it. Hooks are set at most a handful of times so the leak is
+    // negligible.
+    HOOK.swap(leaked.cast(), Ordering::Release);
 }
 
 /// Fire the telemetry hook if one is set.
