@@ -51,7 +51,7 @@ impl MethodReturnBuilder {
             strategy: ReturnStrategy::Direct,
             class_name: None,
             chain_var: None,
-            indent: 4,
+            indent: 2,
         }
     }
 

@@ -365,8 +365,8 @@ fn generate_vtable_static(
     // Format R wrapper as raw string literal
     let r_wrapper_str: TokenStream = {
         use std::str::FromStr;
-        let indented = r_wrapper_string.replace('\n', "\n    ");
-        let raw = format!("r#\"\n    {}\n\"#", indented);
+        let indented = r_wrapper_string.replace('\n', "\n  ");
+        let raw = format!("r#\"\n  {}\n\"#", indented);
         TokenStream::from_str(&raw).expect("valid raw string literal")
     };
     let source_loc_doc = crate::source_location_doc(type_ident.span());
@@ -888,7 +888,7 @@ fn generate_trait_env_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, function_params
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -914,7 +914,7 @@ fn generate_trait_env_r_wrapper(
             "{}${}${} <- function() {{",
             type_ident, trait_name, const_name
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -988,7 +988,7 @@ fn generate_trait_s3_r_wrapper(
             "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
         ));
         lines.push(format!(
-            "    {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")"
+            "  {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")"
         ));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -1022,7 +1022,7 @@ fn generate_trait_s3_r_wrapper(
             "{} <- function({}) {{",
             s3_method_name, full_params
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
 
         // Additionally register as S7 method if the generic is S7
@@ -1031,7 +1031,7 @@ fn generate_trait_s3_r_wrapper(
             "if (inherits(get0(\"{generic_name}\", mode = \"function\"), \"S7_generic\")) {{"
         ));
         lines.push(format!(
-            "    S7::method({generic_name}, S7::new_S3_class(\"{type_str}\")) <- {s3_method_name}"
+            "  S7::method({generic_name}, S7::new_S3_class(\"{type_str}\")) <- {s3_method_name}"
         ));
         lines.push("}".to_string());
         lines.push(String::new());
@@ -1076,7 +1076,7 @@ fn generate_trait_s3_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, formals
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1099,7 +1099,7 @@ fn generate_trait_s3_r_wrapper(
             "{}${}${} <- function() {{",
             type_ident, trait_name, const_name
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1206,7 +1206,7 @@ fn generate_trait_s4_r_wrapper(
             "methods::setMethod(\"{}\", \"{}\", function({}) {{",
             generic_name, type_str, full_params
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("})".to_string());
         lines.push(String::new());
     }
@@ -1239,7 +1239,7 @@ fn generate_trait_s4_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, formals));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1260,7 +1260,7 @@ fn generate_trait_s4_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).build();
 
         lines.push(format!("{} <- function() {{", fn_name));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1348,8 +1348,12 @@ fn generate_trait_s7_r_wrapper(
 
         // S7 generic definition
         lines.push(format!(
-            "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
+            "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
         ));
+        lines.push(format!(
+            "  {generic_name} <- S7::new_generic(\"{generic_name}\", \"x\", function(x, ...) S7::S7_dispatch())"
+        ));
+        lines.push("}".to_string());
         lines.push(String::new());
 
         // Build .Call() invocation
@@ -1364,7 +1368,7 @@ fn generate_trait_s7_r_wrapper(
             "S7::method({}, {}) <- function({}) {{",
             generic_name, s7_class_var, full_params
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1406,7 +1410,7 @@ fn generate_trait_s7_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, formals
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1429,7 +1433,7 @@ fn generate_trait_s7_r_wrapper(
             "{}${}${} <- function() {{",
             type_ident, trait_name, const_name
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1519,7 +1523,7 @@ fn generate_trait_r6_r_wrapper(
             .build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, full_params));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1561,7 +1565,7 @@ fn generate_trait_r6_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, formals
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1584,7 +1588,7 @@ fn generate_trait_r6_r_wrapper(
             "{}${}${} <- function() {{",
             type_ident, trait_name, const_name
         ));
-        lines.push(format!("    {}", call));
+        lines.push(format!("  {}", call));
         lines.push("}".to_string());
         lines.push(String::new());
     }

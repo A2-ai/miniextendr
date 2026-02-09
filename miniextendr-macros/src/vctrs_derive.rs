@@ -1035,6 +1035,9 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         arith: attrs.arith,
         math: attrs.math,
     });
+    // Add cosmetic 2-space indent for Rust source readability.
+    // The document binary strips this prefix when writing the .R file.
+    let r_wrappers = r_wrappers.replace('\n', "\n  ");
     let type_start = name.span().start();
     let source_line_lit = syn::LitInt::new(&type_start.line.to_string(), name.span());
     let source_col_lit = syn::LitInt::new(&(type_start.column + 1).to_string(), name.span());

@@ -38,7 +38,7 @@ fn main() {
                 let s = s.trim();
                 let s: String = s
                     .lines()
-                    .map(|line| line.strip_prefix("    ").unwrap_or(line))
+                    .map(|line| line.strip_prefix("  ").unwrap_or(line))
                     .collect::<Vec<_>>()
                     .join("\n");
                 f.write_all(s.as_bytes()).unwrap();

@@ -1255,28 +1255,40 @@ pub fn miniextendr(
     // Generate lifecycle prelude if needed
     let lifecycle_prelude = lifecycle_spec
         .as_ref()
-        .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str))
-        .map(|prelude| format!("{}; ", prelude))
-        .unwrap_or_default();
+        .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
-    let r_wrapper_string = format!(
-        "{}{}{}{}{}{} <- function({}) {{\n    {}{}\n}}",
-        roxygen_tags_str,
-        source_comment,
-        s3_method_comment,
-        internal_comment,
-        export_comment,
-        r_wrapper_ident_str,
-        formals_joined,
-        lifecycle_prelude,
-        r_wrapper_return_str
-    );
+    let r_wrapper_string = if let Some(prelude) = lifecycle_prelude {
+        format!(
+            "{}{}{}{}{}{} <- function({}) {{\n  {}\n  {}\n}}",
+            roxygen_tags_str,
+            source_comment,
+            s3_method_comment,
+            internal_comment,
+            export_comment,
+            r_wrapper_ident_str,
+            formals_joined,
+            prelude,
+            r_wrapper_return_str
+        )
+    } else {
+        format!(
+            "{}{}{}{}{}{} <- function({}) {{\n  {}\n}}",
+            roxygen_tags_str,
+            source_comment,
+            s3_method_comment,
+            internal_comment,
+            export_comment,
+            r_wrapper_ident_str,
+            formals_joined,
+            r_wrapper_return_str
+        )
+    };
     // Use a raw string literal for better readability in macro expansion
     let r_wrapper_str: proc_macro2::TokenStream = {
         use std::str::FromStr;
-        // Indent each line by 4 spaces for nicer formatting
-        let indented = r_wrapper_string.replace('\n', "\n    ");
-        let raw = format!("r#\"\n    {}\n\"#", indented);
+        // Indent each line by 2 spaces for nicer formatting
+        let indented = r_wrapper_string.replace('\n', "\n  ");
+        let raw = format!("r#\"\n  {}\n\"#", indented);
         proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
     };
 

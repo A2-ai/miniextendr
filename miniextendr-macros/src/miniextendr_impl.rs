@@ -1898,9 +1898,9 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             lines.extend(method_doc.build());
         }
         lines.push(format!("{}$new <- function({}) {{", class_name, ctx.params));
-        lines.push(format!("    self <- {}", ctx.static_call()));
-        lines.push(format!("    class(self) <- \"{}\"", class_name));
-        lines.push("    self".to_string());
+        lines.push(format!("  self <- {}", ctx.static_call()));
+        lines.push(format!("  class(self) <- \"{}\"", class_name));
+        lines.push("  self".to_string());
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1924,7 +1924,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let call = ctx.instance_call("self");
@@ -1957,7 +1957,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -1989,22 +1989,22 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         }
     }
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
-    lines.push(format!("    obj <- {}[[name]]", class_name));
-    lines.push("    if (is.environment(obj)) {".to_string());
-    lines.push("        # Trait namespace - bind self to all methods".to_string());
-    lines.push("        bound <- new.env(parent = emptyenv())".to_string());
-    lines.push("        for (method_name in names(obj)) {".to_string());
-    lines.push("            method <- obj[[method_name]]".to_string());
-    lines.push("            if (is.function(method)) {".to_string());
-    lines.push("                environment(method) <- environment()".to_string());
-    lines.push("                bound[[method_name]] <- method".to_string());
-    lines.push("            }".to_string());
-    lines.push("        }".to_string());
-    lines.push("        bound".to_string());
-    lines.push("    } else {".to_string());
-    lines.push("        environment(obj) <- environment()".to_string());
-    lines.push("        obj".to_string());
+    lines.push(format!("  obj <- {}[[name]]", class_name));
+    lines.push("  if (is.environment(obj)) {".to_string());
+    lines.push("    # Trait namespace - bind self to all methods".to_string());
+    lines.push("    bound <- new.env(parent = emptyenv())".to_string());
+    lines.push("    for (method_name in names(obj)) {".to_string());
+    lines.push("      method <- obj[[method_name]]".to_string());
+    lines.push("      if (is.function(method)) {".to_string());
+    lines.push("        environment(method) <- environment()".to_string());
+    lines.push("        bound[[method_name]] <- method".to_string());
+    lines.push("      }".to_string());
     lines.push("    }".to_string());
+    lines.push("    bound".to_string());
+    lines.push("  } else {".to_string());
+    lines.push("    environment(obj) <- environment()".to_string());
+    lines.push("    obj".to_string());
+    lines.push("  }".to_string());
     lines.push("}".to_string());
     if class_has_no_rd {
         lines.push("#' @noRd".to_string());
@@ -2072,11 +2072,11 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
     // Portable flag (only emit if explicitly set to FALSE, since TRUE is default)
     if parsed_impl.r6_portable == Some(false) {
-        lines.push("    portable = FALSE,".to_string());
+        lines.push("  portable = FALSE,".to_string());
     }
 
     // Public list
-    lines.push("    public = list(".to_string());
+    lines.push("  public = list(".to_string());
 
     // Public instance methods (collect first to know if we need trailing comma on initialize)
     let public_method_contexts: Vec<_> = parsed_impl.public_instance_method_contexts().collect();
@@ -2093,7 +2093,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 } else {
                     line.to_string()
                 };
-                lines.push(format!("        #' {}", line));
+                lines.push(format!("    #' {}", line));
             }
         }
 
@@ -2106,20 +2106,17 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             } else {
                 format!("{}, .ptr = NULL", ctx.params)
             };
-            lines.push(format!("        initialize = function({}) {{", full_params));
-            lines.push("            if (!is.null(.ptr)) {".to_string());
-            lines.push("                private$.ptr <- .ptr".to_string());
-            lines.push("            } else {".to_string());
-            lines.push(format!(
-                "                private$.ptr <- {}",
-                ctx.static_call()
-            ));
-            lines.push("            }".to_string());
-            lines.push(format!("        }}{}", comma));
+            lines.push(format!("    initialize = function({}) {{", full_params));
+            lines.push("      if (!is.null(.ptr)) {".to_string());
+            lines.push("        private$.ptr <- .ptr".to_string());
+            lines.push("      } else {".to_string());
+            lines.push(format!("        private$.ptr <- {}", ctx.static_call()));
+            lines.push("      }".to_string());
+            lines.push(format!("    }}{}", comma));
         } else {
-            lines.push(format!("        initialize = function({}) {{", ctx.params));
-            lines.push(format!("            private$.ptr <- {}", ctx.static_call()));
-            lines.push(format!("        }}{}", comma));
+            lines.push(format!("    initialize = function({}) {{", ctx.params));
+            lines.push(format!("      private$.ptr <- {}", ctx.static_call()));
+            lines.push(format!("    }}{}", comma));
         }
     }
 
@@ -2140,19 +2137,19 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 } else {
                     line.to_string()
                 };
-                lines.push(format!("        #' {}", line));
+                lines.push(format!("    #' {}", line));
             }
         }
 
         lines.push(format!(
-            "        {} = function({}) {{",
+            "    {} = function({}) {{",
             ctx.method.ident, ctx.params
         ));
 
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, ctx.method.ident);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("            {}", prelude));
+            lines.push(format!("      {}", prelude));
         }
 
         let call = ctx.instance_call("private$.ptr");
@@ -2160,21 +2157,21 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_indent(12); // R6 methods have 12-space indent
+            .with_indent(6); // R6 methods have 6-space indent
         lines.extend(return_builder.build_r6_body());
 
-        lines.push(format!("        }}{}", comma));
+        lines.push(format!("    }}{}", comma));
     }
 
-    lines.push("    ),".to_string());
+    lines.push("  ),".to_string());
 
     // Private list - includes .ptr and any private methods
-    lines.push("    private = list(".to_string());
+    lines.push("  private = list(".to_string());
 
     // Private instance methods
     for ctx in parsed_impl.private_instance_method_contexts() {
         lines.push(format!(
-            "        {} = function({}) {{",
+            "    {} = function({}) {{",
             ctx.method.ident, ctx.params
         ));
 
@@ -2183,17 +2180,17 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_indent(12);
+            .with_indent(6);
         lines.extend(return_builder.build_r6_body());
 
-        lines.push("        },".to_string());
+        lines.push("    },".to_string());
     }
 
     // Finalizer (if any)
     if let Some(finalizer) = parsed_impl.finalizer() {
         let c_ident = finalizer.c_wrapper_ident(type_ident, parsed_impl.label());
         lines.push(format!(
-            "        finalize = function() .Call({}, .call = match.call(), private$.ptr),",
+            "    finalize = function() .Call({}, .call = match.call(), private$.ptr),",
             c_ident
         ));
     }
@@ -2206,19 +2203,19 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     {
         let c_ident = dc_method.c_wrapper_ident(type_ident, parsed_impl.label());
         lines.push(format!(
-            "        deep_clone = function(name, value) .Call({}, .call = match.call(), private$.ptr, name, value),",
+            "    deep_clone = function(name, value) .Call({}, .call = match.call(), private$.ptr, name, value),",
             c_ident
         ));
     }
 
     // .ptr field (always last, no trailing comma)
-    lines.push("        .ptr = NULL".to_string());
-    lines.push("    ),".to_string());
+    lines.push("    .ptr = NULL".to_string());
+    lines.push("  ),".to_string());
 
     // Active bindings list (for property-like access)
     let active_method_contexts: Vec<_> = parsed_impl.active_instance_method_contexts().collect();
     if !active_method_contexts.is_empty() {
-        lines.push("    active = list(".to_string());
+        lines.push("  active = list(".to_string());
 
         for (i, ctx) in active_method_contexts.iter().enumerate() {
             let comma = if i < active_method_contexts.len() - 1 {
@@ -2248,7 +2245,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                         // Continuation lines stay as-is
                         line.to_string()
                     };
-                    lines.push(format!("        #' {}", line));
+                    lines.push(format!("    #' {}", line));
                 }
             }
 
@@ -2266,14 +2263,14 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             if let Some(setter_method) = setter {
                 // Combined getter/setter active binding
                 // Format: name = function(value) { if (missing(value)) getter else setter }
-                lines.push(format!("        {} = function(value) {{", prop_name));
-                lines.push("            if (missing(value)) {".to_string());
+                lines.push(format!("    {} = function(value) {{", prop_name));
+                lines.push("      if (missing(value)) {".to_string());
 
                 // Getter call
                 let getter_call = ctx.instance_call("private$.ptr");
-                lines.push(format!("                {}", getter_call));
+                lines.push(format!("        {}", getter_call));
 
-                lines.push("            } else {".to_string());
+                lines.push("      } else {".to_string());
 
                 // Setter call - construct directly
                 let setter_c_ident =
@@ -2282,29 +2279,29 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     ".Call({}, .call = match.call(), private$.ptr, value)",
                     setter_c_ident
                 );
-                lines.push(format!("                {}", setter_call));
-                lines.push("                invisible(self)".to_string());
+                lines.push(format!("        {}", setter_call));
+                lines.push("        invisible(self)".to_string());
 
-                lines.push("            }".to_string());
-                lines.push(format!("        }}{}", comma));
+                lines.push("      }".to_string());
+                lines.push(format!("    }}{}", comma));
             } else {
                 // Getter-only active binding (no parameters besides self)
                 // Format: name = function() { ... }
-                lines.push(format!("        {} = function() {{", prop_name));
+                lines.push(format!("    {} = function() {{", prop_name));
 
                 let call = ctx.instance_call("private$.ptr");
                 let strategy = crate::ReturnStrategy::for_method(ctx.method);
                 let return_builder = crate::MethodReturnBuilder::new(call)
                     .with_strategy(strategy)
                     .with_class_name(class_name.clone())
-                    .with_indent(12); // R6 active bindings have 12-space indent
+                    .with_indent(6); // R6 active bindings have 6-space indent
                 lines.extend(return_builder.build_r6_body());
 
-                lines.push(format!("        }}{}", comma));
+                lines.push(format!("    }}{}", comma));
             }
         }
 
-        lines.push("    ),".to_string());
+        lines.push("  ),".to_string());
     }
 
     // Class options
@@ -2312,15 +2309,15 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     let lock_class = parsed_impl.r6_lock_class.unwrap_or(false);
     let cloneable = parsed_impl.r6_cloneable.unwrap_or(false);
     lines.push(format!(
-        "    lock_objects = {},",
+        "  lock_objects = {},",
         if lock_objects { "TRUE" } else { "FALSE" }
     ));
     lines.push(format!(
-        "    lock_class = {},",
+        "  lock_class = {},",
         if lock_class { "TRUE" } else { "FALSE" }
     ));
     lines.push(format!(
-        "    cloneable = {}",
+        "  cloneable = {}",
         if cloneable { "TRUE" } else { "FALSE" }
     ));
     lines.push(")".to_string());
@@ -2357,7 +2354,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         let what = format!("{}${}", class_name, method_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -2405,7 +2402,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         );
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
         lines.push(format!(
-            "    structure({}, class = \"{}\")",
+            "  structure({}, class = \"{}\")",
             ctx.static_call(),
             class_name
         ));
@@ -2443,7 +2440,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {{
-    {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
+  {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
 }}"
             ));
             lines.push(String::new());
@@ -2465,7 +2462,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         let what = format!("{}.{}", generic_name, class_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let call = ctx.instance_call("x");
@@ -2497,7 +2494,7 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -2805,14 +2802,14 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     if parsed_impl.s7_abstract {
-        lines.push("    abstract = TRUE,".to_string());
+        lines.push("  abstract = TRUE,".to_string());
     }
 
     // Properties - .ptr holds the ExternalPtr, plus computed/dynamic properties
     // When r_data_accessors is set, merge with sidecar properties from #[derive(ExternalPtr)]
     // Collect property items into a vec, then join with ",\n" to avoid bare commas on standalone lines
     let mut prop_items: Vec<String> = Vec::new();
-    prop_items.push("        .ptr = S7::class_any".to_string());
+    prop_items.push("    .ptr = S7::class_any".to_string());
 
     // Generate computed/dynamic properties
     for prop in properties.values() {
@@ -2905,10 +2902,10 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         if prop_parts.is_empty() {
             // This shouldn't happen, but handle gracefully
-            prop_items.push(format!("        {} = S7::new_property()", prop.name));
+            prop_items.push(format!("    {} = S7::new_property()", prop.name));
         } else {
             prop_items.push(format!(
-                "        {} = S7::new_property({})",
+                "    {} = S7::new_property({})",
                 prop.name,
                 prop_parts.join(", ")
             ));
@@ -2916,18 +2913,18 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     }
 
     if parsed_impl.r_data_accessors {
-        lines.push("    properties = c(list(".to_string());
+        lines.push("  properties = c(list(".to_string());
     } else {
-        lines.push("    properties = list(".to_string());
+        lines.push("  properties = list(".to_string());
     }
     lines.push(prop_items.join(",\n"));
 
     // Close the properties list (or merge with sidecar properties)
     if parsed_impl.r_data_accessors {
         let type_name = type_ident.to_string();
-        lines.push(format!("    ), .rdata_properties_{}),", type_name));
+        lines.push(format!("  ), .rdata_properties_{}),", type_name));
     } else {
-        lines.push("    ),".to_string());
+        lines.push("  ),".to_string());
     }
 
     if let Some(ctx) = parsed_impl.constructor_context() {
@@ -2937,26 +2934,23 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             } else {
                 format!("{}, .ptr = NULL", ctx.params)
             };
+            lines.push(format!("  constructor = function({}) {{", params_with_ptr));
+            lines.push("    if (!is.null(.ptr)) {".to_string());
+            lines.push("      S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
+            lines.push("    } else {".to_string());
             lines.push(format!(
-                "    constructor = function({}) {{",
-                params_with_ptr
-            ));
-            lines.push("        if (!is.null(.ptr)) {".to_string());
-            lines.push("            S7::new_object(S7::S7_object(), .ptr = .ptr)".to_string());
-            lines.push("        } else {".to_string());
-            lines.push(format!(
-                "            S7::new_object(S7::S7_object(), .ptr = {})",
+                "      S7::new_object(S7::S7_object(), .ptr = {})",
                 ctx.static_call()
             ));
-            lines.push("        }".to_string());
             lines.push("    }".to_string());
+            lines.push("  }".to_string());
         } else {
-            lines.push(format!("    constructor = function({}) {{", ctx.params));
+            lines.push(format!("  constructor = function({}) {{", ctx.params));
             lines.push(format!(
-                "        S7::new_object(S7::S7_object(), .ptr = {})",
+                "    S7::new_object(S7::S7_object(), .ptr = {})",
                 ctx.static_call()
             ));
-            lines.push("    }".to_string());
+            lines.push("  }".to_string());
         }
     }
 
@@ -3008,8 +3002,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
             // Use S7::new_external_generic for existing generics from other packages
             lines.push(format!(
-                "if (!exists(\"{gen_name}\", mode = \"function\")) {gen_name} <- S7::new_external_generic(\"{pkg}\", \"{gen_name}\")"
+                "if (!exists(\"{gen_name}\", mode = \"function\")) {{"
             ));
+            lines.push(format!(
+                "  {gen_name} <- S7::new_external_generic(\"{pkg}\", \"{gen_name}\")"
+            ));
+            lines.push("}".to_string());
 
             // Define method using the resolved generic name
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3022,8 +3020,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let what = format!("{}.{}", generic_name, class_name);
             if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
                 lines.push(format!(
-                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {{ {prelude}; {return_expr} }}"
+                    "S7::method({gen_name}, {method_class}) <- function({full_params}) {{"
                 ));
+                lines.push(format!("  {prelude}"));
+                lines.push(format!("  {return_expr}"));
+                lines.push("}".to_string());
             } else {
                 lines.push(format!(
                     "S7::method({gen_name}, {method_class}) <- function({full_params}) {return_expr}"
@@ -3075,8 +3076,12 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             };
 
             lines.push(format!(
-                "if (!exists(\"{generic_name}\", mode = \"function\")) {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
+                "if (!exists(\"{generic_name}\", mode = \"function\")) {{"
             ));
+            lines.push(format!(
+                "  {generic_name} <- S7::new_generic(\"{generic_name}\", {dispatch_args}, {generic_sig})"
+            ));
+            lines.push("}".to_string());
 
             // Define method
             let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3092,8 +3097,11 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let what = format!("{}.{}", generic_name, class_name);
             if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
                 lines.push(format!(
-                    "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{ {prelude}; {return_expr} }}"
+                    "S7::method({generic_name}, {method_class}) <- function({method_formals}) {{"
                 ));
+                lines.push(format!("  {prelude}"));
+                lines.push(format!("  {return_expr}"));
+                lines.push("}".to_string());
             } else {
                 lines.push(format!(
                     "S7::method({generic_name}, {method_class}) <- function({method_formals}) {return_expr}"
@@ -3124,7 +3132,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3132,7 +3140,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
             .build_s7_inline();
-        lines.push(format!("    {}", return_expr));
+        lines.push(format!("  {}", return_expr));
 
         lines.push("}".to_string());
         lines.push(String::new());
@@ -3287,7 +3295,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         lines.push(format!("{} <- function({}) {{", class_name, ctx.params));
         lines.push(format!(
-            "    methods::new(\"{}\", ptr = {})",
+            "  methods::new(\"{}\", ptr = {})",
             class_name,
             ctx.static_call()
         ));
@@ -3352,9 +3360,12 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let what = format!("{}.{}", method_name, class_name);
         if let Some(prelude) = method.lifecycle_prelude(&what) {
             lines.push(format!(
-                "methods::setMethod(\"{}\", \"{}\", function({}) {{ {}; {} }})",
-                method_name, class_name, full_params, prelude, return_expr
+                "methods::setMethod(\"{}\", \"{}\", function({}) {{",
+                method_name, class_name, full_params
             ));
+            lines.push(format!("  {}", prelude));
+            lines.push(format!("  {}", return_expr));
+            lines.push("})".to_string());
         } else {
             lines.push(format!(
                 "methods::setMethod(\"{}\", \"{}\", function({}) {})",
@@ -3385,7 +3396,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3393,7 +3404,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
             .build_s4_inline();
-        lines.push(format!("    {}", return_expr));
+        lines.push(format!("  {}", return_expr));
 
         lines.push("}".to_string());
         lines.push(String::new());
@@ -3441,7 +3452,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Generate constructor body based on vctrs kind
         lines.push(format!("{} <- function({}) {{", ctor_name, ctx.params));
-        lines.push(format!("    data <- {}", ctx.static_call()));
+        lines.push(format!("  data <- {}", ctx.static_call()));
 
         match vctrs_attrs.kind {
             VctrsKind::Vctr => {
@@ -3452,14 +3463,14 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     None => "",
                 };
                 lines.push(format!(
-                    "    vctrs::new_vctr(data, class = \"{}\"{})",
+                    "  vctrs::new_vctr(data, class = \"{}\"{})",
                     class_name, inherit_arg
                 ));
             }
             VctrsKind::Rcrd => {
                 // Record type - data should be a list
                 lines.push(format!(
-                    "    vctrs::new_rcrd(data, class = \"{}\")",
+                    "  vctrs::new_rcrd(data, class = \"{}\")",
                     class_name
                 ));
             }
@@ -3471,7 +3482,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                     .map(|p| format!(", ptype = {}", p))
                     .unwrap_or_default();
                 lines.push(format!(
-                    "    vctrs::new_list_of(data, class = \"{}\"{})",
+                    "  vctrs::new_list_of(data, class = \"{}\"{})",
                     class_name, ptype_arg
                 ));
             }
@@ -3598,7 +3609,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             }
             lines.push(format!(
                 "if (!exists(\"{generic_name}\", mode = \"function\")) {{
-    {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
+  {generic_name} <- function(x, ...) UseMethod(\"{generic_name}\")
 }}"
             ));
             lines.push(String::new());
@@ -3620,7 +3631,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         // Inject lifecycle prelude if present
         let what = format!("{}.{}", generic_name, class_name);
         if let Some(prelude) = ctx.method.lifecycle_prelude(&what) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let call = ctx.instance_call("x");
@@ -3649,7 +3660,7 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
 
         // Inject lifecycle prelude if present
         if let Some(prelude) = ctx.method.lifecycle_prelude(&fn_name) {
-            lines.push(format!("    {}", prelude));
+            lines.push(format!("  {}", prelude));
         }
 
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
@@ -3836,8 +3847,8 @@ pub fn expand_impl(
 
     let r_wrapper_str: TokenStream = {
         use std::str::FromStr;
-        let indented = r_wrapper_string.replace('\n', "\n    ");
-        let raw = format!("r#\"\n    {}\n\"#", indented);
+        let indented = r_wrapper_string.replace('\n', "\n  ");
+        let raw = format!("r#\"\n  {}\n\"#", indented);
         TokenStream::from_str(&raw).expect("valid raw string literal")
     };
 

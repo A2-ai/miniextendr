@@ -22,11 +22,8 @@ use proptest::test_runner::{Config, TestRunner};
 
 /// Run a property test inside the R thread.
 /// This avoids issues with proptest forking and R's single-threaded runtime.
-fn run_proptest<S>(
-    cases: u32,
-    strategy: S,
-    test_fn: impl Fn(S::Value) + Send + 'static,
-) where
+fn run_proptest<S>(cases: u32, strategy: S, test_fn: impl Fn(S::Value) + Send + 'static)
+where
     S: Strategy + Send + 'static,
     S::Value: Send + std::fmt::Debug,
 {
@@ -83,15 +80,11 @@ fn prop_i32_roundtrip() {
 #[test]
 fn prop_f64_roundtrip() {
     // Only finite, non-NaN values (NaN/Inf have special meaning in R)
-    run_proptest(
-        500,
-        prop::num::f64::NORMAL | prop::num::f64::ZERO,
-        |val| {
-            let sexp = val.into_sexp();
-            let recovered: f64 = unsafe { protected_roundtrip(sexp) };
-            assert_eq!(val, recovered);
-        },
-    );
+    run_proptest(500, prop::num::f64::NORMAL | prop::num::f64::ZERO, |val| {
+        let sexp = val.into_sexp();
+        let recovered: f64 = unsafe { protected_roundtrip(sexp) };
+        assert_eq!(val, recovered);
+    });
 }
 
 #[test]
@@ -470,10 +463,10 @@ fn edge_case_all_na_vector() {
 fn edge_case_unicode_strings() {
     r_test_utils::with_r_thread(|| {
         let unicode_strings = vec![
-            "".to_string(),          // empty
-            " ".to_string(),         // whitespace
-            "\t\n".to_string(),      // control chars
-            "\u{1F600}".to_string(), // emoji (grinning face)
+            "".to_string(),                 // empty
+            " ".to_string(),                // whitespace
+            "\t\n".to_string(),             // control chars
+            "\u{1F600}".to_string(),        // emoji (grinning face)
             "\u{4E16}\u{754C}".to_string(), // CJK (世界)
             "caf\u{00E9}".to_string(),      // accented Latin (café)
             "\u{0410}\u{0411}".to_string(), // Cyrillic (АБ)
