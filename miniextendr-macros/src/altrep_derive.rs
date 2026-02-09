@@ -17,6 +17,8 @@ struct AltrepAttrs {
     generate_lowlevel: bool,
     /// Options for impl_alt*_from_data! (dataptr, serialize, subset)
     lowlevel_options: Vec<syn::Ident>,
+    /// Guard mode override: "unsafe" | "rust_unwind" | "r_unwind"
+    guard: Option<syn::Ident>,
 }
 
 impl AltrepAttrs {
@@ -26,6 +28,7 @@ impl AltrepAttrs {
         let mut elt_field = None;
         let mut generate_lowlevel = true; // Default: generate
         let mut lowlevel_options = Vec::new();
+        let mut guard = None;
 
         for attr in &input.attrs {
             if !attr.path().is_ident("altrep") {
@@ -49,6 +52,12 @@ impl AltrepAttrs {
                     lowlevel_options.push(syn::Ident::new("serialize", meta.path.span()));
                 } else if meta.path.is_ident("subset") {
                     lowlevel_options.push(syn::Ident::new("subset", meta.path.span()));
+                } else if meta.path.is_ident("r#unsafe") || meta.path.is_ident("unsafe") {
+                    guard = Some(syn::Ident::new("Unsafe", meta.path.span()));
+                } else if meta.path.is_ident("rust_unwind") {
+                    guard = Some(syn::Ident::new("RustUnwind", meta.path.span()));
+                } else if meta.path.is_ident("r_unwind") {
+                    guard = Some(syn::Ident::new("RUnwind", meta.path.span()));
                 }
                 Ok(())
             })?;
@@ -59,6 +68,7 @@ impl AltrepAttrs {
             elt_field,
             generate_lowlevel,
             lowlevel_options,
+            guard,
         })
     }
 
@@ -91,6 +101,94 @@ impl AltrepAttrs {
             input.span(),
             "no length field found; specify with #[altrep(len = \"field_name\")]",
         ))
+    }
+
+    /// Returns true if a non-default guard mode is set (i.e. not RustUnwind).
+    fn has_non_default_guard(&self) -> bool {
+        match &self.guard {
+            Some(g) => g != "RustUnwind",
+            None => false,
+        }
+    }
+
+    /// Generate lowlevel impl code for a given ALTREP type family.
+    #[allow(clippy::too_many_arguments)]
+    fn generate_lowlevel(
+        &self,
+        name: &syn::Ident,
+        macro_base: &str,
+        altvec_dataptr_macro: Option<(&str, Option<TokenStream>)>,
+        altvec_string_dataptr: bool,
+        altvec_subset: bool,
+        methods_macro: &str,
+        inferbase_macro: &str,
+    ) -> TokenStream {
+        if !self.generate_lowlevel {
+            return quote! {};
+        }
+
+        // If no non-default guard, use the simple impl_alt*_from_data! macro
+        if !self.has_non_default_guard() {
+            let macro_ident = syn::Ident::new(macro_base, proc_macro2::Span::call_site());
+            if self.lowlevel_options.is_empty() {
+                return quote! {
+                    ::miniextendr_api::#macro_ident!(#name);
+                };
+            } else {
+                let options = &self.lowlevel_options;
+                return quote! {
+                    ::miniextendr_api::#macro_ident!(#name, #(#options),*);
+                };
+            }
+        }
+
+        // Non-default guard: expand individual internal macros with guard param
+        let guard = self.guard.as_ref().unwrap();
+        let has_serialize = self.lowlevel_options.iter().any(|o| o == "serialize");
+        let has_dataptr = self.lowlevel_options.iter().any(|o| o == "dataptr");
+        let has_subset = self.lowlevel_options.iter().any(|o| o == "subset");
+
+        // 1. Altrep base (with or without serialize)
+        let base_impl = if has_serialize {
+            quote! { ::miniextendr_api::__impl_altrep_base_with_serialize!(#name, #guard); }
+        } else {
+            quote! { ::miniextendr_api::__impl_altrep_base!(#name, #guard); }
+        };
+
+        // 2. AltVec impl
+        let vec_impl = if has_dataptr {
+            if let Some((macro_name, elem_ty)) = altvec_dataptr_macro {
+                let dp_macro = syn::Ident::new(macro_name, proc_macro2::Span::call_site());
+                if let Some(elem) = elem_ty {
+                    quote! { ::miniextendr_api::#dp_macro!(#name, #elem); }
+                } else {
+                    quote! { ::miniextendr_api::#dp_macro!(#name); }
+                }
+            } else if altvec_string_dataptr {
+                quote! { ::miniextendr_api::__impl_altvec_string_dataptr!(#name); }
+            } else {
+                quote! { impl ::miniextendr_api::altrep_traits::AltVec for #name {} }
+            }
+        } else if has_subset && altvec_subset {
+            quote! { ::miniextendr_api::__impl_altvec_extract_subset!(#name); }
+        } else {
+            quote! { impl ::miniextendr_api::altrep_traits::AltVec for #name {} }
+        };
+
+        // 3. Type-specific methods
+        let methods_ident = syn::Ident::new(methods_macro, proc_macro2::Span::call_site());
+        let methods_impl = quote! { ::miniextendr_api::#methods_ident!(#name); };
+
+        // 4. InferBase
+        let inferbase_ident = syn::Ident::new(inferbase_macro, proc_macro2::Span::call_site());
+        let inferbase_impl = quote! { ::miniextendr_api::#inferbase_ident!(#name); };
+
+        quote! {
+            #base_impl
+            #vec_impl
+            #methods_impl
+            #inferbase_impl
+        }
     }
 }
 
@@ -144,19 +242,15 @@ pub fn derive_altrep_integer(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    // Generate impl_altinteger_from_data! call if requested
-    let lowlevel_impl = if !attrs.generate_lowlevel {
-        quote! {}
-    } else if attrs.lowlevel_options.is_empty() {
-        quote! {
-            ::miniextendr_api::impl_altinteger_from_data!(#name);
-        }
-    } else {
-        let options = &attrs.lowlevel_options;
-        quote! {
-            ::miniextendr_api::impl_altinteger_from_data!(#name, #(#options),*);
-        }
-    };
+    let lowlevel_impl = attrs.generate_lowlevel(
+        name,
+        "impl_altinteger_from_data",
+        Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+        false,
+        true,
+        "__impl_altinteger_methods",
+        "impl_inferbase_integer",
+    );
 
     Ok(quote! {
         #altrep_len_impl
@@ -195,18 +289,15 @@ pub fn derive_altrep_real(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    let lowlevel_impl = if !attrs.generate_lowlevel {
-        quote! {}
-    } else if attrs.lowlevel_options.is_empty() {
-        quote! {
-            ::miniextendr_api::impl_altreal_from_data!(#name);
-        }
-    } else {
-        let options = &attrs.lowlevel_options;
-        quote! {
-            ::miniextendr_api::impl_altreal_from_data!(#name, #(#options),*);
-        }
-    };
+    let lowlevel_impl = attrs.generate_lowlevel(
+        name,
+        "impl_altreal_from_data",
+        Some(("__impl_altvec_dataptr", Some(quote! { f64 }))),
+        false,
+        false,
+        "__impl_altreal_methods",
+        "impl_inferbase_real",
+    );
 
     Ok(quote! {
         #altrep_len_impl
@@ -245,18 +336,15 @@ pub fn derive_altrep_logical(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    let lowlevel_impl = if !attrs.generate_lowlevel {
-        quote! {}
-    } else if attrs.lowlevel_options.is_empty() {
-        quote! {
-            ::miniextendr_api::impl_altlogical_from_data!(#name);
-        }
-    } else {
-        let options = &attrs.lowlevel_options;
-        quote! {
-            ::miniextendr_api::impl_altlogical_from_data!(#name, #(#options),*);
-        }
-    };
+    let lowlevel_impl = attrs.generate_lowlevel(
+        name,
+        "impl_altlogical_from_data",
+        Some(("__impl_altvec_dataptr", Some(quote! { i32 }))),
+        false,
+        false,
+        "__impl_altlogical_methods",
+        "impl_inferbase_logical",
+    );
 
     Ok(quote! {
         #altrep_len_impl
@@ -295,18 +383,15 @@ pub fn derive_altrep_raw(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    let lowlevel_impl = if !attrs.generate_lowlevel {
-        quote! {}
-    } else if attrs.lowlevel_options.is_empty() {
-        quote! {
-            ::miniextendr_api::impl_altraw_from_data!(#name);
-        }
-    } else {
-        let options = &attrs.lowlevel_options;
-        quote! {
-            ::miniextendr_api::impl_altraw_from_data!(#name, #(#options),*);
-        }
-    };
+    let lowlevel_impl = attrs.generate_lowlevel(
+        name,
+        "impl_altraw_from_data",
+        Some(("__impl_altvec_dataptr", Some(quote! { u8 }))),
+        false,
+        false,
+        "__impl_altraw_methods",
+        "impl_inferbase_raw",
+    );
 
     Ok(quote! {
         #altrep_len_impl
@@ -347,18 +432,15 @@ pub fn derive_altrep_string(input: syn::DeriveInput) -> syn::Result<TokenStream>
         }
     };
 
-    let lowlevel_impl = if !attrs.generate_lowlevel {
-        quote! {}
-    } else if attrs.lowlevel_options.is_empty() {
-        quote! {
-            ::miniextendr_api::impl_altstring_from_data!(#name);
-        }
-    } else {
-        let options = &attrs.lowlevel_options;
-        quote! {
-            ::miniextendr_api::impl_altstring_from_data!(#name, #(#options),*);
-        }
-    };
+    let lowlevel_impl = attrs.generate_lowlevel(
+        name,
+        "impl_altstring_from_data",
+        None,
+        true,
+        false,
+        "__impl_altstring_methods",
+        "impl_inferbase_string",
+    );
 
     Ok(quote! {
         #altrep_len_impl
@@ -400,18 +482,15 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
         }
     };
 
-    let lowlevel_impl = if !attrs.generate_lowlevel {
-        quote! {}
-    } else if attrs.lowlevel_options.is_empty() {
-        quote! {
-            ::miniextendr_api::impl_altcomplex_from_data!(#name);
-        }
-    } else {
-        let options = &attrs.lowlevel_options;
-        quote! {
-            ::miniextendr_api::impl_altcomplex_from_data!(#name, #(#options),*);
-        }
-    };
+    let lowlevel_impl = attrs.generate_lowlevel(
+        name,
+        "impl_altcomplex_from_data",
+        Some(("__impl_altvec_dataptr", Some(quote! { ::miniextendr_api::ffi::Rcomplex }))),
+        false,
+        true,
+        "__impl_altcomplex_methods",
+        "impl_inferbase_complex",
+    );
 
     Ok(quote! {
         #altrep_len_impl
@@ -451,12 +530,17 @@ pub fn derive_altrep_list(input: syn::DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    let lowlevel_impl = if attrs.generate_lowlevel {
+    let lowlevel_impl = if !attrs.generate_lowlevel {
+        quote! {}
+    } else if attrs.has_non_default_guard() {
+        let guard = attrs.guard.as_ref().unwrap();
+        quote! {
+            ::miniextendr_api::impl_altlist_from_data!(#name, #guard);
+        }
+    } else {
         quote! {
             ::miniextendr_api::impl_altlist_from_data!(#name);
         }
-    } else {
-        quote! {}
     };
 
     Ok(quote! {

@@ -11,6 +11,7 @@
 
 use crate::altrep_traits::{
     AltComplex, AltInteger, AltList, AltLogical, AltRaw, AltReal, AltString, AltVec, Altrep,
+    AltrepGuard,
 };
 use crate::ffi::altrep::*;
 use crate::ffi::*;
@@ -42,6 +43,22 @@ where
     }
 }
 
+/// Dispatch an ALTREP callback through the guard mode selected by `T::GUARD`.
+///
+/// Since `T::GUARD` is a const, the compiler eliminates the unreachable branches
+/// at monomorphization time — zero runtime overhead for the chosen mode.
+#[inline(always)]
+fn guarded_altrep_call<T: Altrep, F, R>(f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    match T::GUARD {
+        AltrepGuard::Unsafe => f(),
+        AltrepGuard::RustUnwind => catch_altrep_panic(f),
+        AltrepGuard::RUnwind => crate::unwind_protect::with_r_unwind_protect(f, None),
+    }
+}
+
 // =============================================================================
 // ALTREP BASE TRAMPOLINES
 // =============================================================================
@@ -50,21 +67,21 @@ where
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_length<T: Altrep>(x: SEXP) -> R_xlen_t {
-    catch_altrep_panic(|| T::length(x))
+    guarded_altrep_call::<T, _, _>(|| T::length(x))
 }
 
 /// Trampoline for Duplicate method.
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_duplicate<T: Altrep>(x: SEXP, deep: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::duplicate(x, matches!(deep, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::duplicate(x, matches!(deep, Rboolean::TRUE)))
 }
 
 /// Trampoline for DuplicateEX method (extended duplication).
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_duplicate_ex<T: Altrep>(x: SEXP, deep: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::duplicate_ex(x, matches!(deep, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::duplicate_ex(x, matches!(deep, Rboolean::TRUE)))
 }
 
 /// Trampoline for Inspect method.
@@ -77,7 +94,7 @@ pub unsafe extern "C-unwind" fn t_inspect<T: Altrep>(
     pvec: i32,
     inspect_subtree: Option<unsafe extern "C-unwind" fn(SEXP, i32, i32, i32)>,
 ) -> Rboolean {
-    catch_altrep_panic(|| {
+    guarded_altrep_call::<T, _, _>(|| {
         if T::inspect(x, pre, deep, pvec, inspect_subtree) {
             Rboolean::TRUE
         } else {
@@ -90,14 +107,14 @@ pub unsafe extern "C-unwind" fn t_inspect<T: Altrep>(
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_serialized_state<T: Altrep>(x: SEXP) -> SEXP {
-    catch_altrep_panic(|| T::serialized_state(x))
+    guarded_altrep_call::<T, _, _>(|| T::serialized_state(x))
 }
 
 /// Trampoline for Unserialize method.
 /// # Safety
 /// `class` and `state` must be valid SEXPs from R.
 pub unsafe extern "C-unwind" fn t_unserialize<T: Altrep>(class: SEXP, state: SEXP) -> SEXP {
-    catch_altrep_panic(|| T::unserialize(class, state))
+    guarded_altrep_call::<T, _, _>(|| T::unserialize(class, state))
 }
 
 /// Trampoline for UnserializeEX method (extended unserialization with attributes).
@@ -110,14 +127,14 @@ pub unsafe extern "C-unwind" fn t_unserialize_ex<T: Altrep>(
     objf: ::std::os::raw::c_int,
     levs: ::std::os::raw::c_int,
 ) -> SEXP {
-    catch_altrep_panic(|| T::unserialize_ex(class, state, attr, objf, levs))
+    guarded_altrep_call::<T, _, _>(|| T::unserialize_ex(class, state, attr, objf, levs))
 }
 
 /// Trampoline for Coerce method.
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_coerce<T: Altrep>(x: SEXP, to_type: SEXPTYPE) -> SEXP {
-    catch_altrep_panic(|| T::coerce(x, to_type))
+    guarded_altrep_call::<T, _, _>(|| T::coerce(x, to_type))
 }
 
 // =============================================================================
@@ -128,14 +145,14 @@ pub unsafe extern "C-unwind" fn t_coerce<T: Altrep>(x: SEXP, to_type: SEXPTYPE) 
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_dataptr<T: AltVec>(x: SEXP, w: Rboolean) -> *mut c_void {
-    catch_altrep_panic(|| T::dataptr(x, matches!(w, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::dataptr(x, matches!(w, Rboolean::TRUE)))
 }
 
 /// Trampoline for Dataptr_or_null method.
 /// # Safety
 /// `x` must be a valid SEXP for the ALTREP class backed by `T`.
 pub unsafe extern "C-unwind" fn t_dataptr_or_null<T: AltVec>(x: SEXP) -> *const c_void {
-    catch_altrep_panic(|| T::dataptr_or_null(x))
+    guarded_altrep_call::<T, _, _>(|| T::dataptr_or_null(x))
 }
 
 /// Trampoline for Extract_subset method.
@@ -146,7 +163,7 @@ pub unsafe extern "C-unwind" fn t_extract_subset<T: AltVec>(
     indx: SEXP,
     call: SEXP,
 ) -> SEXP {
-    catch_altrep_panic(|| T::extract_subset(x, indx, call))
+    guarded_altrep_call::<T, _, _>(|| T::extract_subset(x, indx, call))
 }
 
 // =============================================================================
@@ -157,7 +174,7 @@ pub unsafe extern "C-unwind" fn t_extract_subset<T: AltVec>(
 /// # Safety
 /// `x` must be a valid ALTREP INTSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_int_elt<T: AltInteger>(x: SEXP, i: R_xlen_t) -> i32 {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for integer Get_region method.
@@ -169,42 +186,42 @@ pub unsafe extern "C-unwind" fn t_int_get_region<T: AltInteger>(
     n: R_xlen_t,
     out: *mut i32,
 ) -> R_xlen_t {
-    catch_altrep_panic(|| T::get_region(x, i, n, out))
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
 
 /// Trampoline for integer Is_sorted method.
 /// # Safety
 /// `x` must be a valid ALTREP INTSXP.
 pub unsafe extern "C-unwind" fn t_int_is_sorted<T: AltInteger>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::is_sorted(x))
+    guarded_altrep_call::<T, _, _>(|| T::is_sorted(x))
 }
 
 /// Trampoline for integer No_NA method.
 /// # Safety
 /// `x` must be a valid ALTREP INTSXP.
 pub unsafe extern "C-unwind" fn t_int_no_na<T: AltInteger>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::no_na(x))
+    guarded_altrep_call::<T, _, _>(|| T::no_na(x))
 }
 
 /// Trampoline for integer Sum method.
 /// # Safety
 /// `x` must be a valid ALTREP INTSXP.
 pub unsafe extern "C-unwind" fn t_int_sum<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::sum(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::sum(x, matches!(narm, Rboolean::TRUE)))
 }
 
 /// Trampoline for integer Min method.
 /// # Safety
 /// `x` must be a valid ALTREP INTSXP.
 pub unsafe extern "C-unwind" fn t_int_min<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::min(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::min(x, matches!(narm, Rboolean::TRUE)))
 }
 
 /// Trampoline for integer Max method.
 /// # Safety
 /// `x` must be a valid ALTREP INTSXP.
 pub unsafe extern "C-unwind" fn t_int_max<T: AltInteger>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::max(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::max(x, matches!(narm, Rboolean::TRUE)))
 }
 
 // =============================================================================
@@ -215,7 +232,7 @@ pub unsafe extern "C-unwind" fn t_int_max<T: AltInteger>(x: SEXP, narm: Rboolean
 /// # Safety
 /// `x` must be a valid ALTREP REALSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_real_elt<T: AltReal>(x: SEXP, i: R_xlen_t) -> f64 {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for real Get_region method.
@@ -227,42 +244,42 @@ pub unsafe extern "C-unwind" fn t_real_get_region<T: AltReal>(
     n: R_xlen_t,
     out: *mut f64,
 ) -> R_xlen_t {
-    catch_altrep_panic(|| T::get_region(x, i, n, out))
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
 
 /// Trampoline for real Is_sorted method.
 /// # Safety
 /// `x` must be a valid ALTREP REALSXP.
 pub unsafe extern "C-unwind" fn t_real_is_sorted<T: AltReal>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::is_sorted(x))
+    guarded_altrep_call::<T, _, _>(|| T::is_sorted(x))
 }
 
 /// Trampoline for real No_NA method.
 /// # Safety
 /// `x` must be a valid ALTREP REALSXP.
 pub unsafe extern "C-unwind" fn t_real_no_na<T: AltReal>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::no_na(x))
+    guarded_altrep_call::<T, _, _>(|| T::no_na(x))
 }
 
 /// Trampoline for real Sum method.
 /// # Safety
 /// `x` must be a valid ALTREP REALSXP.
 pub unsafe extern "C-unwind" fn t_real_sum<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::sum(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::sum(x, matches!(narm, Rboolean::TRUE)))
 }
 
 /// Trampoline for real Min method.
 /// # Safety
 /// `x` must be a valid ALTREP REALSXP.
 pub unsafe extern "C-unwind" fn t_real_min<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::min(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::min(x, matches!(narm, Rboolean::TRUE)))
 }
 
 /// Trampoline for real Max method.
 /// # Safety
 /// `x` must be a valid ALTREP REALSXP.
 pub unsafe extern "C-unwind" fn t_real_max<T: AltReal>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::max(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::max(x, matches!(narm, Rboolean::TRUE)))
 }
 
 // =============================================================================
@@ -273,7 +290,7 @@ pub unsafe extern "C-unwind" fn t_real_max<T: AltReal>(x: SEXP, narm: Rboolean) 
 /// # Safety
 /// `x` must be a valid ALTREP LGLSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_lgl_elt<T: AltLogical>(x: SEXP, i: R_xlen_t) -> i32 {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for logical Get_region method.
@@ -285,28 +302,28 @@ pub unsafe extern "C-unwind" fn t_lgl_get_region<T: AltLogical>(
     n: R_xlen_t,
     out: *mut i32,
 ) -> R_xlen_t {
-    catch_altrep_panic(|| T::get_region(x, i, n, out))
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
 
 /// Trampoline for logical Is_sorted method.
 /// # Safety
 /// `x` must be a valid ALTREP LGLSXP.
 pub unsafe extern "C-unwind" fn t_lgl_is_sorted<T: AltLogical>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::is_sorted(x))
+    guarded_altrep_call::<T, _, _>(|| T::is_sorted(x))
 }
 
 /// Trampoline for logical No_NA method.
 /// # Safety
 /// `x` must be a valid ALTREP LGLSXP.
 pub unsafe extern "C-unwind" fn t_lgl_no_na<T: AltLogical>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::no_na(x))
+    guarded_altrep_call::<T, _, _>(|| T::no_na(x))
 }
 
 /// Trampoline for logical Sum method.
 /// # Safety
 /// `x` must be a valid ALTREP LGLSXP.
 pub unsafe extern "C-unwind" fn t_lgl_sum<T: AltLogical>(x: SEXP, narm: Rboolean) -> SEXP {
-    catch_altrep_panic(|| T::sum(x, matches!(narm, Rboolean::TRUE)))
+    guarded_altrep_call::<T, _, _>(|| T::sum(x, matches!(narm, Rboolean::TRUE)))
 }
 
 // Note: R's ALTREP API does not expose min/max for logical vectors
@@ -319,7 +336,7 @@ pub unsafe extern "C-unwind" fn t_lgl_sum<T: AltLogical>(x: SEXP, narm: Rboolean
 /// # Safety
 /// `x` must be a valid ALTREP RAWSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_raw_elt<T: AltRaw>(x: SEXP, i: R_xlen_t) -> Rbyte {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for raw Get_region method.
@@ -331,7 +348,7 @@ pub unsafe extern "C-unwind" fn t_raw_get_region<T: AltRaw>(
     n: R_xlen_t,
     out: *mut Rbyte,
 ) -> R_xlen_t {
-    catch_altrep_panic(|| T::get_region(x, i, n, out))
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
 
 // =============================================================================
@@ -342,7 +359,7 @@ pub unsafe extern "C-unwind" fn t_raw_get_region<T: AltRaw>(
 /// # Safety
 /// `x` must be a valid ALTREP CPLXSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_cplx_elt<T: AltComplex>(x: SEXP, i: R_xlen_t) -> Rcomplex {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for complex Get_region method.
@@ -354,7 +371,7 @@ pub unsafe extern "C-unwind" fn t_cplx_get_region<T: AltComplex>(
     n: R_xlen_t,
     out: *mut Rcomplex,
 ) -> R_xlen_t {
-    catch_altrep_panic(|| T::get_region(x, i, n, out))
+    guarded_altrep_call::<T, _, _>(|| T::get_region(x, i, n, out))
 }
 
 // =============================================================================
@@ -365,28 +382,28 @@ pub unsafe extern "C-unwind" fn t_cplx_get_region<T: AltComplex>(
 /// # Safety
 /// `x` must be a valid ALTREP STRSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_str_elt<T: AltString>(x: SEXP, i: R_xlen_t) -> SEXP {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for string Set_elt method.
 /// # Safety
 /// `x` must be a valid ALTREP STRSXP and `v` a valid CHARSXP.
 pub unsafe extern "C-unwind" fn t_str_set_elt<T: AltString>(x: SEXP, i: R_xlen_t, v: SEXP) {
-    catch_altrep_panic(|| T::set_elt(x, i, v))
+    guarded_altrep_call::<T, _, _>(|| T::set_elt(x, i, v))
 }
 
 /// Trampoline for string Is_sorted method.
 /// # Safety
 /// `x` must be a valid ALTREP STRSXP.
 pub unsafe extern "C-unwind" fn t_str_is_sorted<T: AltString>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::is_sorted(x))
+    guarded_altrep_call::<T, _, _>(|| T::is_sorted(x))
 }
 
 /// Trampoline for string No_NA method.
 /// # Safety
 /// `x` must be a valid ALTREP STRSXP.
 pub unsafe extern "C-unwind" fn t_str_no_na<T: AltString>(x: SEXP) -> i32 {
-    catch_altrep_panic(|| T::no_na(x))
+    guarded_altrep_call::<T, _, _>(|| T::no_na(x))
 }
 
 // =============================================================================
@@ -397,14 +414,14 @@ pub unsafe extern "C-unwind" fn t_str_no_na<T: AltString>(x: SEXP) -> i32 {
 /// # Safety
 /// `x` must be a valid ALTREP VECSXP and `i` within bounds.
 pub unsafe extern "C-unwind" fn t_list_elt<T: AltList>(x: SEXP, i: R_xlen_t) -> SEXP {
-    catch_altrep_panic(|| T::elt(x, i))
+    guarded_altrep_call::<T, _, _>(|| T::elt(x, i))
 }
 
 /// Trampoline for list Set_elt method.
 /// # Safety
 /// `x` must be a valid ALTREP VECSXP and `v` a valid SEXP.
 pub unsafe extern "C-unwind" fn t_list_set_elt<T: AltList>(x: SEXP, i: R_xlen_t, v: SEXP) {
-    catch_altrep_panic(|| T::set_elt(x, i, v))
+    guarded_altrep_call::<T, _, _>(|| T::set_elt(x, i, v))
 }
 
 // =============================================================================

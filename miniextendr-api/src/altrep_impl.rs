@@ -87,8 +87,14 @@ macro_rules! impl_altinteger_from_data {
 #[doc(hidden)]
 macro_rules! __impl_altrep_base {
     ($ty:ty) => {
+        $crate::__impl_altrep_base!($ty, RustUnwind);
+    };
+    ($ty:ty, $guard:ident) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::Altrep for $ty {
+            const GUARD: $crate::altrep_traits::AltrepGuard =
+                $crate::altrep_traits::AltrepGuard::$guard;
+
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| {
@@ -116,8 +122,14 @@ macro_rules! __impl_altrep_base {
 #[doc(hidden)]
 macro_rules! __impl_altrep_base_with_serialize {
     ($ty:ty) => {
+        $crate::__impl_altrep_base_with_serialize!($ty, RustUnwind);
+    };
+    ($ty:ty, $guard:ident) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::Altrep for $ty {
+            const GUARD: $crate::altrep_traits::AltrepGuard =
+                $crate::altrep_traits::AltrepGuard::$guard;
+
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| {
@@ -851,8 +863,14 @@ macro_rules! __impl_altstring_methods {
 #[macro_export]
 macro_rules! impl_altlist_from_data {
     ($ty:ty) => {
+        $crate::impl_altlist_from_data!($ty, RustUnwind);
+    };
+    ($ty:ty, $guard:ident) => {
         #[allow(clippy::not_unsafe_ptr_arg_deref)]
         impl $crate::altrep_traits::Altrep for $ty {
+            const GUARD: $crate::altrep_traits::AltrepGuard =
+                $crate::altrep_traits::AltrepGuard::$guard;
+
             fn length(x: $crate::ffi::SEXP) -> $crate::ffi::R_xlen_t {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .map(|d| {

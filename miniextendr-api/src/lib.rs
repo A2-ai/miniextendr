@@ -245,8 +245,9 @@ pub use altrep_data::{
     Logical,
     Sortedness,
 };
-// Re-export RBase enum
+// Re-export RBase enum and AltrepGuard
 pub use altrep::RBase;
+pub use altrep_traits::AltrepGuard;
 
 // ALTREP package name global - set by C entrypoint before ALTREP registration
 // This is a pointer to a null-terminated C string provided by C code.
