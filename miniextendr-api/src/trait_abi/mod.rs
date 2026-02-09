@@ -276,19 +276,22 @@ pub trait TraitView: Sized {
             }
 
             // Get the erased pointer (points to the wrapper struct header)
-            let erased_ptr = crate::ffi::R_ExternalPtrAddr(sexp);
-            if erased_ptr.is_null() {
+            let raw_ptr = crate::ffi::R_ExternalPtrAddr(sexp);
+            if raw_ptr.is_null() {
                 return None;
             }
+            let erased_ptr = raw_ptr as *mut crate::abi::mx_erased;
 
             // The wrapper struct layout is:
+            //   #[repr(C)]
             //   struct __MxWrapper<T> {
             //       erased: mx_erased,  // offset 0
-            //       data: T,            // offset = sizeof(mx_erased)
+            //       data: T,            // offset = size_of::<mx_erased>() rounded up to align_of::<T>()
             //   }
-            // We need to calculate the data pointer by adding the erased header size.
-            // mx_erased is just a single pointer (*const mx_base_vtable).
-            let data_offset = std::mem::size_of::<crate::abi::mx_erased>();
+            // When T has stricter alignment than mx_erased, padding exists between
+            // erased and data. The correct offset is stored in the base vtable.
+            let base = (*erased_ptr).base;
+            let data_offset = (*base).data_offset;
             let data = (erased_ptr as *mut u8).add(data_offset) as *mut c_void;
 
             Some(Self::from_raw_parts(data, vtable))

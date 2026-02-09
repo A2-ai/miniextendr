@@ -2224,6 +2224,7 @@ fn generate_trait_impl_wrapper(
                 drop: #drop_fn_name,
                 concrete_tag: #concrete_tag_name,
                 query: #query_fn_name,
+                data_offset: ::std::mem::offset_of!(#wrapper_name, data),
             };
 
         #[doc = concat!(

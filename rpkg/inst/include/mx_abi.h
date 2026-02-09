@@ -45,6 +45,7 @@
 
 #include <R.h>
 #include <Rinternals.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -158,6 +159,15 @@ typedef struct mx_base_vtable {
      * @return Pointer to vtable if implemented, NULL otherwise
      */
     const void *(*query)(mx_erased *ptr, mx_tag trait_tag);
+
+    /**
+     * Byte offset from wrapper struct start to the data field.
+     *
+     * The wrapper is laid out as: { mx_erased erased; T data; }.
+     * When T has stricter alignment than mx_erased, padding exists
+     * between erased and data. This field stores the correct offset.
+     */
+    size_t data_offset;
 } mx_base_vtable;
 
 /**
