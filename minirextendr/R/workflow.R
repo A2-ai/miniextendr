@@ -185,6 +185,71 @@ miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
   invisible(TRUE)
 }
 
+#' Prepare vendor tarball for CRAN submission
+#'
+#' Vendors all dependencies and compresses them into `inst/vendor.tar.xz`
+#' for offline CRAN builds. This calls [vendor_crates_io()] internally,
+#' then strips Cargo.lock checksums and compresses.
+#'
+#' Run this before `R CMD build` when preparing a CRAN submission.
+#'
+#' @return Invisibly returns the path to the created tarball.
+#' @export
+miniextendr_vendor <- function() {
+  cli::cli_h1("miniextendr vendor workflow")
+
+  # Step 1: cargo vendor + strip (delegates to vendor_crates_io)
+  cli::cli_h2("Step 1: vendor all dependencies")
+  vendor_crates_io()
+
+  vendor_dir <- usethis::proj_path("vendor")
+  lockfile <- usethis::proj_path("src", "rust", "Cargo.lock")
+  inst_dir <- usethis::proj_path("inst")
+  tarball <- fs::path(inst_dir, "vendor.tar.xz")
+
+  # Step 2: strip checksums from Cargo.lock (vendored crates have empty checksums)
+  if (fs::file_exists(lockfile)) {
+    lock_content <- readLines(lockfile, warn = FALSE)
+    lock_content <- lock_content[!grepl("^checksum = ", lock_content)]
+    writeLines(lock_content, lockfile)
+  }
+
+  # Step 3: compress into inst/vendor.tar.xz
+  cli::cli_h2("Step 2: compress vendor tarball")
+  fs::dir_create(inst_dir)
+
+  # Create staging directory for clean compression
+  staging <- fs::path_temp("vendor-compress")
+  on.exit(unlink(staging, recursive = TRUE), add = TRUE)
+  if (fs::dir_exists(staging)) fs::dir_delete(staging)
+  fs::dir_create(staging)
+  fs::dir_copy(vendor_dir, fs::path(staging, "vendor"))
+
+  # Truncate .md files (avoids CRAN notes about non-portable content)
+  md_files <- fs::dir_ls(fs::path(staging, "vendor"), recurse = TRUE, glob = "*.md")
+  for (f in md_files) {
+    writeLines(character(), f)
+  }
+
+  # Create xz-compressed tarball
+  px_result <- processx::run(
+    "tar", c("-cJf", tarball, "-C", staging, "vendor"),
+    error_on_status = FALSE
+  )
+  if (px_result$status != 0) {
+    abort(c(
+      "Failed to create vendor tarball",
+      "i" = px_result$stderr
+    ))
+  }
+
+  size_mb <- round(as.numeric(fs::file_size(tarball)) / 1024 / 1024, 1)
+  cli::cli_alert_success("Created {.path inst/vendor.tar.xz} ({size_mb} MB)")
+  cli::cli_alert_info("Include this in your CRAN submission (R CMD build will bundle it)")
+
+  invisible(tarball)
+}
+
 #' Run R CMD check on a miniextendr package
 #'
 #' Builds the package tarball and runs R CMD check. Ensures dependencies

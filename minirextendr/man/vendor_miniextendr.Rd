@@ -6,7 +6,7 @@
 \usage{
 vendor_miniextendr(
   version = "main",
-  dest = usethis::proj_path("src", "vendor"),
+  dest = usethis::proj_path("vendor"),
   refresh = FALSE,
   local_path = NULL
 )

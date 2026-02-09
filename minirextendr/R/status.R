@@ -132,10 +132,11 @@ miniextendr_status <- function() {
 #' Validate miniextendr configuration
 #'
 #' Checks that the miniextendr setup is valid and ready to build.
+#' For running `R CMD check`, see [miniextendr_check()].
 #'
 #' @return Invisibly returns TRUE if valid, otherwise shows warnings/errors
 #' @export
-miniextendr_check <- function() {
+miniextendr_validate <- function() {
   cli::cli_h1("miniextendr check")
 
   issues <- character()
