@@ -16,9 +16,10 @@
 //!
 //! # Performance
 //!
-//! When no hook is set, `fire()` performs a single atomic load and returns.
+//! `fire()` takes a read lock (uncontended in normal use). The hook only fires
+//! on panic paths, never on hot paths.
 
-use std::sync::atomic::{AtomicPtr, Ordering};
+use std::sync::RwLock;
 
 /// Describes where a panic originated before being converted to an R error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -41,49 +42,38 @@ pub struct PanicReport<'a> {
     pub source: PanicSource,
 }
 
-/// Type-erased hook function pointer.
-///
-/// We store a raw pointer to a leaked `Box<dyn Fn(&PanicReport) + Send + Sync>`.
-/// This avoids the overhead of `Arc`/`Mutex` on the hot path — the hook is
-/// set once and read many times.
-///
-/// Old hooks are intentionally leaked on replacement to avoid a use-after-free
-/// race between concurrent `fire()` readers and `set_panic_telemetry_hook()`
-/// writers. In practice hooks are set once at init, so this never leaks.
-static HOOK: AtomicPtr<()> = AtomicPtr::new(std::ptr::null_mut());
+type Hook = Box<dyn Fn(&PanicReport) + Send + Sync>;
+
+static HOOK: RwLock<Option<Hook>> = RwLock::new(None);
 
 /// Register a panic telemetry hook.
 ///
 /// The hook is called with a [`PanicReport`] each time a Rust panic is about
 /// to be converted into an R error. Only one hook can be active at a time;
-/// calling this again replaces the previous hook (the old hook is leaked to
-/// avoid a race with concurrent readers).
+/// calling this again replaces (and drops) the previous hook.
 ///
 /// # Thread Safety
 ///
 /// The hook may be called from any thread (worker thread, main R thread, etc.).
 /// Ensure your closure is safe to call concurrently.
 pub fn set_panic_telemetry_hook(f: impl Fn(&PanicReport) + Send + Sync + 'static) {
-    let boxed: Box<dyn Fn(&PanicReport) + Send + Sync> = Box::new(f);
-    let leaked = Box::into_raw(Box::new(boxed));
-    // Old pointer is intentionally NOT freed — a concurrent fire() may still
-    // be reading it. Hooks are set at most a handful of times so the leak is
-    // negligible.
-    HOOK.swap(leaked.cast(), Ordering::Release);
+    let mut guard = HOOK.write().unwrap_or_else(|e| e.into_inner());
+    *guard = Some(Box::new(f));
+}
+
+/// Remove the current panic telemetry hook, if any.
+pub fn clear_panic_telemetry_hook() {
+    let mut guard = HOOK.write().unwrap_or_else(|e| e.into_inner());
+    *guard = None;
 }
 
 /// Fire the telemetry hook if one is set.
 ///
-/// Called internally at each panic→R-error conversion site. When no hook is
-/// registered, this is a single atomic load returning immediately.
+/// Called internally at each panic→R-error conversion site.
 pub(crate) fn fire(message: &str, source: PanicSource) {
-    let ptr = HOOK.load(Ordering::Acquire);
-    if ptr.is_null() {
-        return;
+    let guard = HOOK.read().unwrap_or_else(|e| e.into_inner());
+    if let Some(hook) = guard.as_ref() {
+        let report = PanicReport { message, source };
+        hook(&report);
     }
-    // SAFETY: ptr was produced by Box::into_raw(Box::new(boxed_fn)) and is
-    // never deallocated while loaded (only swapped in set_panic_telemetry_hook).
-    let hook = unsafe { &*ptr.cast::<Box<dyn Fn(&PanicReport) + Send + Sync>>() };
-    let report = PanicReport { message, source };
-    hook(&report);
 }
