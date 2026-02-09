@@ -12,7 +12,7 @@ use_miniextendr_rust <- function() {
 
   # Create directories
   ensure_dir(usethis::proj_path("src", "rust"))
-  ensure_dir(usethis::proj_path("src", "vendor"))
+  ensure_dir(usethis::proj_path("vendor"))
 
   # Cargo.toml template (mustache-substituted at scaffolding time, not by autoconf)
   use_template("Cargo.toml.tmpl", save_as = "src/rust/Cargo.toml", data = data)

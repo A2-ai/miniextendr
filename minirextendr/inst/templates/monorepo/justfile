@@ -46,7 +46,7 @@ expand *args:
 clean:
     cargo clean
     rm -rf {{rpkg}}/src/rust/target
-    rm -rf {{rpkg}}/src/vendor
+    rm -rf {{rpkg}}/vendor
 
 # ============================================================================
 # R package development ({{rpkg}}/)
@@ -55,7 +55,7 @@ clean:
 # Configure the R package (vendor dependencies, generate Makevars)
 #
 # This must be run before any R CMD operation. It:
-# 1. Syncs workspace crates to {{rpkg}}/src/vendor/
+# 1. Syncs workspace crates to {{rpkg}}/vendor/
 # 2. Vendors crates.io dependencies
 # 3. Generates {{rpkg}}/src/Makevars from Makevars.in
 configure:

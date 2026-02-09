@@ -14,14 +14,17 @@ use miniextendr_api::{miniextendr, miniextendr_module};
 //    The first install compiles your Rust code; devtools::document() then
 //    runs the compiled macros to emit R/miniextendr_wrappers.R; the second
 //    install bundles those new wrappers into the package.
+//
+// NOTE: `cargo check` won't work until ./configure has been run at least once,
+// because document.rs contains template placeholders that need to be resolved.
 
-/// A simple function that adds two integers
+/// A simple function that adds two numbers
 ///
-/// @param a First integer
-/// @param b Second integer
+/// @param a First number
+/// @param b Second number
 /// @return Sum of a and b
 #[miniextendr]
-pub fn add(a: i32, b: i32) -> i32 {
+pub fn add(a: f64, b: f64) -> f64 {
     a + b
 }
 
@@ -33,6 +36,34 @@ pub fn add(a: i32, b: i32) -> i32 {
 pub fn hello(name: &str) -> String {
     format!("Hello, {}!", name)
 }
+
+// ---- Classes ----
+//
+// You can expose Rust structs as R6 classes. Here's a simple example:
+//
+//   use miniextendr_api::ExternalPtr;
+//
+//   #[derive(ExternalPtr)]
+//   pub struct Counter {
+//       value: i32,
+//   }
+//
+//   #[miniextendr]
+//   impl Counter {
+//       pub fn new() -> Self {
+//           Counter { value: 0 }
+//       }
+//
+//       pub fn increment(&mut self) {
+//           self.value += 1;
+//       }
+//
+//       pub fn get(&self) -> i32 {
+//           self.value
+//       }
+//   }
+//
+// Then register with: `impl Counter;` in the miniextendr_module! below.
 
 // Register the module with R
 miniextendr_module! {

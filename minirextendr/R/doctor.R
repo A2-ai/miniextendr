@@ -64,7 +64,7 @@ miniextendr_doctor <- function() {
   # ── Vendored crates ──
   cli::cli_h2("Vendored crates")
 
-  vendor_dir <- tryCatch(usethis::proj_path("src", "vendor"), error = function(e) NULL)
+  vendor_dir <- tryCatch(usethis::proj_path("vendor"), error = function(e) NULL)
   if (is.null(vendor_dir)) {
     cli::cli_alert_info("Not in a project context, skipping vendor checks")
   } else {

@@ -90,7 +90,7 @@ download_miniextendr_archive <- function(version, dest_path) {
 #'
 #' Downloads miniextendr-api, miniextendr-macros, miniextendr-macros-core,
 #' miniextendr-lint, and miniextendr-engine from GitHub and vendors them
-#' into src/vendor/. Also
+#' into vendor/. Also
 #' patches Cargo.toml files to remove workspace inheritance.
 #'
 #' Downloaded archives are cached in `rappdirs::user_cache_dir("minirextendr")`
@@ -108,7 +108,7 @@ download_miniextendr_archive <- function(version, dest_path) {
 #' @return Invisibly returns TRUE on success
 #' @export
 vendor_miniextendr <- function(version = "main",
-                               dest = usethis::proj_path("src", "vendor"),
+                               dest = usethis::proj_path("vendor"),
                                refresh = FALSE,
                                local_path = NULL) {
   # If local_path is provided, use local vendoring
@@ -365,7 +365,7 @@ vendor_crates_io <- function() {
     ))
   }
 
-  vendor_dir <- usethis::proj_path("src", "vendor")
+  vendor_dir <- usethis::proj_path("vendor")
 
   cli::cli_alert("Running cargo vendor...")
 
@@ -515,17 +515,17 @@ miniextendr_cache_info <- function() {
 
 #' Add [patch] entries to Cargo.toml for vendored crates
 #'
-#' After vendoring miniextendr crates to src/vendor/, adds a
+#' After vendoring miniextendr crates to vendor/, adds a
 #' `[patch."https://github.com/CGMossa/miniextendr"]` section to
 #' src/rust/Cargo.toml so that dev mode (NOT_CRAN=true) resolves
 #' dependencies from vendor/ instead of fetching from git.
 #'
-#' @param vendor_dir Path to the vendor directory (src/vendor/)
+#' @param vendor_dir Path to the vendor directory (vendor/)
 #' @noRd
 add_vendor_patches <- function(vendor_dir) {
-  # Derive Cargo.toml path: vendor is src/vendor/, Cargo.toml is src/rust/Cargo.toml
-  src_dir <- dirname(vendor_dir)
-  cargo_toml <- file.path(src_dir, "rust", "Cargo.toml")
+  # Derive Cargo.toml path: vendor is at package root, Cargo.toml is src/rust/Cargo.toml
+  pkg_root <- dirname(vendor_dir)
+  cargo_toml <- file.path(pkg_root, "src", "rust", "Cargo.toml")
 
   if (!file.exists(cargo_toml)) return(invisible())
 
@@ -533,6 +533,9 @@ add_vendor_patches <- function(vendor_dir) {
 
   # Don't add if already has [patch] section
   if (any(grepl("^\\[patch\\.", content))) return(invisible())
+
+  # Don't add if no git URLs to patch (path deps don't need patching)
+  if (!any(grepl("github\\.com/CGMossa", content))) return(invisible())
 
   # Only patch crates that are actual dependencies (not miniextendr-engine,
 
@@ -547,7 +550,7 @@ add_vendor_patches <- function(vendor_dir) {
   for (crate in crates) {
     if (dir.exists(file.path(vendor_dir, crate))) {
       patch_lines <- c(patch_lines,
-        sprintf('%s = { path = "../vendor/%s" }', crate, crate))
+        sprintf('%s = { path = "../../vendor/%s" }', crate, crate))
     }
   }
 

@@ -99,7 +99,7 @@ cargo-config.toml.in ───────────────────�
 
 For CRAN compatibility, all dependencies must be vendored:
 
-1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint): Synced by `./configure` via rsync to `rpkg/src/vendor/`
+1. **Workspace crates** (miniextendr-api, miniextendr-macros, miniextendr-lint): Synced by `./configure` via rsync to `rpkg/vendor/`
 2. **crates.io dependencies** (proc-macro2, syn, quote): Vendored by `cargo vendor` during configure
 
 ### Cross-package dispatch

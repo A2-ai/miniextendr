@@ -271,11 +271,22 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (cached, in src/vendor) ----
-VENDOR_OUT="$abs_rpkg_src/vendor"
+dnl ---- vendoring (at package root, outside src/) ----
+dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
+dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
+dnl as CARGO_TARGET_DIR above).
+VENDOR_OUT="$abs_top_srcdir/vendor"
 AC_SUBST([VENDOR_OUT])
 dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+abs_top_srcdir_cargo="$abs_top_srcdir"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
+    fi
+    ;;
+esac
+VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
 
 dnl Note: Cargo.toml now uses git dependencies.
@@ -336,7 +347,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -368,33 +379,34 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 dnl 3) Run cargo vendor (dev mode only)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
-  dnl Only vendor in dev mode (NOT_CRAN=true).
-  dnl In CRAN/offline mode we prefer vendor/ dir OR vendor.tar.xz, but fall back to network if needed.
-  if test "$NOT_CRAN" != "true"; then
-    dnl Check if vendor directory exists and is populated
-    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      dnl Vendor missing - check for compressed vendor.tar.xz in inst/ (created by configure)
-      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
-        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-        if test $? -ne 0; then
-          echo "configure: error: failed to unpack vendor.tar.xz" >&2
-          exit 1
-        fi
-        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-      else
-        dnl No vendor available - fall back to network (e.g., GitHub installs)
-        echo "configure: no cached vendor found, will proceed with network access" >&2
-        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
-        dnl Continue to dev mode vendoring logic below
-        NOT_CRAN=true
+  dnl First: if vendor/ is missing but vendor.tar.xz exists, unpack it regardless of mode.
+  dnl This handles the devtools::install() case where R CMD build creates a tarball
+  dnl (excluding vendor/ via .Rbuildignore) and then R CMD INSTALL runs configure.
+  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+      echo "configure: unpacking inst/vendor.tar.xz"
+      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      if test $? -ne 0; then
+        echo "configure: error: failed to unpack vendor.tar.xz" >&2
+        exit 1
+      fi
+      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
       fi
     fi
-    if test "$NOT_CRAN" != "true"; then
-      echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+  fi
+
+  if test "$NOT_CRAN" != "true"; then
+    dnl CRAN/offline mode: vendor/ should exist (from tarball or pre-populated)
+    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      dnl No vendor available - fall back to network (e.g., GitHub installs)
+      echo "configure: no cached vendor found, will proceed with network access" >&2
+      echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+      dnl Continue to dev mode vendoring logic below
+      NOT_CRAN=true
+    else
+      echo "configure: CRAN build - vendor ready"
     fi
   fi
 
@@ -508,7 +520,7 @@ AC_CONFIG_COMMANDS([compress-vendor],
       mkdir -p "$abs_rpkg_dir/inst"
 
       dnl Create temp staging area
-      _staging_tmp="$ABS_RPKG_SRC/.vendor-tarball-staging"
+      _staging_tmp="$abs_rpkg_dir/.vendor-tarball-staging"
       rm -rf "$_staging_tmp"
       mkdir -p "$_staging_tmp"
       cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
@@ -539,7 +551,7 @@ AC_CONFIG_COMMANDS([compress-vendor],
     echo "configure: skipping vendor compression (CRAN mode or no vendor)"
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ABS_RPKG_SRC="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir"])
 
 dnl 6) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
 AC_CONFIG_COMMANDS([patch-staticlib-name],

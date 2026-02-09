@@ -1,8 +1,11 @@
 ^LICENSE\.md$
 ^dev$
 
+# Vendor directory (ships via inst/vendor.tar.xz, not as loose files)
+^vendor$
+
 # Vendored Makefiles with GNU extensions (not used by R package build)
-^src/vendor/r-efi/Makefile$
+^vendor/r-efi/Makefile$
 
 # Build artifacts and generated files
 ^src/rust/target$
@@ -36,14 +39,14 @@
 # Vendored crate metadata (causes R CMD check NOTEs/ERRORs)
 \.cargo-checksum\.json$
 \.cargo_vcs_info\.json$
-^src/vendor/.*\.github$
-^src/vendor/.*\.editorconfig$
-^src/vendor/.*\.git-blame-ignore-revs$
-^src/vendor/.*\.release-plz\.toml$
-^src/vendor/.*\.rustfmt\.toml$
-^src/vendor/.*\.travis\.yml$
+^vendor/.*\.github$
+^vendor/.*\.editorconfig$
+^vendor/.*\.git-blame-ignore-revs$
+^vendor/.*\.release-plz\.toml$
+^vendor/.*\.rustfmt\.toml$
+^vendor/.*\.travis\.yml$
 \.vendor\.lock\.cksum$
 
 # Static libraries in vendored crates (R CMD check objects NOTE)
-^src/vendor/.*\.a$
-^src/vendor/.*\.lib$
+^vendor/.*\.a$
+^vendor/.*\.lib$

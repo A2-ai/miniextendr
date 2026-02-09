@@ -102,7 +102,7 @@ just minirextendr-test      # Run tests
 The configure script (dev mode):
 
 1. Generates `Makevars` from `Makevars.in` and other build config files
-2. Cleans up stale vendor artifacts (`src/vendor/`, `inst/vendor.tar.xz`)
+2. Cleans up stale vendor artifacts (`vendor/`, `inst/vendor.tar.xz`)
 3. Does NOT vendor — cargo resolves deps via `[patch]` in `Cargo.toml`
 
 For CRAN release prep, use `just vendor` to create the vendor tarball.
@@ -133,7 +133,7 @@ This builds and checks a package called `miniextendr`,  i.e. you load it with
 **What NOT_CRAN does:**
 
 - Skips vendoring entirely (cargo resolves deps via `[patch]` in Cargo.toml)
-- Cleans up stale `src/vendor/` and `inst/vendor.tar.xz`
+- Cleans up stale `vendor/` and `inst/vendor.tar.xz`
 - Enables symlinks for faster iteration (CRAN requires copies)
 - Skips certain checks that only apply to CRAN submissions
 - Should ALWAYS be set for local development/testing
@@ -145,7 +145,7 @@ This builds and checks a package called `miniextendr`,  i.e. you load it with
 For changes to fully propagate (especially macro changes):
 
 ```bash
-just configure          # 1. Sync crates to rpkg/src/vendor/
+just configure          # 1. Configure build (generates Makevars, etc.)
 just rcmdinstall        # 2. Build and install (compiles Rust)
 just devtools-document  # 3. Regenerate R wrappers
 just rcmdinstall        # 4. Rebuild with updated R wrappers

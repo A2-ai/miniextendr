@@ -285,11 +285,22 @@ do
 done
 AC_SUBST([OPTIONAL_CARGO_DEPS])
 
-dnl ---- vendoring (cached, in src/vendor) ----
-VENDOR_OUT="$abs_rpkg_src/vendor"
+dnl ---- vendoring (at package root, outside src/) ----
+dnl IMPORTANT: vendor directory MUST be outside src/ to avoid pkgbuild scanning
+dnl thousands of .rs files in vendor/ during needs_compile() checks (same reasoning
+dnl as CARGO_TARGET_DIR above).
+VENDOR_OUT="$abs_top_srcdir/vendor"
 AC_SUBST([VENDOR_OUT])
 dnl Cargo-specific version with Windows-native paths (for .cargo/config.toml)
-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+abs_top_srcdir_cargo="$abs_top_srcdir"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
+    fi
+    ;;
+esac
+VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
 
 dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -352,7 +363,7 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -384,54 +395,55 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 dnl 2) Handle vendor directory (CRAN: unpack tarball; dev: clean up stale artifacts)
 AC_CONFIG_COMMANDS([cargo-vendor],
 [
-  dnl Only vendor in dev mode (NOT_CRAN=true).
-  dnl In CRAN/offline mode we prefer vendor/ dir OR vendor.tar.xz, but fall back to network if needed.
-  if test "$NOT_CRAN" != "true"; then
-    dnl Check if vendor directory exists and is populated
-    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-      dnl Vendor missing - check for compressed vendor.tar.xz in inst/ (created by configure)
-      if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
-        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-        if test $? -ne 0; then
-          echo "configure: error: failed to unpack vendor.tar.xz" >&2
-          exit 1
-        fi
-        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-      else
-        dnl No vendor available - fall back to network (e.g., GitHub installs)
-        echo "configure: no cached vendor found, vendoring from network" >&2
-        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
-        mkdir -p "$VENDOR_OUT"
-        $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
-        if test $? -ne 0; then
-          echo "configure: error: cargo vendor failed (network required)" >&2
-          exit 1
-        fi
-        dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
-        for _crate_dir in "$VENDOR_OUT"/*/; do
-          if test -d "$_crate_dir"; then
-            rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                   "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-            for _dotfile in "$_crate_dir"/.*; do
-              case "$(basename "$_dotfile")" in
-                .|..|.cargo-checksum.json) ;;
-                *) rm -rf "$_dotfile" ;;
-              esac
-            done
-            echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
-          fi
-        done
-        dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
+  dnl First: if vendor/ is missing but vendor.tar.xz exists, unpack it regardless of mode.
+  dnl This handles the devtools::install() case where R CMD build creates a tarball
+  dnl (excluding vendor/ via .Rbuildignore) and then R CMD INSTALL runs configure.
+  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+      echo "configure: unpacking inst/vendor.tar.xz"
+      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      if test $? -ne 0; then
+        echo "configure: error: failed to unpack vendor.tar.xz" >&2
+        exit 1
+      fi
+      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
       fi
     fi
-    if test "$NOT_CRAN" != "true"; then
+  fi
+
+  if test "$NOT_CRAN" != "true"; then
+    dnl CRAN/offline mode: vendor/ should exist (from tarball or pre-populated)
+    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+      dnl No vendor available - fall back to network (e.g., GitHub installs)
+      echo "configure: no cached vendor found, vendoring from network" >&2
+      echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+      mkdir -p "$VENDOR_OUT"
+      $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
+      if test $? -ne 0; then
+        echo "configure: error: cargo vendor failed (network required)" >&2
+        exit 1
+      fi
+      dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
+      for _crate_dir in "$VENDOR_OUT"/*/; do
+        if test -d "$_crate_dir"; then
+          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+          for _dotfile in "$_crate_dir"/.*; do
+            case "$(basename "$_dotfile")" in
+              .|..|.cargo-checksum.json) ;;
+              *) rm -rf "$_dotfile" ;;
+            esac
+          done
+          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+        fi
+      done
+      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
+    else
       echo "configure: CRAN build - vendor ready"
     fi
   else

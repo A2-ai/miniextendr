@@ -28,7 +28,7 @@ Invisibly returns TRUE on success
 \description{
 Downloads miniextendr-api, miniextendr-macros, miniextendr-macros-core,
 miniextendr-lint, and miniextendr-engine from GitHub and vendors them
-into src/vendor/. Also
+into vendor/. Also
 patches Cargo.toml files to remove workspace inheritance.
 }
 \details{

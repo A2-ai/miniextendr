@@ -254,14 +254,15 @@ vendor:
 
     root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
     rpkg_src="$root/rpkg/src"
-    vendor_out="$rpkg_src/vendor"
+    rpkg_root="$root/rpkg"
+    vendor_out="$rpkg_root/vendor"
     manifest="$rpkg_src/rust/Cargo.toml"
     lockfile="$rpkg_src/rust/Cargo.lock"
 
     echo "=== CRAN vendor prep ==="
 
     # 1. Package workspace crates
-    staging="$rpkg_src/.vendor-tarball-staging"
+    staging="$rpkg_root/.vendor-tarball-staging"
     rm -rf "$staging"
     mkdir -p "$staging" "$vendor_out"
 
@@ -296,7 +297,7 @@ vendor:
 
     # 5. Compress for CRAN tarball
     echo "Compressing vendor.tar.xz..."
-    compress_staging="$rpkg_src/.vendor-compress-staging"
+    compress_staging="$rpkg_root/.vendor-compress-staging"
     rm -rf "$compress_staging"
     mkdir -p "$compress_staging"
     cp -R "$vendor_out" "$compress_staging/vendor"
@@ -680,7 +681,7 @@ templates-check-ci:
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================
-# After `just configure`, rpkg/src/vendor/ should contain synced copies of:
+# After `just configure`, rpkg/vendor/ should contain synced copies of:
 #   - miniextendr-api
 #   - miniextendr-macros
 #   - miniextendr-macros-core
@@ -695,7 +696,7 @@ vendor-sync-check:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    vendor_dir="rpkg/src/vendor"
+    vendor_dir="rpkg/vendor"
     drift_found=0
 
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
@@ -725,7 +726,7 @@ vendor-sync-diff:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    vendor_dir="rpkg/src/vendor"
+    vendor_dir="rpkg/vendor"
 
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
       if [[ -d "$vendor_dir/$crate" ]]; then

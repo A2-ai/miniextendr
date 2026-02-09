@@ -2505,9 +2505,17 @@ do
 done
 
 
-VENDOR_OUT="$abs_rpkg_src/vendor"
+VENDOR_OUT="$abs_top_srcdir/vendor"
 
-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+abs_top_srcdir_cargo="$abs_top_srcdir"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
+    fi
+    ;;
+esac
+VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 
 
@@ -3709,7 +3717,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -3736,31 +3744,38 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "cargo-vendor":C)
-      if test "$NOT_CRAN" != "true"; then
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
-        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-        if test $? -ne 0; then
-          echo "configure: error: failed to unpack vendor.tar.xz" >&2
-          exit 1
-        fi
-                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-      else
-                echo "configure: no cached vendor found, will proceed with network access" >&2
-        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
-                NOT_CRAN=true
+    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+      echo "configure: unpacking inst/vendor.tar.xz"
+      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      if test $? -ne 0; then
+        echo "configure: error: failed to unpack vendor.tar.xz" >&2
+        exit 1
       fi
-    fi
-    if test "$NOT_CRAN" != "true"; then
-      echo "configure: CRAN build - skipping cargo vendor (using pre-vendored tarball)"
+            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
     fi
   fi
 
-  if test "$NOT_CRAN" = "true"; then
-    MANIFEST="src/rust/Cargo.toml"
+  if test "$NOT_CRAN" != "true"; then
+        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+            echo "configure: no cached vendor found, vendoring from network" >&2
+      echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+      mkdir -p "$VENDOR_OUT"
+      $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
+      if test $? -ne 0; then
+        echo "configure: error: cargo vendor failed (network required)" >&2
+        exit 1
+      fi
+            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
+    else
+      echo "configure: CRAN build - vendor ready"
+    fi
+  else
+        MANIFEST="src/rust/Cargo.toml"
     LOCKFILE="src/rust/Cargo.lock"
     STAMP="$VENDOR_OUT/.vendor.lock.cksum"
 

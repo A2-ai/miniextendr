@@ -70,7 +70,7 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "Cargo.toml")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "build.rs")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "document.rs.in")))
-  expect_true(dir.exists(file.path(tmp, "rpkg", "src", "vendor")))
+  expect_true(dir.exists(file.path(tmp, "rpkg", "vendor")))
 })
 
 test_that("create_miniextendr_monorepo performs correct template substitution", {
@@ -364,8 +364,8 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
     library(pkg_name, character.only = TRUE)
 
     # Test add function
-    expect_equal(add(1L, 2L), 3L)
-    expect_equal(add(10L, 20L), 30L)
+    expect_equal(add(1, 2), 3)
+    expect_equal(add(10, 20), 30)
 
     # Test hello function
     expect_equal(hello("World"), "Hello, World!")
@@ -471,7 +471,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   })
 
   # Verify itertools was vendored
-  expect_true(dir.exists(file.path(pkg_path, "src", "vendor", "itertools")),
+  expect_true(dir.exists(file.path(pkg_path, "vendor", "itertools")),
               info = "itertools was not vendored")
 
   # Build and install - this generates R wrappers via document binary
@@ -513,7 +513,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     library(testpkg)
 
     # Test basic functions
-    expect_equal(add(1L, 2L), 3L)
+    expect_equal(add(1, 2), 3)
     expect_equal(hello("Test"), "Hello, Test!")
 
     # Test itertools function
@@ -594,9 +594,9 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
 
   rpkg_path <- file.path(tmp, "rpkg")
 
-  # Vendor miniextendr from local path into rpkg/src/vendor
+  # Vendor miniextendr from local path into rpkg/vendor
   suppressMessages({
-    vendor_miniextendr(local_path = miniextendr_path, dest = file.path(rpkg_path, "src", "vendor"))
+    vendor_miniextendr(local_path = miniextendr_path, dest = file.path(rpkg_path, "vendor"))
     # Add package-level documentation for useDynLib
     usethis::proj_set(rpkg_path, force = TRUE)
     usethis::use_package_doc()
@@ -608,7 +608,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   # Run cargo vendor to fetch crates.io deps (proc-macro2, syn, quote, etc.)
   suppressWarnings({
     withr::with_dir(rpkg_path, {
-      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "src/vendor"),
+      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "vendor"),
               stdout = FALSE, stderr = FALSE)
     })
   })
@@ -663,8 +663,8 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     library(pkg_name, character.only = TRUE)
 
     # Test add function
-    expect_equal(add(1L, 2L), 3L)
-    expect_equal(add(10L, 20L), 30L)
+    expect_equal(add(1, 2), 3)
+    expect_equal(add(10, 20), 30)
 
     # Test hello function
     expect_equal(hello("World"), "Hello, World!")

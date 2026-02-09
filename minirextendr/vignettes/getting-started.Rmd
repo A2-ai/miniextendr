@@ -195,7 +195,7 @@ greet("World")
 
 ### Vendoring miniextendr Crates
 
-miniextendr crates are vendored into your package's `src/vendor/` directory
+miniextendr crates are vendored into your package's `vendor/` directory
 for reproducible, offline builds:
 
 ```{r}

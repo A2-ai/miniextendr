@@ -18,7 +18,7 @@ create_miniextendr_package <- function(path, open = rlang::is_interactive(),
     path,
     open = FALSE,
     rstudio = rstudio,
-    check_name = TRUE
+    check_name = FALSE
   )
 
   # Set project to the new package
@@ -126,7 +126,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   # Create directory structure
   ensure_dir(usethis::proj_path(rpkg_name, "R"))
   ensure_dir(usethis::proj_path(rpkg_name, "src", "rust"))
-  ensure_dir(usethis::proj_path(rpkg_name, "src", "vendor"))
+  ensure_dir(usethis::proj_path(rpkg_name, "vendor"))
 
   # Create DESCRIPTION manually (not from template)
   desc_path <- usethis::proj_path(rpkg_name, "DESCRIPTION")
@@ -292,7 +292,7 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
     cli::cli_h2("Vendoring miniextendr crates")
     vendor_miniextendr(
       version = miniextendr_version,
-      dest = usethis::proj_path(rpkg_name, "src", "vendor"),
+      dest = usethis::proj_path(rpkg_name, "vendor"),
       local_path = local_path
     )
 
@@ -339,15 +339,35 @@ use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
   cli::cli_h2("Vendoring miniextendr crates")
   vendor_miniextendr(version = miniextendr_version, local_path = local_path)
 
+  # Auto-run autoconf if available
+  has_configure <- FALSE
+  if (nzchar(Sys.which("autoconf"))) {
+    cli::cli_h2("Generating configure script")
+    tryCatch(
+      {
+        miniextendr_autoconf()
+        has_configure <- TRUE
+      },
+      error = function(e) {
+        cli::cli_alert_warning("autoconf failed: {conditionMessage(e)}")
+      }
+    )
+  }
+
   # Summary
   cli::cli_h1("Setup complete!")
   cli::cli_alert_info("Next steps:")
-  cli::cli_bullets(c(
-    " " = "1. Edit {.path src/rust/lib.rs} to add your Rust functions",
-    " " = "2. Run {.code minirextendr::miniextendr_autoconf()} to generate configure",
-    " " = "3. Run {.code devtools::document()} to update NAMESPACE",
-    " " = "4. Run {.code devtools::install()} to build and install"
-  ))
+  if (has_configure) {
+    cli::cli_bullets(c(
+      " " = "1. Edit {.path src/rust/lib.rs} to add your Rust functions",
+      " " = "2. Run {.code minirextendr::miniextendr_build()} to compile and install"
+    ))
+  } else {
+    cli::cli_bullets(c(
+      " " = "1. Edit {.path src/rust/lib.rs} to add your Rust functions",
+      " " = "2. Install {.pkg autoconf}, then run {.code minirextendr::miniextendr_build()} to compile and install"
+    ))
+  }
 
   invisible(TRUE)
 }

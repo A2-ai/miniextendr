@@ -11,7 +11,7 @@ members = [
 exclude = [
     "rpkg",
     "rpkg/src/rust",
-    "rpkg/src/vendor",
+    "rpkg/vendor",
     "tests/cross-package/consumer.pkg",
     "tests/cross-package/producer.pkg",
     "tests/cross-package/consumer.pkg/src/rust/",

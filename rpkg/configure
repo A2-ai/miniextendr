@@ -2565,9 +2565,17 @@ do
 done
 
 
-VENDOR_OUT="$abs_rpkg_src/vendor"
+VENDOR_OUT="$abs_top_srcdir/vendor"
 
-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+abs_top_srcdir_cargo="$abs_top_srcdir"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
+    fi
+    ;;
+esac
+VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 
 
@@ -3769,7 +3777,7 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
           if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
             echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
+            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
             if test $? -ne 0; then
               echo "configure: error: failed to unpack vendor.tar.xz" >&2
               exit 1
@@ -3796,46 +3804,47 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "cargo-vendor":C)
-      if test "$NOT_CRAN" != "true"; then
         if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
-        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-        if test $? -ne 0; then
-          echo "configure: error: failed to unpack vendor.tar.xz" >&2
-          exit 1
-        fi
-                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-      else
-                echo "configure: no cached vendor found, vendoring from network" >&2
-        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
-        mkdir -p "$VENDOR_OUT"
-        $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
-        if test $? -ne 0; then
-          echo "configure: error: cargo vendor failed (network required)" >&2
-          exit 1
-        fi
-                for _crate_dir in "$VENDOR_OUT"/*/; do
-          if test -d "$_crate_dir"; then
-            rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                   "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-            for _dotfile in "$_crate_dir"/.*; do
-              case "$(basename "$_dotfile")" in
-                .|..|.cargo-checksum.json) ;;
-                *) rm -rf "$_dotfile" ;;
-              esac
-            done
-            echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
-          fi
-        done
-                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
+    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+      echo "configure: unpacking inst/vendor.tar.xz"
+      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+      if test $? -ne 0; then
+        echo "configure: error: failed to unpack vendor.tar.xz" >&2
+        exit 1
+      fi
+            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
       fi
     fi
-    if test "$NOT_CRAN" != "true"; then
+  fi
+
+  if test "$NOT_CRAN" != "true"; then
+        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+            echo "configure: no cached vendor found, vendoring from network" >&2
+      echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
+      mkdir -p "$VENDOR_OUT"
+      $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
+      if test $? -ne 0; then
+        echo "configure: error: cargo vendor failed (network required)" >&2
+        exit 1
+      fi
+            for _crate_dir in "$VENDOR_OUT"/*/; do
+        if test -d "$_crate_dir"; then
+          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+          for _dotfile in "$_crate_dir"/.*; do
+            case "$(basename "$_dotfile")" in
+              .|..|.cargo-checksum.json) ;;
+              *) rm -rf "$_dotfile" ;;
+            esac
+          done
+          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+        fi
+      done
+            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
+    else
       echo "configure: CRAN build - vendor ready"
     fi
   else

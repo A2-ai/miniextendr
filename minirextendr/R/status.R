@@ -44,11 +44,11 @@ miniextendr_status <- function() {
       "src/entrypoint.c.in"
     ),
     "Vendored Crates" = c(
-      "src/vendor/miniextendr-api",
-      "src/vendor/miniextendr-macros",
-      "src/vendor/miniextendr-macros-core",
-      "src/vendor/miniextendr-lint",
-      "src/vendor/miniextendr-engine"
+      "vendor/miniextendr-api",
+      "vendor/miniextendr-macros",
+      "vendor/miniextendr-macros-core",
+      "vendor/miniextendr-lint",
+      "vendor/miniextendr-engine"
     ),
     "Generated Files" = c(
       "src/Makevars",
@@ -208,7 +208,7 @@ miniextendr_check <- function() {
                         "miniextendr-lint", "miniextendr-engine")
   missing_crates <- character()
   for (crate in required_crates) {
-    crate_path <- usethis::proj_path("src", "vendor", crate)
+    crate_path <- usethis::proj_path("vendor", crate)
     if (!fs::dir_exists(crate_path)) {
       missing_crates <- c(missing_crates, crate)
     }
