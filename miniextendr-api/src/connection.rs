@@ -12,8 +12,8 @@
 //! > implementation without a compatibility layer."
 //!
 //! This module is gated behind the `connections` feature and should be used with caution.
-//! Always check [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION) at runtime
-//! before using these APIs.
+//! Always verify [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION)
+//! matches the expected version before using these APIs (see [`check_connections_version`]).
 //!
 //! # Usage
 //!
@@ -56,7 +56,13 @@ use crate::ffi::{R_CONNECTIONS_VERSION, R_NilValue, Rboolean, Rconnection, SEXP}
 /// connection operations may behave incorrectly or crash.
 pub const EXPECTED_CONNECTIONS_VERSION: c_int = 1;
 
-/// Check that the R connections API version matches what we expect.
+/// Compile-time compatibility assertion for the R connections ABI.
+///
+/// Compares [`EXPECTED_CONNECTIONS_VERSION`] (what this crate was written for)
+/// against [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION)
+/// (the version from R's headers when the FFI bindings were compiled).
+/// Both values are compile-time constants, so this is a static consistency
+/// check, not a dynamic probe of the running R session.
 ///
 /// # Panics
 ///
