@@ -349,7 +349,7 @@ fn get_raw_bytes(sexp: SEXP) -> Result<&'static [u8], SexpError> {
     }
     let len = unsafe { Rf_xlength(sexp) } as usize;
     let ptr = unsafe { RAW(sexp) };
-    Ok(unsafe { std::slice::from_raw_parts(ptr, len) })
+    Ok(unsafe { crate::from_r::r_slice(ptr, len) })
 }
 
 /// Align bytes to type T, copying if necessary.

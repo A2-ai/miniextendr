@@ -255,7 +255,7 @@ where
     let _guard = UnprotectGuard;
 
     // Create slice (safe: vector is protected, pointer acquired on main thread)
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+    let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
 
     // Run user's parallel work
     f(slice);
@@ -358,7 +358,7 @@ where
     let _guard = UnprotectGuard;
 
     // Create slice (safe: matrix is protected, pointer acquired on main thread)
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+    let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
 
     // Run user's parallel work
     f(slice, nrow, ncol);
@@ -476,7 +476,7 @@ where
     let _guard = UnprotectGuard(1);
 
     // Create slice (safe: array is protected, pointer acquired on main thread)
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, total_len) };
+    let slice = unsafe { crate::from_r::r_slice_mut(ptr, total_len) };
 
     // Run user's parallel work
     f(slice, dims);
@@ -580,7 +580,7 @@ where
     let _guard = UnprotectGuard;
 
     // Create slice and split into column chunks
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+    let slice = unsafe { crate::from_r::r_slice_mut(ptr, len) };
     let cols = if nrow == 0 {
         // Edge case: empty matrix - create an empty chunks iterator
         slice.chunks_mut(1) // Won't produce any chunks since len=0
@@ -745,7 +745,7 @@ where
     };
 
     // Create slice and split into slab chunks
-    let slice = unsafe { std::slice::from_raw_parts_mut(ptr, total_len) };
+    let slice = unsafe { crate::from_r::r_slice_mut(ptr, total_len) };
     let slabs = if slab_size == 0 {
         slice.chunks_mut(1) // Edge case: won't produce chunks if total_len=0
     } else {

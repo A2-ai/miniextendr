@@ -289,7 +289,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     pub unsafe fn as_slice_mut(&mut self) -> &mut [T] {
         unsafe {
             let ptr = T::dataptr_mut(self.sexp);
-            std::slice::from_raw_parts_mut(ptr, self.len())
+            crate::from_r::r_slice_mut(ptr, self.len())
         }
     }
 
@@ -661,7 +661,7 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
 
         // Initialize data
         let ptr = unsafe { T::dataptr_mut(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts_mut(ptr, total_len) };
+        let slice = unsafe { crate::from_r::r_slice_mut(ptr, total_len) };
         init(slice);
 
         Self {

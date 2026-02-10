@@ -68,7 +68,7 @@ impl StrVec {
             }
             let ptr = ffi::R_CHAR(charsxp);
             let len = ffi::Rf_xlength(charsxp) as usize;
-            let bytes = std::slice::from_raw_parts(ptr as *const u8, len);
+            let bytes = crate::from_r::r_slice(ptr as *const u8, len);
             // R stores strings as UTF-8 (or native encoding), assume valid UTF-8
             std::str::from_utf8(bytes).ok()
         }

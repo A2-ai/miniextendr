@@ -153,7 +153,7 @@ impl<'a> Factor<'a> {
 
         let len = unsafe { Rf_xlength(sexp) } as usize;
         let ptr = unsafe { INTEGER(sexp) };
-        let indices = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let indices = unsafe { crate::from_r::r_slice(ptr, len) };
         let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
 
         Ok(Self {
@@ -247,7 +247,7 @@ impl<'a> FactorMut<'a> {
 
         let len = unsafe { Rf_xlength(sexp) } as usize;
         let ptr = unsafe { INTEGER(sexp) };
-        let indices = unsafe { std::slice::from_raw_parts_mut(ptr, len) };
+        let indices = unsafe { crate::from_r::r_slice_mut(ptr, len) };
         let levels_sexp = unsafe { Rf_getAttrib(sexp, R_LevelsSymbol) };
 
         Ok(Self {

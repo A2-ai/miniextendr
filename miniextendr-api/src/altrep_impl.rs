@@ -335,7 +335,7 @@ macro_rules! __impl_altvec_extract_subset {
                 // Convert indx SEXP to slice
                 let len = unsafe { $crate::ffi::Rf_xlength(indx) } as usize;
                 let indices =
-                    unsafe { std::slice::from_raw_parts($crate::ffi::INTEGER(indx), len) };
+                    unsafe { $crate::from_r::r_slice($crate::ffi::INTEGER(indx), len) };
 
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| {
