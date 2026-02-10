@@ -434,6 +434,7 @@ minirextendr-document:
 # Run tests for minirextendr R package
 minirextendr-test FILTER="":
     #!/usr/bin/env bash
+    export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
     else
@@ -442,7 +443,7 @@ minirextendr-test FILTER="":
 
 # Check minirextendr R package with devtools::check
 minirextendr-check:
-    Rscript -e 'devtools::check("minirextendr", error_on = "error")'
+    MINIEXTENDR_LOCAL_PATH="$(pwd)" Rscript -e 'devtools::check("minirextendr", error_on = "error")'
 
 # Install minirextendr R package with devtools::install
 minirextendr-install:
@@ -459,6 +460,7 @@ minirextendr-build:
 # Run R CMD check on minirextendr package
 minirextendr-rcmdcheck:
     #!/usr/bin/env bash
+    export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
 # Full development cycle for minirextendr: document, test, check

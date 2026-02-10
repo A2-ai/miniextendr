@@ -17,10 +17,12 @@ test_that("has_miniextendr returns FALSE for empty project", {
 })
 
 test_that("has_miniextendr returns TRUE for monorepo project", {
+  skip_if_no_local_repo()
   tmp <- tempfile("monorepo-status-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Point usethis to the rpkg subdirectory
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
@@ -33,10 +35,12 @@ test_that("has_miniextendr returns TRUE for monorepo project", {
 # -----------------------------------------------------------------------------
 
 test_that("miniextendr_status returns list with present and missing", {
+  skip_if_no_local_repo()
   tmp <- tempfile("status-test-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
 
   result <- suppressMessages(miniextendr_status())
@@ -51,10 +55,12 @@ test_that("miniextendr_status returns list with present and missing", {
 })
 
 test_that("miniextendr_status detects generated files as missing", {
+  skip_if_no_local_repo()
   tmp <- tempfile("status-gen-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
 
   result <- suppressMessages(miniextendr_status())
@@ -70,10 +76,12 @@ test_that("miniextendr_status detects generated files as missing", {
 # -----------------------------------------------------------------------------
 
 test_that("miniextendr_validate validates DESCRIPTION config", {
+  skip_if_no_local_repo()
   tmp <- tempfile("check-desc-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
 
   # Should pass - monorepo template sets up DESCRIPTION correctly

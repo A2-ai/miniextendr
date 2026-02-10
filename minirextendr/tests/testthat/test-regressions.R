@@ -120,11 +120,13 @@ test_that("add_crate_to_workspace detects duplicate", {
 # =============================================================================
 
 test_that("miniextendr_status expects all 5 required vendored crates", {
+  skip_if_no_local_repo()
   tmp <- tempfile("status-engine-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   create_miniextendr_monorepo(tmp, package = "testpkg",
-                               crate_name = "testpkg", open = FALSE)
+                               crate_name = "testpkg",
+                               local_path = find_miniextendr_repo(), open = FALSE)
   usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
 
   result <- suppressMessages(miniextendr_status())
