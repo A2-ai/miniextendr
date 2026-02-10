@@ -30,11 +30,32 @@ static R_CONTINUATION_TOKEN: OnceLock<SEXP> = OnceLock::new();
 ///
 /// This is public for use by the worker module.
 pub(crate) fn get_continuation_token() -> SEXP {
-    *R_CONTINUATION_TOKEN.get_or_init(|| unsafe {
-        let token = ffi::R_MakeUnwindCont();
-        ffi::R_PreserveObject(token);
-        token
+    *R_CONTINUATION_TOKEN.get_or_init(|| {
+        // The continuation token must be created on R's main thread
+        // (R_MakeUnwindCont is an R API call). OnceLock ensures it is
+        // only created once and safely shared.
+        unsafe {
+            let token = ffi::R_MakeUnwindCont();
+            ffi::R_PreserveObject(token);
+            token
+        }
     })
+}
+
+/// Extract a message from a panic payload.
+///
+/// Handles `&str`, `String`, and `&String` payloads consistently.
+/// Returns a descriptive fallback for unrecognised payload types.
+pub(crate) fn panic_payload_to_string(payload: &(dyn Any + Send)) -> String {
+    if let Some(&s) = payload.downcast_ref::<&str>() {
+        s.to_string()
+    } else if let Some(s) = payload.downcast_ref::<String>() {
+        s.clone()
+    } else if let Some(s) = payload.downcast_ref::<&String>() {
+        (*s).clone()
+    } else {
+        "unknown panic".to_string()
+    }
 }
 
 /// Convert a Rust panic payload into an R error and continue unwinding on the R side.
@@ -43,17 +64,9 @@ pub(crate) unsafe fn panic_payload_to_r_error(
     call: Option<SEXP>,
     source: crate::panic_telemetry::PanicSource,
 ) -> ! {
-    let error_message: &str = if let Some(&message) = payload.downcast_ref::<&str>() {
-        message
-    } else if let Some(message) = payload.downcast_ref::<String>() {
-        message.as_str()
-    } else if let Some(message) = payload.downcast_ref::<&String>() {
-        message.as_str()
-    } else {
-        "panic payload could not be unpacked"
-    };
+    let error_message = panic_payload_to_string(payload.as_ref());
 
-    crate::panic_telemetry::fire(error_message, source);
+    crate::panic_telemetry::fire(&error_message, source);
 
     let c_error_message = std::ffi::CString::new(error_message)
         .unwrap_or_else(|_| std::ffi::CString::new("<invalid panic message>").unwrap());

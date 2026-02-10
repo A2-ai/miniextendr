@@ -227,13 +227,25 @@ pub fn checked_try_from_sexp_u64(sexp: SEXP, param: &str) -> u64 {
 /// Convert R SEXP to `isize` in strict mode.
 #[inline]
 pub fn checked_try_from_sexp_isize(sexp: SEXP, param: &str) -> isize {
-    checked_try_from_sexp_i64(sexp, param) as isize
+    let val = checked_try_from_sexp_i64(sexp, param);
+    isize::try_from(val).unwrap_or_else(|_| {
+        panic!(
+            "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
+            param, val
+        )
+    })
 }
 
 /// Convert R SEXP to `usize` in strict mode.
 #[inline]
 pub fn checked_try_from_sexp_usize(sexp: SEXP, param: &str) -> usize {
-    checked_try_from_sexp_u64(sexp, param) as usize
+    let val = checked_try_from_sexp_u64(sexp, param);
+    usize::try_from(val).unwrap_or_else(|_| {
+        panic!(
+            "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
+            param, val
+        )
+    })
 }
 
 /// Convert R SEXP to `Vec<i64>` in strict mode.
@@ -250,7 +262,12 @@ pub fn checked_vec_try_from_sexp_u64(sexp: SEXP, param: &str) -> Vec<u64> {
 pub fn checked_vec_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<isize> {
     checked_vec_try_from_sexp_i64(sexp, param)
         .into_iter()
-        .map(|x| x as isize)
+        .map(|x| isize::try_from(x).unwrap_or_else(|_| {
+            panic!(
+                "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
+                param, x
+            )
+        }))
         .collect()
 }
 
@@ -258,7 +275,12 @@ pub fn checked_vec_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<isize> {
 pub fn checked_vec_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<usize> {
     checked_vec_try_from_sexp_u64(sexp, param)
         .into_iter()
-        .map(|x| x as usize)
+        .map(|x| usize::try_from(x).unwrap_or_else(|_| {
+            panic!(
+                "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
+                param, x
+            )
+        }))
         .collect()
 }
 

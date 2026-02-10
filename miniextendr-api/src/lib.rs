@@ -281,6 +281,11 @@ pub static ALTREP_PKG_NAME: AltrepPkgName = AltrepPkgName;
 #[doc(hidden)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::c_char) {
+    let name = if name.is_null() {
+        c"unknown".as_ptr()
+    } else {
+        name
+    };
     ALTREP_PKG_NAME_PTR.store(name as *mut _, Ordering::Release);
 }
 

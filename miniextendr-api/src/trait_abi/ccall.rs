@@ -84,7 +84,6 @@ static P_MX_QUERY: OnceLock<MxQueryFn> = OnceLock::new();
 ///
 /// - Called from a non-main thread
 /// - Any C-callable is not found (miniextendr package not loaded)
-/// - Called multiple times (function pointers are already set)
 ///
 /// # Safety
 ///
@@ -117,9 +116,7 @@ pub fn init_ccallables() {
         panic!("init_ccallables: mx_wrap not found - is miniextendr package loaded?");
     }
     let wrap_fn: MxWrapFn = unsafe { std::mem::transmute(wrap_ptr) };
-    P_MX_WRAP
-        .set(wrap_fn)
-        .expect("init_ccallables called multiple times");
+    P_MX_WRAP.get_or_init(|| wrap_fn);
 
     // Load mx_get
     let get_ptr =
@@ -128,9 +125,7 @@ pub fn init_ccallables() {
         panic!("init_ccallables: mx_get not found - is miniextendr package loaded?");
     }
     let get_fn: MxGetFn = unsafe { std::mem::transmute(get_ptr) };
-    P_MX_GET
-        .set(get_fn)
-        .expect("init_ccallables called multiple times");
+    P_MX_GET.get_or_init(|| get_fn);
 
     // Load mx_query
     let query_ptr =
@@ -139,9 +134,7 @@ pub fn init_ccallables() {
         panic!("init_ccallables: mx_query not found - is miniextendr package loaded?");
     }
     let query_fn: MxQueryFn = unsafe { std::mem::transmute(query_ptr) };
-    P_MX_QUERY
-        .set(query_fn)
-        .expect("init_ccallables called multiple times");
+    P_MX_QUERY.get_or_init(|| query_fn);
 }
 
 // =============================================================================

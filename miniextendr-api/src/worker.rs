@@ -128,13 +128,7 @@ pub fn is_r_main_thread() -> bool {
 
 /// Extract a message from a panic payload.
 pub fn panic_payload_to_string(payload: &Box<dyn Any + Send>) -> String {
-    if let Some(&s) = payload.downcast_ref::<&str>() {
-        s.to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "unknown panic".to_string()
-    }
+    crate::unwind_protect::panic_payload_to_string(payload.as_ref())
 }
 
 /// Raise an R error from a panic message. Does not return.
@@ -463,10 +457,13 @@ where
 pub extern "C-unwind" fn miniextendr_worker_init() {
     static RUN_ONCE: std::sync::Once = std::sync::Once::new();
     RUN_ONCE.call_once_force(|x| {
-        // Ignore repeated calls from the same thread
+        // On poisoned retry, attempt full re-initialization instead of
+        // returning early. The previous init panicked before completing,
+        // so worker infrastructure may be missing.
         if x.is_poisoned() {
-            eprintln!("warning: miniextendr worker initialisation was done more than once");
-            return;
+            eprintln!(
+                "warning: miniextendr worker init is retrying after a previous failed attempt"
+            );
         }
 
         // Safety check: if R_MAIN_THREAD_ID was already set, verify it's the same thread
@@ -479,13 +476,13 @@ pub extern "C-unwind" fn miniextendr_worker_init() {
                     current_id, existing_id
                 );
             }
-            return; // Already initialized correctly
+            // Thread ID already correct; fall through to ensure worker is set up
+        } else {
+            let _ = R_MAIN_THREAD_ID.set(current_id);
         }
 
-        let _ = R_MAIN_THREAD_ID.set(current_id);
-
         if JOB_TX.get().is_some() {
-            return;
+            return; // Worker already running
         }
         // Capacity 0 (rendezvous): the main thread blocks until the worker picks
         // up the job, ensuring at most one job is in flight at a time.

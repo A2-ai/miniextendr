@@ -52,9 +52,9 @@
 pub use indexmap::IndexMap;
 
 use crate::ffi::{
-    CE_UTF8, R_CHAR, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
-    Rf_mkCharLenCE, Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP,
-    SEXPTYPE, STRING_ELT, SexpExt, VECTOR_ELT,
+    R_CHAR, R_NaString, R_NamesSymbol, R_NilValue, R_xlen_t, Rf_allocVector, Rf_getAttrib,
+    Rf_protect, Rf_setAttrib, Rf_unprotect, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
+    STRING_ELT, SexpExt, VECTOR_ELT,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp};
 use crate::into_r::IntoR;
@@ -148,7 +148,7 @@ where
                 SET_VECTOR_ELT(list, i as R_xlen_t, value.into_sexp());
 
                 // Set name
-                let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, CE_UTF8);
+                let charsxp = crate::altrep_impl::checked_mkchar(&key);
                 SET_STRING_ELT(names, i as R_xlen_t, charsxp);
             }
 

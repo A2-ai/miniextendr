@@ -2,9 +2,9 @@
 
 use super::error::RSerdeError;
 use crate::ffi::{
-    R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_setAttrib,
-    SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE,
-    cetype_t,
+    R_NaString, R_NamesSymbol, R_NilValue, Rf_allocVector, Rf_mkCharLenCE, Rf_protect,
+    Rf_setAttrib, Rf_unprotect, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
+    SET_VECTOR_ELT, SEXP, SEXPTYPE, cetype_t,
 };
 use crate::gc_protect::OwnedProtect;
 use crate::into_r::IntoR;
@@ -238,6 +238,8 @@ pub struct SeqSerializer {
     element_type: Option<SEXPTYPE>,
     /// Track whether all elements are scalar.
     all_scalar: bool,
+    /// Number of Rf_protect() calls to balance on end().
+    protect_count: i32,
 }
 
 impl SeqSerializer {
@@ -246,6 +248,7 @@ impl SeqSerializer {
             elements: Vec::with_capacity(len.unwrap_or(0)),
             element_type: None,
             all_scalar: true,
+            protect_count: 0,
         }
     }
 }
@@ -271,6 +274,9 @@ impl ser::SerializeSeq for SeqSerializer {
             _ => {}
         }
 
+        // Protect intermediate SEXP from GC during subsequent serializations.
+        unsafe { Rf_protect(elem) };
+        self.protect_count += 1;
         self.elements.push(elem);
         Ok(())
     }
@@ -282,16 +288,19 @@ impl ser::SerializeSeq for SeqSerializer {
         }
 
         // Smart dispatch: coalesce homogeneous scalars to atomic vector
-        if self.all_scalar {
+        let result = if self.all_scalar {
             if let Some(elem_type) = self.element_type {
-                if let Some(sexp) = try_coalesce_scalars(&self.elements, elem_type) {
-                    return Ok(sexp);
-                }
+                try_coalesce_scalars(&self.elements, elem_type)
+                    .unwrap_or_else(|| create_r_list(&self.elements))
+            } else {
+                create_r_list(&self.elements)
             }
-        }
-
-        // Fallback: create R list
-        Ok(create_r_list(&self.elements))
+        } else {
+            create_r_list(&self.elements)
+        };
+        // Unprotect all intermediate elements now that they're in the container.
+        unsafe { Rf_unprotect(self.protect_count) };
+        Ok(result)
     }
 }
 
@@ -305,7 +314,9 @@ impl ser::SerializeTuple for SeqSerializer {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         // Tuples always become lists (heterogeneous by nature)
-        Ok(create_r_list(&self.elements))
+        let result = create_r_list(&self.elements);
+        unsafe { Rf_unprotect(self.protect_count) };
+        Ok(result)
     }
 }
 
@@ -318,7 +329,9 @@ impl ser::SerializeTupleStruct for SeqSerializer {
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(create_r_list(&self.elements))
+        let result = create_r_list(&self.elements);
+        unsafe { Rf_unprotect(self.protect_count) };
+        Ok(result)
     }
 }
 
@@ -338,6 +351,7 @@ impl ser::SerializeTupleVariant for TupleVariantSerializer {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         let inner_list = create_r_list(&self.inner.elements);
+        unsafe { Rf_unprotect(self.inner.protect_count) };
         Ok(make_tagged_list(self.variant, inner_list))
     }
 }
@@ -346,6 +360,7 @@ impl ser::SerializeTupleVariant for TupleVariantSerializer {
 pub struct MapSerializer {
     keys: Vec<String>,
     values: Vec<SEXP>,
+    protect_count: i32,
 }
 
 impl MapSerializer {
@@ -354,6 +369,7 @@ impl MapSerializer {
         MapSerializer {
             keys: Vec::with_capacity(cap),
             values: Vec::with_capacity(cap),
+            protect_count: 0,
         }
     }
 }
@@ -371,24 +387,31 @@ impl ser::SerializeMap for MapSerializer {
     }
 
     fn serialize_value<T: ?Sized + Serialize>(&mut self, value: &T) -> Result<(), Self::Error> {
-        self.values.push(value.serialize(RSerializer)?);
+        let val = value.serialize(RSerializer)?;
+        unsafe { Rf_protect(val) };
+        self.protect_count += 1;
+        self.values.push(val);
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
-        Ok(create_named_list(&self.keys, &self.values))
+        let result = create_named_list(&self.keys, &self.values);
+        unsafe { Rf_unprotect(self.protect_count) };
+        Ok(result)
     }
 }
 
 /// Serializer for structs.
 pub struct StructSerializer {
     fields: Vec<(&'static str, SEXP)>,
+    protect_count: i32,
 }
 
 impl StructSerializer {
     fn new(len: usize) -> Self {
         StructSerializer {
             fields: Vec::with_capacity(len),
+            protect_count: 0,
         }
     }
 }
@@ -402,14 +425,19 @@ impl ser::SerializeStruct for StructSerializer {
         key: &'static str,
         value: &T,
     ) -> Result<(), Self::Error> {
-        self.fields.push((key, value.serialize(RSerializer)?));
+        let val = value.serialize(RSerializer)?;
+        unsafe { Rf_protect(val) };
+        self.protect_count += 1;
+        self.fields.push((key, val));
         Ok(())
     }
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         let names: Vec<&str> = self.fields.iter().map(|(k, _)| *k).collect();
         let values: Vec<SEXP> = self.fields.into_iter().map(|(_, v)| v).collect();
-        Ok(create_named_list_static(&names, &values))
+        let result = create_named_list_static(&names, &values);
+        unsafe { Rf_unprotect(self.protect_count) };
+        Ok(result)
     }
 }
 
@@ -433,6 +461,7 @@ impl ser::SerializeStructVariant for StructVariantSerializer {
 
     fn end(self) -> Result<Self::Ok, Self::Error> {
         let inner = ser::SerializeStruct::end(self.inner)?;
+        // SerializeStruct::end already called Rf_unprotect for struct fields.
         Ok(make_tagged_list(self.variant, inner))
     }
 }

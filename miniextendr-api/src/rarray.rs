@@ -643,7 +643,15 @@ impl<T: RNativeType, const NDIM: usize> RArray<T, NDIM> {
     where
         F: FnOnce(&mut [T]),
     {
-        let total_len: usize = dims.iter().product();
+        let total_len: usize = dims
+            .iter()
+            .try_fold(1usize, |acc, &d| acc.checked_mul(d))
+            .expect("array total length overflows usize");
+
+        assert!(
+            total_len <= ffi::R_xlen_t::MAX as usize,
+            "array total length {total_len} exceeds R_xlen_t::MAX"
+        );
 
         // Allocate the vector
         let sexp = unsafe { ffi::Rf_allocVector(T::SEXP_TYPE, total_len as ffi::R_xlen_t) };
@@ -876,7 +884,9 @@ unsafe fn set_dims<const NDIM: usize>(sexp: SEXP, dims: &[usize; NDIM]) {
 
         let dim_ptr = ffi::INTEGER(dim_sexp);
         for (i, &d) in dims.iter().enumerate() {
-            *dim_ptr.add(i) = d as i32;
+            *dim_ptr.add(i) = i32::try_from(d).unwrap_or_else(|_| {
+                panic!("array dimension {d} at index {i} exceeds i32::MAX");
+            });
         }
 
         ffi::Rf_setAttrib(sexp, ffi::R_DimSymbol, dim_sexp);

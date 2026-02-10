@@ -212,9 +212,9 @@ pub fn aho_find_all_flat(ac: &AhoCorasick, haystack: &str) -> Vec<i32> {
     let mut result = Vec::new();
     for m in ac.find_iter(haystack) {
         // +1 for 1-based pattern ID, +1 for 1-based start position
-        result.push((m.pattern().as_usize() + 1) as i32);
-        result.push((m.start() + 1) as i32); // 1-based position for R
-        result.push((m.end()) as i32); // end is exclusive, so keep as-is for length
+        result.push(i32::try_from(m.pattern().as_usize() + 1).unwrap_or(i32::MAX));
+        result.push(i32::try_from(m.start() + 1).unwrap_or(i32::MAX)); // 1-based position for R
+        result.push(i32::try_from(m.end()).unwrap_or(i32::MAX)); // end is exclusive, so keep as-is for length
     }
     result
 }
@@ -310,7 +310,7 @@ pub trait RAhoCorasickOps {
 
 impl RAhoCorasickOps for AhoCorasick {
     fn patterns_len(&self) -> i32 {
-        self.patterns_len() as i32
+        i32::try_from(self.patterns_len()).unwrap_or(i32::MAX)
     }
 
     fn is_match(&self, haystack: &str) -> bool {
@@ -318,7 +318,7 @@ impl RAhoCorasickOps for AhoCorasick {
     }
 
     fn count_matches(&self, haystack: &str) -> i32 {
-        aho_count_matches(self, haystack) as i32
+        i32::try_from(aho_count_matches(self, haystack)).unwrap_or(i32::MAX)
     }
 
     fn find_all_flat(&self, haystack: &str) -> Vec<i32> {
@@ -329,9 +329,9 @@ impl RAhoCorasickOps for AhoCorasick {
         match aho_find_first(self, haystack) {
             Some((pid, start, end)) => {
                 vec![
-                    (pid + 1) as i32,   // 1-based pattern ID
-                    (start + 1) as i32, // 1-based position
-                    end as i32,         // end is exclusive
+                    i32::try_from(pid + 1).unwrap_or(i32::MAX),   // 1-based pattern ID
+                    i32::try_from(start + 1).unwrap_or(i32::MAX), // 1-based position
+                    i32::try_from(end).unwrap_or(i32::MAX),       // end is exclusive
                 ]
             }
             None => vec![],

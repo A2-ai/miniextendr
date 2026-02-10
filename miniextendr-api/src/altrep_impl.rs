@@ -7,6 +7,30 @@
 //! data from an ALTREP's data1 slot.
 
 // =============================================================================
+// Checked string-to-CHARSXP helper
+// =============================================================================
+
+/// Create a CHARSXP from a Rust string, with checked length conversion.
+///
+/// # Safety
+///
+/// Must be called from R's main thread.
+///
+/// # Panics
+///
+/// Panics if `s.len() > i32::MAX`.
+#[inline]
+pub unsafe fn checked_mkchar(s: &str) -> crate::ffi::SEXP {
+    let len = i32::try_from(s.len()).unwrap_or_else(|_| {
+        panic!(
+            "string length {} exceeds i32::MAX for Rf_mkCharLenCE",
+            s.len()
+        )
+    });
+    unsafe { crate::ffi::Rf_mkCharLenCE(s.as_ptr().cast(), len, crate::ffi::cetype_t::CE_UTF8) }
+}
+
+// =============================================================================
 // Macros for generating trait implementations
 // =============================================================================
 
@@ -824,13 +848,7 @@ macro_rules! __impl_altstring_methods {
                 match unsafe { $crate::altrep_data1_as::<$ty>(x) } {
                     Some(d) => {
                         match <$ty as $crate::altrep_data::AltStringData>::elt(&*d, i.max(0) as usize) {
-                            Some(s) => unsafe {
-                                $crate::ffi::Rf_mkCharLenCE(
-                                    s.as_ptr().cast(),
-                                    s.len() as i32,
-                                    $crate::ffi::cetype_t::CE_UTF8,
-                                )
-                            },
+                            Some(s) => unsafe { $crate::altrep_impl::checked_mkchar(s) },
                             None => unsafe { $crate::ffi::R_NaString },
                         }
                     }
@@ -1280,13 +1298,7 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
         match unsafe { crate::altrep_data1_as::<[String; N]>(x) } {
             Some(d) => {
                 match <[String; N] as crate::altrep_data::AltStringData>::elt(&*d, i.max(0) as usize) {
-                    Some(s) => unsafe {
-                        crate::ffi::Rf_mkCharLenCE(
-                            s.as_ptr().cast(),
-                            s.len() as i32,
-                            crate::ffi::cetype_t::CE_UTF8,
-                        )
-                    },
+                    Some(s) => unsafe { checked_mkchar(s) },
                     None => unsafe { crate::ffi::R_NaString },
                 }
             }
@@ -1373,9 +1385,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [i32; N] {
         class_name: *const i8,
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
-        unsafe {
+        let cls = unsafe {
             crate::ffi::altrep::R_make_altinteger_class(class_name, pkg_name, core::ptr::null_mut())
-        }
+        };
+        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
+        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
     }
 
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
@@ -1392,9 +1406,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [f64; N] {
         class_name: *const i8,
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
-        unsafe {
+        let cls = unsafe {
             crate::ffi::altrep::R_make_altreal_class(class_name, pkg_name, core::ptr::null_mut())
-        }
+        };
+        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
+        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
     }
 
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
@@ -1411,9 +1427,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [bool; N] {
         class_name: *const i8,
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
-        unsafe {
+        let cls = unsafe {
             crate::ffi::altrep::R_make_altlogical_class(class_name, pkg_name, core::ptr::null_mut())
-        }
+        };
+        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
+        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
     }
 
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
@@ -1430,9 +1448,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [u8; N] {
         class_name: *const i8,
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
-        unsafe {
+        let cls = unsafe {
             crate::ffi::altrep::R_make_altraw_class(class_name, pkg_name, core::ptr::null_mut())
-        }
+        };
+        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
+        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
     }
 
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
@@ -1449,9 +1469,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [String; N] {
         class_name: *const i8,
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
-        unsafe {
+        let cls = unsafe {
             crate::ffi::altrep::R_make_altstring_class(class_name, pkg_name, core::ptr::null_mut())
-        }
+        };
+        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
+        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
     }
 
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
@@ -1468,9 +1490,11 @@ impl<const N: usize> crate::altrep_data::InferBase for [crate::ffi::Rcomplex; N]
         class_name: *const i8,
         pkg_name: *const i8,
     ) -> crate::ffi::altrep::R_altrep_class_t {
-        unsafe {
+        let cls = unsafe {
             crate::ffi::altrep::R_make_altcomplex_class(class_name, pkg_name, core::ptr::null_mut())
-        }
+        };
+        let name = unsafe { core::ffi::CStr::from_ptr(class_name) };
+        crate::altrep::validate_altrep_class(cls, name, Self::BASE)
     }
 
     unsafe fn install_methods(cls: crate::ffi::altrep::R_altrep_class_t) {
@@ -1848,13 +1872,7 @@ impl crate::altrep_traits::AltString for &'static [String] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         match unsafe { crate::altrep_data1_as::<&'static [String]>(x) } {
             Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
-                Some(s) => unsafe {
-                    crate::ffi::Rf_mkCharLenCE(
-                        s.as_ptr().cast(),
-                        s.len() as i32,
-                        crate::ffi::cetype_t::CE_UTF8,
-                    )
-                },
+                Some(s) => unsafe { checked_mkchar(s) },
                 None => unsafe { crate::ffi::R_NaString },
             },
             None => unsafe { crate::ffi::R_NaString },
@@ -1888,13 +1906,7 @@ impl crate::altrep_traits::AltString for &'static [&'static str] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         match unsafe { crate::altrep_data1_as::<&'static [&'static str]>(x) } {
             Some(d) => match crate::altrep_data::AltStringData::elt(&*d, i.max(0) as usize) {
-                Some(s) => unsafe {
-                    crate::ffi::Rf_mkCharLenCE(
-                        s.as_ptr().cast(),
-                        s.len() as i32,
-                        crate::ffi::cetype_t::CE_UTF8,
-                    )
-                },
+                Some(s) => unsafe { checked_mkchar(s) },
                 None => unsafe { crate::ffi::R_NaString },
             },
             None => unsafe { crate::ffi::R_NaString },

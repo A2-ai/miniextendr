@@ -542,7 +542,13 @@ fn validate_element(elem: SEXP, entry: &TypedEntry) -> Result<(), TypedListError
         }
 
         TypeSpec::Class(class_name) => {
-            let c_str = std::ffi::CString::new(*class_name).unwrap();
+            let c_str = std::ffi::CString::new(*class_name).map_err(|_| {
+                TypedListError::WrongType {
+                    name: entry.name.to_string(),
+                    expected: format!("class: {class_name}"),
+                    actual: "invalid class name (contains NUL byte)".to_string(),
+                }
+            })?;
             let inherits = unsafe { ffi::Rf_inherits(elem, c_str.as_ptr()) } != Rboolean::FALSE;
             if !inherits {
                 return Err(TypedListError::WrongType {
