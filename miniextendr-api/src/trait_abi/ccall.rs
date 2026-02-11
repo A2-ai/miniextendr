@@ -44,6 +44,37 @@ use std::os::raw::c_void;
 use std::sync::OnceLock;
 
 // =============================================================================
+// Error type
+// =============================================================================
+
+/// Errors from C-callable initialization.
+#[derive(Debug)]
+pub enum CCallableError {
+    /// Called from a non-main thread.
+    NotMainThread,
+    /// A C-callable symbol was not found in R's callable table.
+    SymbolNotFound(&'static str),
+}
+
+impl std::fmt::Display for CCallableError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            CCallableError::NotMainThread => {
+                write!(f, "init_ccallables must be called from R's main thread")
+            }
+            CCallableError::SymbolNotFound(name) => {
+                write!(
+                    f,
+                    "{name} not found - is miniextendr package loaded?"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for CCallableError {}
+
+// =============================================================================
 // Function pointer types
 // =============================================================================
 
@@ -73,10 +104,58 @@ static P_MX_QUERY: OnceLock<MxQueryFn> = OnceLock::new();
 // Initialization
 // =============================================================================
 
-/// Initialize C-callable function pointers.
+/// Try to initialize C-callable function pointers.
 ///
 /// Loads `mx_wrap`, `mx_get`, and `mx_query` from R's callable table
 /// via `R_GetCCallable("miniextendr", ...)`.
+///
+/// Returns `Ok(())` on success, or a [`CCallableError`] describing the failure.
+///
+/// # Requirements
+///
+/// - Must be called from R's main thread
+/// - Must be called during `R_init_<pkg>` or after R is initialized
+/// - The miniextendr R package must be loaded first
+///
+/// # Example
+///
+/// ```ignore
+/// if let Err(e) = try_init_ccallables() {
+///     r_stop(&format!("ccall init failed: {e}"));
+/// }
+/// ```
+pub fn try_init_ccallables() -> Result<(), CCallableError> {
+    if !crate::worker::is_r_main_thread() {
+        return Err(CCallableError::NotMainThread);
+    }
+
+    // Helper to load a symbol
+    fn load_symbol(name: &'static str, c_name: &std::ffi::CStr) -> Result<crate::ffi::DL_FUNC, CCallableError> {
+        let ptr = unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c_name.as_ptr()) };
+        if ptr.is_none() {
+            return Err(CCallableError::SymbolNotFound(name));
+        }
+        Ok(ptr)
+    }
+
+    let wrap_ptr = load_symbol("mx_wrap", c"mx_wrap")?;
+    let wrap_fn: MxWrapFn = unsafe { std::mem::transmute(wrap_ptr) };
+    P_MX_WRAP.get_or_init(|| wrap_fn);
+
+    let get_ptr = load_symbol("mx_get", c"mx_get")?;
+    let get_fn: MxGetFn = unsafe { std::mem::transmute(get_ptr) };
+    P_MX_GET.get_or_init(|| get_fn);
+
+    let query_ptr = load_symbol("mx_query", c"mx_query")?;
+    let query_fn: MxQueryFn = unsafe { std::mem::transmute(query_ptr) };
+    P_MX_QUERY.get_or_init(|| query_fn);
+
+    Ok(())
+}
+
+/// Initialize C-callable function pointers.
+///
+/// Convenience wrapper around [`try_init_ccallables`] that panics on failure.
 ///
 /// # Panics
 ///
@@ -104,37 +183,7 @@ static P_MX_QUERY: OnceLock<MxQueryFn> = OnceLock::new();
 /// }
 /// ```
 pub fn init_ccallables() {
-    // Check we're on main thread
-    if !crate::worker::is_r_main_thread() {
-        panic!("init_ccallables must be called from R's main thread");
-    }
-
-    // Load mx_wrap
-    let wrap_ptr =
-        unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_wrap".as_ptr()) };
-    if wrap_ptr.is_none() {
-        panic!("init_ccallables: mx_wrap not found - is miniextendr package loaded?");
-    }
-    let wrap_fn: MxWrapFn = unsafe { std::mem::transmute(wrap_ptr) };
-    P_MX_WRAP.get_or_init(|| wrap_fn);
-
-    // Load mx_get
-    let get_ptr =
-        unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_get".as_ptr()) };
-    if get_ptr.is_none() {
-        panic!("init_ccallables: mx_get not found - is miniextendr package loaded?");
-    }
-    let get_fn: MxGetFn = unsafe { std::mem::transmute(get_ptr) };
-    P_MX_GET.get_or_init(|| get_fn);
-
-    // Load mx_query
-    let query_ptr =
-        unsafe { crate::ffi::R_GetCCallable(c"miniextendr".as_ptr(), c"mx_query".as_ptr()) };
-    if query_ptr.is_none() {
-        panic!("init_ccallables: mx_query not found - is miniextendr package loaded?");
-    }
-    let query_fn: MxQueryFn = unsafe { std::mem::transmute(query_ptr) };
-    P_MX_QUERY.get_or_init(|| query_fn);
+    try_init_ccallables().expect("init_ccallables failed");
 }
 
 // =============================================================================

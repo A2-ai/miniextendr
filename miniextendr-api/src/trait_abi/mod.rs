@@ -155,20 +155,23 @@ pub mod ccall;
 pub mod conv;
 
 // Re-export commonly used items
-pub use ccall::init_ccallables;
+pub use ccall::{init_ccallables, try_init_ccallables, CCallableError};
 pub use conv::{check_arity, extract_arg, from_sexp, nil, rf_error, to_sexp, try_from_sexp};
 
 /// Initialize C-callables from C code.
 ///
-/// This is a C-callable wrapper around [`init_ccallables`] for use from
-/// `R_init_<pkg>` in entrypoint.c.
+/// This is a C-callable wrapper around [`try_init_ccallables`] for use from
+/// `R_init_<pkg>` in entrypoint.c. Uses `r_stop` instead of panicking on
+/// failure.
 ///
 /// # Safety
 ///
 /// Must be called from R's main thread during package initialization.
 #[unsafe(no_mangle)]
 pub extern "C-unwind" fn miniextendr_init_ccallables() {
-    init_ccallables();
+    if let Err(e) = ccall::try_init_ccallables() {
+        crate::error::r_stop(&format!("miniextendr trait ABI init failed: {e}"));
+    }
 }
 
 use crate::abi::mx_tag;

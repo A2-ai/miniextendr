@@ -43,13 +43,8 @@ pub(crate) fn analyze_return_type(
     let mut is_invisible = false;
     let mut post_call_statements = Vec::new();
 
-    let option_none_error_msg = quote::quote! {
-        concat!(
-            "miniextendr function `",
-            stringify!(#rust_ident),
-            "` returned None"
-        )
-    };
+    let fn_name_str = rust_ident.to_string();
+    let option_none_error_msg = format!("miniextendr function `{fn_name_str}` returned None");
 
     let return_expression = match output {
         // No return type (no arrow)
@@ -162,7 +157,7 @@ pub(crate) fn analyze_return_type(
 fn analyze_option_type(
     type_path: &syn::TypePath,
     rust_result_ident: &syn::Ident,
-    option_none_error_msg: &proc_macro2::TokenStream,
+    option_none_error_msg: &str,
     returns_sexp: &mut bool,
     is_invisible: &mut bool,
     post_call_statements: &mut Vec<proc_macro2::TokenStream>,
@@ -175,11 +170,11 @@ fn analyze_option_type(
     let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
     if is_unit_inner {
-        // Option<()> - invisible, panic on None
+        // Option<()> - invisible, r_stop on None
         *is_invisible = true;
         post_call_statements.push(quote::quote! {
             if #rust_result_ident.is_none() {
-                panic!(#option_none_error_msg);
+                ::miniextendr_api::error::r_stop(#option_none_error_msg);
             }
         });
         quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
@@ -256,12 +251,12 @@ fn analyze_result_type(
         }
         quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
     } else if ok_is_unit {
-        // Result<(), E> - invisible, panic on Err
+        // Result<(), E> - invisible, r_stop on Err
         // Uses Debug format so it works with any E: Debug
         *is_invisible = true;
         post_call_statements.push(quote::quote! {
             if let Err(e) = #rust_result_ident {
-                panic!("{:?}", e);
+                ::miniextendr_api::error::r_stop(&format!("{:?}", e));
             }
         });
         quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
@@ -275,7 +270,7 @@ fn analyze_result_type(
         post_call_statements.push(quote::quote! {
             let #rust_result_ident = match #rust_result_ident {
                 Ok(v) => v,
-                Err(e) => panic!("{:?}", e),
+                Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
             };
         });
         if ok_is_sexp {

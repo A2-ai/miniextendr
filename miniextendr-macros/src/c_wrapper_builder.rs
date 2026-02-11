@@ -416,40 +416,43 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = quote! {
-                    concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
-                };
+                let error_msg = format!(
+                    "miniextendr function `{}` returned None",
+                    fn_ident
+                );
                 quote! {
                     let __result = #call_expr;
                     if __result.is_none() {
-                        panic!(#error_msg);
+                        ::miniextendr_api::error::r_stop(#error_msg);
                     }
                     unsafe { ::miniextendr_api::ffi::R_NilValue }
                 }
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = quote! {
-                    concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
-                };
+                let error_msg = format!(
+                    "miniextendr function `{}` returned None",
+                    fn_ident
+                );
                 quote! {
                     let __result = #call_expr;
                     match __result {
                         Some(v) => v,
-                        None => panic!(#error_msg),
+                        None => ::miniextendr_api::error::r_stop(#error_msg),
                     }
                 }
             }
             ReturnHandling::OptionIntoR => {
-                let error_msg = quote! {
-                    concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
-                };
+                let error_msg = format!(
+                    "miniextendr function `{}` returned None",
+                    fn_ident
+                );
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident);
                 quote! {
                     let __result = #call_expr;
                     let #result_ident = match __result {
                         Some(v) => v,
-                        None => panic!(#error_msg),
+                        None => ::miniextendr_api::error::r_stop(#error_msg),
                     };
                     #conversion
                 }
@@ -458,7 +461,7 @@ impl CWrapperContext {
                 quote! {
                     let __result = #call_expr;
                     if let Err(e) = __result {
-                        panic!("{:?}", e);
+                        ::miniextendr_api::error::r_stop(&format!("{:?}", e));
                     }
                     unsafe { ::miniextendr_api::ffi::R_NilValue }
                 }
@@ -468,7 +471,7 @@ impl CWrapperContext {
                     let __result = #call_expr;
                     match __result {
                         Ok(v) => v,
-                        Err(e) => panic!("{:?}", e),
+                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
                     }
                 }
             }
@@ -479,7 +482,7 @@ impl CWrapperContext {
                     let __result = #call_expr;
                     let #result_ident = match __result {
                         Ok(v) => v,
-                        Err(e) => panic!("{:?}", e),
+                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
                     };
                     #conversion
                 }
@@ -545,13 +548,14 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = quote! {
-                    concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
-                };
+                let error_msg = format!(
+                    "miniextendr function `{}` returned None",
+                    fn_ident
+                );
                 let worker = quote! {
                     let __result = #call_expr;
                     if __result.is_none() {
-                        panic!(#error_msg);
+                        ::miniextendr_api::error::r_stop(#error_msg);
                     }
                 };
                 let convert = quote! {
@@ -560,14 +564,15 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = quote! {
-                    concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
-                };
+                let error_msg = format!(
+                    "miniextendr function `{}` returned None",
+                    fn_ident
+                );
                 let worker = quote! {
                     let __result = #call_expr;
                     match __result {
                         Some(v) => v,
-                        None => panic!(#error_msg),
+                        None => ::miniextendr_api::error::r_stop(#error_msg),
                     }
                 };
                 let convert = quote! {
@@ -576,14 +581,15 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionIntoR => {
-                let error_msg = quote! {
-                    concat!("miniextendr function `", stringify!(#fn_ident), "` returned None")
-                };
+                let error_msg = format!(
+                    "miniextendr function `{}` returned None",
+                    fn_ident
+                );
                 let worker = quote! {
                     let __result = #call_expr;
                     match __result {
                         Some(v) => v,
-                        None => panic!(#error_msg),
+                        None => ::miniextendr_api::error::r_stop(#error_msg),
                     }
                 };
                 let result_ident = format_ident!("__miniextendr_result");
@@ -600,7 +606,7 @@ impl CWrapperContext {
                 let worker = quote! {
                     let __result = #call_expr;
                     if let Err(e) = __result {
-                        panic!("{:?}", e);
+                        ::miniextendr_api::error::r_stop(&format!("{:?}", e));
                     }
                 };
                 let convert = quote! {
@@ -613,7 +619,7 @@ impl CWrapperContext {
                     let __result = #call_expr;
                     match __result {
                         Ok(v) => v,
-                        Err(e) => panic!("{:?}", e),
+                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
                     }
                 };
                 let convert = quote! {
@@ -626,7 +632,7 @@ impl CWrapperContext {
                     let __result = #call_expr;
                     match __result {
                         Ok(v) => v,
-                        Err(e) => panic!("{:?}", e),
+                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
                     }
                 };
                 let result_ident = format_ident!("__miniextendr_result");
