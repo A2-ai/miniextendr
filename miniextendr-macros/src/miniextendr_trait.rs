@@ -392,7 +392,6 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             ///
             /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
             /// - Must be called on R's main thread
-            /// - Must call `init_ccallables()` first
             #[inline]
             pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Option<Self> {
                 <Self as ::miniextendr_api::TraitView>::try_from_sexp(sexp)
@@ -581,20 +580,22 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
         )]
         ///
         /// Converts SEXP arguments, calls the method, and returns SEXP result.
-        /// Panics are caught via `catch_unwind` and converted to R errors.
+        /// Both Rust panics and R longjmps are caught via `with_r_unwind_protect`.
         #[doc(hidden)]
         unsafe extern "C" fn #shim_name<T: #trait_name>(
             data: *mut ::std::os::raw::c_void,
             argc: i32,
             argv: *const ::miniextendr_api::ffi::SEXP,
         ) -> ::miniextendr_api::ffi::SEXP {
-            // Check arity (before catch_unwind - uses r_stop which doesn't return)
+            // Check arity (before unwind protect - uses r_stop which doesn't return)
             unsafe {
                 ::miniextendr_api::trait_abi::check_arity(argc, #expected_argc, #method_name_str);
             }
 
-            // Wrap everything in catch_unwind to prevent unwinding across FFI
-            let panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
+            // Wrap in with_r_unwind_protect to catch both Rust panics and R longjmps.
+            // This is safer than catch_unwind alone because extract_arg and user code
+            // may call R API functions that error via longjmp.
+            ::miniextendr_api::unwind_protect::with_r_unwind_protect(|| {
                 // Extract arguments
                 #(#arg_extractions)*
 
@@ -603,16 +604,7 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
 
                 // Convert result
                 #result_conversion
-            }));
-
-            match panic_result {
-                Ok(sexp) => sexp,
-                Err(payload) => {
-                    // Convert panic to R error
-                    let msg = ::miniextendr_api::worker::panic_payload_to_string(&payload);
-                    ::miniextendr_api::worker::panic_message_to_r_error(msg)
-                }
-            }
+            }, None)
         }
     }
 }

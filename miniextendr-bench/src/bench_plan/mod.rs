@@ -30,6 +30,11 @@
 //! - `wrappers.rs`         R wrapper call overhead (optional, via R eval)
 //! - `list.rs`             list construction + named lookup + derives
 //! - `rarray.rs`           RArray/RMatrix access patterns
+//! - `factor.rs`           RFactor cached vs uncached levels
+//! - `gc_protect.rs`       ProtectScope, OwnedProtect, builders
+//! - `native_vs_coerce.rs` RNative memcpy vs element-wise coercion
+//! - `refcount_protect.rs` RefCountedArena vs ProtectScope vs raw preserve
+//! - `translate.rs`        R_CHAR vs translateCharUTF8 string extraction
 //!
 //! ---------------------------------------------------------------------------
 //! Shared harness expectations
@@ -46,11 +51,11 @@
 //! ---------------------------------------------------------------------------
 //! Standard size matrix
 //!
-//! Use a consistent set of sizes across benches:
-//! - tiny:   1, 4, 16
-//! - small:  64, 256
-//! - medium: 1_024, 4_096
-//! - large:  65_536, 1_000_000
+//! The canonical size set is defined by `SIZES` in `lib.rs`:
+//!   `[1, 16, 256, 4096, 65536]`
+//!
+//! Named lists use a smaller set (`NAMED_LIST_SIZES`):
+//!   `[16, 256, 4096]`
 //!
 //! Standard NA densities (for logical/real/int/string where applicable):
 //! - none (0%)
@@ -94,6 +99,11 @@
 //! - `rffi_checked`: checked wrapper overhead
 //! - `list`: list primitives and derives
 //! - `rarray`: array/matrix access patterns
+//! - `factor`: RFactor cached vs uncached levels
+//! - `gc_protect`: ProtectScope, OwnedProtect, builders
+//! - `native_vs_coerce`: RNative path vs element-wise coercion
+//! - `refcount_protect`: RefCountedArena vs ProtectScope
+//! - `translate`: R_CHAR vs translateCharUTF8
 //!
 //! Each submodule contains a detailed plan for its bench cases.
 
@@ -103,18 +113,23 @@ pub mod altrep_iter;
 pub mod coerce;
 pub mod connections;
 pub mod externalptr;
+pub mod factor;
 pub mod ffi_calls;
 pub mod from_r;
+pub mod gc_protect;
 pub mod harness;
 pub mod into_r;
 pub mod list;
+pub mod native_vs_coerce;
 pub mod preserve;
 pub mod rarray;
 pub mod rayon;
+pub mod refcount_protect;
 pub mod rffi_checked;
 pub mod sexp_ext;
 pub mod strings;
 pub mod trait_abi;
+pub mod translate;
 pub mod unwind_protect;
 pub mod worker;
 pub mod wrappers;

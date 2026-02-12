@@ -153,7 +153,7 @@ pub struct mx_erased {
 - [x] `#[miniextendr]` routing for traits
 - [x] `#[miniextendr]` routing for trait impls
 - [x] Implement `mx_tag_from_path()` hash function (FNV-1a, const-compatible)
-- [x] Implement `init_ccallables()` loader
+- [x] Implement direct FFI linkage to `mx_abi.c` functions
 - [x] Implement `conv.rs` conversion helpers
 - [x] Implement C-callables in `mx_abi.c.in`
 
@@ -251,14 +251,11 @@ void R_init_mypackage(DllInfo *dll) {
 }
 ```
 
-### 3. Rust Side (via miniextendr-api)
+### 3. C Side (via mx_abi.c)
 
-```rust
-// In R_init_mypackage
-miniextendr_api::trait_abi::init_ccallables();
-```
-
-**Important**: The `miniextendr` package must be loaded first (via `Imports`), otherwise `R_GetCCallable` will fail.
+Each package compiles `mx_abi.c` which provides `mx_wrap`/`mx_get`/`mx_query` functions.
+The entrypoint calls `mx_abi_register()` to initialize the tag and register C-callables.
+Rust code calls these directly via `extern "C"` linkage (no runtime dependency on miniextendr).
 
 ### Version Compatibility Warning
 

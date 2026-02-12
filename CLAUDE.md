@@ -75,7 +75,7 @@ just r-cmd-check        # 3. Check the built tarball (R CMD check)
 
 # CRAN release prep (vendors deps into tarball)
 just vendor             # Package workspace crates + vendor external deps
-just configure-cran     # Configure in CRAN/offline mode (unpacks vendor.tar.xz)
+just configure-cran     # Configure with PREPARE_CRAN=true (unpacks vendor.tar.xz)
 # IMPORTANT: Always check the built tarball, not the source directory.
 # R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.
 
@@ -102,7 +102,7 @@ just minirextendr-test      # Run tests
 The configure script (dev mode):
 
 1. Generates `Makevars` from `Makevars.in` and other build config files
-2. Cleans up stale vendor artifacts (`src/vendor/`, `inst/vendor.tar.xz`)
+2. Cleans up stale vendor artifacts (`vendor/`, `inst/vendor.tar.xz`)
 3. Does NOT vendor — cargo resolves deps via `[patch]` in `Cargo.toml`
 
 For CRAN release prep, use `just vendor` to create the vendor tarball.
@@ -118,25 +118,31 @@ R CMD build rpkg
 R CMD check rpkg
 ```
 
-### NOT_CRAN Environment Variable
+### Build Context Model
 
-Set `NOT_CRAN=true` for development mode:
+The configure script resolves one of four build contexts:
+
+| Context | When | Behavior |
+|---|---|---|
+| `dev-monorepo` | Monorepo detected (default for `just configure`) | Uses `[patch]` paths, no vendoring |
+| `dev-detached` | No monorepo, no vendor artifacts | Uses git/network deps directly |
+| `vendored-install` | `NOT_CRAN=false` or vendor artifacts present | Offline build from vendored sources |
+| `prepare-cran` | `PREPARE_CRAN=true` | Explicit CRAN release prep mode |
+
+**Environment variables:**
+
+- `NOT_CRAN=true` — dev mode (legacy, still supported)
+- `PREPARE_CRAN=true` — explicit CRAN release prep (highest precedence)
+- Neither set — auto-detects from monorepo/vendor presence
 
 ```bash
-cd rpkg && NOT_CRAN=true ./configure
-NOT_CRAN=true R CMD INSTALL rpkg
+cd rpkg && NOT_CRAN=true ./configure    # dev-monorepo (explicit)
+cd rpkg && ./configure                  # dev-monorepo (auto-detected in monorepo)
+cd rpkg && PREPARE_CRAN=true ./configure # prepare-cran
 ```
 
 This builds and checks a package called `miniextendr`,  i.e. you load it with
 `library(miniextendr)`, not `library(rpkg)`.
-
-**What NOT_CRAN does:**
-
-- Skips vendoring entirely (cargo resolves deps via `[patch]` in Cargo.toml)
-- Cleans up stale `src/vendor/` and `inst/vendor.tar.xz`
-- Enables symlinks for faster iteration (CRAN requires copies)
-- Skips certain checks that only apply to CRAN submissions
-- Should ALWAYS be set for local development/testing
 
 ## Development Workflow
 
@@ -145,7 +151,7 @@ This builds and checks a package called `miniextendr`,  i.e. you load it with
 For changes to fully propagate (especially macro changes):
 
 ```bash
-just configure          # 1. Sync crates to rpkg/src/vendor/
+just configure          # 1. Configure build (generates Makevars, etc.)
 just rcmdinstall        # 2. Build and install (compiles Rust)
 just devtools-document  # 3. Regenerate R wrappers
 just rcmdinstall        # 4. Rebuild with updated R wrappers
@@ -475,4 +481,35 @@ Alternatively, use `devtools::install()` which handles library paths:
 
 ```bash
 just devtools-install
+```
+
+## Using Codex for Reviews
+
+OpenAI's Codex CLI can be used for non-interactive code reviews and plan generation.
+
+### Invocation
+
+Use `codex exec` for non-interactive mode (the bare `codex` command requires a TTY):
+
+```bash
+# Non-interactive execution (no TTY needed)
+codex exec -m gpt-5.3-codex "your prompt here"
+
+# Full-auto mode (no confirmation prompts)
+codex exec -m gpt-5.3-codex --full-auto "your prompt here"
+
+# Review mode
+codex exec -m gpt-5.3-codex review "review these changes"
+```
+
+**Important**: The bare `codex` command (without `exec`) requires a terminal/TTY and will fail with "stdin is not a terminal" when called from non-interactive contexts like Claude Code's Bash tool. Always use `codex exec` instead.
+
+### Common patterns
+
+```bash
+# Code review of recent changes
+codex exec -m gpt-5.3-codex --full-auto "Review the changes in the last commit for bugs and design issues"
+
+# Generate implementation plan
+codex exec -m gpt-5.3-codex --full-auto "Read file X and produce a plan to fix issues Y and Z"
 ```

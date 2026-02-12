@@ -21,6 +21,7 @@ Imports:
     S7,
     vctrs
 Suggests:
+    callr,
     testthat (>= 3.0.0),
     tibble
 Config/testthat/edition: 3

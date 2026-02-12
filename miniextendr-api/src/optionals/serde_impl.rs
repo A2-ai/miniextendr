@@ -183,8 +183,8 @@ impl JsonOptions {
 }
 use crate::ffi::{
     INTEGER_ELT, LOGICAL_ELT, REAL_ELT, Rboolean, Rf_allocVector, Rf_getAttrib, Rf_isFactor,
-    Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
-    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
+    Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT, SET_STRING_ELT,
+    SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
@@ -696,8 +696,7 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
         }
         JsonValue::String(s) => {
             let sexp = unsafe { Rf_allocVector(SEXPTYPE::STRSXP, 1) };
-            let charsxp =
-                unsafe { Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8) };
+            let charsxp = unsafe { crate::altrep_impl::checked_mkchar(s) };
             unsafe { SET_STRING_ELT(sexp, 0, charsxp) };
             sexp
         }
@@ -710,9 +709,7 @@ fn json_value_to_sexp(value: &JsonValue) -> SEXP {
                 unsafe { OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, len as isize)) };
 
             for (i, (key, val)) in map.iter().enumerate() {
-                let charsxp = unsafe {
-                    Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8)
-                };
+                let charsxp = unsafe { crate::altrep_impl::checked_mkchar(key) };
                 unsafe {
                     SET_STRING_ELT(names.get(), i as isize, charsxp);
                     SET_VECTOR_ELT(sexp.get(), i as isize, json_value_to_sexp(val));
@@ -793,11 +790,7 @@ fn json_array_to_sexp(arr: &[JsonValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let JsonValue::String(s) = v {
                         unsafe {
-                            let charsxp = Rf_mkCharLenCE(
-                                s.as_ptr().cast(),
-                                s.len() as i32,
-                                cetype_t::CE_UTF8,
-                            );
+                            let charsxp = crate::altrep_impl::checked_mkchar(s);
                             SET_STRING_ELT(sexp.get(), i as isize, charsxp);
                         }
                     }

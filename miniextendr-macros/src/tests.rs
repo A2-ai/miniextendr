@@ -421,3 +421,226 @@ fn test_derive_altrep_logical_with_options() {
     // Should pass options to macro
     assert!(output_str.contains("dataptr"));
 }
+
+// =============================================================================
+// ALTREP guard mode tests
+// =============================================================================
+
+#[test]
+fn test_derive_altrep_integer_unsafe_guard() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(r#unsafe)]
+        pub struct FastData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    // Non-default guard: should expand individual macros, not impl_altinteger_from_data!
+    assert!(!output_str.contains("impl_altinteger_from_data"));
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("Unsafe"));
+}
+
+#[test]
+fn test_derive_altrep_integer_r_unwind_guard() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(r_unwind)]
+        pub struct SafeData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    assert!(!output_str.contains("impl_altinteger_from_data"));
+    assert!(output_str.contains("__impl_altrep_base"));
+    assert!(output_str.contains("RUnwind"));
+}
+
+#[test]
+fn test_derive_altrep_integer_rust_unwind_guard_uses_highevel_macro() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(rust_unwind)]
+        pub struct DefaultData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    // rust_unwind is the default — should use the high-level macro
+    assert!(output_str.contains("impl_altinteger_from_data"));
+}
+
+#[test]
+fn test_derive_altrep_unsafe_guard_with_serialize() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(r#unsafe, serialize)]
+        pub struct SerData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_integer(input).unwrap();
+    let output_str = output.to_string();
+
+    assert!(output_str.contains("__impl_altrep_base_with_serialize"));
+    assert!(output_str.contains("Unsafe"));
+}
+
+#[test]
+fn test_derive_altrep_list_with_guard() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(r_unwind)]
+        pub struct ListData {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let output = crate::altrep_derive::derive_altrep_list(input).unwrap();
+    let output_str = output.to_string();
+
+    assert!(output_str.contains("impl_altlist_from_data"));
+    assert!(output_str.contains("RUnwind"));
+}
+
+// =============================================================================
+// ALTREP invalid option combo tests
+// =============================================================================
+
+#[test]
+fn test_derive_altrep_real_rejects_subset() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(subset)]
+        pub struct BadReal {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_real(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}
+
+#[test]
+fn test_derive_altrep_logical_rejects_subset() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(subset)]
+        pub struct BadLogical {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_logical(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}
+
+#[test]
+fn test_derive_altrep_raw_rejects_subset() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(subset)]
+        pub struct BadRaw {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_raw(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}
+
+#[test]
+fn test_derive_altrep_string_rejects_subset() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(subset)]
+        pub struct BadString {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_string(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}
+
+#[test]
+fn test_derive_altrep_integer_rejects_dataptr_plus_subset() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(dataptr, subset)]
+        pub struct BadCombo {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_integer(input).unwrap_err();
+    assert!(err.to_string().contains("mutually exclusive"));
+}
+
+#[test]
+fn test_derive_altrep_complex_rejects_dataptr_plus_subset() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(dataptr, subset)]
+        pub struct BadCombo {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_complex(input).unwrap_err();
+    assert!(err.to_string().contains("mutually exclusive"));
+}
+
+#[test]
+fn test_derive_altrep_list_rejects_dataptr() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(dataptr)]
+        pub struct BadList {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_list(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}
+
+#[test]
+fn test_derive_altrep_list_rejects_serialize() {
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(serialize)]
+        pub struct BadList {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_list(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}
+
+#[test]
+fn test_derive_altrep_real_subset_rejected_with_guard_too() {
+    // Ensure validation applies regardless of guard mode
+    let input: syn::DeriveInput = syn::parse2(quote::quote! {
+        #[altrep(r#unsafe, subset)]
+        pub struct BadReal {
+            len: usize,
+        }
+    })
+    .unwrap();
+
+    let err = crate::altrep_derive::derive_altrep_real(input).unwrap_err();
+    assert!(err.to_string().contains("not supported"));
+}

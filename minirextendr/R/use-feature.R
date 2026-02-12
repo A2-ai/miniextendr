@@ -108,6 +108,7 @@ add_import <- function(pkg, min_version = NULL) {
 #' - S3 method generation for vctrs generics (`vec_proxy`, `vec_restore`, etc.)
 #' - Automatic `@importFrom vctrs` in generated R wrappers
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
@@ -115,7 +116,8 @@ add_import <- function(pkg, min_version = NULL) {
 #' \dontrun{
 #' use_vctrs()
 #' }
-use_vctrs <- function() {
+use_vctrs <- function(path = ".") {
+  with_project(path)
   # Add Cargo feature
   add_cargo_feature("vctrs", "miniextendr-api/vctrs")
 
@@ -131,6 +133,7 @@ use_vctrs <- function() {
 #'
 #' Adds R6 as a dependency for using the R6 class system with `#[miniextendr(r6)]`.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
@@ -138,7 +141,8 @@ use_vctrs <- function() {
 #' \dontrun{
 #' use_r6()
 #' }
-use_r6 <- function() {
+use_r6 <- function(path = ".") {
+  with_project(path)
   add_import("R6")
 
   cli::cli_alert_info("Use {.code #[miniextendr(r6)]} on impl blocks for R6 classes")
@@ -151,6 +155,7 @@ use_r6 <- function() {
 #'
 #' Adds S7 as a dependency for using the S7 class system with `#[miniextendr(s7)]`.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
@@ -158,7 +163,8 @@ use_r6 <- function() {
 #' \dontrun{
 #' use_s7()
 #' }
-use_s7 <- function() {
+use_s7 <- function(path = ".") {
+  with_project(path)
   add_import("S7", ">= 0.2.0")
 
   cli::cli_alert_info("Use {.code #[miniextendr(s7)]} on impl blocks for S7 classes")
@@ -172,6 +178,7 @@ use_s7 <- function() {
 #' Adds methods as a dependency for using the S4 class system with `#[miniextendr(s4)]`.
 #' Note: The methods package is usually already available as a base R package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
@@ -179,7 +186,8 @@ use_s7 <- function() {
 #' \dontrun{
 #' use_s4()
 #' }
-use_s4 <- function() {
+use_s4 <- function(path = ".") {
+  with_project(path)
   add_import("methods")
 
   cli::cli_alert_info("Use {.code #[miniextendr(s4)]} on impl blocks for S4 classes")
@@ -193,6 +201,7 @@ use_s4 <- function() {
 #' This is an optional feature that adds compile-time cost but enables
 #' easy parallelization of Rust code.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
@@ -200,7 +209,8 @@ use_s4 <- function() {
 #' \dontrun{
 #' use_rayon()
 #' }
-use_rayon <- function() {
+use_rayon <- function(path = ".") {
+  with_project(path)
   add_cargo_feature("rayon", "miniextendr-api/rayon")
 
   cli::cli_alert_info("Use {.code rayon::prelude::*} for parallel iterators")
@@ -213,6 +223,7 @@ use_rayon <- function() {
 #' Configures your package to use serde for serialization.
 #' Useful for JSON, TOML, or other format support.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
 #'
@@ -220,7 +231,8 @@ use_rayon <- function() {
 #' \dontrun{
 #' use_serde()
 #' }
-use_serde <- function() {
+use_serde <- function(path = ".") {
+  with_project(path)
   add_cargo_feature("serde", "miniextendr-api/serde")
 
   cli::cli_alert_info("Derive with {.code #[derive(Serialize, Deserialize)]}")
@@ -251,6 +263,7 @@ use_serde <- function() {
 #' - Conditional code paths based on available features
 #' - Documentation of what's included in a build
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param package_name Package name (default: derived from DESCRIPTION)
 #' @param features Character vector of feature names to include. Default NULL
 #'   scans Cargo.toml automatically.
@@ -269,11 +282,13 @@ use_serde <- function() {
 #' # Manually specify features
 #' use_feature_detection(features = c("rayon", "serde", "uuid"))
 #' }
-use_feature_detection <- function(package_name = NULL,
+use_feature_detection <- function(path = ".",
+                                   package_name = NULL,
                                    features = NULL,
                                    rust_file = "src/rust/feature_detection.rs",
                                    r_file = "R/feature_helpers.R",
                                    overwrite = FALSE) {
+  with_project(path)
 
   # Get package name from DESCRIPTION if not provided
   if (is.null(package_name)) {
@@ -333,6 +348,7 @@ use_feature_detection <- function(package_name = NULL,
 #' Re-scans Cargo.toml and regenerates feature detection code. Use this after
 #' adding new features to keep the detection code in sync.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param overwrite Logical, whether to overwrite existing files (default TRUE)
 #' @return Invisibly returns list of generated file paths
 #' @export
@@ -342,8 +358,8 @@ use_feature_detection <- function(package_name = NULL,
 #' # After adding new features via use_rayon(), use_serde(), etc.
 #' update_feature_detection()
 #' }
-update_feature_detection <- function(overwrite = TRUE) {
-  use_feature_detection(overwrite = overwrite)
+update_feature_detection <- function(path = ".", overwrite = TRUE) {
+  use_feature_detection(path = path, overwrite = overwrite)
 }
 
 #' Detect features from Cargo.toml
