@@ -245,8 +245,9 @@ pub use altrep_data::{
     Logical,
     Sortedness,
 };
-// Re-export RBase enum
+// Re-export RBase enum and AltrepGuard
 pub use altrep::RBase;
+pub use altrep_traits::AltrepGuard;
 
 // ALTREP package name global - set by C entrypoint before ALTREP registration
 // This is a pointer to a null-terminated C string provided by C code.
@@ -280,6 +281,11 @@ pub static ALTREP_PKG_NAME: AltrepPkgName = AltrepPkgName;
 #[doc(hidden)]
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn miniextendr_set_altrep_pkg_name(name: *const std::ffi::c_char) {
+    let name = if name.is_null() {
+        c"unknown".as_ptr()
+    } else {
+        name
+    };
     ALTREP_PKG_NAME_PTR.store(name as *mut _, Ordering::Release);
 }
 
@@ -331,6 +337,9 @@ pub mod panic_telemetry;
 
 // Strict conversion helpers for #[miniextendr(strict)]
 pub mod strict;
+
+// Error value transport for #[miniextendr(error_in_r)]
+pub mod error_value;
 
 // Error handling helpers (r_stop, r_warning, r_error!, r_print!, r_println! macros)
 pub mod error;

@@ -205,7 +205,7 @@ cd tests/model_project && NOT_CRAN=true ./configure
 1. Detects `cargo`, `rustc`, `sed`, platform info
 2. Generates all build files from `.in` templates
 3. Generates `Cargo.lock` (runs `cargo generate-lockfile`)
-4. Runs `cargo vendor` to populate `src/vendor/` with external crates (not miniextendr crates -- those come from `[patch]`)
+4. Runs `cargo vendor` to populate `vendor/` with external crates (not miniextendr crates -- those come from `[patch]`)
 5. Creates `inst/vendor.tar.xz` (compressed vendor archive for CRAN)
 6. Extracts the static library name from Cargo.toml (`CARGO_STATICLIB_NAME = pigworld`)
 

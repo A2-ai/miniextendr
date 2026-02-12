@@ -143,7 +143,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
             | SEXPTYPE::RAWSXP => visitor.visit_seq(VectorSeqAccess::new(self.sexp)),
             // Named list -> map
             SEXPTYPE::VECSXP if self.has_names() => {
-                visitor.visit_map(NamedListMapAccess::new(self.sexp))
+                visitor.visit_map(NamedListMapAccess::new(self.sexp)?)
             }
             // Unnamed list -> seq
             SEXPTYPE::VECSXP => visitor.visit_seq(ListSeqAccess::new(self.sexp)),
@@ -219,6 +219,24 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
+                if !val.is_finite() {
+                    return Err(RSerdeError::Overflow {
+                        from: "f64",
+                        to: "i64",
+                    });
+                }
+                if val != val.trunc() {
+                    return Err(RSerdeError::Overflow {
+                        from: "f64",
+                        to: "i64",
+                    });
+                }
+                if val < i64::MIN as f64 || val > i64::MAX as f64 {
+                    return Err(RSerdeError::Overflow {
+                        from: "f64",
+                        to: "i64",
+                    });
+                }
                 visitor.visit_i64(val as i64)
             }
             _ => Err(RSerdeError::TypeMismatch {
@@ -285,6 +303,12 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
+                if !val.is_finite() || val != val.trunc() {
+                    return Err(RSerdeError::Overflow {
+                        from: "f64",
+                        to: "u32",
+                    });
+                }
                 if val < 0.0 || val > u32::MAX as f64 {
                     return Err(RSerdeError::Overflow {
                         from: "f64",
@@ -328,7 +352,13 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 if val.to_bits() == NA_REAL.to_bits() {
                     return Err(RSerdeError::UnexpectedNa);
                 }
-                if val < 0.0 {
+                if !val.is_finite() || val != val.trunc() {
+                    return Err(RSerdeError::Overflow {
+                        from: "f64",
+                        to: "u64",
+                    });
+                }
+                if val < 0.0 || val > u64::MAX as f64 {
                     return Err(RSerdeError::Overflow {
                         from: "f64",
                         to: "u64",
@@ -385,7 +415,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         let len = self.len();
         let ptr = unsafe { crate::ffi::RAW(self.sexp) };
-        let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let bytes = unsafe { crate::from_r::r_slice(ptr, len) };
         visitor.visit_bytes(bytes)
     }
 
@@ -399,7 +429,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
 
         let len = self.len();
         let ptr = unsafe { crate::ffi::RAW(self.sexp) };
-        let bytes = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let bytes = unsafe { crate::from_r::r_slice(ptr, len) };
         visitor.visit_byte_buf(bytes.to_vec())
     }
 
@@ -518,7 +548,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 actual: self.type_name(),
             });
         }
-        visitor.visit_map(NamedListMapAccess::new(self.sexp))
+        visitor.visit_map(NamedListMapAccess::new(self.sexp)?)
     }
 
     fn deserialize_struct<V: Visitor<'de>>(
@@ -533,7 +563,7 @@ impl<'de> de::Deserializer<'de> for RDeserializer {
                 actual: self.type_name(),
             });
         }
-        visitor.visit_map(NamedListMapAccess::new(self.sexp))
+        visitor.visit_map(NamedListMapAccess::new(self.sexp)?)
     }
 
     fn deserialize_enum<V: Visitor<'de>>(
@@ -818,14 +848,34 @@ struct NamedListMapAccess {
 }
 
 impl NamedListMapAccess {
-    fn new(sexp: SEXP) -> Self {
+    fn new(sexp: SEXP) -> Result<Self, RSerdeError> {
         let names = unsafe { Rf_getAttrib(sexp, R_NamesSymbol) };
-        NamedListMapAccess {
+        if names == unsafe { R_NilValue } {
+            return Err(RSerdeError::TypeMismatch {
+                expected: "named list",
+                actual: "list (no names attribute)".into(),
+            });
+        }
+        if unsafe { TYPEOF(names) } as SEXPTYPE != SEXPTYPE::STRSXP {
+            return Err(RSerdeError::TypeMismatch {
+                expected: "named list",
+                actual: "list (names attribute is not character)".into(),
+            });
+        }
+        let len = unsafe { Rf_xlength(sexp) as usize };
+        let names_len = unsafe { Rf_xlength(names) as usize };
+        if names_len != len {
+            return Err(RSerdeError::TypeMismatch {
+                expected: "named list",
+                actual: "list (names length mismatch)".into(),
+            });
+        }
+        Ok(NamedListMapAccess {
             sexp,
             names,
             index: 0,
-            len: unsafe { Rf_xlength(sexp) as usize },
-        }
+            len,
+        })
     }
 }
 

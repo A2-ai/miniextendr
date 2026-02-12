@@ -30,6 +30,6 @@ run_with_logging(
 List with status, output, and log_file path
 }
 \description{
-Wrapper around processx::run() that saves stderr/stdout to timestamped log
+Wrapper around system2() that saves stderr/stdout to timestamped log
 files for later inspection when errors occur.
 }

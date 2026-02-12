@@ -268,6 +268,22 @@ impl<M: MapStorage> ArenaState<M> {
     /// Initial capacity for the backing VECSXP.
     pub const INITIAL_CAPACITY: usize = 16;
 
+    /// Maximum capacity: the backing VECSXP is indexed by `R_xlen_t` (isize),
+    /// so the capacity must fit in a non-negative `R_xlen_t`.
+    const MAX_CAPACITY: usize = R_xlen_t::MAX as usize;
+
+    /// Convert a `usize` capacity to `R_xlen_t`, panicking on overflow.
+    #[inline]
+    fn capacity_as_r_xlen(cap: usize) -> R_xlen_t {
+        R_xlen_t::try_from(cap).unwrap_or_else(|_| {
+            panic!(
+                "arena capacity {} exceeds R_xlen_t::MAX ({})",
+                cap,
+                R_xlen_t::MAX
+            )
+        })
+    }
+
     /// Create uninitialized state (for thread_local).
     pub const fn uninit() -> Self {
         Self {
@@ -286,8 +302,15 @@ impl<M: MapStorage> ArenaState<M> {
     /// Must be called exactly once before using the state.
     pub unsafe fn init(&mut self, capacity: usize) {
         let capacity = capacity.max(1);
+        assert!(
+            capacity <= Self::MAX_CAPACITY,
+            "arena capacity {} exceeds R_xlen_t::MAX ({})",
+            capacity,
+            R_xlen_t::MAX
+        );
         unsafe {
-            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
+            let r_cap = Self::capacity_as_r_xlen(capacity);
+            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, r_cap));
             R_PreserveObject(backing);
             Rf_unprotect(1);
 
@@ -320,8 +343,15 @@ impl<M: MapStorage> ArenaState<M> {
     /// Initialize just the backing (map already initialized).
     unsafe fn init_backing(&mut self, capacity: usize) {
         let capacity = capacity.max(1);
+        assert!(
+            capacity <= Self::MAX_CAPACITY,
+            "arena capacity {} exceeds R_xlen_t::MAX ({})",
+            capacity,
+            R_xlen_t::MAX
+        );
         unsafe {
-            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, capacity as R_xlen_t));
+            let r_cap = Self::capacity_as_r_xlen(capacity);
+            let backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, r_cap));
             R_PreserveObject(backing);
             Rf_unprotect(1);
 
@@ -472,17 +502,26 @@ impl<M: MapStorage> ArenaState<M> {
 
     unsafe fn grow(&mut self) {
         let old_capacity = self.capacity;
-        let new_capacity = old_capacity * 2;
+        let new_capacity = old_capacity
+            .checked_mul(2)
+            .expect("arena capacity overflow during growth");
+        assert!(
+            new_capacity <= Self::MAX_CAPACITY,
+            "arena capacity {} would exceed R_xlen_t::MAX ({}) after growth",
+            new_capacity,
+            R_xlen_t::MAX
+        );
         let old_backing = self.backing;
 
         unsafe {
-            let new_backing =
-                Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, new_capacity as R_xlen_t));
+            let r_new_cap = Self::capacity_as_r_xlen(new_capacity);
+            let new_backing = Rf_protect(Rf_allocVector(SEXPTYPE::VECSXP, r_new_cap));
             R_PreserveObject(new_backing);
 
             for i in 0..old_capacity {
-                let elt = VECTOR_ELT(old_backing, i as R_xlen_t);
-                SET_VECTOR_ELT(new_backing, i as R_xlen_t, elt);
+                let r_i = Self::capacity_as_r_xlen(i);
+                let elt = VECTOR_ELT(old_backing, r_i);
+                SET_VECTOR_ELT(new_backing, r_i, elt);
             }
 
             R_ReleaseObject(old_backing);
@@ -648,7 +687,11 @@ impl<M: MapStorage> Arena<M> {
 
 impl<M: MapStorage> Drop for Arena<M> {
     fn drop(&mut self) {
-        unsafe { self.state.borrow_mut().release_backing() };
+        let state = self.state.get_mut();
+        // Drop the map first (always initialized for Arena<M>, which uses ArenaState::new()).
+        // SAFETY: Arena<M> always constructs via ArenaState::new() which initializes the map.
+        unsafe { state.map.assume_init_drop() };
+        unsafe { state.release_backing() };
     }
 }
 
@@ -896,6 +939,11 @@ macro_rules! define_thread_local_arena {
             pub unsafe fn unprotect(x: $crate::ffi::SEXP) {
                 $state_name.with(|cell| {
                     let state = unsafe { &mut *cell.get() };
+                    // If the arena was never initialized, no SEXP could have been
+                    // protected by it, so there is nothing to unprotect.
+                    if !state.initialized {
+                        return;
+                    }
                     unsafe { state.inner.unprotect(x) };
                 });
             }
@@ -909,6 +957,11 @@ macro_rules! define_thread_local_arena {
             pub unsafe fn try_unprotect(x: $crate::ffi::SEXP) -> bool {
                 $state_name.with(|cell| {
                     let state = unsafe { &mut *cell.get() };
+                    // If the arena was never initialized, no SEXP could have been
+                    // protected by it, so return false.
+                    if !state.initialized {
+                        return false;
+                    }
                     unsafe { state.inner.try_unprotect(x) }
                 })
             }
@@ -1068,6 +1121,20 @@ impl<M: MapStorage> ThreadLocalState<M> {
     pub unsafe fn init_with_capacity(&mut self, capacity: usize) {
         unsafe { self.inner.init(capacity) };
         self.initialized = true;
+    }
+}
+
+impl<M: MapStorage> Drop for ThreadLocalState<M> {
+    fn drop(&mut self) {
+        if self.initialized {
+            // SAFETY: The map was initialized in init() or init_with_capacity().
+            // We must manually drop it because MaybeUninit does not run Drop.
+            unsafe { self.inner.map.assume_init_drop() };
+        }
+        // R backing is released separately via release_backing() if needed.
+        // Thread-local destructors may run after R has shut down, so we do NOT
+        // call R_ReleaseObject here — the R runtime owns the backing VECSXP
+        // lifetime via R_PreserveObject.
     }
 }
 

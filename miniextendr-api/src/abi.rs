@@ -197,6 +197,15 @@ pub struct mx_base_vtable {
     /// - `ptr` must be a valid pointer to `mx_erased`
     /// - The returned pointer (if non-null) must be cast to the correct vtable type
     pub query: unsafe extern "C" fn(ptr: *mut mx_erased, trait_tag: mx_tag) -> *const c_void,
+
+    /// Byte offset from the start of the wrapper struct to the `data` field.
+    ///
+    /// The generated wrapper struct is `#[repr(C)] struct { erased: mx_erased, data: T }`.
+    /// When `T` has stricter alignment than `mx_erased`, padding exists between
+    /// `erased` and `data`. This field records the correct offset so that
+    /// `TraitView::try_from_sexp` can compute the data pointer without
+    /// assuming `offset == size_of::<mx_erased>()`.
+    pub data_offset: usize,
 }
 
 /// Type-erased object header.

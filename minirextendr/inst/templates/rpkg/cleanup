@@ -23,6 +23,9 @@ if [ -f "libs/${pkg_name}.so" ] || [ -f "libs/${pkg_name}.dylib" ] || \
     # The .so is built. Remove ALL Rust/Cargo/src artifacts.
     rm -rf .cargo
     rm -rf src
+    rm -rf vendor
+    rm -rf rust-target
+    rm -rf ra-target
     exit 0
 fi
 
@@ -33,6 +36,8 @@ fi
 rm -rf .cargo
 rm -rf src/.cargo
 rm -rf src/rust/target
+rm -rf rust-target
+rm -rf ra-target
 rm -f src/rust/.cargo/config.toml
 
 # Remove generated files (configure recreates them from .in templates)
@@ -46,7 +51,7 @@ rm -f src/*-wrappers.R
 # Remove vendor directory for the tarball (vendor.tar.xz was created by configure)
 # This avoids CRAN NOTEs about hidden files and long paths.
 # Makevars/configure will unpack inst/vendor.tar.xz when needed.
-if [ -d "src/vendor" ] && [ -f "inst/vendor.tar.xz" ]; then
+if [ -d "vendor" ] && [ -f "inst/vendor.tar.xz" ]; then
     echo "Removing vendor directory (inst/vendor.tar.xz exists)..."
-    rm -rf src/vendor
+    rm -rf vendor
 fi

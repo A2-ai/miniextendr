@@ -567,6 +567,8 @@ pub(crate) struct MiniextendrFnAttrs {
     pub(crate) lifecycle: Option<crate::lifecycle::LifecycleSpec>,
     /// Strict output conversion: panic instead of lossy widening for i64/u64/isize/usize.
     pub(crate) strict: bool,
+    /// Transport Rust-origin errors as tagged values; R wrapper raises condition.
+    pub(crate) error_in_r: bool,
     /// Mark as internal: adds `@keywords internal`, suppresses `@export`.
     pub(crate) internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
@@ -619,11 +621,25 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else if ident == "rng" {
                             out.rng = true;
                         } else if ident == "unwrap_in_r" {
+                            if out.error_in_r {
+                                return Err(syn::Error::new_spanned(
+                                    ident,
+                                    "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                                ));
+                            }
                             out.unwrap_in_r = true;
                         } else if ident == "worker" {
                             out.force_worker = true;
                         } else if ident == "strict" {
                             out.strict = true;
+                        } else if ident == "error_in_r" {
+                            if out.unwrap_in_r {
+                                return Err(syn::Error::new_spanned(
+                                    ident,
+                                    "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                                ));
+                            }
+                            out.error_in_r = true;
                         } else if ident == "internal" {
                             out.internal = true;
                         } else if ident == "noexport" {
@@ -631,7 +647,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, strict, internal, noexport",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, error_in_r, strict, internal, noexport",
                             ));
                         }
                     }

@@ -1,15 +1,10 @@
-//! Generated R wrapper benchmarks (optional).
+//! Generated R wrapper benchmarks.
 //!
-//! Goal: measure overhead of calling generated R wrappers vs direct `.Call`.
-//! This likely requires evaluating R code via `Rf_eval` in the embedded R
-//! runtime and should be isolated in its own bench binary.
+//! Measures overhead of calling generated R wrappers vs direct `.Call`,
+//! argument coercion costs, and class-system method dispatch.
 //!
-//! Planned groups:
-//! - `wrapper_call_overhead` (R wrapper -> .Call -> Rust)
-//! - `direct_call_overhead` (direct `.Call`)
-//! - `argument_coercion` (R wrapper with coercion enabled)
-//! - `class_methods` (S3/S4/S7/R6 method dispatch)
-//!
-//! Notes:
-//! - Keep R expressions pre-parsed to avoid parse overhead.
-//! - Use small trivial functions to focus on wrapper cost.
+//! Implemented groups:
+//! - `wrapper_call_overhead`: noop and realvec wrapper vs direct .Call
+//! - `direct_call_overhead`: direct .Call baseline (noop, realvec, eval_sum)
+//! - `argument_coercion`: as.integer/as.double/as.character scalar + vec256
+//! - `class_methods`: Env/R6/S3/S4/S7 dispatch + plain function baseline

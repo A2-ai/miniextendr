@@ -45,11 +45,13 @@ test_that("templates patch is in sync with rpkg sources", {
 # -----------------------------------------------------------------------------
 
 test_that("create_miniextendr_monorepo creates correct directory structure", {
+  skip_if_no_local_repo()
   tmp <- tempfile("monorepo-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   # Create monorepo
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Check root files
   expect_true(file.exists(file.path(tmp, "Cargo.toml")))
@@ -70,14 +72,16 @@ test_that("create_miniextendr_monorepo creates correct directory structure", {
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "Cargo.toml")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "build.rs")))
   expect_true(file.exists(file.path(tmp, "rpkg", "src", "rust", "document.rs.in")))
-  expect_true(dir.exists(file.path(tmp, "rpkg", "src", "vendor")))
+  expect_true(dir.exists(file.path(tmp, "rpkg", "vendor")))
 })
 
 test_that("create_miniextendr_monorepo performs correct template substitution", {
   tmp <- tempfile("monorepo-subst-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "myPkg", crate_name = "my-pkg", open = FALSE)
+  skip_if_no_local_repo()
+  create_miniextendr_monorepo(tmp, package = "myPkg", crate_name = "my-pkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Root Cargo.toml should reference crate_name
   root_cargo <- readLines(file.path(tmp, "Cargo.toml"))
@@ -100,7 +104,9 @@ test_that("monorepo root Cargo.toml has valid workspace configuration", {
   tmp <- tempfile("monorepo-cargo-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  skip_if_no_local_repo()
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   cargo <- readLines(file.path(tmp, "Cargo.toml"))
   cargo_text <- paste(cargo, collapse = "\n")
@@ -120,7 +126,9 @@ test_that("monorepo rpkg DESCRIPTION has correct miniextendr config", {
   tmp <- tempfile("monorepo-desc-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  skip_if_no_local_repo()
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   desc_path <- file.path(tmp, "rpkg", "DESCRIPTION")
   desc <- desc::desc(desc_path)
@@ -212,7 +220,9 @@ test_that("monorepo can run autoconf and configure", {
   tmp <- tempfile("monorepo-build-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  skip_if_no_local_repo()
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Run autoconf in rpkg/
   result <- withr::with_dir(file.path(tmp, "rpkg"), {
@@ -231,7 +241,9 @@ test_that("monorepo workspace can cargo check", {
   tmp <- tempfile("monorepo-cargo-check-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  skip_if_no_local_repo()
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # The main crate should be checkable (rpkg needs configure first)
   # suppressWarnings: cargo check may fail if miniextendr-api isn't on crates.io
@@ -258,43 +270,14 @@ test_that("monorepo workspace can cargo check", {
 # End-to-end scaffolding test (full build and test)
 # -----------------------------------------------------------------------------
 
-# Helper to find local miniextendr repo for vendoring
-find_miniextendr_repo <- function() {
-
-  # Check environment variable first
-  env_path <- Sys.getenv("MINIEXTENDR_LOCAL_PATH", "")
-  if (nzchar(env_path) && dir.exists(file.path(env_path, "miniextendr-api"))) {
-    return(env_path)
-  }
-
-
-  # Check relative to minirextendr package source (development mode)
-  # minirextendr is at miniextendr/minirextendr/, so parent is the repo
-  pkg_path <- tryCatch(
-    rprojroot::find_package_root_file(),
-    error = function(e) NULL
-  )
-  if (!is.null(pkg_path)) {
-    parent <- dirname(pkg_path)
-    if (dir.exists(file.path(parent, "miniextendr-api"))) {
-      return(parent)
-    }
-  }
-
-  NULL
-}
-
 test_that("rpkg scaffolding builds and functions work end-to-end", {
   skip_on_ci()  # Complex build environment requirements; test locally
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
   skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
   skip_if_not(nzchar(Sys.which("R")), "R not available")
-
-  # Find local miniextendr repo for vendoring
+  skip_if_no_local_repo()
 
   miniextendr_path <- find_miniextendr_repo()
-  skip_if(is.null(miniextendr_path),
-          "Local miniextendr repo not found (set MINIEXTENDR_LOCAL_PATH)")
 
   tmp <- tempfile("rpkg-e2e-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
@@ -306,17 +289,16 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   # Create basic R package
   suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
-    usethis::proj_set(pkg_path, force = TRUE)
-    use_miniextendr(local_path = miniextendr_path)
+    use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
+    usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
   })
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
-    miniextendr_autoconf()
-    miniextendr_configure()
+    miniextendr_autoconf(path = pkg_path)
+    miniextendr_configure(path = pkg_path)
     # Generate NAMESPACE from package doc (useDynLib)
     devtools::document(pkg = pkg_path)
   })
@@ -364,8 +346,8 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
     library(pkg_name, character.only = TRUE)
 
     # Test add function
-    expect_equal(add(1L, 2L), 3L)
-    expect_equal(add(10L, 20L), 30L)
+    expect_equal(add(1, 2), 3)
+    expect_equal(add(10, 20), 30)
 
     # Test hello function
     expect_equal(hello("World"), "Hello, World!")
@@ -381,10 +363,9 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
   skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
   skip_if_not(nzchar(Sys.which("R")), "R not available")
+  skip_if_no_local_repo()
 
   miniextendr_path <- find_miniextendr_repo()
-  skip_if(is.null(miniextendr_path),
-          "Local miniextendr repo not found (set MINIEXTENDR_LOCAL_PATH)")
 
   tmp <- tempfile("rpkg-cargo-dep-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
@@ -395,17 +376,16 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   # Create package and add miniextendr
   suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
-    usethis::proj_set(pkg_path, force = TRUE)
-    use_miniextendr(local_path = miniextendr_path)
+    use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
+    usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
   })
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
-    miniextendr_autoconf()
-    miniextendr_configure()
+    miniextendr_autoconf(path = pkg_path)
+    miniextendr_configure(path = pkg_path)
   })
 
   # Add itertools dependency to Cargo.toml
@@ -457,7 +437,6 @@ test_that("rpkg scaffolding with external cargo dependency works", {
 
   # Reconfigure to vendor itertools (with FORCE_VENDOR environment variable)
   suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
     # Combine devtools env vars with FORCE_VENDOR
     config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
     result <- run_with_logging(
@@ -471,7 +450,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   })
 
   # Verify itertools was vendored
-  expect_true(dir.exists(file.path(pkg_path, "src", "vendor", "itertools")),
+  expect_true(dir.exists(file.path(pkg_path, "vendor", "itertools")),
               info = "itertools was not vendored")
 
   # Build and install - this generates R wrappers via document binary
@@ -513,7 +492,7 @@ test_that("rpkg scaffolding with external cargo dependency works", {
     library(testpkg)
 
     # Test basic functions
-    expect_equal(add(1L, 2L), 3L)
+    expect_equal(add(1, 2), 3)
     expect_equal(hello("Test"), "Hello, Test!")
 
     # Test itertools function
@@ -532,8 +511,10 @@ test_that("monorepo handles dots in package names", {
   tmp <- tempfile("monorepo-dots-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
+  skip_if_no_local_repo()
   # Dots in R package names should convert to hyphens in crate names
-  create_miniextendr_monorepo(tmp, package = "my.pkg", crate_name = "my-pkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "my.pkg", crate_name = "my-pkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Rust crate should use hyphens
   crate_cargo <- readLines(file.path(tmp, "my-pkg", "Cargo.toml"))
@@ -552,7 +533,9 @@ test_that("monorepo handles hyphens in crate names", {
   tmp <- tempfile("monorepo-hyphens-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "test-pkg", open = FALSE)
+  skip_if_no_local_repo()
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "test-pkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Crate name should have hyphens
   crate_cargo <- readLines(file.path(tmp, "test-pkg", "Cargo.toml"))
@@ -578,25 +561,22 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   skip_if_not(nzchar(Sys.which("autoconf")), "autoconf not available")
   skip_if_not(nzchar(Sys.which("cargo")), "Rust toolchain not available")
   skip_if_not(nzchar(Sys.which("R")), "R not available")
+  skip_if_no_local_repo()
 
-  # Find local miniextendr repo for vendoring
   miniextendr_path <- find_miniextendr_repo()
-  skip_if(is.null(miniextendr_path),
-          "Local miniextendr repo not found (set MINIEXTENDR_LOCAL_PATH)")
 
   tmp <- tempfile("monorepo-e2e-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  # Create monorepo with valid package name
+  # Create monorepo with valid package name (local_path vendors miniextendr crates)
   suppressMessages({
-    create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+    create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                                local_path = miniextendr_path, open = FALSE)
   })
 
   rpkg_path <- file.path(tmp, "rpkg")
 
-  # Vendor miniextendr from local path into rpkg/src/vendor
   suppressMessages({
-    vendor_miniextendr(local_path = miniextendr_path, dest = file.path(rpkg_path, "src", "vendor"))
     # Add package-level documentation for useDynLib
     usethis::proj_set(rpkg_path, force = TRUE)
     usethis::use_package_doc()
@@ -608,7 +588,7 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   # Run cargo vendor to fetch crates.io deps (proc-macro2, syn, quote, etc.)
   suppressWarnings({
     withr::with_dir(rpkg_path, {
-      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "src/vendor"),
+      system2("cargo", c("vendor", "--manifest-path", "src/rust/Cargo.toml", "vendor"),
               stdout = FALSE, stderr = FALSE)
     })
   })
@@ -617,8 +597,8 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   suppressMessages({
     usethis::proj_set(rpkg_path, force = TRUE)
     usethis::use_package_doc()
-    miniextendr_autoconf()
-    miniextendr_configure()
+    miniextendr_autoconf(path = rpkg_path)
+    miniextendr_configure(path = rpkg_path)
   })
 
   # Get package name
@@ -663,8 +643,8 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
     library(pkg_name, character.only = TRUE)
 
     # Test add function
-    expect_equal(add(1L, 2L), 3L)
-    expect_equal(add(10L, 20L), 30L)
+    expect_equal(add(1, 2), 3)
+    expect_equal(add(10, 20), 30)
 
     # Test hello function
     expect_equal(hello("World"), "Hello, World!")

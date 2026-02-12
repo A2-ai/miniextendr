@@ -663,15 +663,20 @@ impl AltrepSerialize for Range<i32> {
 impl AltrepSerialize for Range<i64> {
     fn serialized_state(&self) -> SEXP {
         use crate::into_r::IntoR;
-        // Serialize as f64 to preserve i64 range (R's doubles have 53-bit mantissa)
-        vec![self.start as f64, self.end as f64].into_sexp()
+        // Store i64 bit patterns in f64 slots for lossless round-trip.
+        // Plain `as f64` loses precision for values > 2^53.
+        vec![
+            f64::from_bits(self.start as u64),
+            f64::from_bits(self.end as u64),
+        ]
+        .into_sexp()
     }
 
     fn unserialize(state: SEXP) -> Option<Self> {
         use crate::from_r::TryFromSexp;
         let v = Vec::<f64>::try_from_sexp(state).ok()?;
         if v.len() == 2 {
-            Some((v[0] as i64)..(v[1] as i64))
+            Some((v[0].to_bits() as i64)..(v[1].to_bits() as i64))
         } else {
             None
         }

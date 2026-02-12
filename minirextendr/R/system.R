@@ -2,7 +2,7 @@
 
 #' Execute system command with stderr/stdout capture
 #'
-#' Wrapper around processx::run() that saves stderr/stdout to timestamped log
+#' Wrapper around system2() that saves stderr/stdout to timestamped log
 #' files for later inspection when errors occur.
 #'
 #' @param command Command to execute
@@ -27,44 +27,29 @@ run_with_logging <- function(command, args = character(),
     dir.create(log_dir, recursive = TRUE, showWarnings = FALSE)
   }
 
-  # Convert named vector to "NAME=value" format
-  if (length(env) > 0 && !is.null(names(env))) {
-    env <- paste0(names(env), "=", env)
-  }
-
-  # Build processx env argument: processx expects a named character vector
-  # where names are variable names and values are variable values.
-  # Our `env` is in "NAME=value" format. Convert for processx, and merge
-  # with the current environment so child processes inherit it.
-  px_env <- NULL
-  if (length(env) > 0) {
-    # Parse "NAME=value" strings into a named vector
+  # Normalize env to a named character vector for withr::local_envvar.
+  # Accepts either named vector c(FOO = "bar") or "FOO=bar" strings.
+  if (length(env) > 0 && is.null(names(env))) {
     eq_pos <- regexpr("=", env, fixed = TRUE)
-    env_names <- substr(env, 1, eq_pos - 1)
-    env_values <- substr(env, eq_pos + 1, nchar(env))
-    extra_env <- stats::setNames(env_values, env_names)
-
-    # Merge with current environment (extra vars override)
-    px_env <- c(Sys.getenv(), extra_env)
+    nms <- substr(env, 1, eq_pos - 1)
+    vals <- substr(env, eq_pos + 1, nchar(env))
+    env <- stats::setNames(vals, nms)
   }
 
-  # Run command via processx
-  px_result <- processx::run(
-    command,
-    args = args,
-    wd = wd,
-    env = px_env,
-    error_on_status = FALSE
-  )
-
-  # Combine stdout and stderr into a single character vector (like system2)
-  combined <- c(px_result$stdout, px_result$stderr)
-  output <- strsplit(combined, "\n", fixed = TRUE)
-  output <- unlist(output, use.names = FALSE)
-  # Remove trailing empty string from final newline
-  if (length(output) > 0 && output[length(output)] == "") {
-    output <- output[-length(output)]
+  # Run command via system2 with env vars and working directory
+  run_fn <- function() {
+    if (length(env) > 0) withr::local_envvar(.new = env)
+    system2(command, args = args, stdout = TRUE, stderr = TRUE)
   }
+
+  if (!is.null(wd)) {
+    output <- withr::with_dir(wd, run_fn())
+  } else {
+    output <- run_fn()
+  }
+
+  status <- attr(output, "status")
+  if (is.null(status)) status <- 0L
 
   # Save output to log file
   writeLines(c(
@@ -75,8 +60,6 @@ run_with_logging <- function(command, args = character(),
     "=== Output ===",
     output
   ), log_file)
-
-  status <- px_result$status
 
   list(
     status = if (status == 0) NULL else status,
@@ -113,9 +96,8 @@ check_result <- function(result, context) {
 
 #' Run a command and capture output
 #'
-#' Internal helper that runs a command via processx and returns the combined
-#' stdout+stderr as a character vector, with the exit status as an attribute
-#' (mimicking system2's return convention).
+#' Internal helper that runs a command via system2 and returns the combined
+#' stdout+stderr as a character vector, with the exit status as an attribute.
 #'
 #' @param command Command to execute
 #' @param args Character vector of arguments
@@ -124,25 +106,14 @@ check_result <- function(result, context) {
 #'   the \code{"status"} attribute (NULL when 0, matching system2 convention).
 #' @noRd
 run_command <- function(command, args = character(), wd = NULL) {
-  px_result <- processx::run(
-    command,
-    args = args,
-    wd = wd,
-    error_on_status = FALSE
-  )
-
-  # Combine stdout and stderr into a character vector (like system2)
-  combined <- c(px_result$stdout, px_result$stderr)
-  output <- strsplit(combined, "\n", fixed = TRUE)
-  output <- unlist(output, use.names = FALSE)
-  # Remove trailing empty string from final newline
-  if (length(output) > 0 && output[length(output)] == "") {
-    output <- output[-length(output)]
+  run_fn <- function() {
+    system2(command, args = args, stdout = TRUE, stderr = TRUE)
   }
 
-  # system2 returns NULL status on success, numeric on failure
-  if (px_result$status != 0) {
-    attr(output, "status") <- px_result$status
+  if (!is.null(wd)) {
+    output <- withr::with_dir(wd, run_fn())
+  } else {
+    output <- run_fn()
   }
 
   output

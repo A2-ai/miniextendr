@@ -1,12 +1,11 @@
 //! Connection framework benchmarks (feature = "connections").
 //!
-//! Planned groups:
-//! - `open_close` (create/destroy connection)
-//! - `read_small` / `read_large`
-//! - `write_small` / `write_large`
-//! - `seek` / `tell` (if supported)
+//! Implemented groups:
+//! - `open_close`: create/destroy connection
+//! - `read_small` / `read_large`: 128 bytes / 4096 bytes
+//! - `write_small` / `write_large`: 128 bytes / 4096 bytes
 //!
-//! Parameters:
-//! - payload size
-//! - buffering on/off
-//! - encoding variations
+//! Remaining gaps:
+//! - `seek` / `tell` benchmarks
+//! - Buffering on/off variants
+//! - Encoding variations

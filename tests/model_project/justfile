@@ -22,7 +22,8 @@ manifest := justfile_directory() / "src/rust/Cargo.toml"
 default:
     @just --list
 
-# Run ./configure in development mode (NOT_CRAN=true)
+# Run ./configure in development mode
+# Note: vendor/ is pre-populated by scaffolding; configure does NOT run cargo vendor.
 configure:
     cd {{justfile_directory()}} && NOT_CRAN=true ./configure
 
@@ -54,7 +55,7 @@ fmt:
 clean:
     -cd {{justfile_directory()}} && NOT_CRAN=false ./cleanup
     -rm -rf {{justfile_directory()}}/rust-target
-    -rm -rf {{justfile_directory()}}/src/vendor
+    -rm -rf {{justfile_directory()}}/vendor
     -rm -f {{justfile_directory()}}/src/pigworld.so
     -rm -f {{justfile_directory()}}/src/*.o
     -rm -f {{justfile_directory()}}/config.log {{justfile_directory()}}/config.status

@@ -100,6 +100,7 @@ mod convert_pref_tests;
 mod dataframe_examples;
 mod default_tests;
 mod dots_tests;
+mod error_in_r_tests;
 mod externalptr_tests;
 mod factor_tests;
 mod gc_protect_tests;
@@ -1890,6 +1891,7 @@ miniextendr_module! {
     use panic_tests;
     use unwind_protect_tests;
     use dots_tests;
+    use error_in_r_tests;
     use interrupt_tests;
     use conversion_tests;
     use conversions;

@@ -1,5 +1,34 @@
 # Internal utility functions for minirextendr
 
+#' Set active project for the duration of the calling function
+#'
+#' Calls `usethis::local_project()` so that all downstream
+#' `usethis::proj_path()` / `usethis::proj_get()` calls resolve relative
+#' to `path`. The project is restored when the calling function exits.
+#'
+#' When `path` is `"."` and a project is already active, the current project
+#' is kept. This ensures nested function calls (e.g., `use_miniextendr()`
+#' calling `use_miniextendr_description()`) inherit the parent's project
+#' setting rather than resetting to the working directory.
+#'
+#' @param path Path to the R package root (default `"."`).
+#' @param .local_envir Environment where the deferred restore should run
+#'   (default: the caller's frame, i.e. the function that called
+#'   `with_project()`).
+#' @return Called for its side effect; returns `NULL` invisibly.
+#' @noRd
+with_project <- function(path, .local_envir = parent.frame()) {
+  if (identical(path, ".")) {
+    active <- tryCatch(usethis::proj_get(), error = function(e) NULL)
+    if (!is.null(active)) {
+      path <- active
+    }
+  }
+  usethis::local_project(path, .local_envir = .local_envir, quiet = TRUE,
+                         force = TRUE, setwd = FALSE)
+  invisible()
+}
+
 # Template type for current session (used by template functions)
 .template_type <- new.env(parent = emptyenv())
 .template_type$current <- "rpkg"

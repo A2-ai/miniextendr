@@ -10,31 +10,13 @@
  * - Function signatures are stable
  * - ABI version is tracked for compatibility checking
  *
- * USAGE FOR CONSUMER PACKAGES:
+ * USAGE:
  *
- * 1. Add to DESCRIPTION file:
- *      LinkingTo: miniextendr
- *      Imports: miniextendr
- *
- *    LinkingTo makes this header available via:
- *      #include <mx_abi.h>
- *
- *    Imports ensures miniextendr is loaded first (so C-callables are registered).
- *
- * 2. In R_init_<yourpkg>(), load C-callables:
- *
- *      typedef SEXP (*mx_wrap_fn)(mx_erased*);
- *      static mx_wrap_fn p_mx_wrap = NULL;
- *
- *      void R_init_yourpkg(DllInfo *dll) {
- *          p_mx_wrap = (mx_wrap_fn) R_GetCCallable("miniextendr", "mx_wrap");
- *          // ... similarly for mx_get, mx_query
- *      }
- *
- * 3. Use via function pointers:
- *      SEXP result = p_mx_wrap(my_erased_ptr);
- *
- * See R-exts §5.4.3 "Linking to native routines in other packages" for details.
+ * Each package compiles mx_abi.c (from mx_abi.c.in) into its own .so.
+ * The functions mx_wrap/mx_get/mx_query are linked directly — no
+ * R_GetCCallable indirection needed. Call mx_abi_register() from
+ * R_init_<yourpkg>() to initialize the tag symbol and register
+ * C-callables for cross-package interop.
  *
  * THREAD SAFETY:
  * All functions must be called from R's main thread only.
@@ -45,6 +27,7 @@
 
 #include <R.h>
 #include <Rinternals.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #ifdef __cplusplus
@@ -158,6 +141,15 @@ typedef struct mx_base_vtable {
      * @return Pointer to vtable if implemented, NULL otherwise
      */
     const void *(*query)(mx_erased *ptr, mx_tag trait_tag);
+
+    /**
+     * Byte offset from wrapper struct start to the data field.
+     *
+     * The wrapper is laid out as: { mx_erased erased; T data; }.
+     * When T has stricter alignment than mx_erased, padding exists
+     * between erased and data. This field stores the correct offset.
+     */
+    size_t data_offset;
 } mx_base_vtable;
 
 /**

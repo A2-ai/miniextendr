@@ -3,7 +3,7 @@
 miniextendr uses a **single workspace-level vendor directory** for development,
 with R package-specific vendoring for CRAN builds.
 
-## Strategy: Workspace ./vendor/ + R Package rpkg/src/vendor/
+## Strategy: Workspace ./vendor/ + R Package rpkg/vendor/
 
 ### 1. Workspace Development (./vendor/)
 
@@ -26,7 +26,7 @@ just vendor  # Syncs all workspace + bench Cargo.toml files
 
 **When to run:** After adding/updating dependencies in workspace crates
 
-### 2. R Package Vendoring (rpkg/src/vendor/)
+### 2. R Package Vendoring (rpkg/vendor/)
 
 **Purpose:** Self-contained R package for CRAN submission
 
@@ -35,9 +35,9 @@ just vendor  # Syncs all workspace + bench Cargo.toml files
 ```sh
 just configure  
 # Runs configure.ac which:
-# 1. rsync miniextendr-api/ -> rpkg/src/vendor/miniextendr-api/
-# 2. rsync miniextendr-macros/ -> rpkg/src/vendor/miniextendr-macros/
-# 3. cargo vendor crates.io deps -> rpkg/src/vendor/
+# 1. rsync miniextendr-api/ -> rpkg/vendor/miniextendr-api/
+# 2. rsync miniextendr-macros/ -> rpkg/vendor/miniextendr-macros/
+# 3. cargo vendor crates.io deps -> rpkg/vendor/
 ```
 
 **Used by:**
@@ -72,13 +72,13 @@ just vendor
 # 2. Work on code...
 
 # 3. Build R package
-just configure  # Syncs to rpkg/src/vendor/
+just configure  # Syncs to rpkg/vendor/
 just rcmdinstall
 ```
 
 **CRAN submission:**
 
-- Only rpkg/src/vendor/ is included in tarball
+- Only rpkg/vendor/ is included in tarball
 - Workspace ./vendor/ is .gitignored
 - miniextendr-bench/vendor/ removed (uses workspace vendor)
 
@@ -92,4 +92,4 @@ Removed:
 Kept:
 
 - ✅ ./vendor/ (workspace dev)
-- ✅ rpkg/src/vendor/ (R package CRAN builds)
+- ✅ rpkg/vendor/ (R package CRAN builds)

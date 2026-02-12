@@ -20,9 +20,13 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 == Testing
 
-- [ ] Thread-safety assertions not covered by tests
-  - Note: Would require embedded R runtime for meaningful tests.
-- [ ] String ALTREP NA serialization — `saveRDS`/`readRDS` loses NA (becomes empty string)
+- [x] Property-based roundtrip tests — 24 proptest tests for all scalar/vector/option types
+- [x] Macro codegen snapshot tests — 12 expect-test snapshots for R wrappers and class systems
+- [x] Thread-safety assertions — 198 R-level worker thread tests, checked FFI wrapper
+  panic tests, RAII cleanup across thread boundaries (test-worker.R, panic_tests.rs)
+  - Remaining gap: RThreadBuilder direct tests skipped (crashes R runtime)
+- [x] String ALTREP NA serialization — fixed in cc115a7 (use `Vec<Option<String>>`,
+  register `Vec_Option_String` ALTREP class)
 
 == Build / Infrastructure
 
@@ -57,4 +61,6 @@ See `plans/r6-deep-integration-plan.md` for full spec.
 
 - [ ] `miniextendr.yml` config file support for user defaults (yaml package)
 - [ ] `lifecycle` package for deprecation warnings and API evolution
-- [ ] `num-traits` as internal helper for generic numeric implementations
+- [x] `num-traits` as internal helper for generic numeric implementations
+  - `RNum`, `RFloat`, `RSigned` adapter traits with blanket impls
+  - Feature-gated: `miniextendr-api = { features = ["num-traits"] }`

@@ -224,24 +224,27 @@ expand *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run ./configure for dev mode
+# Run ./configure for dev mode (BUILD_CONTEXT=dev-monorepo)
 #
-# In dev mode (NOT_CRAN=true), this:
+# In dev mode, this:
 # 1. Generates build configuration files (Makevars, cargo config, etc.)
 # 2. Cleans up stale vendor artifacts (vendor/, vendor.tar.xz)
 # 3. Does NOT vendor — cargo resolves deps via [patch] in Cargo.toml
 #
-# For CRAN release prep, use `just vendor` to create the vendor tarball.
+# For CRAN release prep, use `just vendor` then `just configure-cran`.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     NOT_CRAN=true ./configure
 
-# Configure in CRAN/offline mode (do NOT force NOT_CRAN=true)
+# Configure in CRAN/offline mode (BUILD_CONTEXT=prepare-cran)
+#
+# Uses PREPARE_CRAN=true for explicit release-prep intent.
+# Run `just vendor` first to create inst/vendor.tar.xz.
 configure-cran:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    ./configure
+    PREPARE_CRAN=true ./configure
 
 # Vendor dependencies for CRAN release preparation
 #
@@ -252,16 +255,17 @@ vendor:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    root="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
+    root="{{justfile_directory()}}"
     rpkg_src="$root/rpkg/src"
-    vendor_out="$rpkg_src/vendor"
+    rpkg_root="$root/rpkg"
+    vendor_out="$rpkg_root/vendor"
     manifest="$rpkg_src/rust/Cargo.toml"
     lockfile="$rpkg_src/rust/Cargo.lock"
 
     echo "=== CRAN vendor prep ==="
 
-    # 1. Package workspace crates
-    staging="$rpkg_src/.vendor-tarball-staging"
+    # 1. Package workspace crates (creates .crate archives)
+    staging="$rpkg_root/.vendor-tarball-staging"
     rm -rf "$staging"
     mkdir -p "$staging" "$vendor_out"
 
@@ -275,19 +279,22 @@ vendor:
         fi
     done
 
-    # 2. Extract .crate files to vendor/
-    echo "Extracting packaged crates..."
+    # 2. Vendor external deps from crates.io FIRST
+    # (cargo vendor creates a clean vendor dir, so workspace crates must go after)
+    echo "Vendoring external dependencies..."
+    cargo vendor --manifest-path "$manifest" "$vendor_out"
+
+    # 3. Extract workspace .crate files ON TOP of vendored external deps
+    echo "Extracting packaged workspace crates..."
     for crate_file in "$staging/target/package/"*.crate; do
         [ -f "$crate_file" ] || continue
         basename=$(basename "$crate_file" .crate)
         echo "  $basename"
         mkdir -p "$vendor_out/$basename"
         tar -xzf "$crate_file" -C "$vendor_out/$basename" --strip-components=1
+        # Add cargo checksum file (required for vendored sources)
+        echo '{"files":{}}' > "$vendor_out/$basename/.cargo-checksum.json"
     done
-
-    # 3. Vendor external deps from crates.io
-    echo "Vendoring external dependencies..."
-    cargo vendor --manifest-path "$manifest" "$vendor_out"
 
     # 4. Strip checksums from Cargo.lock
     if [ -f "$lockfile" ]; then
@@ -296,7 +303,7 @@ vendor:
 
     # 5. Compress for CRAN tarball
     echo "Compressing vendor.tar.xz..."
-    compress_staging="$rpkg_src/.vendor-compress-staging"
+    compress_staging="$rpkg_root/.vendor-compress-staging"
     rm -rf "$compress_staging"
     mkdir -p "$compress_staging"
     cp -R "$vendor_out" "$compress_staging/vendor"
@@ -375,8 +382,11 @@ r-cmd-build *args: configure
     R CMD build {{args}} --no-manual --log --debug rpkg
 
 # Run R CMD check on rpkg
+# Depends on vendor to ensure inst/vendor.tar.xz exists in the tarball.
+# R CMD check copies the tarball to a temp dir where monorepo [patch] paths
+# are unavailable — configure detects this and uses vendored sources instead.
 alias rcmdcheck := r-cmd-check
-r-cmd-check *args: configure
+r-cmd-check *args: vendor
     @ERROR_ON="warning" \
     CHECK_DIR="" \
     && for arg in {{args}}; do \
@@ -427,6 +437,7 @@ minirextendr-document:
 # Run tests for minirextendr R package
 minirextendr-test FILTER="":
     #!/usr/bin/env bash
+    export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     if [ -z "{{FILTER}}" ]; then
       Rscript -e 'testthat::set_max_fails(Inf); devtools::test("minirextendr")'
     else
@@ -435,7 +446,7 @@ minirextendr-test FILTER="":
 
 # Check minirextendr R package with devtools::check
 minirextendr-check:
-    Rscript -e 'devtools::check("minirextendr", error_on = "error")'
+    MINIEXTENDR_LOCAL_PATH="$(pwd)" Rscript -e 'devtools::check("minirextendr", error_on = "error")'
 
 # Install minirextendr R package with devtools::install
 minirextendr-install:
@@ -452,6 +463,7 @@ minirextendr-build:
 # Run R CMD check on minirextendr package
 minirextendr-rcmdcheck:
     #!/usr/bin/env bash
+    export MINIEXTENDR_LOCAL_PATH="$(pwd)"
     Rscript -e "rcmdcheck::rcmdcheck('minirextendr', args = c('--no-manual'), error_on = 'warning')"
 
 # Full development cycle for minirextendr: document, test, check
@@ -680,7 +692,7 @@ templates-check-ci:
 # ==============================================================================
 # Vendor sync check (ensure vendored crates match workspace)
 # ==============================================================================
-# After `just configure`, rpkg/src/vendor/ should contain synced copies of:
+# After `just configure`, rpkg/vendor/ should contain synced copies of:
 #   - miniextendr-api
 #   - miniextendr-macros
 #   - miniextendr-macros-core
@@ -695,7 +707,7 @@ vendor-sync-check:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    vendor_dir="rpkg/src/vendor"
+    vendor_dir="rpkg/vendor"
     drift_found=0
 
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
@@ -725,7 +737,7 @@ vendor-sync-diff:
     #!/usr/bin/env bash
     set -euo pipefail
 
-    vendor_dir="rpkg/src/vendor"
+    vendor_dir="rpkg/vendor"
 
     for crate in miniextendr-api miniextendr-macros miniextendr-macros-core miniextendr-lint miniextendr-engine; do
       if [[ -d "$vendor_dir/$crate" ]]; then

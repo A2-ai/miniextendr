@@ -57,7 +57,7 @@
   // unnecessary recompilation on every devtools::load_all()
   "rust-analyzer.cargo.targetDir": "${workspaceFolder}/rpkg/ra-target",
   "rust-analyzer.files.excludeDirs": [
-    "rpkg/src/vendor",
+    "rpkg/vendor",
     "rpkg/src/rust/target",
     "rpkg/rust-target",
     "rpkg/ra-target"
@@ -88,7 +88,7 @@
     "**/target": true,
     "**/rust-target": true,
     "**/ra-target": true,
-    "**/rpkg/src/vendor": true,
+    "**/rpkg/vendor": true,
     "**/Cargo.lock": true
   },
   "tinymist.formatterMode": "typstyle"

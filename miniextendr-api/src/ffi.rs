@@ -660,7 +660,11 @@ pub struct Rconnection_impl(::std::os::raw::c_void);
 #[allow(non_camel_case_types)]
 pub type Rconnection = *mut Rconnection_impl;
 
-/// R connections API version constant.
+/// R connections API version from R's `R_ext/Connections.h` at compile time.
+///
+/// This is a compile-time constant baked into the Rust FFI bindings when they
+/// were generated against a particular R version's headers. It does **not**
+/// dynamically probe the running R session.
 ///
 /// From R_ext/Connections.h: "you *must* check the version and proceed only
 /// if it matches what you expect. We explicitly reserve the right to change

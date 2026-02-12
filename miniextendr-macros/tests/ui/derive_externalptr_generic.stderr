@@ -1,0 +1,5 @@
+error: ExternalPtr does not support generic structs; .Call entrypoints cannot be generic
+ --> tests/ui/derive_externalptr_generic.rs:6:17
+  |
+6 | struct MyGeneric<T> {
+  |                 ^^^

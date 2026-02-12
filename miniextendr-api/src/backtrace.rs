@@ -7,10 +7,13 @@
 pub extern "C-unwind" fn miniextendr_panic_hook() {
     static RUN_ONCE: std::sync::Once = std::sync::Once::new();
     RUN_ONCE.call_once_force(|x| {
-        // just ignore repeated calls to this function
+        // On poisoned retry, perform full initialization instead of
+        // returning early. The previous attempt panicked before
+        // completing, so the panic hook may not be installed.
         if x.is_poisoned() {
-            println!("warning: miniextendr panic hook info registration was done more than once");
-            return;
+            eprintln!(
+                "warning: miniextendr panic hook is retrying after a previous failed attempt"
+            );
         }
         let default_hook = std::panic::take_hook();
         std::panic::set_hook(Box::new(move |x| {

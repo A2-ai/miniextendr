@@ -9,23 +9,21 @@ test_that("has_miniextendr returns FALSE for empty project", {
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   dir.create(tmp)
-  usethis::proj_set(tmp, force = TRUE)
   writeLines("Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
     file.path(tmp, "DESCRIPTION"))
 
-  expect_false(has_miniextendr())
+  expect_false(has_miniextendr(tmp))
 })
 
 test_that("has_miniextendr returns TRUE for monorepo project", {
+  skip_if_no_local_repo()
   tmp <- tempfile("monorepo-status-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
-  # Point usethis to the rpkg subdirectory
-  usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
-
-  expect_true(has_miniextendr())
+  expect_true(has_miniextendr(file.path(tmp, "rpkg")))
 })
 
 # -----------------------------------------------------------------------------
@@ -33,13 +31,14 @@ test_that("has_miniextendr returns TRUE for monorepo project", {
 # -----------------------------------------------------------------------------
 
 test_that("miniextendr_status returns list with present and missing", {
+  skip_if_no_local_repo()
   tmp <- tempfile("status-test-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
-  usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
-  result <- suppressMessages(miniextendr_status())
+  result <- suppressMessages(miniextendr_status(file.path(tmp, "rpkg")))
 
   expect_type(result, "list")
   expect_named(result, c("present", "missing", "stale"))
@@ -51,13 +50,14 @@ test_that("miniextendr_status returns list with present and missing", {
 })
 
 test_that("miniextendr_status detects generated files as missing", {
+  skip_if_no_local_repo()
   tmp <- tempfile("status-gen-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
-  usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
-  result <- suppressMessages(miniextendr_status())
+  result <- suppressMessages(miniextendr_status(file.path(tmp, "rpkg")))
 
   # Generated files should be missing before configure runs
   generated_missing <- result$missing[["Generated Files"]]
@@ -66,29 +66,29 @@ test_that("miniextendr_status detects generated files as missing", {
 })
 
 # -----------------------------------------------------------------------------
-# miniextendr_check() tests
+# miniextendr_validate() tests
 # -----------------------------------------------------------------------------
 
-test_that("miniextendr_check validates DESCRIPTION config", {
+test_that("miniextendr_validate validates DESCRIPTION config", {
+  skip_if_no_local_repo()
   tmp <- tempfile("check-desc-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg", open = FALSE)
-  usethis::proj_set(file.path(tmp, "rpkg"), force = TRUE)
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+                              local_path = find_miniextendr_repo(), open = FALSE)
 
   # Should pass - monorepo template sets up DESCRIPTION correctly
-  result <- suppressMessages(miniextendr_check())
+  result <- suppressMessages(miniextendr_validate(file.path(tmp, "rpkg")))
   # Result depends on whether Rust is installed and crates vendored
   expect_type(result, "logical")
 })
 
-test_that("miniextendr_check warns on missing Config/build/bootstrap", {
+test_that("miniextendr_validate warns on missing Config/build/bootstrap", {
   tmp <- tempfile("check-bootstrap-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
   # Create minimal package without miniextendr setup
   dir.create(tmp)
-  usethis::proj_set(tmp, force = TRUE)
   writeLines("Package: testpkg\nTitle: Test\nVersion: 0.0.1\n",
     file.path(tmp, "DESCRIPTION"))
 
@@ -97,6 +97,6 @@ test_that("miniextendr_check warns on missing Config/build/bootstrap", {
     file.path(tmp, "configure.ac"))
 
   # Should return FALSE or TRUE with warnings (DESCRIPTION missing Config fields)
-  result <- suppressMessages(miniextendr_check())
+  result <- suppressMessages(miniextendr_validate(tmp))
   expect_type(result, "logical")
 })
