@@ -2483,7 +2483,7 @@ then :
 printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
 fi
 
-pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 PACKAGE_TARNAME_RS=$pkg_rs
 
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`

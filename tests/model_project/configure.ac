@@ -247,7 +247,9 @@ AS_IF([test -n "$MINIEXTENDR_FEATURES"],
       [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
-pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
+dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
@@ -289,7 +291,7 @@ esac
 VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 AC_SUBST([VENDOR_OUT_CARGO])
 
-dnl Note: Cargo.toml now uses git dependencies.
+dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
 dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
 dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
 

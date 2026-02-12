@@ -15,6 +15,7 @@ if test ! -d "$R_HOME"; then
 fi
 
 dnl NOT_CRAN handling: normalize to "true" or "false"
+dnl Default to true since this is a dev-only test package
 : ${NOT_CRAN:=true}
 case "$NOT_CRAN" in
   true|TRUE|1) NOT_CRAN=true ;;
@@ -23,11 +24,15 @@ esac
 export NOT_CRAN
 
 dnl Set cargo offline/locked flags based on NOT_CRAN
+dnl - NOT_CRAN=true (dev): no --offline, no --locked (cargo updates lockfile for patches)
+dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
+  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
   CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
+  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
   CARGO_LOCKED_FLAG=""
 fi
 AC_SUBST([CARGO_OFFLINE_FLAG])
@@ -35,27 +40,38 @@ AC_SUBST([CARGO_LOCKED_FLAG])
 AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
+dnl
+dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
+dnl By default, no extra features are enabled.
+dnl
+dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
+dnl Only enable when you specifically need those features and understand the risks.
 AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
-: ${MINIEXTENDR_FEATURES=""}
+
+dnl Default: no extra features enabled
+dnl Users can set MINIEXTENDR_FEATURES to enable specific features
+if test -z "${MINIEXTENDR_FEATURES+x}"; then
+  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
+  MINIEXTENDR_FEATURES=""
+fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+  # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
-  case ",$MINIEXTENDR_FEATURES," in
-    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
-  esac
+  IFS=','
+  for _feature in $MINIEXTENDR_FEATURES; do
+    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
+    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
+  done
+  unset IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
 fi
 AC_SUBST([CARGO_FEATURES_FLAG])
 AC_SUBST([CARGO_FEATURE_CPPFLAGS])
+
 
 dnl ---- canonical paths ----
 abs_top_srcdir="$(cd "$srcdir" && pwd)"
@@ -64,7 +80,7 @@ abs_rpkg_src="$abs_top_srcdir/src"
 AC_SUBST([ABS_RPKG_SRCDIR], ["$abs_rpkg_src"])
 RUST_SRC_DIR="$abs_rpkg_src/rust"
 
-dnl Canonical path to miniextendr repo root
+dnl Canonical path to miniextendr repo root (3 levels up: tests/cross-package/producer.pkg)
 root_miniextendr_repo="$(cd "$abs_top_srcdir/../../.." && pwd)"
 AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
 
@@ -72,18 +88,34 @@ dnl ---- tool discovery ----
 AC_PATH_TOOL([CARGO],[cargo],[no])
 AC_PATH_TOOL([RUSTC],[rustc],[no])
 AC_PATH_PROG([SED],[sed],[no])
+AC_PATH_PROG([CYGPATH],[cygpath],[no])
 AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
 AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
 AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
 AC_SUBST([CARGO])
 AC_SUBST([RUSTC])
 AC_SUBST([SED])
+AC_SUBST([CYGPATH])
+
+dnl Use native paths for Cargo on Windows/MSYS to avoid path mangling.
+dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
+abs_rpkg_src_cargo="$abs_rpkg_src"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+    fi
+    ;;
+esac
+AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
 
 dnl Report rustc version (required by CRAN for Rust packages)
 RUSTC_VERSION="$($RUSTC --version)"
 AC_MSG_NOTICE([using $RUSTC_VERSION])
 
 dnl Check minimum rustc version (edition 2024 requires rustc 1.85+)
+dnl Extract version number: "rustc 1.85.0 (..." -> "1.85.0"
 RUSTC_VERSION_NUM=`echo "$RUSTC_VERSION" | "$SED" 's/rustc \(@<:@0-9@:>@*\.@<:@0-9@:>@*\.@<:@0-9@:>@*\).*/\1/'`
 RUSTC_MAJOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f1`
 RUSTC_MINOR=`echo "$RUSTC_VERSION_NUM" | cut -d. -f2`
@@ -104,13 +136,22 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 AC_SUBST([CARGO_CMD])
 
 dnl ---- Cargo configuration ----
-dnl Target directory outside src/ to avoid pkgbuild scanning
+dnl IMPORTANT: target directory MUST be outside src/ to avoid pkgbuild scanning
+dnl generated .rs files in target/build/.../out/ during needs_compile() checks.
 AC_ARG_VAR([CARGO_TARGET_DIR], [Cargo target directory (default: rust-target, outside src/)])
 : ${CARGO_TARGET_DIR="$abs_top_srcdir/rust-target"}
 AC_SUBST([CARGO_TARGET_DIR])
 
-dnl Cargo-specific path (same on Unix, would need cygpath on Windows)
+dnl Cargo-specific paths (Windows-native on MSYS2, same as shell paths otherwise)
+dnl These are used in .cargo/config.toml which Cargo reads directly
 CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
+    fi
+    ;;
+esac
 AC_SUBST([CARGO_TARGET_DIR_CARGO])
 
 AC_ARG_VAR([CARGO_PROFILE], [Cargo build profile (dev or release)])
@@ -132,6 +173,7 @@ else
 fi
 
 dnl CARGO_STATICLIB_NAME will be extracted via cargo pkgid in AC_CONFIG_COMMANDS
+dnl Use placeholder for now - will be substituted after Cargo.toml is available
 CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
 AC_SUBST([CARGO_STATICLIB_NAME])
 
@@ -144,13 +186,19 @@ if test -z "$CARGO_BUILD_TARGET"; then
   if test -n "$host" && test -n "$build" && test "$host" != "$build"; then
     CARGO_BUILD_TARGET="$host"
     AC_MSG_NOTICE([CARGO_BUILD_TARGET not set; using host triple $host])
+    AC_MSG_WARN([Autoconf host triple '$host' may differ from Rust target triple.
+  If the build fails, set CARGO_BUILD_TARGET explicitly (e.g. x86_64-unknown-linux-gnu).
+  Run 'rustc --print target-list' to see valid Rust targets.])
   else
     CARGO_BUILD_TARGET=""
   fi
 fi
 AC_SUBST([CARGO_BUILD_TARGET])
 
-dnl Compute Cargo libdir path (uses CARGO_PROFILE_DIR for dev→debug mapping)
+dnl Compute Cargo libdir path:
+dnl - If CARGO_BUILD_TARGET is set, use target/<that>/<profile_dir>
+dnl - Otherwise, use target/<profile_dir>
+dnl Note: CARGO_PROFILE_DIR maps dev→debug, release→release
 if test -n "$CARGO_BUILD_TARGET"; then
   CARGO_LIBDIR="$CARGO_TARGET_DIR/$CARGO_BUILD_TARGET/$CARGO_PROFILE_DIR"
 else
@@ -168,10 +216,16 @@ AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
 AC_MSG_NOTICE([CARGO_LIBDIR          = $CARGO_LIBDIR])
 AS_IF([test -n "$RUST_TOOLCHAIN"],
       [AC_MSG_NOTICE([RUST_TOOLCHAIN        = $RUST_TOOLCHAIN])])
+AS_IF([test -n "$CARGO_BUILD_TARGET"],
+      [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
+AS_IF([test -n "$MINIEXTENDR_FEATURES"],
+      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
-pkg_rs="$(echo "$PACKAGE_TARNAME" | "$SED" 's/-/_/g')"
+dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
+dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
@@ -206,7 +260,7 @@ AC_CONFIG_FILES([
   src/mx_abi.c:src/mx_abi.c.in
 ])
 
-dnl Remove cargo config in dev mode (direct path deps don't need source replacement)
+dnl 1) Remove cargo config in dev mode (direct path deps don't need source replacement)
 AC_CONFIG_COMMANDS([dev-cargo-config],
 [
   RPKG_CFG="src/rust/.cargo/config.toml"
@@ -220,7 +274,8 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
 ],
 [NOT_CRAN="$NOT_CRAN"])
 
-dnl Ensure Cargo.lock is compatible with the installed cargo version
+dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
+dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
 AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 [
   LOCKFILE_PATH="src/rust/Cargo.lock"
@@ -250,9 +305,20 @@ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
 ],
 [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED"])
 
-dnl Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
+dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
 AC_CONFIG_COMMANDS([patch-staticlib-name],
 [
+  dnl Ensure Cargo.lock exists (cargo pkgid requires it)
+  if test ! -f "src/rust/Cargo.lock"; then
+    if test "$NOT_CRAN" = "true"; then
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
+    else
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+    fi
+  fi
+
+  dnl Use cargo pkgid to extract the actual package name from Cargo.toml
+  dnl This handles hyphens correctly (converted to underscores for Rust lib name)
   if test "$NOT_CRAN" = "true"; then
     _pkgid_flags="--color=never"
   else

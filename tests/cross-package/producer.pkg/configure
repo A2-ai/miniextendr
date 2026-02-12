@@ -621,6 +621,8 @@ CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
 CARGO_CMD
 RUST_TOOLCHAIN
+ABS_RPKG_SRC_CARGO
+CYGPATH
 SED
 RUSTC
 CARGO
@@ -1967,34 +1969,36 @@ export NOT_CRAN
 
 if test "$NOT_CRAN" = "true"; then
   CARGO_OFFLINE_FLAG=""
-  CARGO_LOCKED_FLAG=""
+    CARGO_LOCKED_FLAG=""
 else
   CARGO_OFFLINE_FLAG="--offline"
-  CARGO_LOCKED_FLAG=""
+    CARGO_LOCKED_FLAG=""
 fi
 
 
 
 
 
-: ${MINIEXTENDR_FEATURES=""}
+
+if test -z "${MINIEXTENDR_FEATURES+x}"; then
+    MINIEXTENDR_FEATURES=""
+fi
 
 if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+  # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
-  case ",$MINIEXTENDR_FEATURES," in
-    *,nonapi,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_NONAPI" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,rayon,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_RAYON" ;;
-  esac
-  case ",$MINIEXTENDR_FEATURES," in
-    *,connections,*) CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_CONNECTIONS" ;;
-  esac
+  IFS=','
+  for _feature in $MINIEXTENDR_FEATURES; do
+    _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
+    CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
+  done
+  unset IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""
 fi
+
 
 
 
@@ -2277,6 +2281,53 @@ printf "%s\n" "no" >&6; }
 fi
 
 
+# Extract the first word of "cygpath", so it can be a program name with args.
+set dummy cygpath; ac_word=$2
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking for $ac_word" >&5
+printf %s "checking for $ac_word... " >&6; }
+if test ${ac_cv_path_CYGPATH+y}
+then :
+  printf %s "(cached) " >&6
+else case e in #(
+  e) case $CYGPATH in
+  [\\/]* | ?:[\\/]*)
+  ac_cv_path_CYGPATH="$CYGPATH" # Let the user override the test with a path.
+  ;;
+  *)
+  as_save_IFS=$IFS; IFS=$PATH_SEPARATOR
+for as_dir in $PATH
+do
+  IFS=$as_save_IFS
+  case $as_dir in #(((
+    '') as_dir=./ ;;
+    */) ;;
+    *) as_dir=$as_dir/ ;;
+  esac
+    for ac_exec_ext in '' $ac_executable_extensions; do
+  if as_fn_executable_p "$as_dir$ac_word$ac_exec_ext"; then
+    ac_cv_path_CYGPATH="$as_dir$ac_word$ac_exec_ext"
+    printf "%s\n" "$as_me:${as_lineno-$LINENO}: found $as_dir$ac_word$ac_exec_ext" >&5
+    break 2
+  fi
+done
+  done
+IFS=$as_save_IFS
+
+  test -z "$ac_cv_path_CYGPATH" && ac_cv_path_CYGPATH="no"
+  ;;
+esac ;;
+esac
+fi
+CYGPATH=$ac_cv_path_CYGPATH
+if test -n "$CYGPATH"; then
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $CYGPATH" >&5
+printf "%s\n" "$CYGPATH" >&6; }
+else
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: no" >&5
+printf "%s\n" "no" >&6; }
+fi
+
+
 if test "x$CARGO" = "xno"
 then :
   as_fn_error $? "\`cargo\` not found" "$LINENO" 5
@@ -2291,6 +2342,18 @@ then :
 fi
 
 
+
+
+
+abs_rpkg_src_cargo="$abs_rpkg_src"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+    fi
+    ;;
+esac
+ABS_RPKG_SRC_CARGO="$abs_rpkg_src_cargo"
 
 
 RUSTC_VERSION="$($RUSTC --version)"
@@ -2319,6 +2382,13 @@ CARGO_CMD="$CARGO $RUST_TOOLCHAIN"
 
 
 CARGO_TARGET_DIR_CARGO="$(cd "$abs_top_srcdir" && pwd)/rust-target"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      CARGO_TARGET_DIR_CARGO="$($CYGPATH -m "$abs_top_srcdir")/rust-target"
+    fi
+    ;;
+esac
 
 
 
@@ -2349,6 +2419,12 @@ if test -z "$CARGO_BUILD_TARGET"; then
     CARGO_BUILD_TARGET="$host"
     { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET not set; using host triple $host" >&5
 printf "%s\n" "$as_me: CARGO_BUILD_TARGET not set; using host triple $host" >&6;}
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: WARNING: Autoconf host triple '$host' may differ from Rust target triple.
+  If the build fails, set CARGO_BUILD_TARGET explicitly (e.g. x86_64-unknown-linux-gnu).
+  Run 'rustc --print target-list' to see valid Rust targets." >&5
+printf "%s\n" "$as_me: WARNING: Autoconf host triple '$host' may differ from Rust target triple.
+  If the build fails, set CARGO_BUILD_TARGET explicitly (e.g. x86_64-unknown-linux-gnu).
+  Run 'rustc --print target-list' to see valid Rust targets." >&2;}
   else
     CARGO_BUILD_TARGET=""
   fi
@@ -2381,10 +2457,20 @@ then :
   { printf "%s\n" "$as_me:${as_lineno-$LINENO}: RUST_TOOLCHAIN        = $RUST_TOOLCHAIN" >&5
 printf "%s\n" "$as_me: RUST_TOOLCHAIN        = $RUST_TOOLCHAIN" >&6;}
 fi
+if test -n "$CARGO_BUILD_TARGET"
+then :
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&5
+printf "%s\n" "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
+fi
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
 printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
+if test -n "$MINIEXTENDR_FEATURES"
+then :
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
+printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
+fi
 
-pkg_rs="$(echo "$PACKAGE_TARNAME" | "$SED" 's/-/_/g')"
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 PACKAGE_TARNAME_RS=$pkg_rs
 
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
@@ -3597,7 +3683,15 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "patch-staticlib-name":C)
-  if test "$NOT_CRAN" = "true"; then
+    if test ! -f "src/rust/Cargo.lock"; then
+    if test "$NOT_CRAN" = "true"; then
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
+    else
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+    fi
+  fi
+
+      if test "$NOT_CRAN" = "true"; then
     _pkgid_flags="--color=never"
   else
     _pkgid_flags="--offline --color=never"
