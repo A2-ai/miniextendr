@@ -1996,10 +1996,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    for (method_name in names(obj)) {".to_string());
     lines.push("      method <- obj[[method_name]]".to_string());
     lines.push("      if (is.function(method)) {".to_string());
-    lines.push("        f <- method".to_string());
-    lines.push("        wrapper <- function(...) f(self, ...)".to_string());
-    lines.push("        environment(wrapper) <- environment()".to_string());
-    lines.push("        bound[[method_name]] <- wrapper".to_string());
+    lines.push("        environment(method) <- environment()".to_string());
+    lines.push("        bound[[method_name]] <- method".to_string());
     lines.push("      }".to_string());
     lines.push("    }".to_string());
     lines.push("    bound".to_string());

@@ -864,12 +864,13 @@ fn generate_trait_env_r_wrapper(
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
-        // For instance methods, include 'x' as first parameter
+        // For instance methods, use 'x = self' so $-dispatch re-parenting works
+        // (self becomes visible via environment()) while standalone calls still work
         let function_params = if method.has_self {
             if formals.is_empty() {
-                "x".to_string()
+                "x = self".to_string()
             } else {
-                format!("x, {}", formals)
+                format!("x = self, {}", formals)
             }
         } else {
             formals
