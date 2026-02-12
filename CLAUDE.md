@@ -476,3 +476,34 @@ Alternatively, use `devtools::install()` which handles library paths:
 ```bash
 just devtools-install
 ```
+
+## Using Codex for Reviews
+
+OpenAI's Codex CLI can be used for non-interactive code reviews and plan generation.
+
+### Invocation
+
+Use `codex exec` for non-interactive mode (the bare `codex` command requires a TTY):
+
+```bash
+# Non-interactive execution (no TTY needed)
+codex exec -m gpt-5.3-codex "your prompt here"
+
+# Full-auto mode (no confirmation prompts)
+codex exec -m gpt-5.3-codex --full-auto "your prompt here"
+
+# Review mode
+codex exec -m gpt-5.3-codex review "review these changes"
+```
+
+**Important**: The bare `codex` command (without `exec`) requires a terminal/TTY and will fail with "stdin is not a terminal" when called from non-interactive contexts like Claude Code's Bash tool. Always use `codex exec` instead.
+
+### Common patterns
+
+```bash
+# Code review of recent changes
+codex exec -m gpt-5.3-codex --full-auto "Review the changes in the last commit for bugs and design issues"
+
+# Generate implementation plan
+codex exec -m gpt-5.3-codex --full-auto "Read file X and produce a plan to fix issues Y and Z"
+```
