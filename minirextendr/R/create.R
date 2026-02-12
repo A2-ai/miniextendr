@@ -243,6 +243,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' This is an all-in-one function that calls all the individual `use_miniextendr_*()`
 #' functions.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param template_type Template type: "auto" (detect from directory structure),
 #'   "rpkg" for standalone R package, or "monorepo" for Rust workspace.
 #'   Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.
@@ -255,8 +256,10 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #'   development and testing before the package is published.
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr <- function(template_type = "auto", rpkg_name = "rpkg",
+use_miniextendr <- function(path = ".",
+                            template_type = "auto", rpkg_name = "rpkg",
                             miniextendr_version = "main", local_path = NULL) {
+  with_project(path)
   # Warn if not at git workspace root
   git_available <- nzchar(Sys.which("git"))
   if (git_available) {

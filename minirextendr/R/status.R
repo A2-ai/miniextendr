@@ -2,9 +2,11 @@
 
 #' Check if current project has miniextendr setup
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return TRUE if the project appears to be a miniextendr package
 #' @export
-has_miniextendr <- function() {
+has_miniextendr <- function(path = ".") {
+  with_project(path)
   is_miniextendr_package()
 }
 
@@ -13,9 +15,11 @@ has_miniextendr <- function() {
 #' Displays which miniextendr files are present and which are missing
 #' in the current project.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns a list with present and missing files
 #' @export
-miniextendr_status <- function() {
+miniextendr_status <- function(path = ".") {
+  with_project(path)
   cli::cli_h1("miniextendr status")
 
   # Define expected files
@@ -66,8 +70,8 @@ miniextendr_status <- function() {
     cat_missing <- character()
 
     for (file in expected[[category]]) {
-      path <- usethis::proj_path(file)
-      exists <- fs::file_exists(path) || fs::dir_exists(path)
+      file_path <- usethis::proj_path(file)
+      exists <- fs::file_exists(file_path) || fs::dir_exists(file_path)
 
       if (exists) {
         cli::cli_alert_success("{.path {file}}")
@@ -134,9 +138,11 @@ miniextendr_status <- function() {
 #' Checks that the miniextendr setup is valid and ready to build.
 #' For running `R CMD check`, see [miniextendr_check()].
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if valid, otherwise shows warnings/errors
 #' @export
-miniextendr_validate <- function() {
+miniextendr_validate <- function(path = ".") {
+  with_project(path)
   cli::cli_h1("miniextendr check")
 
   issues <- character()

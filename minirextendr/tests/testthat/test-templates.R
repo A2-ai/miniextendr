@@ -289,17 +289,16 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   # Create basic R package
   suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
-    usethis::proj_set(pkg_path, force = TRUE)
-    use_miniextendr(local_path = miniextendr_path)
+    use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
+    usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
   })
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
-    miniextendr_autoconf()
-    miniextendr_configure()
+    miniextendr_autoconf(path = pkg_path)
+    miniextendr_configure(path = pkg_path)
     # Generate NAMESPACE from package doc (useDynLib)
     devtools::document(pkg = pkg_path)
   })
@@ -377,17 +376,16 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   # Create package and add miniextendr
   suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
-    usethis::proj_set(pkg_path, force = TRUE)
-    use_miniextendr(local_path = miniextendr_path)
+    use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
+    usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
   })
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
-    miniextendr_autoconf()
-    miniextendr_configure()
+    miniextendr_autoconf(path = pkg_path)
+    miniextendr_configure(path = pkg_path)
   })
 
   # Add itertools dependency to Cargo.toml
@@ -439,7 +437,6 @@ test_that("rpkg scaffolding with external cargo dependency works", {
 
   # Reconfigure to vendor itertools (with FORCE_VENDOR environment variable)
   suppressMessages({
-    usethis::proj_set(pkg_path, force = TRUE)
     # Combine devtools env vars with FORCE_VENDOR
     config_env <- c(devtools::r_env_vars(), c("FORCE_VENDOR" = "1"))
     result <- run_with_logging(
@@ -600,8 +597,8 @@ test_that("monorepo scaffolding builds and functions work end-to-end", {
   suppressMessages({
     usethis::proj_set(rpkg_path, force = TRUE)
     usethis::use_package_doc()
-    miniextendr_autoconf()
-    miniextendr_configure()
+    miniextendr_autoconf(path = rpkg_path)
+    miniextendr_configure(path = rpkg_path)
   })
 
   # Get package name

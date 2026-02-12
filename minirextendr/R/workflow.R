@@ -5,9 +5,11 @@
 #' Runs `autoconf -vif` in the package root to regenerate the configure
 #' script from configure.ac. Requires autoconf to be installed.
 #'
+#' @param path Path to the R package root, or `NULL` to use the active project.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_autoconf <- function() {
+miniextendr_autoconf <- function(path = ".") {
+  with_project(path)
   check_autoconf()
 
   cli::cli_alert("Running autoconf...")
@@ -36,9 +38,11 @@ miniextendr_autoconf <- function() {
 #' Runs `./configure` in the package root to generate Makevars,
 #' Cargo.toml, and other build files from templates.
 #'
+#' @param path Path to the R package root, or `NULL` to use the active project.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_configure <- function() {
+miniextendr_configure <- function(path = ".") {
+  with_project(path)
   configure_path <- usethis::proj_path("configure")
 
   if (!fs::file_exists(configure_path)) {
@@ -81,9 +85,11 @@ miniextendr_configure <- function() {
 #' Runs the document binary to generate miniextendr_wrappers.R from
 #' the Rust source. Requires the package to be built first.
 #'
+#' @param path Path to the R package root, or `NULL` to use the active project.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_document <- function() {
+miniextendr_document <- function(path = ".") {
+  with_project(path)
   check_rust()
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")
@@ -132,13 +138,15 @@ miniextendr_document <- function() {
 #' (incorporates wrappers). The two installs are needed because R wrapper
 #' generation requires the compiled Rust `document` binary.
 #'
+#' @param path Path to the R package root, or `NULL` to use the active project.
 #' @param install Whether to run `R CMD INSTALL` steps. If `FALSE`, only
 #'   runs autoconf + configure + document.
 #' @param not_cran Logical. If `TRUE` (the default), sets `NOT_CRAN=true`
 #'   for configure and install steps.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
+miniextendr_build <- function(path = ".", install = TRUE, not_cran = TRUE) {
+  with_project(path)
   cli::cli_h1("miniextendr build workflow")
 
   env_vars <- if (not_cran) c(NOT_CRAN = "true") else character()
@@ -155,9 +163,17 @@ miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
     if (!requireNamespace("devtools", quietly = TRUE)) {
       warn("devtools not installed, skipping install step")
     } else {
-      withr::with_envvar(env_vars, {
-        devtools::install(pkg_path, upgrade = "never", quiet = TRUE)
-      })
+      tryCatch(
+        withr::with_envvar(env_vars, {
+          devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
+        }),
+        error = function(e) {
+          abort(c(
+            "Package installation failed",
+            "i" = conditionMessage(e)
+          ))
+        }
+      )
       cli::cli_alert_success("Installed package (first pass)")
     }
   }
@@ -175,9 +191,17 @@ miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
 
   if (install) {
     cli::cli_h2("Step 6: final install (with R wrappers + NAMESPACE)")
-    withr::with_envvar(env_vars, {
-      devtools::install(pkg_path, upgrade = "never", quiet = TRUE)
-    })
+    tryCatch(
+      withr::with_envvar(env_vars, {
+        devtools::install(pkg_path, upgrade = "never", quiet = FALSE)
+      }),
+      error = function(e) {
+        abort(c(
+          "Package installation failed",
+          "i" = conditionMessage(e)
+        ))
+      }
+    )
     cli::cli_alert_success("Installed package (final pass)")
   }
 
@@ -193,9 +217,11 @@ miniextendr_build <- function(install = TRUE, not_cran = TRUE) {
 #'
 #' Run this before `R CMD build` when preparing a CRAN submission.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns the path to the created tarball.
 #' @export
-miniextendr_vendor <- function() {
+miniextendr_vendor <- function(path = ".") {
+  with_project(path)
   cli::cli_h1("miniextendr vendor workflow")
 
   # Step 1: cargo vendor + strip (delegates to vendor_crates_io)
@@ -256,6 +282,7 @@ miniextendr_vendor <- function() {
 #' are vendored so the check works in the isolated temp directory where
 #' R CMD check unpacks the tarball.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param args Character vector of extra arguments passed to `R CMD check`.
 #'   Defaults to `c("--as-cran", "--no-manual")`.
 #' @param error_on Severity level to error on. One of `"error"`, `"warning"`,
@@ -263,9 +290,11 @@ miniextendr_vendor <- function() {
 #' @param build_args Character vector of extra arguments passed to `R CMD build`.
 #' @return The [rcmdcheck::rcmdcheck()] result object, invisibly.
 #' @export
-miniextendr_check <- function(args = c("--as-cran", "--no-manual"),
+miniextendr_check <- function(path = ".",
+                               args = c("--as-cran", "--no-manual"),
                                error_on = "warning",
                                build_args = character()) {
+  with_project(path)
   if (!requireNamespace("rcmdcheck", quietly = TRUE)) {
     abort(c(
       "rcmdcheck is required for miniextendr_check()",

@@ -6,9 +6,11 @@
 #' availability, vendored crate status, generated file freshness,
 #' and common configuration mistakes.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns a list with `pass`, `warn`, and `fail` entries.
 #' @export
-miniextendr_doctor <- function() {
+miniextendr_doctor <- function(path = ".") {
+  with_project(path)
   cli::cli_h1("miniextendr doctor")
 
   results <- list(pass = character(), warn = character(), fail = character())

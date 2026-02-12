@@ -5,9 +5,11 @@
 #' Creates the src/rust/ directory with Cargo.toml, lib.rs, and build.rs.
 #' This sets up a basic miniextendr Rust library with example functions.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
 #' @export
-use_miniextendr_rust <- function() {
+use_miniextendr_rust <- function(path = ".") {
+  with_project(path)
   data <- template_data()
 
   # Create directories
@@ -34,9 +36,11 @@ use_miniextendr_rust <- function() {
 #' Creates src/rust/cargo-config.toml.in which is processed by configure
 #' to set up Cargo's target directory and source replacement for CRAN.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_cargo_config <- function() {
+use_miniextendr_cargo_config <- function(path = ".") {
+  with_project(path)
   ensure_dir(usethis::proj_path("src", "rust"))
   use_template("cargo-config.toml.in", save_as = "src/rust/cargo-config.toml.in")
   invisible(TRUE)
@@ -47,9 +51,11 @@ use_miniextendr_cargo_config <- function() {
 #' Creates src/rust/document.rs.in which generates R wrapper functions
 #' from the Rust code. This is processed by configure to create document.rs.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_document <- function() {
+use_miniextendr_document <- function(path = ".") {
+  with_project(path)
   ensure_dir(usethis::proj_path("src", "rust"))
   use_template("document.rs.in", save_as = "src/rust/document.rs.in")
   invisible(TRUE)
@@ -60,9 +66,11 @@ use_miniextendr_document <- function() {
 #' Creates src/entrypoint.c.in which provides the C entry point for R
 #' to load the shared library. Initializes panic hooks and worker thread.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_entrypoint <- function() {
+use_miniextendr_entrypoint <- function(path = ".") {
+  with_project(path)
   ensure_dir(usethis::proj_path("src"))
   use_template("entrypoint.c.in", save_as = "src/entrypoint.c.in")
   invisible(TRUE)
@@ -74,9 +82,11 @@ use_miniextendr_entrypoint <- function() {
 #' C ABI for cross-package trait dispatch. These files enable other packages
 #' to interact with miniextendr's trait system.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
 #' @export
-use_miniextendr_mx_abi <- function() {
+use_miniextendr_mx_abi <- function(path = ".") {
+  with_project(path)
   data <- template_data()
 
   # Create src/ directory if needed

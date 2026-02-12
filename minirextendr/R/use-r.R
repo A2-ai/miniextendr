@@ -5,9 +5,11 @@
 #' Creates R/<package>-package.R with the package docstring and
 #' useDynLib directive for loading the shared library.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_package_doc <- function() {
+use_miniextendr_package_doc <- function(path = ".") {
+  with_project(path)
   data <- template_data()
   ensure_dir(usethis::proj_path("R"))
 
@@ -27,9 +29,11 @@ use_miniextendr_package_doc <- function() {
 #'
 #' Also adds SystemRequirements for Rust.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr_description <- function() {
+use_miniextendr_description <- function(path = ".") {
+  with_project(path)
   desc_path <- usethis::proj_path("DESCRIPTION")
 
   if (!fs::file_exists(desc_path)) {
@@ -81,9 +85,11 @@ use_miniextendr_description <- function() {
 #' Appends miniextendr-specific ignore patterns to .Rbuildignore,
 #' or creates the file if it doesn't exist.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr_rbuildignore <- function() {
+use_miniextendr_rbuildignore <- function(path = ".") {
+  with_project(path)
   # Read template content (already regex patterns, skip escaping)
   template_content <- readLines(template_path("Rbuildignore"))
 
@@ -102,9 +108,11 @@ use_miniextendr_rbuildignore <- function() {
 #' Appends miniextendr-specific ignore patterns to .gitignore,
 #' or creates the file if it doesn't exist.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE
 #' @export
-use_miniextendr_gitignore <- function() {
+use_miniextendr_gitignore <- function(path = ".") {
+  with_project(path)
   # Read template content
   template_content <- readLines(template_path("gitignore"))
 

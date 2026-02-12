@@ -99,18 +99,23 @@ download_miniextendr_archive <- function(version, dest_path) {
 #' For local development (when GitHub repo is not available), set
 #' `local_path` to the path of the miniextendr repository.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param version Version tag to download (default: "main" for latest).
 #'   Ignored if `local_path` is provided.
-#' @param dest Destination directory for vendored crates
+#' @param dest Destination directory for vendored crates. Defaults to
+#'   `vendor/` inside the project root.
 #' @param refresh Force re-download even if cached (default: FALSE)
 #' @param local_path Path to local miniextendr repository. If provided,
 #'   copies crates from local path instead of downloading from GitHub.
 #' @return Invisibly returns TRUE on success
 #' @export
-vendor_miniextendr <- function(version = "main",
-                               dest = usethis::proj_path("vendor"),
+vendor_miniextendr <- function(path = ".",
+                               version = "main",
+                               dest = NULL,
                                refresh = FALSE,
                                local_path = NULL) {
+  with_project(path)
+  dest <- dest %||% usethis::proj_path("vendor")
   # If local_path is provided, use local vendoring
 
   if (!is.null(local_path)) {
@@ -338,10 +343,28 @@ vendor_miniextendr_local <- function(local_path, dest) {
 #'
 #' Downloads and replaces the vendored miniextendr crates with a new version.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param version Version to update to (default: "main" for latest)
+#' @param templates Logical. If `TRUE` (the default), also updates build system
+#'   templates (document.rs.in, entrypoint.c.in, Makevars.in, etc.).
+#'   `configure.ac` is NOT updated because users customise it with feature flags.
 #' @return Invisibly returns TRUE on success
 #' @export
-miniextendr_update <- function(version = "main") {
+miniextendr_update <- function(path = ".", version = "main", templates = TRUE) {
+  with_project(path)
+  if (templates) {
+    cli::cli_h2("Updating build system templates")
+    use_miniextendr_document()
+    use_miniextendr_entrypoint()
+    use_miniextendr_makevars()
+    use_miniextendr_cargo_config()
+    use_miniextendr_mx_abi()
+    use_miniextendr_bootstrap()
+    use_miniextendr_cleanup()
+    use_miniextendr_configure_win()
+    use_miniextendr_config_scripts()
+  }
+  cli::cli_h2("Updating vendored crates")
   cli::cli_alert_info("Updating miniextendr to version: {version}")
   vendor_miniextendr(version = version)
 }
@@ -352,9 +375,11 @@ miniextendr_update <- function(version = "main") {
 #' (like proc-macro2, syn, quote) for offline/CRAN builds. This is separate
 #' from `vendor_miniextendr()` which downloads the miniextendr crates.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE on success
 #' @export
-vendor_crates_io <- function() {
+vendor_crates_io <- function(path = ".") {
+  with_project(path)
   check_rust()
 
   cargo_toml <- usethis::proj_path("src", "rust", "Cargo.toml")
