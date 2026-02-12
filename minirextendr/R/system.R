@@ -71,9 +71,11 @@ run_with_logging <- function(command, args = character(),
 
 #' Check command result and throw informative error if failed
 #'
+#' Internal helper used by workflow wrappers.
+#'
 #' @param result Result from run_with_logging()
 #' @param context Description of what was being done
-#' @export
+#' @noRd
 check_result <- function(result, context) {
   if (!result$success) {
     cli::cli_alert_danger("{context} failed (status: {result$status %||% 'unknown'})")
