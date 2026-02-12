@@ -356,8 +356,7 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 });
 
                 if all_fit {
-                    let sexp =
-                        unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
+                    let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
                     for (i, v) in arr.iter().enumerate() {
                         if let TomlValue::Integer(n) = v {
                             unsafe { SET_INTEGER_ELT(sexp, i as isize, *n as i32) };
@@ -366,8 +365,7 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                     return sexp;
                 }
                 // Fall back to REALSXP if any value is out of range
-                let sexp =
-                    unsafe { Rf_allocVector(SEXPTYPE::REALSXP, arr.len() as isize) };
+                let sexp = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, arr.len() as isize) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
                         unsafe { SET_REAL_ELT(sexp, i as isize, *n as f64) };

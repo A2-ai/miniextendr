@@ -123,7 +123,9 @@ impl AltrepAttrs {
                     .find(|o| *o == "subset")
                     .unwrap()
                     .span(),
-                format!("`subset` is not supported for {family}; only `integer` and `complex` support it"),
+                format!(
+                    "`subset` is not supported for {family}; only `integer` and `complex` support it"
+                ),
             ));
         }
 
@@ -517,7 +519,10 @@ pub fn derive_altrep_complex(input: syn::DeriveInput) -> syn::Result<TokenStream
     let lowlevel_impl = attrs.generate_lowlevel(
         name,
         "impl_altcomplex_from_data",
-        Some(("__impl_altvec_dataptr", Some(quote! { ::miniextendr_api::ffi::Rcomplex }))),
+        Some((
+            "__impl_altvec_dataptr",
+            Some(quote! { ::miniextendr_api::ffi::Rcomplex }),
+        )),
         false,
         true,
         "__impl_altcomplex_methods",

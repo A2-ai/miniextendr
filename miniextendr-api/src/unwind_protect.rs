@@ -107,11 +107,7 @@ pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
 where
     F: FnOnce() -> R,
 {
-    with_r_unwind_protect_sourced(
-        f,
-        call,
-        crate::panic_telemetry::PanicSource::UnwindProtect,
-    )
+    with_r_unwind_protect_sourced(f, call, crate::panic_telemetry::PanicSource::UnwindProtect)
 }
 
 /// Like [`with_r_unwind_protect`], but reports panics with a custom [`PanicSource`].
@@ -204,6 +200,109 @@ where
                 } else {
                     // Rust panic - convert to R error
                     panic_payload_to_r_error(payload, call, source);
+                }
+            }
+        }
+    }
+}
+
+/// Like [`with_r_unwind_protect`], but returns a tagged error SEXP on Rust panics
+/// instead of raising an R error via `Rf_errorcall`.
+///
+/// Used by `#[miniextendr(error_in_r)]` mode for the main thread strategy.
+/// The error SEXP is inspected by the generated R wrapper which raises a proper
+/// R error condition past the Rust boundary.
+///
+/// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
+pub fn with_r_unwind_protect_error_in_r<F>(f: F, _call: Option<SEXP>) -> SEXP
+where
+    F: FnOnce() -> SEXP,
+{
+    // Marker type for R errors caught by cleanup handler.
+    struct RErrorMarker;
+
+    struct CallData<F> {
+        f: Option<F>,
+        result: Option<SEXP>,
+        panic_payload: Option<Box<dyn Any + Send>>,
+    }
+
+    unsafe extern "C-unwind" fn trampoline<F>(data: *mut c_void) -> SEXP
+    where
+        F: FnOnce() -> SEXP,
+    {
+        let data = unsafe { data.cast::<CallData<F>>().as_mut().unwrap() };
+        let f = data.f.take().expect("trampoline: closure already consumed");
+
+        match catch_unwind(AssertUnwindSafe(f)) {
+            Ok(result) => {
+                data.result = Some(result);
+                unsafe { crate::ffi::R_NilValue }
+            }
+            Err(payload) => {
+                data.panic_payload = Some(payload);
+                unsafe { crate::ffi::R_NilValue }
+            }
+        }
+    }
+
+    unsafe extern "C-unwind" fn cleanup_handler(_data: *mut c_void, jump: Rboolean) {
+        if jump != Rboolean::FALSE {
+            std::panic::panic_any(RErrorMarker);
+        }
+    }
+
+    unsafe {
+        let token = get_continuation_token();
+
+        let data = Box::into_raw(Box::new(CallData::<F> {
+            f: Some(f),
+            result: None,
+            panic_payload: None,
+        }));
+
+        let panic_result = catch_unwind(AssertUnwindSafe(|| {
+            R_UnwindProtect_C_unwind(
+                Some(trampoline::<F>),
+                data.cast(),
+                Some(cleanup_handler),
+                std::ptr::null_mut(),
+                token,
+            )
+        }));
+
+        let mut data = Box::from_raw(data);
+
+        match panic_result {
+            Ok(_) => {
+                if let Some(payload) = data.panic_payload.take() {
+                    // Rust panic → return tagged error value (not R error)
+                    drop(data);
+                    let msg = panic_payload_to_string(payload.as_ref());
+                    crate::panic_telemetry::fire(
+                        &msg,
+                        crate::panic_telemetry::PanicSource::UnwindProtect,
+                    );
+                    crate::error_value::make_rust_error_value(&msg, "panic")
+                } else {
+                    data.result
+                        .take()
+                        .expect("result not set after successful completion")
+                }
+            }
+            Err(payload) => {
+                drop(data);
+                if payload.downcast_ref::<RErrorMarker>().is_some() {
+                    // R error - continue R's unwind (passes through)
+                    R_ContinueUnwind(token);
+                } else {
+                    // Unexpected panic → return tagged error value
+                    let msg = panic_payload_to_string(payload.as_ref());
+                    crate::panic_telemetry::fire(
+                        &msg,
+                        crate::panic_telemetry::PanicSource::UnwindProtect,
+                    );
+                    crate::error_value::make_rust_error_value(&msg, "panic")
                 }
             }
         }

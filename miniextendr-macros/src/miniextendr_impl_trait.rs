@@ -137,6 +137,8 @@ struct TraitMethod {
     rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     unwrap_in_r: bool,
+    /// Transport Rust-origin errors as tagged values; R wrapper raises condition.
+    error_in_r: bool,
     /// Parameter default values from `#[miniextendr(defaults(param = "value", ...))]`
     param_defaults: std::collections::HashMap<String, String>,
     /// Roxygen @param tags extracted from method doc comments
@@ -388,9 +390,20 @@ fn generate_vtable_static(
     let source_col_lit =
         syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
 
+    // Strip #[miniextendr(...)] attrs from methods before emitting,
+    // so they don't trigger another macro expansion.
+    let mut clean_impl = impl_item.clone();
+    for item in &mut clean_impl.items {
+        if let syn::ImplItem::Fn(method) = item {
+            method
+                .attrs
+                .retain(|attr| !attr.path().is_ident("miniextendr"));
+        }
+    }
+
     quote::quote! {
-        // Pass through the original impl block
-        #impl_item
+        // Pass through the original impl block (with method attrs stripped)
+        #clean_impl
 
         #[doc = concat!(
             "Vtable for `",
@@ -485,6 +498,7 @@ fn extract_methods(impl_item: &ItemImpl) -> Vec<TraitMethod> {
                     check_interrupt: attrs.check_interrupt,
                     rng: attrs.rng,
                     unwrap_in_r: attrs.unwrap_in_r,
+                    error_in_r: attrs.error_in_r,
                     param_defaults: attrs.defaults,
                     param_tags,
                 })
@@ -503,6 +517,7 @@ struct TraitMethodAttrs {
     check_interrupt: bool,
     rng: bool,
     unwrap_in_r: bool,
+    error_in_r: bool,
     defaults: std::collections::HashMap<String, String>,
 }
 
@@ -517,6 +532,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
     let mut check_interrupt = false;
     let mut rng = false;
     let mut unwrap_in_r = false;
+    let mut error_in_r = false;
     let mut defaults = std::collections::HashMap::new();
 
     for attr in attrs {
@@ -542,7 +558,21 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
+                        if error_in_r {
+                            return Err(syn::Error::new_spanned(
+                                inner.path,
+                                "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                            ));
+                        }
                         unwrap_in_r = true;
+                    } else if inner.path.is_ident("error_in_r") {
+                        if unwrap_in_r {
+                            return Err(syn::Error::new_spanned(
+                                inner.path,
+                                "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                            ));
+                        }
+                        error_in_r = true;
                     }
                     // Note: rng is NOT supported nested (env(rng)) - use #[miniextendr(rng)] instead
                     Ok(())
@@ -558,7 +588,21 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
             } else if meta.path.is_ident("rng") {
                 rng = true;
             } else if meta.path.is_ident("unwrap_in_r") {
+                if error_in_r {
+                    return Err(syn::Error::new_spanned(
+                        meta.path,
+                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                    ));
+                }
                 unwrap_in_r = true;
+            } else if meta.path.is_ident("error_in_r") {
+                if unwrap_in_r {
+                    return Err(syn::Error::new_spanned(
+                        meta.path,
+                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                    ));
+                }
+                error_in_r = true;
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
                 meta.parse_nested_meta(|inner| {
@@ -583,6 +627,7 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
         check_interrupt,
         rng,
         unwrap_in_r,
+        error_in_r,
         defaults,
     }
 }
@@ -744,6 +789,11 @@ fn generate_trait_method_c_wrapper(
         builder = builder.rng();
     }
 
+    // Apply error_in_r mode
+    if method.error_in_r {
+        builder = builder.error_in_r();
+    }
+
     // The builder generates both the C wrapper and the R_CallMethodDef
     builder.build().generate()
 }
@@ -819,14 +869,22 @@ fn generate_trait_r_wrapper(
 ) -> syn::Result<String> {
     match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts)),
-        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts)),
-        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts)),
-        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts)),
+        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
+        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
+        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
+        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
         // vctrs uses S3 under the hood, so use the S3 trait wrapper
-        ClassSystem::Vctrs => {
-            Ok(generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts))
-        }
+        ClassSystem::Vctrs => Ok(generate_trait_s3_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
     }
 }
 
@@ -914,7 +972,10 @@ fn generate_trait_env_r_wrapper(
                 .build();
             (fp, c)
         } else {
-            (formals.clone(), DotCallBuilder::new(&c_ident).with_args(&params).build())
+            (
+                formals.clone(),
+                DotCallBuilder::new(&c_ident).with_args(&params).build(),
+            )
         };
 
         // Generate method wrapper
@@ -922,7 +983,7 @@ fn generate_trait_env_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, full_params
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.has_self && method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -1069,7 +1130,7 @@ fn generate_trait_s3_r_wrapper(
             "{} <- function({}) {{",
             s3_method_name, full_params
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -1127,7 +1188,7 @@ fn generate_trait_s3_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, formals
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1257,7 +1318,7 @@ fn generate_trait_s4_r_wrapper(
             "methods::setMethod(\"{}\", \"{}\", function({}) {{",
             generic_name, type_str, full_params
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -1294,7 +1355,7 @@ fn generate_trait_s4_r_wrapper(
         let call = DotCallBuilder::new(&c_ident).with_args(&params).build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, formals));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1423,7 +1484,7 @@ fn generate_trait_s7_r_wrapper(
             "S7::method({}, {}) <- function({}) {{",
             generic_name, s7_class_var, full_params
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -1469,7 +1530,7 @@ fn generate_trait_s7_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, formals
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1582,7 +1643,7 @@ fn generate_trait_r6_r_wrapper(
             .build();
 
         lines.push(format!("{} <- function({}) {{", fn_name, full_params));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         // Void instance methods return invisible(x) for pipe-friendly chaining
         if method.returns_unit() {
             lines.push("  invisible(x)".to_string());
@@ -1628,7 +1689,7 @@ fn generate_trait_r6_r_wrapper(
             "{}${}${} <- function({}) {{",
             type_ident, trait_name, method_name, formals
         ));
-        lines.push(format!("  {}", call));
+        lines.extend(trait_method_body_lines(&call, method.error_in_r, "  "));
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1657,6 +1718,21 @@ fn generate_trait_r6_r_wrapper(
     }
 
     lines.join("\n")
+}
+
+/// Generate R function body lines with optional error_in_r checking.
+///
+/// Without error_in_r: returns `["{indent}{call_expr}"]`
+/// With error_in_r: captures result in `.val`, checks for `rust_error_value`, returns `.val`
+fn trait_method_body_lines(call_expr: &str, error_in_r: bool, indent: &str) -> Vec<String> {
+    if error_in_r {
+        let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
+        lines.extend(crate::method_return_builder::error_in_r_check_lines(indent));
+        lines.push(format!("{}.val", indent));
+        lines
+    } else {
+        vec![format!("{}{}", indent, call_expr)]
+    }
 }
 
 /// Convert a type to an uppercase identifier-safe name.

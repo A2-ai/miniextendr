@@ -120,6 +120,8 @@ pub struct CWrapperContext {
     pub call_method_def_ident: Option<syn::Ident>,
     /// Strict conversion mode: use checked conversions for lossy return types.
     pub strict: bool,
+    /// error_in_r mode: return tagged error values instead of calling r_stop.
+    pub error_in_r: bool,
 }
 
 impl CWrapperContext {
@@ -144,6 +146,7 @@ impl CWrapperContext {
             has_self: false,
             call_method_def_ident: None,
             strict: false,
+            error_in_r: false,
         }
     }
 
@@ -268,8 +271,25 @@ impl CWrapperContext {
         let doc = self.generate_doc_comment("main thread");
         let source_loc_doc = crate::source_location_doc(self.fn_ident.span());
 
+        // Select unwind protection function: error_in_r returns tagged error values on panic
+        let unwind_protect_fn = if self.error_in_r {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect_error_in_r }
+        } else {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
+        };
+
         if self.rng {
             // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
+            let rng_panic_handler = if self.error_in_r {
+                quote! {
+                    ::miniextendr_api::error_value::make_rust_error_value(
+                        &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        "panic",
+                    )
+                }
+            } else {
+                quote! { ::std::panic::resume_unwind(payload) }
+            };
             quote! {
                 #[doc = #doc]
                 #[doc = #source_loc_doc]
@@ -278,7 +298,7 @@ impl CWrapperContext {
                 extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
                     unsafe { ::miniextendr_api::ffi::GetRNGstate(); }
                     let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
-                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        #unwind_protect_fn(
                             || {
                                 #pre_call_checks
                                 #(#pre_call)*
@@ -292,7 +312,7 @@ impl CWrapperContext {
                     unsafe { ::miniextendr_api::ffi::PutRNGstate(); }
                     match __result {
                         Ok(sexp) => sexp,
-                        Err(payload) => ::std::panic::resume_unwind(payload),
+                        Err(payload) => { #rng_panic_handler },
                     }
                 }
             }
@@ -304,7 +324,7 @@ impl CWrapperContext {
                 #[doc = concat!("Generated from source file `", file!(), "`.")]
                 #[unsafe(no_mangle)]
                 extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    #unwind_protect_fn(
                         || {
                             #pre_call_checks
                             #(#pre_call)*
@@ -349,35 +369,88 @@ impl CWrapperContext {
             (TokenStream::new(), TokenStream::new())
         };
 
-        quote! {
-            #[doc = #doc]
-            #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
-            #[unsafe(no_mangle)]
-            extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
-                #rng_get
-                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                    #pre_call_checks
-                    #(#pre_call)*
-                    // Pre-closure: conversions on main thread (owned values to move)
-                    #(#pre_closure_stmts)*
+        // Panic error handling: in error_in_r mode, return tagged error value;
+        // otherwise, raise R error via Rf_errorcall.
+        let panic_error_handling = if self.error_in_r {
+            quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                    "panic",
+                )
+            }
+        } else {
+            quote! {
+                ::miniextendr_api::worker::panic_message_to_r_errorcall(
+                    ::miniextendr_api::worker::panic_payload_to_string(&payload),
+                    __miniextendr_call,
+                )
+            }
+        };
 
-                    let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
-                        // In-closure: borrows from moved storage
-                        #(#in_closure_stmts)*
-                        #worker_body
-                    });
+        if self.error_in_r {
+            // error_in_r: use run_on_worker_result to get Result<T, String> instead of diverging
+            quote! {
+                #[doc = #doc]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                        #pre_call_checks
+                        #(#pre_call)*
+                        #(#pre_closure_stmts)*
 
-                    #return_conversion
-                }));
-                // PutRNGstate runs after catch_unwind, before error conversion
-                #rng_put
-                match __miniextendr_panic_result {
-                    Ok(sexp) => sexp,
-                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_errorcall(
-                        ::miniextendr_api::worker::panic_payload_to_string(&payload),
-                        __miniextendr_call,
-                    ),
+                        match ::miniextendr_api::worker::run_on_worker_result(move || {
+                            #(#in_closure_stmts)*
+                            #worker_body
+                        }) {
+                            Ok(__miniextendr_result) => {
+                                #return_conversion
+                            }
+                            Err(__panic_msg) => {
+                                ::miniextendr_api::error_value::make_rust_error_value(
+                                    &__panic_msg, "panic",
+                                )
+                            }
+                        }
+                    }));
+                    #rng_put
+                    match __miniextendr_panic_result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => {
+                            #panic_error_handling
+                        },
+                    }
+                }
+            }
+        } else {
+            quote! {
+                #[doc = #doc]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                extern "C-unwind" fn #c_ident(#(#c_params),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                        #pre_call_checks
+                        #(#pre_call)*
+                        #(#pre_closure_stmts)*
+
+                        let __miniextendr_result = ::miniextendr_api::worker::run_on_worker(move || {
+                            #(#in_closure_stmts)*
+                            #worker_body
+                        });
+
+                        #return_conversion
+                    }));
+                    #rng_put
+                    match __miniextendr_panic_result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => {
+                            #panic_error_handling
+                        },
+                    }
                 }
             }
         }
@@ -416,75 +489,140 @@ impl CWrapperContext {
                 }
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = format!(
-                    "miniextendr function `{}` returned None",
-                    fn_ident
-                );
-                quote! {
-                    let __result = #call_expr;
-                    if __result.is_none() {
-                        ::miniextendr_api::error::r_stop(#error_msg);
+                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                if self.error_in_r {
+                    quote! {
+                        let __result = #call_expr;
+                        if __result.is_none() {
+                            return ::miniextendr_api::error_value::make_rust_error_value(
+                                #error_msg, "none_err"
+                            );
+                        }
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
                     }
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
+                } else {
+                    quote! {
+                        let __result = #call_expr;
+                        if __result.is_none() {
+                            ::miniextendr_api::error::r_stop(#error_msg);
+                        }
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    }
                 }
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = format!(
-                    "miniextendr function `{}` returned None",
-                    fn_ident
-                );
-                quote! {
-                    let __result = #call_expr;
-                    match __result {
-                        Some(v) => v,
-                        None => ::miniextendr_api::error::r_stop(#error_msg),
+                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                if self.error_in_r {
+                    quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Some(v) => v,
+                            None => return ::miniextendr_api::error_value::make_rust_error_value(
+                                #error_msg, "none_err"
+                            ),
+                        }
+                    }
+                } else {
+                    quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Some(v) => v,
+                            None => ::miniextendr_api::error::r_stop(#error_msg),
+                        }
                     }
                 }
             }
             ReturnHandling::OptionIntoR => {
-                let error_msg = format!(
-                    "miniextendr function `{}` returned None",
-                    fn_ident
-                );
+                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident);
-                quote! {
-                    let __result = #call_expr;
-                    let #result_ident = match __result {
-                        Some(v) => v,
-                        None => ::miniextendr_api::error::r_stop(#error_msg),
-                    };
-                    #conversion
+                if self.error_in_r {
+                    quote! {
+                        let __result = #call_expr;
+                        let #result_ident = match __result {
+                            Some(v) => v,
+                            None => return ::miniextendr_api::error_value::make_rust_error_value(
+                                #error_msg, "none_err"
+                            ),
+                        };
+                        #conversion
+                    }
+                } else {
+                    quote! {
+                        let __result = #call_expr;
+                        let #result_ident = match __result {
+                            Some(v) => v,
+                            None => ::miniextendr_api::error::r_stop(#error_msg),
+                        };
+                        #conversion
+                    }
                 }
             }
             ReturnHandling::ResultUnit => {
-                quote! {
-                    let __result = #call_expr;
-                    if let Err(e) = __result {
-                        ::miniextendr_api::error::r_stop(&format!("{:?}", e));
+                if self.error_in_r {
+                    quote! {
+                        let __result = #call_expr;
+                        if let Err(e) = __result {
+                            return ::miniextendr_api::error_value::make_rust_error_value(
+                                &format!("{:?}", e), "result_err"
+                            );
+                        }
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
                     }
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
+                } else {
+                    quote! {
+                        let __result = #call_expr;
+                        if let Err(e) = __result {
+                            ::miniextendr_api::error::r_stop(&format!("{:?}", e));
+                        }
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    }
                 }
             }
             ReturnHandling::ResultSexp => {
-                quote! {
-                    let __result = #call_expr;
-                    match __result {
-                        Ok(v) => v,
-                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
+                if self.error_in_r {
+                    quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Ok(v) => v,
+                            Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                &format!("{:?}", e), "result_err"
+                            ),
+                        }
+                    }
+                } else {
+                    quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Ok(v) => v,
+                            Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
+                        }
                     }
                 }
             }
             ReturnHandling::ResultIntoR => {
                 let result_ident = format_ident!("__result");
                 let conversion = self.sexp_conversion_expr(&result_ident);
-                quote! {
-                    let __result = #call_expr;
-                    let #result_ident = match __result {
-                        Ok(v) => v,
-                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
-                    };
-                    #conversion
+                if self.error_in_r {
+                    quote! {
+                        let __result = #call_expr;
+                        let #result_ident = match __result {
+                            Ok(v) => v,
+                            Err(e) => return ::miniextendr_api::error_value::make_rust_error_value(
+                                &format!("{:?}", e), "result_err"
+                            ),
+                        };
+                        #conversion
+                    }
+                } else {
+                    quote! {
+                        let __result = #call_expr;
+                        let #result_ident = match __result {
+                            Ok(v) => v,
+                            Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
+                        };
+                        #conversion
+                    }
                 }
             }
         }
@@ -523,8 +661,9 @@ impl CWrapperContext {
                 let worker = quote! {
                     #call_expr
                 };
+                let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    #unwind_fn(
                         || ::miniextendr_api::into_r::IntoR::into_sexp(
                             ::miniextendr_api::externalptr::ExternalPtr::new(__miniextendr_result)
                         ),
@@ -539,8 +678,9 @@ impl CWrapperContext {
                 };
                 let result_ident = format_ident!("__miniextendr_result");
                 let conversion = self.sexp_conversion_expr(&result_ident);
+                let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    #unwind_fn(
                         || #conversion,
                         None,
                     )
@@ -548,103 +688,197 @@ impl CWrapperContext {
                 (worker, convert)
             }
             ReturnHandling::OptionUnit => {
-                let error_msg = format!(
-                    "miniextendr function `{}` returned None",
-                    fn_ident
-                );
-                let worker = quote! {
-                    let __result = #call_expr;
-                    if __result.is_none() {
-                        ::miniextendr_api::error::r_stop(#error_msg);
-                    }
-                };
-                let convert = quote! {
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
-                };
-                (worker, convert)
+                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                if self.error_in_r {
+                    // In error_in_r mode: return the Option from worker, check on main thread
+                    let worker = quote! { #call_expr };
+                    let convert = quote! {
+                        if __miniextendr_result.is_none() {
+                            ::miniextendr_api::error_value::make_rust_error_value(
+                                #error_msg, "none_err"
+                            )
+                        } else {
+                            unsafe { ::miniextendr_api::ffi::R_NilValue }
+                        }
+                    };
+                    (worker, convert)
+                } else {
+                    let worker = quote! {
+                        let __result = #call_expr;
+                        if __result.is_none() {
+                            ::miniextendr_api::error::r_stop(#error_msg);
+                        }
+                    };
+                    let convert = quote! {
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    };
+                    (worker, convert)
+                }
             }
             ReturnHandling::OptionSexp => {
-                let error_msg = format!(
-                    "miniextendr function `{}` returned None",
-                    fn_ident
-                );
-                let worker = quote! {
-                    let __result = #call_expr;
-                    match __result {
-                        Some(v) => v,
-                        None => ::miniextendr_api::error::r_stop(#error_msg),
-                    }
-                };
-                let convert = quote! {
-                    __miniextendr_result
-                };
-                (worker, convert)
+                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                if self.error_in_r {
+                    let worker = quote! { #call_expr };
+                    let convert = quote! {
+                        match __miniextendr_result {
+                            Some(v) => v,
+                            None => ::miniextendr_api::error_value::make_rust_error_value(
+                                #error_msg, "none_err"
+                            ),
+                        }
+                    };
+                    (worker, convert)
+                } else {
+                    let worker = quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Some(v) => v,
+                            None => ::miniextendr_api::error::r_stop(#error_msg),
+                        }
+                    };
+                    let convert = quote! {
+                        __miniextendr_result
+                    };
+                    (worker, convert)
+                }
             }
             ReturnHandling::OptionIntoR => {
-                let error_msg = format!(
-                    "miniextendr function `{}` returned None",
-                    fn_ident
-                );
-                let worker = quote! {
-                    let __result = #call_expr;
-                    match __result {
-                        Some(v) => v,
-                        None => ::miniextendr_api::error::r_stop(#error_msg),
-                    }
-                };
-                let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
-                let convert = quote! {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || #conversion,
-                        None,
-                    )
-                };
-                (worker, convert)
+                let error_msg = format!("miniextendr function `{}` returned None", fn_ident);
+                if self.error_in_r {
+                    let worker = quote! { #call_expr };
+                    let result_ident = format_ident!("__miniextendr_result");
+                    let conversion = self.sexp_conversion_expr(&result_ident);
+                    let unwind_fn = self.worker_conversion_unwind_fn();
+                    let convert = quote! {
+                        match __miniextendr_result {
+                            Some(#result_ident) => #unwind_fn(
+                                || #conversion,
+                                None,
+                            ),
+                            None => ::miniextendr_api::error_value::make_rust_error_value(
+                                #error_msg, "none_err"
+                            ),
+                        }
+                    };
+                    (worker, convert)
+                } else {
+                    let worker = quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Some(v) => v,
+                            None => ::miniextendr_api::error::r_stop(#error_msg),
+                        }
+                    };
+                    let result_ident = format_ident!("__miniextendr_result");
+                    let conversion = self.sexp_conversion_expr(&result_ident);
+                    let convert = quote! {
+                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            || #conversion,
+                            None,
+                        )
+                    };
+                    (worker, convert)
+                }
             }
             ReturnHandling::ResultUnit => {
-                let worker = quote! {
-                    let __result = #call_expr;
-                    if let Err(e) = __result {
-                        ::miniextendr_api::error::r_stop(&format!("{:?}", e));
-                    }
-                };
-                let convert = quote! {
-                    unsafe { ::miniextendr_api::ffi::R_NilValue }
-                };
-                (worker, convert)
+                if self.error_in_r {
+                    let worker = quote! { #call_expr };
+                    let convert = quote! {
+                        match __miniextendr_result {
+                            Ok(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
+                            Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
+                                &format!("{:?}", e), "result_err"
+                            ),
+                        }
+                    };
+                    (worker, convert)
+                } else {
+                    let worker = quote! {
+                        let __result = #call_expr;
+                        if let Err(e) = __result {
+                            ::miniextendr_api::error::r_stop(&format!("{:?}", e));
+                        }
+                    };
+                    let convert = quote! {
+                        unsafe { ::miniextendr_api::ffi::R_NilValue }
+                    };
+                    (worker, convert)
+                }
             }
             ReturnHandling::ResultSexp => {
-                let worker = quote! {
-                    let __result = #call_expr;
-                    match __result {
-                        Ok(v) => v,
-                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
-                    }
-                };
-                let convert = quote! {
-                    __miniextendr_result
-                };
-                (worker, convert)
+                if self.error_in_r {
+                    let worker = quote! { #call_expr };
+                    let convert = quote! {
+                        match __miniextendr_result {
+                            Ok(v) => v,
+                            Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
+                                &format!("{:?}", e), "result_err"
+                            ),
+                        }
+                    };
+                    (worker, convert)
+                } else {
+                    let worker = quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Ok(v) => v,
+                            Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
+                        }
+                    };
+                    let convert = quote! {
+                        __miniextendr_result
+                    };
+                    (worker, convert)
+                }
             }
             ReturnHandling::ResultIntoR => {
-                let worker = quote! {
-                    let __result = #call_expr;
-                    match __result {
-                        Ok(v) => v,
-                        Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
-                    }
-                };
-                let result_ident = format_ident!("__miniextendr_result");
-                let conversion = self.sexp_conversion_expr(&result_ident);
-                let convert = quote! {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        || #conversion,
-                        None,
-                    )
-                };
-                (worker, convert)
+                if self.error_in_r {
+                    let worker = quote! { #call_expr };
+                    let result_ident = format_ident!("__miniextendr_result");
+                    let conversion = self.sexp_conversion_expr(&result_ident);
+                    let unwind_fn = self.worker_conversion_unwind_fn();
+                    let convert = quote! {
+                        match __miniextendr_result {
+                            Ok(#result_ident) => #unwind_fn(
+                                || #conversion,
+                                None,
+                            ),
+                            Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
+                                &format!("{:?}", e), "result_err"
+                            ),
+                        }
+                    };
+                    (worker, convert)
+                } else {
+                    let worker = quote! {
+                        let __result = #call_expr;
+                        match __result {
+                            Ok(v) => v,
+                            Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
+                        }
+                    };
+                    let result_ident = format_ident!("__miniextendr_result");
+                    let conversion = self.sexp_conversion_expr(&result_ident);
+                    let convert = quote! {
+                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            || #conversion,
+                            None,
+                        )
+                    };
+                    (worker, convert)
+                }
             }
+        }
+    }
+
+    /// Returns the appropriate unwind protection function for worker-thread
+    /// conversion steps. In error_in_r mode, uses the error_in_r variant that
+    /// returns tagged error values on conversion panics instead of longjmping.
+    fn worker_conversion_unwind_fn(&self) -> TokenStream {
+        if self.error_in_r {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect_error_in_r }
+        } else {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
         }
     }
 
@@ -788,6 +1022,8 @@ pub struct CWrapperContextBuilder {
     call_method_def_ident: Option<syn::Ident>,
     /// Strict conversion mode.
     strict: bool,
+    /// error_in_r mode.
+    error_in_r: bool,
 }
 
 impl CWrapperContextBuilder {
@@ -885,6 +1121,12 @@ impl CWrapperContextBuilder {
         self
     }
 
+    /// Enable error_in_r mode: return tagged error values instead of r_stop.
+    pub fn error_in_r(mut self) -> Self {
+        self.error_in_r = true;
+        self
+    }
+
     /// Set a custom call_method_def identifier.
     ///
     /// If not set, the default naming is used:
@@ -935,6 +1177,7 @@ impl CWrapperContextBuilder {
             has_self: self.has_self,
             call_method_def_ident: self.call_method_def_ident,
             strict: self.strict,
+            error_in_r: self.error_in_r,
         }
     }
 }

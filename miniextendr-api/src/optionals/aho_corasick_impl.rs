@@ -329,9 +329,9 @@ impl RAhoCorasickOps for AhoCorasick {
         match aho_find_first(self, haystack) {
             Some((pid, start, end)) => {
                 vec![
-                    i32::try_from(pid + 1).unwrap_or(i32::MAX),   // 1-based pattern ID
+                    i32::try_from(pid + 1).unwrap_or(i32::MAX), // 1-based pattern ID
                     i32::try_from(start + 1).unwrap_or(i32::MAX), // 1-based position
-                    i32::try_from(end).unwrap_or(i32::MAX),       // end is exclusive
+                    i32::try_from(end).unwrap_or(i32::MAX),     // end is exclusive
                 ]
             }
             None => vec![],

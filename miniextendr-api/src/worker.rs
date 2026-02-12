@@ -240,6 +240,38 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
+    match run_on_worker_inner(f) {
+        Ok(val) => val,
+        Err(msg) => {
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Worker);
+            panic_message_to_r_error(msg)
+        }
+    }
+}
+
+/// Like [`run_on_worker`], but returns `Result<T, String>` instead of
+/// diverging on worker-thread panics. Used by `#[miniextendr(error_in_r)]`
+/// mode so the caller can convert panics to tagged error values.
+///
+/// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
+pub fn run_on_worker_result<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let result = run_on_worker_inner(f);
+    if let Err(ref msg) = result {
+        crate::panic_telemetry::fire(msg, crate::panic_telemetry::PanicSource::Worker);
+    }
+    result
+}
+
+/// Shared implementation for [`run_on_worker`] and [`run_on_worker_result`].
+fn run_on_worker_inner<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
     /// Marker type for R errors caught by R_UnwindProtect's cleanup handler.
     struct RErrorMarker;
 
@@ -424,16 +456,10 @@ where
             }
             WorkerMessage::Done(result) => {
                 return match result {
-                    Ok(boxed) => *boxed
+                    Ok(boxed) => Ok(*boxed
                         .downcast::<T>()
-                        .expect("type mismatch in run_on_worker result"),
-                    Err(msg) => {
-                        crate::panic_telemetry::fire(
-                            &msg,
-                            crate::panic_telemetry::PanicSource::Worker,
-                        );
-                        panic_message_to_r_error(msg)
-                    }
+                        .expect("type mismatch in run_on_worker result")),
+                    Err(msg) => Err(msg),
                 };
             }
         }
