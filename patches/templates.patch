@@ -1,12 +1,57 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-09 09:41:01
-+++ b/monorepo/rpkg/configure.ac	2026-02-09 13:30:01
+--- a/monorepo/rpkg/configure.ac	2026-02-12 23:51:10
++++ b/monorepo/rpkg/configure.ac	2026-02-12 23:51:13
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
  
  dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -59,7 +59,6 @@
+@@ -30,18 +30,8 @@
+ fi
+ 
+-dnl ---- Build context inputs ----
+-dnl PREPARE_CRAN: explicit release-prep signal (highest precedence)
+-: ${PREPARE_CRAN:=false}
+-case "$PREPARE_CRAN" in
+-  true|TRUE|1) PREPARE_CRAN=true ;;
+-  *)           PREPARE_CRAN=false ;;
+-esac
+-
+-dnl NOT_CRAN: legacy compatibility signal
+-dnl Detect if explicitly set BEFORE defaulting, so auto-detection works
+-NOT_CRAN_EXPLICIT=false
+-if test "${NOT_CRAN+set}" = "set"; then
+-  NOT_CRAN_EXPLICIT=true
+-fi
++dnl NOT_CRAN handling:
++dnl - CRAN builds: NOT_CRAN is unset or empty → default to false (offline mode)
++dnl - Dev builds: set NOT_CRAN=true in environment to enable network/vendoring
++dnl Normalize to "true" or "false" for consistent checks
+ : ${NOT_CRAN:=false}
+ case "$NOT_CRAN" in
+@@ -49,13 +39,26 @@
+   *)           NOT_CRAN=false ;;
+ esac
++export NOT_CRAN
+ 
+-dnl BUILD_CONTEXT, cargo flags, and NOT_CRAN derivation are set after
+-dnl canonical paths are computed (needs monorepo detection).
++dnl Set cargo offline/locked flags based on NOT_CRAN
++dnl - NOT_CRAN=true (dev): no --offline, no --locked (cargo updates lockfile for patches)
++dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
++if test "$NOT_CRAN" = "true"; then
++  CARGO_OFFLINE_FLAG=""
++  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
++  CARGO_LOCKED_FLAG=""
++else
++  CARGO_OFFLINE_FLAG="--offline"
++  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
++  CARGO_LOCKED_FLAG=""
++fi
++AC_SUBST([CARGO_OFFLINE_FLAG])
++AC_SUBST([CARGO_LOCKED_FLAG])
++AC_SUBST([NOT_CRAN])
+ 
  dnl Set cargo features flag
  dnl
 -dnl rpkg is a demo package that demonstrates ALL miniextendr features.
@@ -16,7 +61,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl By default, no extra features are enabled.
  dnl
  dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
-@@ -67,9 +66,9 @@
+@@ -63,9 +66,9 @@
  AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
  
 -dnl Enable all features by default for this demo package
@@ -30,7 +75,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  MINIEXTENDR_FEATURES=""
  fi
  
-@@ -108,24 +107,14 @@
+@@ -104,100 +107,14 @@
  AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
  
 -dnl Miniextendr crate source paths (in monorepo)
@@ -40,879 +85,960 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
 -MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
 -
- dnl ---- tool discovery ----
- AC_PATH_TOOL([CARGO],[cargo],[no])
- AC_PATH_TOOL([RUSTC],[rustc],[no])
--AC_PATH_PROG([RSYNC],[rsync],[no])
- AC_PATH_PROG([SED],[sed],[no])
- AC_PATH_PROG([CYGPATH],[cygpath],[no])
- AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
- AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
--dnl rsync is only required when syncing from monorepo sources
- AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
- AC_SUBST([CARGO])
- AC_SUBST([RUSTC])
--AC_SUBST([RSYNC])
- AC_SUBST([SED])
- AC_SUBST([CYGPATH])
-@@ -134,15 +123,12 @@
- dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
- dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
--root_miniextendr_repo_cargo="$root_miniextendr_repo"
- abs_rpkg_src_cargo="$abs_rpkg_src"
- case "$host_os" in
-   *msys*|*cygwin*|*mingw*)
-     if test "x$CYGPATH" != "xno"; then
--      root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
-       abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
-     fi
-     ;;
- esac
--AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
- AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
- 
-@@ -262,7 +248,5 @@
- 
- dnl ---- package name → Rust-safe variants ----
--dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
--dnl so the entrypoint's R_init_*_miniextendr symbol matches the Rust module exactly.
--pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g')"
-+pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
- AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
- pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
-@@ -306,8 +290,7 @@
- AC_SUBST([VENDOR_OUT_CARGO])
- 
--dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
-+dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
- dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
--dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
--dnl the [patch] section in Cargo.toml.
-+dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
- 
- dnl ---- output files ----
-@@ -320,10 +303,9 @@
-   src/entrypoint.c:src/entrypoint.c.in
-   src/mx_abi.c:src/mx_abi.c.in
--  src/miniextendr-win.def:src/win.def.in
-+  src/{{package}}-win.def:src/win.def.in
- ])
- 
--dnl 1) Configure cargo config and [patch] section based on build context
--dnl    In dev mode with monorepo: remove cargo config, use [patch] paths
--dnl    In dev mode without monorepo (R CMD check): keep config, strip [patch]
-+dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
-+dnl    In dev mode, Cargo.toml uses git deps directly
- AC_CONFIG_COMMANDS([dev-cargo-config],
- [
-@@ -331,39 +313,17 @@
- 
-   if test "$NOT_CRAN" = "true"; then
--    dnl Check if monorepo crate paths are available
--    if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
--      dnl True dev mode: remove cargo config, use [patch] paths to monorepo
--      if test -f "$RPKG_CFG"; then
--        rm "$RPKG_CFG"
--        echo "configure: removed cargo config (dev mode - using git deps with local patches)"
--      fi
--    else
--      dnl R CMD check or detached context: monorepo not available
--      dnl Keep cargo config for vendored source resolution
--      echo "configure: monorepo not found at $ROOT_MINIEXTENDR_REPO"
--      echo "configure: keeping cargo config for vendored source resolution"
--      dnl Strip @<:@patch@:>@ section from Cargo.toml — paths reference monorepo
--      if grep -q '^.patch\.' src/rust/Cargo.toml 2>/dev/null; then
--        "$SED" '/^.patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
--          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--        echo "configure: stripped patch section from Cargo.toml (monorepo paths not available)"
--      fi
--      dnl Patch Makevars to use --offline (git deps can't be resolved without monorepo)
--      if test -f src/Makevars; then
--        "$SED" 's/^CARGO_OFFLINE_FLAG =.*$/CARGO_OFFLINE_FLAG = --offline/' src/Makevars > src/Makevars.tmp \
--          && mv src/Makevars.tmp src/Makevars
--        echo "configure: patched Makevars with --offline (monorepo not available)"
--      fi
--      dnl Flag for subsequent configure steps (cargo-vendor, patch-staticlib-name)
--      echo "vendored-fallback" > .monorepo-fallback
-+    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
-+    if test -f "$RPKG_CFG"; then
-+      rm "$RPKG_CFG"
-+      echo "configure: removed cargo config (dev mode - using git deps)"
-     fi
-   fi
- ],
--[NOT_CRAN="$NOT_CRAN" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" SED="$SED"])
-+[NOT_CRAN="$NOT_CRAN"])
- 
- dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
- dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
- 
--dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
-+dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
- dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
- AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -406,7 +366,5 @@
-       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
-       rm -f "$LOCKFILE_PATH"
--      _compat_offline="$CARGO_OFFLINE_FLAG"
--      if test -f .monorepo-fallback; then _compat_offline="--offline"; fi
--      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $_compat_offline
-+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-       _gen_status=$?
-       if test $_gen_status -ne 0; then
-@@ -419,5 +377,5 @@
- [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
- 
--dnl 2) Handle vendor directory (CRAN: unpack tarball; dev: clean up stale artifacts)
-+dnl 3) Run cargo vendor (dev mode only)
- AC_CONFIG_COMMANDS([cargo-vendor],
- [
-@@ -444,167 +402,63 @@
-     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-       dnl No vendor available - fall back to network (e.g., GitHub installs)
--      echo "configure: no cached vendor found, vendoring from network" >&2
-+      echo "configure: no cached vendor found, will proceed with network access" >&2
-       echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
--      mkdir -p "$VENDOR_OUT"
--      $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
--      if test $? -ne 0; then
--        echo "configure: error: cargo vendor failed (network required)" >&2
--        exit 1
--      fi
--      dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
--      for _crate_dir in "$VENDOR_OUT"/*/; do
--        if test -d "$_crate_dir"; then
--          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
--                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
--          for _dotfile in "$_crate_dir"/.*; do
--            case "$(basename "$_dotfile")" in
--              .|..|.cargo-checksum.json) ;;
--              *) rm -rf "$_dotfile" ;;
--            esac
--          done
--          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
--        fi
--      done
--      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
--      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
--        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
--      fi
-+      dnl Continue to dev mode vendoring logic below
-+      NOT_CRAN=true
-     else
-       echo "configure: CRAN build - vendor ready"
--      dnl Rewrite git deps to path deps for vendored build.
--      dnl The Cargo.toml has git deps and [patch] entries pointing to monorepo paths
--      dnl that don't exist in the CRAN tarball context.
--      for _crate in miniextendr-api miniextendr-lint; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
--          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
--            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
--        fi
--      done
--      dnl Strip [patch] section (monorepo paths not available in tarball)
--      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
--        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
--          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--        echo "configure: stripped [patch] section from Cargo.toml"
--      fi
--      dnl Add [patch.crates-io] for transitive miniextendr deps
--      _patch_lines=""
--      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
--          _patch_lines="$_patch_lines
--$_crate = { path = \"../../vendor/$_dirname\" }"
--        fi
--      done
--      if test -n "$_patch_lines"; then
--        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
--        echo "configure: added [patch.crates-io] for transitive deps"
--      fi
--      dnl Strip git source replacement from cargo config
--      RPKG_CFG="src/rust/.cargo/config.toml"
--      if test -f "$RPKG_CFG"; then
--        "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
--      fi
--      dnl Regenerate Cargo.lock from vendored sources
--      rm -f src/rust/Cargo.lock
--      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
-+    fi
-+  fi
-+
-+  if test "$NOT_CRAN" = "true"; then
-+    MANIFEST="src/rust/Cargo.toml"
-+    LOCKFILE="src/rust/Cargo.lock"
-+    STAMP="$VENDOR_OUT/.vendor.lock.cksum"
-+
-+    dnl Generate Cargo.lock if missing (required for fingerprinting)
-+    if test ! -f "$LOCKFILE"; then
-+      echo "configure: generating Cargo.lock"
-+      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST"
-       if test $? -ne 0; then
--        echo "configure: error: failed to generate lockfile from vendored sources" >&2
-+        echo "configure: error: cargo generate-lockfile failed" >&2
-         exit 1
-       fi
--      echo "configure: regenerated Cargo.lock for CRAN build"
-     fi
--  else
--    dnl Dev mode: behavior depends on whether monorepo is available
--    if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
--      dnl True dev mode: clean up vendor artifacts, skip vendoring entirely.
--      dnl In dev mode, Cargo resolves deps via [patch] in Cargo.toml — no vendor needed.
--      dnl Use 'just vendor' to prepare vendor tarball for CRAN submissions.
--      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
--        rm -rf "$VENDOR_OUT"
--        echo "configure: removed vendor directory (dev mode)"
--      fi
--      dnl Note: inst/vendor.tar.xz is intentionally kept — it is needed for R CMD check.
--      dnl Remove vendor stamp
--      rm -f "$VENDOR_OUT/.vendor.lock.cksum"
--      echo "configure: dev mode - using [patch] paths to monorepo"
--    else
--      dnl R CMD check or detached context: monorepo not available
--      dnl Keep vendor directory for building from vendored sources
--      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
--        echo "configure: using vendored sources (monorepo not available)"
--        dnl Rewrite git deps to path deps pointing to versioned vendor dirs.
--        for _crate in miniextendr-api miniextendr-lint; do
--          _versioned_dir=""
--          for _d in "$VENDOR_OUT/$_crate"-*/; do
--            if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--          done
--          if test -n "$_versioned_dir"; then
--            _dirname="$(basename "$_versioned_dir")"
--            "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
--              src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--            echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
--          else
--            echo "configure: warning: could not find $_crate in vendor directory" >&2
--          fi
--        done
--        dnl Add [patch.crates-io] for transitive miniextendr deps.
--        dnl The vendored crates declare transitive deps as version = "*" (registry deps).
--        dnl Cargo's directory source cannot resolve manually-added crates (only cargo-vendor
--        dnl created ones), so we use [patch.crates-io] to redirect them to local paths.
--        _patch_lines=""
--        for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
--          _versioned_dir=""
--          for _d in "$VENDOR_OUT/$_crate"-*/; do
--            if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--          done
--          if test -n "$_versioned_dir"; then
--            _dirname="$(basename "$_versioned_dir")"
--            _patch_lines="$_patch_lines
--$_crate = { path = \"../../vendor/$_dirname\" }"
--            echo "configure: patched $_crate to path: vendor/$_dirname"
--          fi
--        done
--        if test -n "$_patch_lines"; then
--          printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
--          echo "configure: added [patch.crates-io] for transitive miniextendr deps"
--        fi
--        dnl Strip git source replacement from .cargo/config.toml — all git deps
--        dnl are now path deps, so the git source entry is unused and might cause
--        dnl cargo to validate the git repo in offline mode.
--        RPKG_CFG="src/rust/.cargo/config.toml"
--        if test -f "$RPKG_CFG"; then
--          "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
--          echo "configure: stripped git source replacement from cargo config"
--        fi
--        dnl Delete stale Cargo.lock (generated with [patch] paths in monorepo)
--        dnl and regenerate from vendored sources.
--        rm -f src/rust/Cargo.lock
--        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
--        if test $? -ne 0; then
--          echo "configure: error: failed to generate lockfile from vendored sources" >&2
--          exit 1
--        fi
--        echo "configure: generated new Cargo.lock from vendored sources"
--      else
--        echo "configure: error: monorepo not found and no vendor directory available" >&2
--        echo "configure: hint: run 'just vendor' before 'just r-cmd-check'" >&2
-+
-+    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-+    _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
-+    _old="$(cat "$STAMP" 2>/dev/null || true)"
-+
-+    _need=0
-+    if test ! -f "$STAMP"; then
-+      _need=1
-+    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-+      _need=1
-+    elif test "x$_new" != "x$_old"; then
-+      _need=1
-+    fi
-+
-+    if test $_need -eq 1; then
-+      echo "configure: running cargo vendor"
-+      mkdir -p "$VENDOR_OUT"
-+      $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
-+      if test $? -ne 0; then
-+        echo "configure: error: cargo vendor failed" >&2
-         exit 1
-       fi
-+
-+      dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
-+      if test -f "$LOCKFILE"; then
-+        $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
-+      fi
-+      echo "$_new" > "$STAMP"
-+    else
-+      echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
-     fi
-   fi
- ],
--[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
-+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
- 
--dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
-+dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
- AC_CONFIG_COMMANDS([post-vendor],
- [
-@@ -620,20 +474,75 @@
- [ABS_RPKG_SRC="$abs_rpkg_src"])
- 
--dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).
--dnl configure no longer compresses vendor — dev mode doesn't need it,
--dnl and CRAN mode uses the pre-built tarball from 'just vendor'.
-+dnl 5) Compress vendor directory for CRAN tarballs
-+dnl In NOT_CRAN mode: always create/update the vendor tarball
-+dnl In CRAN mode: tarball is already bundled, don't compress
- AC_CONFIG_COMMANDS([compress-vendor],
- [
--  echo "configure: skipping vendor compression (use 'just vendor' for CRAN prep)"
-+  VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
-+  VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
-+
-+  dnl Only compress in dev mode when vendor directory exists
-+  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-+    dnl Calculate fingerprint from Cargo.lock
-+    _lock_ck=""
-+    if test -f "src/rust/Cargo.lock"; then
-+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | cut -d' ' -f1,2 | tr ' ' ':')"
-+    fi
-+
-+    _new_fingerprint="lock:$_lock_ck"
-+    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
-+
-+    _need_compress=0
-+    if test ! -f "$VENDOR_TARBALL"; then
-+      _need_compress=1
-+      echo "configure: creating vendor.tar.xz"
-+    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
-+      _need_compress=1
-+      echo "configure: recompressing vendor.tar.xz (Cargo.lock changed)"
-+    fi
-+
-+    if test $_need_compress -eq 1; then
-+      mkdir -p "$abs_rpkg_dir/inst"
-+
-+      dnl Create temp staging area
-+      _staging_tmp="$abs_rpkg_dir/.vendor-tarball-staging"
-+      rm -rf "$_staging_tmp"
-+      mkdir -p "$_staging_tmp"
-+      cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
-+
-+      dnl Clear checksums (we exclude tests/benches/examples which are in checksums)
-+      for _crate_dir in "$_staging_tmp/vendor"/*/; do
-+        test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
-+      done
-+
-+      dnl Remove unneeded directories
-+      find "$_staging_tmp/vendor" -type d \( -name 'tests' -o -name 'benches' -o -name 'examples' -o -name '.github' -o -name 'docs' \) -exec rm -rf {} + 2>/dev/null || true
-+      find "$_staging_tmp/vendor" -name '*.md' -type f -exec truncate -s 0 {} \; 2>/dev/null || true
-+
-+      dnl Create tarball
-+      tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
-+      _tar_status=$?
-+      rm -rf "$_staging_tmp"
-+
-+      if test $_tar_status -eq 0; then
-+        echo "$_new_fingerprint" > "$VENDOR_STAMP"
-+      else
-+        echo "configure: warning: failed to compress vendor directory" >&2
-+      fi
-+    else
-+      echo "configure: skipping vendor compression (unchanged)"
-+    fi
-+  else
-+    echo "configure: skipping vendor compression (CRAN mode or no vendor)"
-+  fi
- ],
--[NOT_CRAN="$NOT_CRAN"])
-+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir"])
- 
--dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
-+dnl 6) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
- AC_CONFIG_COMMANDS([patch-staticlib-name],
- [
-   dnl Use cargo pkgid to extract the actual package name from Cargo.toml
-   dnl This handles hyphens correctly (converted to underscores for Rust lib name)
--  dnl Use --offline when: CRAN mode, or dev mode with monorepo fallback
--  if test "$NOT_CRAN" = "true" && test ! -f .monorepo-fallback; then
-+  if test "$NOT_CRAN" = "true"; then
-     _pkgid_flags="--color=never"
-   else
-diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-09 09:41:01
-+++ b/rpkg/configure.ac	2026-02-09 13:29:58
-@@ -1,3 +1,3 @@
--AC_INIT([miniextendr], [1.0])
-+AC_INIT([{{package}}], [1.0])
- 
- dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
-@@ -59,7 +59,6 @@
- dnl Set cargo features flag
- dnl
--dnl rpkg is a demo package that demonstrates ALL miniextendr features.
--dnl Enable all optional features by default (both dev and CRAN modes).
--dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
-+dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
-+dnl By default, no extra features are enabled.
- dnl
- dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
-@@ -67,9 +66,9 @@
- AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
- 
--dnl Enable all features by default for this demo package
--dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
-+dnl Default: no extra features enabled
-+dnl Users can set MINIEXTENDR_FEATURES to enable specific features
- if test -z "${MINIEXTENDR_FEATURES+x}"; then
--  dnl MINIEXTENDR_FEATURES not set - enable all optional features
--  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs"
-+  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
-+  MINIEXTENDR_FEATURES=""
- fi
- 
-@@ -108,24 +107,14 @@
- AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
- 
--dnl Miniextendr crate source paths (in monorepo)
--MINIEXTENDR_API_SRC="$root_miniextendr_repo/miniextendr-api"
--MINIEXTENDR_MACROS_SRC="$root_miniextendr_repo/miniextendr-macros"
--MINIEXTENDR_MACROS_CORE_SRC="$root_miniextendr_repo/miniextendr-macros-core"
--MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
--MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
+-dnl ---- Build context resolution ----
+-dnl Resolve one of: dev-monorepo, dev-detached, vendored-install, prepare-cran
+-dnl
+-dnl Truth table:
+-dnl   PREPARE_CRAN=true                              → prepare-cran
+-dnl   NOT_CRAN explicit=true  + monorepo present     → dev-monorepo
+-dnl   NOT_CRAN explicit=true  + monorepo absent      → dev-detached
+-dnl   NOT_CRAN explicit=false + any                  → vendored-install
+-dnl   auto-detect: monorepo present                  → dev-monorepo
+-dnl   auto-detect: vendor hint present               → vendored-install
+-dnl   auto-detect: neither                           → dev-detached
 -
- dnl ---- tool discovery ----
- AC_PATH_TOOL([CARGO],[cargo],[no])
- AC_PATH_TOOL([RUSTC],[rustc],[no])
--AC_PATH_PROG([RSYNC],[rsync],[no])
- AC_PATH_PROG([SED],[sed],[no])
- AC_PATH_PROG([CYGPATH],[cygpath],[no])
- AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
- AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
--dnl rsync is only required when syncing from monorepo sources
- AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
- AC_SUBST([CARGO])
- AC_SUBST([RUSTC])
--AC_SUBST([RSYNC])
- AC_SUBST([SED])
- AC_SUBST([CYGPATH])
-@@ -134,15 +123,12 @@
- dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
- dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
--root_miniextendr_repo_cargo="$root_miniextendr_repo"
- abs_rpkg_src_cargo="$abs_rpkg_src"
- case "$host_os" in
-   *msys*|*cygwin*|*mingw*)
-     if test "x$CYGPATH" != "xno"; then
--      root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
-       abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
-     fi
-     ;;
- esac
--AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
- AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
- 
-@@ -306,8 +292,7 @@
- AC_SUBST([VENDOR_OUT_CARGO])
- 
--dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
-+dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
- dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
--dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
--dnl the [patch] section in Cargo.toml.
-+dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
- 
- dnl ---- output files ----
-@@ -320,10 +305,9 @@
-   src/entrypoint.c:src/entrypoint.c.in
-   src/mx_abi.c:src/mx_abi.c.in
--  src/miniextendr-win.def:src/win.def.in
-+  src/{{package}}-win.def:src/win.def.in
- ])
- 
--dnl 1) Configure cargo config and [patch] section based on build context
--dnl    In dev mode with monorepo: remove cargo config, use [patch] paths
--dnl    In dev mode without monorepo (R CMD check): keep config, strip [patch]
-+dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
-+dnl    In dev mode, Cargo.toml uses git deps directly
- AC_CONFIG_COMMANDS([dev-cargo-config],
- [
-@@ -331,39 +315,17 @@
- 
-   if test "$NOT_CRAN" = "true"; then
--    dnl Check if monorepo crate paths are available
--    if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
--      dnl True dev mode: remove cargo config, use [patch] paths to monorepo
--      if test -f "$RPKG_CFG"; then
--        rm "$RPKG_CFG"
--        echo "configure: removed cargo config (dev mode - using git deps with local patches)"
--      fi
+-HAS_MONOREPO=false
+-if test -d "$root_miniextendr_repo/miniextendr-api"; then
+-  HAS_MONOREPO=true
+-fi
+-
+-HAS_VENDOR_HINT=false
+-if test -d "$abs_top_srcdir/vendor" && test -n "$(ls -A "$abs_top_srcdir/vendor" 2>/dev/null)"; then
+-  HAS_VENDOR_HINT=true
+-elif test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
+-  HAS_VENDOR_HINT=true
+-fi
+-
+-if test "$PREPARE_CRAN" = "true"; then
+-  BUILD_CONTEXT="prepare-cran"
+-elif test "$NOT_CRAN_EXPLICIT" = "true"; then
+-  if test "$NOT_CRAN" = "true"; then
+-    if test "$HAS_MONOREPO" = "true"; then
+-      BUILD_CONTEXT="dev-monorepo"
 -    else
--      dnl R CMD check or detached context: monorepo not available
--      dnl Keep cargo config for vendored source resolution
--      echo "configure: monorepo not found at $ROOT_MINIEXTENDR_REPO"
--      echo "configure: keeping cargo config for vendored source resolution"
--      dnl Strip @<:@patch@:>@ section from Cargo.toml — paths reference monorepo
--      if grep -q '^.patch\.' src/rust/Cargo.toml 2>/dev/null; then
--        "$SED" '/^.patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
--          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--        echo "configure: stripped patch section from Cargo.toml (monorepo paths not available)"
--      fi
--      dnl Patch Makevars to use --offline (git deps can't be resolved without monorepo)
--      if test -f src/Makevars; then
--        "$SED" 's/^CARGO_OFFLINE_FLAG =.*$/CARGO_OFFLINE_FLAG = --offline/' src/Makevars > src/Makevars.tmp \
--          && mv src/Makevars.tmp src/Makevars
--        echo "configure: patched Makevars with --offline (monorepo not available)"
--      fi
--      dnl Flag for subsequent configure steps (cargo-vendor, patch-staticlib-name)
--      echo "vendored-fallback" > .monorepo-fallback
-+    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
-+    if test -f "$RPKG_CFG"; then
-+      rm "$RPKG_CFG"
-+      echo "configure: removed cargo config (dev mode - using git deps)"
-     fi
-   fi
- ],
--[NOT_CRAN="$NOT_CRAN" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" SED="$SED"])
-+[NOT_CRAN="$NOT_CRAN"])
- 
- dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
- dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
- 
--dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
-+dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
- dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
- AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -406,7 +368,5 @@
-       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
-       rm -f "$LOCKFILE_PATH"
--      _compat_offline="$CARGO_OFFLINE_FLAG"
--      if test -f .monorepo-fallback; then _compat_offline="--offline"; fi
--      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $_compat_offline
-+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
-       _gen_status=$?
-       if test $_gen_status -ne 0; then
-@@ -419,5 +379,5 @@
- [CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
- 
--dnl 2) Handle vendor directory (CRAN: unpack tarball; dev: clean up stale artifacts)
-+dnl 3) Run cargo vendor (dev mode only)
- AC_CONFIG_COMMANDS([cargo-vendor],
- [
-@@ -444,12 +404,50 @@
-     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-       dnl No vendor available - fall back to network (e.g., GitHub installs)
--      echo "configure: no cached vendor found, vendoring from network" >&2
-+      echo "configure: no cached vendor found, will proceed with network access" >&2
-       echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
-+      dnl Continue to dev mode vendoring logic below
-+      NOT_CRAN=true
-+    else
-+      echo "configure: CRAN build - vendor ready"
-+    fi
-+  fi
-+
-+  if test "$NOT_CRAN" = "true"; then
-+    MANIFEST="src/rust/Cargo.toml"
-+    LOCKFILE="src/rust/Cargo.lock"
-+    STAMP="$VENDOR_OUT/.vendor.lock.cksum"
-+
-+    dnl Generate Cargo.lock if missing (required for fingerprinting)
-+    if test ! -f "$LOCKFILE"; then
-+      echo "configure: generating Cargo.lock"
-+      $CARGO_CMD generate-lockfile --manifest-path "$MANIFEST"
-+      if test $? -ne 0; then
-+        echo "configure: error: cargo generate-lockfile failed" >&2
-+        exit 1
-+      fi
-+    fi
-+
-+    dnl POSIX fingerprint: checksum+size of Cargo.lock contents
-+    _new="$(cksum < "$LOCKFILE" | awk '{print [$]1":"[$]2}')"
-+    _old="$(cat "$STAMP" 2>/dev/null || true)"
-+
-+    _need=0
-+    if test ! -f "$STAMP"; then
-+      _need=1
-+    elif test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-+      _need=1
-+    elif test "x$_new" != "x$_old"; then
-+      _need=1
-+    fi
-+
-+    if test $_need -eq 1; then
-+      echo "configure: running cargo vendor"
-       mkdir -p "$VENDOR_OUT"
--      $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
-+      $CARGO_CMD vendor --manifest-path "$MANIFEST" "$VENDOR_OUT"
-       if test $? -ne 0; then
--        echo "configure: error: cargo vendor failed (network required)" >&2
-+        echo "configure: error: cargo vendor failed" >&2
-         exit 1
-       fi
-+
-       dnl Strip tests/benches/examples/hidden files from vendored crates (CRAN portability)
-       for _crate_dir in "$VENDOR_OUT"/*/; do
-@@ -466,145 +464,18 @@
-         fi
-       done
-+
-       dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
--      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
--        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-+      if test -f "$LOCKFILE"; then
-+        $SED -i.bak '/^checksum = /d' "$LOCKFILE" && rm -f "$LOCKFILE.bak"
-       fi
-+      echo "$_new" > "$STAMP"
-     else
--      echo "configure: CRAN build - vendor ready"
--      dnl Rewrite git deps to path deps for vendored build.
--      dnl The Cargo.toml has git deps and [patch] entries pointing to monorepo paths
--      dnl that don't exist in the CRAN tarball context.
--      for _crate in miniextendr-api miniextendr-lint; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
--          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
--            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
--        fi
--      done
--      dnl Strip [patch] section (monorepo paths not available in tarball)
--      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
--        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
--          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--        echo "configure: stripped [patch] section from Cargo.toml"
--      fi
--      dnl Add [patch.crates-io] for transitive miniextendr deps
--      _patch_lines=""
--      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
--        _versioned_dir=""
--        for _d in "$VENDOR_OUT/$_crate"-*/; do
--          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--        done
--        if test -n "$_versioned_dir"; then
--          _dirname="$(basename "$_versioned_dir")"
--          _patch_lines="$_patch_lines
--$_crate = { path = \"../../vendor/$_dirname\" }"
--        fi
--      done
--      if test -n "$_patch_lines"; then
--        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
--        echo "configure: added [patch.crates-io] for transitive deps"
--      fi
--      dnl Strip git source replacement from cargo config
--      RPKG_CFG="src/rust/.cargo/config.toml"
--      if test -f "$RPKG_CFG"; then
--        "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
--      fi
--      dnl Regenerate Cargo.lock from vendored sources
--      rm -f src/rust/Cargo.lock
--      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
--      if test $? -ne 0; then
--        echo "configure: error: failed to generate lockfile from vendored sources" >&2
--        exit 1
--      fi
--      echo "configure: regenerated Cargo.lock for CRAN build"
-+      echo "configure: skipping cargo vendor (Cargo.lock unchanged)"
-     fi
--  else
--    dnl Dev mode: behavior depends on whether monorepo is available
--    if test -d "$ROOT_MINIEXTENDR_REPO/miniextendr-api"; then
--      dnl True dev mode: clean up vendor artifacts, skip vendoring entirely.
--      dnl In dev mode, Cargo resolves deps via [patch] in Cargo.toml — no vendor needed.
--      dnl Use 'just vendor' to prepare vendor tarball for CRAN submissions.
--      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
--        rm -rf "$VENDOR_OUT"
--        echo "configure: removed vendor directory (dev mode)"
--      fi
--      dnl Note: inst/vendor.tar.xz is intentionally kept — it is needed for R CMD check.
--      dnl Remove vendor stamp
--      rm -f "$VENDOR_OUT/.vendor.lock.cksum"
--      echo "configure: dev mode - using [patch] paths to monorepo"
--    else
--      dnl R CMD check or detached context: monorepo not available
--      dnl Keep vendor directory for building from vendored sources
--      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
--        echo "configure: using vendored sources (monorepo not available)"
--        dnl Rewrite git deps to path deps pointing to versioned vendor dirs.
--        for _crate in miniextendr-api miniextendr-lint; do
--          _versioned_dir=""
--          for _d in "$VENDOR_OUT/$_crate"-*/; do
--            if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--          done
--          if test -n "$_versioned_dir"; then
--            _dirname="$(basename "$_versioned_dir")"
--            "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
--              src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
--            echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
--          else
--            echo "configure: warning: could not find $_crate in vendor directory" >&2
--          fi
--        done
--        dnl Add [patch.crates-io] for transitive miniextendr deps.
--        dnl The vendored crates declare transitive deps as version = "*" (registry deps).
--        dnl Cargo's directory source cannot resolve manually-added crates (only cargo-vendor
--        dnl created ones), so we use [patch.crates-io] to redirect them to local paths.
--        _patch_lines=""
--        for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
--          _versioned_dir=""
--          for _d in "$VENDOR_OUT/$_crate"-*/; do
--            if test -d "$_d"; then _versioned_dir="$_d"; break; fi
--          done
--          if test -n "$_versioned_dir"; then
--            _dirname="$(basename "$_versioned_dir")"
--            _patch_lines="$_patch_lines
--$_crate = { path = \"../../vendor/$_dirname\" }"
--            echo "configure: patched $_crate to path: vendor/$_dirname"
--          fi
--        done
--        if test -n "$_patch_lines"; then
--          printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
--          echo "configure: added [patch.crates-io] for transitive miniextendr deps"
--        fi
--        dnl Strip git source replacement from .cargo/config.toml — all git deps
--        dnl are now path deps, so the git source entry is unused and might cause
--        dnl cargo to validate the git repo in offline mode.
--        RPKG_CFG="src/rust/.cargo/config.toml"
--        if test -f "$RPKG_CFG"; then
--          "$SED" '/^.source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
--          echo "configure: stripped git source replacement from cargo config"
--        fi
--        dnl Delete stale Cargo.lock (generated with [patch] paths in monorepo)
--        dnl and regenerate from vendored sources.
--        rm -f src/rust/Cargo.lock
--        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
--        if test $? -ne 0; then
--          echo "configure: error: failed to generate lockfile from vendored sources" >&2
--          exit 1
--        fi
--        echo "configure: generated new Cargo.lock from vendored sources"
--      else
--        echo "configure: error: monorepo not found and no vendor directory available" >&2
--        echo "configure: hint: run 'just vendor' before 'just r-cmd-check'" >&2
--        exit 1
--      fi
+-      BUILD_CONTEXT="dev-detached"
 -    fi
+-  else
+-    BUILD_CONTEXT="vendored-install"
+-  fi
+-else
+-  dnl Neither PREPARE_CRAN nor NOT_CRAN explicitly set — auto-detect
+-  if test "$HAS_MONOREPO" = "true"; then
+-    BUILD_CONTEXT="dev-monorepo"
+-  elif test "$HAS_VENDOR_HINT" = "true"; then
+-    BUILD_CONTEXT="vendored-install"
+-  else
+-    BUILD_CONTEXT="dev-detached"
+-  fi
+-fi
+-AC_SUBST([BUILD_CONTEXT])
+-
+-dnl Derive NOT_CRAN from BUILD_CONTEXT for backward compatibility
+-case "$BUILD_CONTEXT" in
+-  dev-monorepo|dev-detached)
+-    NOT_CRAN=true
+-    ;;
+-  vendored-install|prepare-cran)
+-    NOT_CRAN=false
+-    ;;
+-esac
+-export NOT_CRAN
+-AC_SUBST([NOT_CRAN])
+-
+-dnl Set cargo offline/locked flags based on BUILD_CONTEXT
+-dnl Dev contexts: no --offline (cargo uses network or [patch] paths)
+-dnl Release contexts: --offline (all deps must be vendored)
+-case "$BUILD_CONTEXT" in
+-  dev-monorepo|dev-detached)
+-    CARGO_OFFLINE_FLAG=""
+-    CARGO_LOCKED_FLAG=""
+-    ;;
+-  vendored-install|prepare-cran)
+-    CARGO_OFFLINE_FLAG="--offline"
+-    CARGO_LOCKED_FLAG=""
+-    ;;
+-esac
+-AC_SUBST([CARGO_OFFLINE_FLAG])
+-AC_SUBST([CARGO_LOCKED_FLAG])
+-
+ dnl ---- tool discovery ----
+ AC_PATH_TOOL([CARGO],[cargo],[no])
+ AC_PATH_TOOL([RUSTC],[rustc],[no])
+-AC_PATH_PROG([RSYNC],[rsync],[no])
+ AC_PATH_PROG([SED],[sed],[no])
+ AC_PATH_PROG([CYGPATH],[cygpath],[no])
+ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
+ AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
+-dnl rsync is only required when syncing from monorepo sources
+ AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
+ AC_SUBST([CARGO])
+ AC_SUBST([RUSTC])
+-AC_SUBST([RSYNC])
+ AC_SUBST([SED])
+ AC_SUBST([CYGPATH])
+@@ -206,15 +123,12 @@
+ dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+ dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
+-root_miniextendr_repo_cargo="$root_miniextendr_repo"
+ abs_rpkg_src_cargo="$abs_rpkg_src"
+ case "$host_os" in
+   *msys*|*cygwin*|*mingw*)
+     if test "x$CYGPATH" != "xno"; then
+-      root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+       abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+     fi
+     ;;
+ esac
+-AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
+ AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
+ 
+@@ -318,9 +232,6 @@
+ 
+ dnl ---- user feedback ----
+-AC_MSG_NOTICE([BUILD_CONTEXT         = $BUILD_CONTEXT])
+-AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
+-AS_IF([test "$PREPARE_CRAN" = "true"],
+-      [AC_MSG_NOTICE([PREPARE_CRAN          = $PREPARE_CRAN])])
+ AC_MSG_NOTICE([R_HOME                = $R_HOME])
++AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
+ AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
+ AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
+@@ -381,8 +292,7 @@
+ AC_SUBST([VENDOR_OUT_CARGO])
+ 
+-dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
++dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
+ dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
+-dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
+-dnl the [patch] section in Cargo.toml.
++dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+ 
+ dnl ---- output files ----
+@@ -395,45 +305,27 @@
+   src/entrypoint.c:src/entrypoint.c.in
+   src/mx_abi.c:src/mx_abi.c.in
+-  src/miniextendr-win.def:src/win.def.in
++  src/{{package}}-win.def:src/win.def.in
+ ])
+ 
+-dnl 1) Configure cargo config and [patch] section based on BUILD_CONTEXT
++dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
++dnl    In dev mode, Cargo.toml uses git deps directly
+ AC_CONFIG_COMMANDS([dev-cargo-config],
+ [
+   RPKG_CFG="src/rust/.cargo/config.toml"
+ 
+-  case "$BUILD_CONTEXT" in
+-    dev-monorepo)
+-      dnl Remove cargo config — use [patch] paths to monorepo
+-      if test -f "$RPKG_CFG"; then
+-        rm "$RPKG_CFG"
+-        echo "configure: removed cargo config (dev-monorepo — using [patch] paths)"
+-      fi
+-      ;;
+-    dev-detached)
+-      dnl Remove cargo config — use git/network deps directly
+-      if test -f "$RPKG_CFG"; then
+-        rm "$RPKG_CFG"
+-        echo "configure: removed cargo config (dev-detached — using git deps)"
+-      fi
+-      dnl Strip [patch] section — paths reference monorepo which isn't available
+-      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+-        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+-          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-        echo "configure: stripped @<:@patch@:>@ section (dev-detached — monorepo not available)"
+-      fi
+-      ;;
+-    vendored-install|prepare-cran)
+-      dnl Keep cargo config for vendored source resolution
+-      echo "configure: keeping cargo config ($BUILD_CONTEXT)"
+-      ;;
+-  esac
++  if test "$NOT_CRAN" = "true"; then
++    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
++    if test -f "$RPKG_CFG"; then
++      rm "$RPKG_CFG"
++      echo "configure: removed cargo config (dev mode - using git deps)"
++    fi
++  fi
+ ],
+-[BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
++[NOT_CRAN="$NOT_CRAN"])
+ 
+ dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
+ dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
+ 
+-dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
++dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
+ dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
+ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
+@@ -453,26 +345,25 @@
+     if test "$CARGO_MAJOR" -lt 1 || \
+        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+-      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
+-      case "$BUILD_CONTEXT" in
+-        vendored-install|prepare-cran)
+-          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+-            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+-              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
+-              tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-              if test $? -ne 0; then
+-                echo "configure: error: failed to unpack vendor.tar.xz" >&2
+-                exit 1
+-              fi
+-              if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-                $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-              fi
+-            else
+-              echo "configure: error: $BUILD_CONTEXT requires vendored sources to regenerate Cargo.lock" >&2
+-              echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
++      dnl In CRAN/offline mode, ensure vendor sources exist before regenerating lockfile.
++      if test "$NOT_CRAN" != "true"; then
++        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
++            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
++            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++            if test $? -ne 0; then
++              echo "configure: error: failed to unpack vendor.tar.xz" >&2
+               exit 1
+             fi
++            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
++            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
++            fi
++          else
++            echo "configure: error: CRAN/offline build requires vendored sources to regenerate Cargo.lock" >&2
++            echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
++            exit 1
+           fi
+-          ;;
+-      esac
++        fi
++      fi
+       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+       rm -f "$LOCKFILE_PATH"
+@@ -486,132 +377,41 @@
    fi
  ],
--[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"])
-+[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
++[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+ 
+-dnl 2) Handle vendor directory based on BUILD_CONTEXT
++dnl 3) Ensure vendor/ exists for offline builds
++dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
++dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
++dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
+ AC_CONFIG_COMMANDS([cargo-vendor],
+ [
+-  case "$BUILD_CONTEXT" in
+-    dev-monorepo)
+-      dnl Clean stale vendor artifacts, use [patch] paths
+-      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+-        rm -rf "$VENDOR_OUT"
+-        echo "configure: removed vendor directory (dev-monorepo)"
+-      fi
+-      rm -f "$VENDOR_OUT/.vendor.lock.cksum"
+-      echo "configure: dev-monorepo — using [patch] paths"
+-      ;;
+-    dev-detached)
+-      dnl Clean stale vendor artifacts, use git/network deps
+-      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+-        rm -rf "$VENDOR_OUT"
+-        echo "configure: removed vendor directory (dev-detached)"
+-      fi
+-      echo "configure: dev-detached — using git/network deps"
+-      ;;
+-    vendored-install|prepare-cran)
+-      dnl Ensure vendor/ exists: unpack tarball or vendor from network
+-      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+-        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+-          echo "configure: unpacking inst/vendor.tar.xz"
+-          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-          if test $? -ne 0; then
+-            echo "configure: error: failed to unpack vendor.tar.xz" >&2
+-            exit 1
+-          fi
+-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-          fi
+-        else
+-          dnl No vendor tarball — try vendoring from network (e.g. GitHub installs)
+-          echo "configure: no vendor found, vendoring from network" >&2
+-          echo "configure:   (normal for GitHub installs via remotes::install_github())" >&2
+-          mkdir -p "$VENDOR_OUT"
+-          $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
+-          if test $? -ne 0; then
+-            echo "configure: error: cargo vendor failed (network required)" >&2
+-            exit 1
+-          fi
+-          dnl Strip tests/benches/examples/hidden files from vendored crates
+-          for _crate_dir in "$VENDOR_OUT"/*/; do
+-            if test -d "$_crate_dir"; then
+-              rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+-                     "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+-              for _dotfile in "$_crate_dir"/.*; do
+-                case "$(basename "$_dotfile")" in
+-                  .|..|.cargo-checksum.json) ;;
+-                  *) rm -rf "$_dotfile" ;;
+-                esac
+-              done
+-              echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+-            fi
+-          done
+-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-          fi
+-        fi
+-      fi
+-
+-      dnl Vendor exists — rewrite deps for vendored build
+-      echo "configure: $BUILD_CONTEXT — vendor ready"
+-
+-      dnl Rewrite git deps to path deps
+-      for _crate in miniextendr-api miniextendr-lint; do
+-        _versioned_dir=""
+-        for _d in "$VENDOR_OUT/$_crate"-*/; do
+-          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+-        done
+-        if test -n "$_versioned_dir"; then
+-          _dirname="$(basename "$_versioned_dir")"
+-          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
+-            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
+-        fi
+-      done
+-
+-      dnl Strip [patch] section (monorepo paths not available)
+-      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+-        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+-          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-        echo "configure: stripped [patch] section"
+-      fi
+-
+-      dnl Add [patch.crates-io] for transitive miniextendr deps
+-      _patch_lines=""
+-      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
+-        _versioned_dir=""
+-        for _d in "$VENDOR_OUT/$_crate"-*/; do
+-          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+-        done
+-        if test -n "$_versioned_dir"; then
+-          _dirname="$(basename "$_versioned_dir")"
+-          _patch_lines="$_patch_lines
+-$_crate = { path = \"../../vendor/$_dirname\" }"
+-        fi
+-      done
+-      if test -n "$_patch_lines"; then
+-        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
+-        echo "configure: added [patch.crates-io] for transitive deps"
+-      fi
+-
+-      dnl Strip git source replacement from cargo config
+-      RPKG_CFG="src/rust/.cargo/config.toml"
+-      if test -f "$RPKG_CFG"; then
+-        "$SED" '/^\@<:@source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
+-      fi
+-
+-      dnl Regenerate Cargo.lock from vendored sources
+-      rm -f src/rust/Cargo.lock
+-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
++  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
++      echo "configure: unpacking inst/vendor.tar.xz"
++      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+       if test $? -ne 0; then
+-        echo "configure: error: failed to generate lockfile from vendored sources" >&2
++        echo "configure: error: failed to unpack vendor.tar.xz" >&2
+         exit 1
+       fi
+-      echo "configure: regenerated Cargo.lock for $BUILD_CONTEXT"
+-      ;;
+-  esac
++      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
++      fi
++    fi
++  fi
++
++  if test "$NOT_CRAN" = "true"; then
++    echo "configure: dev mode — using vendor/ from scaffolding"
++  else
++    dnl CRAN/offline mode: vendor/ must exist
++    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++      echo "configure: error: CRAN build requires vendored sources." >&2
++      echo "configure:        Run 'just vendor' before CRAN submission." >&2
++      exit 1
++    fi
++    echo "configure: CRAN build — vendor ready"
++  fi
+ ],
+-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
++[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
  
 -dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
 +dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -620,20 +491,75 @@
+@@ -627,17 +427,23 @@
  [ABS_RPKG_SRC="$abs_rpkg_src"])
  
--dnl 2c) Vendor compression is now handled by 'just vendor' (CRAN prep recipe).
--dnl configure no longer compresses vendor — dev mode doesn't need it,
--dnl and CRAN mode uses the pre-built tarball from 'just vendor'.
-+dnl 5) Compress vendor directory for CRAN tarballs
-+dnl In NOT_CRAN mode: always create/update the vendor tarball
-+dnl In CRAN mode: tarball is already bundled, don't compress
- AC_CONFIG_COMMANDS([compress-vendor],
- [
--  echo "configure: skipping vendor compression (use 'just vendor' for CRAN prep)"
-+  VENDOR_TARBALL="$abs_rpkg_dir/inst/vendor.tar.xz"
-+  VENDOR_STAMP="$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
-+
-+  dnl Only compress in dev mode when vendor directory exists
-+  if test "$NOT_CRAN" = "true" && test -d "$VENDOR_OUT" && test -n "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-+    dnl Calculate fingerprint from Cargo.lock
-+    _lock_ck=""
-+    if test -f "src/rust/Cargo.lock"; then
-+      _lock_ck="$(cksum < "src/rust/Cargo.lock" | cut -d' ' -f1,2 | tr ' ' ':')"
-+    fi
-+
-+    _new_fingerprint="lock:$_lock_ck"
-+    _old_fingerprint="$(cat "$VENDOR_STAMP" 2>/dev/null || true)"
-+
-+    _need_compress=0
-+    if test ! -f "$VENDOR_TARBALL"; then
-+      _need_compress=1
-+      echo "configure: creating vendor.tar.xz"
-+    elif test "x$_new_fingerprint" != "x$_old_fingerprint"; then
-+      _need_compress=1
-+      echo "configure: recompressing vendor.tar.xz (Cargo.lock changed)"
-+    fi
-+
-+    if test $_need_compress -eq 1; then
-+      mkdir -p "$abs_rpkg_dir/inst"
-+
-+      dnl Create temp staging area
-+      _staging_tmp="$abs_rpkg_dir/.vendor-tarball-staging"
-+      rm -rf "$_staging_tmp"
-+      mkdir -p "$_staging_tmp"
-+      cp -R "$VENDOR_OUT" "$_staging_tmp/vendor"
-+
-+      dnl Clear checksums (we exclude tests/benches/examples which are in checksums)
-+      for _crate_dir in "$_staging_tmp/vendor"/*/; do
-+        test -d "$_crate_dir" && echo '{"files":{}}' > "${_crate_dir}.cargo-checksum.json"
-+      done
-+
-+      dnl Remove unneeded directories
-+      find "$_staging_tmp/vendor" -type d \( -name 'tests' -o -name 'benches' -o -name 'examples' -o -name '.github' -o -name 'docs' \) -exec rm -rf {} + 2>/dev/null || true
-+      find "$_staging_tmp/vendor" -name '*.md' -type f -exec truncate -s 0 {} \; 2>/dev/null || true
-+
-+      dnl Create tarball
-+      tar -cJf "$VENDOR_TARBALL" -C "$_staging_tmp" vendor
-+      _tar_status=$?
-+      rm -rf "$_staging_tmp"
-+
-+      if test $_tar_status -eq 0; then
-+        echo "$_new_fingerprint" > "$VENDOR_STAMP"
-+      else
-+        echo "configure: warning: failed to compress vendor directory" >&2
-+      fi
-+    else
-+      echo "configure: skipping vendor compression (unchanged)"
-+    fi
-+  else
-+    echo "configure: skipping vendor compression (CRAN mode or no vendor)"
-+  fi
- ],
--[NOT_CRAN="$NOT_CRAN"])
-+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir"])
- 
 -dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
-+dnl 6) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
++dnl 5) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
  AC_CONFIG_COMMANDS([patch-staticlib-name],
  [
++  dnl Ensure Cargo.lock exists (cargo pkgid requires it)
++  if test ! -f "src/rust/Cargo.lock"; then
++    if test "$NOT_CRAN" = "true"; then
++      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
++    else
++      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
++    fi
++  fi
++
    dnl Use cargo pkgid to extract the actual package name from Cargo.toml
-   dnl This handles hyphens correctly (converted to underscores for Rust lib name)
--  dnl Use --offline when: CRAN mode, or dev mode with monorepo fallback
--  if test "$NOT_CRAN" = "true" && test ! -f .monorepo-fallback; then
+-  dnl Dev contexts: cargo can fetch index; release contexts: use --offline
+-  case "$BUILD_CONTEXT" in
+-    dev-monorepo|dev-detached)
+-      _pkgid_flags="--color=never"
+-      ;;
+-    vendored-install|prepare-cran)
+-      _pkgid_flags="--offline --color=never"
+-      ;;
+-  esac
++  dnl This handles hyphens correctly (converted to underscores for Rust lib name)
 +  if test "$NOT_CRAN" = "true"; then
-     _pkgid_flags="--color=never"
-   else
++    _pkgid_flags="--color=never"
++  else
++    _pkgid_flags="--offline --color=never"
++  fi
+   _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
+   _pkgid_status=$?
+@@ -660,5 +466,5 @@
+   done
+ ],
+-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
++[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"])
+ 
+ AC_OUTPUT
+diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
+--- a/rpkg/configure.ac	2026-02-12 23:51:10
++++ b/rpkg/configure.ac	2026-02-12 23:51:12
+@@ -1,3 +1,3 @@
+-AC_INIT([miniextendr], [1.0])
++AC_INIT([{{package}}], [1.0])
+ 
+ dnl Use tools/ directory for auxiliary build files (config.guess, config.sub)
+@@ -30,18 +30,8 @@
+ fi
+ 
+-dnl ---- Build context inputs ----
+-dnl PREPARE_CRAN: explicit release-prep signal (highest precedence)
+-: ${PREPARE_CRAN:=false}
+-case "$PREPARE_CRAN" in
+-  true|TRUE|1) PREPARE_CRAN=true ;;
+-  *)           PREPARE_CRAN=false ;;
+-esac
+-
+-dnl NOT_CRAN: legacy compatibility signal
+-dnl Detect if explicitly set BEFORE defaulting, so auto-detection works
+-NOT_CRAN_EXPLICIT=false
+-if test "${NOT_CRAN+set}" = "set"; then
+-  NOT_CRAN_EXPLICIT=true
+-fi
++dnl NOT_CRAN handling:
++dnl - CRAN builds: NOT_CRAN is unset or empty → default to false (offline mode)
++dnl - Dev builds: set NOT_CRAN=true in environment to enable network/vendoring
++dnl Normalize to "true" or "false" for consistent checks
+ : ${NOT_CRAN:=false}
+ case "$NOT_CRAN" in
+@@ -49,13 +39,26 @@
+   *)           NOT_CRAN=false ;;
+ esac
++export NOT_CRAN
+ 
+-dnl BUILD_CONTEXT, cargo flags, and NOT_CRAN derivation are set after
+-dnl canonical paths are computed (needs monorepo detection).
++dnl Set cargo offline/locked flags based on NOT_CRAN
++dnl - NOT_CRAN=true (dev): no --offline, no --locked (cargo updates lockfile for patches)
++dnl - NOT_CRAN=false (CRAN): use --offline, omit --locked (checksums cleared)
++if test "$NOT_CRAN" = "true"; then
++  CARGO_OFFLINE_FLAG=""
++  dnl Dev mode omits --locked so cargo can update source locations for [patch] entries
++  CARGO_LOCKED_FLAG=""
++else
++  CARGO_OFFLINE_FLAG="--offline"
++  dnl CRAN mode omits --locked because checksums are cleared from vendor tarball
++  CARGO_LOCKED_FLAG=""
++fi
++AC_SUBST([CARGO_OFFLINE_FLAG])
++AC_SUBST([CARGO_LOCKED_FLAG])
++AC_SUBST([NOT_CRAN])
+ 
+ dnl Set cargo features flag
+ dnl
+-dnl rpkg is a demo package that demonstrates ALL miniextendr features.
+-dnl Enable all optional features by default (both dev and CRAN modes).
+-dnl Advanced users can override via MINIEXTENDR_FEATURES environment variable.
++dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
++dnl By default, no extra features are enabled.
+ dnl
+ dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
+@@ -63,9 +66,9 @@
+ AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+ 
+-dnl Enable all features by default for this demo package
+-dnl Users can override by setting MINIEXTENDR_FEATURES explicitly (even to empty string)
++dnl Default: no extra features enabled
++dnl Users can set MINIEXTENDR_FEATURES to enable specific features
+ if test -z "${MINIEXTENDR_FEATURES+x}"; then
+-  dnl MINIEXTENDR_FEATURES not set - enable all optional features
+-  MINIEXTENDR_FEATURES="rayon,rand,rand_distr,either,ndarray,nalgebra,serde,serde_json,num-bigint,rust_decimal,ordered-float,uuid,regex,indexmap,time,num-traits,bytes,num-complex,url,sha2,bitflags,bitvec,aho-corasick,toml,tabled,tinyvec,raw_conversions,vctrs"
++  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
++  MINIEXTENDR_FEATURES=""
+ fi
+ 
+@@ -104,100 +107,14 @@
+ AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
+ 
+-dnl Miniextendr crate source paths (in monorepo)
+-MINIEXTENDR_API_SRC="$root_miniextendr_repo/miniextendr-api"
+-MINIEXTENDR_MACROS_SRC="$root_miniextendr_repo/miniextendr-macros"
+-MINIEXTENDR_MACROS_CORE_SRC="$root_miniextendr_repo/miniextendr-macros-core"
+-MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
+-MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
+-
+-dnl ---- Build context resolution ----
+-dnl Resolve one of: dev-monorepo, dev-detached, vendored-install, prepare-cran
+-dnl
+-dnl Truth table:
+-dnl   PREPARE_CRAN=true                              → prepare-cran
+-dnl   NOT_CRAN explicit=true  + monorepo present     → dev-monorepo
+-dnl   NOT_CRAN explicit=true  + monorepo absent      → dev-detached
+-dnl   NOT_CRAN explicit=false + any                  → vendored-install
+-dnl   auto-detect: monorepo present                  → dev-monorepo
+-dnl   auto-detect: vendor hint present               → vendored-install
+-dnl   auto-detect: neither                           → dev-detached
+-
+-HAS_MONOREPO=false
+-if test -d "$root_miniextendr_repo/miniextendr-api"; then
+-  HAS_MONOREPO=true
+-fi
+-
+-HAS_VENDOR_HINT=false
+-if test -d "$abs_top_srcdir/vendor" && test -n "$(ls -A "$abs_top_srcdir/vendor" 2>/dev/null)"; then
+-  HAS_VENDOR_HINT=true
+-elif test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
+-  HAS_VENDOR_HINT=true
+-fi
+-
+-if test "$PREPARE_CRAN" = "true"; then
+-  BUILD_CONTEXT="prepare-cran"
+-elif test "$NOT_CRAN_EXPLICIT" = "true"; then
+-  if test "$NOT_CRAN" = "true"; then
+-    if test "$HAS_MONOREPO" = "true"; then
+-      BUILD_CONTEXT="dev-monorepo"
+-    else
+-      BUILD_CONTEXT="dev-detached"
+-    fi
+-  else
+-    BUILD_CONTEXT="vendored-install"
+-  fi
+-else
+-  dnl Neither PREPARE_CRAN nor NOT_CRAN explicitly set — auto-detect
+-  if test "$HAS_MONOREPO" = "true"; then
+-    BUILD_CONTEXT="dev-monorepo"
+-  elif test "$HAS_VENDOR_HINT" = "true"; then
+-    BUILD_CONTEXT="vendored-install"
+-  else
+-    BUILD_CONTEXT="dev-detached"
+-  fi
+-fi
+-AC_SUBST([BUILD_CONTEXT])
+-
+-dnl Derive NOT_CRAN from BUILD_CONTEXT for backward compatibility
+-case "$BUILD_CONTEXT" in
+-  dev-monorepo|dev-detached)
+-    NOT_CRAN=true
+-    ;;
+-  vendored-install|prepare-cran)
+-    NOT_CRAN=false
+-    ;;
+-esac
+-export NOT_CRAN
+-AC_SUBST([NOT_CRAN])
+-
+-dnl Set cargo offline/locked flags based on BUILD_CONTEXT
+-dnl Dev contexts: no --offline (cargo uses network or [patch] paths)
+-dnl Release contexts: --offline (all deps must be vendored)
+-case "$BUILD_CONTEXT" in
+-  dev-monorepo|dev-detached)
+-    CARGO_OFFLINE_FLAG=""
+-    CARGO_LOCKED_FLAG=""
+-    ;;
+-  vendored-install|prepare-cran)
+-    CARGO_OFFLINE_FLAG="--offline"
+-    CARGO_LOCKED_FLAG=""
+-    ;;
+-esac
+-AC_SUBST([CARGO_OFFLINE_FLAG])
+-AC_SUBST([CARGO_LOCKED_FLAG])
+-
+ dnl ---- tool discovery ----
+ AC_PATH_TOOL([CARGO],[cargo],[no])
+ AC_PATH_TOOL([RUSTC],[rustc],[no])
+-AC_PATH_PROG([RSYNC],[rsync],[no])
+ AC_PATH_PROG([SED],[sed],[no])
+ AC_PATH_PROG([CYGPATH],[cygpath],[no])
+ AS_IF([test "x$CARGO" = "xno"], [AC_MSG_ERROR([`cargo` not found])])
+ AS_IF([test "x$RUSTC" = "xno"], [AC_MSG_ERROR([`rustc` not found])])
+-dnl rsync is only required when syncing from monorepo sources
+ AS_IF([test "x$SED" = "xno"], [AC_MSG_ERROR([`sed` not found])])
+ AC_SUBST([CARGO])
+ AC_SUBST([RUSTC])
+-AC_SUBST([RSYNC])
+ AC_SUBST([SED])
+ AC_SUBST([CYGPATH])
+@@ -206,15 +123,12 @@
+ dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
+ dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
+-root_miniextendr_repo_cargo="$root_miniextendr_repo"
+ abs_rpkg_src_cargo="$abs_rpkg_src"
+ case "$host_os" in
+   *msys*|*cygwin*|*mingw*)
+     if test "x$CYGPATH" != "xno"; then
+-      root_miniextendr_repo_cargo="$($CYGPATH -m "$root_miniextendr_repo")"
+       abs_rpkg_src_cargo="$($CYGPATH -m "$abs_rpkg_src")"
+     fi
+     ;;
+ esac
+-AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
+ AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
+ 
+@@ -318,9 +232,6 @@
+ 
+ dnl ---- user feedback ----
+-AC_MSG_NOTICE([BUILD_CONTEXT         = $BUILD_CONTEXT])
+-AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
+-AS_IF([test "$PREPARE_CRAN" = "true"],
+-      [AC_MSG_NOTICE([PREPARE_CRAN          = $PREPARE_CRAN])])
+ AC_MSG_NOTICE([R_HOME                = $R_HOME])
++AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
+ AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
+ AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
+@@ -381,8 +292,7 @@
+ AC_SUBST([VENDOR_OUT_CARGO])
+ 
+-dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
++dnl Note: Cargo.toml uses path dependencies to vendor/ (unlike rpkg which uses git deps).
+ dnl The cargo config template (cargo-config.toml.in) handles CRAN source replacement.
+-dnl In dev mode, we remove the cargo config so cargo uses normal resolution with
+-dnl the [patch] section in Cargo.toml.
++dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
+ 
+ dnl ---- output files ----
+@@ -395,45 +305,27 @@
+   src/entrypoint.c:src/entrypoint.c.in
+   src/mx_abi.c:src/mx_abi.c.in
+-  src/miniextendr-win.def:src/win.def.in
++  src/{{package}}-win.def:src/win.def.in
+ ])
+ 
+-dnl 1) Configure cargo config and [patch] section based on BUILD_CONTEXT
++dnl 1) Remove cargo config in dev mode (vendored sources not needed for development)
++dnl    In dev mode, Cargo.toml uses git deps directly
+ AC_CONFIG_COMMANDS([dev-cargo-config],
+ [
+   RPKG_CFG="src/rust/.cargo/config.toml"
+ 
+-  case "$BUILD_CONTEXT" in
+-    dev-monorepo)
+-      dnl Remove cargo config — use [patch] paths to monorepo
+-      if test -f "$RPKG_CFG"; then
+-        rm "$RPKG_CFG"
+-        echo "configure: removed cargo config (dev-monorepo — using [patch] paths)"
+-      fi
+-      ;;
+-    dev-detached)
+-      dnl Remove cargo config — use git/network deps directly
+-      if test -f "$RPKG_CFG"; then
+-        rm "$RPKG_CFG"
+-        echo "configure: removed cargo config (dev-detached — using git deps)"
+-      fi
+-      dnl Strip [patch] section — paths reference monorepo which isn't available
+-      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+-        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+-          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-        echo "configure: stripped @<:@patch@:>@ section (dev-detached — monorepo not available)"
+-      fi
+-      ;;
+-    vendored-install|prepare-cran)
+-      dnl Keep cargo config for vendored source resolution
+-      echo "configure: keeping cargo config ($BUILD_CONTEXT)"
+-      ;;
+-  esac
++  if test "$NOT_CRAN" = "true"; then
++    dnl In dev mode, remove the generated cargo config so cargo uses normal resolution
++    if test -f "$RPKG_CFG"; then
++      rm "$RPKG_CFG"
++      echo "configure: removed cargo config (dev mode - using git deps)"
++    fi
++  fi
+ ],
+-[BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
++[NOT_CRAN="$NOT_CRAN"])
+ 
+ dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
+ dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
+ 
+-dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
++dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
+ dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
+ AC_CONFIG_COMMANDS([cargo-lockfile-compat],
+@@ -453,26 +345,25 @@
+     if test "$CARGO_MAJOR" -lt 1 || \
+        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
+-      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
+-      case "$BUILD_CONTEXT" in
+-        vendored-install|prepare-cran)
+-          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+-            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+-              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
+-              tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-              if test $? -ne 0; then
+-                echo "configure: error: failed to unpack vendor.tar.xz" >&2
+-                exit 1
+-              fi
+-              if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-                $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-              fi
+-            else
+-              echo "configure: error: $BUILD_CONTEXT requires vendored sources to regenerate Cargo.lock" >&2
+-              echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
++      dnl In CRAN/offline mode, ensure vendor sources exist before regenerating lockfile.
++      if test "$NOT_CRAN" != "true"; then
++        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
++            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
++            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
++            if test $? -ne 0; then
++              echo "configure: error: failed to unpack vendor.tar.xz" >&2
+               exit 1
+             fi
++            dnl Strip checksums from Cargo.lock (vendored crates have empty checksums)
++            if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
++            fi
++          else
++            echo "configure: error: CRAN/offline build requires vendored sources to regenerate Cargo.lock" >&2
++            echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
++            exit 1
+           fi
+-          ;;
+-      esac
++        fi
++      fi
+       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
+       rm -f "$LOCKFILE_PATH"
+@@ -486,132 +377,41 @@
+   fi
+ ],
+-[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
++[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
+ 
+-dnl 2) Handle vendor directory based on BUILD_CONTEXT
++dnl 3) Ensure vendor/ exists for offline builds
++dnl    In dev mode: vendor/ is pre-populated by scaffolding, leave it alone.
++dnl    In CRAN mode: unpack vendor.tar.xz if vendor/ is missing.
++dnl    Vendoring is NOT done by configure — use `just vendor` for CRAN prep.
+ AC_CONFIG_COMMANDS([cargo-vendor],
+ [
+-  case "$BUILD_CONTEXT" in
+-    dev-monorepo)
+-      dnl Clean stale vendor artifacts, use [patch] paths
+-      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+-        rm -rf "$VENDOR_OUT"
+-        echo "configure: removed vendor directory (dev-monorepo)"
+-      fi
+-      rm -f "$VENDOR_OUT/.vendor.lock.cksum"
+-      echo "configure: dev-monorepo — using [patch] paths"
+-      ;;
+-    dev-detached)
+-      dnl Clean stale vendor artifacts, use git/network deps
+-      if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+-        rm -rf "$VENDOR_OUT"
+-        echo "configure: removed vendor directory (dev-detached)"
+-      fi
+-      echo "configure: dev-detached — using git/network deps"
+-      ;;
+-    vendored-install|prepare-cran)
+-      dnl Ensure vendor/ exists: unpack tarball or vendor from network
+-      if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+-        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+-          echo "configure: unpacking inst/vendor.tar.xz"
+-          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+-          if test $? -ne 0; then
+-            echo "configure: error: failed to unpack vendor.tar.xz" >&2
+-            exit 1
+-          fi
+-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-          fi
+-        else
+-          dnl No vendor tarball — try vendoring from network (e.g. GitHub installs)
+-          echo "configure: no vendor found, vendoring from network" >&2
+-          echo "configure:   (normal for GitHub installs via remotes::install_github())" >&2
+-          mkdir -p "$VENDOR_OUT"
+-          $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
+-          if test $? -ne 0; then
+-            echo "configure: error: cargo vendor failed (network required)" >&2
+-            exit 1
+-          fi
+-          dnl Strip tests/benches/examples/hidden files from vendored crates
+-          for _crate_dir in "$VENDOR_OUT"/*/; do
+-            if test -d "$_crate_dir"; then
+-              rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+-                     "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+-              for _dotfile in "$_crate_dir"/.*; do
+-                case "$(basename "$_dotfile")" in
+-                  .|..|.cargo-checksum.json) ;;
+-                  *) rm -rf "$_dotfile" ;;
+-                esac
+-              done
+-              echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+-            fi
+-          done
+-          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+-            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+-          fi
+-        fi
+-      fi
+-
+-      dnl Vendor exists — rewrite deps for vendored build
+-      echo "configure: $BUILD_CONTEXT — vendor ready"
+-
+-      dnl Rewrite git deps to path deps
+-      for _crate in miniextendr-api miniextendr-lint; do
+-        _versioned_dir=""
+-        for _d in "$VENDOR_OUT/$_crate"-*/; do
+-          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+-        done
+-        if test -n "$_versioned_dir"; then
+-          _dirname="$(basename "$_versioned_dir")"
+-          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
+-            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
+-        fi
+-      done
+-
+-      dnl Strip [patch] section (monorepo paths not available)
+-      if grep -q '^\@<:@patch\.' src/rust/Cargo.toml 2>/dev/null; then
+-        "$SED" '/^\@<:@patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+-          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+-        echo "configure: stripped [patch] section"
+-      fi
+-
+-      dnl Add [patch.crates-io] for transitive miniextendr deps
+-      _patch_lines=""
+-      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
+-        _versioned_dir=""
+-        for _d in "$VENDOR_OUT/$_crate"-*/; do
+-          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+-        done
+-        if test -n "$_versioned_dir"; then
+-          _dirname="$(basename "$_versioned_dir")"
+-          _patch_lines="$_patch_lines
+-$_crate = { path = \"../../vendor/$_dirname\" }"
+-        fi
+-      done
+-      if test -n "$_patch_lines"; then
+-        printf '\n@<:@patch.crates-io@:>@%s\n' "$_patch_lines" >> src/rust/Cargo.toml
+-        echo "configure: added [patch.crates-io] for transitive deps"
+-      fi
+-
+-      dnl Strip git source replacement from cargo config
+-      RPKG_CFG="src/rust/.cargo/config.toml"
+-      if test -f "$RPKG_CFG"; then
+-        "$SED" '/^\@<:@source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
+-      fi
+-
+-      dnl Regenerate Cargo.lock from vendored sources
+-      rm -f src/rust/Cargo.lock
+-      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
++  if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
++      echo "configure: unpacking inst/vendor.tar.xz"
++      tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+       if test $? -ne 0; then
+-        echo "configure: error: failed to generate lockfile from vendored sources" >&2
++        echo "configure: error: failed to unpack vendor.tar.xz" >&2
+         exit 1
+       fi
+-      echo "configure: regenerated Cargo.lock for $BUILD_CONTEXT"
+-      ;;
+-  esac
++      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
++        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
++      fi
++    fi
++  fi
++
++  if test "$NOT_CRAN" = "true"; then
++    echo "configure: dev mode — using vendor/ from scaffolding"
++  else
++    dnl CRAN/offline mode: vendor/ must exist
++    if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
++      echo "configure: error: CRAN build requires vendored sources." >&2
++      echo "configure:        Run 'just vendor' before CRAN submission." >&2
++      exit 1
++    fi
++    echo "configure: CRAN build — vendor ready"
++  fi
+ ],
+-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
++[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+ 
+-dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
++dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
+ AC_CONFIG_COMMANDS([post-vendor],
+ [
+@@ -627,17 +427,23 @@
+ [ABS_RPKG_SRC="$abs_rpkg_src"])
+ 
+-dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
++dnl 5) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
+ AC_CONFIG_COMMANDS([patch-staticlib-name],
+ [
++  dnl Ensure Cargo.lock exists (cargo pkgid requires it)
++  if test ! -f "src/rust/Cargo.lock"; then
++    if test "$NOT_CRAN" = "true"; then
++      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
++    else
++      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
++    fi
++  fi
++
+   dnl Use cargo pkgid to extract the actual package name from Cargo.toml
+-  dnl Dev contexts: cargo can fetch index; release contexts: use --offline
+-  case "$BUILD_CONTEXT" in
+-    dev-monorepo|dev-detached)
+-      _pkgid_flags="--color=never"
+-      ;;
+-    vendored-install|prepare-cran)
+-      _pkgid_flags="--offline --color=never"
+-      ;;
+-  esac
++  dnl This handles hyphens correctly (converted to underscores for Rust lib name)
++  if test "$NOT_CRAN" = "true"; then
++    _pkgid_flags="--color=never"
++  else
++    _pkgid_flags="--offline --color=never"
++  fi
+   _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
+   _pkgid_status=$?
+@@ -660,5 +466,5 @@
+   done
+ ],
+-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
++[CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"])
+ 
+ AC_OUTPUT

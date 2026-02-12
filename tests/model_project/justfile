@@ -22,7 +22,8 @@ manifest := justfile_directory() / "src/rust/Cargo.toml"
 default:
     @just --list
 
-# Run ./configure in development mode (NOT_CRAN=true)
+# Run ./configure in development mode
+# Note: vendor/ is pre-populated by scaffolding; configure does NOT run cargo vendor.
 configure:
     cd {{justfile_directory()}} && NOT_CRAN=true ./configure
 
