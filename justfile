@@ -224,24 +224,27 @@ expand *cargo_flags:
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && cargo expand --lib --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
 
-# Run ./configure for dev mode
+# Run ./configure for dev mode (BUILD_CONTEXT=dev-monorepo)
 #
-# In dev mode (NOT_CRAN=true), this:
+# In dev mode, this:
 # 1. Generates build configuration files (Makevars, cargo config, etc.)
 # 2. Cleans up stale vendor artifacts (vendor/, vendor.tar.xz)
 # 3. Does NOT vendor — cargo resolves deps via [patch] in Cargo.toml
 #
-# For CRAN release prep, use `just vendor` to create the vendor tarball.
+# For CRAN release prep, use `just vendor` then `just configure-cran`.
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
     NOT_CRAN=true ./configure
 
-# Configure in CRAN/offline mode (do NOT force NOT_CRAN=true)
+# Configure in CRAN/offline mode (BUILD_CONTEXT=prepare-cran)
+#
+# Uses PREPARE_CRAN=true for explicit release-prep intent.
+# Run `just vendor` first to create inst/vendor.tar.xz.
 configure-cran:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    ./configure
+    PREPARE_CRAN=true ./configure
 
 # Vendor dependencies for CRAN release preparation
 #

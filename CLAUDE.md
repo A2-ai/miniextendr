@@ -75,7 +75,7 @@ just r-cmd-check        # 3. Check the built tarball (R CMD check)
 
 # CRAN release prep (vendors deps into tarball)
 just vendor             # Package workspace crates + vendor external deps
-just configure-cran     # Configure in CRAN/offline mode (unpacks vendor.tar.xz)
+just configure-cran     # Configure with PREPARE_CRAN=true (unpacks vendor.tar.xz)
 # IMPORTANT: Always check the built tarball, not the source directory.
 # R CMD check on a source directory skips steps like Authors@R -> Author/Maintainer conversion.
 
@@ -118,25 +118,31 @@ R CMD build rpkg
 R CMD check rpkg
 ```
 
-### NOT_CRAN Environment Variable
+### Build Context Model
 
-Set `NOT_CRAN=true` for development mode:
+The configure script resolves one of four build contexts:
+
+| Context | When | Behavior |
+|---|---|---|
+| `dev-monorepo` | Monorepo detected (default for `just configure`) | Uses `[patch]` paths, no vendoring |
+| `dev-detached` | No monorepo, no vendor artifacts | Uses git/network deps directly |
+| `vendored-install` | `NOT_CRAN=false` or vendor artifacts present | Offline build from vendored sources |
+| `prepare-cran` | `PREPARE_CRAN=true` | Explicit CRAN release prep mode |
+
+**Environment variables:**
+
+- `NOT_CRAN=true` — dev mode (legacy, still supported)
+- `PREPARE_CRAN=true` — explicit CRAN release prep (highest precedence)
+- Neither set — auto-detects from monorepo/vendor presence
 
 ```bash
-cd rpkg && NOT_CRAN=true ./configure
-NOT_CRAN=true R CMD INSTALL rpkg
+cd rpkg && NOT_CRAN=true ./configure    # dev-monorepo (explicit)
+cd rpkg && ./configure                  # dev-monorepo (auto-detected in monorepo)
+cd rpkg && PREPARE_CRAN=true ./configure # prepare-cran
 ```
 
 This builds and checks a package called `miniextendr`,  i.e. you load it with
 `library(miniextendr)`, not `library(rpkg)`.
-
-**What NOT_CRAN does:**
-
-- Skips vendoring entirely (cargo resolves deps via `[patch]` in Cargo.toml)
-- Cleans up stale `vendor/` and `inst/vendor.tar.xz`
-- Enables symlinks for faster iteration (CRAN requires copies)
-- Skips certain checks that only apply to CRAN submissions
-- Should ALWAYS be set for local development/testing
 
 ## Development Workflow
 
