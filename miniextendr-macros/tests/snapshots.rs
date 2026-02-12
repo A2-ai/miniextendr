@@ -327,8 +327,10 @@ fn snapshot_env_class() {
               for (method_name in names(obj)) {
                 method <- obj[[method_name]]
                 if (is.function(method)) {
-                  environment(method) <- environment()
-                  bound[[method_name]] <- method
+                  f <- method
+                  wrapper <- function(...) f(self, ...)
+                  environment(wrapper) <- environment()
+                  bound[[method_name]] <- wrapper
                 }
               }
               bound

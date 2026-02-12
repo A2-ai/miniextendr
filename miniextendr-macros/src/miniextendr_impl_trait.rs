@@ -149,6 +149,16 @@ impl TraitMethod {
         format_ident!("C_{}__{}__{}", type_ident, trait_name, self.ident)
     }
 
+    /// Returns true if this method has no return type (returns unit `()`).
+    fn returns_unit(&self) -> bool {
+        match &self.sig.output {
+            syn::ReturnType::Default => true,
+            syn::ReturnType::Type(_, ty) => {
+                matches!(ty.as_ref(), syn::Type::Tuple(t) if t.elems.is_empty())
+            }
+        }
+    }
+
     /// R_CallMethodDef identifier
     fn call_method_def_ident(
         &self,
@@ -889,6 +899,10 @@ fn generate_trait_env_r_wrapper(
             type_ident, trait_name, method_name, function_params
         ));
         lines.push(format!("  {}", call));
+        // Void instance methods return invisible(x) for pipe-friendly chaining
+        if method.has_self && method.returns_unit() {
+            lines.push("  invisible(x)".to_string());
+        }
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1023,6 +1037,10 @@ fn generate_trait_s3_r_wrapper(
             s3_method_name, full_params
         ));
         lines.push(format!("  {}", call));
+        // Void instance methods return invisible(x) for pipe-friendly chaining
+        if method.returns_unit() {
+            lines.push("  invisible(x)".to_string());
+        }
         lines.push("}".to_string());
 
         // Additionally register as S7 method if the generic is S7
@@ -1207,6 +1225,10 @@ fn generate_trait_s4_r_wrapper(
             generic_name, type_str, full_params
         ));
         lines.push(format!("  {}", call));
+        // Void instance methods return invisible(x) for pipe-friendly chaining
+        if method.returns_unit() {
+            lines.push("  invisible(x)".to_string());
+        }
         lines.push("})".to_string());
         lines.push(String::new());
     }
@@ -1369,6 +1391,10 @@ fn generate_trait_s7_r_wrapper(
             generic_name, s7_class_var, full_params
         ));
         lines.push(format!("  {}", call));
+        // Void instance methods return invisible(x) for pipe-friendly chaining
+        if method.returns_unit() {
+            lines.push("  invisible(x)".to_string());
+        }
         lines.push("}".to_string());
         lines.push(String::new());
     }
@@ -1524,6 +1550,10 @@ fn generate_trait_r6_r_wrapper(
 
         lines.push(format!("{} <- function({}) {{", fn_name, full_params));
         lines.push(format!("  {}", call));
+        // Void instance methods return invisible(x) for pipe-friendly chaining
+        if method.returns_unit() {
+            lines.push("  invisible(x)".to_string());
+        }
         lines.push("}".to_string());
         lines.push(String::new());
     }

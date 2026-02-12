@@ -5910,8 +5910,10 @@ Point$from_str <- function(s) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -5973,8 +5975,10 @@ MyFloat$nan <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -6024,8 +6028,10 @@ ChainedError$without_source <- function(msg) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -6081,8 +6087,10 @@ IntVecIter$nth <- function(n) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -6140,8 +6148,10 @@ GrowableVec$from_vec <- function(data) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -6189,8 +6199,10 @@ IntSet$from_vec <- function(items) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -6234,8 +6246,10 @@ IterableVec$make_iter <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -6289,8 +6303,10 @@ IterableVecIter$collect_all <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -7183,8 +7199,10 @@ SidecarEnv <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -7275,8 +7293,10 @@ SidecarRawSexp <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -7302,8 +7322,10 @@ SidecarRaw <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -7384,8 +7406,10 @@ ReceiverCounter$default_counter <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -7902,8 +7926,8 @@ S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
     score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
-    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
+    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8230,8 +8254,10 @@ SimpleCounter$new_counter <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8292,8 +8318,10 @@ PanickyCounter$new_panicky <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8345,8 +8373,10 @@ S3TraitCounter$new_s3trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8383,8 +8413,10 @@ S4TraitCounter$new_s4trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8420,8 +8452,10 @@ S7TraitCounter$new_s7trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8457,8 +8491,10 @@ R6TraitCounter$new_r6trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8487,12 +8523,14 @@ SimpleCounter$Counter$value <- function(x) {
 #' @rdname SimpleCounter
 SimpleCounter$Counter$increment <- function(x) {
   .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 
 #' @name SimpleCounter$Counter$checked_add
 #' @rdname SimpleCounter
 SimpleCounter$Counter$checked_add <- function(x, n) {
   .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 #' @name SimpleCounter$Counter$default_initial
@@ -8524,12 +8562,14 @@ PanickyCounter$Counter$value <- function(x) {
 #' @rdname PanickyCounter
 PanickyCounter$Counter$increment <- function(x) {
   .Call(C_PanickyCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 
 #' @name PanickyCounter$Counter$checked_add
 #' @rdname PanickyCounter
 PanickyCounter$Counter$checked_add <- function(x, n) {
   .Call(C_PanickyCounter__Counter__checked_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 #' @name PanickyCounter$Counter$default_initial
@@ -8588,6 +8628,7 @@ if (!exists("increment", mode = "function")) {
 #' @export
 increment.S3TraitCounter <- function(x, ...) {
   .Call(C_S3TraitCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 if (inherits(get0("increment", mode = "function"), "S7_generic")) {
   S7::method(increment, S7::new_S3_class("S3TraitCounter")) <- increment.S3TraitCounter
@@ -8611,6 +8652,7 @@ if (!exists("checked_add", mode = "function")) {
 #' @export
 checked_add.S3TraitCounter <- function(x, n, ...) {
   .Call(C_S3TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+  invisible(x)
 }
 if (inherits(get0("checked_add", mode = "function"), "S7_generic")) {
   S7::method(checked_add, S7::new_S3_class("S3TraitCounter")) <- checked_add.S3TraitCounter
@@ -8667,6 +8709,7 @@ methods::setGeneric("s4_trait_Counter_increment", function(x, ...) standardGener
 #' @exportMethod s4_trait_Counter_increment
 methods::setMethod("s4_trait_Counter_increment", "S4TraitCounter", function(x, ...) {
   .Call(C_S4TraitCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 })
 
 #' @name s4_trait_Counter_checked_add
@@ -8684,6 +8727,7 @@ methods::setGeneric("s4_trait_Counter_checked_add", function(x, ...) standardGen
 #' @exportMethod s4_trait_Counter_checked_add
 methods::setMethod("s4_trait_Counter_checked_add", "S4TraitCounter", function(x, n, ...) {
   .Call(C_S4TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+  invisible(x)
 })
 
 #' Static trait method Counter::default_initial() for S4TraitCounter
@@ -8733,6 +8777,7 @@ if (!exists("s7_trait_Counter_increment", mode = "function")) {
 
 S7::method(s7_trait_Counter_increment, .s7_class_S7TraitCounter) <- function(x, ...) {
   .Call(C_S7TraitCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 
 #' @name s7_trait_Counter_checked_add
@@ -8746,6 +8791,7 @@ if (!exists("s7_trait_Counter_checked_add", mode = "function")) {
 
 S7::method(s7_trait_Counter_checked_add, .s7_class_S7TraitCounter) <- function(x, n, ...) {
   .Call(C_S7TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 S7TraitCounter$Counter <- new.env(parent = emptyenv())
@@ -8787,6 +8833,7 @@ r6_trait_Counter_value <- function(x) {
 #' @export
 r6_trait_Counter_increment <- function(x) {
   .Call(C_R6TraitCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 
 #' @name r6_trait_Counter_checked_add
@@ -8798,6 +8845,7 @@ r6_trait_Counter_increment <- function(x) {
 #' @export
 r6_trait_Counter_checked_add <- function(x, n) {
   .Call(C_R6TraitCounter__Counter__checked_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 R6TraitCounter$Counter <- new.env(parent = emptyenv())
@@ -8852,8 +8900,10 @@ CounterTraitEnv$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8903,8 +8953,10 @@ CounterTraitS3$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -8954,8 +9006,10 @@ CounterTraitS4$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9005,8 +9059,10 @@ CounterTraitS7$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9056,8 +9112,10 @@ CounterTraitR6$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9087,6 +9145,7 @@ CounterTraitEnv$MatrixCounter$custom_get <- function(x) {
 #' @rdname CounterTraitEnv
 CounterTraitEnv$MatrixCounter$custom_add <- function(x, n) {
   .Call(C_CounterTraitEnv__MatrixCounter__custom_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 #' @name CounterTraitEnv$MatrixCounter$default_value
@@ -9140,6 +9199,7 @@ if (!exists("custom_add", mode = "function")) {
 #' @export
 custom_add.CounterTraitS3 <- function(x, n, ...) {
   .Call(C_CounterTraitS3__MatrixCounter__custom_add, .call = match.call(), x, n)
+  invisible(x)
 }
 if (inherits(get0("custom_add", mode = "function"), "S7_generic")) {
   S7::method(custom_add, S7::new_S3_class("CounterTraitS3")) <- custom_add.CounterTraitS3
@@ -9192,6 +9252,7 @@ methods::setGeneric("s4_trait_MatrixCounter_custom_add", function(x, ...) standa
 #' @exportMethod s4_trait_MatrixCounter_custom_add
 methods::setMethod("s4_trait_MatrixCounter_custom_add", "CounterTraitS4", function(x, n, ...) {
   .Call(C_CounterTraitS4__MatrixCounter__custom_add, .call = match.call(), x, n)
+  invisible(x)
 })
 
 #' Static trait method MatrixCounter::default_value() for CounterTraitS4
@@ -9234,6 +9295,7 @@ if (!exists("s7_trait_MatrixCounter_custom_add", mode = "function")) {
 
 S7::method(s7_trait_MatrixCounter_custom_add, .s7_class_CounterTraitS7) <- function(x, n, ...) {
   .Call(C_CounterTraitS7__MatrixCounter__custom_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 CounterTraitS7$MatrixCounter <- new.env(parent = emptyenv())
@@ -9270,6 +9332,7 @@ r6_trait_MatrixCounter_custom_get <- function(x) {
 #' @export
 r6_trait_MatrixCounter_custom_add <- function(x, n) {
   .Call(C_CounterTraitR6__MatrixCounter__custom_add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 CounterTraitR6$MatrixCounter <- new.env(parent = emptyenv())
@@ -9318,8 +9381,10 @@ SharedSimpleCounter$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9362,8 +9427,10 @@ AtomicCounter$new_atomic <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9393,18 +9460,21 @@ SharedSimpleCounter$Counter$value <- function(x) {
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$Counter$increment <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 
 #' @name SharedSimpleCounter$Counter$add
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$Counter$add <- function(x, n) {
   .Call(C_SharedSimpleCounter__Counter__add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 #' @name SharedSimpleCounter$Counter$reset
 #' @rdname SharedSimpleCounter
 SharedSimpleCounter$Counter$reset <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__reset, .call = match.call(), x)
+  invisible(x)
 }
 
 # Generated from Rust source file: shared_trait_test.rs:124:18
@@ -9424,18 +9494,21 @@ AtomicCounter$Counter$value <- function(x) {
 #' @rdname AtomicCounter
 AtomicCounter$Counter$increment <- function(x) {
   .Call(C_AtomicCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
 
 #' @name AtomicCounter$Counter$add
 #' @rdname AtomicCounter
 AtomicCounter$Counter$add <- function(x, n) {
   .Call(C_AtomicCounter__Counter__add, .call = match.call(), x, n)
+  invisible(x)
 }
 
 #' @name AtomicCounter$Counter$reset
 #' @rdname AtomicCounter
 AtomicCounter$Counter$reset <- function(x) {
   .Call(C_AtomicCounter__Counter__reset, .call = match.call(), x)
+  invisible(x)
 }
 
 # Generated from Rust source file: rng_tests.rs:84:6
@@ -9501,8 +9574,10 @@ RngSampler$static_sample <- function(n) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9561,8 +9636,10 @@ SerdeRPoint$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9619,8 +9696,10 @@ SerdeRPoint3D$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9686,8 +9765,10 @@ Rectangle$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9744,8 +9825,10 @@ DeepNest$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9811,8 +9894,10 @@ Collections$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9869,8 +9954,10 @@ Maps$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -9936,8 +10023,10 @@ WithEnums$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -10012,8 +10101,10 @@ WithOptionals$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -10128,8 +10219,10 @@ NdVec$from_range <- function(start, end, step) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -10249,8 +10342,10 @@ NdMatrix$identity <- function(n) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -10374,8 +10469,10 @@ NdArrayDyn$ones <- function(shape) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
@@ -10471,8 +10568,10 @@ NdIntVec$to_r <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        f <- method
+        wrapper <- function(...) f(self, ...)
+        environment(wrapper) <- environment()
+        bound[[method_name]] <- wrapper
       }
     }
     bound
