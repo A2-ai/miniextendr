@@ -1991,13 +1991,22 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push(format!("`$.{}` <- function(self, name) {{", class_name));
     lines.push(format!("  obj <- {}[[name]]", class_name));
     lines.push("  if (is.environment(obj)) {".to_string());
-    lines.push("    # Trait namespace - bind self to all methods".to_string());
+    lines.push("    # Trait namespace - wrap instance methods to prepend self".to_string());
     lines.push("    bound <- new.env(parent = emptyenv())".to_string());
     lines.push("    for (method_name in names(obj)) {".to_string());
     lines.push("      method <- obj[[method_name]]".to_string());
     lines.push("      if (is.function(method)) {".to_string());
-    lines.push("        environment(method) <- environment()".to_string());
-    lines.push("        bound[[method_name]] <- method".to_string());
+    lines.push(
+        "        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == \"x\") {"
+            .to_string(),
+    );
+    lines.push("          local({".to_string());
+    lines.push("            m <- method".to_string());
+    lines.push("            bound[[method_name]] <<- function(...) m(self, ...)".to_string());
+    lines.push("          })".to_string());
+    lines.push("        } else {".to_string());
+    lines.push("          bound[[method_name]] <- method".to_string());
+    lines.push("        }".to_string());
     lines.push("      }".to_string());
     lines.push("    }".to_string());
     lines.push("    bound".to_string());

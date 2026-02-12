@@ -322,13 +322,19 @@ fn snapshot_env_class() {
           `$.SnapCounter` <- function(self, name) {
             obj <- SnapCounter[[name]]
             if (is.environment(obj)) {
-              # Trait namespace - bind self to all methods
+              # Trait namespace - wrap instance methods to prepend self
               bound <- new.env(parent = emptyenv())
               for (method_name in names(obj)) {
                 method <- obj[[method_name]]
                 if (is.function(method)) {
-                  environment(method) <- environment()
-                  bound[[method_name]] <- method
+                  if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+                    local({
+                      m <- method
+                      bound[[method_name]] <<- function(...) m(self, ...)
+                    })
+                  } else {
+                    bound[[method_name]] <- method
+                  }
                 }
               }
               bound

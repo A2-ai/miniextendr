@@ -5905,13 +5905,19 @@ Point$from_str <- function(s) {
 `$.Point` <- function(self, name) {
   obj <- Point[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -5968,13 +5974,19 @@ MyFloat$nan <- function() {
 `$.MyFloat` <- function(self, name) {
   obj <- MyFloat[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -6019,13 +6031,19 @@ ChainedError$without_source <- function(msg) {
 `$.ChainedError` <- function(self, name) {
   obj <- ChainedError[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -6076,13 +6094,19 @@ IntVecIter$nth <- function(n) {
 `$.IntVecIter` <- function(self, name) {
   obj <- IntVecIter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -6135,13 +6159,19 @@ GrowableVec$from_vec <- function(data) {
 `$.GrowableVec` <- function(self, name) {
   obj <- GrowableVec[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -6184,13 +6214,19 @@ IntSet$from_vec <- function(items) {
 `$.IntSet` <- function(self, name) {
   obj <- IntSet[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -6229,13 +6265,19 @@ IterableVec$make_iter <- function() {
 `$.IterableVec` <- function(self, name) {
   obj <- IterableVec[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -6284,13 +6326,19 @@ IterableVecIter$collect_all <- function() {
 `$.IterableVecIter` <- function(self, name) {
   obj <- IterableVecIter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -7178,13 +7226,19 @@ SidecarEnv <- new.env(parent = emptyenv())
 `$.SidecarEnv` <- function(self, name) {
   obj <- SidecarEnv[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -7270,13 +7324,19 @@ SidecarRawSexp <- new.env(parent = emptyenv())
 `$.SidecarRawSexp` <- function(self, name) {
   obj <- SidecarRawSexp[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -7297,13 +7357,19 @@ SidecarRaw <- new.env(parent = emptyenv())
 `$.SidecarRaw` <- function(self, name) {
   obj <- SidecarRaw[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -7379,13 +7445,19 @@ ReceiverCounter$default_counter <- function() {
 `$.ReceiverCounter` <- function(self, name) {
   obj <- ReceiverCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -7901,9 +7973,9 @@ S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call =
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
-    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
     score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
+    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8225,13 +8297,19 @@ SimpleCounter$new_counter <- function(initial) {
 `$.SimpleCounter` <- function(self, name) {
   obj <- SimpleCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8287,13 +8365,19 @@ PanickyCounter$new_panicky <- function(initial) {
 `$.PanickyCounter` <- function(self, name) {
   obj <- PanickyCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8340,13 +8424,19 @@ S3TraitCounter$new_s3trait <- function(initial) {
 `$.S3TraitCounter` <- function(self, name) {
   obj <- S3TraitCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8378,13 +8468,19 @@ S4TraitCounter$new_s4trait <- function(initial) {
 `$.S4TraitCounter` <- function(self, name) {
   obj <- S4TraitCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8415,13 +8511,19 @@ S7TraitCounter$new_s7trait <- function(initial) {
 `$.S7TraitCounter` <- function(self, name) {
   obj <- S7TraitCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8452,13 +8554,19 @@ R6TraitCounter$new_r6trait <- function(initial) {
 `$.R6TraitCounter` <- function(self, name) {
   obj <- R6TraitCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8479,20 +8587,20 @@ SimpleCounter$Counter <- new.env(parent = emptyenv())
 
 #' @name SimpleCounter$Counter$value
 #' @rdname SimpleCounter
-SimpleCounter$Counter$value <- function(x = self) {
+SimpleCounter$Counter$value <- function(x) {
   .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
 }
 
 #' @name SimpleCounter$Counter$increment
 #' @rdname SimpleCounter
-SimpleCounter$Counter$increment <- function(x = self) {
+SimpleCounter$Counter$increment <- function(x) {
   .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
 
 #' @name SimpleCounter$Counter$checked_add
 #' @rdname SimpleCounter
-SimpleCounter$Counter$checked_add <- function(x = self, n) {
+SimpleCounter$Counter$checked_add <- function(x, n) {
   .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
 }
@@ -8518,20 +8626,20 @@ PanickyCounter$Counter <- new.env(parent = emptyenv())
 
 #' @name PanickyCounter$Counter$value
 #' @rdname PanickyCounter
-PanickyCounter$Counter$value <- function(x = self) {
+PanickyCounter$Counter$value <- function(x) {
   .Call(C_PanickyCounter__Counter__value, .call = match.call(), x)
 }
 
 #' @name PanickyCounter$Counter$increment
 #' @rdname PanickyCounter
-PanickyCounter$Counter$increment <- function(x = self) {
+PanickyCounter$Counter$increment <- function(x) {
   .Call(C_PanickyCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
 
 #' @name PanickyCounter$Counter$checked_add
 #' @rdname PanickyCounter
-PanickyCounter$Counter$checked_add <- function(x = self, n) {
+PanickyCounter$Counter$checked_add <- function(x, n) {
   .Call(C_PanickyCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
 }
@@ -8859,13 +8967,19 @@ CounterTraitEnv$get_value <- function() {
 `$.CounterTraitEnv` <- function(self, name) {
   obj <- CounterTraitEnv[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8910,13 +9024,19 @@ CounterTraitS3$get_value <- function() {
 `$.CounterTraitS3` <- function(self, name) {
   obj <- CounterTraitS3[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -8961,13 +9081,19 @@ CounterTraitS4$get_value <- function() {
 `$.CounterTraitS4` <- function(self, name) {
   obj <- CounterTraitS4[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9012,13 +9138,19 @@ CounterTraitS7$get_value <- function() {
 `$.CounterTraitS7` <- function(self, name) {
   obj <- CounterTraitS7[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9063,13 +9195,19 @@ CounterTraitR6$get_value <- function() {
 `$.CounterTraitR6` <- function(self, name) {
   obj <- CounterTraitR6[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9091,13 +9229,13 @@ CounterTraitEnv$MatrixCounter <- new.env(parent = emptyenv())
 
 #' @name CounterTraitEnv$MatrixCounter$custom_get
 #' @rdname CounterTraitEnv
-CounterTraitEnv$MatrixCounter$custom_get <- function(x = self) {
+CounterTraitEnv$MatrixCounter$custom_get <- function(x) {
   .Call(C_CounterTraitEnv__MatrixCounter__custom_get, .call = match.call(), x)
 }
 
 #' @name CounterTraitEnv$MatrixCounter$custom_add
 #' @rdname CounterTraitEnv
-CounterTraitEnv$MatrixCounter$custom_add <- function(x = self, n) {
+CounterTraitEnv$MatrixCounter$custom_add <- function(x, n) {
   .Call(C_CounterTraitEnv__MatrixCounter__custom_add, .call = match.call(), x, n)
   invisible(x)
 }
@@ -9330,13 +9468,19 @@ SharedSimpleCounter$get_value <- function() {
 `$.SharedSimpleCounter` <- function(self, name) {
   obj <- SharedSimpleCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9374,13 +9518,19 @@ AtomicCounter$new_atomic <- function(initial) {
 `$.AtomicCounter` <- function(self, name) {
   obj <- AtomicCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9402,27 +9552,27 @@ SharedSimpleCounter$Counter <- new.env(parent = emptyenv())
 
 #' @name SharedSimpleCounter$Counter$value
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$value <- function(x = self) {
+SharedSimpleCounter$Counter$value <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__value, .call = match.call(), x)
 }
 
 #' @name SharedSimpleCounter$Counter$increment
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$increment <- function(x = self) {
+SharedSimpleCounter$Counter$increment <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
 
 #' @name SharedSimpleCounter$Counter$add
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$add <- function(x = self, n) {
+SharedSimpleCounter$Counter$add <- function(x, n) {
   .Call(C_SharedSimpleCounter__Counter__add, .call = match.call(), x, n)
   invisible(x)
 }
 
 #' @name SharedSimpleCounter$Counter$reset
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$reset <- function(x = self) {
+SharedSimpleCounter$Counter$reset <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__reset, .call = match.call(), x)
   invisible(x)
 }
@@ -9436,27 +9586,27 @@ AtomicCounter$Counter <- new.env(parent = emptyenv())
 
 #' @name AtomicCounter$Counter$value
 #' @rdname AtomicCounter
-AtomicCounter$Counter$value <- function(x = self) {
+AtomicCounter$Counter$value <- function(x) {
   .Call(C_AtomicCounter__Counter__value, .call = match.call(), x)
 }
 
 #' @name AtomicCounter$Counter$increment
 #' @rdname AtomicCounter
-AtomicCounter$Counter$increment <- function(x = self) {
+AtomicCounter$Counter$increment <- function(x) {
   .Call(C_AtomicCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
 
 #' @name AtomicCounter$Counter$add
 #' @rdname AtomicCounter
-AtomicCounter$Counter$add <- function(x = self, n) {
+AtomicCounter$Counter$add <- function(x, n) {
   .Call(C_AtomicCounter__Counter__add, .call = match.call(), x, n)
   invisible(x)
 }
 
 #' @name AtomicCounter$Counter$reset
 #' @rdname AtomicCounter
-AtomicCounter$Counter$reset <- function(x = self) {
+AtomicCounter$Counter$reset <- function(x) {
   .Call(C_AtomicCounter__Counter__reset, .call = match.call(), x)
   invisible(x)
 }
@@ -9519,13 +9669,19 @@ RngSampler$static_sample <- function(n) {
 `$.RngSampler` <- function(self, name) {
   obj <- RngSampler[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9579,13 +9735,19 @@ SerdeRPoint$from_r <- function(sexp) {
 `$.SerdeRPoint` <- function(self, name) {
   obj <- SerdeRPoint[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9637,13 +9799,19 @@ SerdeRPoint3D$from_r <- function(sexp) {
 `$.SerdeRPoint3D` <- function(self, name) {
   obj <- SerdeRPoint3D[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9704,13 +9872,19 @@ Rectangle$from_r <- function(sexp) {
 `$.Rectangle` <- function(self, name) {
   obj <- Rectangle[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9762,13 +9936,19 @@ DeepNest$from_r <- function(sexp) {
 `$.DeepNest` <- function(self, name) {
   obj <- DeepNest[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9829,13 +10009,19 @@ Collections$from_r <- function(sexp) {
 `$.Collections` <- function(self, name) {
   obj <- Collections[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9887,13 +10073,19 @@ Maps$from_r <- function(sexp) {
 `$.Maps` <- function(self, name) {
   obj <- Maps[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -9954,13 +10146,19 @@ WithEnums$from_r <- function(sexp) {
 `$.WithEnums` <- function(self, name) {
   obj <- WithEnums[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -10030,13 +10228,19 @@ WithOptionals$from_r <- function(sexp) {
 `$.WithOptionals` <- function(self, name) {
   obj <- WithOptionals[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -10146,13 +10350,19 @@ NdVec$from_range <- function(start, end, step) {
 `$.NdVec` <- function(self, name) {
   obj <- NdVec[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -10267,13 +10477,19 @@ NdMatrix$identity <- function(n) {
 `$.NdMatrix` <- function(self, name) {
   obj <- NdMatrix[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -10392,13 +10608,19 @@ NdArrayDyn$ones <- function(shape) {
 `$.NdArrayDyn` <- function(self, name) {
   obj <- NdArrayDyn[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -10489,13 +10711,19 @@ NdIntVec$to_r <- function() {
 `$.NdIntVec` <- function(self, name) {
   obj <- NdIntVec[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound

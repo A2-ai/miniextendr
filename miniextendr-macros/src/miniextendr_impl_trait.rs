@@ -864,18 +864,6 @@ fn generate_trait_env_r_wrapper(
         let params =
             crate::r_wrapper_builder::collect_param_idents(&method.sig.inputs, false, true);
 
-        // For instance methods, use 'x = self' so $-dispatch re-parenting works
-        // (self becomes visible via environment()) while standalone calls still work
-        let function_params = if method.has_self {
-            if formals.is_empty() {
-                "x = self".to_string()
-            } else {
-                format!("x = self, {}", formals)
-            }
-        } else {
-            formals
-        };
-
         // Build roxygen tags
         let roxygen = RoxygenBuilder::new()
             .name(format!("{}${}${}", type_str, trait_str, method_str))
@@ -883,21 +871,31 @@ fn generate_trait_env_r_wrapper(
             .build();
         lines.extend(roxygen);
 
-        // Build .Call() invocation
+        // Build .Call() invocation — instance methods use 'x' as first param
+        // (same pattern as S3/S4/S7/R6). Standalone: Type$Trait$method(obj).
+        // Via $ dispatch: obj$Trait$method() — the $ dispatch creates wrappers
+        // that prepend self as x.
         let c_ident = format!("C_{}__{}__{}", type_ident, trait_name, method_name);
-        let call = if method.has_self {
-            DotCallBuilder::new(&c_ident)
+        let (full_params, call) = if method.has_self {
+            // Instance methods: prepend 'x' to formals (like S3 does)
+            let fp = if formals.is_empty() {
+                "x".to_string()
+            } else {
+                format!("x, {}", formals)
+            };
+            let c = DotCallBuilder::new(&c_ident)
                 .with_self("x")
                 .with_args(&params)
-                .build()
+                .build();
+            (fp, c)
         } else {
-            DotCallBuilder::new(&c_ident).with_args(&params).build()
+            (formals.clone(), DotCallBuilder::new(&c_ident).with_args(&params).build())
         };
 
         // Generate method wrapper
         lines.push(format!(
             "{}${}${} <- function({}) {{",
-            type_ident, trait_name, method_name, function_params
+            type_ident, trait_name, method_name, full_params
         ));
         lines.push(format!("  {}", call));
         // Void instance methods return invisible(x) for pipe-friendly chaining
