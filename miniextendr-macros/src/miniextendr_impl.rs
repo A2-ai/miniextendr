@@ -1047,8 +1047,14 @@ impl ParsedMethod {
                         } else if inner.path.is_ident("rng") {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
+                            if method_attrs.error_in_r {
+                                return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
+                            }
                             method_attrs.unwrap_in_r = true;
                         } else if inner.path.is_ident("error_in_r") {
+                            if method_attrs.unwrap_in_r {
+                                return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
+                            }
                             method_attrs.error_in_r = true;
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
@@ -1143,8 +1149,14 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("rng") {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
+                    if method_attrs.error_in_r {
+                        return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
+                    }
                     method_attrs.unwrap_in_r = true;
                 } else if meta.path.is_ident("error_in_r") {
+                    if method_attrs.unwrap_in_r {
+                        return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
+                    }
                     method_attrs.error_in_r = true;
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.

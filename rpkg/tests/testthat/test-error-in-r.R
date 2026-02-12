@@ -199,6 +199,73 @@ test_that("error_in_r R6 class object survives after error", {
 })
 
 # =============================================================================
+# S7 class system tests
+# =============================================================================
+
+test_that("error_in_r S7 class methods work normally", {
+  g <- ErrorInRS7Gauge(level = 3.14)
+  expect_equal(read_level(g), 3.14)
+  set_level(g, 2.0)
+  expect_equal(read_level(g), 2.0)
+})
+
+test_that("error_in_r S7 class panic raises condition", {
+  g <- ErrorInRS7Gauge(level = 1.0)
+  err <- tryCatch(
+    panic_method(g),
+    error = function(e) e
+  )
+  expect_s3_class(err, "rust_error")
+  expect_equal(err$kind, "panic")
+  expect_match(err$message, "S7 panic in error_in_r")
+})
+
+test_that("error_in_r S7 class Result::Err raises condition", {
+  g <- ErrorInRS7Gauge(level = 1.0)
+  err <- tryCatch(
+    failing_result(g),
+    error = function(e) e
+  )
+  expect_s3_class(err, "rust_error")
+  expect_equal(err$kind, "result_err")
+  expect_match(err$message, "S7 result error")
+})
+
+test_that("error_in_r S7 class object survives after error", {
+  g <- ErrorInRS7Gauge(level = 42.0)
+  tryCatch(panic_method(g), error = function(e) NULL)
+  expect_equal(read_level(g), 42.0)
+})
+
+# =============================================================================
+# Trait impl tests
+# =============================================================================
+
+test_that("error_in_r trait method works normally", {
+  f <- FallibleImpl$new(99L)
+  expect_equal(f$Fallible$get_value(), 99L)
+})
+
+test_that("error_in_r trait method panic raises condition", {
+  f <- FallibleImpl$new(1L)
+  err <- tryCatch(
+    f$Fallible$will_panic(),
+    error = function(e) e
+  )
+  expect_s3_class(err, "rust_error")
+  expect_equal(err$kind, "panic")
+  expect_match(err$message, "trait panic in error_in_r")
+})
+
+test_that("error_in_r trait object survives after error", {
+  f <- FallibleImpl$new(77L)
+  tryCatch(f$Fallible$will_panic(), error = function(e) NULL)
+  # Both inherent and trait methods should still work
+  expect_equal(f$inherent_value(), 77L)
+  expect_equal(f$Fallible$get_value(), 77L)
+})
+
+# =============================================================================
 # Multiple errors in sequence
 # =============================================================================
 

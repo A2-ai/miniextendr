@@ -1237,16 +1237,7 @@ pub fn miniextendr(
         } else {
             ".val"
         };
-        format!(
-            ".val <- {call_expr}\n  \
-             if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n    \
-               stop(structure(\n      \
-                 class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n      \
-                 list(message = .val$error, call = sys.call(), kind = .val$kind)\n    \
-               ))\n  \
-             }}\n  \
-             {final_return}"
-        )
+        crate::method_return_builder::error_in_r_standalone_body(&call_expr, final_return)
     } else if !is_invisible_return_type {
         call_expr
     } else {

@@ -107,11 +107,7 @@ pub fn with_r_unwind_protect<F, R>(f: F, call: Option<SEXP>) -> R
 where
     F: FnOnce() -> R,
 {
-    with_r_unwind_protect_sourced(
-        f,
-        call,
-        crate::panic_telemetry::PanicSource::UnwindProtect,
-    )
+    with_r_unwind_protect_sourced(f, call, crate::panic_telemetry::PanicSource::UnwindProtect)
 }
 
 /// Like [`with_r_unwind_protect`], but reports panics with a custom [`PanicSource`].
@@ -218,7 +214,7 @@ where
 /// R error condition past the Rust boundary.
 ///
 /// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
-pub fn with_r_unwind_protect_error_in_r<F>(f: F, call: Option<SEXP>) -> SEXP
+pub fn with_r_unwind_protect_error_in_r<F>(f: F, _call: Option<SEXP>) -> SEXP
 where
     F: FnOnce() -> SEXP,
 {
@@ -287,7 +283,6 @@ where
                         &msg,
                         crate::panic_telemetry::PanicSource::UnwindProtect,
                     );
-                    let _ = call; // suppress unused warning
                     crate::error_value::make_rust_error_value(&msg, "panic")
                 } else {
                     data.result

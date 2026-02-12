@@ -390,9 +390,20 @@ fn generate_vtable_static(
     let source_col_lit =
         syn::LitInt::new(&(source_start.column + 1).to_string(), type_ident.span());
 
+    // Strip #[miniextendr(...)] attrs from methods before emitting,
+    // so they don't trigger another macro expansion.
+    let mut clean_impl = impl_item.clone();
+    for item in &mut clean_impl.items {
+        if let syn::ImplItem::Fn(method) = item {
+            method
+                .attrs
+                .retain(|attr| !attr.path().is_ident("miniextendr"));
+        }
+    }
+
     quote::quote! {
-        // Pass through the original impl block
-        #impl_item
+        // Pass through the original impl block (with method attrs stripped)
+        #clean_impl
 
         #[doc = concat!(
             "Vtable for `",
@@ -547,8 +558,20 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
                     } else if inner.path.is_ident("check_interrupt") {
                         check_interrupt = true;
                     } else if inner.path.is_ident("unwrap_in_r") {
+                        if error_in_r {
+                            return Err(syn::Error::new_spanned(
+                                inner.path,
+                                "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                            ));
+                        }
                         unwrap_in_r = true;
                     } else if inner.path.is_ident("error_in_r") {
+                        if unwrap_in_r {
+                            return Err(syn::Error::new_spanned(
+                                inner.path,
+                                "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                            ));
+                        }
                         error_in_r = true;
                     }
                     // Note: rng is NOT supported nested (env(rng)) - use #[miniextendr(rng)] instead
@@ -565,8 +588,20 @@ fn parse_trait_method_attrs(attrs: &[syn::Attribute]) -> TraitMethodAttrs {
             } else if meta.path.is_ident("rng") {
                 rng = true;
             } else if meta.path.is_ident("unwrap_in_r") {
+                if error_in_r {
+                    return Err(syn::Error::new_spanned(
+                        meta.path,
+                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                    ));
+                }
                 unwrap_in_r = true;
             } else if meta.path.is_ident("error_in_r") {
+                if unwrap_in_r {
+                    return Err(syn::Error::new_spanned(
+                        meta.path,
+                        "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                    ));
+                }
                 error_in_r = true;
             } else if meta.path.is_ident("defaults") {
                 // Parse defaults(param = "value", param2 = "value2", ...)
@@ -929,7 +964,10 @@ fn generate_trait_env_r_wrapper(
                 .build();
             (fp, c)
         } else {
-            (formals.clone(), DotCallBuilder::new(&c_ident).with_args(&params).build())
+            (
+                formals.clone(),
+                DotCallBuilder::new(&c_ident).with_args(&params).build(),
+            )
         };
 
         // Generate method wrapper
@@ -1680,25 +1718,10 @@ fn generate_trait_r6_r_wrapper(
 /// With error_in_r: captures result in `.val`, checks for `rust_error_value`, returns `.val`
 fn trait_method_body_lines(call_expr: &str, error_in_r: bool, indent: &str) -> Vec<String> {
     if error_in_r {
-        vec![
-            format!("{}.val <- {}", indent, call_expr),
-            format!(
-                "{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{",
-                indent
-            ),
-            format!("{}  stop(structure(", indent),
-            format!(
-                "{}    class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),",
-                indent
-            ),
-            format!(
-                "{}    list(message = .val$error, call = sys.call(), kind = .val$kind)",
-                indent
-            ),
-            format!("{}  ))", indent),
-            format!("{}}}", indent),
-            format!("{}.val", indent),
-        ]
+        let mut lines = vec![format!("{}.val <- {}", indent, call_expr)];
+        lines.extend(crate::method_return_builder::error_in_r_check_lines(indent));
+        lines.push(format!("{}.val", indent));
+        lines
     } else {
         vec![format!("{}{}", indent, call_expr)]
     }

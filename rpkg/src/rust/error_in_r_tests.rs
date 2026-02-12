@@ -142,6 +142,97 @@ impl ErrorInRR6Widget {
     }
 }
 
+// =============================================================================
+// S7 class with error_in_r methods
+// =============================================================================
+
+/// Gauge for testing error_in_r with S7 class system.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct ErrorInRS7Gauge {
+    level: f64,
+}
+
+/// @noRd
+#[miniextendr(s7)]
+impl ErrorInRS7Gauge {
+    /// Create a new gauge.
+    pub fn new(level: f64) -> Self {
+        Self { level }
+    }
+
+    /// Read the level — should always succeed.
+    #[miniextendr(error_in_r)]
+    pub fn read_level(&self) -> f64 {
+        self.level
+    }
+
+    /// Set the level — mutable, chainable.
+    #[miniextendr(error_in_r)]
+    pub fn set_level(&mut self, level: f64) {
+        self.level = level;
+    }
+
+    /// Deliberately panic.
+    #[miniextendr(error_in_r)]
+    pub fn panic_method(&self) -> f64 {
+        panic!("S7 panic in error_in_r")
+    }
+
+    /// Return Result::Err.
+    #[miniextendr(error_in_r)]
+    pub fn failing_result(&self) -> Result<f64, String> {
+        Err("S7 result error".to_string())
+    }
+}
+
+// =============================================================================
+// Trait with error_in_r methods
+// =============================================================================
+
+/// Trait for testing error_in_r on trait impls.
+/// @noRd
+#[miniextendr]
+pub trait Fallible {
+    /// Get a value — should succeed.
+    fn get_value(&self) -> i32;
+
+    /// Deliberately panic.
+    fn will_panic(&self) -> i32;
+}
+
+/// Concrete type implementing Fallible with error_in_r on the trait impl.
+#[derive(miniextendr_api::ExternalPtr)]
+pub struct FallibleImpl {
+    value: i32,
+}
+
+#[miniextendr]
+impl FallibleImpl {
+    /// Create a new FallibleImpl.
+    fn new(value: i32) -> Self {
+        Self { value }
+    }
+
+    /// Get value via inherent method.
+    fn inherent_value(&self) -> i32 {
+        self.value
+    }
+}
+
+/// @noRd
+#[miniextendr]
+impl Fallible for FallibleImpl {
+    #[miniextendr(error_in_r)]
+    fn get_value(&self) -> i32 {
+        self.value
+    }
+
+    #[miniextendr(error_in_r)]
+    fn will_panic(&self) -> i32 {
+        panic!("trait panic in error_in_r")
+    }
+}
+
 miniextendr_module! {
     mod error_in_r_tests;
 
@@ -157,4 +248,7 @@ miniextendr_module! {
 
     impl ErrorInRCounter;
     impl ErrorInRR6Widget;
+    impl ErrorInRS7Gauge;
+    impl FallibleImpl;
+    impl Fallible for FallibleImpl;
 }

@@ -621,12 +621,24 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         } else if ident == "rng" {
                             out.rng = true;
                         } else if ident == "unwrap_in_r" {
+                            if out.error_in_r {
+                                return Err(syn::Error::new_spanned(
+                                    ident,
+                                    "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                                ));
+                            }
                             out.unwrap_in_r = true;
                         } else if ident == "worker" {
                             out.force_worker = true;
                         } else if ident == "strict" {
                             out.strict = true;
                         } else if ident == "error_in_r" {
+                            if out.unwrap_in_r {
+                                return Err(syn::Error::new_spanned(
+                                    ident,
+                                    "`error_in_r` and `unwrap_in_r` are mutually exclusive",
+                                ));
+                            }
                             out.error_in_r = true;
                         } else if ident == "internal" {
                             out.internal = true;

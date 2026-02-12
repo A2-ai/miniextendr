@@ -5,6 +5,70 @@
 
 use crate::miniextendr_impl::{ParsedMethod, ReceiverKind};
 
+// =============================================================================
+// Shared R error-check code for error_in_r mode
+// =============================================================================
+
+/// The R `if` block that checks for a tagged error value and raises a condition.
+///
+/// Expects `.val` to already be assigned. Each line is indented by `indent`.
+pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
+    vec![
+        format!(
+            "{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{",
+            indent
+        ),
+        format!("{}  stop(structure(", indent),
+        format!(
+            "{}    class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),",
+            indent
+        ),
+        format!(
+            "{}    list(message = .val$error, call = sys.call(), kind = .val$kind)",
+            indent
+        ),
+        format!("{}  ))", indent),
+        format!("{}}}", indent),
+    ]
+}
+
+/// Inline R error-check block for single-expression contexts (S7, S4).
+///
+/// Returns a `{ .val <- <call>; if (...) stop(...); <inner> }` block string.
+pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
+    format!(
+        "{{\n    .val <- {call_expr}\n    \
+         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
+           stop(structure(\n        \
+             class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
+             list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \
+           ))\n    \
+         }}\n    \
+         {inner}\n  \
+         }}"
+    )
+}
+
+/// Standalone-function R wrapper body for error_in_r mode.
+///
+/// Returns the full body string: `.val <- .Call(...); if (...) stop(...); .val`
+pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String {
+    format!(
+        ".val <- {call_expr}\n  \
+         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n    \
+           stop(structure(\n      \
+             class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n      \
+             list(message = .val$error, call = sys.call(), kind = .val$kind)\n    \
+           ))\n  \
+         }}\n  \
+         {final_return}"
+    )
+}
+
+// =============================================================================
+// Return strategy
+// =============================================================================
+
 /// Return handling strategy for methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReturnStrategy {
@@ -91,23 +155,7 @@ impl MethodReturnBuilder {
 
     /// Generate error check lines for error_in_r mode.
     fn error_check_lines(&self, indent: &str) -> Vec<String> {
-        vec![
-            format!("{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{", indent),
-            format!(
-                "{}  stop(structure(",
-                indent
-            ),
-            format!(
-                "{}    class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),",
-                indent
-            ),
-            format!(
-                "{}    list(message = .val$error, call = sys.call(), kind = .val$kind)",
-                indent
-            ),
-            format!("{}  ))", indent),
-            format!("{}}}", indent),
-        ]
+        error_in_r_check_lines(indent)
     }
 
     /// Build R code lines for the method body.
@@ -281,18 +329,7 @@ impl MethodReturnBuilder {
                 ReturnStrategy::ChainableMutation => "x".to_string(),
                 ReturnStrategy::Direct => ".val".to_string(),
             };
-            format!(
-                "{{\n    .val <- {}\n    \
-                 if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
-                   stop(structure(\n        \
-                     class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
-                     list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \
-                   ))\n    \
-                 }}\n    \
-                 {}\n  \
-                 }}",
-                self.call_expr, inner
-            )
+            error_in_r_inline_block(&self.call_expr, &inner)
         } else {
             match self.strategy {
                 ReturnStrategy::ReturnSelf => {
@@ -326,18 +363,7 @@ impl MethodReturnBuilder {
                 ReturnStrategy::ChainableMutation => "x".to_string(),
                 ReturnStrategy::Direct => ".val".to_string(),
             };
-            format!(
-                "{{\n    .val <- {}\n    \
-                 if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
-                   stop(structure(\n        \
-                     class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
-                     list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \
-                   ))\n    \
-                 }}\n    \
-                 {}\n  \
-                 }}",
-                self.call_expr, inner
-            )
+            error_in_r_inline_block(&self.call_expr, &inner)
         } else {
             match self.strategy {
                 ReturnStrategy::ReturnSelf => {
