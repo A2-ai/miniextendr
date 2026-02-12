@@ -629,15 +629,16 @@ SED
 RSYNC
 RUSTC
 CARGO
+CARGO_LOCKED_FLAG
+CARGO_OFFLINE_FLAG
+NOT_CRAN
+BUILD_CONTEXT
 ROOT_MINIEXTENDR_REPO
 ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURE_CPPFLAGS
 CARGO_FEATURES_FLAG
 MINIEXTENDR_FEATURES
-NOT_CRAN
-CARGO_LOCKED_FLAG
-CARGO_OFFLINE_FLAG
 host_os
 host_vendor
 host_cpu
@@ -1974,22 +1975,21 @@ if test ! -d "$R_HOME"; then
   as_fn_error $? "R_HOME directory does not exist: $R_HOME" "$LINENO" 5
 fi
 
+: ${PREPARE_CRAN:=false}
+case "$PREPARE_CRAN" in
+  true|TRUE|1) PREPARE_CRAN=true ;;
+  *)           PREPARE_CRAN=false ;;
+esac
+
+NOT_CRAN_EXPLICIT=false
+if test "${NOT_CRAN+set}" = "set"; then
+  NOT_CRAN_EXPLICIT=true
+fi
 : ${NOT_CRAN:=false}
 case "$NOT_CRAN" in
   true|TRUE|1) NOT_CRAN=true ;;
   *)           NOT_CRAN=false ;;
 esac
-export NOT_CRAN
-
-if test "$NOT_CRAN" = "true"; then
-  CARGO_OFFLINE_FLAG=""
-    CARGO_LOCKED_FLAG=""
-else
-  CARGO_OFFLINE_FLAG="--offline"
-    CARGO_LOCKED_FLAG=""
-fi
-
-
 
 
 
@@ -2034,6 +2034,66 @@ MINIEXTENDR_MACROS_SRC="$root_miniextendr_repo/miniextendr-macros"
 MINIEXTENDR_MACROS_CORE_SRC="$root_miniextendr_repo/miniextendr-macros-core"
 MINIEXTENDR_LINT_SRC="$root_miniextendr_repo/miniextendr-lint"
 MINIEXTENDR_ENGINE_SRC="$root_miniextendr_repo/miniextendr-engine"
+
+
+HAS_MONOREPO=false
+if test -d "$root_miniextendr_repo/miniextendr-api"; then
+  HAS_MONOREPO=true
+fi
+
+HAS_VENDOR_HINT=false
+if test -d "$abs_top_srcdir/vendor" && test -n "$(ls -A "$abs_top_srcdir/vendor" 2>/dev/null)"; then
+  HAS_VENDOR_HINT=true
+elif test -f "$abs_top_srcdir/inst/vendor.tar.xz"; then
+  HAS_VENDOR_HINT=true
+fi
+
+if test "$PREPARE_CRAN" = "true"; then
+  BUILD_CONTEXT="prepare-cran"
+elif test "$NOT_CRAN_EXPLICIT" = "true"; then
+  if test "$NOT_CRAN" = "true"; then
+    if test "$HAS_MONOREPO" = "true"; then
+      BUILD_CONTEXT="dev-monorepo"
+    else
+      BUILD_CONTEXT="dev-detached"
+    fi
+  else
+    BUILD_CONTEXT="vendored-install"
+  fi
+else
+    if test "$HAS_MONOREPO" = "true"; then
+    BUILD_CONTEXT="dev-monorepo"
+  elif test "$HAS_VENDOR_HINT" = "true"; then
+    BUILD_CONTEXT="vendored-install"
+  else
+    BUILD_CONTEXT="dev-detached"
+  fi
+fi
+
+
+case "$BUILD_CONTEXT" in
+  dev-monorepo|dev-detached)
+    NOT_CRAN=true
+    ;;
+  vendored-install|prepare-cran)
+    NOT_CRAN=false
+    ;;
+esac
+export NOT_CRAN
+
+
+case "$BUILD_CONTEXT" in
+  dev-monorepo|dev-detached)
+    CARGO_OFFLINE_FLAG=""
+    CARGO_LOCKED_FLAG=""
+    ;;
+  vendored-install|prepare-cran)
+    CARGO_OFFLINE_FLAG="--offline"
+    CARGO_LOCKED_FLAG=""
+    ;;
+esac
+
+
 
 if test -n "$ac_tool_prefix"; then
   # Extract the first word of "${ac_tool_prefix}cargo", so it can be a program name with args.
@@ -2511,10 +2571,17 @@ else
 fi
 
 
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: R_HOME                = $R_HOME" >&5
-printf "%s\n" "$as_me: R_HOME                = $R_HOME" >&6;}
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: BUILD_CONTEXT         = $BUILD_CONTEXT" >&5
+printf "%s\n" "$as_me: BUILD_CONTEXT         = $BUILD_CONTEXT" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: NOT_CRAN              = $NOT_CRAN" >&5
 printf "%s\n" "$as_me: NOT_CRAN              = $NOT_CRAN" >&6;}
+if test "$PREPARE_CRAN" = "true"
+then :
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: PREPARE_CRAN          = $PREPARE_CRAN" >&5
+printf "%s\n" "$as_me: PREPARE_CRAN          = $PREPARE_CRAN" >&6;}
+fi
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: R_HOME                = $R_HOME" >&5
+printf "%s\n" "$as_me: R_HOME                = $R_HOME" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&5
 printf "%s\n" "$as_me: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_PROFILE         = $CARGO_PROFILE" >&5
@@ -2543,7 +2610,7 @@ then :
 printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
 fi
 
-pkg_rs="$(echo "$PACKAGE_TARNAME" | $SED 's/-/_/g')"
+pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 PACKAGE_TARNAME_RS=$pkg_rs
 
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
@@ -2565,9 +2632,17 @@ do
 done
 
 
-VENDOR_OUT="$abs_rpkg_src/vendor"
+VENDOR_OUT="$abs_top_srcdir/vendor"
 
-VENDOR_OUT_CARGO="$abs_rpkg_src_cargo/vendor"
+abs_top_srcdir_cargo="$abs_top_srcdir"
+case "$host_os" in
+  *msys*|*cygwin*|*mingw*)
+    if test "x$CYGPATH" != "xno"; then
+      abs_top_srcdir_cargo="$($CYGPATH -m "$abs_top_srcdir")"
+    fi
+    ;;
+esac
+VENDOR_OUT_CARGO="$abs_top_srcdir_cargo/vendor"
 
 
 
@@ -2587,9 +2662,6 @@ ac_config_commands="$ac_config_commands cargo-vendor"
 
 
 ac_config_commands="$ac_config_commands post-vendor"
-
-
-ac_config_commands="$ac_config_commands compress-vendor"
 
 
 ac_config_commands="$ac_config_commands patch-staticlib-name"
@@ -3295,12 +3367,11 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 #
 # INIT-COMMANDS
 #
-NOT_CRAN="$NOT_CRAN"
-CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" ROOT_MINIEXTENDR_REPO="$root_miniextendr_repo" ROOT_MINIEXTENDR_REPO_CARGO="$root_miniextendr_repo_cargo" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" CARGO_LOCKED_FLAG="$CARGO_LOCKED_FLAG"
+BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"
+CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
+CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
 ABS_RPKG_SRC="$abs_rpkg_src"
-NOT_CRAN="$NOT_CRAN"
-CARGO_CMD="$CARGO_CMD" NOT_CRAN="$NOT_CRAN" SED="$SED"
+CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"
 
 _ACEOF
 
@@ -3320,7 +3391,6 @@ do
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
     "post-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS post-vendor" ;;
-    "compress-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS compress-vendor" ;;
     "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
@@ -3743,12 +3813,28 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
     "dev-cargo-config":C)
   RPKG_CFG="src/rust/.cargo/config.toml"
 
-  if test "$NOT_CRAN" = "true"; then
+  case "$BUILD_CONTEXT" in
+    dev-monorepo)
             if test -f "$RPKG_CFG"; then
-      rm "$RPKG_CFG"
-      echo "configure: removed cargo config (dev mode - using git deps with local patches)"
-    fi
-  fi
+        rm "$RPKG_CFG"
+        echo "configure: removed cargo config (dev-monorepo — using patch paths)"
+      fi
+      ;;
+    dev-detached)
+            if test -f "$RPKG_CFG"; then
+        rm "$RPKG_CFG"
+        echo "configure: removed cargo config (dev-detached — using git deps)"
+      fi
+            if grep -q '^\[patch\.' src/rust/Cargo.toml 2>/dev/null; then
+        "$SED" '/^\[patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        echo "configure: stripped [patch] section (dev-detached — monorepo not available)"
+      fi
+      ;;
+    vendored-install|prepare-cran)
+            echo "configure: keeping cargo config ($BUILD_CONTEXT)"
+      ;;
+  esac
  ;;
     "cargo-lockfile-compat":C)
   LOCKFILE_PATH="src/rust/Cargo.lock"
@@ -3765,25 +3851,27 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   if test -n "$LOCKFILE_VERSION" && test "$LOCKFILE_VERSION" -ge 4; then
     if test "$CARGO_MAJOR" -lt 1 || \
        (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
-            if test "$NOT_CRAN" != "true"; then
-        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-          if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-            echo "configure: CRAN build - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
-            tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-            if test $? -ne 0; then
-              echo "configure: error: failed to unpack vendor.tar.xz" >&2
+            case "$BUILD_CONTEXT" in
+        vendored-install|prepare-cran)
+          if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+              echo "configure: $BUILD_CONTEXT - unpacking inst/vendor.tar.xz (for lockfile regeneration)" >&2
+              tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+              if test $? -ne 0; then
+                echo "configure: error: failed to unpack vendor.tar.xz" >&2
+                exit 1
+              fi
+              if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+                $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+              fi
+            else
+              echo "configure: error: $BUILD_CONTEXT requires vendored sources to regenerate Cargo.lock" >&2
+              echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
               exit 1
             fi
-                        if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-              $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-            fi
-          else
-            echo "configure: error: CRAN/offline build requires vendored sources to regenerate Cargo.lock" >&2
-            echo "configure:        Expected inst/vendor.tar.xz or a populated vendor/ directory." >&2
-            exit 1
           fi
-        fi
-      fi
+          ;;
+      esac
       echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
       rm -f "$LOCKFILE_PATH"
       $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml $CARGO_OFFLINE_FLAG
@@ -3796,75 +3884,129 @@ printf "%s\n" "$as_me: executing $ac_file commands" >&6;}
   fi
  ;;
     "cargo-vendor":C)
-      if test "$NOT_CRAN" != "true"; then
-        if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
-            if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-        echo "configure: CRAN build - unpacking inst/vendor.tar.xz"
-        tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_src"
-        if test $? -ne 0; then
-          echo "configure: error: failed to unpack vendor.tar.xz" >&2
-          exit 1
-        fi
-                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
-        fi
-      else
-                echo "configure: no cached vendor found, vendoring from network" >&2
-        echo "configure:   (This is normal for GitHub installs via remotes::install_github())" >&2
-        mkdir -p "$VENDOR_OUT"
-        $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
-        if test $? -ne 0; then
-          echo "configure: error: cargo vendor failed (network required)" >&2
-          exit 1
-        fi
-                for _crate_dir in "$VENDOR_OUT"/*/; do
-          if test -d "$_crate_dir"; then
-            rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
-                   "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
-            for _dotfile in "$_crate_dir"/.*; do
-              case "$(basename "$_dotfile")" in
-                .|..|.cargo-checksum.json) ;;
-                *) rm -rf "$_dotfile" ;;
-              esac
-            done
-            echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+  case "$BUILD_CONTEXT" in
+    dev-monorepo)
+            if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+        rm -rf "$VENDOR_OUT"
+        echo "configure: removed vendor directory (dev-monorepo)"
+      fi
+      rm -f "$VENDOR_OUT/.vendor.lock.cksum"
+      echo "configure: dev-monorepo — using patch paths"
+      ;;
+    dev-detached)
+            if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
+        rm -rf "$VENDOR_OUT"
+        echo "configure: removed vendor directory (dev-detached)"
+      fi
+      echo "configure: dev-detached — using git/network deps"
+      ;;
+    vendored-install|prepare-cran)
+            if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
+        if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
+          echo "configure: unpacking inst/vendor.tar.xz"
+          tar -xJf "$abs_rpkg_dir/inst/vendor.tar.xz" -C "$abs_rpkg_dir"
+          if test $? -ne 0; then
+            echo "configure: error: failed to unpack vendor.tar.xz" >&2
+            exit 1
           fi
-        done
-                if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
-          $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+          fi
+        else
+                    echo "configure: no vendor found, vendoring from network" >&2
+          echo "configure:   (normal for GitHub installs via remotes::install_github())" >&2
+          mkdir -p "$VENDOR_OUT"
+          $CARGO_CMD vendor --manifest-path "src/rust/Cargo.toml" "$VENDOR_OUT"
+          if test $? -ne 0; then
+            echo "configure: error: cargo vendor failed (network required)" >&2
+            exit 1
+          fi
+                    for _crate_dir in "$VENDOR_OUT"/*/; do
+            if test -d "$_crate_dir"; then
+              rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+                     "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+              for _dotfile in "$_crate_dir"/.*; do
+                case "$(basename "$_dotfile")" in
+                  .|..|.cargo-checksum.json) ;;
+                  *) rm -rf "$_dotfile" ;;
+                esac
+              done
+              echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+            fi
+          done
+          if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+            $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+          fi
         fi
       fi
-    fi
-    if test "$NOT_CRAN" != "true"; then
-      echo "configure: CRAN build - vendor ready"
-    fi
-  else
-                if test -d "$VENDOR_OUT" && test -n "$(ls -A "$VENDOR_OUT" 2>/dev/null)"; then
-      rm -rf "$VENDOR_OUT"
-      echo "configure: removed vendor directory (dev mode)"
-    fi
-    if test -f "$abs_rpkg_dir/inst/vendor.tar.xz"; then
-      rm -f "$abs_rpkg_dir/inst/vendor.tar.xz" "$abs_rpkg_dir/inst/.vendor.tar.xz.cksum"
-      echo "configure: removed vendor.tar.xz (dev mode)"
-    fi
-        rm -f "$VENDOR_OUT/.vendor.lock.cksum"
-    echo "configure: dev mode - skipping cargo vendor (use 'just vendor' for CRAN prep)"
-  fi
+
+            echo "configure: $BUILD_CONTEXT — vendor ready"
+
+            for _crate in miniextendr-api miniextendr-lint; do
+        _versioned_dir=""
+        for _d in "$VENDOR_OUT/$_crate"-*/; do
+          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+        done
+        if test -n "$_versioned_dir"; then
+          _dirname="$(basename "$_versioned_dir")"
+          "$SED" "s|$_crate = { git = \"https://github.com/CGMossa/miniextendr\" }|$_crate = { path = \"../../vendor/$_dirname\" }|" \
+            src/rust/Cargo.toml > src/rust/Cargo.toml.tmp && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+          echo "configure: rewrote $_crate dep to path: vendor/$_dirname"
+        fi
+      done
+
+            if grep -q '^\[patch\.' src/rust/Cargo.toml 2>/dev/null; then
+        "$SED" '/^\[patch\./,$d' src/rust/Cargo.toml > src/rust/Cargo.toml.tmp \
+          && mv src/rust/Cargo.toml.tmp src/rust/Cargo.toml
+        echo "configure: stripped patch section"
+      fi
+
+            _patch_lines=""
+      for _crate in miniextendr-macros miniextendr-macros-core miniextendr-engine; do
+        _versioned_dir=""
+        for _d in "$VENDOR_OUT/$_crate"-*/; do
+          if test -d "$_d"; then _versioned_dir="$_d"; break; fi
+        done
+        if test -n "$_versioned_dir"; then
+          _dirname="$(basename "$_versioned_dir")"
+          _patch_lines="$_patch_lines
+$_crate = { path = \"../../vendor/$_dirname\" }"
+        fi
+      done
+      if test -n "$_patch_lines"; then
+        printf '\n[patch.crates-io]%s\n' "$_patch_lines" >> src/rust/Cargo.toml
+        echo "configure: added patch.crates-io for transitive deps"
+      fi
+
+            RPKG_CFG="src/rust/.cargo/config.toml"
+      if test -f "$RPKG_CFG"; then
+        "$SED" '/^\[source\."git+/,/^$/d' "$RPKG_CFG" > "$RPKG_CFG.tmp" && mv "$RPKG_CFG.tmp" "$RPKG_CFG"
+      fi
+
+            rm -f src/rust/Cargo.lock
+      $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+      if test $? -ne 0; then
+        echo "configure: error: failed to generate lockfile from vendored sources" >&2
+        exit 1
+      fi
+      echo "configure: regenerated Cargo.lock for $BUILD_CONTEXT"
+      ;;
+  esac
  ;;
     "post-vendor":C)
         touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
      ;;
-    "compress-vendor":C)
-  echo "configure: skipping vendor compression (use 'just vendor' for CRAN prep)"
- ;;
     "patch-staticlib-name":C)
-      if test "$NOT_CRAN" = "true"; then
-    _pkgid_flags="--color=never"
-  else
-    _pkgid_flags="--offline --color=never"
-  fi
+      case "$BUILD_CONTEXT" in
+    dev-monorepo|dev-detached)
+      _pkgid_flags="--color=never"
+      ;;
+    vendored-install|prepare-cran)
+      _pkgid_flags="--offline --color=never"
+      ;;
+  esac
   _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
   _pkgid_status=$?
   if test $_pkgid_status -ne 0; then

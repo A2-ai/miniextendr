@@ -65,7 +65,7 @@ apt-get install autoconf automake
 When changing proc-macros, the full sequence is:
 
 ```bash
-just configure          # 1. Vendor macro crates to rpkg/src/vendor/
+just configure          # 1. Vendor macro crates to rpkg/vendor/
 just rcmdinstall        # 2. Build and install R package
 just devtools-document  # 3. Regenerate R wrappers
 just rcmdinstall        # 4. Rebuild with updated wrappers
@@ -175,7 +175,7 @@ just configure
 
 This:
 
-1. Syncs `miniextendr-api` and `miniextendr-macros` to `rpkg/src/vendor/`
+1. Syncs `miniextendr-api` and `miniextendr-macros` to `rpkg/vendor/`
 2. Vendors crates.io dependencies (proc-macro2, quote, syn, etc.)
 3. Generates `.cargo/config.toml` for offline builds
 
@@ -215,6 +215,6 @@ just bench
 | R package | `rpkg/` |
 | Configure script | `rpkg/configure.ac` |
 | Makefile template | `rpkg/src/Makevars.in` |
-| Vendored crates | `rpkg/src/vendor/` |
+| Vendored crates | `rpkg/vendor/` |
 | CI workflow | `.github/workflows/ci.yml` |
 | Version bump script | `scripts/bump-version.sh` |

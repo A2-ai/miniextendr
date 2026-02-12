@@ -47,7 +47,7 @@
 //! | TOML Type | R Type |
 //! |-----------|--------|
 //! | String | character(1) |
-//! | Integer | integer(1) |
+//! | Integer | integer(1) or numeric(1) if out of i32 range |
 //! | Float | numeric(1) |
 //! | Boolean | logical(1) |
 //! | Array | vector (homogeneous) or list (heterogeneous) |
@@ -57,8 +57,8 @@
 pub use toml::Value as TomlValue;
 
 use crate::ffi::{
-    Rf_allocVector, Rf_mkCharLenCE, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT,
-    SET_REAL_ELT, SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt, cetype_t,
+    Rf_allocVector, Rf_setAttrib, Rf_xlength, SET_INTEGER_ELT, SET_LOGICAL_ELT, SET_REAL_ELT,
+    SET_STRING_ELT, SET_VECTOR_ELT, SEXP, SEXPTYPE, STRING_ELT, SexpExt,
 };
 use crate::from_r::{SexpError, SexpTypeError, TryFromSexp, charsxp_to_str};
 use crate::gc_protect::OwnedProtect;
@@ -271,29 +271,32 @@ fn toml_value_to_sexp(v: &TomlValue) -> SEXP {
 
 fn string_to_sexp(s: &str) -> SEXP {
     unsafe {
-        // Protect sexp before Rf_mkCharLenCE which can trigger GC
+        // Protect sexp before checked_mkchar which can trigger GC
         let sexp = OwnedProtect::new(Rf_allocVector(SEXPTYPE::STRSXP, 1));
-        let charsxp = Rf_mkCharLenCE(s.as_ptr().cast(), s.len() as i32, cetype_t::CE_UTF8);
+        let charsxp = crate::altrep_impl::checked_mkchar(s);
         SET_STRING_ELT(sexp.get(), 0, charsxp);
         // Return the SEXP - guard drops and unprotects
         sexp.get()
     }
 }
 
+/// Check if an i64 fits in an R integer (i32, excluding i32::MIN which is NA_integer_).
+fn i64_fits_r_int(i: i64) -> bool {
+    i > i32::MIN as i64 && i <= i32::MAX as i64
+}
+
 fn int_to_sexp(i: i64) -> SEXP {
     unsafe {
-        let sexp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
-        // TOML integers are i64, but R integers are i32
-        // Clamp to i32 range
-        let val = if i > i32::MAX as i64 {
-            i32::MAX
-        } else if i < i32::MIN as i64 {
-            i32::MIN
+        if i64_fits_r_int(i) {
+            let sexp = Rf_allocVector(SEXPTYPE::INTSXP, 1);
+            SET_INTEGER_ELT(sexp, 0, i as i32);
+            sexp
         } else {
-            i as i32
-        };
-        SET_INTEGER_ELT(sexp, 0, val);
-        sexp
+            // Value out of R integer range — store as double
+            let sexp = Rf_allocVector(SEXPTYPE::REALSXP, 1);
+            SET_REAL_ELT(sexp, 0, i as f64);
+            sexp
+        }
     }
 }
 
@@ -334,11 +337,7 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::String(s) = v {
                         unsafe {
-                            let charsxp = Rf_mkCharLenCE(
-                                s.as_ptr().cast(),
-                                s.len() as i32,
-                                cetype_t::CE_UTF8,
-                            );
+                            let charsxp = crate::altrep_impl::checked_mkchar(s);
                             SET_STRING_ELT(sexp.get(), i as isize, charsxp);
                         }
                     }
@@ -347,17 +346,29 @@ fn array_to_sexp(arr: &[TomlValue]) -> SEXP {
                 return sexp.get();
             }
             TomlValue::Integer(_) => {
-                let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
+                // Check if ALL elements fit in R integer range
+                let all_fit = arr.iter().all(|v| {
+                    if let TomlValue::Integer(n) = v {
+                        i64_fits_r_int(*n)
+                    } else {
+                        false
+                    }
+                });
+
+                if all_fit {
+                    let sexp = unsafe { Rf_allocVector(SEXPTYPE::INTSXP, arr.len() as isize) };
+                    for (i, v) in arr.iter().enumerate() {
+                        if let TomlValue::Integer(n) = v {
+                            unsafe { SET_INTEGER_ELT(sexp, i as isize, *n as i32) };
+                        }
+                    }
+                    return sexp;
+                }
+                // Fall back to REALSXP if any value is out of range
+                let sexp = unsafe { Rf_allocVector(SEXPTYPE::REALSXP, arr.len() as isize) };
                 for (i, v) in arr.iter().enumerate() {
                     if let TomlValue::Integer(n) = v {
-                        let val = if *n > i32::MAX as i64 {
-                            i32::MAX
-                        } else if *n < i32::MIN as i64 {
-                            i32::MIN
-                        } else {
-                            *n as i32
-                        };
-                        unsafe { SET_INTEGER_ELT(sexp, i as isize, val) };
+                        unsafe { SET_REAL_ELT(sexp, i as isize, *n as f64) };
                     }
                 }
                 return sexp;
@@ -404,7 +415,7 @@ fn table_to_sexp(table: &toml::map::Map<String, TomlValue>) -> SEXP {
 
     for (i, (key, value)) in table.iter().enumerate() {
         unsafe {
-            let charsxp = Rf_mkCharLenCE(key.as_ptr().cast(), key.len() as i32, cetype_t::CE_UTF8);
+            let charsxp = crate::altrep_impl::checked_mkchar(key);
             SET_STRING_ELT(names.get(), i as isize, charsxp);
             SET_VECTOR_ELT(sexp.get(), i as isize, toml_value_to_sexp(value));
         }

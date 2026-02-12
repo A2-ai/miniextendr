@@ -3,7 +3,7 @@
 
 # R package build artifacts
 {{rpkg_name}}/src/rust/target/
-{{rpkg_name}}/src/vendor/
+{{rpkg_name}}/vendor/
 {{rpkg_name}}/src/rust/.cargo/
 {{rpkg_name}}/src/Makevars
 {{rpkg_name}}/src/entrypoint.c

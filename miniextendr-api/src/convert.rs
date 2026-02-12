@@ -267,12 +267,19 @@ impl<T: serde::Serialize> From<T> for AsSerializeRow<T> {
 #[cfg(feature = "serde")]
 impl<T: serde::Serialize> IntoList for AsSerializeRow<T> {
     fn into_list(self) -> List {
+        use crate::ffi::{SEXPTYPE, TYPEOF};
         use crate::serde::RSerializer;
         match RSerializer::to_sexp(&self.0) {
-            Ok(sexp) => unsafe { List::from_raw(sexp) },
-            Err(_) => {
-                // If serialization fails, return empty list
-                List::from_raw_pairs(Vec::<(&str, crate::ffi::SEXP)>::new())
+            Ok(sexp) => {
+                if unsafe { TYPEOF(sexp) } as SEXPTYPE == SEXPTYPE::VECSXP {
+                    unsafe { List::from_raw(sexp) }
+                } else {
+                    // Non-list SEXP (e.g., scalar) — wrap in a single-element list
+                    List::from_raw_values(vec![sexp])
+                }
+            }
+            Err(e) => {
+                crate::r_error!("AsSerializeRow: serde serialization failed: {e}");
             }
         }
     }
@@ -436,13 +443,25 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
                 .set_row_names_int(0);
         }
 
-        // Convert all rows to lists
-        let lists: Vec<List> = self.rows.into_iter().map(|row| row.into_list()).collect();
+        let mut n_protect: i32 = 0;
+
+        // Convert all rows to lists, protecting each from GC.
+        let lists: Vec<List> = self
+            .rows
+            .into_iter()
+            .map(|row| {
+                let list = row.into_list();
+                unsafe { crate::ffi::Rf_protect(list.as_sexp()) };
+                n_protect += 1;
+                list
+            })
+            .collect();
         let n_rows = lists.len() as isize;
 
         // Get column names from the first row
         let first_names_sexp = lists[0].names();
         if first_names_sexp.is_none() {
+            unsafe { crate::ffi::Rf_unprotect(n_protect) };
             crate::r_error!("cannot create data frame from unnamed list elements");
         }
 
@@ -461,7 +480,9 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
             }
         }
 
-        // Transpose: collect values by column
+        // Transpose: collect values by column.
+        // Element SEXPs from get_named are children of protected row lists,
+        // so they don't need individual protection.
         use std::collections::HashMap;
         let mut columns: HashMap<String, Vec<crate::ffi::SEXP>> =
             HashMap::with_capacity(col_names.len());
@@ -469,10 +490,8 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
             columns.insert(name.clone(), Vec::with_capacity(n_rows as usize));
         }
 
-        // Iterate through rows and extract each column value
         for list in &lists {
             for name in &col_names {
-                // Get the named element from this row
                 let value = list
                     .get_named::<crate::ffi::SEXP>(name)
                     .unwrap_or(unsafe { crate::ffi::R_NilValue });
@@ -480,18 +499,21 @@ impl<T: IntoList> IntoDataFrame for DataFrame<T> {
             }
         }
 
-        // Build column vectors from the collected values
+        // Build column vectors, protecting each from GC.
         let mut df_pairs: Vec<(String, crate::ffi::SEXP)> = Vec::with_capacity(col_names.len());
         for name in col_names {
             let col_values = columns.remove(&name).unwrap();
-            // Create an R list column from the collected SEXPs
             let col_sexp = List::from_raw_values(col_values).as_sexp();
+            unsafe { crate::ffi::Rf_protect(col_sexp) };
+            n_protect += 1;
             df_pairs.push((name, col_sexp));
         }
 
-        List::from_raw_pairs(df_pairs)
+        let result = List::from_raw_pairs(df_pairs)
             .set_class_str(&["data.frame"])
-            .set_row_names_int(n_rows as usize)
+            .set_row_names_int(n_rows as usize);
+        unsafe { crate::ffi::Rf_unprotect(n_protect) };
+        result
     }
 }
 

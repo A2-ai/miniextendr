@@ -2,6 +2,7 @@
 ^dev$
 ^src/rust/target$
 ^rust-target$
+^ra-target$
 ^DEV_PROCESS\.md$
 ^src/rust/ra_target$
 ^src/rust/\.cargo$
@@ -13,7 +14,7 @@
 ^config\.status$
 ^configure~$
 ^autom4te\.cache$
-^src/miniextendr_wrappers\.R$
+^src/.*-wrappers\.R$
 ^bootstrap\.R$
 ^\.gitignore$
 ^\.DS_Store$
@@ -21,12 +22,12 @@
 ^inst/\.vendor\.tar\.xz\.cksum$
 \.cargo-checksum\.json$
 \.cargo_vcs_info\.json$
-^src/vendor/.*\.github$
-^src/vendor/.*\.editorconfig$
-^src/vendor/.*\.git-blame-ignore-revs$
-^src/vendor/.*\.release-plz\.toml$
-^src/vendor/.*\.rustfmt\.toml$
-^src/vendor/.*\.travis\.yml$
+^vendor/.*\.github$
+^vendor/.*\.editorconfig$
+^vendor/.*\.git-blame-ignore-revs$
+^vendor/.*\.release-plz\.toml$
+^vendor/.*\.rustfmt\.toml$
+^vendor/.*\.travis\.yml$
 \.vendor\.lock\.cksum$
-^src/vendor/.*\.a$
-^src/vendor/.*\.lib$
+^vendor/.*\.a$
+^vendor/.*\.lib$

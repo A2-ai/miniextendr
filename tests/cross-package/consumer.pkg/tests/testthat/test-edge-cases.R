@@ -159,14 +159,17 @@ test_that("add_and_get works with large values", {
 test_that("DoubleCounter Counter trait methods via trait namespace", {
   dc <- DoubleCounter$create(10L)
 
-  # Trait namespace: DoubleCounter$Counter$value
-  expect_equal(dc$Counter$value(dc), 10L)
+  # $ dispatch: self is prepended automatically
+  expect_equal(dc$Counter$value(), 10L)
 
-  # Trait namespace: DoubleCounter$Counter$increment (adds 2)
-  dc$Counter$increment(dc)
-  expect_equal(dc$Counter$value(dc), 12L)
+  # $ dispatch: increment (adds 2)
+  dc$Counter$increment()
+  expect_equal(dc$Counter$value(), 12L)
 
-  # Trait namespace: DoubleCounter$Counter$add
-  dc$Counter$add(dc, 100L)
-  expect_equal(dc$Counter$value(dc), 112L)
+  # $ dispatch: add
+  dc$Counter$add(100L)
+  expect_equal(dc$Counter$value(), 112L)
+
+  # Standalone calling convention: Type$Trait$method(obj)
+  expect_equal(DoubleCounter$Counter$value(dc), 112L)
 })

@@ -469,12 +469,16 @@ fn s7_wrapper_full_snapshot() {
     assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .ptr)"));
     assert!(wrapper.contains("S7::new_object(S7::S7_object(), .ptr = .Call(C_Counter__new"));
 
-    // Verify S7 generics
+    // Verify S7 generics (now multi-line braced form)
+    assert!(wrapper.contains("if (!exists(\"get\", mode = \"function\")) {"));
+    assert!(
+        wrapper.contains(
+            "  get <- S7::new_generic(\"get\", \"x\", function(x, ...) S7::S7_dispatch())"
+        )
+    );
+    assert!(wrapper.contains("if (!exists(\"increment\", mode = \"function\")) {"));
     assert!(wrapper.contains(
-        "if (!exists(\"get\", mode = \"function\")) get <- S7::new_generic(\"get\", \"x\", function(x, ...) S7::S7_dispatch())"
-    ));
-    assert!(wrapper.contains(
-        "if (!exists(\"increment\", mode = \"function\")) increment <- S7::new_generic(\"increment\", \"x\", function(x, ...) S7::S7_dispatch())"
+        "  increment <- S7::new_generic(\"increment\", \"x\", function(x, ...) S7::S7_dispatch())"
     ));
 
     // Verify S7 method definitions

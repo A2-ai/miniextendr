@@ -2,7 +2,6 @@
 "_PACKAGE"
 
 ## usethis namespace: start
-#' @import miniextendr
 #' @useDynLib consumer.pkg, .registration = TRUE
 #' @export increment_twice
 #' @export add_and_get

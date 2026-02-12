@@ -362,7 +362,10 @@ impl List {
             let ptr = ffi::INTEGER(row_names.get());
             // NA_INTEGER is i32::MIN in R
             *ptr = i32::MIN;
-            *ptr.add(1) = -(n as i32);
+            let n_i32 = i32::try_from(n).unwrap_or_else(|_| {
+                panic!("row count {n} exceeds i32::MAX");
+            });
+            *ptr.add(1) = -n_i32;
             ffi::Rf_setAttrib(self.0, ffi::R_RowNamesSymbol, row_names.get());
         }
         self

@@ -5,6 +5,70 @@
 
 use crate::miniextendr_impl::{ParsedMethod, ReceiverKind};
 
+// =============================================================================
+// Shared R error-check code for error_in_r mode
+// =============================================================================
+
+/// The R `if` block that checks for a tagged error value and raises a condition.
+///
+/// Expects `.val` to already be assigned. Each line is indented by `indent`.
+pub fn error_in_r_check_lines(indent: &str) -> Vec<String> {
+    vec![
+        format!(
+            "{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{",
+            indent
+        ),
+        format!("{}  stop(structure(", indent),
+        format!(
+            "{}    class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),",
+            indent
+        ),
+        format!(
+            "{}    list(message = .val$error, call = sys.call(), kind = .val$kind)",
+            indent
+        ),
+        format!("{}  ))", indent),
+        format!("{}}}", indent),
+    ]
+}
+
+/// Inline R error-check block for single-expression contexts (S7, S4).
+///
+/// Returns a `{ .val <- <call>; if (...) stop(...); <inner> }` block string.
+pub fn error_in_r_inline_block(call_expr: &str, inner: &str) -> String {
+    format!(
+        "{{\n    .val <- {call_expr}\n    \
+         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
+           stop(structure(\n        \
+             class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
+             list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \
+           ))\n    \
+         }}\n    \
+         {inner}\n  \
+         }}"
+    )
+}
+
+/// Standalone-function R wrapper body for error_in_r mode.
+///
+/// Returns the full body string: `.val <- .Call(...); if (...) stop(...); .val`
+pub fn error_in_r_standalone_body(call_expr: &str, final_return: &str) -> String {
+    format!(
+        ".val <- {call_expr}\n  \
+         if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n    \
+           stop(structure(\n      \
+             class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n      \
+             list(message = .val$error, call = sys.call(), kind = .val$kind)\n    \
+           ))\n  \
+         }}\n  \
+         {final_return}"
+    )
+}
+
+// =============================================================================
+// Return strategy
+// =============================================================================
+
 /// Return handling strategy for methods.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ReturnStrategy {
@@ -41,6 +105,8 @@ pub struct MethodReturnBuilder {
     chain_var: Option<String>,
     /// Indentation level (number of spaces)
     indent: usize,
+    /// Whether to add error_in_r checking (capture result, check for rust_error_value)
+    error_in_r: bool,
 }
 
 impl MethodReturnBuilder {
@@ -51,7 +117,8 @@ impl MethodReturnBuilder {
             strategy: ReturnStrategy::Direct,
             class_name: None,
             chain_var: None,
-            indent: 4,
+            indent: 2,
+            error_in_r: false,
         }
     }
 
@@ -79,32 +146,67 @@ impl MethodReturnBuilder {
         self
     }
 
+    /// Enable error_in_r mode: capture .Call result, check for rust_error_value,
+    /// raise R condition on error.
+    pub fn with_error_in_r(mut self, error_in_r: bool) -> Self {
+        self.error_in_r = error_in_r;
+        self
+    }
+
+    /// Generate error check lines for error_in_r mode.
+    fn error_check_lines(&self, indent: &str) -> Vec<String> {
+        error_in_r_check_lines(indent)
+    }
+
     /// Build R code lines for the method body.
     ///
     /// Returns a vector of strings, one per line (without trailing newlines).
     pub fn build(&self) -> Vec<String> {
         let indent = " ".repeat(self.indent);
-        match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                vec![
-                    format!("{}result <- {}", indent, self.call_expr),
-                    format!("{}class(result) <- \"{}\"", indent, class_name),
-                    format!("{}result", indent),
-                ]
+        if self.error_in_r {
+            let mut lines = vec![format!("{}.val <- {}", indent, self.call_expr)];
+            lines.extend(self.error_check_lines(&indent));
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    lines.push(format!("{}class(.val) <- \"{}\"", indent, class_name));
+                    lines.push(format!("{}.val", indent));
+                }
+                ReturnStrategy::ChainableMutation => {
+                    let chain_var = self.chain_var.as_deref().unwrap_or("self");
+                    lines.push(format!("{}{}", indent, chain_var));
+                }
+                ReturnStrategy::Direct => {
+                    lines.push(format!("{}.val", indent));
+                }
             }
-            ReturnStrategy::ChainableMutation => {
-                let chain_var = self.chain_var.as_deref().unwrap_or("self");
-                vec![
-                    format!("{}{}", indent, self.call_expr),
-                    format!("{}{}", indent, chain_var),
-                ]
-            }
-            ReturnStrategy::Direct => {
-                vec![format!("{}{}", indent, self.call_expr)]
+            lines
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    vec![
+                        format!("{}result <- {}", indent, self.call_expr),
+                        format!("{}class(result) <- \"{}\"", indent, class_name),
+                        format!("{}result", indent),
+                    ]
+                }
+                ReturnStrategy::ChainableMutation => {
+                    let chain_var = self.chain_var.as_deref().unwrap_or("self");
+                    vec![
+                        format!("{}{}", indent, self.call_expr),
+                        format!("{}{}", indent, chain_var),
+                    ]
+                }
+                ReturnStrategy::Direct => {
+                    vec![format!("{}{}", indent, self.call_expr)]
+                }
             }
         }
     }
@@ -115,25 +217,46 @@ impl MethodReturnBuilder {
     /// Build R6-style return (uses invisible(self) for chaining).
     pub fn build_r6_body(&self) -> Vec<String> {
         let indent = " ".repeat(self.indent);
-        match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                vec![format!(
-                    "{}{}$new(.ptr = {})",
-                    indent, class_name, self.call_expr
-                )]
+        if self.error_in_r {
+            let mut lines = vec![format!("{}.val <- {}", indent, self.call_expr)];
+            lines.extend(self.error_check_lines(&indent));
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    lines.push(format!("{}{}$new(.ptr = .val)", indent, class_name));
+                }
+                ReturnStrategy::ChainableMutation => {
+                    lines.push(format!("{}invisible(self)", indent));
+                }
+                ReturnStrategy::Direct => {
+                    lines.push(format!("{}.val", indent));
+                }
             }
-            ReturnStrategy::ChainableMutation => {
-                vec![
-                    format!("{}{}", indent, self.call_expr),
-                    format!("{}invisible(self)", indent),
-                ]
-            }
-            ReturnStrategy::Direct => {
-                vec![format!("{}{}", indent, self.call_expr)]
+            lines
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    vec![format!(
+                        "{}{}$new(.ptr = {})",
+                        indent, class_name, self.call_expr
+                    )]
+                }
+                ReturnStrategy::ChainableMutation => {
+                    vec![
+                        format!("{}{}", indent, self.call_expr),
+                        format!("{}invisible(self)", indent),
+                    ]
+                }
+                ReturnStrategy::Direct => {
+                    vec![format!("{}{}", indent, self.call_expr)]
+                }
             }
         }
     }
@@ -143,60 +266,118 @@ impl MethodReturnBuilder {
         let indent = " ".repeat(self.indent);
         let chain_var = self.chain_var.as_deref().unwrap_or("x");
 
-        match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                vec![format!(
-                    "{}structure({}, class = \"{}\")",
-                    indent, self.call_expr, class_name
-                )]
+        if self.error_in_r {
+            let mut lines = vec![format!("{}.val <- {}", indent, self.call_expr)];
+            lines.extend(self.error_check_lines(&indent));
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    lines.push(format!(
+                        "{}structure(.val, class = \"{}\")",
+                        indent, class_name
+                    ));
+                }
+                ReturnStrategy::ChainableMutation => {
+                    lines.push(format!("{}{}", indent, chain_var));
+                }
+                ReturnStrategy::Direct => {
+                    lines.push(format!("{}.val", indent));
+                }
             }
-            ReturnStrategy::ChainableMutation => {
-                vec![
-                    format!("{}{}", indent, self.call_expr),
-                    format!("{}{}", indent, chain_var),
-                ]
-            }
-            ReturnStrategy::Direct => {
-                vec![format!("{}{}", indent, self.call_expr)]
+            lines
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    vec![format!(
+                        "{}structure({}, class = \"{}\")",
+                        indent, self.call_expr, class_name
+                    )]
+                }
+                ReturnStrategy::ChainableMutation => {
+                    vec![
+                        format!("{}{}", indent, self.call_expr),
+                        format!("{}{}", indent, chain_var),
+                    ]
+                }
+                ReturnStrategy::Direct => {
+                    vec![format!("{}{}", indent, self.call_expr)]
+                }
             }
         }
     }
 
     /// Build S7-style return (creates new S7 object with .ptr).
+    ///
+    /// In error_in_r mode, returns a multi-line block expression.
     pub fn build_s7_inline(&self) -> String {
-        match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                format!("{}(.ptr = {})", class_name, self.call_expr)
+        if self.error_in_r {
+            let inner = match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    format!("{}(.ptr = .val)", class_name)
+                }
+                ReturnStrategy::ChainableMutation => "x".to_string(),
+                ReturnStrategy::Direct => ".val".to_string(),
+            };
+            error_in_r_inline_block(&self.call_expr, &inner)
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    format!("{}(.ptr = {})", class_name, self.call_expr)
+                }
+                ReturnStrategy::ChainableMutation => {
+                    format!("{{ {}; x }}", self.call_expr)
+                }
+                ReturnStrategy::Direct => self.call_expr.clone(),
             }
-            ReturnStrategy::ChainableMutation => {
-                format!("{{ {}; x }}", self.call_expr)
-            }
-            ReturnStrategy::Direct => self.call_expr.clone(),
         }
     }
 
     /// Build S4-style return (uses methods::new()).
+    ///
+    /// In error_in_r mode, returns a multi-line block expression.
     pub fn build_s4_inline(&self) -> String {
-        match self.strategy {
-            ReturnStrategy::ReturnSelf => {
-                let class_name = self
-                    .class_name
-                    .as_ref()
-                    .expect("class_name required for ReturnSelf strategy");
-                format!("methods::new(\"{}\", ptr = {})", class_name, self.call_expr)
+        if self.error_in_r {
+            let inner = match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    format!("methods::new(\"{}\", ptr = .val)", class_name)
+                }
+                ReturnStrategy::ChainableMutation => "x".to_string(),
+                ReturnStrategy::Direct => ".val".to_string(),
+            };
+            error_in_r_inline_block(&self.call_expr, &inner)
+        } else {
+            match self.strategy {
+                ReturnStrategy::ReturnSelf => {
+                    let class_name = self
+                        .class_name
+                        .as_ref()
+                        .expect("class_name required for ReturnSelf strategy");
+                    format!("methods::new(\"{}\", ptr = {})", class_name, self.call_expr)
+                }
+                ReturnStrategy::ChainableMutation => {
+                    format!("{{ {}; x }}", self.call_expr)
+                }
+                ReturnStrategy::Direct => self.call_expr.clone(),
             }
-            ReturnStrategy::ChainableMutation => {
-                format!("{{ {}; x }}", self.call_expr)
-            }
-            ReturnStrategy::Direct => self.call_expr.clone(),
         }
     }
 }

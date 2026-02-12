@@ -71,7 +71,7 @@ This runs cargo build and the document binary, then copies the generated
 ## CRAN vs development builds
 
 - **CRAN builds**: `NOT_CRAN` is not "true", so vendoring is skipped. The
-  tarball must already contain all vendored dependencies in `src/vendor/`.
+  tarball must already contain all vendored dependencies in `vendor/`.
 
 - **Development builds**: `NOT_CRAN=true` (set by devtools or configure), so
   `cargo vendor` runs to refresh dependencies.
@@ -83,7 +83,7 @@ This runs cargo build and the document binary, then copies the generated
 This package is structured to be CRAN-compatible provided you follow these
 rules:
 
-- Ensure all Rust dependencies are vendored in `src/vendor/` and included in
+- Ensure all Rust dependencies are vendored in `vendor/` and included in
   the source tarball.
 - Do not enable non‑API R symbols unless you are prepared to handle CRAN checks.
 - Keep `configure`, `config.guess`, and `config.sub` committed and up to date.

@@ -146,7 +146,7 @@ cargo_deps(depth = 2)
 - Rust files (Cargo.toml, lib.rs, build.rs, document.rs.in)
 - Build templates (src/Makevars.in, src/entrypoint.c.in)
 - Package docs and ignore files (.Rbuildignore, .gitignore)
-- Vendored miniextendr crates under src/vendor/
+- Vendored miniextendr crates under vendor/
 
 ## License
 

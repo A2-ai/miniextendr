@@ -218,7 +218,7 @@ under the following constraints:
   Rust-only binaries and tests, not for package shared libraries.
 - **Avoid non-API symbols** unless you are prepared for CRAN checks to flag
   them. Keep `nonapi` disabled by default.
-- **Vendor Rust dependencies** into `rpkg/src/vendor/` and include them in the
+- **Vendor Rust dependencies** into `rpkg/vendor/` and include them in the
   source tarball.
 - **Commit generated artifacts** required by CRAN: `rpkg/configure`,
   `rpkg/config.guess`, `rpkg/config.sub`, and `rpkg/R/miniextendr_wrappers.R`.
