@@ -15,8 +15,6 @@
 //! - class attribute: `"rust_error_value"`
 //! - `__rust_error__` attribute: `TRUE`
 
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use crate::ffi::{self, SEXP};
 
 /// Build a tagged error-value SEXP for transport across the Rust→R boundary.
@@ -75,53 +73,4 @@ pub fn make_rust_error_value(message: &str, kind: &str) -> SEXP {
         ffi::Rf_unprotect(3);
         list
     }
-}
-
-// =============================================================================
-// R-origin error boundary crossing detection
-// =============================================================================
-
-/// Process-global flag: set when an R-origin error (longjmp) is detected
-/// crossing a Rust protection boundary.
-static R_ERROR_CROSSED_RUST_BOUNDARY: AtomicBool = AtomicBool::new(false);
-
-/// One-shot guard: once the warning has been emitted, don't emit again.
-static R_ERROR_WARNING_EMITTED: AtomicBool = AtomicBool::new(false);
-
-/// Mark that an R-origin error crossed a Rust protection boundary.
-///
-/// Called from `unwind_protect` cleanup handler and `worker` cleanup handler
-/// when an R longjmp is detected during Rust execution.
-pub fn mark_r_error_crossed_rust_boundary() {
-    R_ERROR_CROSSED_RUST_BOUNDARY.store(true, Ordering::Release);
-}
-
-/// Check and reset the R-error-crossed-boundary flag.
-///
-/// Returns `true` if an R error crossed a Rust boundary since the last check.
-/// The flag is atomically reset to `false`.
-pub fn take_r_error_crossed_rust_boundary_flag() -> bool {
-    R_ERROR_CROSSED_RUST_BOUNDARY.swap(false, Ordering::AcqRel)
-}
-
-/// Check if the one-shot warning should be emitted.
-///
-/// Returns `true` exactly once per process: when `take_r_error_crossed_rust_boundary_flag()`
-/// returns true AND the warning hasn't been emitted yet.
-pub fn should_emit_r_error_boundary_warning() -> bool {
-    if take_r_error_crossed_rust_boundary_flag()
-        && !R_ERROR_WARNING_EMITTED.swap(true, Ordering::AcqRel)
-    {
-        return true;
-    }
-    false
-}
-
-/// C-callable function for generated R wrappers to check the boundary warning.
-///
-/// Returns `TRUE` (1) exactly once when warning should be emitted, `FALSE` (0) otherwise.
-#[unsafe(no_mangle)]
-pub extern "C-unwind" fn miniextendr_check_r_error_boundary() -> ffi::SEXP {
-    let should_warn = should_emit_r_error_boundary_warning();
-    unsafe { ffi::Rf_ScalarLogical(if should_warn { 1 } else { 0 }) }
 }

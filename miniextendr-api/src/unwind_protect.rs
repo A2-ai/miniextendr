@@ -156,8 +156,6 @@ where
 
     unsafe extern "C-unwind" fn cleanup_handler(_data: *mut c_void, jump: Rboolean) {
         if jump != Rboolean::FALSE {
-            // Mark that an R error crossed a Rust boundary (for diagnostics)
-            crate::error_value::mark_r_error_crossed_rust_boundary();
             // R is about to longjmp - trigger a Rust panic so we can unwind properly
             std::panic::panic_any(RErrorMarker);
         }
@@ -254,7 +252,6 @@ where
 
     unsafe extern "C-unwind" fn cleanup_handler(_data: *mut c_void, jump: Rboolean) {
         if jump != Rboolean::FALSE {
-            crate::error_value::mark_r_error_crossed_rust_boundary();
             std::panic::panic_any(RErrorMarker);
         }
     }

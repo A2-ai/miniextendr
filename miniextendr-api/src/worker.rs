@@ -368,8 +368,6 @@ where
                     jump: Rboolean,
                 ) {
                     if jump != Rboolean::FALSE {
-                        // Mark that an R error crossed a Rust boundary (for diagnostics)
-                        crate::error_value::mark_r_error_crossed_rust_boundary();
                         // R is about to longjmp. We MUST send an error response to the worker
                         // before continuing the unwind—the worker is blocked on response_rx.recv()
                         // and would deadlock if we don't send something.
