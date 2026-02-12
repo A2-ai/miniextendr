@@ -376,6 +376,8 @@ pub struct MethodAttrs {
     pub rng: bool,
     /// Return `Result<T, E>` to R without unwrapping.
     pub unwrap_in_r: bool,
+    /// Transport Rust-origin errors as tagged values; R wrapper raises condition.
+    pub error_in_r: bool,
     /// Parameter defaults from `#[miniextendr(defaults(param = "value", ...))]`
     pub defaults: std::collections::HashMap<String, String>,
     /// Span of `defaults(...)` for error reporting.
@@ -1046,6 +1048,8 @@ impl ParsedMethod {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
                             method_attrs.unwrap_in_r = true;
+                        } else if inner.path.is_ident("error_in_r") {
+                            method_attrs.error_in_r = true;
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1097,7 +1101,7 @@ impl ParsedMethod {
                             method_attrs.deep_clone = true;
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
                             ));
                         }
                         Ok(())
@@ -1140,6 +1144,8 @@ impl ParsedMethod {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
                     method_attrs.unwrap_in_r = true;
+                } else if meta.path.is_ident("error_in_r") {
+                    method_attrs.error_in_r = true;
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.
                     use syn::spanned::Spanned;
@@ -1849,6 +1855,10 @@ pub fn generate_method_c_wrapper(
         builder = builder.strict();
     }
 
+    if method.method_attrs.error_in_r {
+        builder = builder.error_in_r();
+    }
+
     builder.build().generate()
 }
 
@@ -1931,7 +1941,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build());
 
         lines.push("}".to_string());
@@ -1963,7 +1974,8 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build());
 
         lines.push("}".to_string());
@@ -2165,6 +2177,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .with_indent(6); // R6 methods have 6-space indent
         lines.extend(return_builder.build_r6_body());
 
@@ -2188,6 +2201,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .with_indent(6);
         lines.extend(return_builder.build_r6_body());
 
@@ -2302,6 +2316,7 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
                 let return_builder = crate::MethodReturnBuilder::new(call)
                     .with_strategy(strategy)
                     .with_class_name(class_name.clone())
+                    .with_error_in_r(ctx.method.method_attrs.error_in_r)
                     .with_indent(6); // R6 active bindings have 6-space indent
                 lines.extend(return_builder.build_r6_body());
 
@@ -2368,7 +2383,8 @@ pub fn generate_r6_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build_r6_body());
 
         lines.push("}".to_string());
@@ -2478,7 +2494,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_chain_var("x".to_string());
+            .with_chain_var("x".to_string())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());
@@ -2508,7 +2525,8 @@ pub fn generate_s3_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());
@@ -3022,6 +3040,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call.clone())
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Inject lifecycle prelude if present
@@ -3096,6 +3115,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_error_in_r(ctx.method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Use matching formals for method (with or without ...)
@@ -3147,6 +3167,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .build_s7_inline();
         lines.push(format!("  {}", return_expr));
 
@@ -3196,6 +3217,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call_with_from)
                 .with_strategy(strategy)
                 .with_class_name(class_name.clone())
+                .with_error_in_r(method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package
@@ -3230,6 +3252,7 @@ pub fn generate_s7_r_wrapper(parsed_impl: &ParsedImpl) -> String {
             let return_expr = crate::MethodReturnBuilder::new(call)
                 .with_strategy(crate::ReturnStrategy::ReturnSelf)
                 .with_class_name(to_type.clone())
+                .with_error_in_r(method.method_attrs.error_in_r)
                 .build_s7_inline();
 
             // Use imported `convert` - requires `@importFrom S7 convert` in package
@@ -3362,6 +3385,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_expr = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_error_in_r(method.method_attrs.error_in_r)
             .build_s4_inline();
 
         // Inject lifecycle prelude if present
@@ -3411,6 +3435,7 @@ pub fn generate_s4_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_expr = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r)
             .build_s4_inline();
         lines.push(format!("  {}", return_expr));
 
@@ -3647,7 +3672,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
             .with_class_name(class_name.clone())
-            .with_chain_var("x".to_string());
+            .with_chain_var("x".to_string())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());
@@ -3674,7 +3700,8 @@ pub fn generate_vctrs_r_wrapper(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(ctx.method);
         let return_builder = crate::MethodReturnBuilder::new(ctx.static_call())
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_error_in_r(ctx.method.method_attrs.error_in_r);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());
@@ -3771,7 +3798,8 @@ pub fn generate_as_coercion_methods(parsed_impl: &ParsedImpl) -> String {
         let strategy = crate::ReturnStrategy::for_method(method);
         let return_builder = crate::MethodReturnBuilder::new(call)
             .with_strategy(strategy)
-            .with_class_name(class_name.clone());
+            .with_class_name(class_name.clone())
+            .with_error_in_r(method.method_attrs.error_in_r);
         lines.extend(return_builder.build_s3_body());
 
         lines.push("}".to_string());
