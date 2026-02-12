@@ -1,0 +1,5 @@
+error: DataFrameRow does not support generic structs
+ --> tests/ui/derive_dataframe_generic.rs:6:11
+  |
+6 | struct Row<T> {
+  |           ^^^

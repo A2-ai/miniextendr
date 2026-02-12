@@ -208,7 +208,16 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
         return Err(VctrsError::NotMainThread);
     }
 
-    // Load obj_is_vector
+    // Check for double-init before doing any work
+    if is_vctrs_initialized() {
+        return Err(VctrsError::AlreadyInitialized);
+    }
+
+    // Stage 1: Load ALL callables into local variables first.
+    // If any lookup fails, we return the error without committing anything
+    // to the OnceLocks. This prevents partial initialization where
+    // is_vctrs_initialized() returns true but some callables are missing.
+
     let obj_is_vector_ptr =
         unsafe { crate::ffi::R_GetCCallable(c"vctrs".as_ptr(), c"obj_is_vector".as_ptr()) };
     if obj_is_vector_ptr.is_none() {
@@ -217,11 +226,7 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
         });
     }
     let obj_is_vector_fn: ObjIsVectorFn = unsafe { std::mem::transmute(obj_is_vector_ptr) };
-    if P_OBJ_IS_VECTOR.set(obj_is_vector_fn).is_err() {
-        return Err(VctrsError::AlreadyInitialized);
-    }
 
-    // Load short_vec_size
     let short_vec_size_ptr =
         unsafe { crate::ffi::R_GetCCallable(c"vctrs".as_ptr(), c"short_vec_size".as_ptr()) };
     if short_vec_size_ptr.is_none() {
@@ -230,11 +235,7 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
         });
     }
     let short_vec_size_fn: ShortVecSizeFn = unsafe { std::mem::transmute(short_vec_size_ptr) };
-    // Note: We don't check set() here because if obj_is_vector succeeded,
-    // this should too (same init call). If it fails, it's a logic error.
-    let _ = P_SHORT_VEC_SIZE.set(short_vec_size_fn);
 
-    // Load short_vec_recycle
     let short_vec_recycle_ptr =
         unsafe { crate::ffi::R_GetCCallable(c"vctrs".as_ptr(), c"short_vec_recycle".as_ptr()) };
     if short_vec_recycle_ptr.is_none() {
@@ -244,7 +245,16 @@ pub fn init_vctrs() -> Result<(), VctrsError> {
     }
     let short_vec_recycle_fn: ShortVecRecycleFn =
         unsafe { std::mem::transmute(short_vec_recycle_ptr) };
+
+    // Stage 2: All lookups succeeded. Commit all OnceLocks atomically.
+    // P_OBJ_IS_VECTOR is committed last because is_vctrs_initialized()
+    // checks it — this ensures all callables are available before we
+    // advertise initialization as complete.
+    let _ = P_SHORT_VEC_SIZE.set(short_vec_size_fn);
     let _ = P_SHORT_VEC_RECYCLE.set(short_vec_recycle_fn);
+    if P_OBJ_IS_VECTOR.set(obj_is_vector_fn).is_err() {
+        return Err(VctrsError::AlreadyInitialized);
+    }
 
     Ok(())
 }

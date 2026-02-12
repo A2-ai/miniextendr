@@ -38,18 +38,14 @@ pub(crate) fn analyze_return_type(
     return_pref: crate::miniextendr_fn::ReturnPref,
     unwrap_in_r: bool,
     strict: bool,
+    error_in_r: bool,
 ) -> ReturnTypeAnalysis {
     let mut returns_sexp = false;
     let mut is_invisible = false;
     let mut post_call_statements = Vec::new();
 
-    let option_none_error_msg = quote::quote! {
-        concat!(
-            "miniextendr function `",
-            stringify!(#rust_ident),
-            "` returned None"
-        )
-    };
+    let fn_name_str = rust_ident.to_string();
+    let option_none_error_msg = format!("miniextendr function `{fn_name_str}` returned None");
 
     let return_expression = match output {
         // No return type (no arrow)
@@ -85,6 +81,7 @@ pub(crate) fn analyze_return_type(
                     &mut is_invisible,
                     &mut post_call_statements,
                     strict,
+                    error_in_r,
                 )
             }
 
@@ -100,6 +97,7 @@ pub(crate) fn analyze_return_type(
                     &mut is_invisible,
                     &mut post_call_statements,
                     unwrap_in_r,
+                    error_in_r,
                 )
             }
 
@@ -159,14 +157,16 @@ pub(crate) fn analyze_return_type(
 }
 
 /// Analyze `Option<T>` return type.
+#[allow(clippy::too_many_arguments)]
 fn analyze_option_type(
     type_path: &syn::TypePath,
     rust_result_ident: &syn::Ident,
-    option_none_error_msg: &proc_macro2::TokenStream,
+    option_none_error_msg: &str,
     returns_sexp: &mut bool,
     is_invisible: &mut bool,
     post_call_statements: &mut Vec<proc_macro2::TokenStream>,
     strict: bool,
+    error_in_r: bool,
 ) -> proc_macro2::TokenStream {
     let seg = type_path.path.segments.last().unwrap();
     let inner_ty = crate::first_type_argument(seg);
@@ -175,14 +175,26 @@ fn analyze_option_type(
     let is_sexp_inner = inner_ty.is_some_and(is_sexp_type);
 
     if is_unit_inner {
-        // Option<()> - invisible, panic on None
+        // Option<()> - invisible, error on None
         *is_invisible = true;
-        post_call_statements.push(quote::quote! {
-            if #rust_result_ident.is_none() {
-                panic!(#option_none_error_msg);
+        if error_in_r {
+            // error_in_r: return tagged error value on None (no post_call unwrap)
+            quote::quote! {
+                match #rust_result_ident {
+                    Some(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
+                    None => ::miniextendr_api::error_value::make_rust_error_value(
+                        #option_none_error_msg, "none_err"
+                    ),
+                }
             }
-        });
-        quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+        } else {
+            post_call_statements.push(quote::quote! {
+                if #rust_result_ident.is_none() {
+                    ::miniextendr_api::error::r_stop(#option_none_error_msg);
+                }
+            });
+            quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
+        }
     } else if is_sexp_inner {
         // Option<SEXP> - return SEXP or R_NilValue for None
         *is_invisible = false;
@@ -215,6 +227,7 @@ fn analyze_result_type(
     is_invisible: &mut bool,
     post_call_statements: &mut Vec<proc_macro2::TokenStream>,
     unwrap_in_r: bool,
+    error_in_r: bool,
 ) -> proc_macro2::TokenStream {
     let seg = type_path.path.segments.last().unwrap();
     let ok_ty = crate::first_type_argument(seg);
@@ -226,6 +239,7 @@ fn analyze_result_type(
         err_ty.is_some_and(|ty| matches!(ty, syn::Type::Tuple(t) if t.elems.is_empty()));
 
     // Special case: Result<T, ()> - convert to Result<T, NullOnErr> which returns NULL on Err
+    // Unit error is a deliberate sentinel, not a Rust failure - error_in_r does not change this.
     if err_is_unit {
         if ok_is_unit {
             // Result<(), ()> - invisible, always returns NULL
@@ -245,6 +259,43 @@ fn analyze_result_type(
             // Use IntoR which returns NULL on Err(NullOnErr)
             quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
         }
+    } else if error_in_r {
+        // error_in_r mode: return tagged error value on Err (takes priority over unwrap_in_r)
+        if ok_is_unit {
+            // Result<(), E> - invisible, return error value on Err
+            *is_invisible = true;
+            quote::quote! {
+                match #rust_result_ident {
+                    Ok(()) => unsafe { ::miniextendr_api::ffi::R_NilValue },
+                    Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
+                        &format!("{:?}", e), "result_err"
+                    ),
+                }
+            }
+        } else if ok_is_sexp {
+            // Result<SEXP, E> - return SEXP or error value
+            *is_invisible = false;
+            *returns_sexp = true;
+            quote::quote! {
+                match #rust_result_ident {
+                    Ok(v) => v,
+                    Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
+                        &format!("{:?}", e), "result_err"
+                    ),
+                }
+            }
+        } else {
+            // Result<T, E> - convert Ok to SEXP, return error value on Err
+            *is_invisible = false;
+            quote::quote! {
+                match #rust_result_ident {
+                    Ok(v) => ::miniextendr_api::into_r::IntoR::into_sexp(v),
+                    Err(e) => ::miniextendr_api::error_value::make_rust_error_value(
+                        &format!("{:?}", e), "result_err"
+                    ),
+                }
+            }
+        }
     } else if unwrap_in_r {
         // Result<T, E> - return the Result to R without unwrapping
         // Uses IntoR impl which returns list(error=...) on Err
@@ -256,12 +307,12 @@ fn analyze_result_type(
         }
         quote::quote! { ::miniextendr_api::into_r::IntoR::into_sexp(#rust_result_ident) }
     } else if ok_is_unit {
-        // Result<(), E> - invisible, panic on Err
+        // Result<(), E> - invisible, r_stop on Err
         // Uses Debug format so it works with any E: Debug
         *is_invisible = true;
         post_call_statements.push(quote::quote! {
             if let Err(e) = #rust_result_ident {
-                panic!("{:?}", e);
+                ::miniextendr_api::error::r_stop(&format!("{:?}", e));
             }
         });
         quote::quote! { unsafe { ::miniextendr_api::ffi::R_NilValue } }
@@ -275,7 +326,7 @@ fn analyze_result_type(
         post_call_statements.push(quote::quote! {
             let #rust_result_ident = match #rust_result_ident {
                 Ok(v) => v,
-                Err(e) => panic!("{:?}", e),
+                Err(e) => ::miniextendr_api::error::r_stop(&format!("{:?}", e)),
             };
         });
         if ok_is_sexp {

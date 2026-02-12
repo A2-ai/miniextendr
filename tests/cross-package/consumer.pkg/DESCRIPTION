@@ -17,8 +17,7 @@ Roxygen: list(markdown = TRUE)
 RoxygenNote: 7.3.2
 SystemRequirements: Cargo (Rust package manager), rustc >= 1.85
 Imports:
-    methods,
-    miniextendr
+    methods
 Suggests:
     producer.pkg,
     testthat (>= 3.0.0)

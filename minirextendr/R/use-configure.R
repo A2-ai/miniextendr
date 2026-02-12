@@ -5,9 +5,11 @@
 #' Creates the autoconf configure.ac template that handles Rust toolchain
 #' discovery, feature flags, and generates build files.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_configure <- function() {
+use_miniextendr_configure <- function(path = ".") {
+  with_project(path)
   use_template("configure.ac", data = template_data())
   cli::cli_alert_info("Run {.code minirextendr::miniextendr_autoconf()} to generate configure script")
   invisible(TRUE)
@@ -18,9 +20,11 @@ use_miniextendr_configure <- function() {
 #' Creates bootstrap.R which runs during package build when
 #' `Config/build/bootstrap: TRUE` is set in DESCRIPTION.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_bootstrap <- function() {
+use_miniextendr_bootstrap <- function(path = ".") {
+  with_project(path)
   use_template("bootstrap.R")
   invisible(TRUE)
 }
@@ -30,9 +34,11 @@ use_miniextendr_bootstrap <- function() {
 #' Creates cleanup, cleanup.win, and cleanup.ucrt scripts that clean
 #' build artifacts after installation (used on CRAN).
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
 #' @export
-use_miniextendr_cleanup <- function() {
+use_miniextendr_cleanup <- function(path = ".") {
+  with_project(path)
   use_template("cleanup")
   use_template("cleanup.win")
   use_template("cleanup.ucrt")
@@ -53,9 +59,11 @@ use_miniextendr_cleanup <- function() {
 #' Creates configure.win and configure.ucrt that delegate to the main
 #' POSIX configure script.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
 #' @export
-use_miniextendr_configure_win <- function() {
+use_miniextendr_configure_win <- function(path = ".") {
+  with_project(path)
   use_template("configure.win")
   use_template("configure.ucrt")
   invisible(TRUE)
@@ -67,9 +75,11 @@ use_miniextendr_configure_win <- function() {
 #' to the tools/ directory. These are required for cross-compilation support
 #' and are referenced by AC_CONFIG_AUX_DIR([tools]) in configure.ac.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were copied
 #' @export
-use_miniextendr_config_scripts <- function() {
+use_miniextendr_config_scripts <- function(path = ".") {
+  with_project(path)
   # These go in tools/ directory per AC_CONFIG_AUX_DIR([tools]) in configure.ac
   ensure_dir(usethis::proj_path("tools"))
   for (script in c("config.guess", "config.sub")) {
@@ -89,9 +99,11 @@ use_miniextendr_config_scripts <- function() {
 #' Creates src/Makevars.in which is processed by configure to generate
 #' the actual Makevars used during package build.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
 #' @export
-use_miniextendr_makevars <- function() {
+use_miniextendr_makevars <- function(path = ".") {
+  with_project(path)
   ensure_dir(usethis::proj_path("src"))
   use_template("Makevars.in", save_as = "src/Makevars.in")
   use_template("win.def.in", save_as = "src/win.def.in")

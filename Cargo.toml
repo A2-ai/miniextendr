@@ -11,7 +11,7 @@ members = [
 exclude = [
     "rpkg",
     "rpkg/src/rust",
-    "rpkg/src/vendor",
+    "rpkg/vendor",
     "tests/cross-package/consumer.pkg",
     "tests/cross-package/producer.pkg",
     "tests/cross-package/consumer.pkg/src/rust/",
@@ -20,10 +20,10 @@ exclude = [
 ]
 
 [workspace.dependencies]
-miniextendr-api = { version = "*" , path = "miniextendr-api" }
-miniextendr-macros = { version = "*" , path = "miniextendr-macros" }
+miniextendr-api = { version = "*", path = "miniextendr-api" }
+miniextendr-macros = { version = "*", path = "miniextendr-macros" }
 miniextendr-macros-core = { version = "*", path = "miniextendr-macros-core" }
-miniextendr-engine = { version = "*" , path = "miniextendr-engine" }
+miniextendr-engine = { version = "*", path = "miniextendr-engine" }
 proc-macro2 = { version = "1.0", features = ["span-locations"] }
 quote = "1.0"
 syn = { version = "2.0", features = ["full", "extra-traits"] }

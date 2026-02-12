@@ -17,3 +17,43 @@ fn test_rconn_struct_size() {
     // Should be less than 2KB
     assert!(size < 2048, "Rconn struct seems too large: {} bytes", size);
 }
+
+#[test]
+fn test_catch_connection_panic_ok() {
+    let result = catch_connection_panic(42, || 7);
+    assert_eq!(result, 7);
+}
+
+#[test]
+fn test_catch_connection_panic_catches_panic() {
+    let result = catch_connection_panic(42, || {
+        panic!("test panic");
+    });
+    assert_eq!(result, 42);
+}
+
+#[test]
+fn test_catch_connection_panic_catches_string_panic() {
+    let result = catch_connection_panic(-1, || {
+        let msg = "custom message".to_string();
+        std::panic::panic_any(msg);
+    });
+    assert_eq!(result, -1);
+}
+
+#[test]
+fn test_catch_connection_panic_catches_non_string_panic() {
+    let result = catch_connection_panic(0usize, || {
+        std::panic::panic_any(123i32);
+    });
+    assert_eq!(result, 0);
+}
+
+#[test]
+fn test_checked_mul_overflow_returns_zero() {
+    // Simulate what read/write trampolines do: checked_mul on extreme values
+    let size: usize = usize::MAX;
+    let nitems: usize = 2;
+    let total = size.checked_mul(nitems);
+    assert!(total.is_none(), "usize::MAX * 2 should overflow");
+}

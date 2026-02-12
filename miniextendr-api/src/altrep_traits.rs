@@ -21,6 +21,40 @@ use crate::ffi::{R_xlen_t, Rcomplex, SEXP, SEXPTYPE};
 use core::ffi::c_void;
 
 // =============================================================================
+// ALTREP GUARD MODE
+// =============================================================================
+
+/// Controls the panic/error guard used around ALTREP trampoline callbacks.
+///
+/// Each mode trades off safety vs performance:
+///
+/// - [`Unsafe`](AltrepGuard::Unsafe): No protection. If the callback panics,
+///   behavior is undefined (unwinding through C frames). Use only for trivial
+///   callbacks that cannot panic.
+///
+/// - [`RustUnwind`](AltrepGuard::RustUnwind): Wraps in `catch_unwind`, converting
+///   Rust panics to R errors. This is the **default** and safe for all pure-Rust
+///   callbacks. Overhead: ~1-2ns per call.
+///
+/// - [`RUnwind`](AltrepGuard::RUnwind): Wraps in `R_UnwindProtect`, catching both
+///   Rust panics and R `longjmp` errors. Use when ALTREP callbacks invoke R API
+///   functions that might error (e.g., `Rf_allocVector`, `Rf_eval`).
+///
+/// The guard is selected via the `const GUARD` associated constant on the [`Altrep`]
+/// trait. Since it is a const, the compiler eliminates dead branches at
+/// monomorphization time — zero runtime overhead for the chosen mode.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum AltrepGuard {
+    /// No protection. Fastest, but if the callback panics, behavior is undefined.
+    Unsafe,
+    /// `catch_unwind` — catches Rust panics, converts to R errors. Default.
+    RustUnwind,
+    /// `with_r_unwind_protect` — catches both Rust panics and R longjmps.
+    /// Use when ALTREP callbacks invoke R API functions that might error.
+    RUnwind,
+}
+
+// =============================================================================
 // ALTREP BASE
 // =============================================================================
 
@@ -28,6 +62,13 @@ use core::ffi::c_void;
 ///
 /// `length` is REQUIRED (no default). All other methods are optional with HAS_* gating.
 pub trait Altrep {
+    /// The guard mode for all ALTREP trampolines on this type.
+    ///
+    /// Defaults to [`AltrepGuard::RustUnwind`] (catches Rust panics).
+    /// Override to [`AltrepGuard::Unsafe`] for maximum performance or
+    /// [`AltrepGuard::RUnwind`] when callbacks call R API functions.
+    const GUARD: AltrepGuard = AltrepGuard::RustUnwind;
+
     // --- REQUIRED ---
     /// Returns the length of the ALTREP vector.
     /// This is REQUIRED - R cannot determine vector length without it.

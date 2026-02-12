@@ -188,27 +188,28 @@ The trait ABI enables cross-package dispatch where:
 ### Architecture
 
 ```
-miniextendr (rpkg)              producer.pkg / consumer.pkg
-──────────────────────          ────────────────────────────
-mx_abi.c                        entrypoint.c
-  mx_abi_register()               miniextendr_init_ccallables()
-    R_RegisterCCallable(            R_GetCCallable(
-      "miniextendr",                  "miniextendr",
-      "mx_wrap", ...)                 "mx_wrap") → function pointer
+Every package (rpkg, producer.pkg, consumer.pkg, ...)
+────────────────────────────────────────────────────
+mx_abi.c (compiled into each package's .so)
+  mx_abi_register()                  ← called from entrypoint.c
+    init_tag()                       ← Rf_install("miniextendr::mx_erased")
+    R_RegisterCCallable(...)         ← registers for cross-package use
+  mx_wrap() / mx_get() / mx_query() ← linked directly via extern "C"
 ```
 
-- The main `miniextendr` package registers the C-callables (`mx_wrap`, `mx_get`, `mx_query`)
-- Other packages call `miniextendr_init_ccallables()` to load those function pointers
+- Each package compiles its own `mx_abi.c` into its `.so`
+- Rust calls `mx_wrap`/`mx_get`/`mx_query` directly (no `R_GetCCallable` indirection)
+- Cross-package dispatch works because all packages share the same `Rf_install("miniextendr::mx_erased")` tag symbol
 
 ### Requirements
 
-1. **Call `init_ccallables()` in `R_init_*`**: This loads the function pointers from miniextendr.
+1. **Call `mx_abi_register()` in `R_init_*`**: This initializes the tag symbol and registers C-callables.
 
 ```c
 void R_init_mypkg(DllInfo *dll) {
     miniextendr_panic_hook();
     miniextendr_worker_init();
-    miniextendr_init_ccallables();  // Required for trait ABI
+    mx_abi_register();  // Required for trait ABI
     // ...
 }
 ```

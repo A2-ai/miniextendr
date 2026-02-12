@@ -97,7 +97,7 @@
 //! │     ├── R_CallMethodDef array from all registered items                  │
 //! │     ├── R_init_<name>_miniextendr() initialization function              │
 //! │     ├── Combined R wrapper code (all functions + classes)                │
-//! │     └── Trait ABI init_ccallables() call if traits present               │
+//! │     └── Trait ABI vtable/view types if traits present                    │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
 //!
@@ -635,6 +635,7 @@ pub fn miniextendr(
         internal,
         noexport,
         doc,
+        error_in_r,
     } = syn::parse_macro_input!(attr as MiniextendrFnAttrs);
 
     let mut parsed = syn::parse_macro_input!(item as MiniextendrFunctionParsed);
@@ -848,6 +849,7 @@ pub fn miniextendr(
         return_pref,
         unwrap_in_r,
         strict,
+        error_in_r,
     );
 
     let returns_sexp = return_analysis.returns_sexp;
@@ -926,6 +928,14 @@ pub fn miniextendr(
     };
     let source_loc_doc = source_location_doc(rust_ident.span());
 
+    // Select unwind protection function: error_in_r returns tagged error values on panic,
+    // standard mode raises R errors via Rf_errorcall.
+    let unwind_protect_fn = if error_in_r {
+        quote::quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect_error_in_r }
+    } else {
+        quote::quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
+    };
+
     let c_wrapper = if abi.is_some() {
         proc_macro2::TokenStream::new()
     } else if use_main_thread {
@@ -936,6 +946,16 @@ pub fn miniextendr(
         );
         if rng {
             // RNG variant: wrap in catch_unwind so we can call PutRNGstate before error handling
+            let rng_panic_handler = if error_in_r {
+                quote::quote! {
+                    ::miniextendr_api::error_value::make_rust_error_value(
+                        &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                        "panic",
+                    )
+                }
+            } else {
+                quote::quote! { ::std::panic::resume_unwind(payload) }
+            };
             quote::quote! {
                 #[doc = #c_wrapper_doc]
                 #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
@@ -946,7 +966,7 @@ pub fn miniextendr(
                     #rng_get
                     let __result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(|| {
                         #(#pre_call_statements)*
-                        ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                        #unwind_protect_fn(
                             || {
                                 #(#closure_statements)*
                                 let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
@@ -959,7 +979,7 @@ pub fn miniextendr(
                     #rng_put
                     match __result {
                         Ok(sexp) => sexp,
-                        Err(payload) => ::std::panic::resume_unwind(payload),
+                        Err(payload) => { #rng_panic_handler },
                     }
                 }
             }
@@ -974,7 +994,7 @@ pub fn miniextendr(
                 #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
                     #(#pre_call_statements)*
 
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    #unwind_protect_fn(
                         || {
                             #(#closure_statements)*
                             let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
@@ -988,53 +1008,94 @@ pub fn miniextendr(
         }
     } else {
         // Pure Rust functions: use worker thread strategy
-        // 1. Argument conversion on main thread
-        // 2. Function execution + Option/Result handling on worker thread
-        // 3. SEXP conversion on main thread (protected by with_r_unwind_protect)
-        //
-        // The entire body is wrapped in catch_unwind to catch panics from:
-        // - TryFromSexp::try_from_sexp().unwrap() (argument conversion)
-        // - IntoR::into_sexp() (result conversion) - also wrapped in with_r_unwind_protect
-        //   to catch R errors (longjmp) from SEXP creation (e.g., allocation failure)
         let c_wrapper_doc = format!(
             "C wrapper for [`{}`] (worker thread). See [`{}`] for R wrapper.",
             rust_ident, r_wrapper_generator
         );
-        quote::quote! {
-            #[doc = #c_wrapper_doc]
-            #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
-            #[doc = #source_loc_doc]
-            #[doc = concat!("Generated from source file `", file!(), "`.")]
-            #[unsafe(no_mangle)]
-            #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
-                #rng_get
-                let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
-                    #(#pre_call_statements)*
-                    // Pre-closure: conversions on main thread (owned values to move)
-                    #(#pre_closure_stmts)*
+        let worker_panic_handler = if error_in_r {
+            quote::quote! {
+                ::miniextendr_api::error_value::make_rust_error_value(
+                    &::miniextendr_api::worker::panic_payload_to_string(&payload),
+                    "panic",
+                )
+            }
+        } else {
+            quote::quote! {
+                ::miniextendr_api::worker::panic_message_to_r_error(
+                    ::miniextendr_api::worker::panic_payload_to_string(&payload)
+                )
+            }
+        };
+        if error_in_r {
+            // error_in_r: use run_on_worker_result to get Result<T, String> instead of diverging
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                        #(#pre_call_statements)*
+                        #(#pre_closure_stmts)*
 
-                    let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
-                        // In-closure: borrows from moved storage
-                        #(#in_closure_stmts)*
-                        let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
-                        #(#post_call_statements)*
-                        #rust_result_ident
-                    });
+                        match ::miniextendr_api::worker::run_on_worker_result(move || {
+                            #(#in_closure_stmts)*
+                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                            #(#post_call_statements)*
+                            #rust_result_ident
+                        }) {
+                            Ok(#rust_result_ident) => {
+                                #unwind_protect_fn(
+                                    move || #return_expression,
+                                    None,
+                                )
+                            }
+                            Err(__panic_msg) => {
+                                ::miniextendr_api::error_value::make_rust_error_value(
+                                    &__panic_msg, "panic",
+                                )
+                            }
+                        }
+                    }));
+                    #rng_put
+                    match __miniextendr_panic_result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => { #worker_panic_handler },
+                    }
+                }
+            }
+        } else {
+            quote::quote! {
+                #[doc = #c_wrapper_doc]
+                #[doc = concat!("Wraps Rust function `", stringify!(#rust_ident), "`.")]
+                #[doc = #source_loc_doc]
+                #[doc = concat!("Generated from source file `", file!(), "`.")]
+                #[unsafe(no_mangle)]
+                #vis extern "C-unwind" fn #c_ident #generics(#(#c_wrapper_inputs),*) -> ::miniextendr_api::ffi::SEXP {
+                    #rng_get
+                    let __miniextendr_panic_result = ::std::panic::catch_unwind(::std::panic::AssertUnwindSafe(move || {
+                        #(#pre_call_statements)*
+                        #(#pre_closure_stmts)*
 
-                    // Wrap SEXP conversion in with_r_unwind_protect to catch R errors
-                    // (e.g., allocation failure in Rf_ScalarString)
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
-                        move || #return_expression,
-                        None,
-                    )
-                }));
-                // PutRNGstate runs after catch_unwind, before error conversion
-                #rng_put
-                match __miniextendr_panic_result {
-                    Ok(sexp) => sexp,
-                    Err(payload) => ::miniextendr_api::worker::panic_message_to_r_error(
-                        ::miniextendr_api::worker::panic_payload_to_string(&payload)
-                    ),
+                        let #rust_result_ident = ::miniextendr_api::worker::run_on_worker(move || {
+                            #(#in_closure_stmts)*
+                            let #rust_result_ident = #rust_ident(#(#rust_inputs),*);
+                            #(#post_call_statements)*
+                            #rust_result_ident
+                        });
+
+                        #unwind_protect_fn(
+                            move || #return_expression,
+                            None,
+                        )
+                    }));
+                    #rng_put
+                    match __miniextendr_panic_result {
+                        Ok(sexp) => sexp,
+                        Err(payload) => { #worker_panic_handler },
+                    }
                 }
             }
         }
@@ -1169,7 +1230,15 @@ pub fn miniextendr(
     } else {
         format!(".Call({}, {})", c_ident_str, call_args_joined)
     };
-    let r_wrapper_return_str = if !is_invisible_return_type {
+    let r_wrapper_return_str = if error_in_r {
+        // error_in_r mode: capture result, check for error value, raise R condition
+        let final_return = if is_invisible_return_type {
+            "invisible(.val)"
+        } else {
+            ".val"
+        };
+        crate::method_return_builder::error_in_r_standalone_body(&call_expr, final_return)
+    } else if !is_invisible_return_type {
         call_expr
     } else {
         format!("invisible({})", call_expr)
@@ -1255,28 +1324,40 @@ pub fn miniextendr(
     // Generate lifecycle prelude if needed
     let lifecycle_prelude = lifecycle_spec
         .as_ref()
-        .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str))
-        .map(|prelude| format!("{}; ", prelude))
-        .unwrap_or_default();
+        .and_then(|spec| spec.r_prelude(&r_wrapper_ident_str));
 
-    let r_wrapper_string = format!(
-        "{}{}{}{}{}{} <- function({}) {{\n    {}{}\n}}",
-        roxygen_tags_str,
-        source_comment,
-        s3_method_comment,
-        internal_comment,
-        export_comment,
-        r_wrapper_ident_str,
-        formals_joined,
-        lifecycle_prelude,
-        r_wrapper_return_str
-    );
+    let r_wrapper_string = if let Some(prelude) = lifecycle_prelude {
+        format!(
+            "{}{}{}{}{}{} <- function({}) {{\n  {}\n  {}\n}}",
+            roxygen_tags_str,
+            source_comment,
+            s3_method_comment,
+            internal_comment,
+            export_comment,
+            r_wrapper_ident_str,
+            formals_joined,
+            prelude,
+            r_wrapper_return_str
+        )
+    } else {
+        format!(
+            "{}{}{}{}{}{} <- function({}) {{\n  {}\n}}",
+            roxygen_tags_str,
+            source_comment,
+            s3_method_comment,
+            internal_comment,
+            export_comment,
+            r_wrapper_ident_str,
+            formals_joined,
+            r_wrapper_return_str
+        )
+    };
     // Use a raw string literal for better readability in macro expansion
     let r_wrapper_str: proc_macro2::TokenStream = {
         use std::str::FromStr;
-        // Indent each line by 4 spaces for nicer formatting
-        let indented = r_wrapper_string.replace('\n', "\n    ");
-        let raw = format!("r#\"\n    {}\n\"#", indented);
+        // Indent each line by 2 spaces for nicer formatting
+        let indented = r_wrapper_string.replace('\n', "\n  ");
+        let raw = format!("r#\"\n  {}\n\"#", indented);
         proc_macro2::TokenStream::from_str(&raw).expect("valid raw string literal")
     };
 
@@ -1352,13 +1433,15 @@ pub fn miniextendr(
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         const #r_wrapper_generator: &str =
             concat!(
-                "# Generated from Rust source file: ",
+                "# Generated from Rust fn `",
+                stringify!(#rust_ident),
+                "` (",
                 file!(),
                 ":",
                 #source_line_lit,
                 ":",
                 #source_col_lit,
-                "\n",
+                ")",
                 #r_wrapper_str
             );
 
@@ -2212,6 +2295,7 @@ fn generate_trait_impl_wrapper(
                 drop: #drop_fn_name,
                 concrete_tag: #concrete_tag_name,
                 query: #query_fn_name,
+                data_offset: ::std::mem::offset_of!(#wrapper_name, data),
             };
 
         #[doc = concat!(

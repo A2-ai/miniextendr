@@ -28,6 +28,16 @@ use syn::{Data, DeriveInput, Fields};
 /// - `#[dataframe(name = "CustomName")]` - Custom name for generated DataFrame type (default: `{StructName}DataFrame`)
 pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
     let row_name = &input.ident;
+
+    // Reject generic row types — the generated companion type and impls cannot
+    // propagate generics correctly, so fail early with a clear message.
+    if !input.generics.params.is_empty() {
+        return Err(syn::Error::new_spanned(
+            &input.generics,
+            "DataFrameRow does not support generic structs",
+        ));
+    }
+
     let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
 
     // Parse attributes
@@ -51,6 +61,14 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
             ));
         }
     };
+
+    // Reject zero-field structs — a DataFrame with no columns is meaningless.
+    if fields.is_empty() {
+        return Err(syn::Error::new_spanned(
+            row_name,
+            "DataFrameRow requires at least one named field",
+        ));
+    }
 
     // Collect field info
     let field_info: Vec<_> = fields
@@ -88,10 +106,32 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         quote! { (#name_str, ::miniextendr_api::IntoR::into_sexp(self.#name)) }
     });
 
+    // Generate column length checks for all fields after the first
+    let length_checks: Vec<TokenStream> = field_names
+        .iter()
+        .skip(1)
+        .map(|name| {
+            let name_str = name.to_string();
+            let first_str = first_field.to_string();
+            quote! {
+                assert!(
+                    self.#name.len() == n_rows,
+                    "column length mismatch in {}: column `{}` has length {} but column `{}` has length {}",
+                    stringify!(#df_name),
+                    #name_str,
+                    self.#name.len(),
+                    #first_str,
+                    n_rows,
+                );
+            }
+        })
+        .collect();
+
     let into_dataframe_impl = quote! {
         impl ::miniextendr_api::convert::IntoDataFrame for #df_name {
             fn into_data_frame(self) -> ::miniextendr_api::List {
                 let n_rows = self.#first_field.len();
+                #(#length_checks)*
                 ::miniextendr_api::list::List::from_raw_pairs(vec![
                     #(#df_pairs),*
                 ])
@@ -101,22 +141,39 @@ pub fn derive_dataframe_row(input: DeriveInput) -> syn::Result<TokenStream> {
         }
     };
 
-    // Build From impl struct initialization explicitly
-    let mut from_struct_tokens = TokenStream::new();
-    for (i, (name, ty)) in field_info.iter().enumerate() {
-        if i > 0 {
-            from_struct_tokens.extend(quote! { , });
-        }
-        from_struct_tokens.extend(quote! {
-            #name: rows.iter().map(|r| r.#name.clone()).collect::<Vec<#ty>>()
-        });
-    }
+    // Build From impl: consume rows by value to avoid Clone requirement.
+    // Single pass: destructure each row and push fields into column Vecs.
+    let col_vec_inits: Vec<TokenStream> = field_info
+        .iter()
+        .map(|(name, ty)| {
+            quote! { let mut #name: Vec<#ty> = Vec::with_capacity(len); }
+        })
+        .collect();
+
+    let col_pushes: Vec<TokenStream> = field_info
+        .iter()
+        .map(|(name, _ty)| {
+            quote! { #name.push(row.#name); }
+        })
+        .collect();
+
+    let col_struct_fields: Vec<TokenStream> = field_info
+        .iter()
+        .map(|(name, _ty)| {
+            quote! { #name }
+        })
+        .collect();
 
     let from_vec_impl = quote! {
         impl From<Vec<#row_name>> for #df_name {
             fn from(rows: Vec<#row_name>) -> Self {
+                let len = rows.len();
+                #(#col_vec_inits)*
+                for row in rows {
+                    #(#col_pushes)*
+                }
                 #df_name {
-                    #from_struct_tokens
+                    #(#col_struct_fields),*
                 }
             }
         }

@@ -46,22 +46,23 @@ expand *args:
 clean:
     cargo clean
     rm -rf {{rpkg}}/src/rust/target
-    rm -rf {{rpkg}}/src/vendor
+    rm -rf {{rpkg}}/vendor
 
 # ============================================================================
 # R package development ({{rpkg}}/)
 # ============================================================================
 
-# Configure the R package (vendor dependencies, generate Makevars)
+# Configure the R package (generate Makevars and build files)
 #
 # This must be run before any R CMD operation. It:
-# 1. Syncs workspace crates to {{rpkg}}/src/vendor/
-# 2. Vendors crates.io dependencies
-# 3. Generates {{rpkg}}/src/Makevars from Makevars.in
+# 1. Generates {{rpkg}}/src/Makevars from Makevars.in
+# 2. Sets up cargo config for vendored sources (CRAN mode only)
+# Note: vendor/ is pre-populated by scaffolding; configure does NOT run cargo vendor.
 configure:
     cd {{rpkg}} && NOT_CRAN=true ./configure
 
 # Configure in CRAN mode (for testing CRAN submission)
+# Uses vendored sources in offline mode
 configure-cran:
     cd {{rpkg}} && ./configure
 

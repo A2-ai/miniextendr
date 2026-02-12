@@ -45,7 +45,7 @@ jobs:
             "rpkg/src/rust/target"
             "rpkg/src/rust/ra_target"
             "rpkg/src/rust/.cargo"
-            "rpkg/src/vendor"
+            "rpkg/vendor"
           )
 
           failed=0
@@ -857,8 +857,8 @@ jobs:
 
       - name: Build source tarball
         run: |
-          # Remove src/vendor/ so tarball only contains inst/vendor.tar.xz
-          rm -rf rpkg/src/vendor
+          # Remove vendor/ so tarball only contains inst/vendor.tar.xz
+          rm -rf rpkg/vendor
           R CMD build rpkg
           echo "TARBALL=$(ls -1 miniextendr_*.tar.gz)" >> $GITHUB_ENV
 

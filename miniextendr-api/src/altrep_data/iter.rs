@@ -1253,13 +1253,8 @@ impl<I: Iterator<Item = String> + 'static> crate::altrep_traits::AltString for I
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         unsafe { crate::altrep_data1_as::<Self>(x) }
             .and_then(|d| {
-                AltStringData::elt(&*d, i as usize).map(|s| unsafe {
-                    crate::ffi::Rf_mkCharLenCE(
-                        s.as_ptr().cast(),
-                        s.len() as i32,
-                        crate::ffi::cetype_t::CE_UTF8,
-                    )
-                })
+                AltStringData::elt(&*d, i as usize)
+                    .map(|s| unsafe { crate::altrep_impl::checked_mkchar(s) })
             })
             .unwrap_or(unsafe { crate::ffi::R_NaString })
     }

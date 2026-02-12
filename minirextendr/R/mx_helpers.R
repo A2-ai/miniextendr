@@ -45,7 +45,7 @@ miniextendr_check_rust <- function(path = ".") {
   invisible(TRUE)
 }
 
-#' Set up local development against a miniextendr checkout
+#' Link a package to a local miniextendr checkout for development
 #'
 #' Adds a `[patch.crates-io]` section to `src/rust/Cargo.toml` that points
 #' miniextendr crates at a local monorepo checkout. This lets you develop
@@ -56,7 +56,7 @@ miniextendr_check_rust <- function(path = ".") {
 #'   (the directory containing `miniextendr-api/`, `miniextendr-macros/`, etc.).
 #' @return Invisibly returns `TRUE` on success.
 #' @export
-use_miniextendr_local_dev <- function(path = ".", monorepo_path) {
+miniextendr_dev_link <- function(path = ".", monorepo_path) {
   path <- normalizePath(path, mustWork = TRUE)
   monorepo_path <- normalizePath(monorepo_path, mustWork = TRUE)
 
@@ -80,7 +80,7 @@ use_miniextendr_local_dev <- function(path = ".", monorepo_path) {
     ))
   }
 
-  cli::cli_h1("use_miniextendr_local_dev")
+  cli::cli_h1("miniextendr_dev_link")
 
   content <- readLines(cargo_toml, warn = FALSE)
 

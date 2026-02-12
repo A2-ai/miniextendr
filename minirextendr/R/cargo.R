@@ -48,6 +48,7 @@ validate_feature_names <- function(features) {
 #'
 #' Wraps `cargo init` to create a new Rust crate in src/rust.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param name Optional crate name. Defaults to the package name (Rust-safe).
 #' @param edition Rust edition to use (default "2024").
 #' @param quiet Logical. If TRUE, suppress cargo output.
@@ -59,7 +60,8 @@ validate_feature_names <- function(features) {
 #' \dontrun{
 #' cargo_init()
 #' }
-cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
+cargo_init <- function(path = ".", name = NULL, edition = "2024", quiet = FALSE) {
+  with_project(path)
   check_rust()
 
   rust_dir <- usethis::proj_path("src", "rust")
@@ -120,6 +122,7 @@ cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
 #' Wraps `cargo add` to add Rust dependencies to your miniextendr package.
 #' Automatically uses `src/rust/Cargo.toml` in the current R package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param dep Dependency specification. Can be:
 #'   - A crate name: `"serde"`
 #'   - Name with version: `"serde@1.0"` or `"serde@=1.0.38"`
@@ -128,7 +131,7 @@ cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
 #' @param no_default_features Logical. If TRUE, disable default features.
 #' @param optional Logical. If TRUE, mark dependency as optional (exposed as a crate feature).
 #' @param rename Character. Rename the dependency (useful for multiple versions).
-#' @param path Character. Path to local crate to add instead of from crates.io.
+#' @param crate_path Character. Path to local crate to add instead of from crates.io.
 #' @param git Character. Git repository URL to add dependency from.
 #' @param branch Character. Git branch (used with `git`).
 #' @param tag Character. Git tag (used with `git`).
@@ -162,7 +165,7 @@ cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
 #' cargo_add("mycrate", git = "https://github.com/user/mycrate", branch = "dev")
 #'
 #' # Add from local path
-#' cargo_add("localcrate", path = "../my-local-crate")
+#' cargo_add("localcrate", crate_path = "../my-local-crate")
 #'
 #' # Add multiple crates at once
 #' cargo_add(c("serde", "serde_json"))
@@ -176,12 +179,13 @@ cargo_init <- function(name = NULL, edition = "2024", quiet = FALSE) {
 #' # Dry run to see what would happen
 #' cargo_add("newcrate", dry_run = TRUE)
 #' }
-cargo_add <- function(dep,
+cargo_add <- function(path = ".",
+                      dep,
                       features = NULL,
                       no_default_features = FALSE,
                       optional = FALSE,
                       rename = NULL,
-                      path = NULL,
+                      crate_path = NULL,
                       git = NULL,
                       branch = NULL,
                       tag = NULL,
@@ -193,6 +197,7 @@ cargo_add <- function(dep,
                       dry_run = FALSE,
                       offline = FALSE,
                       quiet = FALSE) {
+  with_project(path)
   # Input validation
   validate_non_empty_char(dep, "dep")
   dep <- trimws(dep)
@@ -200,8 +205,8 @@ cargo_add <- function(dep,
   if (!is.null(features)) {
     features <- trimws(features)
   }
-  if (!is.null(git) && !is.null(path)) {
-    abort("Cannot specify both 'git' and 'path' - choose one source")
+  if (!is.null(git) && !is.null(crate_path)) {
+    abort("Cannot specify both 'git' and 'crate_path' - choose one source")
   }
   if (dev && build) {
     abort("Cannot specify both 'dev' and 'build' - choose one section")
@@ -216,9 +221,9 @@ cargo_add <- function(dep,
   # Build argument list
   args <- character()
 
-  # Source options (mutually exclusive: path, git, or crates.io)
-  if (!is.null(path)) {
-    args <- c(args, "--path", path)
+  # Source options (mutually exclusive: crate_path, git, or crates.io)
+  if (!is.null(crate_path)) {
+    args <- c(args, "--path", crate_path)
   } else if (!is.null(git)) {
     args <- c(args, "--git", git)
     if (!is.null(branch)) args <- c(args, "--branch", branch)
@@ -314,6 +319,7 @@ cargo_add <- function(dep,
 #'
 #' Wraps `cargo remove` to remove Rust dependencies from your miniextendr package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param dep Dependency name(s) to remove. Can be a character vector.
 #' @param dev Logical. If TRUE, remove from dev-dependencies.
 #' @param build Logical. If TRUE, remove from build-dependencies.
@@ -335,12 +341,14 @@ cargo_add <- function(dep,
 #' # Remove multiple
 #' cargo_rm(c("serde", "serde_json"))
 #' }
-cargo_rm <- function(dep,
+cargo_rm <- function(path = ".",
+                     dep,
                      dev = FALSE,
                      build = FALSE,
                      target = NULL,
                      dry_run = FALSE,
                      quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -396,6 +404,7 @@ cargo_rm <- function(dep,
 #'
 #' Wraps `cargo update` to update dependencies.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param dep Optional. Specific package(s) to update. If NULL, updates all.
 #' @param precise Character. Update to exactly this version (use with single dep).
 #' @param dry_run Logical. If TRUE, don't actually update.
@@ -415,10 +424,12 @@ cargo_rm <- function(dep,
 #' # Update to specific version
 #' cargo_update("serde", precise = "1.0.193")
 #' }
-cargo_update <- function(dep = NULL,
+cargo_update <- function(path = ".",
+                         dep = NULL,
                          precise = NULL,
                          dry_run = FALSE,
                          quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -470,6 +481,7 @@ cargo_update <- function(dep = NULL,
 #'
 #' Wraps `cargo build` to compile the Rust crate for this package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param release Logical. If TRUE, build with --release.
 #' @param features Character vector of features to activate.
 #' @param no_default_features Logical. If TRUE, disable default features.
@@ -490,7 +502,8 @@ cargo_update <- function(dep = NULL,
 #' # Build release with features
 #' cargo_build(release = TRUE, features = c("serde", "rayon"))
 #' }
-cargo_build <- function(release = FALSE,
+cargo_build <- function(path = ".",
+                        release = FALSE,
                         features = NULL,
                         no_default_features = FALSE,
                         all_features = FALSE,
@@ -498,6 +511,7 @@ cargo_build <- function(release = FALSE,
                         jobs = NULL,
                         offline = FALSE,
                         quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -559,6 +573,7 @@ cargo_build <- function(release = FALSE,
 #'
 #' Wraps `cargo check` to type-check the Rust crate for this package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param release Logical. If TRUE, check with --release.
 #' @param features Character vector of features to activate.
 #' @param no_default_features Logical. If TRUE, disable default features.
@@ -574,13 +589,15 @@ cargo_build <- function(release = FALSE,
 #' \dontrun{
 #' cargo_check()
 #' }
-cargo_check <- function(release = FALSE,
+cargo_check <- function(path = ".",
+                        release = FALSE,
                         features = NULL,
                         no_default_features = FALSE,
                         all_features = FALSE,
                         target = NULL,
                         offline = FALSE,
                         quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -638,6 +655,7 @@ cargo_check <- function(release = FALSE,
 #'
 #' Wraps `cargo test` to run Rust tests for this package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param release Logical. If TRUE, run tests with --release.
 #' @param features Character vector of features to activate.
 #' @param no_default_features Logical. If TRUE, disable default features.
@@ -654,7 +672,8 @@ cargo_check <- function(release = FALSE,
 #' \dontrun{
 #' cargo_test()
 #' }
-cargo_test <- function(release = FALSE,
+cargo_test <- function(path = ".",
+                       release = FALSE,
                        features = NULL,
                        no_default_features = FALSE,
                        all_features = FALSE,
@@ -662,6 +681,7 @@ cargo_test <- function(release = FALSE,
                        no_run = FALSE,
                        offline = FALSE,
                        quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -723,6 +743,7 @@ cargo_test <- function(release = FALSE,
 #'
 #' Wraps `cargo clippy` to run Rust lints for this package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param release Logical. If TRUE, run clippy with --release.
 #' @param features Character vector of features to activate.
 #' @param no_default_features Logical. If TRUE, disable default features.
@@ -739,7 +760,8 @@ cargo_test <- function(release = FALSE,
 #' \dontrun{
 #' cargo_clippy()
 #' }
-cargo_clippy <- function(release = FALSE,
+cargo_clippy <- function(path = ".",
+                         release = FALSE,
                          features = NULL,
                          no_default_features = FALSE,
                          all_features = FALSE,
@@ -747,6 +769,7 @@ cargo_clippy <- function(release = FALSE,
                          all_targets = FALSE,
                          offline = FALSE,
                          quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -808,6 +831,7 @@ cargo_clippy <- function(release = FALSE,
 #'
 #' Wraps `cargo fmt` to format Rust sources for this package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param check Logical. If TRUE, check formatting without modifying files.
 #' @param all Logical. If TRUE, format all packages in the workspace.
 #' @param quiet Logical. If TRUE, suppress cargo output.
@@ -819,9 +843,11 @@ cargo_clippy <- function(release = FALSE,
 #' \dontrun{
 #' cargo_fmt()
 #' }
-cargo_fmt <- function(check = FALSE,
+cargo_fmt <- function(path = ".",
+                      check = FALSE,
                       all = TRUE,
                       quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -867,6 +893,7 @@ cargo_fmt <- function(check = FALSE,
 #'
 #' Wraps `cargo doc` to build documentation for this package.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param open Logical. If TRUE, open docs after building.
 #' @param no_deps Logical. If TRUE, do not build docs for dependencies.
 #' @param features Character vector of features to activate.
@@ -883,7 +910,8 @@ cargo_fmt <- function(check = FALSE,
 #' \dontrun{
 #' cargo_doc(no_deps = TRUE)
 #' }
-cargo_doc <- function(open = FALSE,
+cargo_doc <- function(path = ".",
+                      open = FALSE,
                       no_deps = TRUE,
                       features = NULL,
                       no_default_features = FALSE,
@@ -891,6 +919,7 @@ cargo_doc <- function(open = FALSE,
                       target = NULL,
                       offline = FALSE,
                       quiet = FALSE) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -1001,6 +1030,7 @@ cargo_search <- function(query, limit = 10, registry = NULL) {
 #'
 #' Wraps `cargo tree` to display the dependency tree.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param depth Maximum depth to display (default 1 for direct deps only).
 #' @param duplicates Logical. If TRUE, show only duplicate dependencies.
 #' @param invert Character. Invert the tree, showing what depends on this package.
@@ -1022,7 +1052,8 @@ cargo_search <- function(query, limit = 10, registry = NULL) {
 #' # What depends on syn?
 #' cargo_deps(invert = "syn")
 #' }
-cargo_deps <- function(depth = 1, duplicates = FALSE, invert = NULL) {
+cargo_deps <- function(path = ".", depth = 1, duplicates = FALSE, invert = NULL) {
+  with_project(path)
   check_rust()
   manifest_path <- cargo_toml_path()
 
@@ -1059,6 +1090,7 @@ cargo_deps <- function(depth = 1, duplicates = FALSE, invert = NULL) {
 #' Note: `cargo new` does not accept `--manifest-path`, so this function changes
 #' to the appropriate directory before running the command.
 #'
+#' @param path Path to the R package root, or `"."` to use the current directory.
 #' @param name Name of the crate to create. This will be the directory name.
 #' @param lib Logical. If TRUE, create a library crate (default). If FALSE, create a binary.
 #' @param edition Rust edition to use (default "2024").
@@ -1082,12 +1114,14 @@ cargo_deps <- function(depth = 1, duplicates = FALSE, invert = NULL) {
 #' # Create without adding to workspace
 #' cargo_new("standalone-crate", add_to_workspace = FALSE)
 #' }
-cargo_new <- function(name,
+cargo_new <- function(path = ".",
+                      name,
                       lib = TRUE,
                       edition = "2024",
                       vcs = "none",
                       add_to_workspace = TRUE,
                       quiet = FALSE) {
+  with_project(path)
   check_rust()
 
   # Validate inputs

@@ -196,6 +196,24 @@ impl MatrixCounter for CounterTraitR6 {
 }
 
 // =============================================================================
+// Static method with first param named 'x' (regression test for dispatch)
+// =============================================================================
+
+/// Trait with a static method whose first param is `x`.
+/// The old formals heuristic would misclassify this as an instance method.
+#[miniextendr]
+pub trait StaticXParam {
+    fn from_value(x: i32) -> i32;
+}
+
+#[miniextendr]
+impl StaticXParam for CounterTraitEnv {
+    fn from_value(x: i32) -> i32 {
+        x * 2
+    }
+}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -215,4 +233,7 @@ miniextendr_module! {
     impl MatrixCounter for CounterTraitS4;
     impl MatrixCounter for CounterTraitS7;
     impl MatrixCounter for CounterTraitR6;
+
+    // Regression: static method with first param named 'x'
+    impl StaticXParam for CounterTraitEnv;
 }

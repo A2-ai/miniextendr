@@ -9,8 +9,10 @@ if [ "$NOT_CRAN" != "true" ]; then
   rm -f  src/Makevars
   rm -rf src/rust/target
   rm -rf src/rust/ra_target
+  rm -rf rust-target
+  rm -rf ra-target
   rm -rf src/rust/.cargo
   rm -rf src/rust/document.rs
   rm -rf src/entrypoint.c
-  rm -rf src/miniextendr_wrappers.R
+  rm -f  src/*-wrappers.R
 fi

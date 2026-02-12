@@ -1,12 +1,12 @@
 use miniextendr_api::{miniextendr, miniextendr_module};
 
-/// A simple function that adds two integers
+/// A simple function that adds two numbers
 ///
-/// @param a First integer
-/// @param b Second integer
+/// @param a First number
+/// @param b Second number
 /// @return Sum of a and b
 #[miniextendr]
-pub fn add(a: i32, b: i32) -> i32 {
+pub fn add(a: f64, b: f64) -> f64 {
     a + b
 }
 

@@ -61,7 +61,7 @@ pub(crate) unsafe fn charsxp_to_str(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR(charsxp);
         let len = crate::ffi::LENGTH(charsxp) as usize;
-        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        let bytes = r_slice(ptr.cast::<u8>(), len);
         std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
     }
 }
@@ -72,8 +72,43 @@ unsafe fn charsxp_to_str_unchecked(charsxp: SEXP) -> &'static str {
     unsafe {
         let ptr = crate::ffi::R_CHAR_unchecked(charsxp);
         let len = crate::ffi::LENGTH(charsxp) as usize;
-        let bytes = std::slice::from_raw_parts(ptr.cast::<u8>(), len);
+        let bytes = r_slice(ptr.cast::<u8>(), len);
         std::str::from_utf8(bytes).expect("R CHARSXP is not valid UTF-8")
+    }
+}
+
+/// Create a slice from an R data pointer, handling the zero-length case.
+///
+/// R returns a sentinel pointer (`0x1`) instead of null for empty vectors
+/// (e.g., `LOGICAL(integer(0))` → `0x1`). Rust 1.93+ validates pointer
+/// alignment in `slice::from_raw_parts` even for `len == 0`, so passing
+/// R's sentinel directly causes a precondition-check abort.
+///
+/// This helper returns an empty slice for `len == 0` without touching the pointer.
+///
+/// # Safety
+///
+/// If `len > 0`, `ptr` must satisfy the requirements of [`std::slice::from_raw_parts`].
+#[inline(always)]
+pub(crate) unsafe fn r_slice<'a, T>(ptr: *const T, len: usize) -> &'a [T] {
+    if len == 0 {
+        &[]
+    } else {
+        unsafe { std::slice::from_raw_parts(ptr, len) }
+    }
+}
+
+/// Mutable version of [`r_slice`] for `from_raw_parts_mut`.
+///
+/// # Safety
+///
+/// If `len > 0`, `ptr` must satisfy the requirements of [`std::slice::from_raw_parts_mut`].
+#[inline(always)]
+pub(crate) unsafe fn r_slice_mut<'a, T>(ptr: *mut T, len: usize) -> &'a mut [T] {
+    if len == 0 {
+        &mut []
+    } else {
+        unsafe { std::slice::from_raw_parts_mut(ptr, len) }
     }
 }
 
@@ -1863,7 +1898,7 @@ where
         }
         let len = sexp.len();
         let ptr = unsafe { T::dataptr_mut(sexp) };
-        Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+        Ok(unsafe { r_slice_mut(ptr, len) })
     }
 
     #[inline]
@@ -1877,7 +1912,7 @@ where
         }
         let len = unsafe { sexp.len_unchecked() };
         let ptr = unsafe { T::dataptr_mut(sexp) };
-        Ok(unsafe { std::slice::from_raw_parts_mut(ptr, len) })
+        Ok(unsafe { r_slice_mut(ptr, len) })
     }
 }
 
@@ -2378,7 +2413,7 @@ macro_rules! impl_vec_option_try_from_sexp {
 
                 let len = sexp.len();
                 let ptr = unsafe { crate::ffi::$dataptr(sexp) };
-                let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+                let slice = unsafe { r_slice(ptr, len) };
 
                 Ok(slice
                     .iter()
@@ -2408,7 +2443,7 @@ impl TryFromSexp for Vec<Option<bool>> {
 
         let len = sexp.len();
         let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
             .iter()
@@ -2428,7 +2463,7 @@ impl TryFromSexp for Vec<Option<bool>> {
 
         let len = unsafe { sexp.len_unchecked() };
         let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
             .iter()
@@ -2453,7 +2488,7 @@ impl TryFromSexp for Vec<Rboolean> {
 
         let len = sexp.len();
         let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         slice
             .iter()
@@ -2488,7 +2523,7 @@ impl TryFromSexp for Vec<Option<Rboolean>> {
 
         let len = sexp.len();
         let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
             .iter()
@@ -2521,7 +2556,7 @@ impl TryFromSexp for Vec<crate::altrep_data::Logical> {
 
         let len = sexp.len();
         let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
             .iter()
@@ -2546,7 +2581,7 @@ impl TryFromSexp for Vec<Option<RLogical>> {
 
         let len = sexp.len();
         let ptr = unsafe { crate::ffi::LOGICAL(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice
             .iter()
@@ -2620,7 +2655,7 @@ impl TryFromSexp for Vec<Option<u8>> {
 
         let len = sexp.len();
         let ptr = unsafe { crate::ffi::RAW(sexp) };
-        let slice = unsafe { std::slice::from_raw_parts(ptr, len) };
+        let slice = unsafe { r_slice(ptr, len) };
 
         Ok(slice.iter().map(|&v| Some(v)).collect())
     }

@@ -12,8 +12,8 @@
 //! > implementation without a compatibility layer."
 //!
 //! This module is gated behind the `connections` feature and should be used with caution.
-//! Always check [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION) at runtime
-//! before using these APIs.
+//! Always verify [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION)
+//! matches the expected version before using these APIs (see [`check_connections_version`]).
 //!
 //! # Usage
 //!
@@ -56,7 +56,13 @@ use crate::ffi::{R_CONNECTIONS_VERSION, R_NilValue, Rboolean, Rconnection, SEXP}
 /// connection operations may behave incorrectly or crash.
 pub const EXPECTED_CONNECTIONS_VERSION: c_int = 1;
 
-/// Check that the R connections API version matches what we expect.
+/// Compile-time compatibility assertion for the R connections ABI.
+///
+/// Compares [`EXPECTED_CONNECTIONS_VERSION`] (what this crate was written for)
+/// against [`ffi::R_CONNECTIONS_VERSION`](crate::ffi::R_CONNECTIONS_VERSION)
+/// (the version from R's headers when the FFI bindings were compiled).
+/// Both values are compile-time constants, so this is a static consistency
+/// check, not a dynamic probe of the running R session.
 ///
 /// # Panics
 ///
@@ -390,53 +396,90 @@ unsafe fn get_state<T: RConnectionImpl>(conn: *mut Rconn) -> &'static mut T {
     unsafe { &mut *(private as *mut T) }
 }
 
-/// Macro to generate simple trampolines that just delegate to the trait method.
+/// Catch panics in connection callback trampolines and return a safe fallback.
+///
+/// Without this, a panic in user connection code would unwind through R/C frames,
+/// which is undefined behavior. This catches the panic, emits telemetry, and
+/// returns the provided fallback value.
+#[inline]
+fn catch_connection_panic<F, R>(fallback: R, f: F) -> R
+where
+    F: FnOnce() -> R,
+{
+    match std::panic::catch_unwind(std::panic::AssertUnwindSafe(f)) {
+        Ok(result) => result,
+        Err(payload) => {
+            let msg = if let Some(s) = payload.downcast_ref::<&str>() {
+                format!("panic in connection callback: {s}")
+            } else if let Some(s) = payload.downcast_ref::<String>() {
+                format!("panic in connection callback: {s}")
+            } else {
+                "panic in connection callback".to_string()
+            };
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Connection);
+            fallback
+        }
+    }
+}
+
+/// Macro to generate simple trampolines that delegate to the trait method,
+/// wrapped in `catch_connection_panic` for panic safety.
 macro_rules! simple_trampoline {
-    ($name:ident, $ret:ty, $($arg:ident: $arg_ty:ty),* => $method:ident($($call_arg:expr),*)) => {
+    ($name:ident, $ret:ty, fallback = $fallback:expr, $($arg:ident: $arg_ty:ty),* => $method:ident($($call_arg:expr),*)) => {
         unsafe extern "C-unwind" fn $name<T: RConnectionImpl>(
             conn: *mut Rconn,
             $($arg: $arg_ty),*
         ) -> $ret {
-            let state = unsafe { get_state::<T>(conn) };
-            state.$method($($call_arg),*)
+            catch_connection_panic($fallback, || {
+                let state = unsafe { get_state::<T>(conn) };
+                state.$method($($call_arg),*)
+            })
         }
     };
     // Variant for no additional arguments
-    ($name:ident, $ret:ty => $method:ident()) => {
+    ($name:ident, $ret:ty, fallback = $fallback:expr => $method:ident()) => {
         unsafe extern "C-unwind" fn $name<T: RConnectionImpl>(conn: *mut Rconn) -> $ret {
-            let state = unsafe { get_state::<T>(conn) };
-            state.$method()
+            catch_connection_panic($fallback, || {
+                let state = unsafe { get_state::<T>(conn) };
+                state.$method()
+            })
         }
     };
 }
 
 /// Open callback trampoline.
 unsafe extern "C-unwind" fn open_trampoline<T: RConnectionImpl>(conn: *mut Rconn) -> Rboolean {
-    let state = unsafe { get_state::<T>(conn) };
-    if state.open() {
-        unsafe { (*conn).isopen = Rboolean::TRUE };
-        Rboolean::TRUE
-    } else {
-        Rboolean::FALSE
-    }
+    catch_connection_panic(Rboolean::FALSE, || {
+        let state = unsafe { get_state::<T>(conn) };
+        if state.open() {
+            unsafe { (*conn).isopen = Rboolean::TRUE };
+            Rboolean::TRUE
+        } else {
+            Rboolean::FALSE
+        }
+    })
 }
 
 /// Close callback trampoline.
 unsafe extern "C-unwind" fn close_trampoline<T: RConnectionImpl>(conn: *mut Rconn) {
-    let state = unsafe { get_state::<T>(conn) };
-    state.close();
-    unsafe { (*conn).isopen = Rboolean::FALSE };
+    catch_connection_panic((), || {
+        let state = unsafe { get_state::<T>(conn) };
+        state.close();
+        unsafe { (*conn).isopen = Rboolean::FALSE };
+    });
 }
 
 /// Destroy callback trampoline - drops the Rust state.
 unsafe extern "C-unwind" fn destroy_trampoline<T: RConnectionImpl>(conn: *mut Rconn) {
     let private = unsafe { (*conn).private };
     if !private.is_null() {
-        // Give the implementation a chance to do cleanup
-        let state = unsafe { &mut *(private as *mut T) };
-        state.destroy();
+        // Give the implementation a chance to do cleanup (panic-safe)
+        catch_connection_panic((), || {
+            let state = unsafe { &mut *(private as *mut T) };
+            state.destroy();
+        });
 
-        // Now drop the boxed state
+        // Always drop the boxed state, even if destroy() panicked
         let _ = unsafe { Box::from_raw(private as *mut T) };
         unsafe { (*conn).private = std::ptr::null_mut() };
     }
@@ -449,15 +492,20 @@ unsafe extern "C-unwind" fn read_trampoline<T: RConnectionImpl>(
     nitems: usize,
     conn: *mut Rconn,
 ) -> usize {
-    let state = unsafe { get_state::<T>(conn) };
-    let total_bytes = size * nitems;
-    if total_bytes == 0 {
-        return 0;
-    }
-    let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, total_bytes) };
-    let bytes_read = state.read(slice);
-    // Return number of items read
-    if size > 0 { bytes_read / size } else { 0 }
+    catch_connection_panic(0, || {
+        let total_bytes = match size.checked_mul(nitems) {
+            Some(n) => n,
+            None => return 0, // overflow
+        };
+        if total_bytes == 0 {
+            return 0;
+        }
+        let state = unsafe { get_state::<T>(conn) };
+        let slice = unsafe { std::slice::from_raw_parts_mut(buf as *mut u8, total_bytes) };
+        let bytes_read = state.read(slice);
+        // Return number of items read
+        if size > 0 { bytes_read / size } else { 0 }
+    })
 }
 
 /// Write callback trampoline.
@@ -467,23 +515,28 @@ unsafe extern "C-unwind" fn write_trampoline<T: RConnectionImpl>(
     nitems: usize,
     conn: *mut Rconn,
 ) -> usize {
-    let state = unsafe { get_state::<T>(conn) };
-    let total_bytes = size * nitems;
-    if total_bytes == 0 {
-        return 0;
-    }
-    let slice = unsafe { std::slice::from_raw_parts(buf as *const u8, total_bytes) };
-    let bytes_written = state.write(slice);
-    // Return number of items written
-    if size > 0 { bytes_written / size } else { 0 }
+    catch_connection_panic(0, || {
+        let total_bytes = match size.checked_mul(nitems) {
+            Some(n) => n,
+            None => return 0, // overflow
+        };
+        if total_bytes == 0 {
+            return 0;
+        }
+        let state = unsafe { get_state::<T>(conn) };
+        let slice = unsafe { std::slice::from_raw_parts(buf as *const u8, total_bytes) };
+        let bytes_written = state.write(slice);
+        // Return number of items written
+        if size > 0 { bytes_written / size } else { 0 }
+    })
 }
 
 // Generate simple trampolines using macro
-simple_trampoline!(fgetc_trampoline, c_int => fgetc());
-simple_trampoline!(seek_trampoline, f64, where_: f64, origin: c_int, rw: c_int => seek(where_, origin, rw));
-simple_trampoline!(truncate_trampoline, () => truncate());
-simple_trampoline!(flush_trampoline, c_int => flush());
-simple_trampoline!(vfprintf_trampoline, c_int, fmt: *const c_char, ap: *mut c_void => vfprintf(fmt, ap));
+simple_trampoline!(fgetc_trampoline, c_int, fallback = -1 => fgetc());
+simple_trampoline!(seek_trampoline, f64, fallback = -1.0, where_: f64, origin: c_int, rw: c_int => seek(where_, origin, rw));
+simple_trampoline!(truncate_trampoline, (), fallback = () => truncate());
+simple_trampoline!(flush_trampoline, c_int, fallback = -1 => flush());
+simple_trampoline!(vfprintf_trampoline, c_int, fallback = -1, fmt: *const c_char, ap: *mut c_void => vfprintf(fmt, ap));
 
 // =============================================================================
 // RCustomConnection builder
@@ -1207,12 +1260,12 @@ macro_rules! build_io_connection {
         if let Some(mode) = $mode {
             builder = builder.mode(&mode);
         } else {
-            // Auto-detect mode from capabilities
+            // Auto-detect mode from capabilities (binary by default for byte streams)
             let mode = match (<$caps>::HAS_READ, <$caps>::HAS_WRITE) {
-                (true, true) => "r+",
-                (true, false) => "r",
-                (false, true) => "w",
-                (false, false) => "r",
+                (true, true) => "rb+",
+                (true, false) => "rb",
+                (false, true) => "wb",
+                (false, false) => "rb",
             };
             builder = builder.mode(mode);
         }

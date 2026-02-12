@@ -128,13 +128,7 @@ pub fn is_r_main_thread() -> bool {
 
 /// Extract a message from a panic payload.
 pub fn panic_payload_to_string(payload: &Box<dyn Any + Send>) -> String {
-    if let Some(&s) = payload.downcast_ref::<&str>() {
-        s.to_string()
-    } else if let Some(s) = payload.downcast_ref::<String>() {
-        s.clone()
-    } else {
-        "unknown panic".to_string()
-    }
+    crate::unwind_protect::panic_payload_to_string(payload.as_ref())
 }
 
 /// Raise an R error from a panic message. Does not return.
@@ -209,18 +203,21 @@ where
         let tx = tx_cell
             .borrow()
             .as_ref()
-            .expect("with_r_thread called outside of run_on_worker context")
+            .expect("`with_r_thread` called outside of `run_on_worker` context")
             .clone();
 
         // Create type-erased work that boxes the result
         let work: MainThreadWork = Sendable(Box::new(move || Box::new(f()) as Box<dyn Any + Send>));
 
-        // Send work request to main thread
+        // Send work request to main thread. The worker blocks until the main
+        // thread's loop picks this up and sends a response on response_tx.
         tx.send(WorkerMessage::WorkRequest(work))
             .expect("main thread channel closed");
     });
 
-    // Wait for response
+    // Block until the main thread sends a response. Exactly one response is
+    // produced per WorkRequest—either a result, a panic error, or an R error
+    // from the cleanup handler.
     MAIN_RESPONSE_RX.with(|rx_cell| {
         let rx = rx_cell.borrow();
         let rx = rx.as_ref().expect("response channel not set");
@@ -228,8 +225,8 @@ where
         match response {
             Ok(boxed) => *boxed
                 .downcast::<R>()
-                .expect("type mismatch in with_r_thread response"),
-            Err(panic_msg) => panic!("panic in with_r_thread: {}", panic_msg),
+                .expect("type mismatch in `with_r_thread` response"),
+            Err(panic_msg) => panic!("panic in `with_r_thread`: {}", panic_msg),
         }
     })
 }
@@ -243,6 +240,38 @@ where
     F: FnOnce() -> T + Send + 'static,
     T: Send + 'static,
 {
+    match run_on_worker_inner(f) {
+        Ok(val) => val,
+        Err(msg) => {
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Worker);
+            panic_message_to_r_error(msg)
+        }
+    }
+}
+
+/// Like [`run_on_worker`], but returns `Result<T, String>` instead of
+/// diverging on worker-thread panics. Used by `#[miniextendr(error_in_r)]`
+/// mode so the caller can convert panics to tagged error values.
+///
+/// R-origin errors (longjmp) still pass through via `R_ContinueUnwind`.
+pub fn run_on_worker_result<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
+    let result = run_on_worker_inner(f);
+    if let Err(ref msg) = result {
+        crate::panic_telemetry::fire(msg, crate::panic_telemetry::PanicSource::Worker);
+    }
+    result
+}
+
+/// Shared implementation for [`run_on_worker`] and [`run_on_worker_result`].
+fn run_on_worker_inner<F, T>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> T + Send + 'static,
+    T: Send + 'static,
+{
     /// Marker type for R errors caught by R_UnwindProtect's cleanup handler.
     struct RErrorMarker;
 
@@ -250,13 +279,16 @@ where
         .get()
         .expect("worker not initialized - call miniextendr_worker_init first");
 
-    // Single channel for worker -> main (work requests + final result)
-    // Use buffer of 1 so the worker's final Done send doesn't block
-    // if the main thread longjmps away (R error case)
+    // Single channel for worker -> main (work requests + final result).
+    // Capacity 1: each run_on_worker sends exactly one request at a time and blocks
+    // for a response, so no accumulation is possible. The extra slot ensures the
+    // worker's final Done message doesn't block if the main thread longjmped away.
     let (worker_tx, worker_rx) = mpsc::sync_channel::<TypeErasedWorkerMessage>(1);
 
-    // Channel for main -> worker responses to work requests
-    // Use buffer of 1 so cleanup handler's error send doesn't block
+    // Channel for main -> worker responses to work requests.
+    // Capacity 1: the worker blocks on recv after each with_r_thread call, so at most
+    // one response is in flight. The extra slot lets the cleanup handler send an error
+    // without blocking (it runs mid-longjmp and cannot wait).
     let (response_tx, response_rx) = mpsc::sync_channel::<MainThreadResponse>(1);
 
     let job: AnyJob = Box::new(move || {
@@ -278,7 +310,9 @@ where
             *rx_cell.borrow_mut() = None;
         });
 
-        // Send final result (type-erased)
+        // Send final result back to the main thread's recv loop. The capacity-1
+        // buffer ensures this doesn't block even if the main thread already exited
+        // the loop (e.g., after an R longjmp consumed the last WorkRequest).
         let to_send: Result<Box<dyn Any + Send>, String> = match result {
             Ok(val) => Ok(Box::new(val)),
             Err(payload) => Err(panic_payload_to_string(&payload)),
@@ -288,7 +322,9 @@ where
 
     job_tx.send(job).expect("worker thread dead");
 
-    // Main thread: block on single channel, handle work requests or final result
+    // Main thread event loop: processes WorkRequest messages (from with_r_thread)
+    // until a Done message arrives. Invariant: each WorkRequest produces exactly
+    // one response_tx.send, and the worker blocks until it receives that response.
     loop {
         match worker_rx
             .recv()
@@ -332,8 +368,9 @@ where
                     jump: Rboolean,
                 ) {
                     if jump != Rboolean::FALSE {
-                        // R is about to longjmp - send an error response to the worker first!
-                        // This prevents the worker from blocking forever.
+                        // R is about to longjmp. We MUST send an error response to the worker
+                        // before continuing the unwind—the worker is blocked on response_rx.recv()
+                        // and would deadlock if we don't send something.
                         let data = unsafe { data.cast::<CallData>().as_ref().unwrap() };
                         let response_tx = unsafe { &*data.response_tx_ptr };
 
@@ -351,11 +388,12 @@ where
                         #[cfg(not(feature = "nonapi"))]
                         let error_msg = "R error occurred".to_string();
 
-                        // Send error response - ignore send errors since we're about to unwind anyway
+                        // Send error response. Ignore send errors—we're about to unwind.
+                        // The capacity-1 buffer guarantees this won't block.
                         let _ = response_tx.send(Err(error_msg));
 
-                        // Now trigger a Rust panic so catch_unwind below can catch it
-                        // and we can properly continue R's unwind
+                        // Trigger a Rust panic so catch_unwind in the caller can catch it
+                        // and call R_ContinueUnwind to resume R's longjmp.
                         std::panic::panic_any(RErrorMarker);
                     }
                 }
@@ -398,9 +436,9 @@ where
                         Err(payload) => {
                             // Check if this was an R error (cleanup handler already sent response)
                             if payload.downcast_ref::<RErrorMarker>().is_some() {
-                                // R error - drop data before continuing R's unwind
+                                // R error—cleanup_handler already sent the error response
+                                // to the worker, so we just resume R's longjmp.
                                 drop(data);
-                                // Response was already sent in cleanup handler
                                 ffi::R_ContinueUnwind(token);
                             }
                             // Rust panic - return as error response
@@ -409,22 +447,19 @@ where
                     }
                 };
 
+                // Exactly one send per WorkRequest: either here (normal/panic) or
+                // in cleanup_handler (R error). Never both—R error path diverges
+                // via R_ContinueUnwind above and never reaches this line.
                 response_tx
                     .send(response)
                     .expect("worker response channel closed");
             }
             WorkerMessage::Done(result) => {
                 return match result {
-                    Ok(boxed) => *boxed
+                    Ok(boxed) => Ok(*boxed
                         .downcast::<T>()
-                        .expect("type mismatch in run_on_worker result"),
-                    Err(msg) => {
-                        crate::panic_telemetry::fire(
-                            &msg,
-                            crate::panic_telemetry::PanicSource::Worker,
-                        );
-                        panic_message_to_r_error(msg)
-                    }
+                        .expect("type mismatch in run_on_worker result")),
+                    Err(msg) => Err(msg),
                 };
             }
         }
@@ -448,10 +483,13 @@ where
 pub extern "C-unwind" fn miniextendr_worker_init() {
     static RUN_ONCE: std::sync::Once = std::sync::Once::new();
     RUN_ONCE.call_once_force(|x| {
-        // Ignore repeated calls from the same thread
+        // On poisoned retry, attempt full re-initialization instead of
+        // returning early. The previous init panicked before completing,
+        // so worker infrastructure may be missing.
         if x.is_poisoned() {
-            eprintln!("warning: miniextendr worker initialisation was done more than once");
-            return;
+            eprintln!(
+                "warning: miniextendr worker init is retrying after a previous failed attempt"
+            );
         }
 
         // Safety check: if R_MAIN_THREAD_ID was already set, verify it's the same thread
@@ -464,14 +502,16 @@ pub extern "C-unwind" fn miniextendr_worker_init() {
                     current_id, existing_id
                 );
             }
-            return; // Already initialized correctly
+            // Thread ID already correct; fall through to ensure worker is set up
+        } else {
+            let _ = R_MAIN_THREAD_ID.set(current_id);
         }
-
-        let _ = R_MAIN_THREAD_ID.set(current_id);
 
         if JOB_TX.get().is_some() {
-            return;
+            return; // Worker already running
         }
+        // Capacity 0 (rendezvous): the main thread blocks until the worker picks
+        // up the job, ensuring at most one job is in flight at a time.
         let (job_tx, job_rx) = mpsc::sync_channel::<AnyJob>(0);
         thread::Builder::new()
             .name("miniextendr-worker".into())
