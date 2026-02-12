@@ -1683,7 +1683,7 @@ fn trait_method_body_lines(call_expr: &str, error_in_r: bool, indent: &str) -> V
         vec![
             format!("{}.val <- {}", indent, call_expr),
             format!(
-                "{}if (inherits(.val, \"rust_error_value\")) {{",
+                "{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{",
                 indent
             ),
             format!("{}  stop(structure(", indent),

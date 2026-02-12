@@ -670,8 +670,9 @@ impl CWrapperContext {
                 let worker = quote! {
                     #call_expr
                 };
+                let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    #unwind_fn(
                         || ::miniextendr_api::into_r::IntoR::into_sexp(
                             ::miniextendr_api::externalptr::ExternalPtr::new(__miniextendr_result)
                         ),
@@ -686,8 +687,9 @@ impl CWrapperContext {
                 };
                 let result_ident = format_ident!("__miniextendr_result");
                 let conversion = self.sexp_conversion_expr(&result_ident);
+                let unwind_fn = self.worker_conversion_unwind_fn();
                 let convert = quote! {
-                    ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                    #unwind_fn(
                         || #conversion,
                         None,
                     )
@@ -764,9 +766,10 @@ impl CWrapperContext {
                     let worker = quote! { #call_expr };
                     let result_ident = format_ident!("__miniextendr_result");
                     let conversion = self.sexp_conversion_expr(&result_ident);
+                    let unwind_fn = self.worker_conversion_unwind_fn();
                     let convert = quote! {
                         match __miniextendr_result {
-                            Some(#result_ident) => ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            Some(#result_ident) => #unwind_fn(
                                 || #conversion,
                                 None,
                             ),
@@ -851,9 +854,10 @@ impl CWrapperContext {
                     let worker = quote! { #call_expr };
                     let result_ident = format_ident!("__miniextendr_result");
                     let conversion = self.sexp_conversion_expr(&result_ident);
+                    let unwind_fn = self.worker_conversion_unwind_fn();
                     let convert = quote! {
                         match __miniextendr_result {
-                            Ok(#result_ident) => ::miniextendr_api::unwind_protect::with_r_unwind_protect(
+                            Ok(#result_ident) => #unwind_fn(
                                 || #conversion,
                                 None,
                             ),
@@ -882,6 +886,17 @@ impl CWrapperContext {
                     (worker, convert)
                 }
             }
+        }
+    }
+
+    /// Returns the appropriate unwind protection function for worker-thread
+    /// conversion steps. In error_in_r mode, uses the error_in_r variant that
+    /// returns tagged error values on conversion panics instead of longjmping.
+    fn worker_conversion_unwind_fn(&self) -> TokenStream {
+        if self.error_in_r {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect_error_in_r }
+        } else {
+            quote! { ::miniextendr_api::unwind_protect::with_r_unwind_protect }
         }
     }
 

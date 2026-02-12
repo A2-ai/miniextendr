@@ -92,7 +92,7 @@ impl MethodReturnBuilder {
     /// Generate error check lines for error_in_r mode.
     fn error_check_lines(&self, indent: &str) -> Vec<String> {
         vec![
-            format!("{}if (inherits(.val, \"rust_error_value\")) {{", indent),
+            format!("{}if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{", indent),
             format!(
                 "{}  stop(structure(",
                 indent
@@ -283,7 +283,7 @@ impl MethodReturnBuilder {
             };
             format!(
                 "{{\n    .val <- {}\n    \
-                 if (inherits(.val, \"rust_error_value\")) {{\n      \
+                 if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
                    stop(structure(\n        \
                      class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
                      list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \
@@ -328,7 +328,7 @@ impl MethodReturnBuilder {
             };
             format!(
                 "{{\n    .val <- {}\n    \
-                 if (inherits(.val, \"rust_error_value\")) {{\n      \
+                 if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n      \
                    stop(structure(\n        \
                      class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n        \
                      list(message = .val$error, call = sys.call(), kind = .val$kind)\n      \

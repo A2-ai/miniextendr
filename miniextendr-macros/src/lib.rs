@@ -1239,7 +1239,7 @@ pub fn miniextendr(
         };
         format!(
             ".val <- {call_expr}\n  \
-             if (inherits(.val, \"rust_error_value\")) {{\n    \
+             if (inherits(.val, \"rust_error_value\") && isTRUE(attr(.val, \"__rust_error__\"))) {{\n    \
                stop(structure(\n      \
                  class = c(\"rust_error\", \"simpleError\", \"error\", \"condition\"),\n      \
                  list(message = .val$error, call = sys.call(), kind = .val$kind)\n    \
