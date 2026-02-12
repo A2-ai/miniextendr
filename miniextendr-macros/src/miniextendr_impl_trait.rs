@@ -421,13 +421,17 @@ fn generate_vtable_static(
         #[doc(hidden)]
         const #r_wrappers_const: &str =
             concat!(
-                "# Generated from Rust source file: ",
+                "# Generated from Rust impl `",
+                stringify!(#trait_name),
+                "` for `",
+                stringify!(#type_ident),
+                "` (",
                 file!(),
                 ":",
                 #source_line_lit,
                 ":",
                 #source_col_lit,
-                "\n",
+                ")",
                 #r_wrapper_str
             );
 

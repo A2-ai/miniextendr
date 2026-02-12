@@ -1078,15 +1078,15 @@ pub fn derive_vctrs(input: DeriveInput) -> syn::Result<TokenStream> {
         #[doc(hidden)]
         pub const #r_wrappers_const_ident: &str =
             concat!(
-                "# Generated from Rust source file: ",
+                "# Generated from Rust derive(Vctrs) on `",
+                stringify!(#name),
+                "` (",
                 file!(),
                 ":",
                 #source_line_lit,
                 ":",
                 #source_col_lit,
-                "\n# Wraps Rust type `",
-                stringify!(#name),
-                "` via `#[derive(Vctrs)]`.\n",
+                ")",
                 #r_wrappers
             );
     })

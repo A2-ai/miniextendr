@@ -1364,13 +1364,15 @@ pub fn miniextendr(
         #[doc = concat!("Generated from source file `", file!(), "`.")]
         const #r_wrapper_generator: &str =
             concat!(
-                "# Generated from Rust source file: ",
+                "# Generated from Rust fn `",
+                stringify!(#rust_ident),
+                "` (",
                 file!(),
                 ":",
                 #source_line_lit,
                 ":",
                 #source_col_lit,
-                "\n",
+                ")",
                 #r_wrapper_str
             );
 
