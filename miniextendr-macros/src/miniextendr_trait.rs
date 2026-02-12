@@ -392,7 +392,6 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             ///
             /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
             /// - Must be called on R's main thread
-            /// - Must call `init_ccallables()` first
             #[inline]
             pub unsafe fn try_from_sexp(sexp: ::miniextendr_api::ffi::SEXP) -> Option<Self> {
                 <Self as ::miniextendr_api::TraitView>::try_from_sexp(sexp)

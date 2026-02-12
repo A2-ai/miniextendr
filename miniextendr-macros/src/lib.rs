@@ -97,7 +97,7 @@
 //! │     ├── R_CallMethodDef array from all registered items                  │
 //! │     ├── R_init_<name>_miniextendr() initialization function              │
 //! │     ├── Combined R wrapper code (all functions + classes)                │
-//! │     └── Trait ABI init_ccallables() call if traits present               │
+//! │     └── Trait ABI vtable/view types if traits present                    │
 //! └──────────────────────────────────────────────────────────────────────────┘
 //! ```
 //!

@@ -203,6 +203,7 @@ AC_CONFIG_FILES([
   src/rust/.cargo/config.toml:src/rust/cargo-config.toml.in
   src/Makevars:src/Makevars.in
   src/entrypoint.c:src/entrypoint.c.in
+  src/mx_abi.c:src/mx_abi.c.in
 ])
 
 dnl Remove cargo config in dev mode (direct path deps don't need source replacement)

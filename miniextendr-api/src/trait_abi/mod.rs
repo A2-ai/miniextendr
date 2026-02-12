@@ -30,7 +30,7 @@
 //!
 //! ## Submodules
 //!
-//! - [`ccall`]: C-callable function pointers loaded via `R_GetCCallable`
+//! - [`ccall`]: Direct FFI wrappers for `mx_abi.c` functions
 //! - [`conv`]: Type conversion helpers for method shims
 //!
 //! ## Integration with ExternalPtr / TypedExternal
@@ -81,17 +81,9 @@
 //!
 //! ## Initialization
 //!
-//! Packages using the trait ABI must call [`init_ccallables`] during
-//! `R_init_<pkg>`:
-//!
-//! ```ignore
-//! #[unsafe(no_mangle)]
-//! pub extern "C" fn R_init_mypackage(info: *mut DllInfo) {
-//!     miniextendr_worker_init();
-//!     miniextendr_api::trait_abi::init_ccallables();  // Required!
-//!     // ... register routines ...
-//! }
-//! ```
+//! Each package compiles `mx_abi.c` which provides the `mx_wrap`/`mx_get`/`mx_query`
+//! functions. The entrypoint calls `mx_abi_register()` to initialize the tag symbol
+//! and register C-callables.
 //!
 //! ## Thread Safety
 //!
@@ -99,7 +91,6 @@
 //!
 //! - R invokes `.Call` on the main thread
 //! - Method shims do not route through `with_r_thread`
-//! - C-callables must be loaded from main thread (`R_init_*`)
 //!
 //! ## Example Usage
 //!
@@ -146,7 +137,6 @@
 //!
 //! [`ccall`]: crate::trait_abi::ccall
 //! [`conv`]: crate::trait_abi::conv
-//! [`init_ccallables`]: crate::trait_abi::init_ccallables
 //! [`mx_tag`]: crate::abi::mx_tag
 //! [`ExternalPtr`]: crate::externalptr::ExternalPtr
 //! [`TypedExternal`]: crate::externalptr::TypedExternal
@@ -155,24 +145,7 @@ pub mod ccall;
 pub mod conv;
 
 // Re-export commonly used items
-pub use ccall::{init_ccallables, try_init_ccallables, CCallableError};
 pub use conv::{check_arity, extract_arg, from_sexp, nil, rf_error, to_sexp, try_from_sexp};
-
-/// Initialize C-callables from C code.
-///
-/// This is a C-callable wrapper around [`try_init_ccallables`] for use from
-/// `R_init_<pkg>` in entrypoint.c. Uses `r_stop` instead of panicking on
-/// failure.
-///
-/// # Safety
-///
-/// Must be called from R's main thread during package initialization.
-#[unsafe(no_mangle)]
-pub extern "C-unwind" fn miniextendr_init_ccallables() {
-    if let Err(e) = ccall::try_init_ccallables() {
-        crate::error::r_stop(&format!("miniextendr trait ABI init failed: {e}"));
-    }
-}
 
 use crate::abi::mx_tag;
 use crate::ffi::SEXP;
@@ -255,7 +228,6 @@ pub trait TraitView: Sized {
     ///
     /// - `sexp` must be a valid R external pointer (EXTPTRSXP)
     /// - Must be called on R's main thread
-    /// - Must call `init_ccallables()` first
     ///
     /// # Returns
     ///
