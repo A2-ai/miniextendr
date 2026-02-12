@@ -115,13 +115,19 @@ SharedData$create <- function(x, y, label) {
 `$.SharedData` <- function(self, name) {
   obj <- SharedData[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -199,13 +205,19 @@ EnvPoint$add <- function(dx, dy) {
 `$.EnvPoint` <- function(self, name) {
   obj <- EnvPoint[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -534,13 +546,19 @@ SimpleCounter$get_value <- function() {
 `$.SimpleCounter` <- function(self, name) {
   obj <- SimpleCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -565,18 +583,23 @@ SimpleCounter$Counter <- new.env(parent = emptyenv())
 SimpleCounter$Counter$value <- function(x) {
   .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
 }
+attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name SimpleCounter$Counter$increment
 #' @rdname SimpleCounter
 SimpleCounter$Counter$increment <- function(x) {
   .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
+attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 #' @name SimpleCounter$Counter$add
 #' @rdname SimpleCounter
 SimpleCounter$Counter$add <- function(x, n) {
   .Call(C_SimpleCounter__Counter__add, .call = match.call(), x, n)
+  invisible(x)
 }
+attr(SimpleCounter$Counter$add, ".__mx_instance__") <- TRUE
 
 # nocov end
 # nolint end

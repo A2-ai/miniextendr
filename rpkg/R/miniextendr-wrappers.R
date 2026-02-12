@@ -5910,7 +5910,7 @@ Point$from_str <- function(s) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -5979,7 +5979,7 @@ MyFloat$nan <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -6036,7 +6036,7 @@ ChainedError$without_source <- function(msg) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -6099,7 +6099,7 @@ IntVecIter$nth <- function(n) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -6164,7 +6164,7 @@ GrowableVec$from_vec <- function(data) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -6219,7 +6219,7 @@ IntSet$from_vec <- function(items) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -6270,7 +6270,7 @@ IterableVec$make_iter <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -6331,7 +6331,7 @@ IterableVecIter$collect_all <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -7231,7 +7231,7 @@ SidecarEnv <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -7329,7 +7329,7 @@ SidecarRawSexp <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -7362,7 +7362,7 @@ SidecarRaw <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -7450,7 +7450,7 @@ ReceiverCounter$default_counter <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -7973,9 +7973,9 @@ S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call =
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
+    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
     score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
-    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8302,7 +8302,7 @@ SimpleCounter$new_counter <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -8370,7 +8370,7 @@ PanickyCounter$new_panicky <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -8429,7 +8429,7 @@ S3TraitCounter$new_s3trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -8473,7 +8473,7 @@ S4TraitCounter$new_s4trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -8516,7 +8516,7 @@ S7TraitCounter$new_s7trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -8559,7 +8559,7 @@ R6TraitCounter$new_r6trait <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -8590,6 +8590,7 @@ SimpleCounter$Counter <- new.env(parent = emptyenv())
 SimpleCounter$Counter$value <- function(x) {
   .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
 }
+attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name SimpleCounter$Counter$increment
 #' @rdname SimpleCounter
@@ -8597,6 +8598,7 @@ SimpleCounter$Counter$increment <- function(x) {
   .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
+attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 #' @name SimpleCounter$Counter$checked_add
 #' @rdname SimpleCounter
@@ -8604,6 +8606,7 @@ SimpleCounter$Counter$checked_add <- function(x, n) {
   .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
 }
+attr(SimpleCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
 
 #' @name SimpleCounter$Counter$default_initial
 #' @rdname SimpleCounter
@@ -8629,6 +8632,7 @@ PanickyCounter$Counter <- new.env(parent = emptyenv())
 PanickyCounter$Counter$value <- function(x) {
   .Call(C_PanickyCounter__Counter__value, .call = match.call(), x)
 }
+attr(PanickyCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name PanickyCounter$Counter$increment
 #' @rdname PanickyCounter
@@ -8636,6 +8640,7 @@ PanickyCounter$Counter$increment <- function(x) {
   .Call(C_PanickyCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
+attr(PanickyCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 #' @name PanickyCounter$Counter$checked_add
 #' @rdname PanickyCounter
@@ -8643,6 +8648,7 @@ PanickyCounter$Counter$checked_add <- function(x, n) {
   .Call(C_PanickyCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
 }
+attr(PanickyCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
 
 #' @name PanickyCounter$Counter$default_initial
 #' @rdname PanickyCounter
@@ -8972,7 +8978,7 @@ CounterTraitEnv$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9029,7 +9035,7 @@ CounterTraitS3$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9086,7 +9092,7 @@ CounterTraitS4$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9143,7 +9149,7 @@ CounterTraitS7$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9200,7 +9206,7 @@ CounterTraitR6$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9232,6 +9238,7 @@ CounterTraitEnv$MatrixCounter <- new.env(parent = emptyenv())
 CounterTraitEnv$MatrixCounter$custom_get <- function(x) {
   .Call(C_CounterTraitEnv__MatrixCounter__custom_get, .call = match.call(), x)
 }
+attr(CounterTraitEnv$MatrixCounter$custom_get, ".__mx_instance__") <- TRUE
 
 #' @name CounterTraitEnv$MatrixCounter$custom_add
 #' @rdname CounterTraitEnv
@@ -9239,6 +9246,7 @@ CounterTraitEnv$MatrixCounter$custom_add <- function(x, n) {
   .Call(C_CounterTraitEnv__MatrixCounter__custom_add, .call = match.call(), x, n)
   invisible(x)
 }
+attr(CounterTraitEnv$MatrixCounter$custom_add, ".__mx_instance__") <- TRUE
 
 #' @name CounterTraitEnv$MatrixCounter$default_value
 #' @rdname CounterTraitEnv
@@ -9436,6 +9444,19 @@ CounterTraitR6$MatrixCounter$default_value <- function() {
   .Call(C_CounterTraitR6__MatrixCounter__default_value, .call = match.call())
 }
 
+# Generated from Rust source file: class_system_matrix.rs:210:23
+
+# Trait methods and consts for CounterTraitEnv implementing StaticXParam
+# Generated by #[miniextendr] impl StaticXParam for CounterTraitEnv
+
+CounterTraitEnv$StaticXParam <- new.env(parent = emptyenv())
+
+#' @name CounterTraitEnv$StaticXParam$from_value
+#' @rdname CounterTraitEnv
+CounterTraitEnv$StaticXParam$from_value <- function(x) {
+  .Call(C_CounterTraitEnv__StaticXParam__from_value, .call = match.call(), x)
+}
+
 # Generated from Rust source file: shared_trait_test.rs:76:6
 
 #' @title SharedSimpleCounter  Class
@@ -9473,7 +9494,7 @@ SharedSimpleCounter$get_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9523,7 +9544,7 @@ AtomicCounter$new_atomic <- function(initial) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9555,6 +9576,7 @@ SharedSimpleCounter$Counter <- new.env(parent = emptyenv())
 SharedSimpleCounter$Counter$value <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__value, .call = match.call(), x)
 }
+attr(SharedSimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name SharedSimpleCounter$Counter$increment
 #' @rdname SharedSimpleCounter
@@ -9562,6 +9584,7 @@ SharedSimpleCounter$Counter$increment <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
+attr(SharedSimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 #' @name SharedSimpleCounter$Counter$add
 #' @rdname SharedSimpleCounter
@@ -9569,6 +9592,7 @@ SharedSimpleCounter$Counter$add <- function(x, n) {
   .Call(C_SharedSimpleCounter__Counter__add, .call = match.call(), x, n)
   invisible(x)
 }
+attr(SharedSimpleCounter$Counter$add, ".__mx_instance__") <- TRUE
 
 #' @name SharedSimpleCounter$Counter$reset
 #' @rdname SharedSimpleCounter
@@ -9576,6 +9600,7 @@ SharedSimpleCounter$Counter$reset <- function(x) {
   .Call(C_SharedSimpleCounter__Counter__reset, .call = match.call(), x)
   invisible(x)
 }
+attr(SharedSimpleCounter$Counter$reset, ".__mx_instance__") <- TRUE
 
 # Generated from Rust source file: shared_trait_test.rs:124:18
 
@@ -9589,6 +9614,7 @@ AtomicCounter$Counter <- new.env(parent = emptyenv())
 AtomicCounter$Counter$value <- function(x) {
   .Call(C_AtomicCounter__Counter__value, .call = match.call(), x)
 }
+attr(AtomicCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name AtomicCounter$Counter$increment
 #' @rdname AtomicCounter
@@ -9596,6 +9622,7 @@ AtomicCounter$Counter$increment <- function(x) {
   .Call(C_AtomicCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
+attr(AtomicCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 #' @name AtomicCounter$Counter$add
 #' @rdname AtomicCounter
@@ -9603,6 +9630,7 @@ AtomicCounter$Counter$add <- function(x, n) {
   .Call(C_AtomicCounter__Counter__add, .call = match.call(), x, n)
   invisible(x)
 }
+attr(AtomicCounter$Counter$add, ".__mx_instance__") <- TRUE
 
 #' @name AtomicCounter$Counter$reset
 #' @rdname AtomicCounter
@@ -9610,6 +9638,7 @@ AtomicCounter$Counter$reset <- function(x) {
   .Call(C_AtomicCounter__Counter__reset, .call = match.call(), x)
   invisible(x)
 }
+attr(AtomicCounter$Counter$reset, ".__mx_instance__") <- TRUE
 
 # Generated from Rust source file: rng_tests.rs:84:6
 
@@ -9674,7 +9703,7 @@ RngSampler$static_sample <- function(n) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9740,7 +9769,7 @@ SerdeRPoint$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9804,7 +9833,7 @@ SerdeRPoint3D$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9877,7 +9906,7 @@ Rectangle$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -9941,7 +9970,7 @@ DeepNest$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10014,7 +10043,7 @@ Collections$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10078,7 +10107,7 @@ Maps$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10151,7 +10180,7 @@ WithEnums$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10233,7 +10262,7 @@ WithOptionals$from_r <- function(sexp) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10355,7 +10384,7 @@ NdVec$from_range <- function(start, end, step) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10482,7 +10511,7 @@ NdMatrix$identity <- function(n) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10613,7 +10642,7 @@ NdArrayDyn$ones <- function(shape) {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -10716,7 +10745,7 @@ NdIntVec$to_r <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)

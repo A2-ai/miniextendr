@@ -172,13 +172,19 @@ DoubleCounter$create <- function(initial) {
 `$.DoubleCounter` <- function(self, name) {
   obj <- DoubleCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -203,18 +209,23 @@ DoubleCounter$Counter <- new.env(parent = emptyenv())
 DoubleCounter$Counter$value <- function(x) {
   .Call(C_DoubleCounter__Counter__value, .call = match.call(), x)
 }
+attr(DoubleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
 #' @name DoubleCounter$Counter$increment
 #' @rdname DoubleCounter
 DoubleCounter$Counter$increment <- function(x) {
   .Call(C_DoubleCounter__Counter__increment, .call = match.call(), x)
+  invisible(x)
 }
+attr(DoubleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
 #' @name DoubleCounter$Counter$add
 #' @rdname DoubleCounter
 DoubleCounter$Counter$add <- function(x, n) {
   .Call(C_DoubleCounter__Counter__add, .call = match.call(), x, n)
+  invisible(x)
 }
+attr(DoubleCounter$Counter$add, ".__mx_instance__") <- TRUE
 
 # nocov end
 # nolint end

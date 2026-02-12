@@ -341,7 +341,10 @@ fn generate_vtable_static(
 
     // Generate R wrapper code string based on class system
     let r_wrapper_string =
-        generate_trait_r_wrapper(&type_ident, trait_name, &methods, &consts, class_system);
+        match generate_trait_r_wrapper(&type_ident, trait_name, &methods, &consts, class_system) {
+            Ok(s) => s,
+            Err(e) => return e.into_compile_error(),
+        };
 
     // Generate constant names for module registration
     let call_defs_const = format_ident!(
@@ -809,15 +812,17 @@ fn generate_trait_r_wrapper(
     methods: &[TraitMethod],
     consts: &[TraitConst],
     class_system: ClassSystem,
-) -> String {
+) -> syn::Result<String> {
     match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S4 => generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S7 => generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::R6 => generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts)),
+        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts)),
+        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts)),
+        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts)),
         // vctrs uses S3 under the hood, so use the S3 trait wrapper
-        ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::Vctrs => {
+            Ok(generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts))
+        }
     }
 }
 
@@ -827,7 +832,7 @@ fn generate_trait_env_r_wrapper(
     trait_name: &syn::Ident,
     methods: &[TraitMethod],
     consts: &[TraitConst],
-) -> String {
+) -> syn::Result<String> {
     use crate::r_wrapper_builder::{DotCallBuilder, RoxygenBuilder};
 
     let mut lines = Vec::new();
@@ -871,6 +876,22 @@ fn generate_trait_env_r_wrapper(
             .build();
         lines.extend(roxygen);
 
+        // Check for 'x' parameter collision in instance methods
+        if method.has_self {
+            for input in &method.sig.inputs {
+                if let syn::FnArg::Typed(pt) = input
+                    && let syn::Pat::Ident(pat_ident) = pt.pat.as_ref()
+                    && pat_ident.ident == "x"
+                {
+                    return Err(syn::Error::new_spanned(
+                        &pat_ident.ident,
+                        "trait instance method parameter cannot be named `x` \
+                         (collides with self parameter in env-class dispatch)",
+                    ));
+                }
+            }
+        }
+
         // Build .Call() invocation — instance methods use 'x' as first param
         // (same pattern as S3/S4/S7/R6). Standalone: Type$Trait$method(obj).
         // Via $ dispatch: obj$Trait$method() — the $ dispatch creates wrappers
@@ -903,6 +924,15 @@ fn generate_trait_env_r_wrapper(
             lines.push("  invisible(x)".to_string());
         }
         lines.push("}".to_string());
+
+        // Stamp instance methods with attribute for $ dispatch detection
+        if method.has_self {
+            lines.push(format!(
+                "attr({}${}${}, \".__mx_instance__\") <- TRUE",
+                type_ident, trait_name, method_name
+            ));
+        }
+
         lines.push(String::new());
     }
 
@@ -932,7 +962,7 @@ fn generate_trait_env_r_wrapper(
         lines.push(String::new());
     }
 
-    lines.join("\n")
+    Ok(lines.join("\n"))
 }
 
 /// Generate S3-style R wrapper code (generic + method.Type).

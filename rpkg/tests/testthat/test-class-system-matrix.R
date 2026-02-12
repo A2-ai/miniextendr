@@ -140,6 +140,24 @@ test_that("different trait impl styles work independently", {
   expect_equal(r6_trait_MatrixCounter_custom_get(r6_counter), 105L)
 })
 
+# =============================================================================
+# Regression: static method with first param named 'x'
+# =============================================================================
+
+test_that("static trait method with x param works via $ dispatch", {
+  # Static method whose first param is 'x' - the old formals heuristic would
+  # have misclassified this as an instance method and prepended self
+  expect_equal(CounterTraitEnv$StaticXParam$from_value(10L), 20L)
+
+  # Also works via $ dispatch on an instance (should NOT prepend self)
+  counter <- CounterTraitEnv$new(5L)
+  expect_equal(counter$StaticXParam$from_value(10L), 20L)
+})
+
+# =============================================================================
+# Cross-style compatibility tests
+# =============================================================================
+
 test_that("static trait methods return different values per type", {
   # Each type has a different default_value
   expect_equal(CounterTraitEnv$MatrixCounter$default_value(), 1L)
