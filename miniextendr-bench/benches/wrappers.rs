@@ -64,13 +64,15 @@ struct ParsedExpr {
 unsafe fn parse_and_protect(code: &str) -> ParsedExpr {
     unsafe {
         let code_sexp = ffi::Rf_protect(ffi::Rf_allocVector(ffi::SEXPTYPE::STRSXP, 1));
-        let charsxp =
-            ffi::Rf_mkCharLenCE(code.as_ptr().cast::<c_char>(), code.len() as i32, ffi::CE_UTF8);
+        let charsxp = ffi::Rf_mkCharLenCE(
+            code.as_ptr().cast::<c_char>(),
+            code.len() as i32,
+            ffi::CE_UTF8,
+        );
         ffi::SET_STRING_ELT(code_sexp, 0, charsxp);
 
         let mut status = ParseStatus::PARSE_NULL;
-        let parsed =
-            ffi::Rf_protect(R_ParseVector(code_sexp, 1, &mut status, ffi::R_NilValue));
+        let parsed = ffi::Rf_protect(R_ParseVector(code_sexp, 1, &mut status, ffi::R_NilValue));
         assert_eq!(
             status,
             ParseStatus::PARSE_OK,
@@ -105,9 +107,7 @@ fn main() {
         r_eval_string(
             ".__bench_wrapper_coerce_int__ <- function(x) .__bench_noop__(as.integer(x))",
         );
-        r_eval_string(
-            ".__bench_wrapper_coerce_dbl__ <- function(x) .__bench_noop__(as.double(x))",
-        );
+        r_eval_string(".__bench_wrapper_coerce_dbl__ <- function(x) .__bench_noop__(as.double(x))");
         r_eval_string(
             ".__bench_wrapper_coerce_chr__ <- function(x) .__bench_noop__(as.character(x))",
         );
@@ -125,9 +125,7 @@ fn main() {
             "  obj\n",
             "}\n",
         ));
-        r_eval_string(
-            ".__bench_env_obj__ <- structure(list(), class = '.__bench_EnvObj__')",
-        );
+        r_eval_string(".__bench_env_obj__ <- structure(list(), class = '.__bench_EnvObj__')");
 
         // R6-style class
         r_eval_string(concat!(
@@ -363,9 +361,7 @@ fn class_r6_method(bencher: divan::Bencher) {
 #[divan::bench]
 fn class_s3_method(bencher: divan::Bencher) {
     bencher
-        .with_inputs(|| unsafe {
-            parse_and_protect(".__bench_s3_value__(.__bench_s3_obj__)")
-        })
+        .with_inputs(|| unsafe { parse_and_protect(".__bench_s3_value__(.__bench_s3_obj__)") })
         .bench_local_refs(|parsed| unsafe {
             let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
             divan::black_box(out);
@@ -376,9 +372,7 @@ fn class_s3_method(bencher: divan::Bencher) {
 #[divan::bench]
 fn class_s4_method(bencher: divan::Bencher) {
     bencher
-        .with_inputs(|| unsafe {
-            parse_and_protect(".__bench_s4_value__(.__bench_s4_obj__)")
-        })
+        .with_inputs(|| unsafe { parse_and_protect(".__bench_s4_value__(.__bench_s4_obj__)") })
         .bench_local_refs(|parsed| unsafe {
             let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
             divan::black_box(out);
@@ -395,9 +389,7 @@ fn class_s7_method(bencher: divan::Bencher) {
     }
 
     bencher
-        .with_inputs(|| unsafe {
-            parse_and_protect(".__bench_s7_value__(.__bench_s7_obj__)")
-        })
+        .with_inputs(|| unsafe { parse_and_protect(".__bench_s7_value__(.__bench_s7_obj__)") })
         .bench_local_refs(|parsed| unsafe {
             let out = ffi::Rf_eval(parsed.expr, ffi::R_GlobalEnv);
             divan::black_box(out);

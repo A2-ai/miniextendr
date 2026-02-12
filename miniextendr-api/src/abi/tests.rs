@@ -129,5 +129,8 @@ fn test_old_offset_wrong_for_overaligned() {
     );
 
     // The correct offset accounts for alignment
-    assert_eq!(actual_offset, erased_size.next_multiple_of(align_of::<Align32>()));
+    assert_eq!(
+        actual_offset,
+        erased_size.next_multiple_of(align_of::<Align32>())
+    );
 }

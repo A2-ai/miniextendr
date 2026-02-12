@@ -6865,13 +6865,19 @@ ErrorInRCounter$failing_method <- function() {
 `$.ErrorInRCounter` <- function(self, name) {
   obj <- ErrorInRCounter[[name]]
   if (is.environment(obj)) {
-    # Trait namespace - bind self to all methods
+    # Trait namespace - wrap instance methods to prepend self
     bound <- new.env(parent = emptyenv())
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        environment(method) <- environment()
-        bound[[method_name]] <- method
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
+          local({
+            m <- method
+            bound[[method_name]] <<- function(...) m(self, ...)
+          })
+        } else {
+          bound[[method_name]] <- method
+        }
       }
     }
     bound
@@ -7056,7 +7062,7 @@ FallibleImpl$inherent_value <- function() {
     for (method_name in names(obj)) {
       method <- obj[[method_name]]
       if (is.function(method)) {
-        if (length(formals(method)) > 0L && names(formals(method))[[1L]] == "x") {
+        if (isTRUE(attr(method, ".__mx_instance__"))) {
           local({
             m <- method
             bound[[method_name]] <<- function(...) m(self, ...)
@@ -7095,6 +7101,7 @@ FallibleImpl$Fallible$get_value <- function(x) {
   }
   .val
 }
+attr(FallibleImpl$Fallible$get_value, ".__mx_instance__") <- TRUE
 
 #' @name FallibleImpl$Fallible$will_panic
 #' @rdname FallibleImpl
@@ -7108,6 +7115,7 @@ FallibleImpl$Fallible$will_panic <- function(x) {
   }
   .val
 }
+attr(FallibleImpl$Fallible$will_panic, ".__mx_instance__") <- TRUE
 
 # Generated from Rust source file: conversion_tests.rs:244:6
 
@@ -8410,8 +8418,8 @@ S7Counter_default_counter <- function() {
 S7Range <- S7::new_class("S7Range",
   properties = list(
     .ptr = S7::class_any,
-    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self }),
-    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
+    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr)),
+    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
   ),
   constructor = function(start, end, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8438,9 +8446,9 @@ S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call =
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
+    score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
     name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
-    score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self })
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {

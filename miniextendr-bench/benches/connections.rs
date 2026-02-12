@@ -1,7 +1,9 @@
 //! Connection benchmarks (feature-gated).
 
 #[cfg(feature = "connections")]
-use miniextendr_api::connection::{RConnectionIo, get_connection, read_connection, write_connection};
+use miniextendr_api::connection::{
+    RConnectionIo, get_connection, read_connection, write_connection,
+};
 #[cfg(feature = "connections")]
 use miniextendr_api::ffi;
 #[cfg(feature = "connections")]

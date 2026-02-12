@@ -869,14 +869,22 @@ fn generate_trait_r_wrapper(
 ) -> syn::Result<String> {
     match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts)),
-        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts)),
-        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts)),
-        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts)),
+        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
+        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
+        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
+        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
         // vctrs uses S3 under the hood, so use the S3 trait wrapper
-        ClassSystem::Vctrs => {
-            Ok(generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts))
-        }
+        ClassSystem::Vctrs => Ok(generate_trait_s3_r_wrapper(
+            type_ident, trait_name, methods, consts,
+        )),
     }
 }
 

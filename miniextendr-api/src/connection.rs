@@ -416,10 +416,7 @@ where
             } else {
                 "panic in connection callback".to_string()
             };
-            crate::panic_telemetry::fire(
-                &msg,
-                crate::panic_telemetry::PanicSource::Connection,
-            );
+            crate::panic_telemetry::fire(&msg, crate::panic_telemetry::PanicSource::Connection);
             fallback
         }
     }

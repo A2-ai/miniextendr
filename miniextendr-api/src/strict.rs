@@ -262,12 +262,14 @@ pub fn checked_vec_try_from_sexp_u64(sexp: SEXP, param: &str) -> Vec<u64> {
 pub fn checked_vec_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<isize> {
     checked_vec_try_from_sexp_i64(sexp, param)
         .into_iter()
-        .map(|x| isize::try_from(x).unwrap_or_else(|_| {
+        .map(|x| {
+            isize::try_from(x).unwrap_or_else(|_| {
             panic!(
                 "strict conversion failed for parameter '{}': i64 value {} does not fit in isize",
                 param, x
             )
-        }))
+        })
+        })
         .collect()
 }
 
@@ -275,12 +277,14 @@ pub fn checked_vec_try_from_sexp_isize(sexp: SEXP, param: &str) -> Vec<isize> {
 pub fn checked_vec_try_from_sexp_usize(sexp: SEXP, param: &str) -> Vec<usize> {
     checked_vec_try_from_sexp_u64(sexp, param)
         .into_iter()
-        .map(|x| usize::try_from(x).unwrap_or_else(|_| {
+        .map(|x| {
+            usize::try_from(x).unwrap_or_else(|_| {
             panic!(
                 "strict conversion failed for parameter '{}': u64 value {} does not fit in usize",
                 param, x
             )
-        }))
+        })
+        })
         .collect()
 }
 

@@ -334,8 +334,7 @@ macro_rules! __impl_altvec_extract_subset {
 
                 // Convert indx SEXP to slice
                 let len = unsafe { $crate::ffi::Rf_xlength(indx) } as usize;
-                let indices =
-                    unsafe { $crate::from_r::r_slice($crate::ffi::INTEGER(indx), len) };
+                let indices = unsafe { $crate::from_r::r_slice($crate::ffi::INTEGER(indx), len) };
 
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
                     .and_then(|d| {
@@ -360,7 +359,9 @@ macro_rules! __impl_altinteger_methods {
 
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> i32 {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltIntegerData>::elt(&*d, i.max(0) as usize))
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltIntegerData>::elt(&*d, i.max(0) as usize)
+                    })
                     .unwrap_or(i32::MIN)
             }
 
@@ -847,7 +848,10 @@ macro_rules! __impl_altstring_methods {
                 // Keep ExternalPtr alive while we use the string reference
                 match unsafe { $crate::altrep_data1_as::<$ty>(x) } {
                     Some(d) => {
-                        match <$ty as $crate::altrep_data::AltStringData>::elt(&*d, i.max(0) as usize) {
+                        match <$ty as $crate::altrep_data::AltStringData>::elt(
+                            &*d,
+                            i.max(0) as usize,
+                        ) {
                             Some(s) => unsafe { $crate::altrep_impl::checked_mkchar(s) },
                             None => unsafe { $crate::ffi::R_NaString },
                         }
@@ -924,7 +928,9 @@ macro_rules! __impl_altcomplex_methods {
 
             fn elt(x: $crate::ffi::SEXP, i: $crate::ffi::R_xlen_t) -> $crate::ffi::Rcomplex {
                 unsafe { $crate::altrep_data1_as::<$ty>(x) }
-                    .map(|d| <$ty as $crate::altrep_data::AltComplexData>::elt(&*d, i.max(0) as usize))
+                    .map(|d| {
+                        <$ty as $crate::altrep_data::AltComplexData>::elt(&*d, i.max(0) as usize)
+                    })
                     .unwrap_or($crate::ffi::Rcomplex {
                         r: f64::NAN,
                         i: f64::NAN,
@@ -1210,7 +1216,8 @@ impl<const N: usize> crate::altrep_traits::AltLogical for [bool; N] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> i32 {
         unsafe { crate::altrep_data1_as::<[bool; N]>(x) }
             .map(|d| {
-                <[bool; N] as crate::altrep_data::AltLogicalData>::elt(&*d, i.max(0) as usize).to_r_int()
+                <[bool; N] as crate::altrep_data::AltLogicalData>::elt(&*d, i.max(0) as usize)
+                    .to_r_int()
             })
             .unwrap_or(crate::altrep_traits::NA_LOGICAL)
     }
@@ -1297,7 +1304,10 @@ impl<const N: usize> crate::altrep_traits::AltString for [String; N] {
     fn elt(x: crate::ffi::SEXP, i: crate::ffi::R_xlen_t) -> crate::ffi::SEXP {
         match unsafe { crate::altrep_data1_as::<[String; N]>(x) } {
             Some(d) => {
-                match <[String; N] as crate::altrep_data::AltStringData>::elt(&*d, i.max(0) as usize) {
+                match <[String; N] as crate::altrep_data::AltStringData>::elt(
+                    &*d,
+                    i.max(0) as usize,
+                ) {
                     Some(s) => unsafe { checked_mkchar(s) },
                     None => unsafe { crate::ffi::R_NaString },
                 }
@@ -1336,7 +1346,8 @@ impl<const N: usize> crate::altrep_traits::AltComplex for [crate::ffi::Rcomplex;
         unsafe { crate::altrep_data1_as::<[crate::ffi::Rcomplex; N]>(x) }
             .map(|d| {
                 <[crate::ffi::Rcomplex; N] as crate::altrep_data::AltComplexData>::elt(
-                    &*d, i.max(0) as usize,
+                    &*d,
+                    i.max(0) as usize,
                 )
             })
             .unwrap_or(crate::ffi::Rcomplex {
@@ -1579,12 +1590,8 @@ impl crate::altrep_traits::AltInteger for &'static [i32] {
                 }
                 let len = len as usize;
                 let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
-                crate::altrep_data::AltIntegerData::get_region(
-                    &*d,
-                    start as usize,
-                    len,
-                    slice,
-                ) as crate::ffi::R_xlen_t
+                crate::altrep_data::AltIntegerData::get_region(&*d, start as usize, len, slice)
+                    as crate::ffi::R_xlen_t
             })
             .unwrap_or(0)
     }
@@ -1693,12 +1700,8 @@ impl crate::altrep_traits::AltReal for &'static [f64] {
                 }
                 let len = len as usize;
                 let slice = unsafe { std::slice::from_raw_parts_mut(buf, len) };
-                crate::altrep_data::AltRealData::get_region(
-                    &*d,
-                    start as usize,
-                    len,
-                    slice,
-                ) as crate::ffi::R_xlen_t
+                crate::altrep_data::AltRealData::get_region(&*d, start as usize, len, slice)
+                    as crate::ffi::R_xlen_t
             })
             .unwrap_or(0)
     }

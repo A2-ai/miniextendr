@@ -26,10 +26,7 @@ fn direct_noop() {
 
 #[divan::bench]
 fn unwind_r_call() {
-    let out = with_r_unwind_protect(
-        || unsafe { ffi::Rf_ScalarInteger(1) },
-        None,
-    );
+    let out = with_r_unwind_protect(|| unsafe { ffi::Rf_ScalarInteger(1) }, None);
     divan::black_box(out);
 }
 

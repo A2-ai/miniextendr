@@ -2020,9 +2020,7 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("    for (method_name in names(obj)) {".to_string());
     lines.push("      method <- obj[[method_name]]".to_string());
     lines.push("      if (is.function(method)) {".to_string());
-    lines.push(
-        "        if (isTRUE(attr(method, \".__mx_instance__\"))) {".to_string(),
-    );
+    lines.push("        if (isTRUE(attr(method, \".__mx_instance__\"))) {".to_string());
     lines.push("          local({".to_string());
     lines.push("            m <- method".to_string());
     lines.push("            bound[[method_name]] <<- function(...) m(self, ...)".to_string());

@@ -91,10 +91,7 @@ mod tests {
         let data_offset = unsafe { (*base).data_offset };
 
         // For default-aligned types, offset should equal size_of::<mx_erased>()
-        assert_eq!(
-            data_offset,
-            std::mem::size_of::<crate::abi::mx_erased>()
-        );
+        assert_eq!(data_offset, std::mem::size_of::<crate::abi::mx_erased>());
 
         // Verify we can read the data correctly through the offset
         let data_ptr = unsafe { (wrapped as *mut u8).add(data_offset) as *const CovEnv };
@@ -131,9 +128,7 @@ mod tests {
         assert_eq!(value, 99);
 
         // Verify vtable query succeeds (non-null = trait is implemented)
-        let vtable = unsafe {
-            ((*base).query)(wrapped, TAG_COVTRAIT)
-        };
+        let vtable = unsafe { ((*base).query)(wrapped, TAG_COVTRAIT) };
         assert!(!vtable.is_null());
 
         unsafe {
