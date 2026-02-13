@@ -399,7 +399,33 @@ AC_CONFIG_COMMANDS([cargo-vendor],
   fi
 
   if test "$NOT_CRAN" = "true"; then
-    echo "configure: dev mode — using vendor/ from scaffolding"
+    if test "$FORCE_VENDOR" = "1"; then
+      echo "configure: FORCE_VENDOR — running cargo vendor"
+      mkdir -p "$VENDOR_OUT"
+      $CARGO_CMD vendor --manifest-path src/rust/Cargo.toml "$VENDOR_OUT"
+      if test $? -ne 0; then
+        echo "configure: error: cargo vendor failed" >&2
+        exit 1
+      fi
+      for _crate_dir in "$VENDOR_OUT"/*/; do
+        if test -d "$_crate_dir"; then
+          rm -rf "$_crate_dir/tests" "$_crate_dir/benches" "$_crate_dir/examples" \
+                 "$_crate_dir/.github" "$_crate_dir/docs" "$_crate_dir/ci"
+          for _dotfile in "$_crate_dir"/.*; do
+            case "$(basename "$_dotfile")" in
+              .|..|.cargo-checksum.json) ;;
+              *) rm -rf "$_dotfile" ;;
+            esac
+          done
+          echo '{"files":{}}' > "$_crate_dir/.cargo-checksum.json"
+        fi
+      done
+      if test -f "$abs_rpkg_src/rust/Cargo.lock"; then
+        $SED -i.bak '/^checksum = /d' "$abs_rpkg_src/rust/Cargo.lock" && rm -f "$abs_rpkg_src/rust/Cargo.lock.bak"
+      fi
+    else
+      echo "configure: dev mode — using vendor/ from scaffolding"
+    fi
   else
     dnl CRAN/offline mode: vendor/ must exist
     if test ! -d "$VENDOR_OUT" || test -z "`ls -A \"$VENDOR_OUT\" 2>/dev/null`"; then
@@ -410,7 +436,7 @@ AC_CONFIG_COMMANDS([cargo-vendor],
     echo "configure: CRAN build — vendor ready"
   fi
 ],
-[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
+[NOT_CRAN="$NOT_CRAN" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED" FORCE_VENDOR="$FORCE_VENDOR" CARGO_CMD="$CARGO_CMD"])
 
 dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],
