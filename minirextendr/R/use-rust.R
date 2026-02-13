@@ -58,6 +58,11 @@ use_miniextendr_document <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src", "rust"))
   use_template("document.rs.in", save_as = "src/rust/document.rs.in")
+  generate_document_rs(
+    usethis::proj_path("src", "rust", "document.rs.in"),
+    usethis::proj_path("src", "rust", "document.rs"),
+    package = get_package_name()
+  )
   invisible(TRUE)
 }
 

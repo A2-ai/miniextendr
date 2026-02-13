@@ -18,7 +18,6 @@ Makevars
 entrypoint.c
 mx_abi.c
 rust/Cargo.toml
-rust/document.rs
 rust/.cargo/config.toml
 
 # Vendored dependencies (generated during configure)

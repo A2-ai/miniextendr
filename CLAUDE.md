@@ -9,7 +9,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
-  - `rpkg/src/rust/document.rs` → edit `rpkg/src/rust/document.rs.in`
+  - `rpkg/src/rust/document.rs` → edit `rpkg/src/rust/document.rs.in` (document.rs is tracked in git so `cargo check` works without configure, but configure still regenerates it)
   - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
   - `rpkg/src/entrypoint.c` → edit `rpkg/src/entrypoint.c.in`
   - `rpkg/src/mx_abi.c` → edit `rpkg/src/mx_abi.c.in`

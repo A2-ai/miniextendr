@@ -306,6 +306,38 @@ to_rust_name <- function(name) {
   gsub("[.-]", "_", name)
 }
 
+#' Convert R package name to tarname
+#'
+#' Matches autoconf's PACKAGE_TARNAME derivation (lowercase, dots to hyphens).
+#'
+#' @param name R package name
+#' @return Tarname (lowercase, dots replaced with hyphens)
+#' @noRd
+to_tarname <- function(name) {
+  tolower(gsub("\\.", "-", name))
+}
+
+#' Generate document.rs from document.rs.in
+#'
+#' Performs the three substitutions that configure normally does, so that
+#' `cargo check` works without running `./configure` first.
+#'
+#' @param document_rs_in_path Path to document.rs.in
+#' @param document_rs_path Path to write document.rs
+#' @param package R package name
+#' @noRd
+generate_document_rs <- function(document_rs_in_path, document_rs_path, package) {
+  crate_name <- to_rust_name(package)
+  crate_upper <- toupper(crate_name)
+  tarname <- to_tarname(package)
+
+  content <- readLines(document_rs_in_path, warn = FALSE)
+  content <- gsub("__CARGO_STATICLIB_NAME_PLACEHOLDER__", crate_name, content, fixed = TRUE)
+  content <- gsub("@PACKAGE_TARNAME_RS_UPPERCASE@", crate_upper, content, fixed = TRUE)
+  content <- gsub("@PACKAGE_TARNAME@", tarname, content, fixed = TRUE)
+  writeLines(content, document_rs_path)
+}
+
 #' Get package name from Cargo.toml
 #'
 #' @param cargo_path Path to Cargo.toml file

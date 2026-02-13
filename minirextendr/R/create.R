@@ -211,6 +211,11 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   use_template("build.rs", save_as = file.path(rpkg_name, "src", "rust", "build.rs"), subdir = "rpkg")
   use_template("lib.rs", save_as = file.path(rpkg_name, "src", "rust", "lib.rs"), subdir = "rpkg", data = data)
   use_template("document.rs.in", save_as = file.path(rpkg_name, "src", "rust", "document.rs.in"), subdir = "rpkg")
+  generate_document_rs(
+    usethis::proj_path(rpkg_name, "src", "rust", "document.rs.in"),
+    usethis::proj_path(rpkg_name, "src", "rust", "document.rs"),
+    package = data$package
+  )
   use_template("cargo-config.toml.in", save_as = file.path(rpkg_name, "src", "rust", "cargo-config.toml.in"), subdir = "rpkg")
 
   # Ignore files
