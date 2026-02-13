@@ -287,13 +287,14 @@ test_that("rpkg scaffolding builds and functions work end-to-end", {
   pkg_path <- file.path(tmp, "testpkg")
 
   # Create basic R package
-  suppressMessages({
+  # suppressWarnings: use_miniextendr() warns about git root != working dir in test context
+  suppressWarnings(suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
     use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
     usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
-  })
+  }))
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
@@ -374,13 +375,14 @@ test_that("rpkg scaffolding with external cargo dependency works", {
   pkg_path <- file.path(tmp, "testpkg")
 
   # Create package and add miniextendr
-  suppressMessages({
+  # suppressWarnings: use_miniextendr() warns about git root != working dir in test context
+  suppressWarnings(suppressMessages({
     usethis::create_package(pkg_path, open = FALSE)
     use_miniextendr(path = pkg_path, local_path = miniextendr_path)
     # Add package-level documentation for useDynLib
     usethis::proj_set(pkg_path, force = TRUE)
     usethis::use_package_doc()
-  })
+  }))
 
   # Run autoconf and configure using minirextendr functions
   suppressMessages({
