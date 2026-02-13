@@ -7,7 +7,7 @@
 use_miniextendr(
   path = ".",
   template_type = "auto",
-  rpkg_name = "rpkg",
+  rpkg_name = NULL,
   miniextendr_version = "main",
   local_path = NULL
 )
@@ -19,8 +19,8 @@ use_miniextendr(
 "rpkg" for standalone R package, or "monorepo" for Rust workspace.
 Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.}
 
-\item{rpkg_name}{Name of the R package subdirectory for monorepo template (default: "rpkg").
-Only used when template_type is "monorepo".}
+\item{rpkg_name}{Name of the R package subdirectory for monorepo template
+(default: derived from package name). Only used when template_type is "monorepo".}
 
 \item{miniextendr_version}{Version of miniextendr to vendor (default: "main").
 For monorepo projects, vendoring is only needed for CRAN submission.}

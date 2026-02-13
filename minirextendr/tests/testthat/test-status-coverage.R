@@ -20,10 +20,10 @@ test_that("has_miniextendr returns TRUE for monorepo project", {
   tmp <- tempfile("monorepo-status-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  expect_true(has_miniextendr(file.path(tmp, "rpkg")))
+  expect_true(has_miniextendr(file.path(tmp, "testpkg")))
 })
 
 # -----------------------------------------------------------------------------
@@ -35,10 +35,10 @@ test_that("miniextendr_status returns list with present and missing", {
   tmp <- tempfile("status-test-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  result <- suppressMessages(miniextendr_status(file.path(tmp, "rpkg")))
+  result <- suppressMessages(miniextendr_status(file.path(tmp, "testpkg")))
 
   expect_type(result, "list")
   expect_named(result, c("present", "missing", "stale"))
@@ -54,10 +54,10 @@ test_that("miniextendr_status detects generated files as missing", {
   tmp <- tempfile("status-gen-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
-  result <- suppressMessages(miniextendr_status(file.path(tmp, "rpkg")))
+  result <- suppressMessages(miniextendr_status(file.path(tmp, "testpkg")))
 
   # Generated files should be missing before configure runs
   generated_missing <- result$missing[["Generated Files"]]
@@ -74,11 +74,11 @@ test_that("miniextendr_validate validates DESCRIPTION config", {
   tmp <- tempfile("check-desc-")
   on.exit(unlink(tmp, recursive = TRUE), add = TRUE)
 
-  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg",
+  create_miniextendr_monorepo(tmp, package = "testpkg", crate_name = "testpkg-rs",
                               local_path = find_miniextendr_repo(), open = FALSE)
 
   # Should pass - monorepo template sets up DESCRIPTION correctly
-  result <- suppressMessages(miniextendr_validate(file.path(tmp, "rpkg")))
+  result <- suppressMessages(miniextendr_validate(file.path(tmp, "testpkg")))
   # Result depends on whether Rust is installed and crates vendored
   expect_type(result, "logical")
 })

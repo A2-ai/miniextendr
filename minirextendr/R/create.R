@@ -54,7 +54,7 @@ create_miniextendr_package <- function(path, open = rlang::is_interactive(),
 #' @param path Path where to create the monorepo
 #' @param package R package name (default: derived from path)
 #' @param crate_name Main Rust crate name (default: derived from package name)
-#' @param rpkg_name Name of the R package subdirectory (default: "rpkg")
+#' @param rpkg_name Name of the R package subdirectory (default: same as package name)
 #' @param local_path Optional path to local miniextendr repository. If provided,
 #'   vendors from local path instead of downloading from GitHub.
 #' @param open Whether to open the new project in RStudio/IDE
@@ -62,10 +62,18 @@ create_miniextendr_package <- function(path, open = rlang::is_interactive(),
 #' @export
 create_miniextendr_monorepo <- function(path, package = basename(path),
                                          crate_name = gsub("\\.", "-", package),
-                                         rpkg_name = "rpkg",
+                                         rpkg_name = package,
                                          local_path = NULL,
                                          open = rlang::is_interactive()) {
   cli::cli_h1("Creating miniextendr monorepo")
+
+  # Validate rpkg_name != crate_name (they're both directories under the project root)
+  if (identical(rpkg_name, crate_name)) {
+    cli::cli_abort(c(
+      "{.arg rpkg_name} and {.arg crate_name} must be different (both are {.val {crate_name}}).",
+      "i" = "Set {.arg rpkg_name} explicitly, e.g. {.code rpkg_name = \"{crate_name}-rpkg\"}"
+    ))
+  }
 
   # Check prerequisites
   check_rust()
@@ -252,8 +260,8 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @param template_type Template type: "auto" (detect from directory structure),
 #'   "rpkg" for standalone R package, or "monorepo" for Rust workspace.
 #'   Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.
-#' @param rpkg_name Name of the R package subdirectory for monorepo template (default: "rpkg").
-#'   Only used when template_type is "monorepo".
+#' @param rpkg_name Name of the R package subdirectory for monorepo template
+#'   (default: derived from package name). Only used when template_type is "monorepo".
 #' @param miniextendr_version Version of miniextendr to vendor (default: "main").
 #'   For monorepo projects, vendoring is only needed for CRAN submission.
 #' @param local_path Optional path to local miniextendr repository. If provided,
@@ -262,7 +270,7 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
 #' @return Invisibly returns TRUE
 #' @export
 use_miniextendr <- function(path = ".",
-                            template_type = "auto", rpkg_name = "rpkg",
+                            template_type = "auto", rpkg_name = NULL,
                             miniextendr_version = "main", local_path = NULL) {
   with_project(path)
   # Warn if not at git workspace root
@@ -310,10 +318,10 @@ use_miniextendr <- function(path = ".",
 
   # Handle monorepo differently: create rpkg/ subdirectory
   if (template_type == "monorepo") {
-    cli::cli_alert_info("Detected Rust project - creating R package in {.path {rpkg_name}/} subdirectory")
-
     # Derive package name from Cargo.toml (convert my-crate → my.crate)
     package_name <- get_package_name_from_cargo()
+    rpkg_name <- rpkg_name %||% package_name
+    cli::cli_alert_info("Detected Rust project - creating R package in {.path {rpkg_name}/} subdirectory")
     cli::cli_alert_info("Using package name: {.val {package_name}}")
 
     data <- template_data(package = package_name, rpkg_name = rpkg_name)
