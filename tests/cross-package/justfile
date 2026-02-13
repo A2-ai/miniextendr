@@ -1,5 +1,7 @@
 # Cross-package trait dispatch testing
 
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
 default:
     @just --list
 
@@ -27,7 +29,7 @@ configure-all: configure-producer configure-consumer
 configure-producer:
     cd producer.pkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true ./configure
+    NOT_CRAN=true bash ./configure
 
 # Build and install producer.pkg
 build-producer: configure-producer
@@ -37,7 +39,7 @@ build-producer: configure-producer
 configure-consumer:
     cd consumer.pkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true ./configure
+    NOT_CRAN=true bash ./configure
 
 # Build and install consumer.pkg (must be built after producer)
 build-consumer: build-producer configure-consumer

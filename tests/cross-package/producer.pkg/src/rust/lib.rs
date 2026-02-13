@@ -123,6 +123,8 @@ pub struct R6Point {
 #[miniextendr(r6)]
 impl R6Point {
     /// Create a new point
+    /// @param x X coordinate.
+    /// @param y Y coordinate.
     pub fn new(x: f64, y: f64) -> Self {
         Self { x, y }
     }
@@ -143,6 +145,8 @@ impl R6Point {
     }
 
     /// Add to coordinates
+    /// @param dx Amount to add to x.
+    /// @param dy Amount to add to y.
     pub fn add(&mut self, dx: f64, dy: f64) {
         self.x += dx;
         self.y += dy;

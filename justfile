@@ -235,7 +235,7 @@ expand *cargo_flags:
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true ./configure
+    NOT_CRAN=true bash ./configure
 
 # Configure in CRAN/offline mode (BUILD_CONTEXT=prepare-cran)
 #
@@ -244,7 +244,7 @@ configure:
 configure-cran:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    PREPARE_CRAN=true ./configure
+    PREPARE_CRAN=true bash ./configure
 
 # Vendor dependencies for CRAN release preparation
 #
