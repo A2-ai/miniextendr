@@ -259,6 +259,14 @@ just minirextendr-check
 
 Creates a real standalone R package from the template and builds it:
 
+**Important:** Dev mode requires install → document → reinstall. The first
+`R CMD INSTALL` compiles Rust and generates R wrappers via the `document`
+binary, but `NAMESPACE` starts empty. `devtools::document()` runs roxygen2 to
+populate `NAMESPACE` with exports, then a second install picks up the updated
+exports. `miniextendr_build(install = TRUE)` goes through `R CMD build` first,
+which excludes `vendor/` (via `.Rbuildignore`), so installing from the tarball
+fails in dev mode. Use direct `R CMD INSTALL` on the source directory instead.
+
 ```bash
 Rscript - <<'EOF'
 library(minirextendr)
@@ -270,27 +278,29 @@ library(desc)
 root <- Sys.getenv("MX_ROOT")
 tmp <- Sys.getenv("MX_SMOKE_ROOT")
 pkg <- file.path(tmp, "standalone.smoke")
+r_cmd <- file.path(R.home("bin"), "R")
+lib <- file.path(tmp, "r-lib-standalone")
+dir.create(lib, recursive = TRUE, showWarnings = FALSE)
 
 create_package(pkg, open = FALSE)
 proj_set(pkg, force = TRUE)
 use_miniextendr(template_type = "rpkg", local_path = root)
-use_package_doc()
 
-miniextendr_autoconf()
-miniextendr_configure()
-miniextendr_build(install = TRUE, not_cran = TRUE)
-
-stopifnot(miniextendr_check())
-diag <- miniextendr_doctor()
-stopifnot(length(diag$fail) == 0)
-
-pkg_name <- desc(file.path(pkg, "DESCRIPTION"))$get_field("Package")
-lib <- file.path(tmp, "r-lib-standalone")
-dir.create(lib, recursive = TRUE, showWarnings = FALSE)
-system2(file.path(R.home("bin"), "R"),
+# 1. First install: compiles Rust + generates R wrappers via document binary
+system2(r_cmd,
   c("CMD", "INSTALL", "--no-multiarch", "-l", lib, pkg),
   env = "NOT_CRAN=true")
 
+# 2. Document: populates NAMESPACE with exports from generated wrappers
+devtools::document(pkg)
+
+# 3. Reinstall with updated NAMESPACE
+system2(r_cmd,
+  c("CMD", "INSTALL", "--no-multiarch", "-l", lib, pkg),
+  env = "NOT_CRAN=true")
+
+# 4. Verify
+pkg_name <- desc(file.path(pkg, "DESCRIPTION"))$get_field("Package")
 with_libpaths(lib, action = "prefix", {
   library(pkg_name, character.only = TRUE)
   stopifnot(add(2, 3) == 5)
@@ -301,8 +311,8 @@ EOF
 
 **Pass criteria:**
 1. Generated package configures and installs.
-2. Generated Rust wrappers are usable from R.
-3. `miniextendr_doctor()` returns no fails.
+2. Generated Rust wrappers are usable from R (`add(2, 3) == 5`).
+3. Dev mode workflow: install → document → reinstall succeeds.
 
 ### Phase B3: External Dependency + Re-Vendor
 
