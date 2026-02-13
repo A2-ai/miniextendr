@@ -4,7 +4,10 @@
 \alias{use_miniextendr_package_doc}
 \title{Add package documentation file}
 \usage{
-use_miniextendr_package_doc()
+use_miniextendr_package_doc(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates R/\if{html}{\out{<package>}}-package.R with the package docstring and
 useDynLib directive for loading the shared library.
 }
+\keyword{internal}

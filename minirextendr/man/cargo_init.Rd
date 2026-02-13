@@ -4,9 +4,11 @@
 \alias{cargo_init}
 \title{Initialize a Rust crate}
 \usage{
-cargo_init(name = NULL, edition = "2024", quiet = FALSE)
+cargo_init(path = ".", name = NULL, edition = "2024", quiet = FALSE)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{name}{Optional crate name. Defaults to the package name (Rust-safe).}
 
 \item{edition}{Rust edition to use (default "2024").}

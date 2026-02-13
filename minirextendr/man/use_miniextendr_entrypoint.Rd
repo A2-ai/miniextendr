@@ -4,7 +4,10 @@
 \alias{use_miniextendr_entrypoint}
 \title{Add entrypoint.c.in template}
 \usage{
-use_miniextendr_entrypoint()
+use_miniextendr_entrypoint(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates src/entrypoint.c.in which provides the C entry point for R
 to load the shared library. Initializes panic hooks and worker thread.
 }
+\keyword{internal}

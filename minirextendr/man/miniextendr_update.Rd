@@ -4,10 +4,16 @@
 \alias{miniextendr_update}
 \title{Update vendored miniextendr crates}
 \usage{
-miniextendr_update(version = "main")
+miniextendr_update(path = ".", version = "main", templates = TRUE)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{version}{Version to update to (default: "main" for latest)}
+
+\item{templates}{Logical. If \code{TRUE} (the default), also updates build system
+templates (document.rs.in, entrypoint.c.in, Makevars.in, etc.).
+\code{configure.ac} is NOT updated because users customise it with feature flags.}
 }
 \value{
 Invisibly returns TRUE on success

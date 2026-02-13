@@ -4,9 +4,11 @@
 \alias{update_feature_detection}
 \title{Update feature detection to match Cargo.toml}
 \usage{
-update_feature_detection(overwrite = TRUE)
+update_feature_detection(path = ".", overwrite = TRUE)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{overwrite}{Logical, whether to overwrite existing files (default TRUE)}
 }
 \value{

@@ -5,6 +5,7 @@
 \title{Add miniextendr to an existing package}
 \usage{
 use_miniextendr(
+  path = ".",
   template_type = "auto",
   rpkg_name = "rpkg",
   miniextendr_version = "main",
@@ -12,6 +13,8 @@ use_miniextendr(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{template_type}{Template type: "auto" (detect from directory structure),
 "rpkg" for standalone R package, or "monorepo" for Rust workspace.
 Default is "auto" which auto-detects based on whether Cargo.toml or DESCRIPTION exists.}

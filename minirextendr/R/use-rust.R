@@ -7,7 +7,7 @@
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
-#' @export
+#' @keywords internal
 use_miniextendr_rust <- function(path = ".") {
   with_project(path)
   data <- template_data()
@@ -38,7 +38,7 @@ use_miniextendr_rust <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_cargo_config <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src", "rust"))
@@ -53,7 +53,7 @@ use_miniextendr_cargo_config <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_document <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src", "rust"))
@@ -68,7 +68,7 @@ use_miniextendr_document <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if file was created
-#' @export
+#' @keywords internal
 use_miniextendr_entrypoint <- function(path = ".") {
   with_project(path)
   ensure_dir(usethis::proj_path("src"))
@@ -84,7 +84,7 @@ use_miniextendr_entrypoint <- function(path = ".") {
 #'
 #' @param path Path to the R package root, or `"."` to use the current directory.
 #' @return Invisibly returns TRUE if files were created
-#' @export
+#' @keywords internal
 use_miniextendr_mx_abi <- function(path = ".") {
   with_project(path)
   data <- template_data()

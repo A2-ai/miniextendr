@@ -4,7 +4,10 @@
 \alias{use_miniextendr_configure_win}
 \title{Add Windows configure wrappers}
 \usage{
-use_miniextendr_configure_win()
+use_miniextendr_configure_win(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if files were created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if files were created
 Creates configure.win and configure.ucrt that delegate to the main
 POSIX configure script.
 }
+\keyword{internal}

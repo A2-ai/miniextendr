@@ -4,7 +4,10 @@
 \alias{use_miniextendr_cargo_config}
 \title{Add cargo-config.toml.in template}
 \usage{
-use_miniextendr_cargo_config()
+use_miniextendr_cargo_config(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if file was created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if file was created
 Creates src/rust/cargo-config.toml.in which is processed by configure
 to set up Cargo's target directory and source replacement for CRAN.
 }
+\keyword{internal}

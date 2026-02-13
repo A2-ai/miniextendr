@@ -4,7 +4,10 @@
 \alias{miniextendr_vendor}
 \title{Prepare vendor tarball for CRAN submission}
 \usage{
-miniextendr_vendor()
+miniextendr_vendor(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns the path to the created tarball.
