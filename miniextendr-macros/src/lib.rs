@@ -235,6 +235,12 @@ mod vctrs_derive;
 
 pub(crate) use miniextendr_macros_core::{call_method_def_ident_for, r_wrapper_const_ident_for};
 
+// Feature default mutual exclusivity guards
+#[cfg(all(feature = "default-r6", feature = "default-s7"))]
+compile_error!("`default-r6` and `default-s7` are mutually exclusive");
+#[cfg(all(feature = "default-worker", feature = "default-main-thread"))]
+compile_error!("`default-worker` and `default-main-thread` are mutually exclusive");
+
 // normalize_r_arg_ident is now provided by r_wrapper_builder module
 
 /// Extract `#[cfg(...)]` attributes from a list of attributes.

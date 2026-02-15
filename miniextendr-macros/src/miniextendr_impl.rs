@@ -689,7 +689,13 @@ pub struct ImplAttrs {
 impl syn::parse::Parse for ImplAttrs {
     /// Parses `#[miniextendr(...)]` impl-level options.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut class_system = ClassSystem::Env;
+        let mut class_system = if cfg!(feature = "default-r6") {
+            ClassSystem::R6
+        } else if cfg!(feature = "default-s7") {
+            ClassSystem::S7
+        } else {
+            ClassSystem::Env
+        };
         let mut class_name = None;
         let mut label = None;
         let mut vctrs_attrs = VctrsAttrs::default();
@@ -701,7 +707,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_parent = None;
         let mut s7_abstract = false;
         let mut r_data_accessors = false;
-        let mut strict = false;
+        let mut strict: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
 
@@ -921,7 +927,9 @@ impl syn::parse::Parse for ImplAttrs {
                     }
                 }
             } else if ident_str == "strict" {
-                strict = true;
+                strict = Some(true);
+            } else if ident_str == "no_strict" {
+                strict = Some(false);
             } else if ident_str == "internal" {
                 internal = true;
             } else if ident_str == "noexport" {
@@ -952,7 +960,7 @@ impl syn::parse::Parse for ImplAttrs {
             s7_parent,
             s7_abstract,
             r_data_accessors,
-            strict,
+            strict: strict.unwrap_or(cfg!(feature = "default-strict")),
             internal,
             noexport,
         })
@@ -1001,6 +1009,11 @@ impl ParsedMethod {
     /// - etc.
     fn parse_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<MethodAttrs> {
         let mut method_attrs = MethodAttrs::default();
+        // Use Option<bool> for fields that support feature defaults.
+        let mut worker: Option<bool> = None;
+        let mut unsafe_main_thread: Option<bool> = None;
+        let mut coerce: Option<bool> = None;
+        let mut error_in_r: Option<bool> = None;
 
         for attr in attrs {
             // Parse new-style #[miniextendr(class_system(...))] attributes
@@ -1037,17 +1050,23 @@ impl ParsedMethod {
                             method_attrs.r6_setter = true;
                             method_attrs.s7_setter = true;
                         } else if inner.path.is_ident("worker") {
-                            method_attrs.worker = true;
+                            worker = Some(true);
+                        } else if inner.path.is_ident("no_worker") {
+                            worker = Some(false);
                         } else if inner.path.is_ident("main_thread") {
-                            method_attrs.unsafe_main_thread = true;
+                            unsafe_main_thread = Some(true);
+                        } else if inner.path.is_ident("no_main_thread") {
+                            unsafe_main_thread = Some(false);
                         } else if inner.path.is_ident("check_interrupt") {
                             method_attrs.check_interrupt = true;
                         } else if inner.path.is_ident("coerce") {
-                            method_attrs.coerce = true;
+                            coerce = Some(true);
+                        } else if inner.path.is_ident("no_coerce") {
+                            coerce = Some(false);
                         } else if inner.path.is_ident("rng") {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
-                            if method_attrs.error_in_r {
+                            if error_in_r == Some(true) {
                                 return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                             }
                             method_attrs.unwrap_in_r = true;
@@ -1055,7 +1074,9 @@ impl ParsedMethod {
                             if method_attrs.unwrap_in_r {
                                 return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                             }
-                            method_attrs.error_in_r = true;
+                            error_in_r = Some(true);
+                        } else if inner.path.is_ident("no_error_in_r") {
+                            error_in_r = Some(false);
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1107,7 +1128,7 @@ impl ParsedMethod {
                             method_attrs.deep_clone = true;
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
                             ));
                         }
                         Ok(())
@@ -1134,7 +1155,7 @@ impl ParsedMethod {
                     // Parse unsafe(main_thread) - same syntax as standalone functions
                     meta.parse_nested_meta(|inner| {
                         if inner.path.is_ident("main_thread") {
-                            method_attrs.unsafe_main_thread = true;
+                            unsafe_main_thread = Some(true);
                         } else {
                             return Err(inner.error(
                                 "unknown `unsafe(...)` option; only `main_thread` is supported",
@@ -1145,11 +1166,13 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("check_interrupt") {
                     method_attrs.check_interrupt = true;
                 } else if meta.path.is_ident("coerce") {
-                    method_attrs.coerce = true;
+                    coerce = Some(true);
+                } else if meta.path.is_ident("no_coerce") {
+                    coerce = Some(false);
                 } else if meta.path.is_ident("rng") {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
-                    if method_attrs.error_in_r {
+                    if error_in_r == Some(true) {
                         return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                     }
                     method_attrs.unwrap_in_r = true;
@@ -1157,7 +1180,9 @@ impl ParsedMethod {
                     if method_attrs.unwrap_in_r {
                         return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                     }
-                    method_attrs.error_in_r = true;
+                    error_in_r = Some(true);
+                } else if meta.path.is_ident("no_error_in_r") {
+                    error_in_r = Some(false);
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.
                     use syn::spanned::Spanned;
@@ -1262,12 +1287,25 @@ impl ParsedMethod {
                     })?;
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r, as, lifecycle"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle"
                     ));
                 }
                 Ok(())
             })?;
         }
+
+        // Resolve feature defaults for fields not explicitly set
+        method_attrs.worker = worker.unwrap_or(cfg!(feature = "default-worker"));
+        method_attrs.unsafe_main_thread = unsafe_main_thread.unwrap_or(cfg!(feature = "default-main-thread"));
+        method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "default-coerce"));
+        let resolved_error_in_r = error_in_r.unwrap_or(cfg!(feature = "default-error-in-r"));
+        if resolved_error_in_r && method_attrs.unwrap_in_r {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`error_in_r` (from `default-error-in-r` feature) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
+            ));
+        }
+        method_attrs.error_in_r = resolved_error_in_r;
 
         Ok(method_attrs)
     }

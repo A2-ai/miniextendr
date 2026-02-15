@@ -597,9 +597,48 @@ pub(crate) enum ReturnPref {
 impl syn::parse::Parse for MiniextendrFnAttrs {
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
         use syn::spanned::Spanned;
-        let mut out = Self::default();
+        // Use Option<bool> for fields that support feature defaults.
+        // None = not explicitly set → resolve from cfg!(feature = "...") at end.
+        let mut force_main_thread: Option<bool> = None;
+        let mut force_worker: Option<bool> = None;
+        let mut force_invisible: Option<bool> = None;
+        let mut check_interrupt = false;
+        let mut coerce_all: Option<bool> = None;
+        let mut rng = false;
+        let mut unwrap_in_r = false;
+        let mut return_pref = ReturnPref::Auto;
+        let mut s3_generic = None;
+        let mut s3_class = None;
+        let mut dots_spec = None;
+        let mut dots_span = None;
+        let mut lifecycle = None;
+        let mut strict: Option<bool> = None;
+        let mut error_in_r: Option<bool> = None;
+        let mut internal = false;
+        let mut noexport = false;
+        let mut doc = None;
+
         if input.is_empty() {
-            return Ok(out);
+            return Ok(Self {
+                force_main_thread: force_main_thread.unwrap_or(cfg!(feature = "default-main-thread")),
+                force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
+                force_invisible,
+                check_interrupt,
+                coerce_all: coerce_all.unwrap_or(cfg!(feature = "default-coerce")),
+                rng,
+                unwrap_in_r,
+                return_pref,
+                s3_generic,
+                s3_class,
+                dots_spec,
+                dots_span,
+                lifecycle,
+                strict: strict.unwrap_or(cfg!(feature = "default-strict")),
+                error_in_r: error_in_r.unwrap_or(cfg!(feature = "default-error-in-r")),
+                internal,
+                noexport,
+                doc,
+            });
         }
 
         let metas =
@@ -611,43 +650,51 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                 syn::Meta::Path(path) => {
                     if let Some(ident) = path.get_ident() {
                         if ident == "invisible" {
-                            out.force_invisible = Some(true);
+                            force_invisible = Some(true);
                         } else if ident == "visible" {
-                            out.force_invisible = Some(false);
+                            force_invisible = Some(false);
                         } else if ident == "check_interrupt" {
-                            out.check_interrupt = true;
+                            check_interrupt = true;
                         } else if ident == "coerce" {
-                            out.coerce_all = true;
+                            coerce_all = Some(true);
+                        } else if ident == "no_coerce" {
+                            coerce_all = Some(false);
                         } else if ident == "rng" {
-                            out.rng = true;
+                            rng = true;
                         } else if ident == "unwrap_in_r" {
-                            if out.error_in_r {
+                            if error_in_r == Some(true) {
                                 return Err(syn::Error::new_spanned(
                                     ident,
                                     "`error_in_r` and `unwrap_in_r` are mutually exclusive",
                                 ));
                             }
-                            out.unwrap_in_r = true;
+                            unwrap_in_r = true;
                         } else if ident == "worker" {
-                            out.force_worker = true;
+                            force_worker = Some(true);
+                        } else if ident == "no_worker" {
+                            force_worker = Some(false);
                         } else if ident == "strict" {
-                            out.strict = true;
+                            strict = Some(true);
+                        } else if ident == "no_strict" {
+                            strict = Some(false);
                         } else if ident == "error_in_r" {
-                            if out.unwrap_in_r {
+                            if unwrap_in_r {
                                 return Err(syn::Error::new_spanned(
                                     ident,
                                     "`error_in_r` and `unwrap_in_r` are mutually exclusive",
                                 ));
                             }
-                            out.error_in_r = true;
+                            error_in_r = Some(true);
+                        } else if ident == "no_error_in_r" {
+                            error_in_r = Some(false);
                         } else if ident == "internal" {
-                            out.internal = true;
+                            internal = true;
                         } else if ident == "noexport" {
-                            out.noexport = true;
+                            noexport = true;
                         } else {
                             return Err(syn::Error::new_spanned(
                                 ident,
-                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, coerce, rng, unwrap_in_r, error_in_r, strict, internal, noexport",
+                                "unknown `#[miniextendr]` option; expected one of: invisible, visible, check_interrupt, unsafe(main_thread), worker, no_worker, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, strict, no_strict, internal, noexport",
                             ));
                         }
                     }
@@ -658,7 +705,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             syn::Expr::Lit(expr_lit) => {
                                 if let syn::Lit::Str(lit) = &expr_lit.lit {
                                     let v = lit.value();
-                                    out.return_pref = match v.as_str() {
+                                    return_pref = match v.as_str() {
                                         "list" => ReturnPref::List,
                                         "externalptr" => ReturnPref::ExternalPtr,
                                         "vector" | "native" => ReturnPref::Native,
@@ -687,11 +734,11 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                     } else if nv.path.is_ident("dots") {
                         // dots = typed_list!(...) - capture the macro invocation
                         // Store span for error reporting
-                        out.dots_span = Some(nv.path.span());
+                        dots_span = Some(nv.path.span());
                         if let syn::Expr::Macro(expr_macro) = &nv.value {
                             if expr_macro.mac.path.is_ident("typed_list") {
                                 // Capture the entire macro invocation as TokenStream
-                                out.dots_spec = Some(quote::quote!(#expr_macro));
+                                dots_spec = Some(quote::quote!(#expr_macro));
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     &expr_macro.mac.path,
@@ -709,14 +756,14 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         if let Some(spec) = crate::lifecycle::parse_lifecycle_attr(
                             &syn::Meta::NameValue(nv.clone()),
                         )? {
-                            out.lifecycle = Some(spec);
+                            lifecycle = Some(spec);
                         }
                     } else if nv.path.is_ident("doc") {
                         // doc = "custom roxygen documentation"
                         match &nv.value {
                             syn::Expr::Lit(expr_lit) => {
                                 if let syn::Lit::Str(lit) = &expr_lit.lit {
-                                    out.doc = Some(lit.value());
+                                    doc = Some(lit.value());
                                 } else {
                                     return Err(syn::Error::new_spanned(
                                         &expr_lit.lit,
@@ -752,7 +799,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         }
                         for ident in nested {
                             if ident == "main_thread" {
-                                out.force_main_thread = true;
+                                force_main_thread = Some(true);
                             } else {
                                 return Err(syn::Error::new_spanned(
                                     ident,
@@ -768,7 +815,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                         if let Some(spec) =
                             crate::lifecycle::parse_lifecycle_attr(&syn::Meta::List(list.clone()))?
                         {
-                            out.lifecycle = Some(spec);
+                            lifecycle = Some(spec);
                         }
                     } else if list.path.is_ident("s3") {
                         // Parse s3(generic = "...", class = "...")
@@ -776,11 +823,11 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             if meta.path.is_ident("generic") {
                                 let _: syn::Token![=] = meta.input.parse()?;
                                 let value: syn::LitStr = meta.input.parse()?;
-                                out.s3_generic = Some(value.value());
+                                s3_generic = Some(value.value());
                             } else if meta.path.is_ident("class") {
                                 let _: syn::Token![=] = meta.input.parse()?;
                                 let value: syn::LitStr = meta.input.parse()?;
-                                out.s3_class = Some(value.value());
+                                s3_class = Some(value.value());
                             } else {
                                 return Err(
                                     meta.error("unknown s3 option; expected `generic` or `class`")
@@ -789,7 +836,7 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
                             Ok(())
                         })?;
                         // Validate: s3 requires class (generic can default to function name)
-                        if out.s3_class.is_none() {
+                        if s3_class.is_none() {
                             return Err(syn::Error::new_spanned(
                                 &list,
                                 "s3(...) requires `class = \"...\"` to specify the S3 class suffix; \
@@ -807,6 +854,35 @@ impl syn::parse::Parse for MiniextendrFnAttrs {
             }
         }
 
-        Ok(out)
+        // Resolve feature defaults for fields not explicitly set
+        let resolved_error_in_r = error_in_r.unwrap_or(cfg!(feature = "default-error-in-r"));
+        if resolved_error_in_r && unwrap_in_r {
+            // This can happen when error_in_r comes from feature default and unwrap_in_r is explicit
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`error_in_r` (from `default-error-in-r` feature) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
+            ));
+        }
+
+        Ok(Self {
+            force_main_thread: force_main_thread.unwrap_or(cfg!(feature = "default-main-thread")),
+            force_worker: force_worker.unwrap_or(cfg!(feature = "default-worker")),
+            force_invisible,
+            check_interrupt,
+            coerce_all: coerce_all.unwrap_or(cfg!(feature = "default-coerce")),
+            rng,
+            unwrap_in_r,
+            return_pref,
+            s3_generic,
+            s3_class,
+            dots_spec,
+            dots_span,
+            lifecycle,
+            strict: strict.unwrap_or(cfg!(feature = "default-strict")),
+            error_in_r: resolved_error_in_r,
+            internal,
+            noexport,
+            doc,
+        })
     }
 }
