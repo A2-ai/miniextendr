@@ -1,11 +1,12 @@
 //! Tests for adapter traits (RDebug, RDisplay, RHash, ROrd, etc.)
 //!
-//! These tests verify that the adapter trait blanket implementations work correctly
-//! by exposing their methods through wrapper functions.
+//! Non-generic adapter traits use the trait ABI pattern:
+//!   `#[miniextendr] impl RDebug for Point {}`
+//! Generic/associated-type traits (RIterator, RExtend, etc.) and traits with
+//! &Self parameters (ROrd, RPartialOrd) use manual forwarding.
 
 use miniextendr_api::adapter_traits::{
-    RClone, RCopy, RDebug, RDefault, RDisplay, RError, RExtend, RFromIter, RFromStr, RHash,
-    RIterator, RMakeIter, ROrd, RPartialOrd, RToVec,
+    RExtend, RFromIter, RIterator, RMakeIter, ROrd, RPartialOrd, RToVec,
 };
 use miniextendr_api::{ExternalPtr, miniextendr, miniextendr_module};
 use std::cell::RefCell;
@@ -67,34 +68,11 @@ impl Point {
         self.y
     }
 
-    // RDebug methods
-    fn debug_str(&self) -> String {
-        RDebug::debug_str(self)
-    }
-
-    fn debug_str_pretty(&self) -> String {
-        RDebug::debug_str_pretty(self)
-    }
-
-    // RDisplay method
-    fn as_r_string(&self) -> String {
-        RDisplay::as_r_string(self)
-    }
-
-    // RHash method
-    fn hash(&self) -> f64 {
-        // Return as f64 to avoid type issues with R
-        RHash::hash(self) as f64
-    }
-
-    // ROrd method - compare with another Point
-    // Note: Use ExternalPtr<Point> instead of &Point because the macro
-    // doesn't know Point is an ExternalPtr type at compile time
+    // ROrd: manual forwarding (trait has &Self parameter, no #[miniextendr] on trait)
     fn cmp_to(&self, other: ExternalPtr<Point>) -> i32 {
         ROrd::cmp(self, &*other)
     }
 
-    // Comparison helpers
     fn is_less_than(&self, other: ExternalPtr<Point>) -> bool {
         ROrd::cmp(self, &*other) < 0
     }
@@ -106,31 +84,37 @@ impl Point {
     fn is_greater_than(&self, other: ExternalPtr<Point>) -> bool {
         ROrd::cmp(self, &*other) > 0
     }
-
-    // RClone method
-    fn clone_point(&self) -> Point {
-        RClone::clone(self)
-    }
-
-    // RDefault (static method)
-    fn default_point() -> Point {
-        RDefault::default()
-    }
-
-    // RFromStr (static method) - tests &str parameter with worker thread
-    fn from_str(s: &str) -> Option<Point> {
-        <Point as RFromStr>::from_str(s)
-    }
-
-    // RCopy method (Point is Copy since it's Copy + Clone)
-    fn copy_point(&self) -> Point {
-        RCopy::copy(self)
-    }
-
-    fn is_copy(&self) -> bool {
-        RCopy::is_copy(self)
-    }
 }
+
+// Trait ABI: adapter traits registered via #[miniextendr] impl Trait for Type {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RDebug for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RDisplay for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RHash for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RClone for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RDefault for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RFromStr for Point {}
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RCopy for Point {}
 
 // =============================================================================
 // Test type: MyFloat
@@ -155,9 +139,7 @@ impl MyFloat {
         MyFloat(f64::NAN)
     }
 
-    // RPartialOrd method
-    // Note: Use ExternalPtr<MyFloat> instead of &MyFloat because the macro
-    // doesn't know MyFloat is an ExternalPtr type at compile time
+    // RPartialOrd: manual forwarding (trait has &Self parameter)
     fn partial_cmp_to(&self, other: ExternalPtr<MyFloat>) -> Option<i32> {
         RPartialOrd::partial_cmp(self, &*other)
     }
@@ -182,6 +164,9 @@ impl MyFloat {
 // =============================================================================
 // Test type: ChainedError
 // Demonstrates RError (error chain walking)
+// Note: ChainedError wraps OuterError. Since OuterError (not ChainedError)
+// implements std::error::Error, we use #[miniextendr] impl RError on a
+// delegating newtype that implements Error.
 // =============================================================================
 
 #[derive(Debug)]
@@ -217,9 +202,24 @@ impl std::error::Error for OuterError {
     }
 }
 
-/// Wrapper to expose OuterError to R
-#[derive(ExternalPtr)]
+/// Wrapper to expose OuterError to R.
+///
+/// Implements Error by delegating to the inner OuterError, so the
+/// RError blanket impl applies and we can use trait ABI registration.
+#[derive(Debug, ExternalPtr)]
 pub struct ChainedError(OuterError);
+
+impl fmt::Display for ChainedError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for ChainedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
 
 /// @noRd
 #[miniextendr]
@@ -239,24 +239,16 @@ impl ChainedError {
             source: None,
         })
     }
-
-    // RError methods
-    fn error_message(&self) -> String {
-        RError::error_message(&self.0)
-    }
-
-    fn error_chain(&self) -> Vec<String> {
-        RError::error_chain(&self.0)
-    }
-
-    fn error_chain_length(&self) -> i32 {
-        RError::error_chain_length(&self.0)
-    }
 }
+
+/// @noRd
+#[miniextendr]
+impl miniextendr_api::adapter_traits::RError for ChainedError {}
 
 // =============================================================================
 // Test type: IntVecIter
 // Demonstrates RIterator (with interior mutability)
+// Generic trait — uses manual forwarding
 // =============================================================================
 
 #[derive(ExternalPtr)]
@@ -313,6 +305,7 @@ impl IntVecIter {
 // =============================================================================
 // Test type: GrowableVec
 // Demonstrates RExtend (collection extension with interior mutability)
+// Generic trait — uses manual forwarding
 // =============================================================================
 
 #[derive(ExternalPtr)]
@@ -363,6 +356,7 @@ impl GrowableVec {
 // =============================================================================
 // Test type: IntSet
 // Demonstrates RFromIter and RToVec (collection creation and extraction)
+// Generic traits — uses manual forwarding
 // =============================================================================
 
 use std::collections::HashSet;
@@ -400,6 +394,7 @@ impl IntSet {
 // =============================================================================
 // Test type: IterableVec and IterableVecIter
 // Demonstrates RMakeIter (iterator factory)
+// Generic traits — uses manual forwarding
 // =============================================================================
 
 #[derive(ExternalPtr)]
@@ -447,8 +442,6 @@ impl IterableVec {
     }
 }
 
-// NOTE: IterableVecIter impl temporarily removed from module due to macro issue.
-// See comment at module registration below.
 #[miniextendr]
 impl IterableVecIter {
     // Renamed from `next` because `next` is a reserved word in R
@@ -486,4 +479,14 @@ miniextendr_module! {
     impl IntSet;
     impl IterableVec;
     impl IterableVecIter;
+
+    // Trait ABI registrations for adapter traits
+    impl miniextendr_api::adapter_traits::RDebug for Point;
+    impl miniextendr_api::adapter_traits::RDisplay for Point;
+    impl miniextendr_api::adapter_traits::RHash for Point;
+    impl miniextendr_api::adapter_traits::RClone for Point;
+    impl miniextendr_api::adapter_traits::RDefault for Point;
+    impl miniextendr_api::adapter_traits::RFromStr for Point;
+    impl miniextendr_api::adapter_traits::RCopy for Point;
+    impl miniextendr_api::adapter_traits::RError for ChainedError;
 }

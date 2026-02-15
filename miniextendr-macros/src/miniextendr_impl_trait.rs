@@ -392,18 +392,29 @@ fn generate_vtable_static(
 
     // Strip #[miniextendr(...)] attrs from methods before emitting,
     // so they don't trigger another macro expansion.
-    let mut clean_impl = impl_item.clone();
-    for item in &mut clean_impl.items {
-        if let syn::ImplItem::Fn(method) = item {
-            method
-                .attrs
-                .retain(|attr| !attr.path().is_ident("miniextendr"));
+    // When the impl body is empty (no methods, no consts), skip emitting the
+    // impl block entirely — a blanket impl already provides the trait
+    // implementation (e.g., `impl<T: Debug> RDebug for T`). Only the vtable
+    // static and C wrappers are needed.
+    let has_items = !methods.is_empty() || !consts.is_empty();
+    let clean_impl_tokens = if has_items {
+        let mut clean_impl = impl_item.clone();
+        for item in &mut clean_impl.items {
+            if let syn::ImplItem::Fn(method) = item {
+                method
+                    .attrs
+                    .retain(|attr| !attr.path().is_ident("miniextendr"));
+            }
         }
-    }
+        quote::quote! { #clean_impl }
+    } else {
+        quote::quote! {}
+    };
 
     quote::quote! {
         // Pass through the original impl block (with method attrs stripped)
-        #clean_impl
+        // — omitted when the body is empty (blanket impl covers it)
+        #clean_impl_tokens
 
         #[doc = concat!(
             "Vtable for `",

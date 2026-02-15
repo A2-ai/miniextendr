@@ -298,10 +298,13 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         })
         .collect();
 
+    // Compute extra bounds needed for shims (Self returns → IntoR, &Self params → TypedExternal)
+    let extra_bounds = compute_extra_bounds(&methods);
+
     // Generate shim functions and vtable field initializers
     let shim_fns: Vec<_> = methods
         .iter()
-        .map(|m| generate_method_shim(trait_name, m))
+        .map(|m| generate_method_shim(trait_name, m, &extra_bounds))
         .collect();
 
     let vtable_inits: Vec<_> = methods
@@ -317,7 +320,8 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         .collect();
 
     // Generate method wrappers for the View struct
-    let view_methods: Vec<_> = methods.iter().map(generate_view_method).collect();
+    // Methods with Self in return type or &Self in params are skipped
+    let view_methods: Vec<_> = methods.iter().filter_map(generate_view_method).collect();
 
     let trait_name_str = trait_name.to_string();
     let source_loc_doc = crate::source_location_doc(trait_name.span());
@@ -421,7 +425,7 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
         )]
         #[doc = #source_loc_doc]
         #[doc = concat!("Generated from source file `", file!(), "`.")]
-        #vis const fn #build_vtable_fn<T: #trait_name>() -> #vtable_name {
+        #vis const fn #build_vtable_fn<T: #trait_name #(+ #extra_bounds)*>() -> #vtable_name {
             #vtable_name {
                 #(#vtable_inits),*
             }
@@ -432,7 +436,23 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
 /// Generate a method wrapper for the View struct.
 ///
 /// This creates a method on the View that calls through the vtable.
-fn generate_view_method(method: &MethodInfo) -> TokenStream {
+/// Returns None for methods with `Self` in return types or `&Self` in parameters,
+/// since these can't be meaningfully expressed on the type-erased View.
+fn generate_view_method(method: &MethodInfo) -> Option<TokenStream> {
+    // Skip methods where Self appears in return type or parameters.
+    // In the View context, Self refers to the View struct, not the concrete type,
+    // so these methods can't work through the type-erased vtable dispatch.
+    if method
+        .return_type
+        .as_ref()
+        .is_some_and(type_contains_self)
+    {
+        return None;
+    }
+    if method.param_types.iter().any(|ty| type_contains_self(ty)) {
+        return None;
+    }
+
     let method_name = &method.name;
     let param_names = &method.param_names;
     let param_types = &method.param_types;
@@ -494,7 +514,7 @@ fn generate_view_method(method: &MethodInfo) -> TokenStream {
         )
     };
 
-    quote::quote! {
+    Some(quote::quote! {
         #[doc = concat!("Call `", stringify!(#method_name), "` through the vtable.")]
         #[inline]
         pub fn #method_name(#self_param #(, #params)*) #return_sig {
@@ -503,7 +523,7 @@ fn generate_view_method(method: &MethodInfo) -> TokenStream {
                 #result_conversion
             }
         }
-    }
+    })
 }
 
 /// Generate a method shim function for a trait method.
@@ -515,7 +535,11 @@ fn generate_view_method(method: &MethodInfo) -> TokenStream {
 /// 4. Calls the actual method on the concrete type
 /// 5. Converts the result back to SEXP
 /// 6. On panic, converts to R error via `r_stop`
-fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenStream {
+fn generate_method_shim(
+    trait_name: &syn::Ident,
+    method: &MethodInfo,
+    extra_bounds: &[TokenStream],
+) -> TokenStream {
     let method_name = &method.name;
     let shim_name = quote::format_ident!(
         "__{}_{}_shim",
@@ -527,6 +551,7 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
     let expected_argc = param_count as i32;
 
     // Generate argument extraction
+    // For &Self params, extract ExternalPtr<T> and borrow from it
     let arg_extractions: Vec<_> = method
         .param_names
         .iter()
@@ -534,10 +559,31 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
         .enumerate()
         .map(|(i, (name, ty))| {
             let name_str = name.to_string();
-            quote::quote! {
-                let #name: #ty = unsafe {
-                    ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
-                };
+            let (is_self_ref, is_mut) = param_is_self_ref(ty);
+            if is_self_ref {
+                // &Self or &mut Self: extract ExternalPtr<T> and deref
+                let extptr_name = quote::format_ident!("__extptr_{}", name);
+                if is_mut {
+                    quote::quote! {
+                        let mut #extptr_name: ::miniextendr_api::ExternalPtr<T> = unsafe {
+                            ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                        };
+                        let #name: &mut T = &mut *#extptr_name;
+                    }
+                } else {
+                    quote::quote! {
+                        let #extptr_name: ::miniextendr_api::ExternalPtr<T> = unsafe {
+                            ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                        };
+                        let #name: &T = &*#extptr_name;
+                    }
+                }
+            } else {
+                quote::quote! {
+                    let #name: #ty = unsafe {
+                        ::miniextendr_api::trait_abi::extract_arg(argc, argv, #i, #name_str)
+                    };
+                }
             }
         })
         .collect();
@@ -582,7 +628,7 @@ fn generate_method_shim(trait_name: &syn::Ident, method: &MethodInfo) -> TokenSt
         /// Converts SEXP arguments, calls the method, and returns SEXP result.
         /// Both Rust panics and R longjmps are caught via `with_r_unwind_protect`.
         #[doc(hidden)]
-        unsafe extern "C" fn #shim_name<T: #trait_name>(
+        unsafe extern "C" fn #shim_name<T: #trait_name #(+ #extra_bounds)*>(
             data: *mut ::std::os::raw::c_void,
             argc: i32,
             argv: *const ::miniextendr_api::ffi::SEXP,
@@ -627,6 +673,89 @@ struct MethodInfo {
     /// Whether method has a default implementation
     #[allow(dead_code)]
     has_default: bool,
+}
+
+// =============================================================================
+// Self-type detection helpers
+// =============================================================================
+
+/// Check if a type syntactically contains `Self`.
+///
+/// Used to detect when a method returns `Self` (or `Option<Self>`, `Vec<Self>`, etc.)
+/// so the generated shim can add `IntoR` bounds.
+fn type_contains_self(ty: &syn::Type) -> bool {
+    match ty {
+        syn::Type::Path(tp) => {
+            for seg in &tp.path.segments {
+                if seg.ident == "Self" {
+                    return true;
+                }
+                if let syn::PathArguments::AngleBracketed(args) = &seg.arguments {
+                    for arg in &args.args {
+                        if let syn::GenericArgument::Type(inner) = arg {
+                            if type_contains_self(inner) {
+                                return true;
+                            }
+                        }
+                    }
+                }
+            }
+            false
+        }
+        syn::Type::Reference(r) => type_contains_self(&r.elem),
+        syn::Type::Tuple(t) => t.elems.iter().any(type_contains_self),
+        syn::Type::Slice(s) => type_contains_self(&s.elem),
+        syn::Type::Array(a) => type_contains_self(&a.elem),
+        syn::Type::Paren(p) => type_contains_self(&p.elem),
+        _ => false,
+    }
+}
+
+/// Check if a parameter type is `&Self` or `&mut Self`.
+///
+/// Returns `(is_self_ref, is_mut)`. When true, the generated shim extracts
+/// an `ExternalPtr<T>` from the SEXP and borrows from it instead of trying
+/// to extract `&T` directly (which doesn't implement `TryFromSexp`).
+fn param_is_self_ref(ty: &syn::Type) -> (bool, bool) {
+    if let syn::Type::Reference(r) = ty {
+        if let syn::Type::Path(tp) = r.elem.as_ref() {
+            if tp.path.is_ident("Self") {
+                return (true, r.mutability.is_some());
+            }
+        }
+    }
+    (false, false)
+}
+
+/// Compute extra trait bounds needed for the shim and build_vtable functions.
+///
+/// - Methods returning `Self` need `T: IntoR` for SEXP conversion
+/// - Methods with `&Self` params need `T: TypedExternal + 'static` for ExternalPtr extraction
+fn compute_extra_bounds(methods: &[MethodInfo]) -> Vec<proc_macro2::TokenStream> {
+    let mut needs_into_r = false;
+    let mut needs_typed_external = false;
+
+    for method in methods {
+        if method
+            .return_type
+            .as_ref()
+            .is_some_and(type_contains_self)
+        {
+            needs_into_r = true;
+        }
+        if method.param_types.iter().any(|ty| param_is_self_ref(ty).0) {
+            needs_typed_external = true;
+        }
+    }
+
+    let mut bounds = Vec::new();
+    if needs_into_r {
+        bounds.push(quote::quote! { ::miniextendr_api::IntoR });
+    }
+    if needs_typed_external {
+        bounds.push(quote::quote! { ::miniextendr_api::TypedExternal + 'static });
+    }
+    bounds
 }
 
 /// Extract method information from a trait method.

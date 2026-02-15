@@ -31,6 +31,7 @@
 //! data$debug_str_pretty() # Pretty-printed with newlines
 //! ```
 
+use crate::miniextendr;
 use std::collections::hash_map::DefaultHasher;
 use std::fmt::{Debug, Display};
 use std::hash::{Hash, Hasher};
@@ -60,6 +61,7 @@ use std::str::FromStr;
 ///     impl RDebug for Config;
 /// }
 /// ```
+#[miniextendr]
 pub trait RDebug {
     /// Get a compact debug string representation.
     fn debug_str(&self) -> String;
@@ -106,6 +108,7 @@ impl<T: Debug> RDebug for T {
 ///     impl RDisplay for Version;
 /// }
 /// ```
+#[miniextendr]
 pub trait RDisplay {
     /// Convert to a user-friendly string.
     fn as_r_string(&self) -> String;
@@ -145,6 +148,7 @@ impl<T: Display> RDisplay for T {
 ///     impl RHash for Record;
 /// }
 /// ```
+#[miniextendr]
 pub trait RHash {
     /// Compute a hash of this value.
     fn hash(&self) -> i64;
@@ -289,6 +293,7 @@ impl<T: PartialOrd> RPartialOrd for T {
 ///     impl RError for MyErrorWrapper;
 /// }
 /// ```
+#[miniextendr]
 pub trait RError {
     /// Get the error message (Display representation).
     fn error_message(&self) -> String;
@@ -357,6 +362,7 @@ impl<T: std::error::Error> RError for T {
 /// ```r
 /// ip <- IpAddress$from_str("192.168.1.1")
 /// ```
+#[miniextendr]
 pub trait RFromStr: Sized {
     /// Parse a string into this type.
     ///
@@ -401,6 +407,7 @@ impl<T: FromStr> RFromStr for T {
 /// buf1 <- Buffer$new(...)
 /// buf2 <- buf1$clone()  # Independent copy
 /// ```
+#[miniextendr]
 pub trait RClone {
     /// Create a deep copy of this value.
     fn clone(&self) -> Self;
@@ -444,6 +451,7 @@ impl<T: Clone> RClone for T {
 /// ```r
 /// config <- Config$default()  # All fields have default values
 /// ```
+#[miniextendr]
 pub trait RDefault {
     /// Create a new instance with default values.
     fn default() -> Self;
@@ -495,6 +503,7 @@ impl<T: Default> RDefault for T {
 /// p2 <- p1$copy()  # Cheap bitwise copy
 /// p1$is_copy()       # TRUE
 /// ```
+#[miniextendr]
 pub trait RCopy {
     /// Create a bitwise copy of this value.
     ///
