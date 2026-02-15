@@ -477,6 +477,28 @@ supported attribute combinations.
 
 ---
 
+## Project-Wide Default Features
+
+These features set project-wide defaults for `#[miniextendr]` options, so you don't
+need to annotate every function. Individual items can opt out with `no_` prefixed keywords.
+
+See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
+
+| Feature | Effect | Opt-out |
+|---------|--------|---------|
+| `default-strict` | Strict checked conversions for lossy types | `no_strict` |
+| `default-coerce` | Auto-coerce parameters | `no_coerce` |
+| `default-error-in-r` | Transport Rust errors as R conditions | `no_error_in_r` |
+| `default-r6` | R6 class system for impl blocks | `env`, `s7`, etc. |
+| `default-s7` | S7 class system for impl blocks | `env`, `r6`, etc. |
+| `default-worker` | Force worker thread execution | `no_worker` |
+| `default-main-thread` | Force main thread execution | `no_main_thread` |
+
+**Mutual exclusivity:** `default-r6`/`default-s7` and `default-worker`/`default-main-thread`
+cannot be enabled simultaneously.
+
+---
+
 ## Usage
 
 Enable features in your `Cargo.toml`:

@@ -22,7 +22,8 @@
 - [ALTREP.md](ALTREP.md) -- ALTREP overview and proc-macro usage
 - [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md) -- Practical ALTREP examples
 - [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md) -- ALTREP quick reference card
-- [FEATURES.md](FEATURES.md) -- Feature flags reference (all 31 optional features)
+- [FEATURES.md](FEATURES.md) -- Feature flags reference (all optional features)
+- [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features (strict, coerce, class system, etc.)
 - [RAYON.md](RAYON.md) -- Parallel iteration with rayon
 - [VCTRS.md](VCTRS.md) -- vctrs integration with `#[derive(Vctrs)]`
 - [serde_r.md](serde_r.md) -- Direct Rust-R serialization via serde
