@@ -200,7 +200,7 @@ fn generate_produces_tag_constant() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item, false);
+    let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
     assert!(output_str.contains("TAG_COUNTER"));
@@ -217,7 +217,7 @@ fn generate_produces_vtable_struct() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item, false);
+    let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
     assert!(output_str.contains("CounterVTable"));
@@ -236,7 +236,7 @@ fn generate_produces_view_struct() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item, false);
+    let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
     assert!(output_str.contains("CounterView"));
@@ -253,7 +253,7 @@ fn generate_produces_vtable_builder() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item, false);
+    let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
     assert!(output_str.contains("__counter_build_vtable"));
@@ -269,7 +269,7 @@ fn generate_excludes_static_methods_from_vtable() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item, false);
+    let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
     // vtable should contain `value` but not `create`
@@ -288,7 +288,7 @@ fn generate_preserves_original_trait() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item, false);
+    let output = generate_trait_abi(&trait_item);
     let output_str = output.to_string();
 
     // Original trait should be in output (pass-through)

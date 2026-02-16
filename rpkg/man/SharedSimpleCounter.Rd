@@ -7,10 +7,10 @@
 \alias{SharedSimpleCounter$get_value}
 \alias{$.SharedSimpleCounter}
 \alias{[[.SharedSimpleCounter}
-\alias{SharedSimpleCounter$Counter$value}
-\alias{SharedSimpleCounter$Counter$increment}
-\alias{SharedSimpleCounter$Counter$add}
-\alias{SharedSimpleCounter$Counter$reset}
+\alias{SharedSimpleCounter$SharedCounter$value}
+\alias{SharedSimpleCounter$SharedCounter$increment}
+\alias{SharedSimpleCounter$SharedCounter$add}
+\alias{SharedSimpleCounter$SharedCounter$reset}
 \title{SharedSimpleCounter  Class}
 \format{
 An object of class \code{environment} of length 3.

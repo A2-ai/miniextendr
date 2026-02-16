@@ -253,7 +253,9 @@ pub fn expand_miniextendr_impl_trait(
 
     // TPIE: empty impl body → expand via macro_rules! helper from the trait definition
     if impl_item.items.is_empty() && !impl_attrs.blanket {
-        return generate_tpie_invocation(&trait_path, &concrete_type, impl_attrs.class_system)
+        let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+        let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
+        return generate_tpie_invocation(&trait_path, &concrete_type, impl_attrs.class_system, no_rd)
             .into();
     }
 
@@ -395,10 +397,14 @@ fn generate_vtable_static(
         .chain(const_c_wrappers)
         .collect();
 
+    // Check if impl block has @noRd doc comment
+    let impl_doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
+    let class_has_no_rd = crate::roxygen::has_roxygen_tag(&impl_doc_tags, "noRd");
+
     // Generate R wrapper code string based on class system (only non-skipped methods)
     let methods_owned: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
     let r_wrapper_string =
-        match generate_trait_r_wrapper(&type_ident, trait_name, &methods_owned, &consts, class_system) {
+        match generate_trait_r_wrapper(&type_ident, trait_name, &methods_owned, &consts, class_system, class_has_no_rd) {
             Ok(s) => s,
             Err(e) => return e.into_compile_error(),
         };
@@ -1184,25 +1190,28 @@ fn generate_trait_r_wrapper(
     methods: &[TraitMethod],
     consts: &[TraitConst],
     class_system: ClassSystem,
+    class_has_no_rd: bool,
 ) -> syn::Result<String> {
-    match class_system {
-        ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts),
-        ClassSystem::S3 => Ok(generate_trait_s3_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
-        ClassSystem::S4 => Ok(generate_trait_s4_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
-        ClassSystem::S7 => Ok(generate_trait_s7_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
-        ClassSystem::R6 => Ok(generate_trait_r6_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
+    let result = match class_system {
+        ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
+        ClassSystem::S3 => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::S4 => generate_trait_s4_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::S7 => generate_trait_s7_r_wrapper(type_ident, trait_name, methods, consts),
+        ClassSystem::R6 => generate_trait_r6_r_wrapper(type_ident, trait_name, methods, consts),
         // vctrs uses S3 under the hood, so use the S3 trait wrapper
-        ClassSystem::Vctrs => Ok(generate_trait_s3_r_wrapper(
-            type_ident, trait_name, methods, consts,
-        )),
+        ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
+    };
+
+    // When impl block has @noRd, strip all roxygen tags from generated R code
+    // (the class itself suppresses Rd, so trait methods shouldn't reference it)
+    if class_has_no_rd {
+        Ok(result
+            .lines()
+            .filter(|line| !line.starts_with("#'"))
+            .collect::<Vec<_>>()
+            .join("\n"))
+    } else {
+        Ok(result)
     }
 }
 
@@ -2090,6 +2099,7 @@ struct TpieInput {
     concrete_type: syn::Type,
     trait_path: syn::Path,
     class_system: ClassSystem,
+    no_rd: bool,
     methods: Vec<TpieMethod>,
 }
 
@@ -2141,6 +2151,19 @@ impl syn::parse::Parse for TpieInput {
             syn::Error::new_spanned(&cs_ident, format!("unknown class system: {}", cs_ident))
         })?;
 
+        // no_rd = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "no_rd" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'no_rd', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let no_rd_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let no_rd = no_rd_lit.value;
+
         // method { ... } repeated
         let mut methods = Vec::new();
         while !input.is_empty() {
@@ -2160,6 +2183,7 @@ impl syn::parse::Parse for TpieInput {
             concrete_type,
             trait_path,
             class_system,
+            no_rd,
             methods,
         })
     }
@@ -2343,6 +2367,7 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         &methods,
         &[], // no consts in TPIE
         class_system,
+        tpie_input.no_rd,
     ) {
         Ok(s) => s,
         Err(e) => return e.into_compile_error().into(),
@@ -2416,6 +2441,7 @@ fn generate_tpie_invocation(
     trait_path: &syn::Path,
     concrete_type: &syn::Type,
     class_system: ClassSystem,
+    class_has_no_rd: bool,
 ) -> TokenStream {
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
         return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
@@ -2458,6 +2484,11 @@ fn generate_tpie_invocation(
     let crate_ident = &trait_path.segments[0].ident;
     let macro_name = format_ident!("__mx_impl_{}", trait_name);
     let class_system_ident = class_system.to_ident();
+    let no_rd_ident = if class_has_no_rd {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
 
     let source_loc_doc = crate::source_location_doc(trait_name.span());
 
@@ -2467,7 +2498,7 @@ fn generate_tpie_invocation(
         static #vtable_static_name: #vtable_type_path =
             #builder_path::<#concrete_type>();
 
-        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident);
+        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident);
     }
 }
 

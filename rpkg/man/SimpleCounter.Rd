@@ -8,11 +8,6 @@
 \alias{SimpleCounter$new_counter}
 \alias{$.SimpleCounter}
 \alias{[[.SimpleCounter}
-\alias{SimpleCounter$Counter$value}
-\alias{SimpleCounter$Counter$increment}
-\alias{SimpleCounter$Counter$checked_add}
-\alias{SimpleCounter$Counter$default_initial}
-\alias{SimpleCounter$Counter$MAX_VALUE}
 \title{SimpleCounter  Class}
 \format{
 An object of class \code{environment} of length 4.

@@ -6,10 +6,10 @@
 \alias{AtomicCounter$new_atomic}
 \alias{$.AtomicCounter}
 \alias{[[.AtomicCounter}
-\alias{AtomicCounter$Counter$value}
-\alias{AtomicCounter$Counter$increment}
-\alias{AtomicCounter$Counter$add}
-\alias{AtomicCounter$Counter$reset}
+\alias{AtomicCounter$SharedCounter$value}
+\alias{AtomicCounter$SharedCounter$increment}
+\alias{AtomicCounter$SharedCounter$add}
+\alias{AtomicCounter$SharedCounter$reset}
 \title{AtomicCounter  Class}
 \format{
 An object of class \code{environment} of length 2.

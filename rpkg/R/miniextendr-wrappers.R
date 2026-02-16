@@ -5756,15 +5756,11 @@ IterableVecIter$collect_all <- function() {
 
 Point$RDebug <- new.env(parent = emptyenv())
 
-#' @name Point$RDebug$debug_str
-#' @rdname Point
 Point$RDebug$debug_str <- function(x) {
   .Call(C_Point__RDebug__debug_str, .call = match.call(), x)
 }
 attr(Point$RDebug$debug_str, ".__mx_instance__") <- TRUE
 
-#' @name Point$RDebug$debug_str_pretty
-#' @rdname Point
 Point$RDebug$debug_str_pretty <- function(x) {
   .Call(C_Point__RDebug__debug_str_pretty, .call = match.call(), x)
 }
@@ -5776,8 +5772,6 @@ attr(Point$RDebug$debug_str_pretty, ".__mx_instance__") <- TRUE
 
 Point$RDisplay <- new.env(parent = emptyenv())
 
-#' @name Point$RDisplay$as_r_string
-#' @rdname Point
 Point$RDisplay$as_r_string <- function(x) {
   .Call(C_Point__RDisplay__as_r_string, .call = match.call(), x)
 }
@@ -5789,8 +5783,6 @@ attr(Point$RDisplay$as_r_string, ".__mx_instance__") <- TRUE
 
 Point$RHash <- new.env(parent = emptyenv())
 
-#' @name Point$RHash$hash
-#' @rdname Point
 Point$RHash$hash <- function(x) {
   .Call(C_Point__RHash__hash, .call = match.call(), x)
 }
@@ -5802,8 +5794,6 @@ attr(Point$RHash$hash, ".__mx_instance__") <- TRUE
 
 Point$RClone <- new.env(parent = emptyenv())
 
-#' @name Point$RClone$clone
-#' @rdname Point
 Point$RClone$clone <- function(x) {
   .Call(C_Point__RClone__clone, .call = match.call(), x)
 }
@@ -5815,8 +5805,6 @@ attr(Point$RClone$clone, ".__mx_instance__") <- TRUE
 
 Point$RDefault <- new.env(parent = emptyenv())
 
-#' @name Point$RDefault$default
-#' @rdname Point
 Point$RDefault$default <- function() {
   .Call(C_Point__RDefault__default, .call = match.call())
 }
@@ -5827,8 +5815,6 @@ Point$RDefault$default <- function() {
 
 Point$RFromStr <- new.env(parent = emptyenv())
 
-#' @name Point$RFromStr$from_str
-#' @rdname Point
 Point$RFromStr$from_str <- function(s) {
   .Call(C_Point__RFromStr__from_str, .call = match.call(), s)
 }
@@ -5839,15 +5825,11 @@ Point$RFromStr$from_str <- function(s) {
 
 Point$RCopy <- new.env(parent = emptyenv())
 
-#' @name Point$RCopy$copy
-#' @rdname Point
 Point$RCopy$copy <- function(x) {
   .Call(C_Point__RCopy__copy, .call = match.call(), x)
 }
 attr(Point$RCopy$copy, ".__mx_instance__") <- TRUE
 
-#' @name Point$RCopy$is_copy
-#' @rdname Point
 Point$RCopy$is_copy <- function(x) {
   .Call(C_Point__RCopy__is_copy, .call = match.call(), x)
 }
@@ -5859,22 +5841,16 @@ attr(Point$RCopy$is_copy, ".__mx_instance__") <- TRUE
 
 ChainedError$RError <- new.env(parent = emptyenv())
 
-#' @name ChainedError$RError$error_message
-#' @rdname ChainedError
 ChainedError$RError$error_message <- function(x) {
   .Call(C_ChainedError__RError__error_message, .call = match.call(), x)
 }
 attr(ChainedError$RError$error_message, ".__mx_instance__") <- TRUE
 
-#' @name ChainedError$RError$error_chain
-#' @rdname ChainedError
 ChainedError$RError$error_chain <- function(x) {
   .Call(C_ChainedError__RError__error_chain, .call = match.call(), x)
 }
 attr(ChainedError$RError$error_chain, ".__mx_instance__") <- TRUE
 
-#' @name ChainedError$RError$error_chain_length
-#' @rdname ChainedError
 ChainedError$RError$error_chain_length <- function(x) {
   .Call(C_ChainedError__RError__error_chain_length, .call = match.call(), x)
 }
@@ -5886,8 +5862,6 @@ attr(ChainedError$RError$error_chain_length, ".__mx_instance__") <- TRUE
 
 Point$ROrd <- new.env(parent = emptyenv())
 
-#' @name Point$ROrd$cmp
-#' @rdname Point
 Point$ROrd$cmp <- function(x, other) {
   .Call(C_Point__ROrd__cmp, .call = match.call(), x, other)
 }
@@ -5899,8 +5873,6 @@ attr(Point$ROrd$cmp, ".__mx_instance__") <- TRUE
 
 MyFloat$RPartialOrd <- new.env(parent = emptyenv())
 
-#' @name MyFloat$RPartialOrd$partial_cmp
-#' @rdname MyFloat
 MyFloat$RPartialOrd$partial_cmp <- function(x, other) {
   .Call(C_MyFloat__RPartialOrd__partial_cmp, .call = match.call(), x, other)
 }
@@ -5912,36 +5884,26 @@ attr(MyFloat$RPartialOrd$partial_cmp, ".__mx_instance__") <- TRUE
 
 IntVecIter$RIterator <- new.env(parent = emptyenv())
 
-#' @name IntVecIter$RIterator$next_item
-#' @rdname IntVecIter
 IntVecIter$RIterator$next_item <- function(x) {
   .Call(C_IntVecIter__RIterator__next, .call = match.call(), x)
 }
 attr(IntVecIter$RIterator$next_item, ".__mx_instance__") <- TRUE
 
-#' @name IntVecIter$RIterator$count
-#' @rdname IntVecIter
 IntVecIter$RIterator$count <- function(x) {
   .Call(C_IntVecIter__RIterator__count, .call = match.call(), x)
 }
 attr(IntVecIter$RIterator$count, ".__mx_instance__") <- TRUE
 
-#' @name IntVecIter$RIterator$collect_n
-#' @rdname IntVecIter
 IntVecIter$RIterator$collect_n <- function(x, n) {
   .Call(C_IntVecIter__RIterator__collect_n, .call = match.call(), x, n)
 }
 attr(IntVecIter$RIterator$collect_n, ".__mx_instance__") <- TRUE
 
-#' @name IntVecIter$RIterator$skip
-#' @rdname IntVecIter
 IntVecIter$RIterator$skip <- function(x, n) {
   .Call(C_IntVecIter__RIterator__skip, .call = match.call(), x, n)
 }
 attr(IntVecIter$RIterator$skip, ".__mx_instance__") <- TRUE
 
-#' @name IntVecIter$RIterator$nth
-#' @rdname IntVecIter
 IntVecIter$RIterator$nth <- function(x, n) {
   .Call(C_IntVecIter__RIterator__nth, .call = match.call(), x, n)
 }
@@ -5953,36 +5915,26 @@ attr(IntVecIter$RIterator$nth, ".__mx_instance__") <- TRUE
 
 IterableVecIter$RIterator <- new.env(parent = emptyenv())
 
-#' @name IterableVecIter$RIterator$next_item
-#' @rdname IterableVecIter
 IterableVecIter$RIterator$next_item <- function(x) {
   .Call(C_IterableVecIter__RIterator__next, .call = match.call(), x)
 }
 attr(IterableVecIter$RIterator$next_item, ".__mx_instance__") <- TRUE
 
-#' @name IterableVecIter$RIterator$count
-#' @rdname IterableVecIter
 IterableVecIter$RIterator$count <- function(x) {
   .Call(C_IterableVecIter__RIterator__count, .call = match.call(), x)
 }
 attr(IterableVecIter$RIterator$count, ".__mx_instance__") <- TRUE
 
-#' @name IterableVecIter$RIterator$collect_n
-#' @rdname IterableVecIter
 IterableVecIter$RIterator$collect_n <- function(x, n) {
   .Call(C_IterableVecIter__RIterator__collect_n, .call = match.call(), x, n)
 }
 attr(IterableVecIter$RIterator$collect_n, ".__mx_instance__") <- TRUE
 
-#' @name IterableVecIter$RIterator$skip
-#' @rdname IterableVecIter
 IterableVecIter$RIterator$skip <- function(x, n) {
   .Call(C_IterableVecIter__RIterator__skip, .call = match.call(), x, n)
 }
 attr(IterableVecIter$RIterator$skip, ".__mx_instance__") <- TRUE
 
-#' @name IterableVecIter$RIterator$nth
-#' @rdname IterableVecIter
 IterableVecIter$RIterator$nth <- function(x, n) {
   .Call(C_IterableVecIter__RIterator__nth, .call = match.call(), x, n)
 }
@@ -5994,23 +5946,17 @@ attr(IterableVecIter$RIterator$nth, ".__mx_instance__") <- TRUE
 
 GrowableVec$RExtend <- new.env(parent = emptyenv())
 
-#' @name GrowableVec$RExtend$extend_from_vec
-#' @rdname GrowableVec
 GrowableVec$RExtend$extend_from_vec <- function(x, items) {
   .Call(C_GrowableVec__RExtend__extend_from_vec, .call = match.call(), x, items)
   invisible(x)
 }
 attr(GrowableVec$RExtend$extend_from_vec, ".__mx_instance__") <- TRUE
 
-#' @name GrowableVec$RExtend$len
-#' @rdname GrowableVec
 GrowableVec$RExtend$len <- function(x) {
   .Call(C_GrowableVec__RExtend__len, .call = match.call(), x)
 }
 attr(GrowableVec$RExtend$len, ".__mx_instance__") <- TRUE
 
-#' @name GrowableVec$RExtend$is_empty
-#' @rdname GrowableVec
 GrowableVec$RExtend$is_empty <- function(x) {
   .Call(C_GrowableVec__RExtend__is_empty, .call = match.call(), x)
 }
@@ -6022,8 +5968,6 @@ attr(GrowableVec$RExtend$is_empty, ".__mx_instance__") <- TRUE
 
 IntSet$RFromIter <- new.env(parent = emptyenv())
 
-#' @name IntSet$RFromIter$from_vec
-#' @rdname IntSet
 IntSet$RFromIter$from_vec <- function(items) {
   .Call(C_IntSet__RFromIter__from_vec, .call = match.call(), items)
 }
@@ -6034,22 +5978,16 @@ IntSet$RFromIter$from_vec <- function(items) {
 
 IntSet$RToVec <- new.env(parent = emptyenv())
 
-#' @name IntSet$RToVec$to_vec
-#' @rdname IntSet
 IntSet$RToVec$to_vec <- function(x) {
   .Call(C_IntSet__RToVec__to_vec, .call = match.call(), x)
 }
 attr(IntSet$RToVec$to_vec, ".__mx_instance__") <- TRUE
 
-#' @name IntSet$RToVec$len
-#' @rdname IntSet
 IntSet$RToVec$len <- function(x) {
   .Call(C_IntSet__RToVec__len, .call = match.call(), x)
 }
 attr(IntSet$RToVec$len, ".__mx_instance__") <- TRUE
 
-#' @name IntSet$RToVec$is_empty
-#' @rdname IntSet
 IntSet$RToVec$is_empty <- function(x) {
   .Call(C_IntSet__RToVec__is_empty, .call = match.call(), x)
 }
@@ -6061,8 +5999,6 @@ attr(IntSet$RToVec$is_empty, ".__mx_instance__") <- TRUE
 
 IterableVec$RMakeIter <- new.env(parent = emptyenv())
 
-#' @name IterableVec$RMakeIter$make_iter
-#' @rdname IterableVec
 IterableVec$RMakeIter$make_iter <- function(x) {
   .Call(C_IterableVec__RMakeIter__make_iter, .call = match.call(), x)
 }
@@ -6699,8 +6635,6 @@ FallibleImpl$inherent_value <- function() {
 
 FallibleImpl$Fallible <- new.env(parent = emptyenv())
 
-#' @name FallibleImpl$Fallible$get_value
-#' @rdname FallibleImpl
 FallibleImpl$Fallible$get_value <- function(x) {
   .val <- .Call(C_FallibleImpl__Fallible__get_value, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -6713,8 +6647,6 @@ FallibleImpl$Fallible$get_value <- function(x) {
 }
 attr(FallibleImpl$Fallible$get_value, ".__mx_instance__") <- TRUE
 
-#' @name FallibleImpl$Fallible$will_panic
-#' @rdname FallibleImpl
 FallibleImpl$Fallible$will_panic <- function(x) {
   .val <- .Call(C_FallibleImpl__Fallible__will_panic, .call = match.call(), x)
   if (inherits(.val, "rust_error_value") && isTRUE(attr(.val, "__rust_error__"))) {
@@ -8072,8 +8004,8 @@ S7Counter_default_counter <- function() {
 S7Range <- S7::new_class("S7Range",
   properties = list(
     .ptr = S7::class_any,
-    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self }),
-    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
+    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr)),
+    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
   ),
   constructor = function(start, end, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8099,9 +8031,9 @@ S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call =
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
     score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
-    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
+    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8796,37 +8728,27 @@ R6TraitCounter$new_r6trait <- function(initial) {
 
 SimpleCounter$Counter <- new.env(parent = emptyenv())
 
-#' @name SimpleCounter$Counter$value
-#' @rdname SimpleCounter
 SimpleCounter$Counter$value <- function(x) {
   .Call(C_SimpleCounter__Counter__value, .call = match.call(), x)
 }
 attr(SimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
 
-#' @name SimpleCounter$Counter$increment
-#' @rdname SimpleCounter
 SimpleCounter$Counter$increment <- function(x) {
   .Call(C_SimpleCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
 attr(SimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
 
-#' @name SimpleCounter$Counter$checked_add
-#' @rdname SimpleCounter
 SimpleCounter$Counter$checked_add <- function(x, n) {
   .Call(C_SimpleCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
 }
 attr(SimpleCounter$Counter$checked_add, ".__mx_instance__") <- TRUE
 
-#' @name SimpleCounter$Counter$default_initial
-#' @rdname SimpleCounter
 SimpleCounter$Counter$default_initial <- function() {
   .Call(C_SimpleCounter__Counter__default_initial, .call = match.call())
 }
 
-#' @name SimpleCounter$Counter$MAX_VALUE
-#' @rdname SimpleCounter
 SimpleCounter$Counter$MAX_VALUE <- function() {
   .Call(C_SimpleCounter__Counter__MAX_VALUE, .call = match.call())
 }
@@ -8876,21 +8798,10 @@ PanickyCounter$Counter$MAX_VALUE <- function() {
 # S3 trait methods for S3TraitCounter implementing Counter
 # Generated by #[miniextendr(s3)] impl Counter for S3TraitCounter
 
-#' @title S3 generic for `value`
-#' @name value
-#' @rdname S3TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S3TraitCounter`
-#' S3 generic for `value`
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @export
 if (!exists("value", mode = "function")) {
   value <- function(x, ...) UseMethod("value")
 }
 
-#' @rdname S3TraitCounter
-#' @method value S3TraitCounter
-#' @export
 value.S3TraitCounter <- function(x, ...) {
   .Call(C_S3TraitCounter__Counter__value, .call = match.call(), x)
 }
@@ -8898,21 +8809,10 @@ if (inherits(get0("value", mode = "function"), "S7_generic")) {
   S7::method(value, S7::new_S3_class("S3TraitCounter")) <- value.S3TraitCounter
 }
 
-#' @title S3 generic for `increment`
-#' @name increment
-#' @rdname S3TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S3TraitCounter`
-#' S3 generic for `increment`
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @export
 if (!exists("increment", mode = "function")) {
   increment <- function(x, ...) UseMethod("increment")
 }
 
-#' @rdname S3TraitCounter
-#' @method increment S3TraitCounter
-#' @export
 increment.S3TraitCounter <- function(x, ...) {
   .Call(C_S3TraitCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
@@ -8921,22 +8821,10 @@ if (inherits(get0("increment", mode = "function"), "S7_generic")) {
   S7::method(increment, S7::new_S3_class("S3TraitCounter")) <- increment.S3TraitCounter
 }
 
-#' @title S3 generic for `checked_add`
-#' @name checked_add
-#' @rdname S3TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S3TraitCounter`
-#' S3 generic for `checked_add`
-#' @param x An object
-#' @param ... Additional arguments passed to methods
-#' @export
 if (!exists("checked_add", mode = "function")) {
   checked_add <- function(x, ...) UseMethod("checked_add")
 }
 
-#' @rdname S3TraitCounter
-#' @method checked_add S3TraitCounter
-#' @param n Amount to add.
-#' @export
 checked_add.S3TraitCounter <- function(x, n, ...) {
   .Call(C_S3TraitCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
@@ -8947,15 +8835,10 @@ if (inherits(get0("checked_add", mode = "function"), "S7_generic")) {
 
 S3TraitCounter$Counter <- new.env(parent = emptyenv())
 
-#' Static trait method Counter::default_initial()
-#' @name S3TraitCounter$Counter$default_initial
-#' @rdname S3TraitCounter
 S3TraitCounter$Counter$default_initial <- function() {
   .Call(C_S3TraitCounter__Counter__default_initial, .call = match.call())
 }
 
-#' @name S3TraitCounter$Counter$MAX_VALUE
-#' @rdname S3TraitCounter
 S3TraitCounter$Counter$MAX_VALUE <- function() {
   .Call(C_S3TraitCounter__Counter__MAX_VALUE, .call = match.call())
 }
@@ -8964,69 +8847,32 @@ S3TraitCounter$Counter$MAX_VALUE <- function() {
 # S4 trait methods for S4TraitCounter implementing Counter
 # Generated by #[miniextendr(s4)] impl Counter for S4TraitCounter
 
-#' @importFrom methods setOldClass setGeneric setMethod
 methods::setOldClass("S4TraitCounter")
 
-#' @name s4_trait_Counter_value
-#' @rdname S4TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S4TraitCounter`
-#' S4 generic for trait method `Counter::value`
-#' @param x A `S4TraitCounter` object
-#' @param ... Additional arguments passed to methods
-#' @export
 methods::setGeneric("s4_trait_Counter_value", function(x, ...) standardGeneric("s4_trait_Counter_value"))
 
-#' @rdname S4TraitCounter
-#' @exportMethod s4_trait_Counter_value
 methods::setMethod("s4_trait_Counter_value", "S4TraitCounter", function(x, ...) {
   .Call(C_S4TraitCounter__Counter__value, .call = match.call(), x)
 })
 
-#' @name s4_trait_Counter_increment
-#' @rdname S4TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S4TraitCounter`
-#' S4 generic for trait method `Counter::increment`
-#' @param x A `S4TraitCounter` object
-#' @param ... Additional arguments passed to methods
-#' @export
 methods::setGeneric("s4_trait_Counter_increment", function(x, ...) standardGeneric("s4_trait_Counter_increment"))
 
-#' @rdname S4TraitCounter
-#' @exportMethod s4_trait_Counter_increment
 methods::setMethod("s4_trait_Counter_increment", "S4TraitCounter", function(x, ...) {
   .Call(C_S4TraitCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 })
 
-#' @name s4_trait_Counter_checked_add
-#' @rdname S4TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S4TraitCounter`
-#' S4 generic for trait method `Counter::checked_add`
-#' @param x A `S4TraitCounter` object
-#' @param ... Additional arguments passed to methods
-#' @param n Amount to add.
-#' @export
 methods::setGeneric("s4_trait_Counter_checked_add", function(x, ...) standardGeneric("s4_trait_Counter_checked_add"))
 
-#' @rdname S4TraitCounter
-#' @param n Amount to add.
-#' @exportMethod s4_trait_Counter_checked_add
 methods::setMethod("s4_trait_Counter_checked_add", "S4TraitCounter", function(x, n, ...) {
   .Call(C_S4TraitCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
 })
 
-#' Static trait method Counter::default_initial() for S4TraitCounter
-#' @name S4TraitCounter_Counter_default_initial
-#' @rdname S4TraitCounter
-#' @export
 S4TraitCounter_Counter_default_initial <- function() {
   .Call(C_S4TraitCounter__Counter__default_initial, .call = match.call())
 }
 
-#' @name S4TraitCounter_Counter_MAX_VALUE
-#' @rdname S4TraitCounter
-#' @export
 S4TraitCounter_Counter_MAX_VALUE <- function() {
   .Call(C_S4TraitCounter__Counter__MAX_VALUE, .call = match.call())
 }
@@ -9035,14 +8881,8 @@ S4TraitCounter_Counter_MAX_VALUE <- function() {
 # S7 trait methods for S7TraitCounter implementing Counter
 # Generated by #[miniextendr(s7)] impl Counter for S7TraitCounter
 
-#' @importFrom S7 new_generic method S7_dispatch new_S3_class
 .s7_class_S7TraitCounter <- S7::new_S3_class("S7TraitCounter")
 
-#' @name s7_trait_Counter_value
-#' @rdname S7TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S7TraitCounter`
-#' S7 generic for trait method `Counter::value`
-#' @export
 if (!exists("s7_trait_Counter_value", mode = "function")) {
   s7_trait_Counter_value <- S7::new_generic("s7_trait_Counter_value", "x", function(x, ...) S7::S7_dispatch())
 }
@@ -9051,11 +8891,6 @@ S7::method(s7_trait_Counter_value, .s7_class_S7TraitCounter) <- function(x, ...)
   .Call(C_S7TraitCounter__Counter__value, .call = match.call(), x)
 }
 
-#' @name s7_trait_Counter_increment
-#' @rdname S7TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S7TraitCounter`
-#' S7 generic for trait method `Counter::increment`
-#' @export
 if (!exists("s7_trait_Counter_increment", mode = "function")) {
   s7_trait_Counter_increment <- S7::new_generic("s7_trait_Counter_increment", "x", function(x, ...) S7::S7_dispatch())
 }
@@ -9065,11 +8900,6 @@ S7::method(s7_trait_Counter_increment, .s7_class_S7TraitCounter) <- function(x, 
   invisible(x)
 }
 
-#' @name s7_trait_Counter_checked_add
-#' @rdname S7TraitCounter
-#' @source Generated by miniextendr from `impl Counter for S7TraitCounter`
-#' S7 generic for trait method `Counter::checked_add`
-#' @export
 if (!exists("s7_trait_Counter_checked_add", mode = "function")) {
   s7_trait_Counter_checked_add <- S7::new_generic("s7_trait_Counter_checked_add", "x", function(x, ...) S7::S7_dispatch())
 }
@@ -9081,15 +8911,10 @@ S7::method(s7_trait_Counter_checked_add, .s7_class_S7TraitCounter) <- function(x
 
 S7TraitCounter$Counter <- new.env(parent = emptyenv())
 
-#' Static trait method Counter::default_initial()
-#' @name S7TraitCounter$Counter$default_initial
-#' @rdname S7TraitCounter
 S7TraitCounter$Counter$default_initial <- function() {
   .Call(C_S7TraitCounter__Counter__default_initial, .call = match.call())
 }
 
-#' @name S7TraitCounter$Counter$MAX_VALUE
-#' @rdname S7TraitCounter
 S7TraitCounter$Counter$MAX_VALUE <- function() {
   .Call(C_S7TraitCounter__Counter__MAX_VALUE, .call = match.call())
 }
@@ -9099,34 +8924,15 @@ S7TraitCounter$Counter$MAX_VALUE <- function() {
 # Generated by #[miniextendr(r6)] impl Counter for R6TraitCounter
 # Note: R6 trait methods are standalone functions
 
-#' @name r6_trait_Counter_value
-#' @rdname R6TraitCounter
-#' @source Generated by miniextendr from `impl Counter for R6TraitCounter`
-#' R6 trait method `Counter::value` for R6TraitCounter
-#' @param x A `R6TraitCounter` object
-#' @export
 r6_trait_Counter_value <- function(x) {
   .Call(C_R6TraitCounter__Counter__value, .call = match.call(), x)
 }
 
-#' @name r6_trait_Counter_increment
-#' @rdname R6TraitCounter
-#' @source Generated by miniextendr from `impl Counter for R6TraitCounter`
-#' R6 trait method `Counter::increment` for R6TraitCounter
-#' @param x A `R6TraitCounter` object
-#' @export
 r6_trait_Counter_increment <- function(x) {
   .Call(C_R6TraitCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
 }
 
-#' @name r6_trait_Counter_checked_add
-#' @rdname R6TraitCounter
-#' @source Generated by miniextendr from `impl Counter for R6TraitCounter`
-#' R6 trait method `Counter::checked_add` for R6TraitCounter
-#' @param x A `R6TraitCounter` object
-#' @param n Amount to add.
-#' @export
 r6_trait_Counter_checked_add <- function(x, n) {
   .Call(C_R6TraitCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)
@@ -9134,15 +8940,10 @@ r6_trait_Counter_checked_add <- function(x, n) {
 
 R6TraitCounter$Counter <- new.env(parent = emptyenv())
 
-#' Static trait method Counter::default_initial()
-#' @name R6TraitCounter$Counter$default_initial
-#' @rdname R6TraitCounter
 R6TraitCounter$Counter$default_initial <- function() {
   .Call(C_R6TraitCounter__Counter__default_initial, .call = match.call())
 }
 
-#' @name R6TraitCounter$Counter$MAX_VALUE
-#' @rdname R6TraitCounter
 R6TraitCounter$Counter$MAX_VALUE <- function() {
   .Call(C_R6TraitCounter__Counter__MAX_VALUE, .call = match.call())
 }
@@ -9876,79 +9677,79 @@ AtomicCounter$new_atomic <- function(initial) {
 #' @export
 `[[.AtomicCounter` <- `$.AtomicCounter`
 
-# Generated from Rust impl `Counter` for `SharedSimpleCounter` (shared_trait_test.rs:87:18)
-# Trait methods and consts for SharedSimpleCounter implementing Counter
-# Generated by #[miniextendr] impl Counter for SharedSimpleCounter
+# Generated from Rust impl `SharedCounter` for `SharedSimpleCounter` (shared_trait_test.rs:87:24)
+# Trait methods and consts for SharedSimpleCounter implementing SharedCounter
+# Generated by #[miniextendr] impl SharedCounter for SharedSimpleCounter
 
-SharedSimpleCounter$Counter <- new.env(parent = emptyenv())
+SharedSimpleCounter$SharedCounter <- new.env(parent = emptyenv())
 
-#' @name SharedSimpleCounter$Counter$value
+#' @name SharedSimpleCounter$SharedCounter$value
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$value <- function(x) {
-  .Call(C_SharedSimpleCounter__Counter__value, .call = match.call(), x)
+SharedSimpleCounter$SharedCounter$value <- function(x) {
+  .Call(C_SharedSimpleCounter__SharedCounter__value, .call = match.call(), x)
 }
-attr(SharedSimpleCounter$Counter$value, ".__mx_instance__") <- TRUE
+attr(SharedSimpleCounter$SharedCounter$value, ".__mx_instance__") <- TRUE
 
-#' @name SharedSimpleCounter$Counter$increment
+#' @name SharedSimpleCounter$SharedCounter$increment
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$increment <- function(x) {
-  .Call(C_SharedSimpleCounter__Counter__increment, .call = match.call(), x)
+SharedSimpleCounter$SharedCounter$increment <- function(x) {
+  .Call(C_SharedSimpleCounter__SharedCounter__increment, .call = match.call(), x)
   invisible(x)
 }
-attr(SharedSimpleCounter$Counter$increment, ".__mx_instance__") <- TRUE
+attr(SharedSimpleCounter$SharedCounter$increment, ".__mx_instance__") <- TRUE
 
-#' @name SharedSimpleCounter$Counter$add
+#' @name SharedSimpleCounter$SharedCounter$add
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$add <- function(x, n) {
-  .Call(C_SharedSimpleCounter__Counter__add, .call = match.call(), x, n)
+SharedSimpleCounter$SharedCounter$add <- function(x, n) {
+  .Call(C_SharedSimpleCounter__SharedCounter__add, .call = match.call(), x, n)
   invisible(x)
 }
-attr(SharedSimpleCounter$Counter$add, ".__mx_instance__") <- TRUE
+attr(SharedSimpleCounter$SharedCounter$add, ".__mx_instance__") <- TRUE
 
-#' @name SharedSimpleCounter$Counter$reset
+#' @name SharedSimpleCounter$SharedCounter$reset
 #' @rdname SharedSimpleCounter
-SharedSimpleCounter$Counter$reset <- function(x) {
-  .Call(C_SharedSimpleCounter__Counter__reset, .call = match.call(), x)
+SharedSimpleCounter$SharedCounter$reset <- function(x) {
+  .Call(C_SharedSimpleCounter__SharedCounter__reset, .call = match.call(), x)
   invisible(x)
 }
-attr(SharedSimpleCounter$Counter$reset, ".__mx_instance__") <- TRUE
+attr(SharedSimpleCounter$SharedCounter$reset, ".__mx_instance__") <- TRUE
 
-# Generated from Rust impl `Counter` for `AtomicCounter` (shared_trait_test.rs:124:18)
-# Trait methods and consts for AtomicCounter implementing Counter
-# Generated by #[miniextendr] impl Counter for AtomicCounter
+# Generated from Rust impl `SharedCounter` for `AtomicCounter` (shared_trait_test.rs:124:24)
+# Trait methods and consts for AtomicCounter implementing SharedCounter
+# Generated by #[miniextendr] impl SharedCounter for AtomicCounter
 
-AtomicCounter$Counter <- new.env(parent = emptyenv())
+AtomicCounter$SharedCounter <- new.env(parent = emptyenv())
 
-#' @name AtomicCounter$Counter$value
+#' @name AtomicCounter$SharedCounter$value
 #' @rdname AtomicCounter
-AtomicCounter$Counter$value <- function(x) {
-  .Call(C_AtomicCounter__Counter__value, .call = match.call(), x)
+AtomicCounter$SharedCounter$value <- function(x) {
+  .Call(C_AtomicCounter__SharedCounter__value, .call = match.call(), x)
 }
-attr(AtomicCounter$Counter$value, ".__mx_instance__") <- TRUE
+attr(AtomicCounter$SharedCounter$value, ".__mx_instance__") <- TRUE
 
-#' @name AtomicCounter$Counter$increment
+#' @name AtomicCounter$SharedCounter$increment
 #' @rdname AtomicCounter
-AtomicCounter$Counter$increment <- function(x) {
-  .Call(C_AtomicCounter__Counter__increment, .call = match.call(), x)
+AtomicCounter$SharedCounter$increment <- function(x) {
+  .Call(C_AtomicCounter__SharedCounter__increment, .call = match.call(), x)
   invisible(x)
 }
-attr(AtomicCounter$Counter$increment, ".__mx_instance__") <- TRUE
+attr(AtomicCounter$SharedCounter$increment, ".__mx_instance__") <- TRUE
 
-#' @name AtomicCounter$Counter$add
+#' @name AtomicCounter$SharedCounter$add
 #' @rdname AtomicCounter
-AtomicCounter$Counter$add <- function(x, n) {
-  .Call(C_AtomicCounter__Counter__add, .call = match.call(), x, n)
+AtomicCounter$SharedCounter$add <- function(x, n) {
+  .Call(C_AtomicCounter__SharedCounter__add, .call = match.call(), x, n)
   invisible(x)
 }
-attr(AtomicCounter$Counter$add, ".__mx_instance__") <- TRUE
+attr(AtomicCounter$SharedCounter$add, ".__mx_instance__") <- TRUE
 
-#' @name AtomicCounter$Counter$reset
+#' @name AtomicCounter$SharedCounter$reset
 #' @rdname AtomicCounter
-AtomicCounter$Counter$reset <- function(x) {
-  .Call(C_AtomicCounter__Counter__reset, .call = match.call(), x)
+AtomicCounter$SharedCounter$reset <- function(x) {
+  .Call(C_AtomicCounter__SharedCounter__reset, .call = match.call(), x)
   invisible(x)
 }
-attr(AtomicCounter$Counter$reset, ".__mx_instance__") <- TRUE
+attr(AtomicCounter$SharedCounter$reset, ".__mx_instance__") <- TRUE
 
 # Generated from Rust impl `RngSampler` (rng_tests.rs:84:6)
 #' @title RngSampler  Class

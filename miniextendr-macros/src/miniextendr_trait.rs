@@ -141,16 +141,10 @@ use syn::ItemTrait;
 /// - Methods have unsupported signatures
 /// - Methods are async
 pub fn expand_trait(
-    attr: proc_macro::TokenStream,
+    _attr: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
 ) -> proc_macro::TokenStream {
     let trait_item = syn::parse_macro_input!(item as ItemTrait);
-
-    // Parse `tpie` flag from attr (e.g., #[miniextendr(tpie)])
-    let enable_tpie = !attr.is_empty() && {
-        let attr_str = attr.to_string();
-        attr_str.contains("tpie")
-    };
 
     // Validate trait constraints
     if let Err(e) = validate_trait(&trait_item) {
@@ -158,7 +152,7 @@ pub fn expand_trait(
     }
 
     // Generate the expanded code
-    let expanded = generate_trait_abi(&trait_item, enable_tpie);
+    let expanded = generate_trait_abi(&trait_item);
 
     expanded.into()
 }
@@ -250,7 +244,7 @@ fn validate_method(method: &syn::TraitItemFn, trait_name: &syn::Ident) -> syn::R
 /// - View struct (skipped for generic traits)
 /// - Method shims (with trait type params threaded through)
 /// - Vtable builder (with trait type params threaded through)
-fn generate_trait_abi(trait_item: &ItemTrait, enable_tpie: bool) -> TokenStream {
+fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
     let trait_name = &trait_item.ident;
     let vis = &trait_item.vis;
 
@@ -499,8 +493,8 @@ fn generate_trait_abi(trait_item: &ItemTrait, enable_tpie: bool) -> TokenStream 
     };
 
     // TPIE: Generate macro_rules! for non-generic traits without associated types.
-    // Only emitted when trait is annotated with #[miniextendr(tpie)].
-    let tpie_macro = if enable_tpie && !has_generics && assoc_types.is_empty() {
+    // This enables `#[miniextendr] impl Trait for Type {}` (empty body) to auto-expand wrappers.
+    let tpie_macro = if !has_generics && assoc_types.is_empty() {
         // Collect ALL non-skipped methods (including static) for TPIE metadata
         let tpie_method_metadata: Vec<TokenStream> = trait_item
             .items
@@ -532,11 +526,12 @@ fn generate_trait_abi(trait_item: &ItemTrait, enable_tpie: bool) -> TokenStream 
             #[macro_export]
             #[doc(hidden)]
             macro_rules! #tpie_macro_name {
-                ($concrete_type:ty, $trait_path:path, $class_system:ident) => {
+                ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt) => {
                     $crate::__mx_trait_impl_expand! {
                         concrete_type = $concrete_type;
                         trait_path = $trait_path;
                         class_system = $class_system;
+                        no_rd = $no_rd;
                         #(#tpie_method_metadata)*
                     }
                 };
