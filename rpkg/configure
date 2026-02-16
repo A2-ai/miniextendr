@@ -2002,12 +2002,14 @@ if test -n "$MINIEXTENDR_FEATURES"; then
   CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
   # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
+  miniextendr_saved_IFS=$IFS
   IFS=','
   for _feature in $MINIEXTENDR_FEATURES; do
     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
   done
-  unset IFS
+  IFS=$miniextendr_saved_IFS
+  unset miniextendr_saved_IFS
 else
   CARGO_FEATURES_FLAG=""
   CARGO_FEATURE_CPPFLAGS=""

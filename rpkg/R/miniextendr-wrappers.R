@@ -8004,8 +8004,8 @@ S7Counter_default_counter <- function() {
 S7Range <- S7::new_class("S7Range",
   properties = list(
     .ptr = S7::class_any,
-    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr)),
-    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self })
+    midpoint = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__get_midpoint, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Range__set_midpoint, .call = match.call(), self@.ptr, value); self }),
+    length = S7::new_property(class = S7::class_double, getter = function(self) .Call(C_S7Range__length, .call = match.call(), self@.ptr))
   ),
   constructor = function(start, end, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8031,9 +8031,9 @@ S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call =
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
     score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
-    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
+    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8802,6 +8802,9 @@ if (!exists("value", mode = "function")) {
   value <- function(x, ...) UseMethod("value")
 }
 
+#' @noRd
+#' @method value S3TraitCounter
+#' @export
 value.S3TraitCounter <- function(x, ...) {
   .Call(C_S3TraitCounter__Counter__value, .call = match.call(), x)
 }
@@ -8813,6 +8816,9 @@ if (!exists("increment", mode = "function")) {
   increment <- function(x, ...) UseMethod("increment")
 }
 
+#' @noRd
+#' @method increment S3TraitCounter
+#' @export
 increment.S3TraitCounter <- function(x, ...) {
   .Call(C_S3TraitCounter__Counter__increment, .call = match.call(), x)
   invisible(x)
@@ -8825,6 +8831,10 @@ if (!exists("checked_add", mode = "function")) {
   checked_add <- function(x, ...) UseMethod("checked_add")
 }
 
+#' @noRd
+#' @method checked_add S3TraitCounter
+#' @param n Amount to add.
+#' @export
 checked_add.S3TraitCounter <- function(x, n, ...) {
   .Call(C_S3TraitCounter__Counter__checked_add, .call = match.call(), x, n)
   invisible(x)

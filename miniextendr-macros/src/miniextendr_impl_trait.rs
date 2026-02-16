@@ -1202,14 +1202,53 @@ fn generate_trait_r_wrapper(
         ClassSystem::Vctrs => generate_trait_s3_r_wrapper(type_ident, trait_name, methods, consts),
     };
 
-    // When impl block has @noRd, strip all roxygen tags from generated R code
-    // (the class itself suppresses Rd, so trait methods shouldn't reference it)
+    // When impl block has @noRd, suppress documentation generation.
+    // For S3/vctrs impls we still keep S3 method registration tags so roxygen
+    // can generate NAMESPACE entries without emitting missing-export warnings.
     if class_has_no_rd {
-        Ok(result
-            .lines()
-            .filter(|line| !line.starts_with("#'"))
-            .collect::<Vec<_>>()
-            .join("\n"))
+        if matches!(class_system, ClassSystem::S3 | ClassSystem::Vctrs) {
+            let mut filtered = Vec::new();
+            let mut roxygen_block: Vec<&str> = Vec::new();
+
+            let flush_block = |block: &mut Vec<&str>, out: &mut Vec<String>| {
+                if block.iter().any(|line| line.contains("@method ")) {
+                    out.push("#' @noRd".to_string());
+                    for &line in block.iter() {
+                        if line.contains("@method ")
+                            || line.contains("@param ")
+                            || line.contains("@export")
+                        {
+                            out.push(line.to_string());
+                        }
+                    }
+                }
+                block.clear();
+            };
+
+            for line in result.lines() {
+                if line.starts_with("#'") {
+                    roxygen_block.push(line);
+                    continue;
+                }
+
+                if !roxygen_block.is_empty() {
+                    flush_block(&mut roxygen_block, &mut filtered);
+                }
+                filtered.push(line.to_string());
+            }
+
+            if !roxygen_block.is_empty() {
+                flush_block(&mut roxygen_block, &mut filtered);
+            }
+
+            Ok(filtered.join("\n"))
+        } else {
+            Ok(result
+                .lines()
+                .filter(|line| !line.starts_with("#'"))
+                .collect::<Vec<_>>()
+                .join("\n"))
+        }
     } else {
         Ok(result)
     }
