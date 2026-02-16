@@ -175,6 +175,23 @@ DoubleCounter$create <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(DoubleCounter)) {
+      ns <- DoubleCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
