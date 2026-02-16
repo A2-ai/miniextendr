@@ -474,6 +474,38 @@ impl IterableVecIter {
 }
 
 // =============================================================================
+// Test type: ExportControlTraitPoint
+// Demonstrates internal/noexport on trait impls
+// =============================================================================
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Default, ExternalPtr)]
+pub struct ExportControlTraitPoint {
+    x: i32,
+}
+
+impl fmt::Display for ExportControlTraitPoint {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "({})", self.x)
+    }
+}
+
+/// @keywords internal
+#[miniextendr(internal)]
+impl ExportControlTraitPoint {
+    fn new(x: i32) -> Self {
+        ExportControlTraitPoint { x }
+    }
+}
+
+/// Internal trait impl: should have @keywords internal, no @export
+#[miniextendr(internal)]
+impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint {}
+
+/// Noexport trait impl: should have docs but no @export
+#[miniextendr(noexport)]
+impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint {}
+
+// =============================================================================
 // Module registration
 // =============================================================================
 
@@ -488,6 +520,7 @@ miniextendr_module! {
     impl IntSet;
     impl IterableVec;
     impl IterableVecIter;
+    impl ExportControlTraitPoint;
 
     // Non-generic adapter traits (TPIE: empty impl auto-expands wrappers)
     impl miniextendr_api::adapter_traits::RDebug for Point;
@@ -500,6 +533,10 @@ miniextendr_module! {
     impl miniextendr_api::adapter_traits::RError for ChainedError;
     impl miniextendr_api::adapter_traits::ROrd for Point;
     impl miniextendr_api::adapter_traits::RPartialOrd for MyFloat;
+
+    // Export control on trait impls
+    impl miniextendr_api::adapter_traits::RDebug for ExportControlTraitPoint;
+    impl miniextendr_api::adapter_traits::RDisplay for ExportControlTraitPoint;
 
     // Associated-type trait (non-blanket)
     impl miniextendr_api::adapter_traits::RIterator for IntVecIter;

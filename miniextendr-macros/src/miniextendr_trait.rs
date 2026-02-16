@@ -526,12 +526,14 @@ fn generate_trait_abi(trait_item: &ItemTrait) -> TokenStream {
             #[macro_export]
             #[doc(hidden)]
             macro_rules! #tpie_macro_name {
-                ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt) => {
+                ($concrete_type:ty, $trait_path:path, $class_system:ident, $no_rd:tt, $internal:tt, $noexport:tt) => {
                     $crate::__mx_trait_impl_expand! {
                         concrete_type = $concrete_type;
                         trait_path = $trait_path;
                         class_system = $class_system;
                         no_rd = $no_rd;
+                        internal = $internal;
+                        noexport = $noexport;
                         #(#tpie_method_metadata)*
                     }
                 };

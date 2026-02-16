@@ -255,8 +255,15 @@ pub fn expand_miniextendr_impl_trait(
     if impl_item.items.is_empty() && !impl_attrs.blanket {
         let doc_tags = crate::roxygen::roxygen_tags_from_attrs(&impl_item.attrs);
         let no_rd = crate::roxygen::has_roxygen_tag(&doc_tags, "noRd");
-        return generate_tpie_invocation(&trait_path, &concrete_type, impl_attrs.class_system, no_rd)
-            .into();
+        return generate_tpie_invocation(
+            &trait_path,
+            &concrete_type,
+            impl_attrs.class_system,
+            no_rd,
+            impl_attrs.internal,
+            impl_attrs.noexport,
+        )
+        .into();
     }
 
     // Generate the vtable static and R wrappers
@@ -266,6 +273,8 @@ pub fn expand_miniextendr_impl_trait(
         &concrete_type,
         impl_attrs.class_system,
         impl_attrs.blanket,
+        impl_attrs.internal,
+        impl_attrs.noexport,
     );
 
     expanded.into()
@@ -298,6 +307,8 @@ fn generate_vtable_static(
     concrete_type: &syn::Type,
     class_system: ClassSystem,
     blanket: bool,
+    internal: bool,
+    noexport: bool,
 ) -> TokenStream {
     // Extract trait name for naming
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
@@ -404,7 +415,7 @@ fn generate_vtable_static(
     // Generate R wrapper code string based on class system (only non-skipped methods)
     let methods_owned: Vec<TraitMethod> = methods.iter().map(|m| (*m).clone()).collect();
     let r_wrapper_string =
-        match generate_trait_r_wrapper(&type_ident, trait_name, &methods_owned, &consts, class_system, class_has_no_rd) {
+        match generate_trait_r_wrapper(&type_ident, trait_name, &methods_owned, &consts, class_system, class_has_no_rd, internal, noexport) {
             Ok(s) => s,
             Err(e) => return e.into_compile_error(),
         };
@@ -1191,6 +1202,8 @@ fn generate_trait_r_wrapper(
     consts: &[TraitConst],
     class_system: ClassSystem,
     class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
 ) -> syn::Result<String> {
     let result = match class_system {
         ClassSystem::Env => generate_trait_env_r_wrapper(type_ident, trait_name, methods, consts)?,
@@ -1249,6 +1262,34 @@ fn generate_trait_r_wrapper(
                 .collect::<Vec<_>>()
                 .join("\n"))
         }
+    } else if !class_has_no_rd && (internal || noexport) {
+        // internal → add @keywords internal + suppress @export/@exportMethod
+        // noexport → suppress @export/@exportMethod only
+        let has_export = result.lines().any(|line| line.contains("@export"));
+        let mut processed: Vec<String> = result
+            .lines()
+            .flat_map(|line| {
+                if line.contains("@export") {
+                    // Replace @export/@exportMethod with @keywords internal (for internal)
+                    // or just remove (for noexport)
+                    if internal {
+                        vec!["#' @keywords internal".to_string()]
+                    } else {
+                        vec![]
+                    }
+                } else {
+                    vec![line.to_string()]
+                }
+            })
+            .collect();
+        // For class systems without @export (e.g., Env), insert @keywords internal
+        // before the first roxygen tag if no @export line was found to replace.
+        if internal && !has_export {
+            if let Some(pos) = processed.iter().position(|l| l.starts_with("#'")) {
+                processed.insert(pos, "#' @keywords internal".to_string());
+            }
+        }
+        Ok(processed.join("\n"))
     } else {
         Ok(result)
     }
@@ -2139,6 +2180,8 @@ struct TpieInput {
     trait_path: syn::Path,
     class_system: ClassSystem,
     no_rd: bool,
+    internal: bool,
+    noexport: bool,
     methods: Vec<TpieMethod>,
 }
 
@@ -2203,6 +2246,32 @@ impl syn::parse::Parse for TpieInput {
         input.parse::<syn::Token![;]>()?;
         let no_rd = no_rd_lit.value;
 
+        // internal = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "internal" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'internal', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let internal_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let internal = internal_lit.value;
+
+        // noexport = true/false;
+        let kw: syn::Ident = input.parse()?;
+        if kw != "noexport" {
+            return Err(syn::Error::new_spanned(
+                &kw,
+                format!("expected 'noexport', got '{}'", kw),
+            ));
+        }
+        input.parse::<syn::Token![=]>()?;
+        let noexport_lit: syn::LitBool = input.parse()?;
+        input.parse::<syn::Token![;]>()?;
+        let noexport = noexport_lit.value;
+
         // method { ... } repeated
         let mut methods = Vec::new();
         while !input.is_empty() {
@@ -2223,6 +2292,8 @@ impl syn::parse::Parse for TpieInput {
             trait_path,
             class_system,
             no_rd,
+            internal,
+            noexport,
             methods,
         })
     }
@@ -2407,6 +2478,8 @@ pub fn expand_tpie(input: proc_macro::TokenStream) -> proc_macro::TokenStream {
         &[], // no consts in TPIE
         class_system,
         tpie_input.no_rd,
+        tpie_input.internal,
+        tpie_input.noexport,
     ) {
         Ok(s) => s,
         Err(e) => return e.into_compile_error().into(),
@@ -2481,6 +2554,8 @@ fn generate_tpie_invocation(
     concrete_type: &syn::Type,
     class_system: ClassSystem,
     class_has_no_rd: bool,
+    internal: bool,
+    noexport: bool,
 ) -> TokenStream {
     let Some(trait_name) = trait_path.segments.last().map(|s| &s.ident) else {
         return syn::Error::new_spanned(trait_path, "trait path must have at least one segment")
@@ -2528,6 +2603,16 @@ fn generate_tpie_invocation(
     } else {
         format_ident!("false")
     };
+    let internal_ident = if internal {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
+    let noexport_ident = if noexport {
+        format_ident!("true")
+    } else {
+        format_ident!("false")
+    };
 
     let source_loc_doc = crate::source_location_doc(trait_name.span());
 
@@ -2537,7 +2622,7 @@ fn generate_tpie_invocation(
         static #vtable_static_name: #vtable_type_path =
             #builder_path::<#concrete_type>();
 
-        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident);
+        #crate_ident :: #macro_name !(#concrete_type, #trait_path, #class_system_ident, #no_rd_ident, #internal_ident, #noexport_ident);
     }
 }
 
