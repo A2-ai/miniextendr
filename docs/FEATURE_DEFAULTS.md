@@ -48,7 +48,7 @@ fn legacy_add(a: i64, b: i64) -> i64 { a + b }
 | `default-r6` | R6 class system for impl blocks (instead of env) | impl blocks | `env`, `s7`, etc. |
 | `default-s7` | S7 class system for impl blocks (instead of env) | impl blocks | `env`, `r6`, etc. |
 | `default-worker` | Force worker thread execution | fns + methods | `no_worker` |
-| `default-main-thread` | Force main thread execution | fns + methods | `no_main_thread` (`unsafe(main_thread)` syntax) |
+| `default-main-thread` | Force main thread execution | methods | `no_main_thread` (standalone fns use `unsafe(main_thread)` syntax instead) |
 
 ### Mutual Exclusivity
 

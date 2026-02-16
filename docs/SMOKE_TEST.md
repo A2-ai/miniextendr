@@ -4,7 +4,7 @@ This document describes the smoke test process for the miniextendr project. It
 covers the full "demanding" smoke lane -- the most thorough validation pass,
 intended for release gates and nightly CI runs.
 
-The canonical plan lives in `plans/demanding-smoke-test-miniextendr-minirextendr.md`.
+The process below is the canonical reference for the demanding smoke lane.
 
 ## Overview
 

@@ -44,6 +44,10 @@ Only `default` features are enabled automatically.
 | **Collections** | | |
 | `indexmap` | Order-preserving maps (`IndexMap<String, T>`) | indexmap |
 | `tinyvec` | Small-vector optimization (`TinyVec`, `ArrayVec`) | tinyvec (with `alloc`) |
+| **Either / Sum Types** | | |
+| `either` | `Either<L, R>` sum type conversions | either |
+| **Binary Serialization** | | |
+| `borsh` | Borsh binary serialization (`Borsh<T>` wrapper) | borsh (with `derive`) |
 | **Bit Manipulation** | | |
 | `bitflags` | Bitflags-integer conversions (`RFlags<T>`) | bitflags |
 | `bitvec` | Bit vector-logical conversions (`RBitVec`) | bitvec |
@@ -386,6 +390,31 @@ Small-vector optimization types that avoid heap allocation for small collections
 |-----------|--------|-------|
 | `TinyVec<[T; N]>` | vector | Inline up to N, then spills to heap |
 | `ArrayVec<[T; N]>` | vector | Fixed capacity N, never allocates |
+
+---
+
+## Either / Sum Type Features
+
+### `either`
+
+The `Either<L, R>` sum type from the `either` crate, with `TryFromSexp` and `IntoR` conversions.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Either<L, R>` | depends on variant | Left/Right converted via their own `IntoR`/`TryFromSexp` |
+
+---
+
+## Binary Serialization Features
+
+### `borsh`
+
+Binary Object Representation Serializer for Hashing (Borsh). Provides a `Borsh<T>` wrapper
+for converting between Borsh-serialized binary data and R raw vectors.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Borsh<T>` | `raw` | Binary serialization via borsh derive |
 
 ---
 

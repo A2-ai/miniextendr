@@ -6,6 +6,7 @@
 
 ## Core Concepts
 
+- [ARCHITECTURE.md](ARCHITECTURE.md) -- High-level architecture overview (crate structure, call flow)
 - [TYPE_CONVERSIONS.md](TYPE_CONVERSIONS.md) -- Rust <-> R type conversion system
 - [ERROR_HANDLING.md](ERROR_HANDLING.md) -- Panic handling, R errors, and error propagation
 - [GC_PROTECT.md](GC_PROTECT.md) -- GC protection toolkit (OwnedProtect, ProtectScope)
@@ -22,6 +23,7 @@
 - [ALTREP.md](ALTREP.md) -- ALTREP overview and proc-macro usage
 - [ALTREP_EXAMPLES.md](ALTREP_EXAMPLES.md) -- Practical ALTREP examples
 - [ALTREP_QUICKREF.md](ALTREP_QUICKREF.md) -- ALTREP quick reference card
+- [SPARSE_ITERATOR_ALTREP.md](SPARSE_ITERATOR_ALTREP.md) -- Compute-on-access ALTREP pattern guide
 - [FEATURES.md](FEATURES.md) -- Feature flags reference (all optional features)
 - [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) -- Project-wide defaults via Cargo features (strict, coerce, class system, etc.)
 - [RAYON.md](RAYON.md) -- Parallel iteration with rayon
@@ -37,8 +39,9 @@
 
 ## Build System
 
+- [R_BUILD_SYSTEM.md](R_BUILD_SYSTEM.md) -- How R builds packages with compiled code
 - [TEMPLATES.md](TEMPLATES.md) -- Template system (`.in` files and configure)
-- [VENDOR.md](VENDOR.md) -- Vendoring strategy for crates.io and workspace crates
+- [VENDOR.md](VENDOR.md) -- Vendoring, PREPARE_CRAN, and CRAN release prep
 - [LINKING.md](LINKING.md) -- Linking strategy for shared libraries
 - [ENTRYPOINT.md](ENTRYPOINT.md) -- R package entry point (`R_init_*`)
 - [ENGINE.md](ENGINE.md) -- miniextendr-engine: code generation engine
@@ -55,6 +58,11 @@
 - [as_coerce.md](as_coerce.md) -- `as.<class>()` coercion methods
 - [trait-patterns-review.md](trait-patterns-review.md) -- Blanket impl patterns and marker traits
 - [extending-miniextendr.md](extending-miniextendr.md) -- Guide: adding custom types to miniextendr
+
+## Testing
+
+- [SMOKE_TEST.md](SMOKE_TEST.md) -- Smoke test process (quick, standard, demanding lanes)
+- [TROUBLESHOOTING.md](TROUBLESHOOTING.md) -- Common issues and solutions
 
 ## Internals
 
@@ -82,3 +90,4 @@ Superseded working notes moved to `archive/`:
 - [archive/summary_bench_2026-01-12.md](archive/summary_bench_2026-01-12.md) -- Superseded by ALTREP_PERFORMANCE_REPORT.md
 - [archive/COERCE_AND_INTO_R_REVIEW.md](archive/COERCE_AND_INTO_R_REVIEW.md) -- Findings incorporated into COERCE.md
 - [archive/PROTECTED_PLAN.md](archive/PROTECTED_PLAN.md) -- Planning doc, now implemented
+- [archive/summary_bench_2026-01-12_v2.typ](archive/summary_bench_2026-01-12_v2.typ) -- Superseded by ALTREP_PERFORMANCE_REPORT.md
