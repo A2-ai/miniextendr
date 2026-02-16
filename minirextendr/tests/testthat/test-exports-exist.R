@@ -17,6 +17,7 @@ exported_funs <- c(
   "use_miniextendr_entrypoint", "use_miniextendr_gitignore", "use_miniextendr_makevars",
   "use_miniextendr_mx_abi", "use_miniextendr_package_doc", "use_miniextendr_rbuildignore",
   "use_miniextendr_rust",
+  "use_vendor_lib",
   "vendor_crates_io", "vendor_miniextendr"
 )
 
