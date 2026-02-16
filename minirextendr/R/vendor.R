@@ -339,36 +339,6 @@ vendor_miniextendr_local <- function(local_path, dest) {
   invisible(TRUE)
 }
 
-#' Update vendored miniextendr crates
-#'
-#' Downloads and replaces the vendored miniextendr crates with a new version.
-#'
-#' @param path Path to the R package root, or `"."` to use the current directory.
-#' @param version Version to update to (default: "main" for latest)
-#' @param templates Logical. If `TRUE` (the default), also updates build system
-#'   templates (document.rs.in, entrypoint.c.in, Makevars.in, etc.).
-#'   `configure.ac` is NOT updated because users customise it with feature flags.
-#' @return Invisibly returns TRUE on success
-#' @export
-miniextendr_update <- function(path = ".", version = "main", templates = TRUE) {
-  with_project(path)
-  if (templates) {
-    cli::cli_h2("Updating build system templates")
-    use_miniextendr_document()
-    use_miniextendr_entrypoint()
-    use_miniextendr_makevars()
-    use_miniextendr_cargo_config()
-    use_miniextendr_mx_abi()
-    use_miniextendr_bootstrap()
-    use_miniextendr_cleanup()
-    use_miniextendr_configure_win()
-    use_miniextendr_config_scripts()
-  }
-  cli::cli_h2("Updating vendored crates")
-  cli::cli_alert_info("Updating miniextendr to version: {version}")
-  vendor_miniextendr(version = version)
-}
-
 #' Vendor external crates.io dependencies
 #'
 #' Runs `cargo vendor` to download all external crates.io dependencies

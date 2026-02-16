@@ -206,7 +206,17 @@ create_rpkg_subdirectory <- function(data, rpkg_name = "rpkg") {
   # src/ files
   use_template("Makevars.in", save_as = file.path(rpkg_name, "src", "Makevars.in"), subdir = "rpkg")
   use_template("entrypoint.c.in", save_as = file.path(rpkg_name, "src", "entrypoint.c.in"), subdir = "rpkg")
+  generate_entrypoint_c(
+    usethis::proj_path(rpkg_name, "src", "entrypoint.c.in"),
+    usethis::proj_path(rpkg_name, "src", "entrypoint.c"),
+    package = data$package
+  )
   use_template("mx_abi.c.in", save_as = file.path(rpkg_name, "src", "mx_abi.c.in"), subdir = "rpkg")
+  generate_mx_abi_c(
+    usethis::proj_path(rpkg_name, "src", "mx_abi.c.in"),
+    usethis::proj_path(rpkg_name, "src", "mx_abi.c"),
+    package = data$package
+  )
   use_template("win.def.in", save_as = file.path(rpkg_name, "src", "win.def.in"), subdir = "rpkg")
 
   # inst/include/ for cross-package header

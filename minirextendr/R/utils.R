@@ -338,6 +338,37 @@ generate_document_rs <- function(document_rs_in_path, document_rs_path, package)
   writeLines(content, document_rs_path)
 }
 
+#' Generate entrypoint.c from entrypoint.c.in
+#'
+#' Performs the substitutions that configure normally does, so that
+#' the generated C file works without running `./configure` first.
+#'
+#' @param in_path Path to entrypoint.c.in
+#' @param out_path Path to write entrypoint.c
+#' @param package R package name
+#' @noRd
+generate_entrypoint_c <- function(in_path, out_path, package) {
+  content <- readLines(in_path, warn = FALSE)
+  content <- gsub("@PACKAGE_NAME@", package, content, fixed = TRUE)
+  content <- gsub("@PACKAGE_TARNAME_RS@", to_rust_name(package), content, fixed = TRUE)
+  writeLines(content, out_path)
+}
+
+#' Generate mx_abi.c from mx_abi.c.in
+#'
+#' Performs the substitutions that configure normally does, so that
+#' the generated C file works without running `./configure` first.
+#'
+#' @param in_path Path to mx_abi.c.in
+#' @param out_path Path to write mx_abi.c
+#' @param package R package name
+#' @noRd
+generate_mx_abi_c <- function(in_path, out_path, package) {
+  content <- readLines(in_path, warn = FALSE)
+  content <- gsub("@PACKAGE_NAME@", package, content, fixed = TRUE)
+  writeLines(content, out_path)
+}
+
 #' Get package name from Cargo.toml
 #'
 #' @param cargo_path Path to Cargo.toml file
