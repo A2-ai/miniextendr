@@ -167,6 +167,34 @@ pub enum ClassSystem {
     Vctrs,
 }
 
+impl ClassSystem {
+    /// Convert to an identifier for token transport (e.g., in macro_rules! expansion).
+    pub fn to_ident(self) -> syn::Ident {
+        let name = match self {
+            ClassSystem::Env => "env",
+            ClassSystem::R6 => "r6",
+            ClassSystem::S7 => "s7",
+            ClassSystem::S3 => "s3",
+            ClassSystem::S4 => "s4",
+            ClassSystem::Vctrs => "vctrs",
+        };
+        syn::Ident::new(name, proc_macro2::Span::call_site())
+    }
+
+    /// Parse from an identifier (inverse of `to_ident`).
+    pub fn from_ident(ident: &syn::Ident) -> Option<Self> {
+        match ident.to_string().as_str() {
+            "env" => Some(ClassSystem::Env),
+            "r6" => Some(ClassSystem::R6),
+            "s7" => Some(ClassSystem::S7),
+            "s3" => Some(ClassSystem::S3),
+            "s4" => Some(ClassSystem::S4),
+            "vctrs" => Some(ClassSystem::Vctrs),
+            _ => None,
+        }
+    }
+}
+
 impl std::str::FromStr for ClassSystem {
     type Err = String;
 
@@ -684,6 +712,10 @@ pub struct ImplAttrs {
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
     pub noexport: bool,
+    /// When true on a trait impl (`impl Trait for Type`), the impl block is NOT
+    /// emitted (a blanket impl already provides it), but C wrappers and R wrappers
+    /// ARE generated from the method signatures in the body.
+    pub blanket: bool,
 }
 
 impl syn::parse::Parse for ImplAttrs {
@@ -710,6 +742,7 @@ impl syn::parse::Parse for ImplAttrs {
         let mut strict: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
+        let mut blanket = false;
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
@@ -926,6 +959,8 @@ impl syn::parse::Parse for ImplAttrs {
                         }
                     }
                 }
+            } else if ident_str == "blanket" {
+                blanket = true;
             } else if ident_str == "strict" {
                 strict = Some(true);
             } else if ident_str == "no_strict" {
@@ -963,6 +998,7 @@ impl syn::parse::Parse for ImplAttrs {
             strict: strict.unwrap_or(cfg!(feature = "default-strict")),
             internal,
             noexport,
+            blanket,
         })
     }
 }
@@ -2069,6 +2105,23 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("      }".to_string());
     lines.push("    }".to_string());
     lines.push("    bound".to_string());
+    lines.push("  } else if (is.null(obj)) {".to_string());
+    lines.push("    # Not found at top level — search trait namespace environments".to_string());
+    lines.push(format!("    for (ns_name in names({})) {{", class_name));
+    lines.push(format!("      ns <- {}[[ns_name]]", class_name));
+    lines.push("      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {".to_string());
+    lines.push("        method <- ns[[name]]".to_string());
+    lines.push("        if (is.function(method) && isTRUE(attr(method, \".__mx_instance__\"))) {".to_string());
+    lines.push("          # Instance method — bind self as first arg".to_string());
+    lines.push("          m <- method".to_string());
+    lines.push("          s <- self".to_string());
+    lines.push("          return(function(...) m(s, ...))".to_string());
+    lines.push("        } else if (is.function(method)) {".to_string());
+    lines.push("          return(method)".to_string());
+    lines.push("        }".to_string());
+    lines.push("      }".to_string());
+    lines.push("    }".to_string());
+    lines.push("    NULL".to_string());
     lines.push("  } else {".to_string());
     lines.push("    environment(obj) <- environment()".to_string());
     lines.push("    obj".to_string());

@@ -5268,7 +5268,7 @@ new_derived_temp <- function(x) {
 
 
 
-# Generated from Rust impl `Point` (adapter_traits_tests.rs:57:6)
+# Generated from Rust impl `Point` (adapter_traits_tests.rs:61:6)
 #' @noRd
 Point <- new.env(parent = emptyenv())
 
@@ -5284,58 +5284,6 @@ Point$x <- function() {
 
 Point$y <- function() {
   .Call(C_Point__y, .call = match.call(), self)
-}
-
-Point$debug_str <- function() {
-  .Call(C_Point__debug_str, .call = match.call(), self)
-}
-
-Point$debug_str_pretty <- function() {
-  .Call(C_Point__debug_str_pretty, .call = match.call(), self)
-}
-
-Point$as_r_string <- function() {
-  .Call(C_Point__as_r_string, .call = match.call(), self)
-}
-
-Point$hash <- function() {
-  .Call(C_Point__hash, .call = match.call(), self)
-}
-
-Point$cmp_to <- function(other) {
-  .Call(C_Point__cmp_to, .call = match.call(), self, other)
-}
-
-Point$is_less_than <- function(other) {
-  .Call(C_Point__is_less_than, .call = match.call(), self, other)
-}
-
-Point$is_equal_to <- function(other) {
-  .Call(C_Point__is_equal_to, .call = match.call(), self, other)
-}
-
-Point$is_greater_than <- function(other) {
-  .Call(C_Point__is_greater_than, .call = match.call(), self, other)
-}
-
-Point$clone_point <- function() {
-  .Call(C_Point__clone_point, .call = match.call(), self)
-}
-
-Point$copy_point <- function() {
-  .Call(C_Point__copy_point, .call = match.call(), self)
-}
-
-Point$is_copy <- function() {
-  .Call(C_Point__is_copy, .call = match.call(), self)
-}
-
-Point$default_point <- function() {
-  .Call(C_Point__default_point, .call = match.call())
-}
-
-Point$from_str <- function(s) {
-  .Call(C_Point__from_str, .call = match.call(), s)
 }
 
 #' @noRd
@@ -5358,6 +5306,23 @@ Point$from_str <- function(s) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(Point)) {
+      ns <- Point[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5366,7 +5331,7 @@ Point$from_str <- function(s) {
 #' @noRd
 `[[.Point` <- `$.Point`
 
-# Generated from Rust impl `MyFloat` (adapter_traits_tests.rs:145:6)
+# Generated from Rust impl `MyFloat` (adapter_traits_tests.rs:120:6)
 #' @noRd
 MyFloat <- new.env(parent = emptyenv())
 
@@ -5378,26 +5343,6 @@ MyFloat$new <- function(value) {
 
 MyFloat$value <- function() {
   .Call(C_MyFloat__value, .call = match.call(), self)
-}
-
-MyFloat$partial_cmp_to <- function(other) {
-  .Call(C_MyFloat__partial_cmp_to, .call = match.call(), self, other)
-}
-
-MyFloat$is_less_than <- function(other) {
-  .Call(C_MyFloat__is_less_than, .call = match.call(), self, other)
-}
-
-MyFloat$is_equal_to <- function(other) {
-  .Call(C_MyFloat__is_equal_to, .call = match.call(), self, other)
-}
-
-MyFloat$is_greater_than <- function(other) {
-  .Call(C_MyFloat__is_greater_than, .call = match.call(), self, other)
-}
-
-MyFloat$is_comparable <- function(other) {
-  .Call(C_MyFloat__is_comparable, .call = match.call(), self, other)
 }
 
 MyFloat$nan <- function() {
@@ -5426,6 +5371,23 @@ MyFloat$nan <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(MyFloat)) {
+      ns <- MyFloat[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5434,7 +5396,7 @@ MyFloat$nan <- function() {
 #' @noRd
 `[[.MyFloat` <- `$.MyFloat`
 
-# Generated from Rust impl `ChainedError` (adapter_traits_tests.rs:226:6)
+# Generated from Rust impl `ChainedError` (adapter_traits_tests.rs:197:6)
 #' @noRd
 ChainedError <- new.env(parent = emptyenv())
 
@@ -5442,18 +5404,6 @@ ChainedError$new <- function(outer_msg, inner_msg) {
   self <- .Call(C_ChainedError__new, .call = match.call(), outer_msg, inner_msg)
   class(self) <- "ChainedError"
   self
-}
-
-ChainedError$error_message <- function() {
-  .Call(C_ChainedError__error_message, .call = match.call(), self)
-}
-
-ChainedError$error_chain <- function() {
-  .Call(C_ChainedError__error_chain, .call = match.call(), self)
-}
-
-ChainedError$error_chain_length <- function() {
-  .Call(C_ChainedError__error_chain_length, .call = match.call(), self)
 }
 
 ChainedError$without_source <- function(msg) {
@@ -5482,6 +5432,23 @@ ChainedError$without_source <- function(msg) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(ChainedError)) {
+      ns <- ChainedError[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5490,7 +5457,7 @@ ChainedError$without_source <- function(msg) {
 #' @noRd
 `[[.ChainedError` <- `$.ChainedError`
 
-# Generated from Rust impl `IntVecIter` (adapter_traits_tests.rs:280:6)
+# Generated from Rust impl `IntVecIter` (adapter_traits_tests.rs:287:6)
 #' @noRd
 IntVecIter <- new.env(parent = emptyenv())
 
@@ -5498,30 +5465,6 @@ IntVecIter$new <- function(data) {
   self <- .Call(C_IntVecIter__new, .call = match.call(), data)
   class(self) <- "IntVecIter"
   self
-}
-
-IntVecIter$next_item <- function() {
-  .Call(C_IntVecIter__next_item, .call = match.call(), self)
-}
-
-IntVecIter$size_hint <- function() {
-  .Call(C_IntVecIter__size_hint, .call = match.call(), self)
-}
-
-IntVecIter$count <- function() {
-  .Call(C_IntVecIter__count, .call = match.call(), self)
-}
-
-IntVecIter$collect_n <- function(n) {
-  .Call(C_IntVecIter__collect_n, .call = match.call(), self, n)
-}
-
-IntVecIter$skip <- function(n) {
-  .Call(C_IntVecIter__skip, .call = match.call(), self, n)
-}
-
-IntVecIter$nth <- function(n) {
-  .Call(C_IntVecIter__nth, .call = match.call(), self, n)
 }
 
 #' @noRd
@@ -5544,6 +5487,23 @@ IntVecIter$nth <- function(n) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(IntVecIter)) {
+      ns <- IntVecIter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5552,7 +5512,7 @@ IntVecIter$nth <- function(n) {
 #' @noRd
 `[[.IntVecIter` <- `$.IntVecIter`
 
-# Generated from Rust impl `GrowableVec` (adapter_traits_tests.rs:333:6)
+# Generated from Rust impl `GrowableVec` (adapter_traits_tests.rs:320:6)
 #' @noRd
 GrowableVec <- new.env(parent = emptyenv())
 
@@ -5560,18 +5520,6 @@ GrowableVec$new <- function() {
   self <- .Call(C_GrowableVec__new, .call = match.call())
   class(self) <- "GrowableVec"
   self
-}
-
-GrowableVec$extend <- function(items) {
-  .Call(C_GrowableVec__extend, .call = match.call(), self, items)
-}
-
-GrowableVec$len <- function() {
-  .Call(C_GrowableVec__len, .call = match.call(), self)
-}
-
-GrowableVec$is_empty <- function() {
-  .Call(C_GrowableVec__is_empty, .call = match.call(), self)
 }
 
 GrowableVec$to_vec <- function() {
@@ -5608,6 +5556,23 @@ GrowableVec$from_vec <- function(data) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(GrowableVec)) {
+      ns <- GrowableVec[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5616,30 +5581,12 @@ GrowableVec$from_vec <- function(data) {
 #' @noRd
 `[[.GrowableVec` <- `$.GrowableVec`
 
-# Generated from Rust impl `IntSet` (adapter_traits_tests.rs:375:6)
+# Generated from Rust impl `IntSet` (adapter_traits_tests.rs:378:6)
 #' @noRd
 IntSet <- new.env(parent = emptyenv())
 
-IntSet$len <- function() {
-  .Call(C_IntSet__len, .call = match.call(), self)
-}
-
-IntSet$is_empty <- function() {
-  .Call(C_IntSet__is_empty, .call = match.call(), self)
-}
-
-IntSet$to_vec <- function() {
-  .Call(C_IntSet__to_vec, .call = match.call(), self)
-}
-
 IntSet$contains <- function(value) {
   .Call(C_IntSet__contains, .call = match.call(), self, value)
-}
-
-IntSet$from_vec <- function(items) {
-  result <- .Call(C_IntSet__from_vec, .call = match.call(), items)
-  class(result) <- "IntSet"
-  result
 }
 
 #' @noRd
@@ -5662,6 +5609,23 @@ IntSet$from_vec <- function(items) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(IntSet)) {
+      ns <- IntSet[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5670,7 +5634,7 @@ IntSet$from_vec <- function(items) {
 #' @noRd
 `[[.IntSet` <- `$.IntSet`
 
-# Generated from Rust impl `IterableVec` (adapter_traits_tests.rs:432:6)
+# Generated from Rust impl `IterableVec` (adapter_traits_tests.rs:418:6)
 #' @noRd
 IterableVec <- new.env(parent = emptyenv())
 
@@ -5686,10 +5650,6 @@ IterableVec$len <- function() {
 
 IterableVec$to_vec <- function() {
   .Call(C_IterableVec__to_vec, .call = match.call(), self)
-}
-
-IterableVec$make_iter <- function() {
-  .Call(C_IterableVec__make_iter, .call = match.call(), self)
 }
 
 #' @noRd
@@ -5712,6 +5672,23 @@ IterableVec$make_iter <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(IterableVec)) {
+      ns <- IterableVec[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -5720,39 +5697,15 @@ IterableVec$make_iter <- function() {
 #' @noRd
 `[[.IterableVec` <- `$.IterableVec`
 
-# Generated from Rust impl `IterableVecIter` (adapter_traits_tests.rs:453:6)
-#' @title IterableVecIter  Class
-#' @name IterableVecIter
-#' @rdname IterableVecIter
-#' @source Generated by miniextendr from Rust type `IterableVecIter`
-#' @export
+# Generated from Rust impl `IterableVecIter` (adapter_traits_tests.rs:466:6)
+#' @noRd
 IterableVecIter <- new.env(parent = emptyenv())
 
-#' @name IterableVecIter$next_item
-#' @rdname IterableVecIter
-#' @source Generated by miniextendr from `IterableVecIter::next_item`
-IterableVecIter$next_item <- function() {
-  .Call(C_IterableVecIter__next_item, .call = match.call(), self)
-}
-
-#' @name IterableVecIter$size_hint
-#' @rdname IterableVecIter
-#' @source Generated by miniextendr from `IterableVecIter::size_hint`
-IterableVecIter$size_hint <- function() {
-  .Call(C_IterableVecIter__size_hint, .call = match.call(), self)
-}
-
-#' @name IterableVecIter$collect_all
-#' @rdname IterableVecIter
-#' @source Generated by miniextendr from `IterableVecIter::collect_all`
 IterableVecIter$collect_all <- function() {
   .Call(C_IterableVecIter__collect_all, .call = match.call(), self)
 }
 
-#' @rdname IterableVecIter
-#' @param self The object instance.
-#' @param name Method name for dispatch.
-#' @export
+#' @noRd
 `$.IterableVecIter` <- function(self, name) {
   obj <- IterableVecIter[[name]]
   if (is.environment(obj)) {
@@ -5772,14 +5725,348 @@ IterableVecIter$collect_all <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(IterableVecIter)) {
+      ns <- IterableVecIter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
   }
 }
-#' @rdname IterableVecIter
-#' @export
+#' @noRd
 `[[.IterableVecIter` <- `$.IterableVecIter`
+
+# Generated from Rust impl `RDebug` for `Point` (adapter_traits_tests.rs:80:50)
+# Trait methods and consts for Point implementing RDebug
+# Generated by #[miniextendr] impl RDebug for Point
+
+Point$RDebug <- new.env(parent = emptyenv())
+
+#' @name Point$RDebug$debug_str
+#' @rdname Point
+Point$RDebug$debug_str <- function(x) {
+  .Call(C_Point__RDebug__debug_str, .call = match.call(), x)
+}
+attr(Point$RDebug$debug_str, ".__mx_instance__") <- TRUE
+
+#' @name Point$RDebug$debug_str_pretty
+#' @rdname Point
+Point$RDebug$debug_str_pretty <- function(x) {
+  .Call(C_Point__RDebug__debug_str_pretty, .call = match.call(), x)
+}
+attr(Point$RDebug$debug_str_pretty, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RDisplay` for `Point` (adapter_traits_tests.rs:84:52)
+# Trait methods and consts for Point implementing RDisplay
+# Generated by #[miniextendr] impl RDisplay for Point
+
+Point$RDisplay <- new.env(parent = emptyenv())
+
+#' @name Point$RDisplay$as_r_string
+#' @rdname Point
+Point$RDisplay$as_r_string <- function(x) {
+  .Call(C_Point__RDisplay__as_r_string, .call = match.call(), x)
+}
+attr(Point$RDisplay$as_r_string, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RHash` for `Point` (adapter_traits_tests.rs:88:49)
+# Trait methods and consts for Point implementing RHash
+# Generated by #[miniextendr] impl RHash for Point
+
+Point$RHash <- new.env(parent = emptyenv())
+
+#' @name Point$RHash$hash
+#' @rdname Point
+Point$RHash$hash <- function(x) {
+  .Call(C_Point__RHash__hash, .call = match.call(), x)
+}
+attr(Point$RHash$hash, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RClone` for `Point` (adapter_traits_tests.rs:92:50)
+# Trait methods and consts for Point implementing RClone
+# Generated by #[miniextendr] impl RClone for Point
+
+Point$RClone <- new.env(parent = emptyenv())
+
+#' @name Point$RClone$clone
+#' @rdname Point
+Point$RClone$clone <- function(x) {
+  .Call(C_Point__RClone__clone, .call = match.call(), x)
+}
+attr(Point$RClone$clone, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RDefault` for `Point` (adapter_traits_tests.rs:96:52)
+# Trait methods and consts for Point implementing RDefault
+# Generated by #[miniextendr] impl RDefault for Point
+
+Point$RDefault <- new.env(parent = emptyenv())
+
+#' @name Point$RDefault$default
+#' @rdname Point
+Point$RDefault$default <- function() {
+  .Call(C_Point__RDefault__default, .call = match.call())
+}
+
+# Generated from Rust impl `RFromStr` for `Point` (adapter_traits_tests.rs:100:52)
+# Trait methods and consts for Point implementing RFromStr
+# Generated by #[miniextendr] impl RFromStr for Point
+
+Point$RFromStr <- new.env(parent = emptyenv())
+
+#' @name Point$RFromStr$from_str
+#' @rdname Point
+Point$RFromStr$from_str <- function(s) {
+  .Call(C_Point__RFromStr__from_str, .call = match.call(), s)
+}
+
+# Generated from Rust impl `RCopy` for `Point` (adapter_traits_tests.rs:104:49)
+# Trait methods and consts for Point implementing RCopy
+# Generated by #[miniextendr] impl RCopy for Point
+
+Point$RCopy <- new.env(parent = emptyenv())
+
+#' @name Point$RCopy$copy
+#' @rdname Point
+Point$RCopy$copy <- function(x) {
+  .Call(C_Point__RCopy__copy, .call = match.call(), x)
+}
+attr(Point$RCopy$copy, ".__mx_instance__") <- TRUE
+
+#' @name Point$RCopy$is_copy
+#' @rdname Point
+Point$RCopy$is_copy <- function(x) {
+  .Call(C_Point__RCopy__is_copy, .call = match.call(), x)
+}
+attr(Point$RCopy$is_copy, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RError` for `ChainedError` (adapter_traits_tests.rs:217:50)
+# Trait methods and consts for ChainedError implementing RError
+# Generated by #[miniextendr] impl RError for ChainedError
+
+ChainedError$RError <- new.env(parent = emptyenv())
+
+#' @name ChainedError$RError$error_message
+#' @rdname ChainedError
+ChainedError$RError$error_message <- function(x) {
+  .Call(C_ChainedError__RError__error_message, .call = match.call(), x)
+}
+attr(ChainedError$RError$error_message, ".__mx_instance__") <- TRUE
+
+#' @name ChainedError$RError$error_chain
+#' @rdname ChainedError
+ChainedError$RError$error_chain <- function(x) {
+  .Call(C_ChainedError__RError__error_chain, .call = match.call(), x)
+}
+attr(ChainedError$RError$error_chain, ".__mx_instance__") <- TRUE
+
+#' @name ChainedError$RError$error_chain_length
+#' @rdname ChainedError
+ChainedError$RError$error_chain_length <- function(x) {
+  .Call(C_ChainedError__RError__error_chain_length, .call = match.call(), x)
+}
+attr(ChainedError$RError$error_chain_length, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `ROrd` for `Point` (adapter_traits_tests.rs:108:48)
+# Trait methods and consts for Point implementing ROrd
+# Generated by #[miniextendr] impl ROrd for Point
+
+Point$ROrd <- new.env(parent = emptyenv())
+
+#' @name Point$ROrd$cmp
+#' @rdname Point
+Point$ROrd$cmp <- function(x, other) {
+  .Call(C_Point__ROrd__cmp, .call = match.call(), x, other)
+}
+attr(Point$ROrd$cmp, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RPartialOrd` for `MyFloat` (adapter_traits_tests.rs:136:55)
+# Trait methods and consts for MyFloat implementing RPartialOrd
+# Generated by #[miniextendr] impl RPartialOrd for MyFloat
+
+MyFloat$RPartialOrd <- new.env(parent = emptyenv())
+
+#' @name MyFloat$RPartialOrd$partial_cmp
+#' @rdname MyFloat
+MyFloat$RPartialOrd$partial_cmp <- function(x, other) {
+  .Call(C_MyFloat__RPartialOrd__partial_cmp, .call = match.call(), x, other)
+}
+attr(MyFloat$RPartialOrd$partial_cmp, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RIterator` for `IntVecIter` (adapter_traits_tests.rs:230:53)
+# Trait methods and consts for IntVecIter implementing RIterator
+# Generated by #[miniextendr] impl RIterator for IntVecIter
+
+IntVecIter$RIterator <- new.env(parent = emptyenv())
+
+#' @name IntVecIter$RIterator$next_item
+#' @rdname IntVecIter
+IntVecIter$RIterator$next_item <- function(x) {
+  .Call(C_IntVecIter__RIterator__next, .call = match.call(), x)
+}
+attr(IntVecIter$RIterator$next_item, ".__mx_instance__") <- TRUE
+
+#' @name IntVecIter$RIterator$count
+#' @rdname IntVecIter
+IntVecIter$RIterator$count <- function(x) {
+  .Call(C_IntVecIter__RIterator__count, .call = match.call(), x)
+}
+attr(IntVecIter$RIterator$count, ".__mx_instance__") <- TRUE
+
+#' @name IntVecIter$RIterator$collect_n
+#' @rdname IntVecIter
+IntVecIter$RIterator$collect_n <- function(x, n) {
+  .Call(C_IntVecIter__RIterator__collect_n, .call = match.call(), x, n)
+}
+attr(IntVecIter$RIterator$collect_n, ".__mx_instance__") <- TRUE
+
+#' @name IntVecIter$RIterator$skip
+#' @rdname IntVecIter
+IntVecIter$RIterator$skip <- function(x, n) {
+  .Call(C_IntVecIter__RIterator__skip, .call = match.call(), x, n)
+}
+attr(IntVecIter$RIterator$skip, ".__mx_instance__") <- TRUE
+
+#' @name IntVecIter$RIterator$nth
+#' @rdname IntVecIter
+IntVecIter$RIterator$nth <- function(x, n) {
+  .Call(C_IntVecIter__RIterator__nth, .call = match.call(), x, n)
+}
+attr(IntVecIter$RIterator$nth, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RIterator` for `IterableVecIter` (adapter_traits_tests.rs:434:53)
+# Trait methods and consts for IterableVecIter implementing RIterator
+# Generated by #[miniextendr] impl RIterator for IterableVecIter
+
+IterableVecIter$RIterator <- new.env(parent = emptyenv())
+
+#' @name IterableVecIter$RIterator$next_item
+#' @rdname IterableVecIter
+IterableVecIter$RIterator$next_item <- function(x) {
+  .Call(C_IterableVecIter__RIterator__next, .call = match.call(), x)
+}
+attr(IterableVecIter$RIterator$next_item, ".__mx_instance__") <- TRUE
+
+#' @name IterableVecIter$RIterator$count
+#' @rdname IterableVecIter
+IterableVecIter$RIterator$count <- function(x) {
+  .Call(C_IterableVecIter__RIterator__count, .call = match.call(), x)
+}
+attr(IterableVecIter$RIterator$count, ".__mx_instance__") <- TRUE
+
+#' @name IterableVecIter$RIterator$collect_n
+#' @rdname IterableVecIter
+IterableVecIter$RIterator$collect_n <- function(x, n) {
+  .Call(C_IterableVecIter__RIterator__collect_n, .call = match.call(), x, n)
+}
+attr(IterableVecIter$RIterator$collect_n, ".__mx_instance__") <- TRUE
+
+#' @name IterableVecIter$RIterator$skip
+#' @rdname IterableVecIter
+IterableVecIter$RIterator$skip <- function(x, n) {
+  .Call(C_IterableVecIter__RIterator__skip, .call = match.call(), x, n)
+}
+attr(IterableVecIter$RIterator$skip, ".__mx_instance__") <- TRUE
+
+#' @name IterableVecIter$RIterator$nth
+#' @rdname IterableVecIter
+IterableVecIter$RIterator$nth <- function(x, n) {
+  .Call(C_IterableVecIter__RIterator__nth, .call = match.call(), x, n)
+}
+attr(IterableVecIter$RIterator$nth, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RExtend` for `GrowableVec` (adapter_traits_tests.rs:304:56)
+# Trait methods and consts for GrowableVec implementing RExtend
+# Generated by #[miniextendr] impl RExtend for GrowableVec
+
+GrowableVec$RExtend <- new.env(parent = emptyenv())
+
+#' @name GrowableVec$RExtend$extend_from_vec
+#' @rdname GrowableVec
+GrowableVec$RExtend$extend_from_vec <- function(x, items) {
+  .Call(C_GrowableVec__RExtend__extend_from_vec, .call = match.call(), x, items)
+  invisible(x)
+}
+attr(GrowableVec$RExtend$extend_from_vec, ".__mx_instance__") <- TRUE
+
+#' @name GrowableVec$RExtend$len
+#' @rdname GrowableVec
+GrowableVec$RExtend$len <- function(x) {
+  .Call(C_GrowableVec__RExtend__len, .call = match.call(), x)
+}
+attr(GrowableVec$RExtend$len, ".__mx_instance__") <- TRUE
+
+#' @name GrowableVec$RExtend$is_empty
+#' @rdname GrowableVec
+GrowableVec$RExtend$is_empty <- function(x) {
+  .Call(C_GrowableVec__RExtend__is_empty, .call = match.call(), x)
+}
+attr(GrowableVec$RExtend$is_empty, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RFromIter` for `IntSet` (adapter_traits_tests.rs:351:58)
+# Trait methods and consts for IntSet implementing RFromIter
+# Generated by #[miniextendr] impl RFromIter for IntSet
+
+IntSet$RFromIter <- new.env(parent = emptyenv())
+
+#' @name IntSet$RFromIter$from_vec
+#' @rdname IntSet
+IntSet$RFromIter$from_vec <- function(items) {
+  .Call(C_IntSet__RFromIter__from_vec, .call = match.call(), items)
+}
+
+# Generated from Rust impl `RToVec` for `IntSet` (adapter_traits_tests.rs:360:55)
+# Trait methods and consts for IntSet implementing RToVec
+# Generated by #[miniextendr] impl RToVec for IntSet
+
+IntSet$RToVec <- new.env(parent = emptyenv())
+
+#' @name IntSet$RToVec$to_vec
+#' @rdname IntSet
+IntSet$RToVec$to_vec <- function(x) {
+  .Call(C_IntSet__RToVec__to_vec, .call = match.call(), x)
+}
+attr(IntSet$RToVec$to_vec, ".__mx_instance__") <- TRUE
+
+#' @name IntSet$RToVec$len
+#' @rdname IntSet
+IntSet$RToVec$len <- function(x) {
+  .Call(C_IntSet__RToVec__len, .call = match.call(), x)
+}
+attr(IntSet$RToVec$len, ".__mx_instance__") <- TRUE
+
+#' @name IntSet$RToVec$is_empty
+#' @rdname IntSet
+IntSet$RToVec$is_empty <- function(x) {
+  .Call(C_IntSet__RToVec__is_empty, .call = match.call(), x)
+}
+attr(IntSet$RToVec$is_empty, ".__mx_instance__") <- TRUE
+
+# Generated from Rust impl `RMakeIter` for `IterableVec` (adapter_traits_tests.rs:410:75)
+# Trait methods and consts for IterableVec implementing RMakeIter
+# Generated by #[miniextendr] impl RMakeIter for IterableVec
+
+IterableVec$RMakeIter <- new.env(parent = emptyenv())
+
+#' @name IterableVec$RMakeIter$make_iter
+#' @rdname IterableVec
+IterableVec$RMakeIter$make_iter <- function(x) {
+  .Call(C_IterableVec__RMakeIter__make_iter, .call = match.call(), x)
+}
+attr(IterableVec$RMakeIter$make_iter, ".__mx_instance__") <- TRUE
 
 # Generated from Rust impl `AsCoerceTestData` (as_coerce_tests.rs:35:6)
 #' @rdname AsCoerceTestData
@@ -6173,6 +6460,23 @@ ErrorInRCounter$failing_method <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(ErrorInRCounter)) {
+      ns <- ErrorInRCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -6363,6 +6667,23 @@ FallibleImpl$inherent_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(FallibleImpl)) {
+      ns <- FallibleImpl[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -7002,6 +7323,23 @@ SidecarEnv <- new.env(parent = emptyenv())
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SidecarEnv)) {
+      ns <- SidecarEnv[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -7094,6 +7432,23 @@ SidecarRawSexp <- new.env(parent = emptyenv())
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SidecarRawSexp)) {
+      ns <- SidecarRawSexp[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -7126,6 +7481,23 @@ SidecarRaw <- new.env(parent = emptyenv())
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SidecarRaw)) {
+      ns <- SidecarRaw[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -7212,6 +7584,23 @@ ReceiverCounter$default_counter <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(ReceiverCounter)) {
+      ns <- ReceiverCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -7710,9 +8099,9 @@ S7::method(s7_end, S7Range) <- function(x, ...) .Call(C_S7Range__s7_end, .call =
 S7Config <- S7::new_class("S7Config",
   properties = list(
     .ptr = S7::class_any,
-    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) }),
     score = S7::new_property(class = S7::class_double, default = 0.0, getter = function(self) .Call(C_S7Config__score, .call = match.call(), self@.ptr), setter = function(self, value) { .Call(C_S7Config__set_score, .call = match.call(), self@.ptr, value); self }),
-    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr))
+    name = S7::new_property(class = S7::class_character, default = quote(stop("@name is required")), getter = function(self) .Call(C_S7Config__name, .call = match.call(), self@.ptr)),
+    old_version = S7::new_property(class = S7::class_integer, getter = function(self) { warning("Property @old_version is deprecated: Use 'version' property instead"); .Call(C_S7Config__old_version, .call = match.call(), self@.ptr) })
   ),
   constructor = function(name, score, version, .ptr = NULL) {
     if (!is.null(.ptr)) {
@@ -8039,6 +8428,23 @@ SimpleCounter$new_counter <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SimpleCounter)) {
+      ns <- SimpleCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8106,6 +8512,23 @@ PanickyCounter$new_panicky <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(PanickyCounter)) {
+      ns <- PanickyCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8164,6 +8587,23 @@ S3TraitCounter$new_s3trait <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(S3TraitCounter)) {
+      ns <- S3TraitCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8207,6 +8647,23 @@ S4TraitCounter$new_s4trait <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(S4TraitCounter)) {
+      ns <- S4TraitCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8249,6 +8706,23 @@ S7TraitCounter$new_s7trait <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(S7TraitCounter)) {
+      ns <- S7TraitCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8291,6 +8765,23 @@ R6TraitCounter$new_r6trait <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(R6TraitCounter)) {
+      ns <- R6TraitCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8703,6 +9194,23 @@ CounterTraitEnv$get_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(CounterTraitEnv)) {
+      ns <- CounterTraitEnv[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8759,6 +9267,23 @@ CounterTraitS3$get_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(CounterTraitS3)) {
+      ns <- CounterTraitS3[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8815,6 +9340,23 @@ CounterTraitS4$get_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(CounterTraitS4)) {
+      ns <- CounterTraitS4[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8871,6 +9413,23 @@ CounterTraitS7$get_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(CounterTraitS7)) {
+      ns <- CounterTraitS7[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -8927,6 +9486,23 @@ CounterTraitR6$get_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(CounterTraitR6)) {
+      ns <- CounterTraitR6[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9208,6 +9784,23 @@ SharedSimpleCounter$get_value <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SharedSimpleCounter)) {
+      ns <- SharedSimpleCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9257,6 +9850,23 @@ AtomicCounter$new_atomic <- function(initial) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(AtomicCounter)) {
+      ns <- AtomicCounter[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9413,6 +10023,23 @@ RngSampler$static_sample <- function(n) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(RngSampler)) {
+      ns <- RngSampler[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9478,6 +10105,23 @@ SerdeRPoint$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SerdeRPoint)) {
+      ns <- SerdeRPoint[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9541,6 +10185,23 @@ SerdeRPoint3D$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(SerdeRPoint3D)) {
+      ns <- SerdeRPoint3D[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9613,6 +10274,23 @@ Rectangle$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(Rectangle)) {
+      ns <- Rectangle[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9676,6 +10354,23 @@ DeepNest$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(DeepNest)) {
+      ns <- DeepNest[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9748,6 +10443,23 @@ Collections$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(Collections)) {
+      ns <- Collections[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9811,6 +10523,23 @@ Maps$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(Maps)) {
+      ns <- Maps[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9883,6 +10612,23 @@ WithEnums$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(WithEnums)) {
+      ns <- WithEnums[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -9964,6 +10710,23 @@ WithOptionals$from_r <- function(sexp) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(WithOptionals)) {
+      ns <- WithOptionals[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -10085,6 +10848,23 @@ NdVec$from_range <- function(start, end, step) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(NdVec)) {
+      ns <- NdVec[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -10211,6 +10991,23 @@ NdMatrix$identity <- function(n) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(NdMatrix)) {
+      ns <- NdMatrix[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -10341,6 +11138,23 @@ NdArrayDyn$ones <- function(shape) {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(NdArrayDyn)) {
+      ns <- NdArrayDyn[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj
@@ -10443,6 +11257,23 @@ NdIntVec$to_r <- function() {
       }
     }
     bound
+  } else if (is.null(obj)) {
+    # Not found at top level — search trait namespace environments
+    for (ns_name in names(NdIntVec)) {
+      ns <- NdIntVec[[ns_name]]
+      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {
+        method <- ns[[name]]
+        if (is.function(method) && isTRUE(attr(method, ".__mx_instance__"))) {
+          # Instance method — bind self as first arg
+          m <- method
+          s <- self
+          return(function(...) m(s, ...))
+        } else if (is.function(method)) {
+          return(method)
+        }
+      }
+    }
+    NULL
   } else {
     environment(obj) <- environment()
     obj

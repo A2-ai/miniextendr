@@ -32,27 +32,25 @@ fn trait_accepts_private_trait() {
 }
 
 #[test]
-fn trait_rejects_generic_parameters() {
+fn trait_accepts_generic_parameters() {
+    // Generic type parameters on traits are allowed (e.g., RExtend<T>)
     let result = validate_trait_str(quote::quote! {
         pub trait Container<T> {
             fn get(&self) -> T;
         }
     });
-    let err = result.unwrap_err();
-    assert!(err.to_string().contains("cannot have generic parameters"));
+    assert!(result.is_ok());
 }
 
 #[test]
 fn trait_accepts_lifetime_bounds() {
-    // Lifetime bounds on trait are currently caught by "generic parameters"
-    // This documents the current behavior
+    // Lifetime bounds on traits are allowed
     let result = validate_trait_str(quote::quote! {
         pub trait Borrower<'a> {
             fn borrow(&self) -> &'a str;
         }
     });
-    // Currently rejected - lifetimes count as generic params
-    assert!(result.is_err());
+    assert!(result.is_ok());
 }
 
 // ==========================================================================
@@ -202,7 +200,7 @@ fn generate_produces_tag_constant() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("TAG_COUNTER"));
@@ -219,7 +217,7 @@ fn generate_produces_vtable_struct() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("CounterVTable"));
@@ -238,7 +236,7 @@ fn generate_produces_view_struct() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("CounterView"));
@@ -255,7 +253,7 @@ fn generate_produces_vtable_builder() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     assert!(output_str.contains("__counter_build_vtable"));
@@ -271,7 +269,7 @@ fn generate_excludes_static_methods_from_vtable() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     // vtable should contain `value` but not `create`
@@ -290,7 +288,7 @@ fn generate_preserves_original_trait() {
     })
     .unwrap();
 
-    let output = generate_trait_abi(&trait_item);
+    let output = generate_trait_abi(&trait_item, false);
     let output_str = output.to_string();
 
     // Original trait should be in output (pass-through)
