@@ -4,7 +4,6 @@ autom4te.cache
 src/Makevars
 # Note: Makevars.win is a static file (uses `include Makevars`), tracked in git
 src/*-wrappers.R
-src/entrypoint.c
 
 # Built artifacts
 src/*.o

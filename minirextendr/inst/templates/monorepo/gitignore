@@ -6,8 +6,7 @@
 {{rpkg_name}}/vendor/
 {{rpkg_name}}/src/rust/.cargo/
 {{rpkg_name}}/src/Makevars
-{{rpkg_name}}/src/entrypoint.c
-{{rpkg_name}}/src/miniextendr_wrappers.R
+{{rpkg_name}}/src/*-wrappers.R
 {{rpkg_name}}/config.log
 {{rpkg_name}}/config.status
 {{rpkg_name}}/configure~
