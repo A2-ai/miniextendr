@@ -35,7 +35,7 @@ upgrade_miniextendr_package <- function(path = ".",
   if (!is_miniextendr_package()) {
     abort(c(
       "This does not appear to be a miniextendr package.",
-      "i" = "Expected configure.ac with MINIEXTENDR_FEATURES and build templates.",
+      "i" = "Expected configure.ac with _FEATURES variable and build templates.",
       "i" = "Use {.code create_miniextendr_package()} to scaffold a new package."
     ))
   }

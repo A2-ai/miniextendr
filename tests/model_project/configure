@@ -632,7 +632,7 @@ ABS_RPKG_SRCDIR
 ABS_TOP_SRCDIR
 CARGO_FEATURE_CPPFLAGS
 CARGO_FEATURES_FLAG
-MINIEXTENDR_FEATURES
+PIGWORLD_FEATURES
 NOT_CRAN
 CARGO_LOCKED_FLAG
 CARGO_OFFLINE_FLAG
@@ -690,7 +690,7 @@ enable_option_checking
       ac_precious_vars='build_alias
 host_alias
 target_alias
-MINIEXTENDR_FEATURES
+PIGWORLD_FEATURES
 RUST_TOOLCHAIN
 CARGO_TARGET_DIR
 CARGO_PROFILE
@@ -1315,7 +1315,7 @@ if test -n "$ac_init_help"; then
   cat <<\_ACEOF
 
 Some influential environment variables:
-  MINIEXTENDR_FEATURES
+  PIGWORLD_FEATURES
               Comma-separated cargo features to enable (e.g., "nonapi,rayon")
   RUST_TOOLCHAIN
               Rust toolchain selector like '+stable' or '+nightly'
@@ -1992,16 +1992,16 @@ fi
 
 
 
-if test -z "${MINIEXTENDR_FEATURES+x}"; then
-    MINIEXTENDR_FEATURES=""
+if test -z "${PIGWORLD_FEATURES+x}"; then
+    PIGWORLD_FEATURES=""
 fi
 
-if test -n "$MINIEXTENDR_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+if test -n "$PIGWORLD_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$PIGWORLD_FEATURES"
   # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
   IFS=','
-  for _feature in $MINIEXTENDR_FEATURES; do
+  for _feature in $PIGWORLD_FEATURES; do
     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
   done
@@ -2477,10 +2477,10 @@ printf "%s\n" "$as_me: CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET" >&6;}
 fi
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&5
 printf "%s\n" "$as_me: ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO" >&6;}
-if test -n "$MINIEXTENDR_FEATURES"
+if test -n "$PIGWORLD_FEATURES"
 then :
-  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&5
-printf "%s\n" "$as_me: MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES" >&6;}
+  { printf "%s\n" "$as_me:${as_lineno-$LINENO}: PIGWORLD_FEATURES  = $PIGWORLD_FEATURES" >&5
+printf "%s\n" "$as_me: PIGWORLD_FEATURES  = $PIGWORLD_FEATURES" >&6;}
 fi
 
 pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"

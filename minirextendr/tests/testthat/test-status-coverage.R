@@ -93,7 +93,7 @@ test_that("miniextendr_validate warns on missing Config/build/bootstrap", {
     file.path(tmp, "DESCRIPTION"))
 
   # Create minimal configure.ac
-  writeLines("AC_INIT([testpkg], [0.0.1])\nMINIEXTENDR_FEATURES=\n",
+  writeLines("AC_INIT([testpkg], [0.0.1])\nTESTPKG_FEATURES=\n",
     file.path(tmp, "configure.ac"))
 
   # Should return FALSE or TRUE with warnings (DESCRIPTION missing Config fields)

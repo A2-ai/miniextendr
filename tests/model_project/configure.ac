@@ -58,26 +58,26 @@ AC_SUBST([NOT_CRAN])
 
 dnl Set cargo features flag
 dnl
-dnl Users can enable optional features via MINIEXTENDR_FEATURES environment variable.
+dnl Users can enable optional features via PIGWORLD_FEATURES environment variable.
 dnl By default, no extra features are enabled.
 dnl
 dnl Note: 'nonapi' feature causes R CMD check warnings/errors (non-API calls).
 dnl Only enable when you specifically need those features and understand the risks.
-AC_ARG_VAR([MINIEXTENDR_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
+AC_ARG_VAR([PIGWORLD_FEATURES], [Comma-separated cargo features to enable (e.g., "nonapi,rayon")])
 
 dnl Default: no extra features enabled
-dnl Users can set MINIEXTENDR_FEATURES to enable specific features
-if test -z "${MINIEXTENDR_FEATURES+x}"; then
-  dnl MINIEXTENDR_FEATURES not set - use empty (no extra features)
-  MINIEXTENDR_FEATURES=""
+dnl Users can set PIGWORLD_FEATURES to enable specific features
+if test -z "${PIGWORLD_FEATURES+x}"; then
+  dnl PIGWORLD_FEATURES not set - use empty (no extra features)
+  PIGWORLD_FEATURES=""
 fi
 
-if test -n "$MINIEXTENDR_FEATURES"; then
-  CARGO_FEATURES_FLAG="--features=$MINIEXTENDR_FEATURES"
+if test -n "$PIGWORLD_FEATURES"; then
+  CARGO_FEATURES_FLAG="--features=$PIGWORLD_FEATURES"
   # Auto-generate C preprocessor flags from cargo features
   CARGO_FEATURE_CPPFLAGS=""
   IFS=','
-  for _feature in $MINIEXTENDR_FEATURES; do
+  for _feature in $PIGWORLD_FEATURES; do
     _feature_upper=$(echo "$_feature" | tr 'a-z-' 'A-Z_')
     CARGO_FEATURE_CPPFLAGS="$CARGO_FEATURE_CPPFLAGS -DCARGO_FEATURE_$_feature_upper"
   done
@@ -243,8 +243,8 @@ AS_IF([test -n "$RUST_TOOLCHAIN"],
 AS_IF([test -n "$CARGO_BUILD_TARGET"],
       [AC_MSG_NOTICE([CARGO_BUILD_TARGET    = $CARGO_BUILD_TARGET])])
 AC_MSG_NOTICE([ROOT_MINIEXTENDR_REPO = $ROOT_MINIEXTENDR_REPO])
-AS_IF([test -n "$MINIEXTENDR_FEATURES"],
-      [AC_MSG_NOTICE([MINIEXTENDR_FEATURES  = $MINIEXTENDR_FEATURES])])
+AS_IF([test -n "$PIGWORLD_FEATURES"],
+      [AC_MSG_NOTICE([PIGWORLD_FEATURES  = $PIGWORLD_FEATURES])])
 
 dnl ---- package name → Rust-safe variants ----
 dnl Use PACKAGE_NAME (case-preserving) not PACKAGE_TARNAME (lowercased)
