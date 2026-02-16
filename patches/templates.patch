@@ -1,6 +1,6 @@
 diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
---- a/monorepo/rpkg/configure.ac	2026-02-12 23:51:10
-+++ b/monorepo/rpkg/configure.ac	2026-02-13 06:37:32
+--- a/monorepo/rpkg/configure.ac	2026-02-16 09:48:47
++++ b/monorepo/rpkg/configure.ac	2026-02-16 10:14:20
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -75,7 +75,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  MINIEXTENDR_FEATURES=""
  fi
  
-@@ -104,100 +107,14 @@
+@@ -106,100 +109,14 @@
  AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
  
 -dnl Miniextendr crate source paths (in monorepo)
@@ -176,7 +176,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -AC_SUBST([RSYNC])
  AC_SUBST([SED])
  AC_SUBST([CYGPATH])
-@@ -206,15 +123,12 @@
+@@ -208,15 +125,12 @@
  dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
  dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 -root_miniextendr_repo_cargo="$root_miniextendr_repo"
@@ -192,7 +192,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 -AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
  AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
  
-@@ -318,9 +232,6 @@
+@@ -320,9 +234,6 @@
  
  dnl ---- user feedback ----
 -AC_MSG_NOTICE([BUILD_CONTEXT         = $BUILD_CONTEXT])
@@ -203,7 +203,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
  AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
  AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
-@@ -381,8 +292,7 @@
+@@ -383,8 +294,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -214,7 +214,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -395,45 +305,27 @@
+@@ -397,45 +307,27 @@
    src/entrypoint.c:src/entrypoint.c.in
    src/mx_abi.c:src/mx_abi.c.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -272,7 +272,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -453,26 +345,25 @@
+@@ -455,26 +347,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -317,7 +317,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -486,132 +377,67 @@
+@@ -488,132 +379,67 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
@@ -501,7 +501,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -627,17 +453,23 @@
+@@ -629,17 +455,23 @@
  [ABS_RPKG_SRC="$abs_rpkg_src"])
  
 -dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
@@ -535,7 +535,7 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
 +  fi
    _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
    _pkgid_status=$?
-@@ -660,5 +492,5 @@
+@@ -662,5 +494,5 @@
    done
  ],
 -[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
@@ -543,8 +543,8 @@ diff -ruN -U2 a/monorepo/rpkg/configure.ac b/monorepo/rpkg/configure.ac
  
  AC_OUTPUT
 diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
---- a/rpkg/configure.ac	2026-02-12 23:51:10
-+++ b/rpkg/configure.ac	2026-02-13 06:37:21
+--- a/rpkg/configure.ac	2026-02-16 09:48:47
++++ b/rpkg/configure.ac	2026-02-16 10:14:18
 @@ -1,3 +1,3 @@
 -AC_INIT([miniextendr], [1.0])
 +AC_INIT([{{package}}], [1.0])
@@ -619,7 +619,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  MINIEXTENDR_FEATURES=""
  fi
  
-@@ -104,100 +107,14 @@
+@@ -106,100 +109,14 @@
  AC_SUBST([ROOT_MINIEXTENDR_REPO], ["$root_miniextendr_repo"])
  
 -dnl Miniextendr crate source paths (in monorepo)
@@ -720,7 +720,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -AC_SUBST([RSYNC])
  AC_SUBST([SED])
  AC_SUBST([CYGPATH])
-@@ -206,15 +123,12 @@
+@@ -208,15 +125,12 @@
  dnl MSYS2 paths like /d/a/foo become D:/d/a/foo when interpreted by Cargo,
  dnl so we convert them to proper Windows paths (D:/a/foo) with cygpath -m.
 -root_miniextendr_repo_cargo="$root_miniextendr_repo"
@@ -736,7 +736,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 -AC_SUBST([ROOT_MINIEXTENDR_REPO_CARGO], ["$root_miniextendr_repo_cargo"])
  AC_SUBST([ABS_RPKG_SRC_CARGO], ["$abs_rpkg_src_cargo"])
  
-@@ -318,9 +232,6 @@
+@@ -320,9 +234,6 @@
  
  dnl ---- user feedback ----
 -AC_MSG_NOTICE([BUILD_CONTEXT         = $BUILD_CONTEXT])
@@ -747,7 +747,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +AC_MSG_NOTICE([NOT_CRAN              = $NOT_CRAN])
  AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
  AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
-@@ -381,8 +292,7 @@
+@@ -383,8 +294,7 @@
  AC_SUBST([VENDOR_OUT_CARGO])
  
 -dnl Note: Cargo.toml now uses git dependencies with [patch."https://..."] for local dev.
@@ -758,7 +758,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl In dev mode, we remove the cargo config so cargo uses normal resolution.
  
  dnl ---- output files ----
-@@ -395,45 +305,27 @@
+@@ -397,45 +307,27 @@
    src/entrypoint.c:src/entrypoint.c.in
    src/mx_abi.c:src/mx_abi.c.in
 -  src/miniextendr-win.def:src/win.def.in
@@ -816,7 +816,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 2) Ensure Cargo.lock is compatible with the installed cargo version.
  dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
  AC_CONFIG_COMMANDS([cargo-lockfile-compat],
-@@ -453,26 +345,25 @@
+@@ -455,26 +347,25 @@
      if test "$CARGO_MAJOR" -lt 1 || \
         (test "$CARGO_MAJOR" -eq 1 && test "$CARGO_MINOR" -lt 78); then
 -      dnl In release contexts, ensure vendor sources exist before regenerating lockfile.
@@ -861,7 +861,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +      fi
        echo "configure: WARNING: cargo $CARGO_VERSION cannot read Cargo.lock v$LOCKFILE_VERSION; regenerating lockfile" >&2
        rm -f "$LOCKFILE_PATH"
-@@ -486,132 +377,67 @@
+@@ -488,132 +379,67 @@
    fi
  ],
 -[CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"])
@@ -1045,7 +1045,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +dnl 4) Post-vendor tasks: touch Cargo.toml to force rebuild
  AC_CONFIG_COMMANDS([post-vendor],
  [
-@@ -627,17 +453,23 @@
+@@ -629,17 +455,23 @@
  [ABS_RPKG_SRC="$abs_rpkg_src"])
  
 -dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
@@ -1079,7 +1079,7 @@ diff -ruN -U2 a/rpkg/configure.ac b/rpkg/configure.ac
 +  fi
    _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
    _pkgid_status=$?
-@@ -660,5 +492,5 @@
+@@ -662,5 +494,5 @@
    done
  ],
 -[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
