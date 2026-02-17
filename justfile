@@ -32,6 +32,16 @@
 #     just templates-check    - Verify templates haven't drifted
 #     just templates-approve  - Accept template changes
 #
+#   Benchmarks:
+#     just bench              - Run all Rust benchmarks
+#     just bench-core         - Core benchmarks (high-signal, default features)
+#     just bench-features     - Feature-gated benchmarks (connections, rayon, etc.)
+#     just bench-full         - Full suite (core + feature matrix)
+#     just bench-r            - Run R-side benchmarks (requires rpkg installed)
+#     just bench-save         - Save benchmark baseline
+#     just bench-compare      - Compare against last baseline
+#     just bench-check        - Check benchmark crate compiles
+#
 #   Vendor sync:
 #     just vendor-sync-check  - Verify vendored crates match workspace
 #     just vendor-sync-diff   - Show diff between workspace and vendor
@@ -204,6 +214,29 @@ bench-compare *cargo_flags:
 # Check benchmark crate
 bench-check *cargo_flags:
     cargo check --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
+
+# Run core benchmarks (default features, high-signal targets)
+bench-core *cargo_flags:
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --bench ffi_calls --bench into_r --bench from_r --bench translate --bench strings --bench externalptr --bench worker --bench unwind_protect {{cargo_flags}}
+
+# Run feature-gated benchmarks (connections, rayon, refcount-fast-hash)
+bench-features *cargo_flags:
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,refcount-fast-hash {{cargo_flags}}
+
+# Run full benchmark suite (core + feature matrix)
+bench-full *cargo_flags:
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml {{cargo_flags}}
+    cargo bench --manifest-path=miniextendr-bench/Cargo.toml --features connections,rayon,refcount-fast-hash --bench connections --bench rayon --bench refcount_protect {{cargo_flags}}
+
+# Run R-side benchmarks (requires rpkg installed)
+bench-r:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    for f in rpkg/tests/testthat/bench-*.R; do
+      echo "=== Running $f ==="
+      Rscript "$f"
+      echo ""
+    done
 
 # Show dependency tree
 alias cargo-tree := tree
