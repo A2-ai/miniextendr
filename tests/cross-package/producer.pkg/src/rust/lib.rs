@@ -343,7 +343,7 @@ impl Counter for SimpleCounter {
 /// @return An external pointer to the wrapped counter
 /// @export
 #[miniextendr]
-fn new_counter(initial: i32) -> SEXP {
+pub fn new_counter(initial: i32) -> SEXP {
     let counter = SimpleCounter::create(initial);
     let erased = __mx_wrap_simplecounter(counter);
     unsafe { ccall::mx_wrap(erased) }
@@ -354,7 +354,7 @@ fn new_counter(initial: i32) -> SEXP {
 /// @return The counter's current value
 /// @export
 #[miniextendr]
-fn counter_get_value(counter_sexp: SEXP) -> i32 {
+pub fn counter_get_value(counter_sexp: SEXP) -> i32 {
     let view = unsafe { CounterView::try_from_sexp(counter_sexp) }
         .expect("Object does not implement Counter trait");
     view.value()
@@ -367,14 +367,14 @@ fn counter_get_value(counter_sexp: SEXP) -> i32 {
 /// Debug: Get TAG_COUNTER as hex string
 /// @export
 #[miniextendr]
-fn debug_tag_counter() -> String {
+pub fn debug_tag_counter() -> String {
     format!("{:016x}{:016x}", TAG_COUNTER.hi, TAG_COUNTER.lo)
 }
 
 /// Debug: Get the ExternalPtr type name for SharedData
 /// @export
 #[miniextendr]
-fn debug_shared_data_type_name() -> String {
+pub fn debug_shared_data_type_name() -> String {
     use miniextendr_api::externalptr::TypedExternal;
     SharedData::TYPE_NAME.to_string()
 }
@@ -384,7 +384,7 @@ fn debug_shared_data_type_name() -> String {
 /// @return Character vector of class names
 /// @export
 #[miniextendr]
-fn get_r_class(x: SEXP) -> SEXP {
+pub fn get_r_class(x: SEXP) -> SEXP {
     unsafe { miniextendr_api::ffi::Rf_getAttrib(x, miniextendr_api::ffi::R_ClassSymbol) }
 }
 

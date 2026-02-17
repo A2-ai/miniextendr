@@ -112,7 +112,7 @@ lint:
         echo "::error::cargo check failed (see output above)"
         exit 1
     }
-    lint_issues=$(echo "$output" | grep -E "warning.*miniextendr-lint" || true)
+    lint_issues=$(echo "$output" | grep -E "warning.*miniextendr.*\[MXL|warning.*miniextendr-lint" || true)
     if [[ -n "$lint_issues" ]]; then
         echo "$lint_issues"
         echo ""
