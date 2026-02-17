@@ -88,12 +88,14 @@ create_miniextendr_monorepo <- function(path, package = basename(path),
   set_template_type("monorepo")
   on.exit(set_template_type("rpkg"), add = TRUE)
 
+  pkg_rs <- to_rust_name(package)
   data <- list(
     package = package,
-    package_rs = to_rust_name(package),
+    package_rs = pkg_rs,
     Package = tools::toTitleCase(package),
     crate_name = crate_name,
     rpkg_name = rpkg_name,
+    features_var = paste0(toupper(pkg_rs), "_FEATURES"),
     year = format(Sys.Date(), "%Y")
   )
 

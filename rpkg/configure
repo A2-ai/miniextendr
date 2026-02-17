@@ -611,12 +611,12 @@ LIBOBJS
 VENDOR_OUT_CARGO
 VENDOR_OUT
 OPTIONAL_CARGO_DEPS
+CARGO_STATICLIB_NAME
 PACKAGE_TARNAME_RS_UPPERCASE
 PACKAGE_TARNAME_RS
 CARGO_LIBDIR
 CARGO_BUILD_TARGET
 ENV_RUSTFLAGS
-CARGO_STATICLIB_NAME
 CARGO_PROFILE
 CARGO_TARGET_DIR_CARGO
 CARGO_TARGET_DIR
@@ -2541,8 +2541,6 @@ else
   CARGO_PROFILE_DIR="$CARGO_PROFILE"
 fi
 
-CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
-
 
 
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
@@ -2588,8 +2586,6 @@ printf "%s\n" "$as_me: R_HOME                = $R_HOME" >&6;}
 printf "%s\n" "$as_me: CARGO_TARGET_DIR      = $CARGO_TARGET_DIR" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_PROFILE         = $CARGO_PROFILE" >&5
 printf "%s\n" "$as_me: CARGO_PROFILE         = $CARGO_PROFILE" >&6;}
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
-printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&5
 printf "%s\n" "$as_me: ENV_RUSTFLAGS         = $ENV_RUSTFLAGS" >&6;}
 { printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_LIBDIR          = $CARGO_LIBDIR" >&5
@@ -2618,6 +2614,11 @@ PACKAGE_TARNAME_RS=$pkg_rs
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 PACKAGE_TARNAME_RS_UPPERCASE=$pkg_rs_upper
 
+
+CARGO_STATICLIB_NAME="$pkg_rs"
+
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&5
+printf "%s\n" "$as_me: CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME" >&6;}
 
 ac_config_files="$ac_config_files src/rust/document.rs"
 
@@ -2664,9 +2665,6 @@ ac_config_commands="$ac_config_commands cargo-vendor"
 
 
 ac_config_commands="$ac_config_commands post-vendor"
-
-
-ac_config_commands="$ac_config_commands patch-staticlib-name"
 
 
 cat >confcache <<\_ACEOF
@@ -3372,8 +3370,7 @@ cat >>$CONFIG_STATUS <<_ACEOF || ac_write_fail=1
 BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"
 CARGO_CMD="$CARGO_CMD" CARGO_OFFLINE_FLAG="$CARGO_OFFLINE_FLAG" SED="$SED" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_dir="$abs_top_srcdir" abs_rpkg_src="$abs_rpkg_src"
 CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"
-ABS_RPKG_SRC="$abs_rpkg_src"
-CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"
+ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"
 
 _ACEOF
 
@@ -3393,7 +3390,6 @@ do
     "cargo-lockfile-compat") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-lockfile-compat" ;;
     "cargo-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS cargo-vendor" ;;
     "post-vendor") CONFIG_COMMANDS="$CONFIG_COMMANDS post-vendor" ;;
-    "patch-staticlib-name") CONFIG_COMMANDS="$CONFIG_COMMANDS patch-staticlib-name" ;;
 
   *) as_fn_error $? "invalid argument: '$ac_config_target'" "$LINENO" 5;;
   esac
@@ -3996,38 +3992,21 @@ $_crate = { path = \"../../vendor/$_dirname\" }"
   esac
  ;;
     "post-vendor":C)
+    if test ! -f "src/rust/Cargo.lock"; then
+    case "$BUILD_CONTEXT" in
+      dev-monorepo|dev-detached)
+        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
+        ;;
+      vendored-install|prepare-cran)
+        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+        ;;
+    esac
+  fi
+
         touch "$ABS_RPKG_SRC/rust/Cargo.toml"
   echo "configure: touched $ABS_RPKG_SRC/rust/Cargo.toml to force rebuild" >&2
 
      ;;
-    "patch-staticlib-name":C)
-      case "$BUILD_CONTEXT" in
-    dev-monorepo|dev-detached)
-      _pkgid_flags="--color=never"
-      ;;
-    vendored-install|prepare-cran)
-      _pkgid_flags="--offline --color=never"
-      ;;
-  esac
-  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
-  _pkgid_status=$?
-  if test $_pkgid_status -ne 0; then
-    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    exit 1
-  fi
-  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\([^@]*\)@.*/\1/' | tr '-' '_')"
-  if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
-    exit 1
-  fi
-  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
-
-    for f in src/Makevars src/rust/document.rs; do
-    if test -f "$f"; then
-      "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-    fi
-  done
- ;;
 
   esac
 done # for ac_tag

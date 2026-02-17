@@ -284,10 +284,8 @@ else
   CARGO_PROFILE_DIR="$CARGO_PROFILE"
 fi
 
-dnl CARGO_STATICLIB_NAME will be extracted via cargo pkgid in AC_CONFIG_COMMANDS
-dnl Use placeholder for now - will be substituted after Cargo.toml is available
-CARGO_STATICLIB_NAME="__CARGO_STATICLIB_NAME_PLACEHOLDER__"
-AC_SUBST([CARGO_STATICLIB_NAME])
+dnl CARGO_STATICLIB_NAME is set after pkg_rs is computed (see below)
+dnl It equals the Rust crate name (hyphens/dots → underscores)
 
 AC_ARG_VAR([ENV_RUSTFLAGS], [Rust compiler flags passed as RUSTFLAGS])
 : ${ENV_RUSTFLAGS="$RUSTFLAGS"}
@@ -326,7 +324,6 @@ AS_IF([test "$PREPARE_CRAN" = "true"],
 AC_MSG_NOTICE([R_HOME                = $R_HOME])
 AC_MSG_NOTICE([CARGO_TARGET_DIR      = $CARGO_TARGET_DIR])
 AC_MSG_NOTICE([CARGO_PROFILE         = $CARGO_PROFILE])
-AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 AC_MSG_NOTICE([ENV_RUSTFLAGS         = $ENV_RUSTFLAGS])
 AC_MSG_NOTICE([CARGO_LIBDIR          = $CARGO_LIBDIR])
 AS_IF([test -n "$RUST_TOOLCHAIN"],
@@ -344,6 +341,11 @@ pkg_rs="$(echo "$PACKAGE_NAME" | $SED 's/-/_/g; s/\./_/g')"
 AC_SUBST([PACKAGE_TARNAME_RS], [$pkg_rs])
 pkg_rs_upper=`printf '%s' "$pkg_rs" | tr 'a-z' 'A-Z'`
 AC_SUBST([PACKAGE_TARNAME_RS_UPPERCASE], [$pkg_rs_upper])
+
+dnl Staticlib name matches the Rust crate name (= pkg_rs)
+CARGO_STATICLIB_NAME="$pkg_rs"
+AC_SUBST([CARGO_STATICLIB_NAME])
+AC_MSG_NOTICE([CARGO_STATICLIB_NAME  = $CARGO_STATICLIB_NAME])
 
 dnl Generate files from .in templates (templates must be committed)
 AC_CONFIG_FILES([src/rust/document.rs])
@@ -434,7 +436,7 @@ AC_CONFIG_COMMANDS([dev-cargo-config],
 [BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
 
 dnl ---- AC_CONFIG_COMMANDS run after AC_CONFIG_FILES generates files ----
-dnl Order matters: lockfile-compat, then cargo-vendor, then patch-staticlib-name
+dnl Order matters: lockfile-compat, then cargo-vendor, then post-vendor
 
 dnl 1) Ensure Cargo.lock is compatible with the installed cargo version.
 dnl    Older cargo releases (e.g. 1.75) cannot read lockfile version 4.
@@ -614,9 +616,21 @@ $_crate = { path = \"../../vendor/$_dirname\" }"
 ],
 [CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" VENDOR_OUT="$VENDOR_OUT" abs_rpkg_src="$abs_rpkg_src" abs_rpkg_dir="$abs_top_srcdir" SED="$SED"])
 
-dnl 2b) Post-vendor tasks: touch Cargo.toml to force rebuild
+dnl 2b) Post-vendor tasks: ensure Cargo.lock exists, touch Cargo.toml to force rebuild
 AC_CONFIG_COMMANDS([post-vendor],
 [
+  dnl Ensure Cargo.lock exists (needed by Makevars as a dependency)
+  if test ! -f "src/rust/Cargo.lock"; then
+    case "$BUILD_CONTEXT" in
+      dev-monorepo|dev-detached)
+        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml
+        ;;
+      vendored-install|prepare-cran)
+        $CARGO_CMD generate-lockfile --manifest-path src/rust/Cargo.toml --offline
+        ;;
+    esac
+  fi
+
   dnl Touch Cargo.toml to ensure make rebuilds the staticlib.
   dnl This is necessary because CARGO_TARGET_DIR may point to a shared location
   dnl where the staticlib already exists (e.g., during R CMD check).
@@ -626,41 +640,6 @@ AC_CONFIG_COMMANDS([post-vendor],
   dnl Note: Cargo.lock updates for patched sources are handled by cargo build itself.
   dnl Dev mode does not use --locked, so cargo resolves source locations at build time.
 ],
-[ABS_RPKG_SRC="$abs_rpkg_src"])
-
-dnl 3) Extract CARGO_STATICLIB_NAME from Cargo.toml and patch generated files
-AC_CONFIG_COMMANDS([patch-staticlib-name],
-[
-  dnl Use cargo pkgid to extract the actual package name from Cargo.toml
-  dnl Dev contexts: cargo can fetch index; release contexts: use --offline
-  case "$BUILD_CONTEXT" in
-    dev-monorepo|dev-detached)
-      _pkgid_flags="--color=never"
-      ;;
-    vendored-install|prepare-cran)
-      _pkgid_flags="--offline --color=never"
-      ;;
-  esac
-  _pkgid_output="$( $CARGO_CMD pkgid $_pkgid_flags --manifest-path src/rust/Cargo.toml )"
-  _pkgid_status=$?
-  if test $_pkgid_status -ne 0; then
-    echo "configure: error: cargo pkgid failed with status $_pkgid_status" >&2
-    exit 1
-  fi
-  REAL_STATICLIB_NAME="$(echo "$_pkgid_output" | "$SED" 's/.*#\(@<:@^@@:>@*\)@.*/\1/' | tr '-' '_')"
-  if test -z "$REAL_STATICLIB_NAME"; then
-    echo "configure: error: Could not parse package name from cargo pkgid output" >&2
-    exit 1
-  fi
-  echo "configure: extracted CARGO_STATICLIB_NAME = $REAL_STATICLIB_NAME"
-
-  dnl Patch generated files to replace placeholder
-  for f in src/Makevars src/rust/document.rs; do
-    if test -f "$f"; then
-      "$SED" "s/__CARGO_STATICLIB_NAME_PLACEHOLDER__/$REAL_STATICLIB_NAME/g" "$f" > "$f.tmp" && mv "$f.tmp" "$f"
-    fi
-  done
-],
-[CARGO_CMD="$CARGO_CMD" BUILD_CONTEXT="$BUILD_CONTEXT" SED="$SED"])
+[ABS_RPKG_SRC="$abs_rpkg_src" BUILD_CONTEXT="$BUILD_CONTEXT" CARGO_CMD="$CARGO_CMD"])
 
 AC_OUTPUT

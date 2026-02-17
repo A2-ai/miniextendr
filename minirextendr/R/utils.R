@@ -332,7 +332,7 @@ generate_document_rs <- function(document_rs_in_path, document_rs_path, package)
   tarname <- to_tarname(package)
 
   content <- readLines(document_rs_in_path, warn = FALSE)
-  content <- gsub("__CARGO_STATICLIB_NAME_PLACEHOLDER__", crate_name, content, fixed = TRUE)
+  content <- gsub("@CARGO_STATICLIB_NAME@", crate_name, content, fixed = TRUE)
   content <- gsub("@PACKAGE_TARNAME_RS_UPPERCASE@", crate_upper, content, fixed = TRUE)
   content <- gsub("@PACKAGE_TARNAME@", tarname, content, fixed = TRUE)
   writeLines(content, document_rs_path)

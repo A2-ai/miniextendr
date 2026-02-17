@@ -1,7 +1,7 @@
-use rpkg::R_WRAPPERS_DEPS_MINIEXTENDR as DEPS;
-use rpkg::R_WRAPPERS_IMPL_DEPS_MINIEXTENDR as IMPL_DEPS;
-use rpkg::R_WRAPPERS_IMPLS_MINIEXTENDR as IMPLS;
-use rpkg::R_WRAPPERS_PARTS_MINIEXTENDR as PARTS;
+use miniextendr::R_WRAPPERS_DEPS_MINIEXTENDR as DEPS;
+use miniextendr::R_WRAPPERS_IMPL_DEPS_MINIEXTENDR as IMPL_DEPS;
+use miniextendr::R_WRAPPERS_IMPLS_MINIEXTENDR as IMPLS;
+use miniextendr::R_WRAPPERS_PARTS_MINIEXTENDR as PARTS;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     use std::io::Write;
