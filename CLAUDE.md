@@ -9,7 +9,7 @@ A Rust-R interoperability framework for building R packages with Rust backends.
 - **Trust the framework**: Don't add excessive error handling for scenarios that can't happen internally.
 - **Edit `.in` templates, not generated files**: Many files in rpkg are generated from `.in` templates. Always edit the `.in` source file instead:
   - `rpkg/src/rust/.cargo/config.toml` → edit `rpkg/src/rust/cargo-config.toml.in`
-  - `rpkg/src/rust/document.rs` → edit `rpkg/src/rust/document.rs.in`
+  - `rpkg/src/rust/document.rs` → edit `rpkg/src/rust/document.rs.in` (document.rs is tracked in git so `cargo check` works without configure, but configure still regenerates it)
   - `rpkg/src/Makevars` → edit `rpkg/src/Makevars.in`
   - `rpkg/src/entrypoint.c` → edit `rpkg/src/entrypoint.c.in`
   - `rpkg/src/mx_abi.c` → edit `rpkg/src/mx_abi.c.in`
@@ -99,6 +99,11 @@ just minirextendr-test      # Run tests
 
 **ALWAYS run `./configure` (or `just configure`) before any R CMD operation.**
 
+**IMPORTANT: Always invoke configure with `bash`** (e.g., `bash ./configure`, not `./configure`).
+The autoconf-generated shebang is `#!/bin/sh`, which on some systems causes spurious
+"command not found" errors in AC_CONFIG_COMMANDS variable passthrough. The justfiles
+already use `bash ./configure`; follow the same pattern when running manually.
+
 The configure script (dev mode):
 
 1. Generates `Makevars` from `Makevars.in` and other build config files
@@ -113,7 +118,7 @@ R CMD build rpkg
 R CMD check rpkg
 
 # CORRECT
-cd rpkg && ./configure   # or: just configure
+cd rpkg && bash ./configure   # or: just configure
 R CMD build rpkg
 R CMD check rpkg
 ```
@@ -136,9 +141,9 @@ The configure script resolves one of four build contexts:
 - Neither set — auto-detects from monorepo/vendor presence
 
 ```bash
-cd rpkg && NOT_CRAN=true ./configure    # dev-monorepo (explicit)
-cd rpkg && ./configure                  # dev-monorepo (auto-detected in monorepo)
-cd rpkg && PREPARE_CRAN=true ./configure # prepare-cran
+cd rpkg && NOT_CRAN=true bash ./configure    # dev-monorepo (explicit)
+cd rpkg && bash ./configure                  # dev-monorepo (auto-detected in monorepo)
+cd rpkg && PREPARE_CRAN=true bash ./configure # prepare-cran
 ```
 
 This builds and checks a package called `miniextendr`,  i.e. you load it with
@@ -438,7 +443,7 @@ R_LIBS=/tmp/claude/R_lib NOT_CRAN=true R CMD INSTALL rpkg
 Run autoconf first:
 
 ```bash
-cd rpkg && autoconf && ./configure
+cd rpkg && autoconf && bash ./configure
 ```
 
 ### Stale R wrappers after macro changes

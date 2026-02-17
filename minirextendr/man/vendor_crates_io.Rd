@@ -4,7 +4,10 @@
 \alias{vendor_crates_io}
 \title{Vendor external crates.io dependencies}
 \usage{
-vendor_crates_io()
+vendor_crates_io(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE on success

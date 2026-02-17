@@ -4,9 +4,11 @@
 \alias{miniextendr_build}
 \title{Full miniextendr build workflow}
 \usage{
-miniextendr_build(install = TRUE, not_cran = TRUE)
+miniextendr_build(path = ".", install = TRUE, not_cran = TRUE)
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{NULL} to use the active project.}
+
 \item{install}{Whether to run \verb{R CMD INSTALL} steps. If \code{FALSE}, only
 runs autoconf + configure + document.}
 

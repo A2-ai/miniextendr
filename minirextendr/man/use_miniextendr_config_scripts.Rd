@@ -4,7 +4,10 @@
 \alias{use_miniextendr_config_scripts}
 \title{Copy config.guess and config.sub scripts}
 \usage{
-use_miniextendr_config_scripts()
+use_miniextendr_config_scripts(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if files were copied
@@ -14,3 +17,4 @@ Copies the bundled GNU autoconf helper scripts config.guess and config.sub
 to the tools/ directory. These are required for cross-compilation support
 and are referenced by AC_CONFIG_AUX_DIR(\link{tools}) in configure.ac.
 }
+\keyword{internal}

@@ -5,6 +5,7 @@
 \title{Build Rust documentation}
 \usage{
 cargo_doc(
+  path = ".",
   open = FALSE,
   no_deps = TRUE,
   features = NULL,
@@ -16,6 +17,8 @@ cargo_doc(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{open}{Logical. If TRUE, open docs after building.}
 
 \item{no_deps}{Logical. If TRUE, do not build docs for dependencies.}

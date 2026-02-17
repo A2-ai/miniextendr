@@ -211,6 +211,29 @@ R CMD INSTALL:
   4. Install R/ files, man/, etc.
 ```
 
+## Build Contexts
+
+The configure script resolves one of four build contexts based on environment
+variables and filesystem detection:
+
+| Context | When | Behavior |
+|---|---|---|
+| `dev-monorepo` | Monorepo detected (default for `just configure`) | Uses `[patch]` paths to workspace crates, no vendoring |
+| `dev-detached` | No monorepo, no vendor artifacts | Uses git/network deps directly |
+| `vendored-install` | `NOT_CRAN=false` or vendor artifacts present | Offline build from vendored sources |
+| `prepare-cran` | `PREPARE_CRAN=true` | Explicit CRAN release prep mode |
+
+**Environment variables:**
+
+- `NOT_CRAN=true` — dev mode (legacy, still supported)
+- `PREPARE_CRAN=true` — explicit CRAN release prep (highest precedence)
+- Neither set — auto-detects from monorepo/vendor presence
+
+**IFS save/restore:** The configure script saves and restores `IFS` around
+any code that modifies it (`miniextendr_saved_IFS=$IFS` / `IFS=$miniextendr_saved_IFS`).
+This prevents corrupting autoconf 2.72's internal state, which relies on `IFS`
+being set to its default value.
+
 ## See Also
 
 - [LINKING.md](LINKING.md) — How miniextendr links to libR (engine vs package)

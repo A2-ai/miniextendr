@@ -4,7 +4,10 @@
 \alias{use_rayon}
 \title{Enable rayon parallel processing support}
 \usage{
-use_rayon()
+use_rayon(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE

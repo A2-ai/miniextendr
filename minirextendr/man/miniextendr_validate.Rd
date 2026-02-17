@@ -4,7 +4,10 @@
 \alias{miniextendr_validate}
 \title{Validate miniextendr configuration}
 \usage{
-miniextendr_validate()
+miniextendr_validate(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if valid, otherwise shows warnings/errors

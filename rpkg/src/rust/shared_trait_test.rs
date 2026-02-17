@@ -7,18 +7,18 @@
 //
 // producer.pkg/src/lib.rs:
 //   #[miniextendr]
-//   pub trait Counter { fn value(&self) -> i32; ... }
+//   pub trait SharedCounter { fn value(&self) -> i32; ... }
 //
 //   #[derive(ExternalPtr)]
 //   pub struct SimpleCounter { value: i32 }
 //
 //   #[miniextendr]
-//   impl Counter for SimpleCounter { ... }
+//   impl SharedCounter for SimpleCounter { ... }
 //
 //   miniextendr_module! {
 //       mod producer_pkg;
 //       impl SimpleCounter;
-//       impl Counter for SimpleCounter;
+//       impl SharedCounter for SimpleCounter;
 //   }
 //
 // consumer.pkg/Cargo.toml:
@@ -56,7 +56,7 @@ use std::sync::atomic::{AtomicI32, Ordering};
 // ============================================================================
 
 #[miniextendr]
-pub trait Counter {
+pub trait SharedCounter {
     fn value(&self) -> i32;
     fn increment(&mut self);
     fn add(&mut self, n: i32);
@@ -84,7 +84,7 @@ impl SharedSimpleCounter {
 }
 
 #[miniextendr]
-impl Counter for SharedSimpleCounter {
+impl SharedCounter for SharedSimpleCounter {
     fn value(&self) -> i32 {
         self.value
     }
@@ -121,7 +121,7 @@ impl AtomicCounter {
 }
 
 #[miniextendr]
-impl Counter for AtomicCounter {
+impl SharedCounter for AtomicCounter {
     fn value(&self) -> i32 {
         self.value.load(Ordering::SeqCst)
     }
@@ -148,7 +148,7 @@ miniextendr_module! {
 
     // Register implementations
     impl SharedSimpleCounter;
-    impl Counter for SharedSimpleCounter;
+    impl SharedCounter for SharedSimpleCounter;
     impl AtomicCounter;
-    impl Counter for AtomicCounter;
+    impl SharedCounter for AtomicCounter;
 }

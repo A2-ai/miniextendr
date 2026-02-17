@@ -5,6 +5,7 @@
 \title{Remove a dependency from Cargo.toml}
 \usage{
 cargo_rm(
+  path = ".",
   dep,
   dev = FALSE,
   build = FALSE,
@@ -14,6 +15,8 @@ cargo_rm(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{dep}{Dependency name(s) to remove. Can be a character vector.}
 
 \item{dev}{Logical. If TRUE, remove from dev-dependencies.}

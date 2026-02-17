@@ -157,8 +157,9 @@ test_that("vendor_miniextendr_local fails on missing crate directory", {
   writeLines('[package]\nname = "miniextendr-api"', file.path(tmp_src, "miniextendr-api", "Cargo.toml"))
 
   # Should fail because other required crates are missing
+  # suppressWarnings: rlang::warn fires for each missing crate before the final error
   expect_error(
-    suppressMessages(vendor_miniextendr_local(tmp_src, tmp_dest)),
+    suppressWarnings(suppressMessages(vendor_miniextendr_local(tmp_src, tmp_dest))),
     "Failed to vendor"
   )
 })

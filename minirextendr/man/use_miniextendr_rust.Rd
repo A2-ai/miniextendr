@@ -4,7 +4,10 @@
 \alias{use_miniextendr_rust}
 \title{Create Rust project structure}
 \usage{
-use_miniextendr_rust()
+use_miniextendr_rust(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if files were created
@@ -13,3 +16,4 @@ Invisibly returns TRUE if files were created
 Creates the src/rust/ directory with Cargo.toml, lib.rs, and build.rs.
 This sets up a basic miniextendr Rust library with example functions.
 }
+\keyword{internal}

@@ -6,8 +6,6 @@ config.status
 src/Makevars
 src/Makevars.win
 src/*-wrappers.R
-src/rust/document.rs
-src/entrypoint.c
 
 # Built artifacts
 src/*.o

@@ -49,10 +49,10 @@ default:
     @just --list
 
 clean:
-    -just configure
-    -just cargo-clean
-    -cd rpkg && NOT_CRAN=false ./cleanup
-    -cd tests/cross-package && just clean
+    just configure
+    just cargo-clean
+    cd rpkg && NOT_CRAN=false ./cleanup
+    cd tests/cross-package && just clean
 
 # Clean build artifacts
 #
@@ -83,7 +83,6 @@ check *cargo_flags:
 alias cargo-build := build
 build *cargo_flags:
     cargo build --benches --tests --examples --workspace {{cargo_flags}}
-    cargo build --manifest-path=miniextendr-bench/Cargo.toml --benches --tests --examples {{cargo_flags}}
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/consumer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/consumer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/tests/cross-package/producer.pkg/rust-target" cargo build --benches --tests --examples --workspace --manifest-path="$root/tests/cross-package/producer.pkg/src/rust/Cargo.toml" {{cargo_flags}})
     root="$(pwd)" && tmp="$(mktemp -d)" && (cd "$tmp" && CARGO_TARGET_DIR="$root/rpkg/src/rust/target" cargo build --benches --tests --examples --workspace --manifest-path="$root/rpkg/src/rust/Cargo.toml" --config "patch.crates-io.miniextendr-api.path=\"$root/miniextendr-api\"" --config "patch.crates-io.miniextendr-macros.path=\"$root/miniextendr-macros\"" --config "patch.crates-io.miniextendr-macros-core.path=\"$root/miniextendr-macros-core\"" --config "patch.crates-io.miniextendr-lint.path=\"$root/miniextendr-lint\"" {{cargo_flags}})
@@ -113,7 +112,7 @@ lint:
         echo "::error::cargo check failed (see output above)"
         exit 1
     }
-    lint_issues=$(echo "$output" | grep -E "warning.*miniextendr-lint" || true)
+    lint_issues=$(echo "$output" | grep -E "warning.*miniextendr.*\[MXL|warning.*miniextendr-lint" || true)
     if [[ -n "$lint_issues" ]]; then
         echo "$lint_issues"
         echo ""
@@ -235,7 +234,7 @@ expand *cargo_flags:
 configure:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    NOT_CRAN=true ./configure
+    NOT_CRAN=true bash ./configure
 
 # Configure in CRAN/offline mode (BUILD_CONTEXT=prepare-cran)
 #
@@ -244,7 +243,7 @@ configure:
 configure-cran:
     cd rpkg && \
     if command -v autoconf >/dev/null 2>&1; then autoconf; else echo "autoconf not found; using existing configure"; fi && \
-    PREPARE_CRAN=true ./configure
+    PREPARE_CRAN=true bash ./configure
 
 # Vendor dependencies for CRAN release preparation
 #

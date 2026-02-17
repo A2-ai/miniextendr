@@ -4,7 +4,10 @@
 \alias{has_miniextendr}
 \title{Check if current project has miniextendr setup}
 \usage{
-has_miniextendr()
+has_miniextendr(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 TRUE if the project appears to be a miniextendr package

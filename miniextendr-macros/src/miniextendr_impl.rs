@@ -167,6 +167,34 @@ pub enum ClassSystem {
     Vctrs,
 }
 
+impl ClassSystem {
+    /// Convert to an identifier for token transport (e.g., in macro_rules! expansion).
+    pub fn to_ident(self) -> syn::Ident {
+        let name = match self {
+            ClassSystem::Env => "env",
+            ClassSystem::R6 => "r6",
+            ClassSystem::S7 => "s7",
+            ClassSystem::S3 => "s3",
+            ClassSystem::S4 => "s4",
+            ClassSystem::Vctrs => "vctrs",
+        };
+        syn::Ident::new(name, proc_macro2::Span::call_site())
+    }
+
+    /// Parse from an identifier (inverse of `to_ident`).
+    pub fn from_ident(ident: &syn::Ident) -> Option<Self> {
+        match ident.to_string().as_str() {
+            "env" => Some(ClassSystem::Env),
+            "r6" => Some(ClassSystem::R6),
+            "s7" => Some(ClassSystem::S7),
+            "s3" => Some(ClassSystem::S3),
+            "s4" => Some(ClassSystem::S4),
+            "vctrs" => Some(ClassSystem::Vctrs),
+            _ => None,
+        }
+    }
+}
+
 impl std::str::FromStr for ClassSystem {
     type Err = String;
 
@@ -684,12 +712,22 @@ pub struct ImplAttrs {
     pub internal: bool,
     /// Suppress `@export` without adding `@keywords internal`.
     pub noexport: bool,
+    /// When true on a trait impl (`impl Trait for Type`), the impl block is NOT
+    /// emitted (a blanket impl already provides it), but C wrappers and R wrappers
+    /// ARE generated from the method signatures in the body.
+    pub blanket: bool,
 }
 
 impl syn::parse::Parse for ImplAttrs {
     /// Parses `#[miniextendr(...)]` impl-level options.
     fn parse(input: syn::parse::ParseStream) -> syn::Result<Self> {
-        let mut class_system = ClassSystem::Env;
+        let mut class_system = if cfg!(feature = "default-r6") {
+            ClassSystem::R6
+        } else if cfg!(feature = "default-s7") {
+            ClassSystem::S7
+        } else {
+            ClassSystem::Env
+        };
         let mut class_name = None;
         let mut label = None;
         let mut vctrs_attrs = VctrsAttrs::default();
@@ -701,9 +739,10 @@ impl syn::parse::Parse for ImplAttrs {
         let mut s7_parent = None;
         let mut s7_abstract = false;
         let mut r_data_accessors = false;
-        let mut strict = false;
+        let mut strict: Option<bool> = None;
         let mut internal = false;
         let mut noexport = false;
+        let mut blanket = false;
 
         // Parse attributes. The first identifier can be either:
         // - A class system (env, r6, s3, s4, s7, vctrs)
@@ -920,8 +959,12 @@ impl syn::parse::Parse for ImplAttrs {
                         }
                     }
                 }
+            } else if ident_str == "blanket" {
+                blanket = true;
             } else if ident_str == "strict" {
-                strict = true;
+                strict = Some(true);
+            } else if ident_str == "no_strict" {
+                strict = Some(false);
             } else if ident_str == "internal" {
                 internal = true;
             } else if ident_str == "noexport" {
@@ -952,9 +995,10 @@ impl syn::parse::Parse for ImplAttrs {
             s7_parent,
             s7_abstract,
             r_data_accessors,
-            strict,
+            strict: strict.unwrap_or(cfg!(feature = "default-strict")),
             internal,
             noexport,
+            blanket,
         })
     }
 }
@@ -1001,6 +1045,11 @@ impl ParsedMethod {
     /// - etc.
     fn parse_method_attrs(attrs: &[syn::Attribute]) -> syn::Result<MethodAttrs> {
         let mut method_attrs = MethodAttrs::default();
+        // Use Option<bool> for fields that support feature defaults.
+        let mut worker: Option<bool> = None;
+        let mut unsafe_main_thread: Option<bool> = None;
+        let mut coerce: Option<bool> = None;
+        let mut error_in_r: Option<bool> = None;
 
         for attr in attrs {
             // Parse new-style #[miniextendr(class_system(...))] attributes
@@ -1037,17 +1086,23 @@ impl ParsedMethod {
                             method_attrs.r6_setter = true;
                             method_attrs.s7_setter = true;
                         } else if inner.path.is_ident("worker") {
-                            method_attrs.worker = true;
+                            worker = Some(true);
+                        } else if inner.path.is_ident("no_worker") {
+                            worker = Some(false);
                         } else if inner.path.is_ident("main_thread") {
-                            method_attrs.unsafe_main_thread = true;
+                            unsafe_main_thread = Some(true);
+                        } else if inner.path.is_ident("no_main_thread") {
+                            unsafe_main_thread = Some(false);
                         } else if inner.path.is_ident("check_interrupt") {
                             method_attrs.check_interrupt = true;
                         } else if inner.path.is_ident("coerce") {
-                            method_attrs.coerce = true;
+                            coerce = Some(true);
+                        } else if inner.path.is_ident("no_coerce") {
+                            coerce = Some(false);
                         } else if inner.path.is_ident("rng") {
                             method_attrs.rng = true;
                         } else if inner.path.is_ident("unwrap_in_r") {
-                            if method_attrs.error_in_r {
+                            if error_in_r == Some(true) {
                                 return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                             }
                             method_attrs.unwrap_in_r = true;
@@ -1055,7 +1110,9 @@ impl ParsedMethod {
                             if method_attrs.unwrap_in_r {
                                 return Err(syn::Error::new_spanned(inner.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                             }
-                            method_attrs.error_in_r = true;
+                            error_in_r = Some(true);
+                        } else if inner.path.is_ident("no_error_in_r") {
+                            error_in_r = Some(false);
                         } else if inner.path.is_ident("generic") {
                             let _: syn::Token![=] = inner.input.parse()?;
                             let value: syn::LitStr = inner.input.parse()?;
@@ -1107,7 +1164,7 @@ impl ParsedMethod {
                             method_attrs.deep_clone = true;
                         } else {
                             return Err(inner.error(
-                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, main_thread, check_interrupt, coerce, rng, unwrap_in_r, error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
+                                "unknown method option; expected one of: ignore, constructor, finalize, private, active, worker, no_worker, main_thread, no_main_thread, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, generic, class, getter, setter, validate, prop, default, required, frozen, deprecated, no_dots, dispatch, fallback, convert_from, convert_to, deep_clone"
                             ));
                         }
                         Ok(())
@@ -1134,7 +1191,7 @@ impl ParsedMethod {
                     // Parse unsafe(main_thread) - same syntax as standalone functions
                     meta.parse_nested_meta(|inner| {
                         if inner.path.is_ident("main_thread") {
-                            method_attrs.unsafe_main_thread = true;
+                            unsafe_main_thread = Some(true);
                         } else {
                             return Err(inner.error(
                                 "unknown `unsafe(...)` option; only `main_thread` is supported",
@@ -1145,11 +1202,13 @@ impl ParsedMethod {
                 } else if meta.path.is_ident("check_interrupt") {
                     method_attrs.check_interrupt = true;
                 } else if meta.path.is_ident("coerce") {
-                    method_attrs.coerce = true;
+                    coerce = Some(true);
+                } else if meta.path.is_ident("no_coerce") {
+                    coerce = Some(false);
                 } else if meta.path.is_ident("rng") {
                     method_attrs.rng = true;
                 } else if meta.path.is_ident("unwrap_in_r") {
-                    if method_attrs.error_in_r {
+                    if error_in_r == Some(true) {
                         return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                     }
                     method_attrs.unwrap_in_r = true;
@@ -1157,7 +1216,9 @@ impl ParsedMethod {
                     if method_attrs.unwrap_in_r {
                         return Err(syn::Error::new_spanned(meta.path, "`error_in_r` and `unwrap_in_r` are mutually exclusive"));
                     }
-                    method_attrs.error_in_r = true;
+                    error_in_r = Some(true);
+                } else if meta.path.is_ident("no_error_in_r") {
+                    error_in_r = Some(false);
                 } else if meta.path.is_ident("as") {
                     // Parse as = "data.frame", as = "list", etc.
                     use syn::spanned::Spanned;
@@ -1262,12 +1323,26 @@ impl ParsedMethod {
                     })?;
                 } else {
                     return Err(meta.error(
-                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, rng, unwrap_in_r, as, lifecycle"
+                        "unknown attribute; expected one of: env, r6, s3, s4, s7, vctrs, defaults, unsafe, check_interrupt, coerce, no_coerce, rng, unwrap_in_r, error_in_r, no_error_in_r, as, lifecycle"
                     ));
                 }
                 Ok(())
             })?;
         }
+
+        // Resolve feature defaults for fields not explicitly set
+        method_attrs.worker = worker.unwrap_or(cfg!(feature = "default-worker"));
+        method_attrs.unsafe_main_thread =
+            unsafe_main_thread.unwrap_or(cfg!(feature = "default-main-thread"));
+        method_attrs.coerce = coerce.unwrap_or(cfg!(feature = "default-coerce"));
+        let resolved_error_in_r = error_in_r.unwrap_or(cfg!(feature = "default-error-in-r"));
+        if resolved_error_in_r && method_attrs.unwrap_in_r {
+            return Err(syn::Error::new(
+                proc_macro2::Span::call_site(),
+                "`error_in_r` (from `default-error-in-r` feature) and `unwrap_in_r` are mutually exclusive; use `no_error_in_r` to opt out",
+            ));
+        }
+        method_attrs.error_in_r = resolved_error_in_r;
 
         Ok(method_attrs)
     }
@@ -2031,6 +2106,28 @@ pub fn generate_env_r_wrapper(parsed_impl: &ParsedImpl) -> String {
     lines.push("      }".to_string());
     lines.push("    }".to_string());
     lines.push("    bound".to_string());
+    lines.push("  } else if (is.null(obj)) {".to_string());
+    lines.push("    # Not found at top level — search trait namespace environments".to_string());
+    lines.push(format!("    for (ns_name in names({})) {{", class_name));
+    lines.push(format!("      ns <- {}[[ns_name]]", class_name));
+    lines.push(
+        "      if (is.environment(ns) && exists(name, envir = ns, inherits = FALSE)) {".to_string(),
+    );
+    lines.push("        method <- ns[[name]]".to_string());
+    lines.push(
+        "        if (is.function(method) && isTRUE(attr(method, \".__mx_instance__\"))) {"
+            .to_string(),
+    );
+    lines.push("          # Instance method — bind self as first arg".to_string());
+    lines.push("          m <- method".to_string());
+    lines.push("          s <- self".to_string());
+    lines.push("          return(function(...) m(s, ...))".to_string());
+    lines.push("        } else if (is.function(method)) {".to_string());
+    lines.push("          return(method)".to_string());
+    lines.push("        }".to_string());
+    lines.push("      }".to_string());
+    lines.push("    }".to_string());
+    lines.push("    NULL".to_string());
     lines.push("  } else {".to_string());
     lines.push("    environment(obj) <- environment()".to_string());
     lines.push("    obj".to_string());

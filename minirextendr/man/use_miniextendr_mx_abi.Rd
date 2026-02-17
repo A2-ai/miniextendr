@@ -4,7 +4,10 @@
 \alias{use_miniextendr_mx_abi}
 \title{Add mx_abi.c.in and mx_abi.h templates}
 \usage{
-use_miniextendr_mx_abi()
+use_miniextendr_mx_abi(path = ".")
+}
+\arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
 }
 \value{
 Invisibly returns TRUE if files were created
@@ -14,3 +17,4 @@ Creates src/mx_abi.c.in and inst/include/mx_abi.h which provide the
 C ABI for cross-package trait dispatch. These files enable other packages
 to interact with miniextendr's trait system.
 }
+\keyword{internal}

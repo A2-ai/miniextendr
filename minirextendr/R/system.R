@@ -12,7 +12,7 @@
 #' @param env Environment variables
 #' @param log_dir Directory to save log files (defaults to tempdir())
 #' @return List with status, output, and log_file path
-#' @export
+#' @keywords internal
 run_with_logging <- function(command, args = character(),
                               log_prefix = "command",
                               wd = NULL,
@@ -71,9 +71,11 @@ run_with_logging <- function(command, args = character(),
 
 #' Check command result and throw informative error if failed
 #'
+#' Internal helper used by workflow wrappers.
+#'
 #' @param result Result from run_with_logging()
 #' @param context Description of what was being done
-#' @export
+#' @keywords internal
 check_result <- function(result, context) {
   if (!result$success) {
     cli::cli_alert_danger("{context} failed (status: {result$status %||% 'unknown'})")
@@ -104,7 +106,7 @@ check_result <- function(result, context) {
 #' @param wd Working directory (NULL for current)
 #' @return Character vector of output lines. The exit status is stored as
 #'   the \code{"status"} attribute (NULL when 0, matching system2 convention).
-#' @noRd
+#' @keywords internal
 run_command <- function(command, args = character(), wd = NULL) {
   run_fn <- function() {
     system2(command, args = args, stdout = TRUE, stderr = TRUE)

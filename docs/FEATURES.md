@@ -44,6 +44,10 @@ Only `default` features are enabled automatically.
 | **Collections** | | |
 | `indexmap` | Order-preserving maps (`IndexMap<String, T>`) | indexmap |
 | `tinyvec` | Small-vector optimization (`TinyVec`, `ArrayVec`) | tinyvec (with `alloc`) |
+| **Either / Sum Types** | | |
+| `either` | `Either<L, R>` sum type conversions | either |
+| **Binary Serialization** | | |
+| `borsh` | Borsh binary serialization (`Borsh<T>` wrapper) | borsh (with `derive`) |
 | **Bit Manipulation** | | |
 | `bitflags` | Bitflags-integer conversions (`RFlags<T>`) | bitflags |
 | `bitvec` | Bit vector-logical conversions (`RBitVec`) | bitvec |
@@ -389,6 +393,31 @@ Small-vector optimization types that avoid heap allocation for small collections
 
 ---
 
+## Either / Sum Type Features
+
+### `either`
+
+The `Either<L, R>` sum type from the `either` crate, with `TryFromSexp` and `IntoR` conversions.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Either<L, R>` | depends on variant | Left/Right converted via their own `IntoR`/`TryFromSexp` |
+
+---
+
+## Binary Serialization Features
+
+### `borsh`
+
+Binary Object Representation Serializer for Hashing (Borsh). Provides a `Borsh<T>` wrapper
+for converting between Borsh-serialized binary data and R raw vectors.
+
+| Rust Type | R Type | Notes |
+|-----------|--------|-------|
+| `Borsh<T>` | `raw` | Binary serialization via borsh derive |
+
+---
+
 ## Bit Manipulation Features
 
 ### `bitflags`
@@ -474,6 +503,28 @@ miniextendr:::altrep_materialization_count()
 Enables the `macro_coverage` module used for `cargo expand` auditing. This is a
 development/testing feature for verifying macro expansion coverage across all
 supported attribute combinations.
+
+---
+
+## Project-Wide Default Features
+
+These features set project-wide defaults for `#[miniextendr]` options, so you don't
+need to annotate every function. Individual items can opt out with `no_` prefixed keywords.
+
+See [FEATURE_DEFAULTS.md](FEATURE_DEFAULTS.md) for the full guide with examples.
+
+| Feature | Effect | Opt-out |
+|---------|--------|---------|
+| `default-strict` | Strict checked conversions for lossy types | `no_strict` |
+| `default-coerce` | Auto-coerce parameters | `no_coerce` |
+| `default-error-in-r` | Transport Rust errors as R conditions | `no_error_in_r` |
+| `default-r6` | R6 class system for impl blocks | `env`, `s7`, etc. |
+| `default-s7` | S7 class system for impl blocks | `env`, `r6`, etc. |
+| `default-worker` | Force worker thread execution | `no_worker` |
+| `default-main-thread` | Force main thread execution | `no_main_thread` |
+
+**Mutual exclusivity:** `default-r6`/`default-s7` and `default-worker`/`default-main-thread`
+cannot be enabled simultaneously.
 
 ---
 

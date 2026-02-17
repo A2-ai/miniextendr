@@ -22,7 +22,7 @@ with Rust backends powered by the miniextendr framework. It provides:
 
 - Package scaffolding (`create_miniextendr_package()`, `create_miniextendr_monorepo()`)
 - Build workflow helpers (`miniextendr_build()`, `miniextendr_configure()`, etc.)
-- Dependency vendoring (`vendor_miniextendr()`, `miniextendr_update()`)
+- Dependency vendoring (`vendor_miniextendr()`, `upgrade_miniextendr_package()`)
 - Project diagnostics (`miniextendr_status()`, `miniextendr_doctor()`)
 
 ## Prerequisites
@@ -209,14 +209,14 @@ vendor_miniextendr(version = "v0.1.0")
 vendor_miniextendr(local_path = "~/projects/miniextendr")
 ```
 
-### Updating
+### Upgrading
 
 ```{r}
-# Update to latest version
-miniextendr_update()
+# Upgrade to latest version
+upgrade_miniextendr_package()
 
-# Update to specific version
-miniextendr_update(version = "v0.2.0")
+# Upgrade to specific version
+upgrade_miniextendr_package(version = "v0.2.0")
 ```
 
 ### Cache Management

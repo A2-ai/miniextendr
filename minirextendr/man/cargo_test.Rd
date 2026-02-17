@@ -5,6 +5,7 @@
 \title{Run Rust tests}
 \usage{
 cargo_test(
+  path = ".",
   release = FALSE,
   features = NULL,
   no_default_features = FALSE,
@@ -16,6 +17,8 @@ cargo_test(
 )
 }
 \arguments{
+\item{path}{Path to the R package root, or \code{"."} to use the current directory.}
+
 \item{release}{Logical. If TRUE, run tests with --release.}
 
 \item{features}{Character vector of features to activate.}
